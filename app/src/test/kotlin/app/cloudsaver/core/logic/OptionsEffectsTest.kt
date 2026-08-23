@@ -29,7 +29,9 @@ class OptionsEffectsTest {
         assertEquals(Preset.STORAGE_SAVER, o.preset)
         assertEquals(VideoCodec.H264, o.codec)
         assertEquals(ThemeMode.SYSTEM, o.theme)
-        assertTrue(o.dynamicColor)
+        // The brand palette is the default; wallpaper colours are opt-in, or
+        // the app looks like a different product on every phone.
+        assertFalse(o.dynamicColor)
         assertTrue(o.warningsNotif)
         assertEquals("ente", o.cloudSingle)
         assertEquals("", o.storageVolume)

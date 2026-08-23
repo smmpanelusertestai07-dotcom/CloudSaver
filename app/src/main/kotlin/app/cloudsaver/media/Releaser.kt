@@ -140,11 +140,23 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 FileInputStream(stageFile).use { it.copyTo(out, 128 * 1024) }
             } ?: throw IOException("openOutputStream null")
 
-            val publish = ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-                put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)
-            }
-            resolver.update(itemUri, publish, null, null)
+            // Publishing makes MediaProvider scan the file and rewrite its
+            // metadata, DATE_TAKEN included - from EXIF when there is any, to
+            // null when there is not. Sending the date in the same update is a
+            // race it usually loses, which would leave videos and screenshots
+            // dated 1970 in the cloud app. Un-pend first, then stamp the date.
+            resolver.update(
+                itemUri,
+                ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                null, null
+            )
+            resolver.update(
+                itemUri,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)
+                },
+                null, null
+            )
 
             // MediaStore may have de-duplicated the name; read the real one back,
             // and align the file date with the original capture date.

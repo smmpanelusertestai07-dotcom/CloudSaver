@@ -92,15 +92,7 @@ object MediaFixtures {
             "MediaStore refused the fixture insert"
         }
         context.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
-        context.contentResolver.update(
-            uri,
-            ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-                put(MediaStore.MediaColumns.DATE_TAKEN, captureMillis)
-            },
-            null,
-            null
-        )
+        publishWithDate(context, uri, captureMillis)
         return uri
     }
 
@@ -134,17 +126,29 @@ object MediaFixtures {
         context.contentResolver.openOutputStream(uri)!!.use { out ->
             temp.inputStream().use { it.copyTo(out) }
         }
+        publishWithDate(context, uri, captureMillis)
+        temp.delete()
+        return uri
+    }
+
+    /**
+     * Un-pends the item and only then stamps DATE_TAKEN. Publishing triggers a
+     * MediaProvider scan that rewrites the metadata, so a date sent in the same
+     * update can be thrown away.
+     */
+    private fun publishWithDate(context: Context, uri: Uri, captureMillis: Long) {
         context.contentResolver.update(
             uri,
-            ContentValues().apply {
-                put(MediaStore.MediaColumns.IS_PENDING, 0)
-                put(MediaStore.MediaColumns.DATE_TAKEN, captureMillis)
-            },
+            ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
             null,
             null
         )
-        temp.delete()
-        return uri
+        context.contentResolver.update(
+            uri,
+            ContentValues().apply { put(MediaStore.MediaColumns.DATE_TAKEN, captureMillis) },
+            null,
+            null
+        )
     }
 
     /** Minimal buffer-mode encoder: NV12 frames in, MP4 out. */

@@ -36,7 +36,7 @@ data class Options(
     val preset: Preset = Preset.STORAGE_SAVER,
     val codec: VideoCodec = VideoCodec.H264,
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    val dynamicColor: Boolean = true,
+    val dynamicColor: Boolean = false,
     /** MediaStore volume for stage + output; "" = internal (primary). */
     val storageVolume: String = "",
     val appLock: Boolean = false,
@@ -125,7 +125,7 @@ class OptionsRepo(private val context: Context) {
             preset = enumOr(p[K.PRESET], Preset.STORAGE_SAVER),
             codec = enumOr(p[K.CODEC], VideoCodec.H264),
             theme = enumOr(p[K.THEME], ThemeMode.SYSTEM),
-            dynamicColor = p[K.DYNAMIC_COLOR] ?: true,
+            dynamicColor = p[K.DYNAMIC_COLOR] ?: false,
             storageVolume = p[K.STORAGE_VOLUME] ?: "",
             appLock = p[K.APP_LOCK] ?: false,
             warningsNotif = p[K.WARNINGS_NOTIF] ?: true,

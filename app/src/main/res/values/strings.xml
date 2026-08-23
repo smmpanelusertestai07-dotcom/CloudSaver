@@ -131,7 +131,7 @@
     <string name="opt_group_appearance">Appearance</string>
     <string name="opt_group_privacy">Privacy and safety</string>
     <string name="opt_group_backup_restore">Backup and restore</string>
-    <string name="opt_scope">What to back up</string>
+    <string name="opt_scope">Media type</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
     <string name="scope_all">All</string>
     <string name="scope_photos">Photos</string>
@@ -192,11 +192,11 @@
     <string name="codec_hevc">HEVC</string>
     <string name="codec_hevc_warning">Note: older devices and TVs may not play HEVC.</string>
     <string name="opt_theme">Theme</string>
-    <string name="opt_theme_hint">Light, dark, or follow system.</string>
+    <string name="opt_theme_hint">Light, dark, or follow system. CloudSaver\&apos;s own colours are used unless you switch to wallpaper colours.</string>
     <string name="theme_system">System</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    <string name="theme_dynamic">Dynamic colour (Android 12+)</string>
+    <string name="theme_dynamic">Use wallpaper colours instead (Android 12+)</string>
     <string name="opt_lock">App lock</string>
     <string name="opt_lock_hint">Require fingerprint or PIN for Settings, Files and Reclaim space.</string>
     <string name="opt_warnings">Alerts</string>

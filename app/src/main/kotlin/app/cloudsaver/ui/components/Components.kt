@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -417,13 +419,21 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            Modifier
-                .size(56.dp)
+            modifier = Modifier
+                .size(64.dp)
                 .background(
                     Brush.linearGradient(listOf(BrandIndigo, BrandMint)),
                     CircleShape
-                )
-        )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painterResource(app.cloudsaver.R.drawable.ic_stat_cloud),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(34.dp)
+            )
+        }
         Text(
             title,
             style = MaterialTheme.typography.titleMedium,
