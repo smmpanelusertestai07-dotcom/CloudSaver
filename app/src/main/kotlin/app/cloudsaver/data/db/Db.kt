@@ -562,6 +562,14 @@ abstract class AppDb : RoomDatabase() {
             }
         }
 
+        /**
+         * Every migration, in order. Public so the instrumented suite can
+         * open a database built at an older version and prove the upgrade
+         * path works: a wrong ALTER here does not fail the build, it crashes
+         * the app on the first launch after an update.
+         */
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+
         @Volatile
         private var instance: AppDb? = null
 
@@ -570,7 +578,7 @@ abstract class AppDb : RoomDatabase() {
                 context.applicationContext,
                 AppDb::class.java,
                 "cloudsaver.db"
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(*MIGRATIONS).build().also { instance = it }
         }
     }
 }
