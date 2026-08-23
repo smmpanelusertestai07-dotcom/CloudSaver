@@ -56,6 +56,28 @@ class UiWalkthroughTest {
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
     }
 
+    /** Renders the launcher icon itself so the logo can be reviewed too. */
+    @Test
+    fun appIconRenders() {
+        val sizes = listOf(192, 432)
+        for (size in sizes) {
+            val drawable = target.getDrawable(R.mipmap.ic_launcher)!!
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                size, size, android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(bitmap)
+            drawable.setBounds(0, 0, size, size)
+            drawable.draw(canvas)
+            File(shotDir(), "00-app-icon-$size.png").outputStream().use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            }
+            bitmap.recycle()
+        }
+        // The monochrome layer must exist for themed icons on Android 13+.
+        val mono = target.getDrawable(R.drawable.ic_launcher_monochrome)
+        org.junit.Assert.assertNotNull(mono)
+    }
+
     @Test
     fun onboardingLooksRight() {
         setOnboardingDone(false)
