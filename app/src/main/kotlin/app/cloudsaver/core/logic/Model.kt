@@ -1,0 +1,78 @@
+package app.cloudsaver.core.logic
+
+/** Item lifecycle. GONE carries a [GoneReason]; a maintain pass promotes GONE to DONE. */
+enum class ItemState { NEW, STAGED, RELEASED, GONE, DONE, SKIP, FREED, UNKNOWN }
+
+enum class GoneReason { CONFIRMED, APP_DELETED, USER_DELETED }
+
+/** Upload evidence for a released copy. Ordinal order == strength order. */
+enum class Evidence { NONE, AGED, VERIFIED, CONFIRMED }
+
+enum class BackupScope { ALL, PHOTOS, VIDEOS }
+
+enum class OutputMode { SINGLE, SEPARATE }
+
+/** Scheduling mode (13.G). SMART is the default. */
+enum class SpeedMode { SMART, CHARGING_ONLY, FAST }
+
+enum class Preset { STORAGE_SAVER, BALANCED, MAX_SAVER }
+
+enum class VideoCodec { H264, HEVC }
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+/** Which public output folder a released copy lives in. */
+enum class OutFolder { SINGLE, PHOTOS, VIDEOS }
+
+object Defaults {
+    const val DAILY_CAP_MB = 250
+    val DAILY_CAP_CHOICES_MB = listOf(250, 500, 1024, 2048, -1) // -1 = unlimited
+
+    const val MAX_EXTRA_MB = 1536
+    val MAX_EXTRA_CHOICES_MB = listOf(1536, 3072, 5120, -1) // -1 = unlimited
+
+    const val MIN_FREE_MB = 1536
+    val MIN_FREE_CHOICES_MB = listOf(1536, 3072, 5120)
+
+    const val KEEP_MIN_DAYS = 5
+    const val AGED_DAYS = 10
+    const val MAX_RUN_MIN = 40
+    const val BATTERY_MAX_TEMP_TENTHS_C = 420 // 42.0 °C
+
+    // Scheduling (13.G).
+    const val SMART_BATTERY_FLOOR = 30
+    const val FAST_BATTERY_FLOOR = 25
+    /** Charging floor for video encodes, and the hard floor for "Run now". */
+    const val CHARGING_BATTERY_FLOOR = 15
+    const val SMART_BUDGET_MS = 30 * 60_000L // 30 min of on-battery encoding
+    const val FAST_BUDGET_MS = 60 * 60_000L
+    const val SMART_SCREEN_OFF_WAIT_MS = 2 * 60_000L
+    const val PHOTO_CAP_ON_BATTERY = 200
+
+    const val FGS_BUDGET_MS = 19_800_000L // 5.5 h per rolling 24 h
+    const val FGS_WINDOW_MS = 86_400_000L
+
+    const val CONFIRM_WINDOW_MS = 86_400_000L // "Confirm uploads" pressed within last 24 h
+
+    const val SAFETY_TX_MIN_BYTES = 5L * 1024 * 1024 // below this over 3 days => "TX ~ 0"
+    const val SAFETY_TX_DAYS = 3
+
+    const val STAGE_CAP_FACTOR = 2 // stage dir may hold at most 2 x DAILY_CAP
+
+    const val MB = 1024L * 1024L
+
+    // Pictures (never DCIM): keeps clouds with DCIM auto-backup from grabbing originals.
+    const val OUTPUT_DIR = "Pictures/CloudSaver"
+    const val OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
+    const val OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
+    const val DOCS_DIR = "Documents/CloudSaver"
+    /** Hidden snapshot next to the output copies; survives a clear-data. */
+    const val HIDDEN_SNAPSHOT_DIR = "Pictures/CloudSaver/.cloudsaver"
+    const val SNAPSHOT_NAME = "state.json"
+
+    fun outFolderRelPath(folder: OutFolder): String = when (folder) {
+        OutFolder.SINGLE -> OUTPUT_DIR
+        OutFolder.PHOTOS -> OUTPUT_DIR_PHOTOS
+        OutFolder.VIDEOS -> OUTPUT_DIR_VIDEOS
+    }
+}

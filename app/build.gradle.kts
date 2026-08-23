@@ -8,15 +8,16 @@ plugins {
 }
 
 android {
-    namespace = "app.litesaver"
+    namespace = "app.cloudsaver"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.litesaver"
+        applicationId = "app.cloudsaver"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "2.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Tamper evidence: CI passes -PsigningCertSha256=<sha256 of the release
         // signing cert> before building; empty (dev builds) disables the check.
@@ -97,6 +98,16 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
+    // Instrumented end-to-end suite: runs on a real emulator in CI.
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.uiautomator)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 // CI helper: prints the app version name.
