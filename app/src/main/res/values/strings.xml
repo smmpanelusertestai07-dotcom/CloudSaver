@@ -69,6 +69,15 @@
     <string name="detail_released">Release date</string>
     <string name="detail_reason">Reason</string>
     <string name="detail_original_missing">The original is no longer in the gallery.</string>
+    <string name="detail_as_is">Copied as-is</string>
+    <string name="asis_motion_photo">Motion photo - the moving part only survives in the original file</string>
+    <string name="asis_depth_photo">Portrait/depth photo - the depth data only survives in the original file</string>
+    <string name="asis_multi_picture">Multi-picture file - it holds more than one image</string>
+    <string name="asis_format">This format is kept as it is</string>
+    <string name="asis_already_small">Already small enough</string>
+    <string name="asis_not_smaller">Compressing would not have made it smaller</string>
+    <string name="asis_hdr">HDR video this phone cannot re-encode safely</string>
+    <string name="asis_other">Kept as it is to be safe</string>
 
     <!-- storage -->
     <string name="storage_used_title">Space used by the app</string>
@@ -127,10 +136,22 @@
     <string name="cloud_section_e2ee">Best fit (E2EE)</string>
     <string name="cloud_section_also">Also works</string>
     <string name="opt_speed">Speed</string>
-    <string name="opt_speed_hint">When to compress.</string>
+    <string name="opt_speed_hint">When the app is allowed to compress.</string>
+    <string name="speed_smart">Smart</string>
     <string name="speed_charging">Charging only</string>
-    <string name="speed_anytime">Anytime</string>
-    <string name="speed_instant">Instant</string>
+    <string name="speed_fast">Fast</string>
+    <string name="speed_smart_note">Works while charging, and on battery above 30%% when the screen is off (up to 30 min a day). Photos also run with the screen on.</string>
+    <string name="speed_charging_note">Only while charging. Zero battery use.</string>
+    <string name="speed_fast_note">Starts as soon as new photos arrive; works on battery above 25%% for up to 60 min a day. Uses a little more battery.</string>
+
+    <!-- wait reasons shown on Home (13.G) -->
+    <string name="wait_saver">Paused: Battery Saver is on</string>
+    <string name="wait_hot">Waiting: phone is warm, cooling down first</string>
+    <string name="wait_charger">Waiting for charger (Charging only mode)</string>
+    <string name="wait_battery">Waiting: battery below %1$d%%</string>
+    <string name="wait_screen">Waiting: will start when the screen has been off a couple of minutes</string>
+    <string name="wait_budget">Waiting: today\'s battery budget used - plug in to continue (resets at midnight)</string>
+    <string name="wait_photo_cap">Waiting: daily photo limit on battery reached - plug in to continue</string>
     <string name="opt_daily_cap">Daily release cap</string>
     <string name="opt_daily_cap_hint">Only this much data enters the cloud folder per day - that is the network cap.</string>
     <string name="unlimited">Unlimited</string>
@@ -305,7 +326,7 @@
     <string name="faq_q11">Does the app use the internet?</string>
     <string name="faq_a11">No. The INTERNET permission is removed from the manifest itself. Uploading is always done by your cloud app.</string>
     <string name="faq_q12">How much battery does it use?</string>
-    <string name="faq_a12">By default it compresses only while charging, with heat and battery limits. The daily release is just a file move.</string>
+    <string name="faq_a12">Smart mode (the default) works freely while charging. On battery it only starts above 30%%, with the screen off, and stops after 30 minutes of work a day - photos are lighter, so they may also run with the screen on. Battery Saver, a warm phone or a low battery pause it right away, and Home always tells you what it is waiting for. Charging only mode uses no battery at all.</string>
     <string name="faq_q13">Is the SD card supported?</string>
     <string name="faq_a13">Yes. Everything the gallery shows (all volumes) is scanned, and you can keep the LiteSaver folder on the SD card.</string>
     <string name="faq_q14">Why is the output folder never empty?</string>
@@ -313,7 +334,7 @@
     <string name="faq_q15">What about HEIC/RAW/GIF?</string>
     <string name="faq_a15">HEIC is compressed (to JPEG). RAW, GIF, SVG and similar are copied as-is - nothing is ever dropped.</string>
     <string name="faq_q16">Which cloud apps work?</string>
-    <string name="faq_a16">Best fit (E2EE): Ente (recommended), MEGA, Filen, Proton Drive. Also works: Nextcloud, Immich, OneDrive, or any app that can back up one chosen folder. Google Photos and Dropbox cannot work - they cannot back up just one custom folder.</string>
+    <string name="faq_a16">LiteSaver is built for end-to-end encrypted clouds that have no compression of their own; clouds like Google Photos and OneDrive already compress for you. Best fit (E2EE): Ente (recommended), MEGA, Filen, Proton Drive. Also works: Nextcloud, Immich, OneDrive, or any app that can back up one chosen folder. Google Photos and Dropbox cannot work - they cannot back up just one custom folder.</string>
 
     <!-- notifications -->
     <string name="channel_working">Working</string>

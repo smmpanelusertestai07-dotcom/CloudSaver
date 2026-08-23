@@ -6,60 +6,74 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.PowerManager
 import app.litesaver.core.logic.Defaults
-import app.litesaver.core.logic.Speed
+import app.litesaver.core.logic.RunDecider
 import app.litesaver.data.prefs.Options
 import app.litesaver.util.Storage
+import app.litesaver.util.Volumes
 
 /**
- * Run gates checked between items: battery level/charging per Speed mode,
- * thermal state (PowerManager >= MODERATE or battery > 42 C), free space,
- * extra-space budget and stage cap.
+ * Reads the live device state for [RunDecider] and checks the resource gates
+ * (storage volume, free space, app budget) that are independent of power.
  */
 object Gates {
 
-    data class Battery(val pct: Int, val charging: Boolean, val tempTenths: Int)
-
-    fun battery(context: Context): Battery {
-        return try {
+    /**
+     * Snapshot of battery/screen/thermal. [lastInteractiveAt] is the last time
+     * the app observed the screen ON (activity lifecycle or a worker tick); it
+     * is the best estimate available without an implicit broadcast receiver.
+     */
+    fun readPower(context: Context, lastInteractiveAt: Long, now: Long): RunDecider.Power {
+        var plugged = false
+        var pct = 100
+        var temp = 0
+        try {
             val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
-            val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-            val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-            val pct = if (level >= 0 && scale > 0) level * 100 / scale else 100
-            val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                status == BatteryManager.BATTERY_STATUS_FULL
-            Battery(pct, charging, temp)
+            if (intent != null) {
+                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                if (level >= 0 && scale > 0) pct = level * 100 / scale
+                // AC, USB, wireless and dock all count as charging.
+                plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+                temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0)
+            }
         } catch (e: Exception) {
-            Battery(100, true, 0)
+            // Treat an unreadable battery as "on battery, full" - the other
+            // gates still apply and nothing dangerous happens.
         }
-    }
 
-    /** Null = all gates open; otherwise the reason to stop. */
-    fun check(context: Context, o: Options, stageBytes: Long, releasedBytes: Long): String? {
-        if (o.storageVolume.isNotEmpty() &&
-            app.litesaver.util.Volumes.byName(context, o.storageVolume) == null
-        ) {
-            return "volume_missing"
-        }
-        val bat = battery(context)
-        when (o.speed) {
-            Speed.CHARGING_ONLY -> {
-                if (!bat.charging) return "not_charging"
-                if (bat.pct in 0 until Defaults.MIN_BATTERY_CHARGING) return "battery_low"
-            }
-            Speed.ANYTIME, Speed.INSTANT -> {
-                if (!bat.charging && bat.pct in 0 until Defaults.MIN_BATTERY_ANYTIME) {
-                    return "battery_low"
-                }
-            }
-        }
-        if (bat.tempTenths > Defaults.BATTERY_MAX_TEMP_TENTHS_C) return "battery_hot"
+        var interactive = false
+        var thermal = false
+        var saver = false
         try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            if (pm.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE) return "thermal"
+            interactive = pm.isInteractive
+            saver = pm.isPowerSaveMode
+            thermal = pm.currentThermalStatus >= PowerManager.THERMAL_STATUS_MODERATE
         } catch (e: Exception) {
-            // Some OEMs throw here; ignore.
+            // Some OEMs throw on thermal queries; keep the safe defaults.
+        }
+
+        val screenOffMs = if (interactive) 0L else (now - lastInteractiveAt).coerceAtLeast(0L)
+        return RunDecider.Power(
+            plugged = plugged,
+            batteryPct = pct,
+            batteryTempTenthsC = temp,
+            saverOn = saver,
+            screenInteractive = interactive,
+            screenOffMs = screenOffMs,
+            thermalThrottled = thermal
+        )
+    }
+
+    /** Storage-side stop reasons; null means there is room to work. */
+    fun resourceGate(
+        context: Context,
+        o: Options,
+        stageBytes: Long,
+        releasedBytes: Long
+    ): String? {
+        if (o.storageVolume.isNotEmpty() && Volumes.byName(context, o.storageVolume) == null) {
+            return "volume_missing"
         }
         if (Storage.freeBytes(context, o.storageVolume) < o.minFreeBytes) return "low_space"
         val extra = stageBytes + releasedBytes

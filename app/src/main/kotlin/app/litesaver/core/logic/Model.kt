@@ -12,7 +12,8 @@ enum class BackupScope { ALL, PHOTOS, VIDEOS }
 
 enum class OutputMode { SINGLE, SEPARATE }
 
-enum class Speed { CHARGING_ONLY, ANYTIME, INSTANT }
+/** Scheduling mode (13.G). SMART is the default. */
+enum class SpeedMode { SMART, CHARGING_ONLY, FAST }
 
 enum class Preset { STORAGE_SAVER, BALANCED, MAX_SAVER }
 
@@ -36,9 +37,17 @@ object Defaults {
     const val KEEP_MIN_DAYS = 5
     const val AGED_DAYS = 10
     const val MAX_RUN_MIN = 40
-    const val MIN_BATTERY_CHARGING = 30
-    const val MIN_BATTERY_ANYTIME = 40
     const val BATTERY_MAX_TEMP_TENTHS_C = 420 // 42.0 °C
+
+    // Scheduling (13.G).
+    const val SMART_BATTERY_FLOOR = 30
+    const val FAST_BATTERY_FLOOR = 25
+    /** Charging floor for video encodes, and the hard floor for "Run now". */
+    const val CHARGING_BATTERY_FLOOR = 15
+    const val SMART_BUDGET_MS = 30 * 60_000L // 30 min of on-battery encoding
+    const val FAST_BUDGET_MS = 60 * 60_000L
+    const val SMART_SCREEN_OFF_WAIT_MS = 2 * 60_000L
+    const val PHOTO_CAP_ON_BATTERY = 200
 
     const val FGS_BUDGET_MS = 19_800_000L // 5.5 h per rolling 24 h
     const val FGS_WINDOW_MS = 86_400_000L
@@ -57,6 +66,8 @@ object Defaults {
     const val OUTPUT_DIR_PHOTOS = "Pictures/LiteSaver/Photos"
     const val OUTPUT_DIR_VIDEOS = "Pictures/LiteSaver/Videos"
     const val DOCS_DIR = "Documents/LiteSaver"
+    /** Hidden snapshot next to the output copies; survives a clear-data. */
+    const val HIDDEN_SNAPSHOT_DIR = "Pictures/LiteSaver/.litesaver"
     const val SNAPSHOT_NAME = "state.json"
 
     fun outFolderRelPath(folder: OutFolder): String = when (folder) {

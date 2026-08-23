@@ -37,7 +37,7 @@ import app.litesaver.core.logic.BackupScope
 import app.litesaver.core.logic.Defaults
 import app.litesaver.core.logic.OutputMode
 import app.litesaver.core.logic.Preset
-import app.litesaver.core.logic.Speed
+import app.litesaver.core.logic.SpeedMode
 import app.litesaver.core.logic.ThemeMode
 import app.litesaver.core.logic.VideoCodec
 import app.litesaver.data.CloudApps
@@ -155,12 +155,22 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         OptionCard(stringResource(R.string.opt_speed), stringResource(R.string.opt_speed_hint)) {
             PillChoice(
                 listOf(
-                    Speed.CHARGING_ONLY.name to stringResource(R.string.speed_charging),
-                    Speed.ANYTIME.name to stringResource(R.string.speed_anytime),
-                    Speed.INSTANT.name to stringResource(R.string.speed_instant)
+                    SpeedMode.SMART.name to stringResource(R.string.speed_smart),
+                    SpeedMode.CHARGING_ONLY.name to stringResource(R.string.speed_charging),
+                    SpeedMode.FAST.name to stringResource(R.string.speed_fast)
                 ),
                 o.speed.name
-            ) { vm.setSpeed(Speed.valueOf(it)) }
+            ) { vm.setSpeed(SpeedMode.valueOf(it)) }
+            Text(
+                when (o.speed) {
+                    SpeedMode.SMART -> stringResource(R.string.speed_smart_note)
+                    SpeedMode.CHARGING_ONLY -> stringResource(R.string.speed_charging_note)
+                    SpeedMode.FAST -> stringResource(R.string.speed_fast_note)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
         // 6. Daily cap

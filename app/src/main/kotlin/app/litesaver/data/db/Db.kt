@@ -12,6 +12,9 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.execSQL
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -57,6 +60,17 @@ data class ItemRow(
     val appDeletedCopy: Boolean = false,
     val fromImport: Boolean = false,
     val updatedAt: Long = 0
+)
+
+/**
+ * On-battery work done today (13.G). Keyed by the local date, so the budget
+ * simply resets at local midnight - no timer, no alarm.
+ */
+@Entity(tableName = "day_budget")
+data class DayBudgetRow(
+    @PrimaryKey val day: String,
+    val videoEncodeMs: Long = 0,
+    val photosOnBattery: Int = 0
 )
 
 @Entity(tableName = "batches")
@@ -205,13 +219,51 @@ interface BatchDao {
     suspend fun byId(id: Long): BatchRow?
 }
 
-@Database(entities = [ItemRow::class, BatchRow::class], version = 1, exportSchema = false)
+@Dao
+interface DayBudgetDao {
+
+    @Query("SELECT * FROM day_budget WHERE day = :day LIMIT 1")
+    suspend fun byDay(day: String): DayBudgetRow?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(row: DayBudgetRow): Long
+
+    @Query("UPDATE day_budget SET videoEncodeMs = videoEncodeMs + :ms WHERE day = :day")
+    suspend fun addEncodeMs(day: String, ms: Long)
+
+    @Query("UPDATE day_budget SET photosOnBattery = photosOnBattery + :n WHERE day = :day")
+    suspend fun addPhotos(day: String, n: Int)
+
+    /** Yesterday and older are useless; keep the table at one row. */
+    @Query("DELETE FROM day_budget WHERE day <> :day")
+    suspend fun pruneOlderThan(day: String)
+}
+
+@Database(
+    entities = [ItemRow::class, BatchRow::class, DayBudgetRow::class],
+    version = 2,
+    exportSchema = false
+)
 abstract class AppDb : RoomDatabase() {
 
     abstract fun items(): ItemDao
     abstract fun batches(): BatchDao
+    abstract fun dayBudget(): DayBudgetDao
 
     companion object {
+        /** v2 adds the daily on-battery budget table (13.G). */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `day_budget` (" +
+                        "`day` TEXT NOT NULL, " +
+                        "`videoEncodeMs` INTEGER NOT NULL, " +
+                        "`photosOnBattery` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`day`))"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDb? = null
 
@@ -220,7 +272,7 @@ abstract class AppDb : RoomDatabase() {
                 context.applicationContext,
                 AppDb::class.java,
                 "litesaver.db"
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
         }
     }
 }

@@ -35,6 +35,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.litesaver.R
+import app.litesaver.core.logic.RunDecider
+import app.litesaver.data.prefs.Options
 import app.litesaver.ui.AppViewModel
 import app.litesaver.ui.Routes
 import app.litesaver.ui.components.GlassCard
@@ -102,7 +104,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    statusLine(options.pauseAll, counters.waiting, options.lastRunAt),
+                    statusLine(options, counters.waiting),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -251,10 +253,32 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     }
 }
 
+/**
+ * Home always says what the app is doing - or, when it is waiting, exactly
+ * what it is waiting for (13.G).
+ */
 @Composable
-private fun statusLine(paused: Boolean, waiting: Int, lastRunAt: Long): String = when {
-    paused -> stringResource(R.string.status_paused)
-    waiting > 0 -> stringResource(R.string.status_working, waiting)
-    lastRunAt > 0 -> stringResource(R.string.status_idle)
-    else -> stringResource(R.string.status_fresh)
+private fun statusLine(options: Options, waiting: Int): String {
+    if (options.pauseAll) return stringResource(R.string.status_paused)
+    if (waiting > 0) {
+        val wait = runCatching { RunDecider.Wait.valueOf(options.waitReason) }
+            .getOrDefault(RunDecider.Wait.NONE)
+        val floor = RunDecider.batteryFloor(options.speed)
+        val reason = when (wait) {
+            RunDecider.Wait.NONE, RunDecider.Wait.PAUSED -> null
+            RunDecider.Wait.BATTERY_SAVER -> stringResource(R.string.wait_saver)
+            RunDecider.Wait.TOO_HOT -> stringResource(R.string.wait_hot)
+            RunDecider.Wait.NOT_CHARGING -> stringResource(R.string.wait_charger)
+            RunDecider.Wait.BATTERY_LOW -> stringResource(R.string.wait_battery, floor)
+            RunDecider.Wait.SCREEN_ON -> stringResource(R.string.wait_screen)
+            RunDecider.Wait.BUDGET_USED -> stringResource(R.string.wait_budget)
+            RunDecider.Wait.PHOTO_CAP -> stringResource(R.string.wait_photo_cap)
+        }
+        return reason ?: stringResource(R.string.status_working, waiting)
+    }
+    return if (options.lastRunAt > 0) {
+        stringResource(R.string.status_idle)
+    } else {
+        stringResource(R.string.status_fresh)
+    }
 }

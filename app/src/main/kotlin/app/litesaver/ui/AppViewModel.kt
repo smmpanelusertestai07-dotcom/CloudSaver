@@ -14,7 +14,7 @@ import app.litesaver.core.logic.Fingerprint
 import app.litesaver.core.logic.ItemState
 import app.litesaver.core.logic.OutputMode
 import app.litesaver.core.logic.Preset
-import app.litesaver.core.logic.Speed
+import app.litesaver.core.logic.SpeedMode
 import app.litesaver.core.logic.ThemeMode
 import app.litesaver.core.logic.VideoCodec
 import app.litesaver.data.CloudApps
@@ -232,7 +232,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         confirmResult.value = null
     }
 
+    /** The app being in the foreground proves the screen is on (13.G). */
+    fun noteScreenOn() {
+        viewModelScope.launch {
+            repo.setLong(OptionsRepo.K.LAST_INTERACTIVE_AT, System.currentTimeMillis())
+        }
+    }
+
     fun onResumed() {
+        noteScreenOn()
         if (confirmPending) {
             confirmPending = false
             viewModelScope.launch(Dispatchers.Default) {
@@ -291,7 +299,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         refreshHealth()
     }
 
-    fun setSpeed(v: Speed) {
+    fun setSpeed(v: SpeedMode) {
         viewModelScope.launch {
             repo.setString(OptionsRepo.K.SPEED, v.name)
             Scheduler.ensure(ctx, repo.current())

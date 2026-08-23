@@ -15,8 +15,8 @@ android {
         applicationId = "app.litesaver"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1"
 
         // Tamper evidence: CI passes -PsigningCertSha256=<sha256 of the release
         // signing cert> before building; empty (dev builds) disables the check.

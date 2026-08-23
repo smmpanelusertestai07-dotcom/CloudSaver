@@ -33,6 +33,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        vm.noteScreenOn()
         // Watch the output folder while foreground (part of MaintainWorker's spec).
         try {
             contentResolver.registerContentObserver(

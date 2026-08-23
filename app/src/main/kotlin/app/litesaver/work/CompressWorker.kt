@@ -10,7 +10,8 @@ import app.litesaver.R
 import app.litesaver.core.logic.BackupScope
 import app.litesaver.core.logic.Defaults
 import app.litesaver.core.logic.FgsBudget
-import app.litesaver.core.logic.Speed
+import app.litesaver.core.logic.RunDecider
+import app.litesaver.core.logic.SpeedMode
 import app.litesaver.data.db.AppDb
 import app.litesaver.data.db.ItemRow
 import app.litesaver.data.prefs.Options
@@ -25,9 +26,13 @@ import app.litesaver.util.Storage
 import kotlin.math.min
 
 /**
- * The compression worker: scan -> stage (newest first), foreground while running
- * (mediaProcessing on API 35+, dataSync on 34, none below), per-24h FGS budget
- * (stop at 5.5 h), one temp file at a time, temps cleaned at start.
+ * The compression worker. WorkManager only guarantees "battery not low"; every
+ * real condition comes from [RunDecider], evaluated at start and between every
+ * single item, so the run stops cleanly the moment the phone is picked up, the
+ * battery drops, Battery Saver comes on or the daily budget runs out.
+ *
+ * Nothing here ever holds a wakelock while waiting: a blocked run simply ends
+ * and the next periodic run re-evaluates.
  */
 class CompressWorker(context: Context, params: WorkerParameters) :
     CoroutineWorker(context, params) {
@@ -36,19 +41,36 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val app = applicationContext
         val repo = OptionsRepo.get(app)
         val options = repo.current()
-        if (options.pauseAll || !options.onboardingDone) return Result.success()
+        val manual = inputData.getBoolean(KEY_MANUAL, false)
+
+        if (!options.onboardingDone) return Result.success()
+        if (options.pauseAll && !manual) return Result.success()
         if (!Permissions.hasMediaRead(app)) return Result.success()
 
-        Storage.cleanTemp(app)
         val db = AppDb.get(app)
+        val dayBudget = DayBudget(app)
+        val startAt = System.currentTimeMillis()
+
+        // First decision: is there any reason to spin up at all?
+        var power = Gates.readPower(app, options.lastInteractiveAt, startAt)
+        if (power.screenInteractive) repo.setLong(OptionsRepo.K.LAST_INTERACTIVE_AT, startAt)
+        var plan = plan(options, power, dayBudget.read(startAt), manual)
+        repo.setString(OptionsRepo.K.WAIT_REASON, plan.wait.name)
+        if (!plan.canRun) {
+            LiteLog.log(app, "work", "not starting: ${plan.wait}")
+            reschedule(app, repo)
+            return Result.success()
+        }
+
+        Storage.cleanTemp(app)
         val scanner = MediaScanner(app, db)
         val stager = Stager(app, db)
 
-        val startAt = System.currentTimeMillis()
         val sessions = FgsBudget.decode(options.fgsSessions)
-        val budgetLeft = FgsBudget.remaining(sessions, startAt)
-        if (budgetLeft < 5 * 60_000L) {
-            LiteLog.log(app, "work", "FGS budget exhausted; will retry next period")
+        val fgsLeft = FgsBudget.remaining(sessions, startAt)
+        if (fgsLeft < 5 * 60_000L) {
+            LiteLog.log(app, "work", "foreground-service budget exhausted; next period")
+            reschedule(app, repo)
             return Result.success()
         }
 
@@ -57,29 +79,86 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             setForeground(foregroundInfo(app))
             foreground = true
         } catch (e: Exception) {
-            // Background-start restrictions: run without FGS within JobScheduler limits.
+            // Background-start restrictions: run inside plain JobScheduler limits.
             LiteLog.log(app, "work", "no foreground: ${e.message}")
         }
 
-        val deadline = startAt + min(Defaults.MAX_RUN_MIN * 60_000L, budgetLeft)
+        val deadline = startAt + min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft)
         var processed = 0
+        var videoMsOnBattery = 0L
+        var photosOnBattery = 0
         try {
             runCatching { scanner.scan() }
                 .onFailure { LiteLog.log(app, "work", "scan failed: ${it.message}") }
 
             loop@ while (System.currentTimeMillis() < deadline && !isStopped) {
-                val stageBytes = Storage.totalStageBytes(app)
-                val releasedBytes = db.items().releasedBytes()
-                val gate = Gates.check(app, options, stageBytes, releasedBytes)
-                if (gate != null) {
-                    LiteLog.log(app, "work", "gate closed: $gate")
+                val now = System.currentTimeMillis()
+                // Re-read options every round: Pause or a mode change must take
+                // effect during a run, not only on the next one.
+                val live = repo.current()
+                power = Gates.readPower(app, live.lastInteractiveAt, now)
+                if (power.screenInteractive) repo.setLong(OptionsRepo.K.LAST_INTERACTIVE_AT, now)
+
+                val budget = dayBudget.read(now).let {
+                    // Count what this run already spent before it is flushed.
+                    it.copy(
+                        videoEncodeMs = it.videoEncodeMs + videoMsOnBattery,
+                        photosOnBattery = it.photosOnBattery + photosOnBattery
+                    )
+                }
+                plan = plan(live, power, budget, manual)
+                repo.setString(OptionsRepo.K.WAIT_REASON, plan.wait.name)
+                if (!plan.canRun) {
+                    LiteLog.log(app, "work", "stopping: ${plan.wait}")
                     break@loop
                 }
-                val batch = nextItems(db, options, 5)
-                if (batch.isEmpty()) break@loop
+
+                val resource = Gates.resourceGate(
+                    app, live, Storage.totalStageBytes(app), db.items().releasedBytes()
+                )
+                if (resource != null) {
+                    LiteLog.log(app, "work", "resource gate: $resource")
+                    break@loop
+                }
+
+                val batch = nextItems(db, live, plan, 5)
+                if (batch.isEmpty()) {
+                    // Nothing left that this power state allows. If photos are
+                    // the only thing waiting, say why they are not running.
+                    if (!plan.photos && db.items().countByState("NEW") > 0) {
+                        repo.setString(OptionsRepo.K.WAIT_REASON, RunDecider.Wait.PHOTO_CAP.name)
+                    }
+                    break@loop
+                }
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
-                    if (stager.stageOne(row, options)) processed++
+                    val itemStart = System.currentTimeMillis()
+                    val ok = stager.stageOne(row, live)
+                    val took = System.currentTimeMillis() - itemStart
+                    if (ok) {
+                        processed++
+                        if (!power.plugged) {
+                            if (row.isVideo) videoMsOnBattery += took else photosOnBattery++
+                        }
+                    }
+                    // Re-check power between items, not just between batches.
+                    val mid = System.currentTimeMillis()
+                    power = Gates.readPower(app, repo.current().lastInteractiveAt, mid)
+                    if (power.screenInteractive) {
+                        repo.setLong(OptionsRepo.K.LAST_INTERACTIVE_AT, mid)
+                    }
+                    val midBudget = dayBudget.read(mid).let {
+                        it.copy(
+                            videoEncodeMs = it.videoEncodeMs + videoMsOnBattery,
+                            photosOnBattery = it.photosOnBattery + photosOnBattery
+                        )
+                    }
+                    val midPlan = plan(live, power, midBudget, manual)
+                    repo.setString(OptionsRepo.K.WAIT_REASON, midPlan.wait.name)
+                    if (!midPlan.canRun) {
+                        LiteLog.log(app, "work", "stopping mid-batch: ${midPlan.wait}")
+                        break@loop
+                    }
                 }
             }
 
@@ -87,21 +166,46 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 .onFailure { LiteLog.log(app, "work", "maintain failed: ${it.message}") }
         } finally {
             val endAt = System.currentTimeMillis()
+            runCatching {
+                dayBudget.addVideoEncode(endAt, videoMsOnBattery)
+                dayBudget.addPhotos(endAt, photosOnBattery)
+            }
             if (foreground) {
                 val updated = FgsBudget.prune(sessions + (startAt to endAt), endAt)
                 repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(updated))
             }
             repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
             repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
-            if (repo.current().speed == Speed.INSTANT) {
-                Scheduler.enqueueInstant(app)
-            }
+            reschedule(app, repo)
         }
         return Result.success()
     }
 
-    private suspend fun nextItems(db: AppDb, o: Options, limit: Int): List<ItemRow> {
-        val candidates = db.items().newestNew(limit * 4)
+    private fun plan(
+        o: Options,
+        power: RunDecider.Power,
+        budget: RunDecider.Budget,
+        manual: Boolean
+    ): RunDecider.Plan = if (manual) {
+        RunDecider.decideManual(power)
+    } else {
+        RunDecider.decide(o.speed, power, budget, paused = o.pauseAll)
+    }
+
+    /** FAST re-arms its content trigger after every run (triggers are one-shot). */
+    private suspend fun reschedule(context: Context, repo: OptionsRepo) {
+        if (repo.current().speed == SpeedMode.FAST) {
+            Scheduler.enqueueContentTrigger(context)
+        }
+    }
+
+    private suspend fun nextItems(
+        db: AppDb,
+        o: Options,
+        plan: RunDecider.Plan,
+        limit: Int
+    ): List<ItemRow> {
+        val candidates = db.items().newestNew(limit * 8)
         return candidates.asSequence()
             .filter {
                 when (o.scope) {
@@ -110,6 +214,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     BackupScope.VIDEOS -> it.isVideo
                 }
             }
+            // Only the kinds of work the current power state allows.
+            .filter { if (it.isVideo) plan.videos else plan.photos }
             .filter { it.bucket == null || it.bucket !in o.excludedBuckets }
             .take(limit)
             .toList()
@@ -118,6 +224,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext)
 
     companion object {
+        const val KEY_MANUAL = "manual"
+
         fun foregroundInfo(context: Context): ForegroundInfo {
             val notification = Notifications.working(
                 context, context.getString(R.string.notif_working_text)

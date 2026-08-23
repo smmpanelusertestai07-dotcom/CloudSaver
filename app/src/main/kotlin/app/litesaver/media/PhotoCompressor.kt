@@ -81,6 +81,13 @@ object PhotoCompressor {
             return copyAsIs(context, uri, displayName, tempDir, "format_as_is")
         }
 
+        // Motion photos and multi-picture / depth JPEGs carry an embedded video
+        // or depth map that re-encoding would throw away, so they are copied
+        // byte-for-byte. The reason is shown in the item's details.
+        MediaTraits.embeddedPayloadReason(context, uri)?.let { reason ->
+            return copyAsIs(context, uri, displayName, tempDir, reason)
+        }
+
         // Read EXIF (with original GPS if ACCESS_MEDIA_LOCATION is granted).
         val exifValues = HashMap<String, String>()
         var orientation = ExifInterface.ORIENTATION_NORMAL

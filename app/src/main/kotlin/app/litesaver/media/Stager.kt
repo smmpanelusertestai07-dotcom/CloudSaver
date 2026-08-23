@@ -33,6 +33,11 @@ class Stager(private val context: Context, private val db: AppDb) {
         val uri = Uri.parse(uriString)
         val spec = Presets.spec(options.preset)
         val tempDir = Storage.tempDir(context, options.storageVolume)
+        // Compression must never make the phone feel slow, even with the
+        // screen on while charging.
+        runCatching {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        }
         val result = try {
             if (row.isVideo) {
                 VideoCompressor.compress(

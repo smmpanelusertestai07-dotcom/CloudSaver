@@ -12,7 +12,7 @@ import app.litesaver.core.logic.BackupScope
 import app.litesaver.core.logic.Defaults
 import app.litesaver.core.logic.OutputMode
 import app.litesaver.core.logic.Preset
-import app.litesaver.core.logic.Speed
+import app.litesaver.core.logic.SpeedMode
 import app.litesaver.core.logic.ThemeMode
 import app.litesaver.core.logic.VideoCodec
 import kotlinx.coroutines.flow.Flow
@@ -29,7 +29,7 @@ data class Options(
     val cloudSingle: String = "ente",
     val cloudPhotos: String = "ente",
     val cloudVideos: String = "ente",
-    val speed: Speed = Speed.CHARGING_ONLY,
+    val speed: SpeedMode = SpeedMode.SMART,
     val dailyCapMb: Int = Defaults.DAILY_CAP_MB,
     val minFreeMb: Int = Defaults.MIN_FREE_MB,
     val maxExtraMb: Int = Defaults.MAX_EXTRA_MB,
@@ -54,6 +54,10 @@ data class Options(
     val lastRunNote: String = "",
     val lastSnapshotDay: String = "",
     val fgsSessions: String = "",
+    /** Last time the app observed the screen ON (13.G screen-off wait). */
+    val lastInteractiveAt: Long = 0,
+    /** Latest RunDecider.Wait name, shown on Home in plain English. */
+    val waitReason: String = "NONE",
     val agedWarned: Boolean = false,
     val safetyPauseWarnedAt: Long = 0,
     val volumeWarnedAt: Long = 0,
@@ -97,6 +101,8 @@ class OptionsRepo(private val context: Context) {
         val LAST_RUN_NOTE = stringPreferencesKey("lastRunNote")
         val LAST_SNAPSHOT_DAY = stringPreferencesKey("lastSnapshotDay")
         val FGS_SESSIONS = stringPreferencesKey("fgsSessions")
+        val LAST_INTERACTIVE_AT = longPreferencesKey("lastInteractiveAt")
+        val WAIT_REASON = stringPreferencesKey("waitReason")
         val AGED_WARNED = booleanPreferencesKey("agedWarned")
         val SAFETY_WARNED_AT = longPreferencesKey("safetyPauseWarnedAt")
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
@@ -112,7 +118,7 @@ class OptionsRepo(private val context: Context) {
             cloudSingle = p[K.CLOUD_SINGLE] ?: "ente",
             cloudPhotos = p[K.CLOUD_PHOTOS] ?: "ente",
             cloudVideos = p[K.CLOUD_VIDEOS] ?: "ente",
-            speed = enumOr(p[K.SPEED], Speed.CHARGING_ONLY),
+            speed = enumOr(p[K.SPEED], SpeedMode.SMART),
             dailyCapMb = p[K.DAILY_CAP_MB] ?: Defaults.DAILY_CAP_MB,
             minFreeMb = p[K.MIN_FREE_MB] ?: Defaults.MIN_FREE_MB,
             maxExtraMb = p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB,
@@ -135,6 +141,8 @@ class OptionsRepo(private val context: Context) {
             lastRunNote = p[K.LAST_RUN_NOTE] ?: "",
             lastSnapshotDay = p[K.LAST_SNAPSHOT_DAY] ?: "",
             fgsSessions = p[K.FGS_SESSIONS] ?: "",
+            lastInteractiveAt = p[K.LAST_INTERACTIVE_AT] ?: 0,
+            waitReason = p[K.WAIT_REASON] ?: "NONE",
             agedWarned = p[K.AGED_WARNED] ?: false,
             safetyPauseWarnedAt = p[K.SAFETY_WARNED_AT] ?: 0,
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,

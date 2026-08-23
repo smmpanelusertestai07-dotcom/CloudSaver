@@ -21,7 +21,7 @@ class OptionsEffectsTest {
         val o = Options()
         assertEquals(BackupScope.ALL, o.scope)
         assertEquals(OutputMode.SINGLE, o.outputMode)
-        assertEquals(Speed.CHARGING_ONLY, o.speed)
+        assertEquals(SpeedMode.SMART, o.speed)
         assertEquals(250, o.dailyCapMb)
         assertEquals(1536, o.minFreeMb)
         assertEquals(1536, o.maxExtraMb)

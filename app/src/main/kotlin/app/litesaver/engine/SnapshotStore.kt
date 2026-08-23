@@ -68,9 +68,21 @@ class SnapshotStore(
         )
     }
 
-    /** Writes/updates Documents/LiteSaver/state.json through MediaStore Files. */
+    /**
+     * Daily snapshot to Documents/LiteSaver/state.json plus a hidden copy in
+     * Pictures/LiteSaver/.litesaver/state.json, so the state also travels with
+     * the output folder itself. Returns true when at least one copy was written.
+     */
     suspend fun writeDocumentsSnapshot(): Boolean {
         val json = SnapshotCodec.encode(build())
+        val docs = writeTo(json, Defaults.DOCS_DIR)
+        // Best effort: some OEM MediaStore builds reject dot-directories.
+        val hidden = writeTo(json, Defaults.HIDDEN_SNAPSHOT_DIR)
+        return docs || hidden
+    }
+
+    /** Writes/updates state.json in [relativeDir] through MediaStore Files. */
+    private fun writeTo(json: String, relativeDir: String): Boolean {
         val resolver = context.contentResolver
         val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         return try {
@@ -80,7 +92,7 @@ class SnapshotStore(
                 "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
             val args = arrayOf(
                 Defaults.SNAPSHOT_NAME,
-                "${Defaults.DOCS_DIR}/",
+                "$relativeDir/",
                 context.packageName
             )
             resolver.query(
@@ -94,7 +106,7 @@ class SnapshotStore(
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, Defaults.SNAPSHOT_NAME)
                     put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Defaults.DOCS_DIR}/")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDir/")
                 }
                 target = resolver.insert(files, values)
             }
@@ -102,10 +114,10 @@ class SnapshotStore(
             resolver.openOutputStream(uri, "wt")?.use { out ->
                 out.write(json.toByteArray(Charsets.UTF_8))
             } ?: return false
-            LiteLog.log(context, "snapshot", "wrote ${Defaults.DOCS_DIR}/${Defaults.SNAPSHOT_NAME}")
+            LiteLog.log(context, "snapshot", "wrote $relativeDir/${Defaults.SNAPSHOT_NAME}")
             true
         } catch (e: Exception) {
-            LiteLog.log(context, "snapshot", "write failed: ${e.message}")
+            LiteLog.log(context, "snapshot", "write to $relativeDir failed: ${e.message}")
             false
         }
     }

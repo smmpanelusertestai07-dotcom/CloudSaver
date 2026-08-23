@@ -8,6 +8,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Process
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -16,6 +17,7 @@ import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.EncoderSelector
 import androidx.media3.transformer.EncoderUtil
@@ -96,10 +98,29 @@ object VideoCompressor {
 
         val codecMime = if (codec == VideoCodec.H264) MimeTypes.VIDEO_H264 else MimeTypes.VIDEO_H265
 
+        // HDR policy: H.264 cannot carry HDR, so tone-map to SDR. HEVC keeps HDR
+        // only when this device can actually encode 10-bit HDR; otherwise it is
+        // tone-mapped too. A device that can do neither ends at the as-is copy
+        // below - colours are never silently washed out.
+        val hdr = MediaTraits.hdrOf(context, uri)
+        val keepHdr = hdr != MediaTraits.Hdr.NONE &&
+            codec == VideoCodec.HEVC &&
+            MediaTraits.deviceSupportsHdrHevcEncode()
+        val hdrMode = when {
+            hdr == MediaTraits.Hdr.NONE -> Composition.HDR_MODE_KEEP_HDR
+            keepHdr -> Composition.HDR_MODE_KEEP_HDR
+            else -> Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL
+        }
+        val hdrTag = when {
+            hdr == MediaTraits.Hdr.NONE -> ""
+            keepHdr -> "_hdr"
+            else -> "_tonemap"
+        }
+
         for (attempt in ATTEMPTS) {
             val outFile = File(tempDir, "video_${System.nanoTime()}_${attempt.label}.mp4")
             val export = try {
-                runTransform(context, uri, outFile, outW, outH, targetBps, codecMime, attempt, maxAttemptMs)
+                runTransform(context, uri, outFile, outW, outH, targetBps, codecMime, attempt, hdrMode, maxAttemptMs)
             } catch (ce: CancellationException) {
                 outFile.delete()
                 throw ce
@@ -112,7 +133,7 @@ object VideoCompressor {
                 val outDur = if (export.durationMs > 0) export.durationMs else probeDurationMs(outFile)
                 val outBps = if (outDur > 0) outBytes * 8000L / outDur else Long.MAX_VALUE
                 if (BitrateCalc.resultAcceptable(srcBytes, outBytes, outBps, targetBps, probe.durationMs, outDur)) {
-                    return CompressResult(outFile, outBytes, asIs = false, reason = "compressed_${attempt.label}", ext = "mp4")
+                    return CompressResult(outFile, outBytes, asIs = false, reason = "compressed_${attempt.label}$hdrTag", ext = "mp4")
                 }
                 LiteLog.log(
                     context, "video",
@@ -121,7 +142,8 @@ object VideoCompressor {
             }
             outFile.delete()
         }
-        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, "encoder_rejected")
+        val failReason = if (hdr == MediaTraits.Hdr.NONE) "encoder_rejected" else "hdr_not_supported"
+        return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason)
     }
 
     /** Runs a single Transformer export; null on any export error or timeout. */
@@ -134,9 +156,11 @@ object VideoCompressor {
         bitrateBps: Int,
         codecMime: String,
         attempt: Attempt,
+        hdrMode: Int,
         maxAttemptMs: Long
     ): ExportResult? = withContext(Dispatchers.Default) {
-        val thread = HandlerThread("litesaver-transform")
+        // Background priority: encoding must never make the phone feel slow.
+        val thread = HandlerThread("litesaver-transform", Process.THREAD_PRIORITY_BACKGROUND)
         thread.start()
         val handler = Handler(thread.looper)
         val done = CompletableDeferred<ExportResult?>()
@@ -198,7 +222,10 @@ object VideoCompressor {
                         )
                     )
                     .build()
-                transformer.start(edited, outFile.absolutePath)
+                val composition = Composition.Builder(
+                    EditedMediaItemSequence.Builder(edited).build()
+                ).setHdrMode(hdrMode).build()
+                transformer.start(composition, outFile.absolutePath)
             } catch (t: Throwable) {
                 done.complete(null)
             }

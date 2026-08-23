@@ -122,6 +122,13 @@ fun FilesScreen(vm: AppViewModel) {
                     row.skipReason?.let {
                         KeyValueRow(stringResource(R.string.detail_reason), it)
                     }
+                    // Items copied byte-for-byte explain themselves here.
+                    if (row.outputBytes != null && row.lastError != null) {
+                        KeyValueRow(
+                            stringResource(R.string.detail_as_is),
+                            asIsReasonLabel(row.lastError!!)
+                        )
+                    }
                     if (row.originalMissing) {
                         Text(
                             stringResource(R.string.detail_original_missing),
@@ -147,6 +154,19 @@ fun stateLabel(row: ItemRow): String {
         ItemState.FREED -> stringResource(R.string.state_freed)
         ItemState.UNKNOWN -> stringResource(R.string.state_unknown)
     }
+}
+
+/** Plain-English explanation for a file that was copied instead of compressed. */
+@Composable
+fun asIsReasonLabel(reason: String): String = when (reason) {
+    "motion_photo" -> stringResource(R.string.asis_motion_photo)
+    "depth_photo" -> stringResource(R.string.asis_depth_photo)
+    "multi_picture" -> stringResource(R.string.asis_multi_picture)
+    "format_as_is" -> stringResource(R.string.asis_format)
+    "already_efficient" -> stringResource(R.string.asis_already_small)
+    "not_smaller" -> stringResource(R.string.asis_not_smaller)
+    "hdr_not_supported" -> stringResource(R.string.asis_hdr)
+    else -> stringResource(R.string.asis_other)
 }
 
 @Composable

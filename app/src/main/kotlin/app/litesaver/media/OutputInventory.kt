@@ -6,7 +6,7 @@ import android.net.Uri
 import android.provider.MediaStore
 
 /**
- * What is actually inside DCIM/LiteSaver right now (MediaStore view).
+ * What is actually inside Pictures/LiteSaver right now (MediaStore view).
  * Used for gone-detection (CONFIRMED / USER_DELETED), the anchor rule and
  * old-install cleanup.
  */

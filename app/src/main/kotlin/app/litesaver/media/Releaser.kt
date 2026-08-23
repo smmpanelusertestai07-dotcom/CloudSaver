@@ -20,7 +20,7 @@ import java.io.IOException
 
 /**
  * Daily release: moves staged copies into the public output folder(s)
- * DCIM/LiteSaver via MediaStore (IS_PENDING flow), sets DATE_TAKEN and
+ * Pictures/LiteSaver via MediaStore (IS_PENDING flow), sets DATE_TAKEN and
  * lastModified to the original capture date, then removes the stage file.
  * The daily release cap IS the cloud app's network cap.
  */
