@@ -13,3 +13,4 @@
 !debug.keystore
 /app/release
 /app/schemas
+.local-release.jks

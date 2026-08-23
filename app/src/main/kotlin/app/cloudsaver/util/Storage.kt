@@ -61,6 +61,12 @@ object Storage {
         return size
     }
 
+    /** Half-finished work files left by interrupted runs, across all volumes. */
+    fun totalTempBytes(context: Context): Long =
+        Volumes.list(context).sumOf { vol ->
+            vol.appDir?.let { dirSize(File(File(it, "stage"), "tmp")) } ?: 0L
+        }
+
     /** Deletes leftover temp files on every volume; cheap (one temp at a time). */
     fun cleanTemp(context: Context): Long {
         var freed = 0L

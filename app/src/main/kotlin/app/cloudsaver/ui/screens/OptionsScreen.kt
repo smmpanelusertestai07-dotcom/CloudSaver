@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -62,10 +63,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val recommended by vm.recommended.collectAsStateWithLifecycle()
+    val storage by vm.storageStats.collectAsStateWithLifecycle()
+    val deviceFree = volumes.firstOrNull {
+        (o.storageVolume.isEmpty() && it.isPrimary) || it.mediaVolumeName == o.storageVolume
+    }?.freeBytes ?: 0L
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         vm.refreshVolumes()
         vm.refreshRecommended()
+        vm.refreshStorage()
     }
 
     var showFolders by remember { mutableStateOf(false) }
@@ -150,9 +156,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ),
                 o.outputMode.name
             ) { vm.setOutputMode(OutputMode.valueOf(it)) }
+            // The user has to pick this exact string inside another app, so it
+            // is printed rather than described.
+            FolderPaths(o.outputMode)
+            ChoiceNote(stringResource(R.string.output_switch_note))
         }
 
-        // 4. Cloud app(s)
         OptionCard(stringResource(R.string.opt_cloud), stringResource(R.string.cloud_intended)) {
             if (o.outputMode == OutputMode.SINGLE) {
                 CloudButton(
@@ -225,36 +234,50 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 
         SectionHeader(stringResource(R.string.opt_group_space))
-        // 7. Phone space
-        OptionCard(stringResource(R.string.opt_space), stringResource(R.string.opt_space_hint)) {
-            Text(stringResource(R.string.space_min_free), style = MaterialTheme.typography.labelLarge)
+        // 7. Two limits that sound alike and mean opposite things, so each
+        // gets its own card, its own sentence, and its own live number.
+        OptionCard(
+            stringResource(R.string.space_min_free_title),
+            stringResource(R.string.space_min_free_body)
+        ) {
             SegmentedChoice(
                 Defaults.MIN_FREE_CHOICES_MB.map { it.toString() to Formats.mbLabel(it) },
                 o.minFreeMb.toString()
             ) { vm.setMinFree(it.toInt()) }
-            Spacer(Modifier.height(6.dp))
-            Text(stringResource(R.string.space_max_extra), style = MaterialTheme.typography.labelLarge)
+            LiveValue(stringResource(R.string.space_now_free, Formats.bytes(deviceFree)))
+            if (recommended.freeLooksWrong) {
+                RecommendationNote(
+                    text = stringResource(
+                        R.string.recommend_space, Formats.mbLabel(recommended.minFreeMb)
+                    ),
+                    onApply = { vm.applyRecommended() }
+                )
+            }
+        }
+        OptionCard(
+            stringResource(R.string.space_max_extra_title),
+            stringResource(R.string.space_max_extra_body)
+        ) {
             SegmentedChoice(
                 Defaults.MAX_EXTRA_CHOICES_MB.map { mb ->
                     mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
                 },
                 o.maxExtraMb.toString()
             ) { vm.setMaxExtra(it.toInt()) }
-            if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
-            // Offered, never applied behind the user's back: a 64 GB phone and
-            // a 512 GB phone should not reserve the same headroom, but a value
-            // someone chose deliberately is theirs.
-            if (recommended.freeLooksWrong) {
-                RecommendationNote(
-                    text = stringResource(
-                        R.string.recommend_space,
-                        Formats.mbLabel(recommended.minFreeMb),
-                        Formats.mbLabel(recommended.maxExtraMb)
-                    ),
-                    onApply = { vm.applyRecommended() }
+            LiveValue(
+                stringResource(
+                    R.string.space_now_using,
+                    Formats.bytes(storage.stageBytes + storage.outputBytes)
                 )
-            }
+            )
+            if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
         }
+        Text(
+            stringResource(R.string.space_two_things),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        )
 
         // 7b. Storage location (13.D; shown only when an SD card exists)
         if (volumes.size > 1 || o.storageVolume.isNotEmpty()) {
@@ -307,17 +330,14 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        // Cloud calculator entry
-        OptionCard(stringResource(R.string.calc_title), stringResource(R.string.calc_entry_hint)) {
-            OutlinedButton(onClick = { nav.navigate(Routes.CALC) }) {
-                Text(stringResource(R.string.calc_open))
-            }
-        }
-
 
         SectionHeader(stringResource(R.string.opt_group_quality))
         // 8. Preset
-        OptionCard(stringResource(R.string.opt_preset), stringResource(R.string.opt_preset_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_preset),
+            stringResource(R.string.opt_preset_hint),
+            onInfo = { nav.navigate(Routes.HELP_QUALITY) }
+        ) {
             SegmentedChoice(
                 listOf(
                     Preset.STORAGE_SAVER.name to stringResource(R.string.preset_storage),
@@ -392,7 +412,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             stringResource(R.string.opt_reclaim_verified_hint)
         ) {
             SwitchRow(
-                stringResource(R.string.opt_reclaim_verified),
+                stringResource(R.string.opt_reclaim_verified_short),
                 o.freeUpAllowVerified30
             ) { vm.setFreeUpVerified30(it) }
         }
@@ -638,15 +658,12 @@ private fun CloudPickRow(
     ) {
         RadioButton(selected = app.id == current, onClick = { onPick(app.id) })
         Column(Modifier.weight(1f)) {
-            Text(
-                buildString {
-                    append(app.label)
-                    if (app.recommended) {
-                        append(" - ")
-                        append(stringResource(R.string.cloud_recommended))
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(app.label, style = MaterialTheme.typography.bodyLarge)
+                if (app.recommended) {
+                    RecommendedTag(Modifier.padding(start = 8.dp))
                 }
-            )
+            }
             if (installed) {
                 Text(
                     stringResource(R.string.cloud_installed_mark),
@@ -654,11 +671,64 @@ private fun CloudPickRow(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            if (app.recommended) {
+                // A tag with no reason behind it is just an advertisement.
+                Text(
+                    stringResource(R.string.cloud_recommended),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            // What this particular app can and cannot be relied on for. The
+            // same three lines for every entry, including "Other app", so no
+            // choice looks safer than it is.
+            Text(
+                cloudPromiseLine(app.id),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            app.checklistRes?.let {
+                Text(
+                    stringResource(it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
     }
 }
 
 /** A device-aware suggestion the user can take with one tap, or ignore. */
+/** A live figure under a control, so the setting is not an abstraction. */
+@Composable
+private fun LiveValue(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+}
+
+/**
+ * "Recommended" as a plain tag.
+ *
+ * As a filled pill it read as a third option next to the real ones, and
+ * people tapped it expecting something to happen.
+ */
+@Composable
+fun RecommendedTag(modifier: Modifier = Modifier) {
+    Text(
+        stringResource(R.string.tag_recommended),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
+    )
+}
+
 @Composable
 private fun RecommendationNote(text: String, onApply: () -> Unit) {
     Column(Modifier.padding(top = 10.dp)) {
@@ -673,15 +743,39 @@ private fun RecommendationNote(text: String, onApply: () -> Unit) {
     }
 }
 
+private val InfoIcon = androidx.compose.material.icons.Icons.Default.Info
+
 @Composable
-private fun OptionCard(title: String, hint: String, content: @Composable () -> Unit) {
+private fun OptionCard(
+    title: String,
+    hint: String,
+    onInfo: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
     AppCard(modifier = Modifier.padding(vertical = 5.dp)) {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        Text(
-            hint,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (onInfo != null) {
+                androidx.compose.material3.IconButton(onClick = onInfo) {
+                    androidx.compose.material3.Icon(
+                        InfoIcon,
+                        contentDescription = stringResource(R.string.quality_explained_title),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
         content()
     }
 }
@@ -694,7 +788,15 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
             .fillMaxWidth()
             .padding(top = 4.dp)
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        // Label first in its own column with a fixed gap: a long label used to
+        // run under the switch, and neither could then be read.
+        Text(
+            label,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 16.dp),
+            style = MaterialTheme.typography.bodyMedium
+        )
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }

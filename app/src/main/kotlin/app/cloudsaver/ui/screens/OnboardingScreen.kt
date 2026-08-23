@@ -43,29 +43,37 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.OnboardingSteps
+import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Permissions
 
 /**
- * One-time onboarding: 6 step cards, one button each, re-runnable from Help.
- * Steps: media permission, notifications, battery, usage access, cloud
- * checklist, test run.
+ * One-time setup.
+ *
+ * The position of a step is stated in exactly one place - the header and the
+ * dots, both read from [OnboardingSteps]. No card title carries a number, so
+ * the two can no longer disagree the way "Step 6 of 7" once sat above a card
+ * headed "5.".
  */
 @Composable
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
-    var step by remember { mutableIntStateOf(options.onboardingStep.coerceIn(0, 6)) }
-    var showCalc by remember { mutableStateOf(false) }
+    var step by remember {
+        mutableIntStateOf(options.onboardingStep.coerceIn(0, OnboardingSteps.TOTAL - 1))
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     fun goTo(next: Int) {
-        step = next.coerceIn(0, 6)
+        step = next.coerceIn(0, OnboardingSteps.TOTAL - 1)
         vm.setOnboardingStep(step)
     }
 
@@ -118,12 +126,7 @@ fun OnboardingScreen(vm: AppViewModel) {
     ) {
         Spacer(Modifier.height(28.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painterResource(R.drawable.ic_stat_cloud),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(36.dp)
-            )
+            BrandMark(size = 44.dp)
             Text(
                 stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge,
@@ -138,27 +141,13 @@ fun OnboardingScreen(vm: AppViewModel) {
             modifier = Modifier.padding(top = 6.dp)
         )
         Spacer(Modifier.height(12.dp))
-        if (showCalc) {
-            Text(
-                stringResource(R.string.calc_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            CalculatorContent(vm)
-            Button(
-                onClick = { showCalc = false },
-                modifier = Modifier.padding(top = 10.dp)
-            ) { Text(stringResource(R.string.back)) }
-            Spacer(Modifier.height(24.dp))
-            return@Column
-        }
         Text(
-            stringResource(R.string.onb_step_counter, step + 1, 7),
+            stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 18.dp)
         )
-        StepDots(current = step, total = 7)
+        StepDots(current = step, total = OnboardingSteps.TOTAL)
 
         AnimatedContent(
             targetState = step,
@@ -222,23 +211,24 @@ fun OnboardingScreen(vm: AppViewModel) {
                 onSkip = { goTo(3) }
             )
 
-            3 -> StepCard(
-                title = stringResource(R.string.onb3_title),
-                text = stringResource(R.string.onb3_text),
-                buttonLabel = stringResource(R.string.onb3_battery),
-                onButton = { OemPages.requestIgnoreBatteryOptimizations(context) },
-                onSkip = { goTo(4) }
-            ) {
-                OutlinedButton(onClick = {
-                    if (!OemPages.openAutoStart(context)) OemPages.openAppInfo(context)
-                }) { Text(stringResource(R.string.onb3_autostart)) }
-                Text(
-                    stringResource(R.string.onb3_fallback),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Button(onClick = { goTo(4) }, modifier = Modifier.padding(top = 6.dp)) {
-                    Text(stringResource(R.string.onb_done_next))
+            3 -> {
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshPowerRequirements() }
+                val requirements by vm.powerRequirements.collectAsStateWithLifecycle()
+                StepCard(
+                    title = stringResource(R.string.onb3_title),
+                    text = stringResource(R.string.onb3_text),
+                    buttonLabel = stringResource(R.string.onb_done_next),
+                    onButton = { goTo(4) },
+                    onSkip = { goTo(4) }
+                ) {
+                    // One row per thing this particular phone can break, each
+                    // opening the page that holds that switch.
+                    for (requirement in requirements) {
+                        PowerRow(requirement) {
+                            vm.openPowerPage(requirement.id)
+                            vm.refreshPowerRequirements()
+                        }
+                    }
                 }
             }
 
@@ -255,32 +245,81 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             5 -> {
-                val detected = remember { CloudApps.detectDefault(context) }
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
+                val detection by vm.cloudDetection.collectAsStateWithLifecycle()
+                val link by vm.linkState.collectAsStateWithLifecycle()
+                var picking by remember { mutableStateOf(false) }
+                val chosen = detection.chosen
                 StepCard(
                     title = stringResource(R.string.onb5_title),
                     text = stringResource(R.string.cloud_intended),
+                    // The primary action is last, after everything the user
+                    // has to read and do.
                     buttonLabel = stringResource(R.string.onb_done_next),
                     onButton = { goTo(6) }
                 ) {
                     Text(
-                        stringResource(R.string.onb5_text, detected.label),
-                        style = MaterialTheme.typography.bodyMedium
+                        stringResource(R.string.onb5_found, chosen.label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
                     )
-                    detected.checklistRes?.let { res ->
+                    FolderPaths(options.outputMode)
+                    chosen.checklistRes?.let { res ->
                         Text(
                             stringResource(res),
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 6.dp)
+                            modifier = Modifier.padding(top = 8.dp)
                         )
                     }
-                    if (detected.packages.isNotEmpty()) {
-                        OutlinedButton(onClick = { CloudApps.launch(context, detected.id) }) {
-                            Text(stringResource(R.string.onb5_open, detected.label))
-                        }
+                    Text(
+                        cloudPromiseLine(chosen.id),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    if (detection.needsChoice) {
+                        Text(
+                            stringResource(R.string.onb5_several),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
-                    OutlinedButton(onClick = { showCalc = true }) {
-                        Text(stringResource(R.string.calc_open))
+                    if (chosen.packages.isNotEmpty()) {
+                        OutlinedButton(onClick = {
+                            CloudApps.launch(context, chosen.id)
+                            vm.clearLinkState()
+                        }) { Text(stringResource(R.string.onb5_open, chosen.label)) }
                     }
+                    OutlinedButton(onClick = { vm.verifyCloudLink() }) {
+                        Text(stringResource(R.string.onb5_check))
+                    }
+                    OutlinedButton(onClick = { picking = true }) {
+                        Text(stringResource(R.string.cloud_use_different))
+                    }
+                    // Never "set up correctly" on faith: only what was checked.
+                    link?.let { state ->
+                        Text(
+                            linkStateLine(state),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (state == AppViewModel.LinkState.CONNECTED) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+                if (picking) {
+                    CloudPickerDialog(
+                        current = chosen.id,
+                        onPick = {
+                            vm.chooseCloud(it)
+                            picking = false
+                        },
+                        onDismiss = { picking = false }
+                    )
                 }
             }
 
@@ -326,6 +365,163 @@ fun OnboardingScreen(vm: AppViewModel) {
             TextButton(onClick = { goTo(step - 1) }) { Text(stringResource(R.string.back)) }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/**
+ * One background-work switch this phone needs.
+ *
+ * Where Android reports the state it is shown; where no API can read it -
+ * which is every OEM auto-launch list - the row says "check this" instead of
+ * claiming a problem. Telling someone a setting is off when it is on is how
+ * an app teaches people to ignore it.
+ */
+@Composable
+private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
+    val label = when (requirement.id) {
+        PowerPages.ID_BATTERY_UNRESTRICTED -> stringResource(R.string.power_battery)
+        PowerPages.ID_AUTO_LAUNCH -> stringResource(R.string.power_auto_launch)
+        PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.power_background)
+        else -> requirement.id
+    }
+    val state = when {
+        requirement.readable && requirement.satisfied -> stringResource(R.string.power_allowed)
+        requirement.readable -> stringResource(R.string.power_blocked)
+        else -> stringResource(R.string.power_check)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                state,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (requirement.readable && requirement.satisfied) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+        }
+        if (!(requirement.readable && requirement.satisfied)) {
+            OutlinedButton(onClick = onOpen) { Text(stringResource(R.string.power_open)) }
+        }
+    }
+}
+
+/** The exact folder(s) to pick in the cloud app - never paraphrased. */
+@Composable
+fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
+    val paths = OutputPaths.forMode(mode)
+    Column(Modifier.padding(top = 8.dp)) {
+        Text(
+            stringResource(
+                if (paths.size == 1) R.string.folder_pick_one else R.string.folder_pick_two
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        for (path in paths) {
+            Text(
+                path,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/** What can honestly be promised with the chosen cloud (J1). */
+@Composable
+fun cloudPromiseLine(cloudId: String): String {
+    val caps = app.cloudsaver.core.logic.CloudCapability.defaultsFor(cloudId)
+    return when (app.cloudsaver.core.logic.CloudPromise.forCloud(cloudId, caps)) {
+        app.cloudsaver.core.logic.CloudPromise.Promise.EXACT ->
+            stringResource(R.string.promise_exact)
+        app.cloudsaver.core.logic.CloudPromise.Promise.LEDGER_ONLY ->
+            stringResource(R.string.promise_ledger)
+        app.cloudsaver.core.logic.CloudPromise.Promise.UNKNOWN ->
+            stringResource(R.string.promise_unknown)
+    }
+}
+
+@Composable
+fun linkStateLine(state: AppViewModel.LinkState): String = when (state) {
+    AppViewModel.LinkState.CONNECTED -> stringResource(R.string.link_connected)
+    AppViewModel.LinkState.NO_APP -> stringResource(R.string.link_no_app)
+    AppViewModel.LinkState.NO_FOLDER -> stringResource(R.string.link_no_folder)
+    AppViewModel.LinkState.NO_TRAFFIC -> stringResource(R.string.link_no_traffic)
+    AppViewModel.LinkState.CANNOT_TELL -> stringResource(R.string.link_cannot_tell)
+}
+
+/** The one picker, shared by setup and Settings (A3). */
+@Composable
+fun CloudPickerDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+        title = { Text(stringResource(R.string.opt_cloud)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    stringResource(R.string.cloud_section_e2ee),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                for (app in CloudApps.SELECTABLE.filter { it.e2ee }) {
+                    CloudPickRowSimple(app, current, onPick)
+                }
+                Text(
+                    stringResource(R.string.cloud_section_also),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+                for (app in CloudApps.SELECTABLE.filter { !it.e2ee }) {
+                    CloudPickRowSimple(app, current, onPick)
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun CloudPickRowSimple(
+    app: app.cloudsaver.data.CloudApp,
+    current: String,
+    onPick: (String) -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val installed = remember(app.id) { CloudApps.isAppInstalled(context, app.id) }
+    TextButton(
+        onClick = { onPick(app.id) },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Text(
+                if (app.id == current) {
+                    stringResource(R.string.cloud_selected_mark, app.label)
+                } else {
+                    app.label
+                },
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (installed && app.packages.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.cloud_installed_mark),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 

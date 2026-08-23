@@ -155,4 +155,83 @@ class CapacityMathTest {
         assertEquals(2400.0, CapacityMath.round2sf(2449.0), 1e-9)
         assertEquals(0.0, CapacityMath.round2sf(0.0), 1e-9)
     }
+
+    // ---- E2: the two guards on "measured" -----------------------------------
+
+    private fun samples(n: Int, origBytes: Long, ratio: Double = 0.5) =
+        List(n) { CapacityMath.Sample(origBytes, (origBytes * ratio).toLong(), 1.0) }
+
+    @Test
+    fun `too few files means typical, however good they look`() {
+        val r = CapacityMath.ratios(
+            photo = samples(CapacityMath.MIN_SAMPLES - 1, 4_000_000),
+            video = emptyList(),
+            codec = VideoCodec.H264,
+            galleryPhotoMedian = 4_000_000
+        )
+        assertFalse(r.photoMeasured)
+    }
+
+    @Test
+    fun `a pile of screenshots does not get to speak for the gallery`() {
+        // 40 KB thumbnails against a gallery of 4 MB photographs: enough of
+        // them by count, nothing like them in size.
+        val r = CapacityMath.ratios(
+            photo = samples(50, 40_000),
+            video = emptyList(),
+            codec = VideoCodec.H264,
+            galleryPhotoMedian = 4_000_000
+        )
+        assertFalse("unrepresentative sample must not be trusted", r.photoMeasured)
+    }
+
+    @Test
+    fun `a representative sample is used`() {
+        val r = CapacityMath.ratios(
+            photo = samples(50, 3_500_000),
+            video = emptyList(),
+            codec = VideoCodec.H264,
+            galleryPhotoMedian = 4_000_000
+        )
+        assertTrue(r.photoMeasured)
+    }
+
+    @Test
+    fun `asking for typical always gets typical`() {
+        val r = CapacityMath.ratios(
+            photo = samples(500, 4_000_000),
+            video = samples(500, 100_000_000),
+            codec = VideoCodec.H264,
+            source = CapacityMath.Source.TYPICAL,
+            galleryPhotoMedian = 4_000_000,
+            galleryVideoMedian = 100_000_000
+        )
+        assertFalse(r.photoMeasured)
+        assertFalse(r.videoMeasured)
+        assertEquals(
+            CapacityMath.DEF_PHOTO_OUT_MB / CapacityMath.DEF_PHOTO_ORIG_MB,
+            r.photoRatio,
+            1e-9
+        )
+    }
+
+    @Test
+    fun `with no gallery median to compare against, size is not held against the sample`() {
+        // A fresh install has no totals yet; refusing every sample then would
+        // mean the calculator never leaves "typical".
+        val r = CapacityMath.ratios(
+            photo = samples(50, 40_000),
+            video = emptyList(),
+            codec = VideoCodec.H264,
+            galleryPhotoMedian = 0
+        )
+        assertTrue(r.photoMeasured)
+    }
+
+    @Test
+    fun `median handles both odd and even counts`() {
+        assertEquals(3L, CapacityMath.median(listOf(5L, 1L, 3L)))
+        assertEquals(3L, CapacityMath.median(listOf(4L, 2L)))
+        assertEquals(0L, CapacityMath.median(emptyList()))
+    }
 }

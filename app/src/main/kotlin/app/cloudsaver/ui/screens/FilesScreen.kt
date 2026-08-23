@@ -159,32 +159,49 @@ fun FilesScreen(vm: AppViewModel) {
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Thumbnail(row)
-                            Column(Modifier.padding(start = 12.dp)) {
+                            Column(Modifier.padding(start = 12.dp).weight(1f)) {
                                 Text(
                                     row.displayName,
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.Medium,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    // IMG_20240517_181233.jpg cut at the right
+                                    // loses the date, which is the part that
+                                    // identifies the photo.
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
                                 )
-                                Row(
-                                    Modifier.padding(top = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    StateBadge(stateLabel(row), badgeTone(row))
-                                    Text(
-                                        // Once a copy exists, the saving is the point.
-                                        row.outputBytes?.let { copy ->
+                                Text(
+                                    // The whole point of the app, per row: what
+                                    // it was, what it is, and how much that saved.
+                                    row.outputBytes?.let { copy ->
+                                        val saved = row.sizeBytes - copy
+                                        if (saved > 0) {
+                                            stringResource(
+                                                R.string.files_size_saving,
+                                                Formats.bytes(row.sizeBytes),
+                                                Formats.bytes(copy),
+                                                Formats.percentOf(saved, row.sizeBytes)
+                                            )
+                                        } else {
                                             stringResource(
                                                 R.string.files_size_pair,
                                                 Formats.bytes(row.sizeBytes),
                                                 Formats.bytes(copy)
                                             )
-                                        } ?: Formats.bytes(row.sizeBytes),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(start = 10.dp)
-                                    )
-                                }
+                                        }
+                                    } ?: stringResource(
+                                        R.string.files_size_waiting,
+                                        Formats.bytes(row.sizeBytes)
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                StateBadge(
+                                    stateLabel(row),
+                                    badgeTone(row),
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
                             }
                         }
                     }
@@ -247,6 +264,31 @@ fun FilesScreen(vm: AppViewModel) {
                     }
                     row.outputName?.let {
                         KeyValueRow(stringResource(R.string.detail_copy_name), it)
+                    }
+                    row.bucket?.let {
+                        KeyValueRow(stringResource(R.string.detail_album), it)
+                    }
+                    row.presetUsed?.let {
+                        KeyValueRow(
+                            stringResource(R.string.detail_preset),
+                            if (row.isVideo && row.codecUsed != null) {
+                                "$it / ${row.codecUsed}"
+                            } else {
+                                it
+                            }
+                        )
+                    }
+                    if (row.outputFolder != null) {
+                        // Where it went, so the folder to select in the cloud
+                        // app is never a guess.
+                        KeyValueRow(
+                            stringResource(R.string.detail_folder),
+                            app.cloudsaver.core.logic.Defaults.outFolderRelPath(
+                                runCatching {
+                                    app.cloudsaver.core.logic.OutFolder.valueOf(row.outputFolder!!)
+                                }.getOrDefault(app.cloudsaver.core.logic.OutFolder.SINGLE)
+                            )
+                        )
                     }
                     row.skipReason?.let {
                         KeyValueRow(stringResource(R.string.detail_reason), it)

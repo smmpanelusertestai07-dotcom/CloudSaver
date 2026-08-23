@@ -36,6 +36,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +57,7 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.HeroCard
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.MetricTile
@@ -61,6 +65,7 @@ import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.StatusChip
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.PowerPages
 
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
@@ -77,6 +82,10 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val unread by vm.activityUnread.collectAsStateWithLifecycle()
     val asIs by vm.asIs.collectAsStateWithLifecycle()
     val canConfirm by vm.cloudHasFreeUp.collectAsStateWithLifecycle()
+    val skipReasons by vm.skipReasons.collectAsStateWithLifecycle()
+    val statusWaiting by vm.statusWaiting.collectAsStateWithLifecycle()
+    val power by vm.powerRequirements.collectAsStateWithLifecycle()
+    var explain by remember { mutableStateOf<Int?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -85,6 +94,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshBudget()
         vm.refreshAsIs()
         vm.refreshCloudCaps()
+        vm.refreshSkipReasons()
+        vm.refreshPowerRequirements()
     }
 
     val cleanupLauncher = rememberLauncherForActivityResult(
@@ -109,12 +120,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
         // Title row
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                painterResource(R.drawable.ic_stat_cloud),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
-            )
+            BrandMark(size = 34.dp)
             Column(
                 Modifier
                     .weight(1f)
@@ -212,12 +218,17 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
             }
             Spacer(Modifier.height(14.dp))
-            Text(
-                statusLine(options, counters.waiting),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
+            androidx.compose.animation.Crossfade(
+                targetState = statusLine(options, statusWaiting),
+                label = "statusLine"
+            ) { line ->
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White
+                )
+            }
             Text(
                 stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
                 style = MaterialTheme.typography.bodySmall,
@@ -226,7 +237,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // Things that need the user's attention.
-        val anyHealth = health.paused || health.batteryRestricted || health.usageAccessOff ||
+        val anyPower = power.any { !(it.readable && it.satisfied) }
+        val anyHealth = health.paused || anyPower || health.usageAccessOff ||
             health.cloudMissing || health.spaceLow
         AnimatedVisibility(
             visible = anyHealth,
@@ -246,9 +258,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             nav.navigate(Routes.OPTIONS)
                         }
                     }
-                    if (health.batteryRestricted) {
-                        StatusChip(stringResource(R.string.chip_battery)) {
-                            OemPages.requestIgnoreBatteryOptimizations(context)
+                    // Each of these opens the exact page for this phone's
+                    // skin, not a generic app-info screen the user then has to
+                    // hunt through.
+                    for (requirement in power) {
+                        if (requirement.readable && requirement.satisfied) continue
+                        StatusChip(powerChipLabel(requirement.id)) {
+                            vm.openPowerPage(requirement.id)
                         }
                     }
                     if (health.usageAccessOff) {
@@ -273,29 +289,67 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         SectionHeader(stringResource(R.string.section_progress))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricTile(
-                counters.waiting.toString(),
+                Formats.count(counters.waiting),
                 stringResource(R.string.count_waiting),
-                Modifier.weight(1f)
+                Modifier.weight(1f),
+                onClick = { explain = R.string.explain_waiting }
             )
             MetricTile(
-                counters.inFolder.toString(),
+                Formats.count(counters.inFolder),
                 stringResource(R.string.count_in_folder),
-                Modifier.weight(1f)
+                Modifier.weight(1f),
+                onClick = { explain = R.string.explain_in_folder }
             )
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricTile(
-                counters.confirmed.toString(),
+                Formats.count(counters.confirmed),
                 stringResource(R.string.count_confirmed),
                 Modifier.weight(1f),
-                highlight = true
+                highlight = true,
+                onClick = { explain = R.string.explain_backed_up }
             )
-            MetricTile(
-                counters.skipped.toString(),
-                stringResource(R.string.count_skipped),
-                Modifier.weight(1f)
-            )
+            // A "Skipped: 0" tile is a question with no answer; it appears
+            // only when there is something to explain.
+            if (counters.skipped > 0) {
+                MetricTile(
+                    Formats.count(counters.skipped),
+                    stringResource(R.string.count_skipped),
+                    Modifier.weight(1f),
+                    onClick = {
+                        vm.filesState.value = "SKIP"
+                        nav.navigate(Routes.FILES)
+                    }
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+        }
+        if (counters.skipped > 0 && skipReasons.isNotEmpty()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                for ((reason, count) in skipReasons) {
+                    androidx.compose.material3.AssistChip(
+                        onClick = {
+                            vm.filesState.value = "SKIP"
+                            nav.navigate(Routes.FILES)
+                        },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.asis_card_line, count, skipReasonLabel(reason)
+                                )
+                            )
+                        }
+                    )
+                }
+            }
         }
 
         // Today's upload allowance, and when it refills. Without this, an app
@@ -459,28 +513,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        Spacer(Modifier.height(12.dp))
-        AppCard(onClick = { nav.navigate(Routes.CALC) }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.calc_title),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        stringResource(R.string.calc_entry_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
         AnimatedVisibility(
             visible = foreignUris.isNotEmpty() && !tampered,
             enter = fadeIn() + expandVertically(),
@@ -512,6 +544,36 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         }
         Spacer(Modifier.height(28.dp))
     }
+
+    // Tapping a count says what that count means, rather than sending the
+    // user to the FAQ to find out.
+    explain?.let { res ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { explain = null },
+            confirmButton = {
+                TextButton(onClick = { explain = null }) { Text(stringResource(R.string.ok)) }
+            },
+            text = { Text(stringResource(res)) }
+        )
+    }
+}
+
+/** The label for a background-work chip, by requirement. */
+@Composable
+private fun powerChipLabel(id: String): String = when (id) {
+    PowerPages.ID_BATTERY_UNRESTRICTED -> stringResource(R.string.chip_battery)
+    PowerPages.ID_AUTO_LAUNCH -> stringResource(R.string.chip_auto_launch)
+    PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.chip_background)
+    else -> stringResource(R.string.chip_battery)
+}
+
+/** Plain-English reason a file was skipped. */
+@Composable
+fun skipReasonLabel(reason: String): String = when (reason) {
+    "removed_before_upload" -> stringResource(R.string.skip_removed_early)
+    "no_uri" -> stringResource(R.string.skip_unreadable)
+    "out_of_memory" -> stringResource(R.string.skip_too_large)
+    else -> stringResource(R.string.skip_other)
 }
 
 /**

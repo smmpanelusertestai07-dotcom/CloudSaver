@@ -20,6 +20,21 @@ object CapacityMath {
     /** Measured ratios need at least this many processed items of a type. */
     const val MIN_SAMPLES = 20
 
+    /**
+     * A sample must also look like the gallery it is meant to describe.
+     *
+     * The first files a phone processes are often screenshots and thumbnails,
+     * which compress almost not at all and are a fraction of the size of a
+     * real photo. Twenty of those would otherwise "measure" the whole library
+     * and the estimate would be wildly wrong in the direction people notice.
+     * So the sample's median size has to be at least this share of the
+     * gallery's median for that type before it is trusted.
+     */
+    const val MIN_MEDIAN_SHARE = 0.10
+
+    /** Where the numbers come from. The badge always says which is in use. */
+    enum class Source { MEASURED, TYPICAL }
+
     /** Outlier guard for per-item compression ratios. */
     const val CLAMP_MIN = 0.05
     const val CLAMP_MAX = 1.0
@@ -42,10 +57,34 @@ object CapacityMath {
         val videoOutMBperMin: Double,
         val avgPhotoOutBytes: Double,
         val photoSamples: Int,
-        val videoSamples: Int
-    ) {
-        val photoMeasured: Boolean get() = photoSamples >= MIN_SAMPLES
-        val videoMeasured: Boolean get() = videoSamples >= MIN_SAMPLES
+        val videoSamples: Int,
+        /** False when the sample was rejected as unrepresentative. */
+        val photoMeasured: Boolean = photoSamples >= MIN_SAMPLES,
+        val videoMeasured: Boolean = videoSamples >= MIN_SAMPLES
+    )
+
+    /**
+     * Whether a sample may speak for the gallery: enough of it, and not a
+     * pile of screenshots standing in for photographs.
+     */
+    fun sampleIsRepresentative(
+        sampleSizes: List<Long>,
+        galleryMedianBytes: Long
+    ): Boolean {
+        if (sampleSizes.size < MIN_SAMPLES) return false
+        if (galleryMedianBytes <= 0) return true
+        return median(sampleSizes) >= galleryMedianBytes * MIN_MEDIAN_SHARE
+    }
+
+    fun median(values: List<Long>): Long {
+        if (values.isEmpty()) return 0
+        val sorted = values.sorted()
+        val mid = sorted.size / 2
+        return if (sorted.size % 2 == 1) {
+            sorted[mid]
+        } else {
+            (sorted[mid - 1] + sorted[mid]) / 2
+        }
     }
 
     fun clampRatio(r: Double): Double = when {
@@ -58,10 +97,20 @@ object CapacityMath {
      * the caller limits). Types with fewer than [MIN_SAMPLES] items fall back to
      * the defaults for the given codec.
      */
+    /**
+     * @param source MEASURED uses this phone's own results where the sample
+     *   passes both guards; TYPICAL always answers with the published-style
+     *   defaults, so the user can compare the two.
+     * @param galleryPhotoMedian / [galleryVideoMedian] median file size of the
+     *   whole gallery for that type; 0 disables the representativeness guard.
+     */
     fun ratios(
         photo: List<Sample>,
         video: List<Sample>,
-        codec: VideoCodec
+        codec: VideoCodec,
+        source: Source = Source.MEASURED,
+        galleryPhotoMedian: Long = 0,
+        galleryVideoMedian: Long = 0
     ): Ratios {
         val defVideoOut = if (codec == VideoCodec.H264) {
             DEF_VIDEO_OUT_MB_PER_MIN_H264
@@ -77,9 +126,14 @@ object CapacityMath {
             videoSamples = video.size
         )
 
+        val usePhoto = source == Source.MEASURED &&
+            sampleIsRepresentative(photo.map { it.origBytes }, galleryPhotoMedian)
+        val useVideo = source == Source.MEASURED &&
+            sampleIsRepresentative(video.map { it.origBytes }, galleryVideoMedian)
+
         var photoRatio = defaults.photoRatio
         var avgPhotoOut = defaults.avgPhotoOutBytes
-        if (photo.size >= MIN_SAMPLES) {
+        if (usePhoto) {
             val origSum = photo.sumOf { it.origBytes.toDouble() }
             if (origSum > 0) {
                 val weighted = photo.sumOf {
@@ -93,7 +147,7 @@ object CapacityMath {
 
         var videoRatio = defaults.videoRatio
         var videoOutMBperMin = defaults.videoOutMBperMin
-        if (video.size >= MIN_SAMPLES) {
+        if (useVideo) {
             val origSum = video.sumOf { it.origBytes.toDouble() }
             if (origSum > 0) {
                 val weighted = video.sumOf {
@@ -114,7 +168,9 @@ object CapacityMath {
             videoOutMBperMin = videoOutMBperMin,
             avgPhotoOutBytes = avgPhotoOut,
             photoSamples = photo.size,
-            videoSamples = video.size
+            videoSamples = video.size,
+            photoMeasured = usePhoto,
+            videoMeasured = useVideo
         )
     }
 

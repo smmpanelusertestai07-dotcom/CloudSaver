@@ -182,38 +182,59 @@ fun AnimatedNumber(
 }
 
 /** One dashboard metric: big number, small caption. */
+/**
+ * One count in the progress grid.
+ *
+ * Fixed height and a fixed-width figure style, because these tiles sit in a
+ * 2x2 grid and a count going from 9 to 10 used to make its tile - and then
+ * the whole grid - jump. A number that reflows while it counts reads as a
+ * glitch, not as progress. Tapping explains what the count means.
+ */
 @Composable
 fun MetricTile(
     value: String,
     label: String,
     modifier: Modifier = Modifier,
-    highlight: Boolean = false
+    highlight: Boolean = false,
+    onClick: (() -> Unit)? = null
 ) {
     val scheme = MaterialTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    var box = modifier
+        .height(TileHeight)
+        .clip(RoundedCornerShape(20.dp))
+        .background(if (highlight) scheme.secondaryContainer else scheme.surfaceContainer)
+        .border(
+            1.dp,
+            scheme.outlineVariant.copy(alpha = 0.5f),
+            RoundedCornerShape(20.dp)
+        )
+    if (onClick != null) {
+        box = box.clickable(interactionSource = interaction, indication = null, onClick = onClick)
+    }
     Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (highlight) scheme.secondaryContainer else scheme.surfaceContainer)
-            .border(
-                1.dp,
-                scheme.outlineVariant.copy(alpha = 0.5f),
-                RoundedCornerShape(20.dp)
-            )
-            .padding(vertical = 16.dp, horizontal = 12.dp)
+        modifier = box
+            .padding(vertical = 14.dp, horizontal = 12.dp)
             .clearAndSetSemantics {
                 contentDescription = "$label: $value"
             },
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
         AnimatedNumber(
             value = value,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineMedium.copy(
+                // Tabular figures: every digit the same width, so the number
+                // changes without the layout moving.
+                fontFeatureSettings = "tnum"
+            ),
             color = if (highlight) scheme.onSecondaryContainer else scheme.primary
         )
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
+            maxLines = 2,
             color = if (highlight) {
                 scheme.onSecondaryContainer.copy(alpha = 0.8f)
             } else {
@@ -223,6 +244,9 @@ fun MetricTile(
         )
     }
 }
+
+/** Every progress tile is this tall, whatever it holds. */
+val TileHeight = 104.dp
 
 /** Tappable status pill (needs attention). */
 @Composable
@@ -433,6 +457,24 @@ fun WarningNote(text: String) {
 }
 
 /** Friendly empty state instead of a blank screen. */
+/**
+ * The app's own mark, exactly as the launcher draws it.
+ *
+ * The flat vector that used to stand in for it here is the notification
+ * icon: the system tints that to one colour, so it has no gradient, no
+ * gloss and no navy behind the cloud. Inside the app there is nothing to
+ * tint, so the real artwork goes in and the icon on the home screen and the
+ * icon on the Home screen are finally the same object.
+ */
+@Composable
+fun BrandMark(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Image(
+        painter = painterResource(app.cloudsaver.R.drawable.ic_brand_mark),
+        contentDescription = null,
+        modifier = modifier.size(size)
+    )
+}
+
 @Composable
 fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
     Column(
@@ -441,22 +483,7 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
             .padding(vertical = 40.dp, horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .background(
-                    Brush.linearGradient(listOf(BrandIndigo, BrandMint)),
-                    CircleShape
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                painterResource(app.cloudsaver.R.drawable.ic_stat_cloud),
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(34.dp)
-            )
-        }
+        BrandMark(size = 64.dp)
         Text(
             title,
             style = MaterialTheme.typography.titleMedium,

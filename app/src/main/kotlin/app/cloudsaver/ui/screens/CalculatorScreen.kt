@@ -49,45 +49,26 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.HeroCard
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.util.Formats
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
-/** Cloud calculator (13.C): live "how much fits" estimates while typing. */
-@Composable
-fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-    ) {
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { nav.popBackStack() }) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back)
-                )
-            }
-            Text(
-                stringResource(R.string.calc_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        CalculatorContent(vm)
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
+/**
+ * "How much fits in your cloud", inline wherever it is needed.
+ *
+ * It used to be a screen of its own reached by a button, which meant leaving
+ * the place the question was asked to get the answer. It now sits inside
+ * Storage, next to the numbers it is talking about.
+ */
 @Composable
 fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
     val options by vm.options.collectAsStateWithLifecycle()
     val gallery by vm.calcGallery.collectAsStateWithLifecycle()
     val ratios by vm.calcRatios.collectAsStateWithLifecycle()
+    val source by vm.calcSource.collectAsStateWithLifecycle()
 
-    LaunchedEffect(options.preset, options.codec, options.excludedBuckets) {
+    LaunchedEffect(options.preset, options.codec, options.excludedBuckets, source) {
         vm.refreshCalculator()
     }
 
@@ -128,6 +109,29 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
     }
 
     Column(modifier) {
+        // Which figures are in use, stated and switchable. An estimate whose
+        // basis is invisible is a number the user cannot argue with.
+        Text(
+            stringResource(R.string.calc_source_label),
+            style = MaterialTheme.typography.labelLarge
+        )
+        val measuredAvailable = ratios?.let {
+            (mode != CapacityMath.CalcMode.VIDEOS && it.photoMeasured) ||
+                (mode != CapacityMath.CalcMode.PHOTOS && it.videoMeasured)
+        } ?: false
+        SegmentedChoice(
+            listOf(
+                CapacityMath.Source.MEASURED.name to stringResource(R.string.calc_source_mine),
+                CapacityMath.Source.TYPICAL.name to stringResource(R.string.calc_source_typical)
+            ),
+            (source ?: if (measuredAvailable) {
+                CapacityMath.Source.MEASURED
+            } else {
+                CapacityMath.Source.TYPICAL
+            }).name
+        ) { vm.setCalcSource(CapacityMath.Source.valueOf(it)) }
+
+        Spacer(Modifier.height(8.dp))
         SegmentedChoice(
             listOf(
                 CapacityMath.CalcMode.PHOTOS.name to stringResource(R.string.scope_photos),
@@ -175,9 +179,15 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
                 Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 for (gb in listOf(5, 10, 20, 50, 100, 200)) {
-                    TextButton(onClick = { freeText = gb.toString() }) { Text("$gb") }
+                    androidx.compose.material3.FilterChip(
+                        selected = freeText == gb.toString(),
+                        onClick = { freeText = gb.toString() },
+                        label = { Text(stringResource(R.string.calc_chip_gb, gb)) }
+                    )
                 }
             }
             if (prefilled) {
@@ -257,7 +267,10 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
             AppCard(tonal = estimate.fits) {
                 Text(
                     if (estimate.fits) {
-                        stringResource(R.string.calc_fits)
+                        stringResource(
+                            R.string.calc_spare,
+                            fmt(((freeGb ?: 0.0) - estimate.backlogGB).coerceAtLeast(0.0))
+                        )
                     } else {
                         stringResource(R.string.calc_needs, fmt(estimate.needMoreGB))
                     },
@@ -279,6 +292,21 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
                     },
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                val monthlyGb = gallery?.let {
+                    (it.monthlyPhotoBytes + it.monthlyVideoBytes) / CapacityMath.GB
+                } ?: 0.0
+                if (monthlyGb > 0) {
+                    Text(
+                        stringResource(R.string.calc_pace, fmt(monthlyGb)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (estimate.fits) {
+                            scheme.onPrimaryContainer.copy(alpha = 0.85f)
+                        } else {
+                            scheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 if (estimate.fits && estimate.monthsLeft >= 0) {
                     Text(
                         stringResource(R.string.calc_months, fmt(estimate.monthsLeft)),
@@ -311,10 +339,14 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
     }
 }
 
-/** 2 significant figures, trailing ".0" trimmed. */
-private fun fmt(v: Double): String {
-    val r = CapacityMath.round2sf(v)
-    return if (r == floor(r) && abs(r) < 1e15) r.toLong().toString() else r.toString()
-}
+/**
+ * GB to two decimals, the way a cloud plan is written.
+ *
+ * Two significant figures rounded 1.04 GB to 1.0 and 12.4 to 12, which read
+ * as different precisions on the same screen and made small differences
+ * vanish. Plans are sold in GB, so the calculator counts in GB.
+ */
+private fun fmt(v: Double): String = String.format(java.util.Locale.US, "%.2f", v)
 
-private fun fmtCount(v: Long): String = fmt(v.toDouble())
+/** Counts are whole things: photos and files, with thousands separators. */
+private fun fmtCount(v: Long): String = Formats.count(v)

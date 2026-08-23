@@ -51,8 +51,10 @@ import app.cloudsaver.R
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Formats
 
 @Composable
 private fun HelpPage(
@@ -91,7 +93,6 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
         HelpLink(stringResource(R.string.help_privacy)) { nav.navigate(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.navigate(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.navigate(Routes.HELP_ABOUT) }
-        HelpLink(stringResource(R.string.help_rerun_setup)) { vm.restartOnboarding() }
         Text(
             stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.bodySmall,
@@ -142,9 +143,7 @@ private val FAQ = listOf(
     R.string.faq_q13 to R.string.faq_a13,
     R.string.faq_q14 to R.string.faq_a14,
     R.string.faq_q15 to R.string.faq_a15,
-    R.string.faq_q16 to R.string.faq_a16,
-    R.string.faq_q17 to R.string.faq_a17,
-    R.string.faq_q18 to R.string.faq_a18
+    R.string.faq_q16 to R.string.faq_a16
 )
 
 @Composable
@@ -199,12 +198,65 @@ fun HelpFaqScreen(nav: NavHostController) {
 }
 
 @Composable
-fun HelpQualityScreen(nav: NavHostController) {
-    HelpPage(nav, stringResource(R.string.help_quality)) {
+fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
+    val measured by vm.measuredQuality.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { vm.refreshMeasuredQuality() }
+
+    HelpPage(nav, stringResource(R.string.quality_explained_title)) {
+        // This phone's own numbers come first: they are the only figures here
+        // that are a measurement rather than an estimate.
+        AppCard(modifier = Modifier.padding(vertical = 4.dp), tonal = measured.hasAny) {
+            Text(
+                stringResource(R.string.quality_measured_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (!measured.hasAny) {
+                Text(
+                    stringResource(R.string.quality_measured_none),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            } else {
+                if (measured.photoCount > 0) {
+                    Text(
+                        stringResource(
+                            R.string.quality_measured_photos,
+                            "${measured.photoShrinkPercent}%",
+                            Formats.count(measured.photoCount)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                if (measured.videoCount > 0) {
+                    Text(
+                        stringResource(
+                            R.string.quality_measured_videos,
+                            "${measured.videoShrinkPercent}%",
+                            Formats.count(measured.videoCount)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+            Text(
+                stringResource(R.string.quality_percent_meaning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
         AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
             Text(
-                stringResource(R.string.quality_intro),
+                stringResource(R.string.quality_caps),
                 style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                stringResource(R.string.quality_intro),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
         AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -233,6 +285,12 @@ fun HelpQualityScreen(nav: NavHostController) {
             Text(
                 stringResource(R.string.quality_outro),
                 style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
+                stringResource(R.string.quality_originals_safe),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
     }
@@ -310,12 +368,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    painterResource(R.drawable.ic_stat_cloud),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp)
-                )
+                BrandMark(size = 52.dp)
                 Column(Modifier.padding(start = 12.dp)) {
                     Text(
                         stringResource(R.string.app_name),
@@ -342,22 +395,57 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
         AppCard(modifier = Modifier.padding(top = 10.dp)) {
-            KeyValueRow(
-                stringResource(R.string.about_version),
-                BuildConfig.VERSION_NAME
-            )
-            KeyValueRow(
-                stringResource(R.string.about_build),
-                BuildConfig.VERSION_CODE.toString()
-            )
-            KeyValueRow(
-                stringResource(R.string.about_package),
-                BuildConfig.APPLICATION_ID
-            )
+            KeyValueRow(stringResource(R.string.about_version), BuildConfig.VERSION_NAME)
+            KeyValueRow(stringResource(R.string.about_package), BuildConfig.APPLICATION_ID)
             KeyValueRow(
                 stringResource(R.string.about_network),
                 stringResource(R.string.about_network_value)
             )
+            Text(
+                stringResource(R.string.about_partner),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+        // Build number and hashes matter to about one reader in a thousand,
+        // and reading like a crash report to the rest.
+        var technical by remember { mutableStateOf(false) }
+        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { technical = !technical }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.about_technical),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                val arrow by animateFloatAsState(
+                    targetValue = if (technical) 0f else -90f,
+                    label = "technicalArrow"
+                )
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(arrow)
+                )
+            }
+            AnimatedVisibility(
+                visible = technical,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    KeyValueRow(
+                        stringResource(R.string.about_build),
+                        BuildConfig.VERSION_CODE.toString()
+                    )
+                    KeyValueRow(
+                        stringResource(R.string.about_cert),
+                        BuildConfig.EXPECTED_CERT_SHA256.ifEmpty {
+                            stringResource(R.string.about_cert_dev)
+                        }
+                    )
+                }
+            }
         }
         AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {
             Text(

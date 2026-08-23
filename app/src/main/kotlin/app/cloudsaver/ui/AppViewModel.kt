@@ -38,6 +38,7 @@ import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Permissions
+import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
@@ -48,12 +49,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
+
+    companion object {
+        /** Minimum time between Home status-line changes (G2). */
+        const val STATUS_DEBOUNCE_MS = 800L
+    }
 
     private val ctx get() = getApplication<Application>()
     val repo = OptionsRepo.get(ctx)
@@ -98,6 +105,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, Counters())
 
+    /**
+     * The Home status line, slowed to human speed.
+     *
+     * A run that finishes twenty files a minute updated this text twenty
+     * times, and a caption strobing between "12 files in the queue" and
+     * "Everything is backed up" reads as an error, not as progress. One change
+     * per 800 ms is fast enough to feel live and slow enough to read.
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    val statusWaiting: StateFlow<Int> = counters
+        .map { it.waiting }
+        .debounce(STATUS_DEBOUNCE_MS)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
     val savedBytes: StateFlow<Long> =
         db.items().savedBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
 
@@ -129,10 +150,58 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ) { pb, pc, vb, vc -> Savings(pb, pc, vb, vc) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, Savings())
 
+    /**
+     * How much this phone's own files actually shrank.
+     *
+     * The preset percentages are an estimate for the encoder settings; this is
+     * the measurement. Showing both, clearly labelled, is the difference
+     * between a claim and a number.
+     */
+    data class MeasuredQuality(
+        val photoShrinkPercent: Int = 0,
+        val photoCount: Int = 0,
+        val videoShrinkPercent: Int = 0,
+        val videoCount: Int = 0
+    ) {
+        val hasAny: Boolean get() = photoCount > 0 || videoCount > 0
+    }
+
+    val measuredQuality = MutableStateFlow(MeasuredQuality())
+
+    fun refreshMeasuredQuality() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val photos = db.items().photoRatioSamples(o.preset.name)
+            val videos = db.items().videoRatioSamples(o.preset.name, o.codec.name)
+            fun shrink(rows: List<app.cloudsaver.data.db.RatioSample>): Int {
+                val original = rows.sumOf { it.sizeBytes }
+                if (original <= 0) return 0
+                val output = rows.sumOf { it.outputBytes }
+                return (((original - output).toDouble() / original) * 100).toInt().coerceIn(0, 100)
+            }
+            measuredQuality.value = MeasuredQuality(
+                photoShrinkPercent = shrink(photos),
+                photoCount = photos.size,
+                videoShrinkPercent = shrink(videos),
+                videoCount = videos.size
+            )
+        }
+    }
+
     /** Files copied byte-for-byte, with the reasons, for the "kept as is" card. */
     data class AsIs(val count: Int = 0, val reasons: List<Pair<String, Int>> = emptyList())
 
     val asIs = MutableStateFlow(AsIs())
+
+    /** Why items were skipped, as chips under the Skipped tile. */
+    val skipReasons = MutableStateFlow<List<Pair<String, Int>>>(emptyList())
+
+    fun refreshSkipReasons() {
+        viewModelScope.launch(Dispatchers.IO) {
+            skipReasons.value = db.items().skipReasons()
+                .map { it.state to it.cnt }
+        }
+    }
 
     fun refreshAsIs() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -333,15 +402,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- storage screen -----------------------------------------------------
 
-    data class StorageStats(val stageBytes: Long = 0, val outputBytes: Long = 0)
+    data class StorageStats(
+        val stageBytes: Long = 0,
+        val outputBytes: Long = 0,
+        val tempBytes: Long = 0,
+        /** How much the last Clear actually freed, so the button proves itself. */
+        val lastTempFreed: Long? = null
+    )
 
     val storageStats = MutableStateFlow(StorageStats())
 
     fun refreshStorage() {
         viewModelScope.launch(Dispatchers.IO) {
-            storageStats.value = StorageStats(
+            storageStats.value = storageStats.value.copy(
                 stageBytes = Storage.totalStageBytes(ctx),
-                outputBytes = db.items().releasedBytes()
+                outputBytes = db.items().releasedBytes(),
+                tempBytes = Storage.totalTempBytes(ctx)
             )
         }
     }
@@ -360,6 +436,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val calcGallery = MutableStateFlow<CapacityMath.Gallery?>(null)
     val calcRatios = MutableStateFlow<CapacityMath.Ratios?>(null)
+
+    /**
+     * Which figures the calculator is using.
+     *
+     * Null means "decide for me": measured where this phone has enough
+     * representative data, typical otherwise. A user choice pins it, and the
+     * badge always names the one in use, so no number is ever unattributed.
+     */
+    val calcSource = MutableStateFlow<CapacityMath.Source?>(null)
+
+    fun setCalcSource(source: CapacityMath.Source?) {
+        calcSource.value = source
+        refreshCalculator()
+    }
 
     fun refreshCalculator() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -381,7 +471,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val videoSamples = db.items().videoRatioSamples(o.preset.name, o.codec.name).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes, it.durationMs / 60_000.0)
             }
-            calcRatios.value = CapacityMath.ratios(photoSamples, videoSamples, o.codec)
+            // The gallery's own median is what the sample is judged against:
+            // twenty screenshots must not get to speak for a library of
+            // photographs.
+            calcRatios.value = CapacityMath.ratios(
+                photo = photoSamples,
+                video = videoSamples,
+                codec = o.codec,
+                source = calcSource.value ?: CapacityMath.Source.MEASURED,
+                galleryPhotoMedian = if (totals.photoCount > 0) {
+                    totals.photoBytes / totals.photoCount
+                } else {
+                    0L
+                },
+                galleryVideoMedian = if (totals.videoCount > 0) {
+                    totals.videoBytes / totals.videoCount
+                } else {
+                    0L
+                }
+            )
         }
     }
 
@@ -449,7 +557,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cleanTemp() {
         viewModelScope.launch(Dispatchers.IO) {
-            Storage.cleanTemp(ctx)
+            val freed = Storage.cleanTemp(ctx)
+            storageStats.value = storageStats.value.copy(lastTempFreed = freed)
             refreshStorage()
         }
     }
@@ -627,6 +736,131 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 scanner.excludedBucketReasons().toList().sortedBy { it.first }
             }.getOrDefault(emptyList())
         }
+    }
+
+    // ---- cloud detection and linking (A2, A3, A5) ---------------------------
+
+    /**
+     * What was found on this phone, and whether the app committed to it.
+     *
+     * One installed cloud app is not a guess, so it is stored immediately -
+     * otherwise Settings kept saying "Other app" for someone who clearly has
+     * Ente, and every capability decision downstream was made on the wrong
+     * assumption. Two or more is a genuine choice and gets a picker; none
+     * means "Other app" and the generic checklist.
+     */
+    data class CloudDetection(
+        val installed: List<app.cloudsaver.data.CloudApp> = emptyList(),
+        val chosen: app.cloudsaver.data.CloudApp = CloudApps.byId("other"),
+        val needsChoice: Boolean = false
+    )
+
+    val cloudDetection = MutableStateFlow(CloudDetection())
+
+    fun detectAndPersistCloud() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val installed = CloudApps.SELECTABLE.filter {
+                it.packages.isNotEmpty() && CloudApps.installedPackage(ctx, it) != null
+            }
+            val alreadyChosen = o.cloudDetected
+            val chosen = when {
+                alreadyChosen -> CloudApps.byId(o.cloudSingle)
+                installed.size == 1 -> installed.first()
+                installed.isEmpty() -> CloudApps.byId("other")
+                else -> CloudApps.byId(o.cloudSingle)
+            }
+            // Only commit where there is nothing to decide. With two installed
+            // the app must not pick for the user and then act on that choice.
+            if (!alreadyChosen && installed.size <= 1) {
+                persistCloud(chosen.id)
+            }
+            cloudDetection.value = CloudDetection(
+                installed = installed,
+                chosen = chosen,
+                needsChoice = !alreadyChosen && installed.size > 1
+            )
+            refreshCloudCaps()
+        }
+    }
+
+    private suspend fun persistCloud(id: String) {
+        repo.setString(OptionsRepo.K.CLOUD_SINGLE, id)
+        repo.setString(OptionsRepo.K.CLOUD_PHOTOS, id)
+        repo.setString(OptionsRepo.K.CLOUD_VIDEOS, id)
+        repo.setBool(OptionsRepo.K.CLOUD_DETECTED, true)
+    }
+
+    /** The user picked from the "Use a different app" list. */
+    fun chooseCloud(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            persistCloud(id)
+            cloudDetection.value = cloudDetection.value.copy(
+                chosen = CloudApps.byId(id), needsChoice = false
+            )
+            noteSettingChange(detail = CloudApps.byId(id).label)
+            refreshCloudCaps()
+        }
+    }
+
+    /**
+     * Everything about the link that can actually be checked, checked.
+     *
+     * "Set it up in the other app and trust that it worked" is the step people
+     * get wrong, and the app finds out days later. What is verifiable here is
+     * verifiable now: the app is installed, the folder exists, and bytes have
+     * moved recently. Anything else is reported as a specific next step rather
+     * than a green tick.
+     */
+    enum class LinkState { CONNECTED, NO_APP, NO_FOLDER, NO_TRAFFIC, CANNOT_TELL }
+
+    val linkState = MutableStateFlow<LinkState?>(null)
+
+    fun verifyCloudLink() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val app = CloudApps.byId(o.cloudSingle)
+            val pkg = CloudApps.installedPackage(ctx, app)
+            val folderHasFiles = (OutputInventory(ctx).query() ?: emptyList()).isNotEmpty()
+            linkState.value = when {
+                app.packages.isNotEmpty() && pkg == null -> LinkState.NO_APP
+                !folderHasFiles -> LinkState.NO_FOLDER
+                pkg == null -> LinkState.CANNOT_TELL
+                else -> {
+                    val uid = CloudApps.uidOf(ctx, pkg)
+                    val now = System.currentTimeMillis()
+                    val tx = uid?.let {
+                        UsageVerifier.txBytesForUid(ctx, it, now - 86_400_000L, now)
+                    }
+                    when {
+                        tx == null -> LinkState.CANNOT_TELL
+                        tx < 1_000_000 -> LinkState.NO_TRAFFIC
+                        else -> LinkState.CONNECTED
+                    }
+                }
+            }
+        }
+    }
+
+    fun clearLinkState() {
+        linkState.value = null
+    }
+
+    // ---- background-work requirements (B1) ----------------------------------
+
+    val powerRequirements = MutableStateFlow<List<PowerPages.Requirement>>(emptyList())
+
+    fun refreshPowerRequirements() {
+        viewModelScope.launch(Dispatchers.Default) {
+            powerRequirements.value = PowerPages.requirementsFor(
+                vendor = PowerPages.vendor(),
+                ignoringBatteryOptimizations = Permissions.isIgnoringBatteryOptimizations(ctx)
+            )
+        }
+    }
+
+    fun openPowerPage(id: String) {
+        PowerPages.open(ctx, id)
     }
 
     // ---- onboarding ---------------------------------------------------------

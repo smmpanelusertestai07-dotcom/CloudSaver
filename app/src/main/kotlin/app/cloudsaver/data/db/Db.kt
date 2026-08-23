@@ -255,6 +255,14 @@ interface ItemDao {
     )
     suspend fun savedBytesSince(fromMs: Long): Long
 
+    /** Skip reasons with counts, most common first. */
+    @Query(
+        "SELECT skipReason AS state, COUNT(*) AS cnt FROM items " +
+            "WHERE state = 'SKIP' AND skipReason IS NOT NULL " +
+            "GROUP BY skipReason ORDER BY cnt DESC LIMIT 6"
+    )
+    suspend fun skipReasons(): List<StateCount>
+
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
 

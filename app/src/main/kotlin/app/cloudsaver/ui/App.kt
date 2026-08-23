@@ -32,7 +32,6 @@ import androidx.navigation.compose.rememberNavController
 import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
-import app.cloudsaver.ui.screens.CalculatorScreen
 import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.FreeUpScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
@@ -56,7 +55,6 @@ object Routes {
     const val OPTIONS = "options"
     const val FREE_UP = "freeup"
     const val ACTIVITY = "activity"
-    const val CALC = "calc"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
     const val HELP_QUALITY = "help_quality"
@@ -160,10 +158,9 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.OPTIONS) { OptionsScreen(vm, nav) }
                 composable(Routes.FREE_UP) { FreeUpScreen(vm, nav) }
                 composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
-                composable(Routes.CALC) { CalculatorScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }
-                composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav) }
+                composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav, vm) }
                 composable(Routes.HELP_LOGS) { HelpLogsScreen(nav) }
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }
                 composable(Routes.HELP_LICENSES) { HelpLicensesScreen(nav) }

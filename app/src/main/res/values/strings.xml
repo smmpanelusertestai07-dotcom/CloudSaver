@@ -25,6 +25,15 @@
     <string name="status_fresh">Getting ready to scan your gallery</string>
     <string name="chip_paused">Paused</string>
     <string name="chip_battery">Battery restricted</string>
+    <string name="chip_auto_launch">Check auto-launch</string>
+    <string name="chip_background">Check background activity</string>
+    <string name="explain_waiting">Files found in your gallery that have not been optimised yet. CloudSaver works through them in the background.</string>
+    <string name="explain_in_folder">Optimised copies that are made and waiting for your cloud app to upload them.</string>
+    <string name="explain_backed_up">Copies CloudSaver can show reached your cloud. Only these can ever offer an original for you to remove.</string>
+    <string name="skip_removed_early">Removed from the upload folder before your cloud collected it</string>
+    <string name="skip_unreadable">File could not be read</string>
+    <string name="skip_too_large">Too large to process in the space available</string>
+    <string name="skip_other">Skipped to be safe</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="chip_space">Storage low</string>
@@ -78,6 +87,11 @@
 
     <!-- files -->
     <string name="files_size_pair">%1$s → %2$s</string>
+    <string name="files_size_saving">%1$s → %2$s (%3$s smaller)</string>
+    <string name="files_size_waiting">%1$s - waiting</string>
+    <string name="detail_album">Album</string>
+    <string name="detail_preset">Quality used</string>
+    <string name="detail_folder">Upload folder</string>
     <string name="files_search">Search files</string>
     <string name="files_empty_title">No files yet</string>
     <string name="files_no_match_title">No matches</string>
@@ -164,12 +178,15 @@
 
     <!-- storage -->
     <string name="storage_used_title">Storage used by CloudSaver</string>
-    <string name="storage_stage">Optimised copies on device</string>
-    <string name="storage_output">Waiting in upload folder</string>
+    <string name="storage_stage">Optimised copies waiting on device</string>
+    <string name="storage_stage_path">App storage (not visible in your gallery)</string>
+    <string name="storage_output">Optimised copies in the upload folder</string>
+    <string name="storage_share_of_limit">%1$s of the %2$s CloudSaver may use</string>
     <string name="storage_volumes_title">Storage volumes</string>
     <string name="volume_internal">Internal storage</string>
     <string name="volume_sd">SD card</string>
-    <string name="volume_free_line">%1$s free of %2$s</string>
+    <string name="volume_used_line">%1$s used of %2$s</string>
+    <string name="volume_free_line">%1$s free</string>
     <string name="volume_active_mark">(in use)</string>
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
@@ -177,8 +194,9 @@
     <string name="storage_reclaim_caption">of originals whose copies your cloud has collected, and which are safe to remove</string>
     <string name="storage_reclaim_consent">Android asks you to confirm each deletion, so nothing is removed without you seeing it.</string>
     <string name="storage_freeup_open">Reclaim space</string>
-    <string name="storage_temp_title">Temporary files</string>
-    <string name="storage_temp_text">Leftovers from interrupted work.</string>
+    <string name="storage_temp_title">Temporary work files</string>
+    <string name="storage_temp_text">Half-finished files left behind when a run was interrupted. They are not needed and nothing of yours is lost by clearing them.</string>
+    <string name="storage_temp_cleared">Cleared %1$s.</string>
     <string name="storage_clean_temp">Clear</string>
 
     <!-- free-up -->
@@ -224,6 +242,7 @@
     <string name="folders_loading">Loading albums…</string>
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>
+    <string name="output_switch_note">Switching layout never deletes anything. Files already in the old folder stay there and are still uploaded; new files go to the new layout, and CloudSaver keeps watching both until the old one is empty.</string>
     <string name="output_single">Single</string>
     <string name="output_separate">Separate</string>
     <string name="opt_cloud">Cloud app</string>
@@ -231,7 +250,7 @@
     <string name="cloud_for_photos">For photos</string>
     <string name="cloud_for_videos">For videos</string>
     <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that have no compression of their own. Clouds like Google Photos and OneDrive already compress for you.</string>
-    <string name="cloud_recommended">Recommended</string>
+    <string name="cloud_recommended">Recommended: end-to-end encrypted, independently audited, removes files after upload, and skips duplicates by content.</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
     <string name="cloud_section_e2ee">Best fit (E2EE)</string>
     <string name="cloud_section_also">Also works</string>
@@ -240,9 +259,9 @@
     <string name="speed_smart">Smart</string>
     <string name="speed_charging">Charging only</string>
     <string name="speed_fast">Fast</string>
-    <string name="speed_smart_note" formatted="false">Works while charging, and on battery above 30% when the screen is off (up to 30 min a day). Photos also run with the screen on.</string>
-    <string name="speed_charging_note">Only while charging. Zero battery use.</string>
-    <string name="speed_fast_note" formatted="false">Starts as soon as new photos arrive; works on battery above 25% for up to 60 min a day. Uses a little more battery.</string>
+    <string name="speed_smart_note" formatted="false">While charging: no time limit. On battery: screen off, above 30%, up to 30 min of video work a day (resets at midnight - plug in to continue now). Photos also run with the screen on.</string>
+    <string name="speed_charging_note">Only while charging. No time limit. Zero battery use.</string>
+    <string name="speed_fast_note" formatted="false">Starts as soon as new files arrive. While charging: no time limit. On battery: above 25%, up to 60 min a day (resets at midnight - plug in to continue now). Uses a little more battery.</string>
 
     <!-- wait reasons shown on Home (13.G) -->
     <string name="wait_saver">Paused: Battery Saver is on</string>
@@ -256,10 +275,14 @@
     <string name="opt_daily_cap_hint">How much CloudSaver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
     <string name="unlimited_warning">Note: unlimited can use much more data and battery.</string>
-    <string name="opt_space">Device storage limits</string>
-    <string name="opt_space_hint">Keep this much free, and cap how much CloudSaver uses.</string>
-    <string name="space_min_free">Keep free</string>
-    <string name="space_max_extra">CloudSaver may use</string>
+    <string name="space_min_free_title">Keep this much phone space free</string>
+    <string name="space_min_free_body">CloudSaver stops working when your phone\'s free space drops below this. It protects the phone, not CloudSaver.</string>
+    <string name="space_max_extra_title">Space CloudSaver may use for its own copies</string>
+    <string name="space_max_extra_body">The optimised copies waiting to reach your cloud. When this fills, the oldest confirmed copies are removed first.</string>
+    <string name="space_now_free">Now free: %1$s</string>
+    <string name="space_now_using">Now using: %1$s</string>
+    <string name="space_two_things">These are two different things: the first is about your phone, the second is about CloudSaver.</string>
+    <string name="tag_recommended">Recommended</string>
     <string name="opt_volume">Storage location</string>
     <string name="opt_volume_hint">Where CloudSaver keeps its optimised copies and the upload folder.</string>
     <string name="opt_preset">Quality</string>
@@ -273,7 +296,7 @@
     <string name="codec_h264_detail">Plays everywhere. Recommended.</string>
     <string name="codec_hevc_detail" formatted="false">30-40% smaller at the same quality, but some older devices and cloud web players cannot play it.</string>
     <string name="applies_to_new_only">Changes apply to new items only. Already-processed files are not redone.</string>
-    <string name="opt_codec">Video codec (inside MP4)</string>
+    <string name="opt_codec">Video format (inside MP4)</string>
     <string name="opt_codec_hint">How video is compressed inside the MP4 file.</string>
     <string name="codec_h264">H.264</string>
     <string name="codec_hevc">HEVC</string>
@@ -290,10 +313,11 @@
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and uploading until you turn it back on.</string>
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
-    <string name="recommend_space">Recommended for this phone: keep %1$s free, let CloudSaver use up to %2$s.</string>
+    <string name="recommend_space">Recommended for this phone: keep %1$s free.</string>
     <string name="recommend_apply">Use recommended</string>
-    <string name="opt_reclaim_verified">Also offer files verified by upload size</string>
-    <string name="opt_reclaim_verified_hint">Off by default. Adds originals whose copies were verified by the amount your cloud app uploaded, once they are 30 days old. Android still asks you to confirm every deletion.</string>
+    <string name="opt_reclaim_verified">Include files confirmed by data size</string>
+    <string name="opt_reclaim_verified_short">Include these too</string>
+    <string name="opt_reclaim_verified_hint">Normally Reclaim only lists files your cloud app itself removed after upload. Turn this on to also include files we matched by the amount your cloud app uploaded, once they are 30 days old. Android still asks you to confirm every deletion.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
     <string name="opt_transfer_hint">Save your settings and file history to a file, protected with a password.</string>
     <string name="backup_password_title">Protect this backup</string>
@@ -320,21 +344,25 @@
 
     <!-- cloud calculator (13.C) -->
     <string name="calc_title">Cloud calculator</string>
-    <string name="calc_open">Open calculator</string>
     <string name="calc_entry_hint">See how much fits in your cloud space.</string>
     <string name="calc_mode_both">Photos + Videos</string>
+    <string name="calc_source_label">Estimate from</string>
+    <string name="calc_source_mine">My files</string>
+    <string name="calc_source_typical">Typical</string>
+    <string name="calc_chip_gb">%1$d GB</string>
     <string name="calc_mix_label">Photos %1$d%% · Videos %2$d%% (storage share)</string>
-    <string name="calc_input_label">Cloud free space (GB)</string>
+    <string name="calc_input_label">Free space in your cloud (GB)</string>
     <string name="calc_prefill_note">Typical value for %1$s - confirm in your cloud app, plans change.</string>
     <string name="calc_enter">Type your cloud free space above to see what fits.</string>
     <string name="calc_hero_value">%1$s GB</string>
-    <string name="calc_hero_caption">of original photos and videos fit in %1$s GB of cloud storage</string>
+    <string name="calc_hero_caption">of your originals fit in %1$s GB of cloud space</string>
     <string name="calc_tile_photos">Photos</string>
     <string name="calc_tile_video_hours">Hours of video</string>
-    <string name="calc_gallery_line">Your gallery: %1$s GB → compressed ≈ %2$s GB.</string>
-    <string name="calc_fits">Your gallery fits</string>
+    <string name="calc_gallery_line">Your gallery now: %1$s GB → after optimising about %2$s GB.</string>
+    <string name="calc_spare">Fits, with %1$s GB to spare</string>
     <string name="calc_needs">Needs %1$s GB more</string>
     <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
+    <string name="calc_pace">Last 30 days: %1$s GB added.</string>
     <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
     <plurals name="calc_badge_measured">
         <item quantity="one">Based on %1$d of your files</item>
@@ -376,20 +404,40 @@
     <string name="onb2_grant">Allow</string>
     <string name="onb3_title">3. Stop the battery killer</string>
     <string name="onb3_text">Turn off battery optimization so the phone does not kill background work. On Xiaomi/Oppo/Vivo also enable auto-start.</string>
-    <string name="onb3_battery">Open battery dialog</string>
-    <string name="onb3_autostart">Open auto-start page</string>
-    <string name="onb3_fallback">If the page does not open: Settings → Battery → CloudSaver → No restrictions.</string>
     <string name="onb4_title">4. Usage access (recommended)</string>
     <string name="onb4_text">Lets CloudSaver see how much the cloud app uploaded - used to verify uploads.</string>
     <string name="onb4_grant">Grant usage access</string>
     <string name="onb5_title">5. Point your cloud app here</string>
-    <string name="onb5_text">Found: %1$s. In that app, back up ONLY the CloudSaver folder.</string>
     <string name="onb5_open">Open %1$s</string>
     <string name="onb6_title">6. Try it out</string>
     <string name="onb6_text">CloudSaver optimises three files so you can see the difference.</string>
     <string name="onb6_run">Optimise 3 files</string>
     <string name="onb6_running">Running…</string>
     <string name="onb6_none">No items found yet. Check the permission.</string>
+
+    <!-- setup: cloud step, power, folders, promises -->
+    <string name="onb5_found">Found: %1$s</string>
+    <string name="onb5_several">More than one cloud app is installed, so nothing was chosen for you. Pick the one you want to use.</string>
+    <string name="onb5_check">Check the connection</string>
+    <string name="cloud_use_different">Use a different app</string>
+    <string name="cloud_selected_mark">%1$s (in use)</string>
+    <string name="power_battery">Battery: no restrictions</string>
+    <string name="power_auto_launch">Allow auto-launch</string>
+    <string name="power_background">Allow background activity</string>
+    <string name="power_allowed">Allowed</string>
+    <string name="power_blocked">Blocked - background work will be killed</string>
+    <string name="power_check">Android cannot report this one. Please check it yourself.</string>
+    <string name="power_open">Open</string>
+    <string name="folder_pick_one">In your cloud app, back up only this folder:</string>
+    <string name="folder_pick_two">In your cloud app, back up only these folders:</string>
+    <string name="promise_exact">This app removes files after upload and skips duplicates, so confirmation is exact and a re-sent file never becomes a second copy.</string>
+    <string name="promise_ledger">This app has no duplicate check. CloudSaver never re-sends a file it has already confirmed, so duplicates are avoided from our side, but we cannot control what the app itself does.</string>
+    <string name="promise_unknown">This app has no duplicate check, and we cannot detect its abilities, so confirmation uses upload size and time. CloudSaver never re-sends a file it has already confirmed.</string>
+    <string name="link_connected">Looks connected - your cloud app is installed, the folder has files, and it has been uploading.</string>
+    <string name="link_no_app">That cloud app is not installed. Install it, or pick a different one.</string>
+    <string name="link_no_folder">The upload folder is still empty. Come back after CloudSaver has optimised its first files.</string>
+    <string name="link_no_traffic">Your cloud app has not uploaded anything in the last day. Open it and check the folder is selected and backup is on.</string>
+    <string name="link_cannot_tell">Cannot check upload activity without Usage access. The folder is ready either way.</string>
 
     <!-- help -->
     <string name="help_faq">FAQ</string>
@@ -398,7 +446,6 @@
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
-    <string name="help_rerun_setup">Re-run setup</string>
     <string name="logs_share">Share log</string>
     <string name="logs_clear">Clear log</string>
     <string name="logs_empty">The log is empty.</string>
@@ -408,6 +455,10 @@
     <string name="about_package">Package</string>
     <string name="about_network">Network access</string>
     <string name="about_network_value">None - the permission is not in the app</string>
+    <string name="about_technical">Technical details</string>
+    <string name="about_cert">Signing certificate (SHA-256)</string>
+    <string name="about_cert_dev">Development build - not checked</string>
+    <string name="about_partner">Made to work with your cloud app. It never uploads anything itself.</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
@@ -416,6 +467,14 @@
     <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
 
     <!-- quality page -->
+    <string name="quality_explained_title">Quality explained</string>
+    <string name="quality_measured_title">On this phone so far</string>
+    <string name="quality_measured_photos">Your photos: %1$s smaller on average (%2$s measured).</string>
+    <string name="quality_measured_videos">Your videos: %1$s smaller on average (%2$s measured).</string>
+    <string name="quality_measured_none">Not enough files processed yet to measure your own averages.</string>
+    <string name="quality_caps">The preset sets a ceiling, not a target: a 48 MP photo comes down to the limit, a 6 MP one is left at 6 MP. Video is the same for resolution.</string>
+    <string name="quality_percent_meaning">The percentages are a visual-quality estimate for the encoder settings used, not a measurement of your own files. What CloudSaver measures on your phone is size, shown above.</string>
+    <string name="quality_originals_safe">Whatever the setting, your originals are never edited, moved or deleted by this.</string>
     <string name="quality_intro">Everything happens on the phone. Video bitrate comes from output pixels × fps (H.264: 0.10 bits per pixel per frame, HEVC: 0.065). 1080p30 H.264 ≈ 6 Mbps. Photos are resized to the preset megapixel limit at JPEG quality 80-85.</string>
     <string name="quality_codec_title">H.264 vs HEVC</string>
     <string name="quality_codec_text" formatted="false">H.264 plays on every device. HEVC is about 35% smaller at the same quality, but older devices may not support it. H.264 is the default.</string>
@@ -432,42 +491,38 @@
 
     <!-- FAQ -->
     <string name="faq_q1">What does CloudSaver do?</string>
-    <string name="faq_a1">It makes compressed copies of your gallery in Pictures/CloudSaver. Your cloud app backs up only that folder. Originals stay exactly as they are.</string>
-    <string name="faq_q2">Are originals ever deleted?</string>
-    <string name="faq_a2">Never automatically. Only through Reclaim space, where you pick the files yourself and Android\'s own dialog confirms every deletion. An original is only ever offered once CloudSaver can point at proof its copy reached your cloud.</string>
-    <string name="faq_q3">Will dates change?</string>
-    <string name="faq_a3">No. Every copy gets the original capture date (EXIF + file date), so the cloud timeline stays correct.</string>
-    <string name="faq_q4">How much quality is lost?</string>
-    <string name="faq_a4" formatted="false">On the Storage saver preset videos keep ~90-95% visual quality and photo loss is invisible. Details on the Quality page.</string>
-    <string name="faq_q5">What is the daily cap?</string>
-    <string name="faq_a5">The most CloudSaver will add to the upload folder in a day - 250 MB by default. Because your cloud app only uploads that folder, it is also your upload data limit. The day\'s allowance is spread over the day rather than added at once, and an unused day carries one day forward.</string>
-    <string name="faq_q6">Someone deleted a file from the CloudSaver folder?</string>
-    <string name="faq_a6">If there was no proof it had been uploaded, CloudSaver makes the copy again - at most twice. After that it stops and marks the file, because something is removing copies faster than your cloud can take them. The original is safe either way.</string>
-    <string name="faq_q7">Play Protect shows a warning?</string>
-    <string name="faq_a7">Normal for sideloaded APKs. Choose "More details" → "Install anyway". The app is offline and holds no network permission.</string>
-    <string name="faq_q8">What happens on uninstall/reinstall?</string>
-    <string name="faq_a8">CloudSaver keeps hidden safety snapshots (in Pictures/CloudSaver/.cloudsaver and Documents/.cloudsaver) alongside Android Auto Backup, so clearing data or reinstalling restores your state by itself. Each snapshot carries a checksum; an edited or damaged one is ignored rather than trusted. Items that come back without proof of upload become UNKNOWN - those can never delete originals. Very rarely a phone refuses every hidden location; then you will see one visible Documents/CloudSaver/backup.json, which is safe to leave alone.</string>
-    <string name="faq_q9">Cloud storage is full?</string>
-    <string name="faq_a9">CloudSaver notices that copies are piling up while nothing is being uploaded, tells you, and stops deleting anything until uploads start again. Make room in the cloud or upgrade the plan; nothing is lost in the meantime.</string>
-    <string name="faq_q10">How does upload confirmation work?</string>
-    <string name="faq_a10">Four ways, strongest first. Confirmed - your cloud collected it: the copy disappeared from the upload folder while your cloud app was sending its bytes, which only happens when that app has taken it. Confirmed - sent and accounted for: the copy went out on its own and the bytes your cloud app sent match its size. Verified by upload size: enough bytes went out to cover a whole day\'s copies. Assumed after 10 days: no measurement was possible, only time has passed. Only the first two can ever offer an original for deletion.</string>
-    <string name="faq_q11">Does the app use the internet?</string>
-    <string name="faq_a11">No. The INTERNET permission is removed from the manifest itself. Uploading is always done by your cloud app.</string>
-    <string name="faq_q12">How much battery does it use?</string>
-    <string name="faq_a12" formatted="false">Smart mode (the default) works freely while charging. On battery it only starts above 30%, with the screen off, and stops after 30 minutes of work a day - photos are lighter, so they may also run with the screen on. Battery Saver, a warm phone or a low battery pause it right away, and Home always tells you what it is waiting for. Charging only mode uses no battery at all.</string>
-    <string name="faq_q13">Is the SD card supported?</string>
-    <string name="faq_a13">Yes. Everything the gallery shows (all volumes) is scanned, and you can keep the CloudSaver folder on the SD card.</string>
-    <string name="faq_q14">Why is the output folder never empty?</string>
-    <string name="faq_a14">The newest file in each folder is never deleted, so your cloud app never loses track of a folder that has gone empty. CloudSaver never creates dummy or placeholder files to do this - it simply keeps one real copy.</string>
-    <string name="faq_q15">What about HEIC/RAW/GIF?</string>
-    <string name="faq_a15">HEIC is compressed (to JPEG). RAW, GIF, SVG and similar are copied as-is - nothing is ever dropped.</string>
-    <string name="faq_q16">Which cloud apps work?</string>
-    <string name="faq_a16">CloudSaver is built for end-to-end encrypted clouds that have no compression of their own; clouds like Google Photos and OneDrive already compress for you. Best fit (E2EE): Ente (recommended), MEGA, Filen, Proton Drive. Also works: Nextcloud, Immich, OneDrive, or any app that can back up one chosen folder. Google Photos and Dropbox cannot work - they cannot back up just one custom folder.</string>
+    <string name="faq_a1">It does four things, in order. It finds the photos and videos in your gallery, makes a smaller copy of each one, puts those copies in a folder called Pictures/CloudSaver, and then keeps track of which ones reached your cloud. It never uploads anything itself - your own cloud app does that, and you point it at that one folder. Your originals stay exactly where they are the whole time.</string>
+    <string name="faq_q2">Where do the optimised copies go?</string>
+    <string name="faq_a2">With the default layout, into Pictures/CloudSaver. If you switch to separate folders they go into Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, back up only that folder or those folders - nothing else. A small hidden state file lives beside them so CloudSaver can recover its records if the app is reinstalled; it holds names, dates and sizes only, never your pictures.</string>
+    <string name="faq_q3">Are my originals ever touched?</string>
+    <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Reclaim space, choose files yourself, and confirm Android’s own deletion dialog. Even then, only files CloudSaver can show reached your cloud are offered.</string>
+    <string name="faq_q4">How much quality is lost, and how is that measured?</string>
+    <string name="faq_a4" formatted="false">On the default Storage saver preset, video is capped at 1080p and keeps roughly 90-95% of the original’s visual quality, and photos are capped at 16 MP where the loss is about 3% and hard to see. Those percentages are estimates for the encoder settings, not measurements of your files. What CloudSaver does measure is size: open Quality explained to see how much your own photos and videos actually shrank. The preset is a ceiling, so a photo already under the limit is left alone.</string>
+    <string name="faq_q5">Are dates, GPS and file names kept?</string>
+    <string name="faq_a5">Yes. Every copy carries the original shooting date, camera details and GPS from the original’s EXIF, and the file date is set to match. That is why the copies appear in your cloud in the same order as your gallery instead of all dated today. The file name keeps the original name with a short unique code added, so two photos with the same name never collide.</string>
+    <string name="faq_q6">How does CloudSaver know a file reached my cloud?</string>
+    <string name="faq_a6">Copies are added to the upload folder a few at a time rather than all at once, and CloudSaver watches how many bytes your cloud app sends. There are three levels of certainty. Strongest: your cloud app removed the copy itself after uploading it - that is direct proof. Next: the copy went out alone and the bytes sent match its size. Weakest: enough time passed with no way to measure. Only the first two can ever offer an original for removal.</string>
+    <string name="faq_q7">What if my cloud app has no duplicate check?</string>
+    <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content. Once a file is on that list it is never sent again, even if it disappears from the upload folder later - which is exactly what happens when a cloud app tidies up after itself. The record survives reinstalling the app. What CloudSaver cannot control is what your cloud app does with files you add by other means.</string>
+    <string name="faq_q8">How much mobile data does it use?</string>
+    <string name="faq_a8">None of its own. CloudSaver has no internet permission at all, so it physically cannot send anything. All the data is your cloud app uploading the folder, and the daily upload limit is what controls it: by default CloudSaver adds at most 250 MB a day to that folder, so that is the most your cloud app has to upload. Raise or lower it in Settings.</string>
+    <string name="faq_q9">How much phone space does it use?</string>
+    <string name="faq_a9">Two separate limits control this. “Keep this much phone space free” is about your phone: CloudSaver stops working entirely if free space drops below it, so it can never fill your device. “Space CloudSaver may use” is about CloudSaver: it caps the optimised copies waiting to be uploaded, and when it fills, the oldest already-confirmed copies are deleted first. For example, with 1.5 GB free kept and a 1.5 GB app limit, CloudSaver holds at most 1.5 GB of copies and stops if your phone drops under 1.5 GB free.</string>
+    <string name="faq_q10">Why did it pause?</string>
+    <string name="faq_a10" formatted="false">Home always says which reason applies. It waits for a charger in Charging only mode; it needs battery above 30% (25% on Fast) otherwise; it stops when Battery Saver is on, when the phone is warm, or when the day’s 30 minutes of video work are used - that resets at midnight, and plugging in continues immediately. It also stops if your phone is low on space, and it stops deleting anything if your cloud app looks like it has stopped uploading.</string>
+    <string name="faq_q11">Someone deleted a file from the CloudSaver folder - what now?</string>
+    <string name="faq_a11">If CloudSaver had already confirmed that file reached your cloud, nothing happens: the disappearance is the proof, and the original was never at risk. If it had not been confirmed, CloudSaver simply makes the copy again - up to twice. After the second time it stops and marks the file as removed before upload, because something is clearly deleting copies faster than your cloud can take them, and looping forever would just waste battery.</string>
+    <string name="faq_q12">What about HEIC, RAW, GIF and motion photos?</string>
+    <string name="faq_a12">HEIC photos are converted to JPEG and compressed like any other photo. RAW, GIF, SVG and similar formats are copied byte-for-byte, because compressing them would either fail or destroy what makes them useful. Motion photos, portrait/depth photos and multi-picture files are also copied unchanged, since the extra frames or depth data only survive in the original file. Nothing is ever dropped - every file either gets a smaller copy or an exact one, and Files tells you which.</string>
+    <string name="faq_q13">What happens on uninstall, clear data, or a new phone?</string>
+    <string name="faq_a13">CloudSaver writes a small hidden state file next to your copies and in Documents, and those survive clearing data and reinstalling. On the next launch it reads the newest valid one and restores what it knew, including the record of which files already reached your cloud. Items that come back without proof of upload are marked unverified, and unverified items can never offer an original for removal - so a restore can never cost you a photo. On a brand-new phone, CloudSaver starts fresh unless you restore a backup file yourself.</string>
+    <string name="faq_q14">Which cloud apps work, which do not, and why?</string>
+    <string name="faq_a14">Anything that can back up one folder you choose. Best fit, because they are end-to-end encrypted and do no compression of their own: Ente (recommended), MEGA, Filen and Proton Drive. Also fine: Nextcloud, Immich, OneDrive, or any other app with a custom folder setting. Google Photos and Dropbox cannot work: their mobile apps back up the camera roll and cannot be pointed at one folder, so your originals would upload too.</string>
+    <string name="faq_q15">Cloud storage is full - what happens?</string>
+    <string name="faq_a15">CloudSaver notices that copies are piling up while nothing is being uploaded, tells you once, and stops deleting anything at all until uploads start again. Nothing is lost: your originals are untouched and the copies stay on the phone until its own space limit is reached, after which it simply stops making new ones. Free up room in your cloud or upgrade the plan and it resumes on its own.</string>
+    <string name="faq_q16">Does anything leave my phone?</string>
+    <string name="faq_a16">No. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere - not analytics, not crash reports, not a file. There are no accounts and no ads. Everything CloudSaver stores stays on the phone: the optimised copies, a local database of what it has done, and the hidden state file. Only your cloud app talks to the internet, and only about the folder you pointed it at.</string>
 
-    <string name="faq_q17">Why does it add only a few files at a time?</string>
-    <string name="faq_a17">So each one can be checked on its own. If a day\'s files went out together, the amount your cloud app uploaded could not say which of them arrived - and CloudSaver would never be able to tell you a particular photo is safe. A few at a time turns a number into proof.</string>
-    <string name="faq_q18">Will the same photo be uploaded twice?</string>
-    <string name="faq_a18">No. Every copy that reaches your cloud is recorded permanently, and that record travels in the safety snapshot. So when your cloud app removes a file it has already collected - which is what a "free up space" feature does - CloudSaver knows it succeeded instead of sending it again.</string>
 
     <!-- notifications -->
     <string name="channel_working">Working</string>
