@@ -1,21 +1,67 @@
 package app.cloudsaver.util
 
+import java.text.NumberFormat
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 
+/**
+ * The one place numbers become text.
+ *
+ * Sizes use decimal units, because that is what cloud plans are sold in: a
+ * "50 GB" plan means 50 000 MB, and showing binary GB here would make the
+ * calculator quietly disagree with the user's bill.
+ */
 object Formats {
 
+    const val KB = 1_000L
+    const val MB = 1_000_000L
+    const val GB = 1_000_000_000L
+
+    /** Sizes: MB with no decimals below 1 GB, GB with two above it. */
     fun bytes(v: Long): String {
-        if (v < 0) return "0 B"
-        val kb = 1024.0
+        if (v <= 0) return "0 MB"
         return when {
-            v >= kb * kb * kb -> String.format(Locale.US, "%.2f GB", v / (kb * kb * kb))
-            v >= kb * kb -> String.format(Locale.US, "%.1f MB", v / (kb * kb))
-            v >= kb -> String.format(Locale.US, "%.0f KB", v / kb)
+            v >= GB -> String.format(Locale.US, "%.2f GB", v.toDouble() / GB)
+            v >= MB -> String.format(Locale.US, "%.0f MB", v.toDouble() / MB)
+            v >= KB -> String.format(Locale.US, "%.0f KB", v.toDouble() / KB)
             else -> "$v B"
         }
     }
+
+    /** Always GB, two decimals - for the calculator, where units must match. */
+    fun gb(value: Double): String = String.format(Locale.US, "%.2f GB", value)
+
+    /** Counts with thousands separators, in the phone's locale. */
+    fun count(n: Int): String = NumberFormat.getIntegerInstance().format(n)
+
+    fun count(n: Long): String = NumberFormat.getIntegerInstance().format(n)
+
+    /** Whole percentages only; nobody needs 63.4% of a photo. */
+    fun percent(fraction: Double): String =
+        "${(fraction * 100).coerceIn(0.0, 100.0).toInt()}%"
+
+    fun percentOf(part: Long, whole: Long): String =
+        if (whole <= 0) "0%" else percent(part.toDouble() / whole)
+
+    /** "1 h 24 min", "24 min", "45 s". */
+    fun duration(ms: Long): String {
+        if (ms <= 0) return "0 min"
+        val totalMinutes = ms / 60_000
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        return when {
+            hours > 0 -> "$hours h $minutes min"
+            totalMinutes > 0 -> "$totalMinutes min"
+            else -> "${ms / 1000} s"
+        }
+    }
+
+    /** Hours as the calculator states them: "3 h 20 min". */
+    fun hours(value: Double): String = duration((value * 3_600_000).toLong())
 
     fun mbLabel(mb: Int): String = when {
         mb < 0 -> ""
@@ -27,6 +73,46 @@ object Formats {
         if (ms <= 0) "-"
         else SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
 
+    fun time(ms: Long): String =
+        if (ms <= 0) "-"
+        else SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ms))
+
+    fun date(ms: Long): String =
+        if (ms <= 0) "-"
+        else SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(ms))
+
+    /**
+     * The local calendar date, as the key daily budgets reset on.
+     *
+     * LocalDate rather than elapsed-24h arithmetic: on the days a timezone or
+     * DST changes, "24 hours since" and "a new day" are not the same thing,
+     * and the budget should follow the calendar the user sees.
+     */
     fun dayKey(ms: Long): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(ms))
+        Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+
+    /** Local midnight at the start of [ms]'s day. */
+    fun startOfDay(ms: Long): Long {
+        val zone = ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(ms).atZone(zone).toLocalDate()
+        return today.atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+
+    /** Local midnight after [ms] - when a day-keyed budget frees up again. */
+    fun nextMidnight(ms: Long): Long {
+        val zone = ZoneId.systemDefault()
+        val tomorrow = Instant.ofEpochMilli(ms).atZone(zone).toLocalDate().plusDays(1)
+        return tomorrow.atStartOfDay(zone).toInstant().toEpochMilli()
+    }
+
+    /** Whole days between two instants, by local calendar date. */
+    fun daysBetween(fromMs: Long, toMs: Long): Int {
+        val zone = ZoneId.systemDefault()
+        val a = Instant.ofEpochMilli(fromMs).atZone(zone).toLocalDate()
+        val b = Instant.ofEpochMilli(toMs).atZone(zone).toLocalDate()
+        return (b.toEpochDay() - a.toEpochDay()).toInt()
+    }
+
+    fun localDate(ms: Long): LocalDate =
+        Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
 }

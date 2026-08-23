@@ -31,6 +31,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
+import app.cloudsaver.ui.screens.ActivityScreen
 import app.cloudsaver.ui.screens.CalculatorScreen
 import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.FreeUpScreen
@@ -54,6 +55,7 @@ object Routes {
     const val STORAGE = "storage"
     const val OPTIONS = "options"
     const val FREE_UP = "freeup"
+    const val ACTIVITY = "activity"
     const val CALC = "calc"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
@@ -95,6 +97,17 @@ private fun MainNav(vm: AppViewModel) {
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { unlocked = false }
 
     val needsLock = options.appLock && !unlocked && route in Routes.LOCKED
+
+    // An alert that opens the app should land on the screen it was about.
+    // Consumed once, so rotating the phone does not navigate again.
+    val deepLink by vm.deepLink.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(deepLink) {
+        val target = deepLink ?: return@LaunchedEffect
+        vm.clearDeepLink()
+        if (target != route) {
+            nav.navigate(target) { launchSingleTop = true }
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -146,6 +159,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.STORAGE) { StorageScreen(vm, nav) }
                 composable(Routes.OPTIONS) { OptionsScreen(vm, nav) }
                 composable(Routes.FREE_UP) { FreeUpScreen(vm, nav) }
+                composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
                 composable(Routes.CALC) { CalculatorScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }

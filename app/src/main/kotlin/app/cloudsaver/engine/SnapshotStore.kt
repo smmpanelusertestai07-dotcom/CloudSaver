@@ -14,6 +14,7 @@ import app.cloudsaver.core.logic.SnapshotCodec
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.util.AppLog
 
@@ -48,7 +49,7 @@ class SnapshotStore(
                 mimeType = row.mimeType,
                 isVideo = row.isVideo,
                 state = enumOr(row.state, ItemState.UNKNOWN),
-                evidence = enumOr(row.evidence, Evidence.NONE),
+                evidence = Evidence.parse(row.evidence),
                 goneReason = enumOrNull<GoneReason>(row.goneReason),
                 skipReason = row.skipReason,
                 outputName = row.outputName,
@@ -68,12 +69,23 @@ class SnapshotStore(
                 verifiedAt = b.verifiedAt
             )
         }
+        val ledger = db.ledger().all().map { l ->
+            SnapshotCodec.SnapLedger(
+                outputSha256 = l.outputSha256,
+                fingerprint = l.fingerprint,
+                displayName = l.displayName,
+                outputBytes = l.outputBytes,
+                evidence = Evidence.parse(l.evidence),
+                confirmedAt = l.confirmedAt
+            )
+        }
         return SnapshotCodec.Snapshot(
             version = SnapshotCodec.VERSION,
             exportedAt = System.currentTimeMillis(),
             options = optionsRepo.exportMap(),
             items = items,
-            batches = batches
+            batches = batches,
+            ledger = ledger
         )
     }
 
@@ -267,7 +279,7 @@ class SnapshotStore(
                 if (db.items().insert(row) != -1L) imported++
             } else {
                 // Upgrade evidence only; never downgrade local knowledge.
-                val existingEv = enumOr(existing.evidence, Evidence.NONE)
+                val existingEv = Evidence.parse(existing.evidence)
                 if (mapped.evidence.ordinal > existingEv.ordinal) {
                     db.items().update(
                         existing.copy(
@@ -278,6 +290,22 @@ class SnapshotStore(
                     )
                 }
             }
+        }
+        // The ledger goes in before anything else can act on it: a restored
+        // install must know what the cloud already has before it decides
+        // anything is missing.
+        for (l in snapshot.ledger) {
+            if (l.outputSha256.isEmpty()) continue
+            db.ledger().insert(
+                LedgerRow(
+                    outputSha256 = l.outputSha256,
+                    fingerprint = l.fingerprint,
+                    displayName = l.displayName,
+                    outputBytes = l.outputBytes,
+                    evidence = l.evidence.name,
+                    confirmedAt = l.confirmedAt
+                )
+            )
         }
         for (b in snapshot.batches) {
             db.batches().insert(

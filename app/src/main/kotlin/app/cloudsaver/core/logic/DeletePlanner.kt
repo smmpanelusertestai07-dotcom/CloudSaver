@@ -39,7 +39,7 @@ object DeletePlanner {
         fun eligible(c: Copy) = c.id !in anchorIds
 
         val confirmed = copies
-            .filter { eligible(it) && it.evidence == Evidence.CONFIRMED }
+            .filter { eligible(it) && it.evidence.isPerFile }
             .sortedWith(compareBy({ it.captureAt }, { it.id }))
         val verified = copies
             .filter { eligible(it) && it.evidence == Evidence.VERIFIED && it.ageDays >= keepMinDays }

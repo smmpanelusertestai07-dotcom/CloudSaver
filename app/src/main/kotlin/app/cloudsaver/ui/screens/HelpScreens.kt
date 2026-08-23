@@ -142,7 +142,9 @@ private val FAQ = listOf(
     R.string.faq_q13 to R.string.faq_a13,
     R.string.faq_q14 to R.string.faq_a14,
     R.string.faq_q15 to R.string.faq_a15,
-    R.string.faq_q16 to R.string.faq_a16
+    R.string.faq_q16 to R.string.faq_a16,
+    R.string.faq_q17 to R.string.faq_a17,
+    R.string.faq_q18 to R.string.faq_a18
 )
 
 @Composable
@@ -337,6 +339,36 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            KeyValueRow(
+                stringResource(R.string.about_version),
+                BuildConfig.VERSION_NAME
+            )
+            KeyValueRow(
+                stringResource(R.string.about_build),
+                BuildConfig.VERSION_CODE.toString()
+            )
+            KeyValueRow(
+                stringResource(R.string.about_package),
+                BuildConfig.APPLICATION_ID
+            )
+            KeyValueRow(
+                stringResource(R.string.about_network),
+                stringResource(R.string.about_network_value)
+            )
+        }
+        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {
+            Text(
+                stringResource(R.string.help_privacy),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                stringResource(R.string.about_privacy_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
     }

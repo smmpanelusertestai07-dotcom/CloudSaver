@@ -20,11 +20,11 @@ class DeletePlannerTest {
     fun ordering_confirmedThenVerifiedThenAged_oldestFirst() {
         val copies = listOf(
             copy(1, 10, Evidence.AGED, ageDays = 20, captureAt = 1),
-            copy(2, 10, Evidence.CONFIRMED, ageDays = 1, captureAt = 5),
+            copy(2, 10, Evidence.CONFIRMED_EXACT, ageDays = 1, captureAt = 5),
             copy(3, 10, Evidence.VERIFIED, ageDays = 10, captureAt = 3),
-            copy(4, 10, Evidence.CONFIRMED, ageDays = 1, captureAt = 2),
+            copy(4, 10, Evidence.CONFIRMED_EXACT, ageDays = 1, captureAt = 2),
             // Anchor guard: newest overall must survive.
-            copy(99, 10, Evidence.CONFIRMED, ageDays = 1, captureAt = 100)
+            copy(99, 10, Evidence.CONFIRMED_EXACT, ageDays = 1, captureAt = 100)
         )
         val plan = DeletePlanner.plan(copies, bytesToFree = 40_000_000)
         // Confirmed oldest-first (4 then 2), then verified (3), then aged (1).
@@ -35,9 +35,9 @@ class DeletePlannerTest {
     @Test
     fun stopsWhenEnoughFreed() {
         val copies = listOf(
-            copy(1, 30, Evidence.CONFIRMED, 1, captureAt = 1),
-            copy(2, 30, Evidence.CONFIRMED, 1, captureAt = 2),
-            copy(9, 30, Evidence.CONFIRMED, 1, captureAt = 99) // anchor
+            copy(1, 30, Evidence.CONFIRMED_EXACT, 1, captureAt = 1),
+            copy(2, 30, Evidence.CONFIRMED_EXACT, 1, captureAt = 2),
+            copy(9, 30, Evidence.CONFIRMED_EXACT, 1, captureAt = 99) // anchor
         )
         val plan = DeletePlanner.plan(copies, bytesToFree = 25_000_000)
         assertEquals(listOf(1L), plan.ids)
@@ -50,7 +50,7 @@ class DeletePlannerTest {
         val copies = listOf(
             copy(1, 10, Evidence.VERIFIED, ageDays = 2, captureAt = 1), // too young
             copy(2, 10, Evidence.VERIFIED, ageDays = 6, captureAt = 2),
-            copy(9, 10, Evidence.CONFIRMED, 1, captureAt = 99) // anchor
+            copy(9, 10, Evidence.CONFIRMED_EXACT, 1, captureAt = 99) // anchor
         )
         val plan = DeletePlanner.plan(copies, bytesToFree = 100_000_000, keepMinDays = 5)
         assertEquals(listOf(2L), plan.ids)
@@ -81,7 +81,7 @@ class DeletePlannerTest {
     @Test
     fun noWorkWhenNothingToFree() {
         val plan = DeletePlanner.plan(
-            listOf(copy(1, 10, Evidence.CONFIRMED, 1)),
+            listOf(copy(1, 10, Evidence.CONFIRMED_EXACT, 1)),
             bytesToFree = 0
         )
         assertTrue(plan.ids.isEmpty())

@@ -9,33 +9,39 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
+import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.ActivityLog
+import app.cloudsaver.engine.CloudWatchdog
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
+import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
 import app.cloudsaver.work.Scheduler
-import java.io.FileInputStream
-import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +49,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -97,17 +104,163 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val processedCount: StateFlow<Int> =
         db.items().processedCountFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    val reclaimableBytes: StateFlow<Long> =
-        db.items().reclaimableBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+    /**
+     * Savings split by media kind.
+     *
+     * One combined figure hides the thing people actually want to know: a
+     * single 4K clip can outweigh a thousand photos, and someone deciding
+     * whether to keep videos on needs those two numbers apart.
+     */
+    data class Savings(
+        val photoBytes: Long = 0,
+        val photoCount: Int = 0,
+        val videoBytes: Long = 0,
+        val videoCount: Int = 0
+    ) {
+        val totalBytes: Long get() = photoBytes + videoBytes
+        val totalCount: Int get() = photoCount + videoCount
+    }
+
+    val savings: StateFlow<Savings> = combine(
+        db.items().savedBytesFlow(false),
+        db.items().processedCountFlow(false),
+        db.items().savedBytesFlow(true),
+        db.items().processedCountFlow(true)
+    ) { pb, pc, vb, vc -> Savings(pb, pc, vb, vc) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, Savings())
+
+    /** Files copied byte-for-byte, with the reasons, for the "kept as is" card. */
+    data class AsIs(val count: Int = 0, val reasons: List<Pair<String, Int>> = emptyList())
+
+    val asIs = MutableStateFlow(AsIs())
+
+    fun refreshAsIs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val reasons = (db.items().asIsReasons(false) + db.items().asIsReasons(true))
+                .groupBy { it.state }
+                .map { (reason, rows) -> reason to rows.sumOf { it.cnt } }
+                .sortedByDescending { it.second }
+            asIs.value = AsIs(
+                count = db.items().asIsCount(false) + db.items().asIsCount(true),
+                reasons = reasons
+            )
+        }
+    }
+
+    // ---- activity log -------------------------------------------------------
+
+    private val activityLog = ActivityLog(ctx)
+
+    /** Which of the three groups the Activity screen is showing. */
+    val activityFilter = MutableStateFlow<ActivityLog.Group?>(null)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activityRows: StateFlow<List<ActivityRow>> = activityFilter
+        .flatMapLatest { group ->
+            if (group == null) {
+                db.activity().recentFlow(ActivityLog.RETENTION_ROWS)
+            } else {
+                db.activity().byKindsFlow(
+                    ActivityLog.Kind.entries.filter { it.group == group }.map { it.name },
+                    ActivityLog.RETENTION_ROWS
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Unread dot on Home: anything logged since the screen was last opened. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val activityUnread: StateFlow<Int> = options
+        .map { it.activitySeenAt }
+        .flatMapLatest { seen -> db.activity().unreadCountFlow(seen) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    fun markActivitySeen() {
+        viewModelScope.launch {
+            repo.setLong(OptionsRepo.K.ACTIVITY_SEEN_AT, System.currentTimeMillis())
+        }
+    }
+
+    fun clearActivity() {
+        viewModelScope.launch(Dispatchers.IO) { activityLog.clear() }
+    }
+
+    fun exportActivity(uri: Uri, doneLabel: String, failLabel: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                val text = activityLog.exportText()
+                ctx.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(text.toByteArray())
+                } ?: error("no stream")
+            }.isSuccess
+            transferMessage.value = if (ok) doneLabel else failLabel
+        }
+    }
+
+    /**
+     * Re-keyed off options so the settled-by cutoff moves with the clock and
+     * the opt-in switch: a value fixed at construction would go stale in a
+     * process that stays alive for days.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val reclaimableBytes: StateFlow<Long> = options
+        .flatMapLatest { o ->
+            db.items().reclaimableBytesFlow(
+                settledBefore = System.currentTimeMillis() -
+                    EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L,
+                includeVerified = o.freeUpAllowVerified30
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
 
     // ---- files list ---------------------------------------------------------
 
     val search = MutableStateFlow("")
 
+    /** Files list filter: an [ItemState] name, or null for everything. */
+    val filesState = MutableStateFlow<String?>(null)
+
+    enum class FilesSort { NEWEST, SAVED, LARGEST }
+
+    val filesSort = MutableStateFlow(FilesSort.NEWEST)
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val items: StateFlow<List<ItemRow>> = search
+    private val searchResults: StateFlow<List<ItemRow>> = search
         .flatMapLatest { q -> db.items().searchFlow(q, 500) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * The list the Files screen shows.
+     *
+     * Filtering and sorting happen here rather than in SQL because the query
+     * is already capped at 500 rows: pushing them into the statement would
+     * mean four near-identical queries for no measurable gain.
+     */
+    val items: StateFlow<List<ItemRow>> =
+        combine(searchResults, filesState, filesSort) { rows, state, sort ->
+            val filtered = when (state) {
+                null -> rows
+                // "Backed up" is a story rather than one state: an item can be
+                // finished, its copy already tidied away, or its original
+                // reclaimed, and all three read the same to the user.
+                ItemState.DONE.name -> rows.filter {
+                    it.state in setOf(
+                        ItemState.DONE.name, ItemState.GONE.name, ItemState.FREED.name
+                    )
+                }
+                ItemState.RELEASED.name -> rows.filter {
+                    it.state in setOf(ItemState.STAGED.name, ItemState.RELEASED.name)
+                }
+                else -> rows.filter { it.state == state }
+            }
+            when (sort) {
+                FilesSort.NEWEST -> filtered.sortedByDescending { it.captureAt }
+                FilesSort.SAVED -> filtered.sortedByDescending {
+                    it.outputBytes?.let { out -> it.sizeBytes - out } ?: 0L
+                }
+                FilesSort.LARGEST -> filtered.sortedByDescending { it.sizeBytes }
+            }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // ---- health chips -------------------------------------------------------
 
@@ -130,6 +283,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
                 spaceLow = Storage.freeBytes(ctx) < o.minFreeBytes,
                 paused = o.pauseAll
+            )
+        }
+    }
+
+    // ---- today's upload allowance (D3) --------------------------------------
+
+    /**
+     * How much of today's upload allowance is left, and when it refills.
+     *
+     * "Waiting" with no reason is the complaint every background app gets. If
+     * the app is holding files back because the daily limit is spent, it says
+     * so, and says when that stops being true.
+     */
+    data class Budget(
+        val usedBytes: Long = 0,
+        val totalBytes: Long = 0,
+        val resetsAt: Long = 0,
+        val carriedBytes: Long = 0
+    ) {
+        val unlimited: Boolean get() = totalBytes < 0
+        val spent: Boolean get() = !unlimited && usedBytes >= totalBytes
+        val fraction: Float
+            get() = if (unlimited || totalBytes <= 0) {
+                0f
+            } else {
+                (usedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
+            }
+    }
+
+    val budget = MutableStateFlow(Budget())
+
+    fun refreshBudget() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val now = System.currentTimeMillis()
+            val total = Pacing.dailyBudgetWithCatchUp(
+                o.dailyCapBytes,
+                if (Formats.dayKey(now) == o.catchUpDay) o.catchUpBytes else 0L
+            )
+            budget.value = Budget(
+                usedBytes = db.batches().bytesSince(Formats.startOfDay(now)),
+                totalBytes = total,
+                resetsAt = Formats.nextMidnight(now),
+                carriedBytes = if (Formats.dayKey(now) == o.catchUpDay) o.catchUpBytes else 0L
             )
         }
     }
@@ -167,27 +364,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCalculator() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
-            val found = runCatching { MediaScanner(ctx, db).queryAll() }
-                .getOrDefault(emptyList())
-                .filter { it.bucket == null || it.bucket !in o.excludedBuckets }
-            val cutoff = System.currentTimeMillis() / 1000 - 30L * 86_400
-            var photoBytes = 0L
-            var videoBytes = 0L
-            var videoMinutes = 0.0
-            var monthlyPhoto = 0L
-            var monthlyVideo = 0L
-            for (f in found) {
-                if (f.isVideo) {
-                    videoBytes += f.sizeBytes
-                    videoMinutes += f.durationMs / 60_000.0
-                    if (f.dateAdded >= cutoff) monthlyVideo += f.sizeBytes
-                } else {
-                    photoBytes += f.sizeBytes
-                    if (f.dateAdded >= cutoff) monthlyPhoto += f.sizeBytes
-                }
-            }
+            // Summed straight off the cursor: the calculator needs five
+            // numbers, not a copy of the gallery in memory.
+            val totals = runCatching { MediaScanner(ctx, db).totals(o.excludedBuckets) }
+                .getOrDefault(MediaScanner.Totals())
             calcGallery.value = CapacityMath.Gallery(
-                photoBytes, videoBytes, videoMinutes, monthlyPhoto, monthlyVideo
+                photoBytes = totals.photoBytes,
+                videoBytes = totals.videoBytes,
+                videoMinutes = totals.videoMinutes,
+                monthlyPhotoBytes = totals.monthlyPhotoBytes,
+                monthlyVideoBytes = totals.monthlyVideoBytes
             )
             val photoSamples = db.items().photoRatioSamples(o.preset.name).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
@@ -198,6 +384,68 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             calcRatios.value = CapacityMath.ratios(photoSamples, videoSamples, o.codec)
         }
     }
+
+    // ---- device-aware recommendations (F4) ----------------------------------
+
+    /**
+     * What these limits should be on *this* phone.
+     *
+     * A 64 GB phone and a 512 GB phone should not reserve the same headroom,
+     * and a cap that suits a metered connection is wrong for someone on Wi-Fi
+     * all week. Nothing is changed behind the user's back: the numbers are
+     * offered as a one-tap suggestion and only when what is stored has drifted
+     * far enough to be worth mentioning.
+     */
+    data class Recommended(
+        val dailyCapMb: Int = Defaults.DAILY_CAP_MB,
+        val minFreeMb: Int = Defaults.MIN_FREE_MB,
+        val maxExtraMb: Int = Defaults.MAX_EXTRA_MB,
+        val capLooksWrong: Boolean = false,
+        val freeLooksWrong: Boolean = false
+    )
+
+    val recommended = MutableStateFlow(Recommended())
+
+    fun refreshRecommended() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val total = Storage.totalBytes(ctx, o.storageVolume)
+            val free = Storage.freeBytes(ctx, o.storageVolume)
+            // No usage history to read offline, so assume the cautious middle
+            // rather than inventing a Wi-Fi share the app cannot measure.
+            val cap = nearestChoice(
+                DeviceDefaults.dailyCapMb(total, free, 0.0),
+                Defaults.DAILY_CAP_CHOICES_MB
+            )
+            val minFree = nearestChoice(
+                DeviceDefaults.reserveMb(total), Defaults.MIN_FREE_CHOICES_MB
+            )
+            val maxExtra = nearestChoice(
+                DeviceDefaults.ownLimitMb(free, cap), Defaults.MAX_EXTRA_CHOICES_MB
+            )
+            recommended.value = Recommended(
+                dailyCapMb = cap,
+                minFreeMb = minFree,
+                maxExtraMb = maxExtra,
+                capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, cap),
+                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, minFree)
+            )
+        }
+    }
+
+    fun applyRecommended() {
+        val r = recommended.value
+        viewModelScope.launch {
+            repo.setInt(OptionsRepo.K.DAILY_CAP_MB, r.dailyCapMb)
+            repo.setInt(OptionsRepo.K.MIN_FREE_MB, r.minFreeMb)
+            repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, r.maxExtraMb)
+            refreshRecommended()
+        }
+    }
+
+    /** Settings offer fixed steps, so a computed figure has to land on one. */
+    private fun nearestChoice(value: Int, choices: List<Int>): Int =
+        choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - value) } ?: value
 
     fun cleanTemp() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -221,6 +469,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---- confirm-uploads flow ----------------------------------------------
+
+    /**
+     * Whether the chosen cloud app removes its own uploads.
+     *
+     * "Verify backup" works by watching copies leave the upload folder, which
+     * only a cloud with a free-up feature ever does. On the others the button
+     * can only ever report nothing, so it is not offered - a control that
+     * always fails is worse than no control.
+     */
+    val cloudHasFreeUp = MutableStateFlow(false)
+
+    fun refreshCloudCaps() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            cloudHasFreeUp.value = CloudWatchdog(ctx).capsFor(o.cloudSingle).hasFreeUpSpace
+        }
+    }
 
     val confirmResult = MutableStateFlow<Int?>(null)
     private var confirmPending = false
@@ -267,14 +532,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         quickMaintain()
     }
 
+    // ---- deep links from alerts ---------------------------------------------
+
+    /** Route an alert asked for, consumed once by the navigation host. */
+    val deepLink = MutableStateFlow<String?>(null)
+
+    fun consumeDeepLink(route: String?) {
+        if (!route.isNullOrEmpty()) deepLink.value = route
+    }
+
+    fun clearDeepLink() {
+        deepLink.value = null
+    }
+
     // ---- option setters -----------------------------------------------------
 
     fun setScope(v: BackupScope) = setStr(OptionsRepo.K.SCOPE, v.name)
     fun setOutputMode(v: OutputMode) = setStr(OptionsRepo.K.OUTPUT_MODE, v.name)
-    fun setCloudSingle(v: String) = setStr(OptionsRepo.K.CLOUD_SINGLE, v)
+    fun setCloudSingle(v: String) {
+        setStr(OptionsRepo.K.CLOUD_SINGLE, v)
+        noteSettingChange(detail = CloudApps.byId(v).label)
+        refreshCloudCaps()
+    }
     fun setCloudPhotos(v: String) = setStr(OptionsRepo.K.CLOUD_PHOTOS, v)
     fun setCloudVideos(v: String) = setStr(OptionsRepo.K.CLOUD_VIDEOS, v)
-    fun setPreset(v: Preset) = setStr(OptionsRepo.K.PRESET, v.name)
+    fun setPreset(v: Preset) {
+        setStr(OptionsRepo.K.PRESET, v.name)
+        noteSettingChange(detail = v.name)
+    }
     fun setCodec(v: VideoCodec) = setStr(OptionsRepo.K.CODEC, v.name)
     fun setTheme(v: ThemeMode) = setStr(OptionsRepo.K.THEME, v.name)
     fun setDynamicColor(v: Boolean) = setBool(OptionsRepo.K.DYNAMIC_COLOR, v)
@@ -302,6 +587,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setPauseAll(v: Boolean) {
         setBool(OptionsRepo.K.PAUSE_ALL, v)
         refreshHealth()
+        // Worth a line: "why did it stop" is the first question a week later,
+        // and a switch flipped once is exactly what nobody remembers doing.
+        noteSettingChange(if (v) ActivityLog.Kind.PAUSED else ActivityLog.Kind.RESUMED)
+    }
+
+    private fun noteSettingChange(
+        kind: ActivityLog.Kind = ActivityLog.Kind.SETTINGS_CHANGED,
+        detail: String? = null
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            activityLog.record(kind, detail = detail)
+        }
     }
 
     fun setSpeed(v: SpeedMode) {
@@ -398,13 +695,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadFreeUp() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
+            val settled = System.currentTimeMillis() -
+                EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L
+            // Three grades, three different waiting periods. Seeing the cloud
+            // take a copy is an observation and needs no delay; a byte count
+            // that merely matched, and a batch total that covered the day, are
+            // inferences, so those settle for a month first.
             val confirmed = db.items().freeableConfirmed()
+            val paced = db.items().freeablePaced(settled)
             val verified = if (o.freeUpAllowVerified30) {
-                db.items().freeableVerified(System.currentTimeMillis() - 30L * 86_400_000L)
+                db.items().freeableVerified(settled)
             } else {
                 emptyList()
             }
-            freeUpItems.value = (confirmed + verified)
+            freeUpItems.value = (confirmed + paced + verified)
                 .filter { it.state != ItemState.FREED.name && it.contentUri != null }
                 .distinctBy { it.id }
                 .sortedByDescending { it.sizeBytes }
@@ -447,6 +751,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onFreedConfirmed(rows: List<ItemRow>) {
+        if (rows.isEmpty()) return
         viewModelScope.launch(Dispatchers.Default) {
             val now = System.currentTimeMillis()
             for (row in rows) {
@@ -454,6 +759,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     row.copy(state = ItemState.FREED.name, originalMissing = true, updatedAt = now)
                 )
             }
+            activityLog.record(
+                ActivityLog.Kind.RECLAIMED,
+                count = rows.size,
+                bytes = rows.sumOf { it.sizeBytes },
+                filterState = ItemState.FREED.name
+            )
             loadFreeUp()
             // Snapshot right away rather than waiting for the daily pass: the
             // originals this just recorded as freed no longer exist, so this
@@ -530,12 +841,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     legacyQueue.removeFirst()
                 } catch (se: SecurityException) {
-                    val sender = if (Build.VERSION.SDK_INT >= 29) {
-                        (se as? android.app.RecoverableSecurityException)
-                            ?.userAction?.actionIntent?.intentSender
-                    } else {
-                        null
-                    }
+                    val sender = (se as? android.app.RecoverableSecurityException)
+                        ?.userAction?.actionIntent?.intentSender
                     if (sender != null) {
                         legacyDeleteIntent.value = sender
                         return@launch
@@ -656,31 +963,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissTransferMessage() {
         transferMessage.value = null
-    }
-
-    // ---- About --------------------------------------------------------------
-
-    val apkSha = MutableStateFlow("")
-
-    fun computeApkSha() {
-        if (apkSha.value.isNotEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            apkSha.value = try {
-                val path = ctx.applicationInfo.sourceDir
-                val md = MessageDigest.getInstance("SHA-256")
-                FileInputStream(path).use { input ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        md.update(buf, 0, n)
-                    }
-                }
-                md.digest().joinToString("") { b -> "%02x".format(b) }
-            } catch (e: Exception) {
-                "-"
-            }
-        }
     }
 
     // ---- tiny helpers -------------------------------------------------------

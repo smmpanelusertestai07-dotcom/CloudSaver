@@ -46,7 +46,7 @@ object StateMachine {
         appDeleted ->
             CopyGoneDecision(ItemState.GONE, GoneReason.APP_DELETED, evidence, backToNew = false)
         confirmFlowActive ->
-            CopyGoneDecision(ItemState.GONE, GoneReason.CONFIRMED, Evidence.CONFIRMED, backToNew = false)
+            CopyGoneDecision(ItemState.GONE, GoneReason.CONFIRMED, Evidence.CONFIRMED_EXACT, backToNew = false)
         evidence == Evidence.NONE ->
             CopyGoneDecision(ItemState.NEW, GoneReason.USER_DELETED, Evidence.NONE, backToNew = true)
         else ->

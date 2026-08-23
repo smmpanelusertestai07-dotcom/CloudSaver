@@ -5,8 +5,35 @@ enum class ItemState { NEW, STAGED, RELEASED, GONE, DONE, SKIP, FREED, UNKNOWN }
 
 enum class GoneReason { CONFIRMED, APP_DELETED, USER_DELETED }
 
-/** Upload evidence for a released copy. Ordinal order == strength order. */
-enum class Evidence { NONE, AGED, VERIFIED, CONFIRMED }
+/**
+ * How well the app knows a released copy reached the cloud. Ordinal order is
+ * strength order, so `maxOf` picks the better of two findings.
+ *
+ *  - AGED            time alone; no network evidence at all
+ *  - VERIFIED        a whole batch's bytes were transmitted
+ *  - CONFIRMED_PACED the copy went out alone and the transmitted bytes match
+ *                    its size before anything else was sent
+ *  - CONFIRMED_EXACT the copy vanished from the upload folder, the app did
+ *                    not remove it, and its bytes were transmitted
+ */
+enum class Evidence {
+    NONE, AGED, VERIFIED, CONFIRMED_PACED, CONFIRMED_EXACT;
+
+    /** True for the two per-file grades that may offer an original for reclaim. */
+    val isPerFile: Boolean get() = this == CONFIRMED_PACED || this == CONFIRMED_EXACT
+
+    companion object {
+        /**
+         * Rows written before the two grades existed say "CONFIRMED"; those
+         * came from the disappearance check, which is now CONFIRMED_EXACT.
+         */
+        fun parse(name: String?): Evidence = when (name) {
+            null, "" -> NONE
+            "CONFIRMED" -> CONFIRMED_EXACT
+            else -> entries.firstOrNull { it.name == name } ?: NONE
+        }
+    }
+}
 
 enum class BackupScope { ALL, PHOTOS, VIDEOS }
 

@@ -17,7 +17,10 @@
 
     <!-- home -->
     <string name="status_paused">Paused. Turn it back on in Settings.</string>
-    <string name="status_working">%1$d files in the queue</string>
+    <plurals name="status_working">
+        <item quantity="one">%1$d file in the queue</item>
+        <item quantity="other">%1$d files in the queue</item>
+    </plurals>
     <string name="status_idle">Everything is backed up</string>
     <string name="status_fresh">Getting ready to scan your gallery</string>
     <string name="chip_paused">Paused</string>
@@ -30,22 +33,41 @@
     <string name="count_confirmed">Backed up</string>
     <string name="count_skipped">Skipped</string>
     <string name="hero_saved_label">Space saved</string>
-    <string name="hero_saved_sub">across %1$d optimised files</string>
+    <plurals name="hero_saved_sub">
+        <item quantity="one">across %1$d optimised file</item>
+        <item quantity="other">across %1$d optimised files</item>
+    </plurals>
+    <string name="hero_saved_split">Photos %1$s · Videos %2$s</string>
+    <string name="budget_title">Today\'s upload allowance</string>
+    <string name="budget_used">%1$s of %2$s</string>
+    <string name="budget_paced">Files are added a few at a time, so each one can be confirmed on its own.</string>
+    <string name="budget_spent">Today\'s allowance is used. More will be added after %1$s.</string>
+    <string name="confirm_unavailable">This cloud app does not remove its own uploads, so there is nothing for CloudSaver to watch. Uploads are confirmed automatically from the data your cloud app sends.</string>
+    <plurals name="asis_card_title">
+        <item quantity="one">%1$d file kept unchanged</item>
+        <item quantity="other">%1$d files kept unchanged</item>
+    </plurals>
+    <string name="asis_card_body">Compressing these would have damaged something, so the original was copied instead.</string>
+    <string name="asis_card_line">%1$d · %2$s</string>
     <string name="section_attention">Needs attention</string>
     <string name="section_progress">Backup progress</string>
-    <string name="savings_title">Savings</string>
-    <string name="savings_line">%1$s saved, %2$d items compressed</string>
     <string name="last_run">Last checked %1$s</string>
     <string name="btn_run_now">Back up now</string>
     <string name="btn_confirm_uploads">Verify backup</string>
-    <string name="confirm_explainer">Verify backup opens your cloud app so you can run its own \&quot;Free up space\&quot;. Whatever it removes is proof those files are safely uploaded.</string>
+    <string name="confirm_explainer">Verify backup opens your cloud app so you can run its own \&quot;Free up space\&quot;. Whatever it removes from the CloudSaver folder is proof those files are safely uploaded.</string>
     <string name="confirm_result_title">Backup verified</string>
-    <string name="confirm_result_line">%1$d files confirmed as backed up</string>
+    <plurals name="confirm_result_line">
+        <item quantity="one">%1$d file confirmed as backed up</item>
+        <item quantity="other">%1$d files confirmed as backed up</item>
+    </plurals>
     <string name="placeholder_removed_title">Old placeholder removed</string>
     <string name="placeholder_removed_text">An earlier version kept a small placeholder image in your upload folder. It is gone now. If it still shows in your cloud, delete it there once \u2014 it will not come back.</string>
     <string name="dismiss">Dismiss</string>
     <string name="old_files_title">Leftover files found</string>
-    <string name="old_files_text">%1$d files in Pictures/CloudSaver are from an earlier install. Remove them?</string>
+    <plurals name="old_files_text">
+        <item quantity="one">%1$d file in Pictures/CloudSaver is from an earlier install. Remove it?</item>
+        <item quantity="other">%1$d files in Pictures/CloudSaver are from an earlier install. Remove them?</item>
+    </plurals>
     <string name="old_files_clean">Remove</string>
     <string name="old_files_keep">Keep</string>
 
@@ -68,7 +90,8 @@
     <string name="state_skip">Skipped</string>
     <string name="state_freed">Original removed</string>
     <string name="state_unknown">Unverified (restored)</string>
-    <string name="evidence_confirmed">Confirmed by cloud app</string>
+    <string name="evidence_confirmed_exact">Confirmed - your cloud collected it</string>
+    <string name="evidence_confirmed_paced">Confirmed - sent and accounted for</string>
     <string name="evidence_verified">Verified by upload size</string>
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
@@ -93,6 +116,52 @@
     <string name="asis_hdr">HDR video this phone cannot re-encode safely</string>
     <string name="asis_other">Kept as it is to be safe</string>
 
+    <string name="filter_all">All</string>
+    <string name="filter_in_progress">In progress</string>
+    <string name="sort_newest">Newest</string>
+    <string name="sort_saved">Biggest saving</string>
+    <string name="sort_largest">Largest file</string>
+    <string name="files_filter_empty">Nothing in this group yet.</string>
+    <string name="detail_saved">Space saved</string>
+    <string name="detail_saved_value">%1$s (%2$s smaller)</string>
+    <string name="asis_removed_early">Removed from the upload folder before your cloud collected it</string>
+
+    <!-- activity log -->
+    <string name="nav_activity">Activity</string>
+    <string name="activity_entry">See what CloudSaver has been doing</string>
+    <string name="activity_filter_all">All</string>
+    <string name="activity_filter_backups">Backups</string>
+    <string name="activity_filter_problems">Problems</string>
+    <string name="activity_filter_changes">Changes</string>
+    <string name="activity_export">Export</string>
+    <string name="activity_export_ok">Activity saved</string>
+    <string name="activity_export_failed">Could not save the activity file.</string>
+    <string name="activity_clear">Clear history</string>
+    <string name="activity_clear_title">Clear activity history?</string>
+    <string name="activity_clear_body">This only clears the list. Your files, settings and backup state are untouched.</string>
+    <string name="activity_empty_title">Nothing logged yet</string>
+    <string name="activity_empty_body">Every optimised file, upload and problem shows up here.</string>
+    <string name="activity_retention">Activity is kept for 30 days.</string>
+    <string name="activity_optimised">Optimised %1$s files, saving %2$s</string>
+    <string name="activity_released">Added %1$s files to the upload folder</string>
+    <string name="activity_backed_up">%1$s files confirmed backed up</string>
+    <string name="activity_reclaimed">Reclaimed %1$s originals, freeing %2$s</string>
+    <string name="activity_paused">CloudSaver paused itself</string>
+    <string name="activity_resumed">CloudSaver started again</string>
+    <string name="activity_cloud_problem">Your cloud app needs attention</string>
+    <string name="activity_skipped">A file was skipped</string>
+    <string name="activity_settings">Settings changed</string>
+    <string name="activity_recovered">State restored from a safety snapshot</string>
+    <string name="activity_removed_early">%1$s kept disappearing before upload</string>
+    <string name="activity_cloud_ok">Your cloud app is uploading again</string>
+
+    <!-- cloud health -->
+    <string name="cloud_problem_missing">Your cloud app is not installed any more. Nothing will be deleted until it is back.</string>
+    <string name="cloud_problem_updated">Your cloud app updated. Check that its backup is still on and still pointing at the CloudSaver folder.</string>
+    <string name="cloud_problem_silent">Your cloud app has not uploaded anything for three days. Open it and check it is signed in and allowed to run.</string>
+    <string name="cloud_problem_full">Your cloud may be full. Nothing will be deleted until uploads start again.</string>
+    <string name="warn_cloud_title">Your cloud app needs attention</string>
+
     <!-- storage -->
     <string name="storage_used_title">Storage used by CloudSaver</string>
     <string name="storage_stage">Optimised copies on device</string>
@@ -105,7 +174,7 @@
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
     <string name="storage_reclaim_title">Space you can reclaim</string>
-    <string name="storage_reclaim_caption">of originals are confirmed backed up and safe to remove</string>
+    <string name="storage_reclaim_caption">of originals whose copies your cloud has collected, and which are safe to remove</string>
     <string name="storage_reclaim_consent">Android asks you to confirm each deletion, so nothing is removed without you seeing it.</string>
     <string name="storage_freeup_open">Reclaim space</string>
     <string name="storage_temp_title">Temporary files</string>
@@ -115,13 +184,13 @@
     <!-- free-up -->
     <string name="freeup_title">Reclaim space</string>
     <string name="freeup_subtitle">Up to %1$s can be freed</string>
-    <string name="freeup_explainer">Only originals already confirmed as backed up are listed. Android asks you to confirm every deletion - CloudSaver never removes originals on its own.</string>
+    <string name="freeup_explainer">Only originals CloudSaver can prove reached your cloud are listed. Android asks you to confirm every deletion - CloudSaver never removes an original on its own.</string>
     <string name="freeup_select_all">Select all</string>
     <string name="freeup_delete">Delete originals (%1$s)</string>
     <string name="freeup_empty_title">Nothing to reclaim yet</string>
     <string name="freeup_select_none">Clear selection</string>
     <string name="freeup_selected_count">%1$d of %2$d selected</string>
-    <string name="freeup_empty">Originals appear here once their copies are confirmed backed up. Run Verify backup to check.</string>
+    <string name="freeup_empty">Originals appear here once CloudSaver can prove their copies reached your cloud. That happens on its own as your cloud app uploads.</string>
 
     <!-- lock -->
     <string name="lock_title">CloudSaver is locked</string>
@@ -144,7 +213,10 @@
     <string name="opt_folders">Albums</string>
     <string name="opt_folders_hint">Choose which gallery albums are included.</string>
     <string name="folders_all">All albums</string>
-    <string name="folders_excluded">%1$d albums excluded</string>
+    <plurals name="folders_excluded">
+        <item quantity="one">%1$d album excluded</item>
+        <item quantity="other">%1$d albums excluded</item>
+    </plurals>
     <string name="folders_auto_excluded">Excluded automatically</string>
     <string name="folders_reason_ours">CloudSaver\&apos;s own upload folder</string>
     <string name="folders_reason_hidden">Hidden folder</string>
@@ -205,7 +277,6 @@
     <string name="opt_codec_hint">How video is compressed inside the MP4 file.</string>
     <string name="codec_h264">H.264</string>
     <string name="codec_hevc">HEVC</string>
-    <string name="codec_hevc_warning">Note: older devices and TVs may not play HEVC.</string>
     <string name="opt_theme">Theme</string>
     <string name="opt_theme_hint">Light, dark, or follow system. CloudSaver\&apos;s own colours are used unless you switch to wallpaper colours.</string>
     <string name="theme_system">System</string>
@@ -218,6 +289,11 @@
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and uploading until you turn it back on.</string>
+    <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
+    <string name="recommend_space">Recommended for this phone: keep %1$s free, let CloudSaver use up to %2$s.</string>
+    <string name="recommend_apply">Use recommended</string>
+    <string name="opt_reclaim_verified">Also offer files verified by upload size</string>
+    <string name="opt_reclaim_verified_hint">Off by default. Adds originals whose copies were verified by the amount your cloud app uploaded, once they are 30 days old. Android still asks you to confirm every deletion.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
     <string name="opt_transfer_hint">Save your settings and file history to a file, protected with a password.</string>
     <string name="backup_password_title">Protect this backup</string>
@@ -260,7 +336,10 @@
     <string name="calc_needs">Needs %1$s GB more</string>
     <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
     <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
-    <string name="calc_badge_measured">Based on %1$d of your files</string>
+    <plurals name="calc_badge_measured">
+        <item quantity="one">Based on %1$d of your files</item>
+        <item quantity="other">Based on %1$d of your files</item>
+    </plurals>
     <string name="calc_estimate_note">All numbers are estimates.</string>
     <string name="calc_quality_storage" formatted="false">Quality on this preset: video ~90-95%, photo ~97%.</string>
     <string name="calc_quality_balanced" formatted="false">Quality on this preset: video ~95%, photo ~98%.</string>
@@ -324,6 +403,12 @@
     <string name="logs_clear">Clear log</string>
     <string name="logs_empty">The log is empty.</string>
     <string name="about_version_line">Version %1$s</string>
+    <string name="about_version">Version</string>
+    <string name="about_build">Build</string>
+    <string name="about_package">Package</string>
+    <string name="about_network">Network access</string>
+    <string name="about_network_value">None - the permission is not in the app</string>
+    <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
     <string name="privacy_text" formatted="false">CloudSaver is 100% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders. Automatic safety snapshots are hidden files, so nothing shows up in your gallery or Files app unless you tap Export yourself. Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
@@ -349,23 +434,23 @@
     <string name="faq_q1">What does CloudSaver do?</string>
     <string name="faq_a1">It makes compressed copies of your gallery in Pictures/CloudSaver. Your cloud app backs up only that folder. Originals stay exactly as they are.</string>
     <string name="faq_q2">Are originals ever deleted?</string>
-    <string name="faq_a2">Never automatically. Only via the manual Free-up tool - you select, and Android\'s own dialog confirms.</string>
+    <string name="faq_a2">Never automatically. Only through Reclaim space, where you pick the files yourself and Android\'s own dialog confirms every deletion. An original is only ever offered once CloudSaver can point at proof its copy reached your cloud.</string>
     <string name="faq_q3">Will dates change?</string>
     <string name="faq_a3">No. Every copy gets the original capture date (EXIF + file date), so the cloud timeline stays correct.</string>
     <string name="faq_q4">How much quality is lost?</string>
     <string name="faq_a4" formatted="false">On the Storage saver preset videos keep ~90-95% visual quality and photo loss is invisible. Details on the Quality page.</string>
     <string name="faq_q5">What is the daily cap?</string>
-    <string name="faq_a5">Only that much data enters the cloud folder per day (default 250 MB). It doubles as the upload network limit.</string>
+    <string name="faq_a5">The most CloudSaver will add to the upload folder in a day - 250 MB by default. Because your cloud app only uploads that folder, it is also your upload data limit. The day\'s allowance is spread over the day rather than added at once, and an unused day carries one day forward.</string>
     <string name="faq_q6">Someone deleted a file from the CloudSaver folder?</string>
-    <string name="faq_a6">If there was no upload proof, CloudSaver makes the copy again. The original is always safe.</string>
+    <string name="faq_a6">If there was no proof it had been uploaded, CloudSaver makes the copy again - at most twice. After that it stops and marks the file, because something is removing copies faster than your cloud can take them. The original is safe either way.</string>
     <string name="faq_q7">Play Protect shows a warning?</string>
     <string name="faq_a7">Normal for sideloaded APKs. Choose "More details" → "Install anyway". The app is offline and holds no network permission.</string>
     <string name="faq_q8">What happens on uninstall/reinstall?</string>
     <string name="faq_a8">CloudSaver keeps hidden safety snapshots (in Pictures/CloudSaver/.cloudsaver and Documents/.cloudsaver) alongside Android Auto Backup, so clearing data or reinstalling restores your state by itself. Each snapshot carries a checksum; an edited or damaged one is ignored rather than trusted. Items that come back without proof of upload become UNKNOWN - those can never delete originals. Very rarely a phone refuses every hidden location; then you will see one visible Documents/CloudSaver/backup.json, which is safe to leave alone.</string>
     <string name="faq_q9">Cloud storage is full?</string>
-    <string name="faq_a9">Uploads stop, and CloudSaver also stops deleting copies (safety pause). Make room in the cloud or upgrade the plan.</string>
+    <string name="faq_a9">CloudSaver notices that copies are piling up while nothing is being uploaded, tells you, and stops deleting anything until uploads start again. Make room in the cloud or upgrade the plan; nothing is lost in the meantime.</string>
     <string name="faq_q10">How does upload confirmation work?</string>
-    <string name="faq_a10">The cloud app\'s own "Free up space" deletes only uploaded files. Copies that disappear after "Confirm uploads" are the exact proof. Usage access adds data-count verification.</string>
+    <string name="faq_a10">Four ways, strongest first. Confirmed - your cloud collected it: the copy disappeared from the upload folder while your cloud app was sending its bytes, which only happens when that app has taken it. Confirmed - sent and accounted for: the copy went out on its own and the bytes your cloud app sent match its size. Verified by upload size: enough bytes went out to cover a whole day\'s copies. Assumed after 10 days: no measurement was possible, only time has passed. Only the first two can ever offer an original for deletion.</string>
     <string name="faq_q11">Does the app use the internet?</string>
     <string name="faq_a11">No. The INTERNET permission is removed from the manifest itself. Uploading is always done by your cloud app.</string>
     <string name="faq_q12">How much battery does it use?</string>
@@ -373,15 +458,23 @@
     <string name="faq_q13">Is the SD card supported?</string>
     <string name="faq_a13">Yes. Everything the gallery shows (all volumes) is scanned, and you can keep the CloudSaver folder on the SD card.</string>
     <string name="faq_q14">Why is the output folder never empty?</string>
-    <string name="faq_a14">The anchor rule: the newest file of each output folder is never deleted, so the cloud app never forgets the folder. No dummy files.</string>
+    <string name="faq_a14">The newest file in each folder is never deleted, so your cloud app never loses track of a folder that has gone empty. CloudSaver never creates dummy or placeholder files to do this - it simply keeps one real copy.</string>
     <string name="faq_q15">What about HEIC/RAW/GIF?</string>
     <string name="faq_a15">HEIC is compressed (to JPEG). RAW, GIF, SVG and similar are copied as-is - nothing is ever dropped.</string>
     <string name="faq_q16">Which cloud apps work?</string>
     <string name="faq_a16">CloudSaver is built for end-to-end encrypted clouds that have no compression of their own; clouds like Google Photos and OneDrive already compress for you. Best fit (E2EE): Ente (recommended), MEGA, Filen, Proton Drive. Also works: Nextcloud, Immich, OneDrive, or any app that can back up one chosen folder. Google Photos and Dropbox cannot work - they cannot back up just one custom folder.</string>
 
+    <string name="faq_q17">Why does it add only a few files at a time?</string>
+    <string name="faq_a17">So each one can be checked on its own. If a day\'s files went out together, the amount your cloud app uploaded could not say which of them arrived - and CloudSaver would never be able to tell you a particular photo is safe. A few at a time turns a number into proof.</string>
+    <string name="faq_q18">Will the same photo be uploaded twice?</string>
+    <string name="faq_a18">No. Every copy that reaches your cloud is recorded permanently, and that record travels in the safety snapshot. So when your cloud app removes a file it has already collected - which is what a "free up space" feature does - CloudSaver knows it succeeded instead of sending it again.</string>
+
     <!-- notifications -->
     <string name="channel_working">Working</string>
-    <string name="channel_warnings">Warnings</string>
+    <string name="channel_working_desc">A quiet, ongoing note while files are being optimised.</string>
+    <string name="channel_alerts">Alerts</string>
+    <string name="channel_alerts_desc">Rare - only when something needs you.</string>
+    <string name="notif_mute_7_days">Mute for 7 days</string>
     <string name="notif_working_title">CloudSaver is working</string>
     <string name="notif_working_text">Compressing media…</string>
     <string name="warn_aged_title">Deleted without solid proof</string>

@@ -2,6 +2,7 @@ package app.cloudsaver
 
 import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.work.Scheduler
@@ -27,6 +28,15 @@ class CloudSaverApp : Application() {
                     if (result.removedPlaceholders > 0) {
                         OptionsRepo.get(this@CloudSaverApp)
                             .setBool(OptionsRepo.K.PLACEHOLDER_REMOVED, true)
+                    }
+                    // Rebuilding state from a snapshot is the least visible
+                    // thing the app ever does and the one people most need to
+                    // know happened.
+                    if (result.restoredItems > 0) {
+                        ActivityLog(this@CloudSaverApp).record(
+                            ActivityLog.Kind.RECOVERED,
+                            count = result.restoredItems
+                        )
                     }
                 }
             val options = OptionsRepo.get(this@CloudSaverApp).current()

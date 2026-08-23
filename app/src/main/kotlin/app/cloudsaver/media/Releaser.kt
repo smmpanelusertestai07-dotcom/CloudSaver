@@ -8,6 +8,7 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.ReleasePlanner
 import app.cloudsaver.data.CloudApps
+import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
@@ -19,17 +20,19 @@ import java.io.FileInputStream
 import java.io.IOException
 
 /**
- * Daily release: moves staged copies into the public output folder(s)
- * Pictures/CloudSaver via MediaStore (IS_PENDING flow), sets DATE_TAKEN and
- * lastModified to the original capture date, then removes the stage file.
- * The daily release cap IS the cloud app's network cap.
+ * Moves staged copies into the public output folder(s) Pictures/CloudSaver via
+ * MediaStore (IS_PENDING flow), sets DATE_TAKEN and lastModified to the
+ * original capture date, then removes the stage file. The release cap IS the
+ * cloud app's network cap: nothing can be uploaded that was never released.
+ *
+ * Releases are paced rather than dumped once a day - see [Pacing] for why a
+ * copy that travels alone is the only kind the app can prove anything about.
  */
 class Releaser(private val context: Context, private val db: AppDb) {
 
-    suspend fun hasReleasedToday(now: Long): Boolean {
-        val last = db.batches().lastReleaseAt() ?: return false
-        return Formats.dayKey(last) == Formats.dayKey(now)
-    }
+    /** Bytes already released today, against which the daily cap is measured. */
+    suspend fun bytesReleasedToday(now: Long): Long =
+        db.batches().bytesSince(Formats.startOfDay(now))
 
     /**
      * Releases staged files (newest first) up to capBytes. When [onlyFolder] is
@@ -46,6 +49,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val staged = db.items().staged()
             .filter { it.stagePath != null && File(it.stagePath!!).exists() }
             .filter { onlyFolder == null || it.outputFolder == onlyFolder.name }
+            .filter { !alreadyDelivered(it) }
         if (staged.isEmpty()) return 0
 
         val capBytes = capBytesOverride ?: options.dailyCapBytes
@@ -82,15 +86,54 @@ class Releaser(private val context: Context, private val db: AppDb) {
             }
         }
         // Record real batch sizes. A batch where every file failed (a full
-        // volume, say) must not survive: hasReleasedToday() reads MAX(releasedAt)
-        // over all batches, so an empty one would convince the app it had
-        // already released today, and verifyBatches skips zero-byte batches so
-        // it would sit in unverified() forever.
+        // volume, say) must not survive: it would count against the day's
+        // allowance while holding nothing, and verifyBatches skips zero-byte
+        // batches, so it would sit in unverified() forever.
         for ((folder, id) in batchIds) {
             val bytes = batchBytes[folder] ?: 0L
             if (bytes > 0) db.batches().setTotalBytes(id, bytes) else db.batches().deleteById(id)
         }
         return released
+    }
+
+    /**
+     * True when this exact copy has already reached the cloud.
+     *
+     * Without this check a cloud that removes its own uploads looks identical
+     * to a user deleting a file, and the app would send the same photo again
+     * every time the folder was tidied - filling the account it was meant to
+     * save. The ledger is the memory that stops that loop, and it survives
+     * both the item row and a reinstall.
+     */
+    private suspend fun alreadyDelivered(row: ItemRow): Boolean {
+        val sha = row.outputSha256 ?: return false
+        val seen = db.ledger().bySha(sha) ?: return false
+        AppLog.log(context, "release", "skipping ${row.displayName}: already delivered")
+        db.items().update(
+            row.copy(
+                state = ItemState.DONE.name,
+                evidence = seen.evidence,
+                stagePath = null,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+        runCatching { File(row.stagePath!!).delete() }
+        return true
+    }
+
+    /** Records a copy as delivered, once and for good. */
+    suspend fun recordDelivered(row: ItemRow, evidence: String, now: Long) {
+        val sha = row.outputSha256 ?: return
+        db.ledger().insert(
+            LedgerRow(
+                outputSha256 = sha,
+                fingerprint = row.fingerprint,
+                displayName = row.displayName,
+                outputBytes = row.outputBytes ?: 0L,
+                evidence = evidence,
+                confirmedAt = now
+            )
+        )
     }
 
     private fun cloudPackageFor(options: Options, folder: OutFolder): String? {

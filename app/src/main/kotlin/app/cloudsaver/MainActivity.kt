@@ -12,6 +12,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import app.cloudsaver.ui.App
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.util.Notifications
 
 class MainActivity : AppCompatActivity() {
 
@@ -26,9 +27,21 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        vm.consumeDeepLink(intent?.getStringExtra(Notifications.EXTRA_ROUTE))
         setContent {
             App(vm)
         }
+    }
+
+    /**
+     * An alert tapped while the app is already open reuses this instance, so
+     * the route arrives here rather than in onCreate. Without this the second
+     * tap of the day would just bring up whatever screen was last shown.
+     */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        vm.consumeDeepLink(intent.getStringExtra(Notifications.EXTRA_ROUTE))
     }
 
     override fun onStart() {

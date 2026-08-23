@@ -75,7 +75,7 @@ class SnapshotIntegrityTest {
         val root = JSONObject(SnapshotCodec.encode(snapshot()))
         // Someone raises an item's evidence by hand to unlock deletion.
         root.getJSONObject("payload").getJSONArray("items").getJSONObject(0)
-            .put("ev", Evidence.CONFIRMED.name)
+            .put("ev", Evidence.CONFIRMED_EXACT.name)
         SnapshotCodec.decode(root.toString())
     }
 

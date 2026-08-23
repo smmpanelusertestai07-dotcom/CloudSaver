@@ -112,6 +112,88 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         return out
     }
 
+    /** Gallery totals for the calculator: what is there, and what is new. */
+    data class Totals(
+        var photoBytes: Long = 0,
+        var videoBytes: Long = 0,
+        var videoMinutes: Double = 0.0,
+        var monthlyPhotoBytes: Long = 0,
+        var monthlyVideoBytes: Long = 0,
+        var photoCount: Int = 0,
+        var videoCount: Int = 0
+    )
+
+    /**
+     * Sums the gallery without building a list of it.
+     *
+     * The calculator only ever needed five numbers, but the old path
+     * materialised every photo in the library to get them - tens of thousands
+     * of objects on a full phone, for a screen the user opens for ten seconds.
+     * This walks the same cursor and adds up as it goes.
+     *
+     * [excludedBuckets] is the user's album exclusion set, applied here so the
+     * estimate matches what will actually be backed up.
+     */
+    fun totals(excludedBuckets: Set<String>, nowMs: Long = System.currentTimeMillis()): Totals {
+        val totals = Totals()
+        val skipBuckets = excludedBuckets + excludedBucketReasons().keys
+        val monthAgoSeconds = nowMs / 1000 - 30L * 86_400
+        val volumes = try {
+            MediaStore.getExternalVolumeNames(context)
+        } catch (e: Exception) {
+            setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+        val projection = arrayOf(
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_ADDED,
+            MediaStore.MediaColumns.DURATION,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH
+        )
+        for (volume in volumes) {
+            for (isVideo in listOf(false, true)) {
+                val collection = if (isVideo) {
+                    MediaStore.Video.Media.getContentUri(volume)
+                } else {
+                    MediaStore.Images.Media.getContentUri(volume)
+                }
+                try {
+                    context.contentResolver.query(collection, projection, null, null, null)
+                        ?.use { c ->
+                            val iSize = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                            val iAdded = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                            val iDur = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DURATION)
+                            val iBucket =
+                                c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+                            val iRel =
+                                c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                            while (c.moveToNext()) {
+                                if (Defaults.isOutputPath(c.getString(iRel))) continue
+                                val bucket = c.getString(iBucket)
+                                if (bucket != null && bucket in skipBuckets) continue
+                                val size = c.getLong(iSize)
+                                if (size <= 0) continue
+                                val fresh = c.getLong(iAdded) >= monthAgoSeconds
+                                if (isVideo) {
+                                    totals.videoBytes += size
+                                    totals.videoCount++
+                                    totals.videoMinutes += c.getLong(iDur) / 60_000.0
+                                    if (fresh) totals.monthlyVideoBytes += size
+                                } else {
+                                    totals.photoBytes += size
+                                    totals.photoCount++
+                                    if (fresh) totals.monthlyPhotoBytes += size
+                                }
+                            }
+                        }
+                } catch (e: Exception) {
+                    AppLog.log(context, "calc", "totals $volume failed: ${e.message}")
+                }
+            }
+        }
+        return totals
+    }
+
     private fun queryCollection(
         collection: android.net.Uri,
         isVideo: Boolean,

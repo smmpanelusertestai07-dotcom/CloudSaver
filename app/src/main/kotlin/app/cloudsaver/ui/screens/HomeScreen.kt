@@ -8,8 +8,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -35,8 +38,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,6 +55,7 @@ import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.HeroCard
+import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.StatusChip
@@ -66,11 +72,19 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val foreignUris by vm.foreignUris.collectAsStateWithLifecycle()
     val tampered by vm.tampered.collectAsStateWithLifecycle()
+    val savings by vm.savings.collectAsStateWithLifecycle()
+    val budget by vm.budget.collectAsStateWithLifecycle()
+    val unread by vm.activityUnread.collectAsStateWithLifecycle()
+    val asIs by vm.asIs.collectAsStateWithLifecycle()
+    val canConfirm by vm.cloudHasFreeUp.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
         vm.refreshHealth()
         vm.detectForeignFiles()
+        vm.refreshBudget()
+        vm.refreshAsIs()
+        vm.refreshCloudCaps()
     }
 
     val cleanupLauncher = rememberLauncherForActivityResult(
@@ -178,10 +192,25 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 2.dp)
             )
             Text(
-                stringResource(R.string.hero_saved_sub, processed),
+                pluralStringResource(R.plurals.hero_saved_sub, processed, processed),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.9f)
             )
+            // A single 4K clip can outweigh a thousand photos, so the two
+            // numbers are worth keeping apart: this is the line that tells
+            // someone whether turning videos on was worth it.
+            if (savings.totalBytes > 0) {
+                Text(
+                    stringResource(
+                        R.string.hero_saved_split,
+                        Formats.bytes(savings.photoBytes),
+                        Formats.bytes(savings.videoBytes)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.8f),
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
             Spacer(Modifier.height(14.dp))
             Text(
                 statusLine(options, counters.waiting),
@@ -269,17 +298,69 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
+        // Today's upload allowance, and when it refills. Without this, an app
+        // that is deliberately holding files back looks like an app that has
+        // quietly stopped.
+        if (!budget.unlimited && budget.totalBytes > 0) {
+            Spacer(Modifier.height(14.dp))
+            AppCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.budget_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        stringResource(
+                            R.string.budget_used,
+                            Formats.bytes(budget.usedBytes),
+                            Formats.bytes(budget.totalBytes)
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                MeterBar(
+                    fraction = budget.fraction,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Text(
+                    if (budget.spent) {
+                        stringResource(
+                            R.string.budget_spent, Formats.time(budget.resetsAt)
+                        )
+                    } else {
+                        stringResource(R.string.budget_paced)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(onClick = { vm.runNow() }, modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.btn_run_now))
             }
-            OutlinedButton(onClick = { vm.startConfirmFlow() }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.btn_confirm_uploads))
+            // The button only does anything on a cloud that removes its own
+            // uploads: elsewhere there is nothing for it to observe, and an
+            // action that always reports "0 confirmed" teaches people the app
+            // is broken.
+            if (canConfirm) {
+                OutlinedButton(
+                    onClick = { vm.startConfirmFlow() },
+                    modifier = Modifier.weight(1f)
+                ) { Text(stringResource(R.string.btn_confirm_uploads)) }
             }
         }
         Text(
-            stringResource(R.string.confirm_explainer),
+            if (canConfirm) {
+                stringResource(R.string.confirm_explainer)
+            } else {
+                stringResource(R.string.confirm_unavailable)
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp)
@@ -296,11 +377,84 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    stringResource(R.string.confirm_result_line, confirmResult ?: 0),
+                    pluralStringResource(
+                        R.plurals.confirm_result_line,
+                        confirmResult ?: 0,
+                        confirmResult ?: 0
+                    ),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 TextButton(onClick = { vm.dismissConfirmResult() }) {
                     Text(stringResource(R.string.ok))
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        AppCard(onClick = { nav.navigate(Routes.ACTIVITY) }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(R.string.nav_activity),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        // A dot rather than a count: the number of log lines is
+                        // not news, the fact that something happened is.
+                        if (unread > 0) {
+                            Box(
+                                Modifier
+                                    .padding(start = 8.dp)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.activity_entry),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Files copied byte-for-byte. Left unexplained these look like
+        // failures; named, they are the app refusing to damage something.
+        AnimatedVisibility(
+            visible = asIs.count > 0,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AppCard(
+                modifier = Modifier.padding(top = 12.dp),
+                onClick = { nav.navigate(Routes.FILES) }
+            ) {
+                Text(
+                    pluralStringResource(R.plurals.asis_card_title, asIs.count, asIs.count),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    stringResource(R.string.asis_card_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                for ((reason, count) in asIs.reasons.take(3)) {
+                    Text(
+                        stringResource(
+                            R.string.asis_card_line, count, asIsReasonLabel(reason)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
             }
         }
@@ -338,7 +492,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    stringResource(R.string.old_files_text, foreignUris.size),
+                    pluralStringResource(
+                        R.plurals.old_files_text, foreignUris.size, foreignUris.size
+                    ),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Row {
@@ -379,7 +535,7 @@ private fun statusLine(options: Options, waiting: Int): String {
             RunDecider.Wait.BUDGET_USED -> stringResource(R.string.wait_budget)
             RunDecider.Wait.PHOTO_CAP -> stringResource(R.string.wait_photo_cap)
         }
-        return reason ?: stringResource(R.string.status_working, waiting)
+        return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }
     return if (options.lastRunAt > 0) {
         stringResource(R.string.status_idle)

@@ -59,6 +59,16 @@ data class ItemRow(
     val originalMissing: Boolean = false,
     val appDeletedCopy: Boolean = false,
     val fromImport: Boolean = false,
+    /**
+     * Bytes the cloud app transmitted while this copy was waiting, recorded
+     * when the copy was graded. Kept for the details screen, so a claim about
+     * a file can always be traced back to the number behind it.
+     */
+    val txObserved: Long = 0,
+    /** Which encoder produced the copy, for the details screen. */
+    val encoderName: String? = null,
+    /** Times a vanished copy was re-sent; two is the limit. */
+    val resendCount: Int = 0,
     val updatedAt: Long = 0
 )
 
@@ -71,6 +81,64 @@ data class DayBudgetRow(
     @PrimaryKey val day: String,
     val videoEncodeMs: Long = 0,
     val photosOnBattery: Int = 0
+)
+
+/**
+ * Permanent record of copies that reached the cloud, keyed by the copy's
+ * SHA-256 and the original's fingerprint.
+ *
+ * This is what stops the queue growing forever. Once a copy is evidenced, the
+ * item is finished for good: if the cloud later removes the file from the
+ * upload folder - which is exactly what a cloud with a free-up feature does -
+ * the app must not read that as "lost" and send it again. The ledger outlives
+ * the item row and travels in every snapshot, so a reinstall cannot undo it.
+ */
+@Entity(tableName = "ledger", indices = [Index(value = ["outputSha256"], unique = true), Index("fingerprint")])
+data class LedgerRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val outputSha256: String,
+    val fingerprint: String,
+    val displayName: String,
+    val outputBytes: Long,
+    val evidence: String,
+    val confirmedAt: Long
+)
+
+/**
+ * One line in the Activity log: what the app did, in the user's words.
+ *
+ * Everything that would otherwise only exist as a notification lands here
+ * too, so nothing is lost to a swipe.
+ */
+@Entity(tableName = "activity", indices = [Index("atMs"), Index("kind")])
+data class ActivityRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val atMs: Long,
+    val kind: String,
+    /** Optional detail rendered after the headline, already formatted. */
+    val detail: String? = null,
+    val count: Int = 0,
+    val bytes: Long = 0,
+    /** Filters Files when the row is tapped, when it makes sense. */
+    val filterState: String? = null
+)
+
+/**
+ * What a given cloud app can do, learned rather than asked.
+ *
+ * Defaults come from the registry; observing the app actually free up space
+ * promotes it. The user is never asked a question about capabilities.
+ */
+@Entity(tableName = "cloud_capability")
+data class CloudCapabilityRow(
+    @PrimaryKey val cloudId: String,
+    val hasFreeUpSpace: Boolean,
+    val hasHashDedupe: Boolean,
+    val packageName: String? = null,
+    val lastSeenVersionCode: Long = 0,
+    /** Set once the app is seen removing its own uploaded copies. */
+    val learnedFreeUp: Boolean = false,
+    val updatedAt: Long = 0
 )
 
 @Entity(tableName = "batches")
@@ -119,32 +187,73 @@ interface ItemDao {
     )
     suspend fun newestNew(limit: Int): List<ItemRow>
 
-    /**
-     * The next items this run may actually process, newest first.
-     *
-     * Eligibility is decided in SQL rather than after the fact: filtering a
-     * fetched page in Kotlin lets ineligible rows (wrong media kind, excluded
-     * folder) occupy the whole window forever, and since they never leave the
-     * NEW state the queue stalls permanently.
-     */
-    @Query(
-        "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
-            "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1)) " +
-            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
-            "ORDER BY captureAt DESC LIMIT :limit"
-    )
-    suspend fun nextEligible(
-        photos: Boolean,
-        videos: Boolean,
-        excludedBuckets: Collection<String>,
-        limit: Int
-    ): List<ItemRow>
 
     @Query("SELECT * FROM items WHERE state = 'STAGED'")
     suspend fun staged(): List<ItemRow>
 
     @Query("SELECT * FROM items WHERE state = 'RELEASED'")
     suspend fun released(): List<ItemRow>
+
+    /** Released copies still waiting on evidence, oldest first. */
+    @Query(
+        "SELECT * FROM items WHERE state = 'RELEASED' AND evidence = 'NONE' " +
+            "ORDER BY releasedAt ASC"
+    )
+    suspend fun awaitingEvidence(): List<ItemRow>
+
+    /**
+     * Fresh items newest-first, then the backlog largest-first.
+     *
+     * Recent photos are what the user is thinking about, so they go first;
+     * after that, the biggest files free the most space per minute of work,
+     * which beats grinding through a thousand old screenshots.
+     */
+    @Query(
+        "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1)) " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "ORDER BY (captureAt >= :freshAfter) DESC, " +
+            "CASE WHEN captureAt >= :freshAfter THEN captureAt ELSE 0 END DESC, " +
+            "CASE WHEN captureAt < :freshAfter THEN sizeBytes ELSE 0 END DESC " +
+            "LIMIT :limit"
+    )
+    suspend fun nextByPriority(
+        photos: Boolean,
+        videos: Boolean,
+        excludedBuckets: Collection<String>,
+        freshAfter: Long,
+        limit: Int
+    ): List<ItemRow>
+
+    @Query(
+        "SELECT COALESCE(SUM(sizeBytes - outputBytes), 0) FROM items " +
+            "WHERE outputBytes IS NOT NULL AND outputBytes < sizeBytes AND isVideo = :video"
+    )
+    fun savedBytesFlow(video: Boolean): Flow<Long>
+
+    @Query("SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL AND isVideo = :video")
+    fun processedCountFlow(video: Boolean): Flow<Int>
+
+    /** Copies taken byte-for-byte; lastError carries the reason for those. */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL " +
+            "AND lastError IS NOT NULL AND isVideo = :video"
+    )
+    suspend fun asIsCount(video: Boolean): Int
+
+    @Query(
+        "SELECT lastError AS state, COUNT(*) AS cnt FROM items " +
+            "WHERE outputBytes IS NOT NULL AND lastError IS NOT NULL AND isVideo = :video " +
+            "GROUP BY lastError ORDER BY cnt DESC LIMIT 5"
+    )
+    suspend fun asIsReasons(video: Boolean): List<StateCount>
+
+    /** Bytes saved by work done since [fromMs] - what one run achieved. */
+    @Query(
+        "SELECT COALESCE(SUM(sizeBytes - outputBytes), 0) FROM items " +
+            "WHERE outputBytes IS NOT NULL AND outputBytes < sizeBytes AND updatedAt >= :fromMs"
+    )
+    suspend fun savedBytesSince(fromMs: Long): Long
 
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
@@ -155,7 +264,10 @@ interface ItemDao {
     @Query("SELECT state, COUNT(*) AS cnt FROM items GROUP BY state")
     fun stateCountsFlow(): Flow<List<StateCount>>
 
-    @Query("SELECT COUNT(*) FROM items WHERE evidence = 'CONFIRMED'")
+    @Query(
+        "SELECT COUNT(*) FROM items " +
+            "WHERE evidence IN ('CONFIRMED_EXACT', 'CONFIRMED_PACED', 'CONFIRMED')"
+    )
     fun confirmedCountFlow(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM items WHERE evidence = 'VERIFIED'")
@@ -176,11 +288,29 @@ interface ItemDao {
     )
     fun searchFlow(q: String, limit: Int): Flow<List<ItemRow>>
 
+    /**
+     * Originals whose copy the cloud itself collected. The copy vanished from
+     * the upload folder while the cloud app was transmitting its bytes, which
+     * is as direct as the evidence gets, so no waiting period applies.
+     *
+     * 'CONFIRMED' is the name older rows used for exactly this finding.
+     */
     @Query(
-        "SELECT * FROM items WHERE evidence = 'CONFIRMED' AND originalMissing = 0 " +
-            "AND state IN ('RELEASED', 'GONE', 'DONE')"
+        "SELECT * FROM items WHERE evidence IN ('CONFIRMED_EXACT', 'CONFIRMED') " +
+            "AND originalMissing = 0 AND state IN ('RELEASED', 'GONE', 'DONE')"
     )
     suspend fun freeableConfirmed(): List<ItemRow>
+
+    /**
+     * Originals whose copy went out alone and matched the bytes sent. That is
+     * an inference rather than an observation, so it has to settle first.
+     */
+    @Query(
+        "SELECT * FROM items WHERE evidence = 'CONFIRMED_PACED' AND originalMissing = 0 " +
+            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
+            "AND releasedAt IS NOT NULL AND releasedAt <= :maxReleasedAt"
+    )
+    suspend fun freeablePaced(maxReleasedAt: Long): List<ItemRow>
 
     @Query(
         "SELECT * FROM items WHERE evidence = 'VERIFIED' AND originalMissing = 0 " +
@@ -198,8 +328,21 @@ interface ItemDao {
     @Query("SELECT COALESCE(SUM(outputBytes), 0) FROM items WHERE state = 'RELEASED'")
     suspend fun releasedBytes(): Long
 
-    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE evidence = 'CONFIRMED' AND originalMissing = 0 AND state != 'FREED'")
-    fun reclaimableBytesFlow(): Flow<Long>
+    /**
+     * The headline on the Storage screen, which must agree with what Reclaim
+     * space actually lists - otherwise the entry point to that screen stays
+     * hidden while there are files behind it.
+     */
+    @Query(
+        "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
+            "WHERE originalMissing = 0 AND state != 'FREED' AND (" +
+            "evidence IN ('CONFIRMED_EXACT', 'CONFIRMED') " +
+            "OR (evidence = 'CONFIRMED_PACED' AND releasedAt IS NOT NULL " +
+            "AND releasedAt <= :settledBefore) " +
+            "OR (:includeVerified AND evidence = 'VERIFIED' AND releasedAt IS NOT NULL " +
+            "AND releasedAt <= :settledBefore))"
+    )
+    fun reclaimableBytesFlow(settledBefore: Long, includeVerified: Boolean): Flow<Long>
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +
@@ -268,9 +411,76 @@ interface DayBudgetDao {
     suspend fun pruneOlderThan(day: String)
 }
 
+@Dao
+interface LedgerDao {
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(row: LedgerRow): Long
+
+    @Query("SELECT * FROM ledger WHERE outputSha256 = :sha LIMIT 1")
+    suspend fun bySha(sha: String): LedgerRow?
+
+    @Query("SELECT * FROM ledger WHERE fingerprint = :fp LIMIT 1")
+    suspend fun byFingerprint(fp: String): LedgerRow?
+
+    @Query("SELECT COUNT(*) FROM ledger WHERE outputSha256 = :sha OR fingerprint = :fp")
+    suspend fun countFor(sha: String, fp: String): Int
+
+    @Query("SELECT * FROM ledger")
+    suspend fun all(): List<LedgerRow>
+}
+
+@Dao
+interface ActivityDao {
+
+    @Insert
+    suspend fun insert(row: ActivityRow): Long
+
+    @Query("SELECT * FROM activity ORDER BY atMs DESC LIMIT :limit")
+    fun recentFlow(limit: Int): Flow<List<ActivityRow>>
+
+    @Query("SELECT * FROM activity WHERE kind IN (:kinds) ORDER BY atMs DESC LIMIT :limit")
+    fun byKindsFlow(kinds: Collection<String>, limit: Int): Flow<List<ActivityRow>>
+
+    @Query("SELECT * FROM activity ORDER BY atMs DESC LIMIT :limit")
+    suspend fun recent(limit: Int): List<ActivityRow>
+
+    @Query("SELECT COUNT(*) FROM activity WHERE atMs > :since")
+    fun unreadCountFlow(since: Long): Flow<Int>
+
+    /** Retention: 30 days or 500 rows, whichever bites first. */
+    @Query("DELETE FROM activity WHERE atMs < :before")
+    suspend fun pruneOlderThan(before: Long)
+
+    @Query(
+        "DELETE FROM activity WHERE id NOT IN " +
+            "(SELECT id FROM activity ORDER BY atMs DESC LIMIT :keep)"
+    )
+    suspend fun pruneBeyond(keep: Int)
+
+    @Query("DELETE FROM activity")
+    suspend fun clear()
+}
+
+@Dao
+interface CloudCapabilityDao {
+
+    @Query("SELECT * FROM cloud_capability WHERE cloudId = :id LIMIT 1")
+    suspend fun byId(id: String): CloudCapabilityRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(row: CloudCapabilityRow)
+
+    @Query("SELECT * FROM cloud_capability")
+    suspend fun all(): List<CloudCapabilityRow>
+}
+
 @Database(
-    entities = [ItemRow::class, BatchRow::class, DayBudgetRow::class],
-    version = 2,
+    entities = [
+        ItemRow::class, BatchRow::class, DayBudgetRow::class,
+        LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -278,6 +488,9 @@ abstract class AppDb : RoomDatabase() {
     abstract fun items(): ItemDao
     abstract fun batches(): BatchDao
     abstract fun dayBudget(): DayBudgetDao
+    abstract fun ledger(): LedgerDao
+    abstract fun activity(): ActivityDao
+    abstract fun capabilities(): CloudCapabilityDao
 
     companion object {
         /** v2 adds the daily on-battery budget table (13.G). */
@@ -293,6 +506,62 @@ abstract class AppDb : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 adds the upload ledger, the activity log, learned cloud
+         * capabilities, and the three item columns paced release needs.
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `ledger` (" +
+                        "`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "`outputSha256` TEXT NOT NULL, " +
+                        "`fingerprint` TEXT NOT NULL, " +
+                        "`displayName` TEXT NOT NULL, " +
+                        "`outputBytes` INTEGER NOT NULL, " +
+                        "`evidence` TEXT NOT NULL, " +
+                        "`confirmedAt` INTEGER NOT NULL)"
+                )
+                connection.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_ledger_outputSha256` " +
+                        "ON `ledger` (`outputSha256`)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_ledger_fingerprint` " +
+                        "ON `ledger` (`fingerprint`)"
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `activity` (" +
+                        "`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "`atMs` INTEGER NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`detail` TEXT, " +
+                        "`count` INTEGER NOT NULL, " +
+                        "`bytes` INTEGER NOT NULL, " +
+                        "`filterState` TEXT)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_activity_atMs` ON `activity` (`atMs`)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_activity_kind` ON `activity` (`kind`)"
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `cloud_capability` (" +
+                        "`cloudId` TEXT NOT NULL PRIMARY KEY, " +
+                        "`hasFreeUpSpace` INTEGER NOT NULL, " +
+                        "`hasHashDedupe` INTEGER NOT NULL, " +
+                        "`packageName` TEXT, " +
+                        "`lastSeenVersionCode` INTEGER NOT NULL, " +
+                        "`learnedFreeUp` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL)"
+                )
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `txObserved` INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `encoderName` TEXT")
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `resendCount` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile
         private var instance: AppDb? = null
 
@@ -301,7 +570,7 @@ abstract class AppDb : RoomDatabase() {
                 context.applicationContext,
                 AppDb::class.java,
                 "cloudsaver.db"
-            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
         }
     }
 }

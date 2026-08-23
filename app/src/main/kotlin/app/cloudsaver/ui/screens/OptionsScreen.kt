@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -59,7 +61,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshVolumes() }
+    val recommended by vm.recommended.collectAsStateWithLifecycle()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        vm.refreshVolumes()
+        vm.refreshRecommended()
+    }
 
     var showFolders by remember { mutableStateOf(false) }
     var cloudPickerFor by remember { mutableStateOf<String?>(null) } // "single"|"photos"|"videos"
@@ -125,7 +132,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
                 Text(
                     if (o.excludedBuckets.isEmpty()) stringResource(R.string.folders_all)
-                    else stringResource(R.string.folders_excluded, o.excludedBuckets.size)
+                    else pluralStringResource(
+                        R.plurals.folders_excluded,
+                        o.excludedBuckets.size,
+                        o.excludedBuckets.size
+                    )
                 )
             }
         }
@@ -201,6 +212,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 o.dailyCapMb.toString()
             ) { vm.setDailyCap(it.toInt()) }
             if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
+            if (recommended.capLooksWrong) {
+                RecommendationNote(
+                    text = stringResource(
+                        R.string.recommend_cap,
+                        Formats.mbLabel(recommended.dailyCapMb)
+                    ),
+                    onApply = { vm.applyRecommended() }
+                )
+            }
         }
 
 
@@ -221,6 +241,19 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 o.maxExtraMb.toString()
             ) { vm.setMaxExtra(it.toInt()) }
             if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
+            // Offered, never applied behind the user's back: a 64 GB phone and
+            // a 512 GB phone should not reserve the same headroom, but a value
+            // someone chose deliberately is theirs.
+            if (recommended.freeLooksWrong) {
+                RecommendationNote(
+                    text = stringResource(
+                        R.string.recommend_space,
+                        Formats.mbLabel(recommended.minFreeMb),
+                        Formats.mbLabel(recommended.maxExtraMb)
+                    ),
+                    onApply = { vm.applyRecommended() }
+                )
+            }
         }
 
         // 7b. Storage location (13.D; shown only when an SD card exists)
@@ -351,6 +384,17 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
         OptionCard(stringResource(R.string.opt_pause), stringResource(R.string.opt_pause_hint)) {
             SwitchRow(stringResource(R.string.opt_pause), o.pauseAll) { vm.setPauseAll(it) }
+        }
+        // Reclaim is the only thing in the app that can cost a user a file, so
+        // the weaker grade of proof is off unless they turn it on themselves.
+        OptionCard(
+            stringResource(R.string.opt_reclaim_verified),
+            stringResource(R.string.opt_reclaim_verified_hint)
+        ) {
+            SwitchRow(
+                stringResource(R.string.opt_reclaim_verified),
+                o.freeUpAllowVerified30
+            ) { vm.setFreeUpVerified30(it) }
         }
 
 
@@ -610,6 +654,21 @@ private fun CloudPickRow(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+        }
+    }
+}
+
+/** A device-aware suggestion the user can take with one tap, or ignore. */
+@Composable
+private fun RecommendationNote(text: String, onApply: () -> Unit) {
+    Column(Modifier.padding(top = 10.dp)) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        TextButton(onClick = onApply, contentPadding = PaddingValues(horizontal = 4.dp)) {
+            Text(stringResource(R.string.recommend_apply))
         }
     }
 }

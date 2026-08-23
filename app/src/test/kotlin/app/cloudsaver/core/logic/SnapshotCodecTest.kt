@@ -39,7 +39,7 @@ class SnapshotCodecTest {
             options = mapOf("preset" to "STORAGE_SAVER", "dailyCapMb" to "250"),
             items = listOf(
                 item("aaaaaaaaaaaaaaaa", ItemState.RELEASED, Evidence.VERIFIED),
-                item("bbbbbbbbbbbbbbbb", ItemState.DONE, Evidence.CONFIRMED)
+                item("bbbbbbbbbbbbbbbb", ItemState.DONE, Evidence.CONFIRMED_EXACT)
             ),
             batches = listOf(
                 SnapshotCodec.SnapBatch(10, 500, OutFolder.SINGLE, "io.ente.photos", null)
@@ -65,10 +65,10 @@ class SnapshotCodecTest {
     @Test
     fun importMappingKeepsConfirmed() {
         val mapped = SnapshotCodec.applyImportMapping(
-            item("dddddddddddddddd", ItemState.RELEASED, Evidence.CONFIRMED)
+            item("dddddddddddddddd", ItemState.RELEASED, Evidence.CONFIRMED_EXACT)
         )
         assertEquals(ItemState.DONE, mapped.state)
-        assertEquals(Evidence.CONFIRMED, mapped.evidence)
+        assertEquals(Evidence.CONFIRMED_EXACT, mapped.evidence)
     }
 
     @Test

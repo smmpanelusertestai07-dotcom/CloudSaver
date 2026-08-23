@@ -16,7 +16,7 @@ import org.json.JSONObject
 object SnapshotCodec {
 
     /** Bumped when the payload shape changes; older versions are still read. */
-    const val VERSION = 2
+    const val VERSION = 3
 
     /** Oldest schema this build understands. */
     const val MIN_SUPPORTED_VERSION = 1
@@ -52,12 +52,30 @@ object SnapshotCodec {
         val verifiedAt: Long?
     )
 
+    /**
+     * One delivered copy, remembered for good.
+     *
+     * The ledger is what stops the app re-uploading a photo the cloud already
+     * has - and a reinstall must not undo that, or the first sync after one
+     * would fill the account it was meant to save. So it travels in the
+     * snapshot alongside the items.
+     */
+    data class SnapLedger(
+        val outputSha256: String,
+        val fingerprint: String,
+        val displayName: String,
+        val outputBytes: Long,
+        val evidence: Evidence,
+        val confirmedAt: Long
+    )
+
     data class Snapshot(
         val version: Int,
         val exportedAt: Long,
         val options: Map<String, String>,
         val items: List<SnapItem>,
-        val batches: List<SnapBatch>
+        val batches: List<SnapBatch>,
+        val ledger: List<SnapLedger> = emptyList()
     )
 
     /** Envelope: {"app","schemaVersion","sha256","payload":{...}}. */
@@ -113,6 +131,18 @@ object SnapshotCodec {
             batches.put(o)
         }
         root.put("batches", batches)
+        val ledger = JSONArray()
+        for (l in snapshot.ledger) {
+            val o = JSONObject()
+            o.put("sha", l.outputSha256)
+            o.put("fp", l.fingerprint)
+            o.put("name", l.displayName)
+            o.put("bytes", l.outputBytes)
+            o.put("ev", l.evidence.name)
+            o.put("at", l.confirmedAt)
+            ledger.put(o)
+        }
+        root.put("ledger", ledger)
         return root.toString()
     }
 
@@ -170,7 +200,7 @@ object SnapshotCodec {
                 mimeType = o.optString("mime", ""),
                 isVideo = o.optBoolean("video", false),
                 state = enumOr(o.optString("state"), ItemState.UNKNOWN),
-                evidence = enumOr(o.optString("ev"), Evidence.NONE),
+                evidence = Evidence.parse(o.optString("ev")),
                 goneReason = enumOrNull<GoneReason>(o.optString("gone", "")),
                 skipReason = o.optString("skip", "").ifEmpty { null },
                 outputName = o.optString("outName", "").ifEmpty { null },
@@ -193,12 +223,28 @@ object SnapshotCodec {
                 verifiedAt = if (o.has("verAt")) o.optLong("verAt") else null
             )
         }
+        val ledger = mutableListOf<SnapLedger>()
+        val ledgerArr = root.optJSONArray("ledger") ?: JSONArray()
+        for (idx in 0 until ledgerArr.length()) {
+            val o = ledgerArr.optJSONObject(idx) ?: continue
+            val sha = o.optString("sha", "")
+            if (sha.isEmpty()) continue
+            ledger += SnapLedger(
+                outputSha256 = sha,
+                fingerprint = o.optString("fp", ""),
+                displayName = o.optString("name", ""),
+                outputBytes = o.optLong("bytes", 0),
+                evidence = Evidence.parse(o.optString("ev", "")),
+                confirmedAt = o.optLong("at", 0)
+            )
+        }
         return Snapshot(
             version = root.optInt("version", VERSION),
             exportedAt = root.optLong("exportedAt", 0),
             options = options,
             items = items,
-            batches = batches
+            batches = batches,
+            ledger = ledger
         )
     }
 

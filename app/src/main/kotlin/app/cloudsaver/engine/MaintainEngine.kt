@@ -2,15 +2,17 @@ package app.cloudsaver.engine
 
 import android.content.Context
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeletePlanner
 import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.StateMachine
-import app.cloudsaver.core.logic.VerifyMath
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -28,9 +30,9 @@ import java.io.File
 /**
  * MaintainWorker body (also runs on app open and on output-folder changes while
  * foreground):
- *  a) anchor rule + self-heal   b) daily release   c) CONFIRMED detection
- *  d) VERIFIED (data-count)     e) lazy delete     f) self-heal transitions
- *  g) daily state snapshot
+ *  a) anchor rule + self-heal   b) paced release   c) per-file evidence
+ *  d) batch evidence            e) lazy delete     f) self-heal transitions
+ *  g) cloud health watchdog     h) daily state snapshot
  */
 class MaintainEngine(private val context: Context) {
 
@@ -40,6 +42,8 @@ class MaintainEngine(private val context: Context) {
     private val releaser = Releaser(context, db)
     private val scanner = MediaScanner(context, db)
     private val snapshots = SnapshotStore(context, db, repo)
+    private val watchdog = CloudWatchdog(context)
+    private val activity = ActivityLog(context)
 
     data class Summary(
         var confirmed: Int = 0,
@@ -58,17 +62,21 @@ class MaintainEngine(private val context: Context) {
         val volumeMissing = o.storageVolume.isNotEmpty() &&
             app.cloudsaver.util.Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
-            step("verify") { verifyBatches(now) }
+            step("verify") { verifyBatches(o, now) }
             step("age") { ageEvidence(now) }
             step("snapshot") { dailySnapshot(o, now) }
             if (now - o.volumeWarnedAt > 86_400_000L) {
-                Notifications.warn(
+                Notifications.alert(
                     context, Notifications.ID_WARN_SPACE,
                     context.getString(R.string.warn_volume_title),
                     context.getString(R.string.warn_volume_text),
-                    o.warningsNotif
+                    o, route = "storage"
                 )
                 repo.setLong(OptionsRepo.K.VOLUME_WARNED_AT, now)
+                activity.record(
+                    ActivityLog.Kind.PAUSED,
+                    detail = context.getString(R.string.warn_volume_title)
+                )
             }
             AppLog.log(context, "maintain", "storage volume missing - safe pause")
             return summary
@@ -85,15 +93,21 @@ class MaintainEngine(private val context: Context) {
 
         step("detectGone") { detectGone(o, now, entries, summary) }
         step("promoteGone") { promoteGone(now) }
-        step("verify") { verifyBatches(now) }
+        step("paced") { pacedEvidence(o, now) }
+        step("verify") { verifyBatches(o, now) }
         step("age") { ageEvidence(now) }
         step("healStage") { selfHealStage(now) }
         step("originals") { originalsPresence(now) }
+        var pauseDeletions = false
+        step("cloudHealth") { pauseDeletions = cloudHealth(o, now, entries) }
         if (!o.pauseAll) {
-            step("release") { dailyRelease(o, now, summary) }
+            step("release") { pacedRelease(o, now, summary) }
         }
-        step("delete") { lazyDelete(o, now, summary) }
+        if (!pauseDeletions) {
+            step("delete") { lazyDelete(o, now, summary) }
+        }
         step("snapshot") { dailySnapshot(o, now) }
+        step("log") { logSummary(summary) }
         return summary
     }
 
@@ -113,7 +127,12 @@ class MaintainEngine(private val context: Context) {
         }
     }
 
-    /** Quick pass used by the in-app "Confirm uploads" flow; returns confirmed count. */
+    private suspend fun logSummary(summary: Summary) {
+        activity.recordIfAny(ActivityLog.Kind.RELEASED, summary.released)
+        activity.recordIfAny(ActivityLog.Kind.BACKED_UP, summary.confirmed)
+    }
+
+    /** Quick pass used by the in-app "Verify backup" flow; returns confirmed count. */
     suspend fun confirmPass(): Int {
         val o = repo.current()
         val now = System.currentTimeMillis()
@@ -121,11 +140,19 @@ class MaintainEngine(private val context: Context) {
         val entries = inventory.query() ?: return 0
         step("detectGone") { detectGone(o, now, entries, summary) }
         step("promoteGone") { promoteGone(now) }
+        step("paced") { pacedEvidence(o, now) }
+        activity.recordIfAny(ActivityLog.Kind.BACKED_UP, summary.confirmed)
         return summary.confirmed
     }
 
-    // ---- c) CONFIRMED / USER_DELETED detection + f) self-heal --------------------
+    // ---- c) per-file evidence ----------------------------------------------------
 
+    /**
+     * A released copy left the upload folder. Deciding what that means is the
+     * single most consequential judgement the app makes, because the strong
+     * answer eventually offers the user's original for deletion and the wrong
+     * weak answer uploads the same photo twice.
+     */
     private suspend fun detectGone(
         o: Options,
         now: Long,
@@ -136,44 +163,138 @@ class MaintainEngine(private val context: Context) {
             .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
         val confirmActive = o.confirmFlowStartedAt > 0 &&
             now - o.confirmFlowStartedAt <= Defaults.CONFIRM_WINDOW_MS
+        val caps = watchdog.capsFor(o.cloudSingle)
+        val quietMs = CloudCapability.resendQuietPeriodMs(caps)
+        // A whole folder can vanish at once, and rows released together share
+        // a window; querying network stats per row would then mean hundreds of
+        // identical binder calls in one pass.
+        val txCache = HashMap<Long, Long>()
+
         for (row in db.items().released()) {
             val folder = folderOf(row)
             val names = presentNames[Defaults.outFolderRelPath(folder)] ?: emptySet<String>()
             val outputName = row.outputName ?: continue
             if (outputName in names) continue
+
             val evidence = evidenceOf(row)
-            val decision = StateMachine.onReleasedCopyMissing(
-                appDeleted = row.appDeletedCopy,
-                confirmFlowActive = confirmActive,
-                evidence = evidence
-            )
-            if (decision.backToNew) {
-                // Copy vanished with no evidence: re-compress and re-release later
-                // (the cloud app de-duplicates by hash, so this is safe).
+            val releasedAt = row.releasedAt ?: now
+            val fileBytes = row.outputBytes ?: 0L
+            val tx = txCache.getOrPut(releasedAt) { txSinceRelease(o, releasedAt, now) ?: 0L }
+
+            // A copy that already carried evidence and then vanished is simply
+            // finished. Re-sending it would say the app trusts its own earlier
+            // finding less than an empty folder.
+            if (!row.appDeletedCopy && evidence != Evidence.NONE && !confirmActive) {
                 db.items().update(
                     row.copy(
-                        state = ItemState.NEW.name,
-                        evidence = Evidence.NONE.name,
+                        state = ItemState.GONE.name,
                         goneReason = GoneReason.USER_DELETED.name,
-                        outputUri = null,
-                        releasedAt = null,
-                        batchId = null,
-                        appDeletedCopy = false,
                         updatedAt = now
                     )
                 )
-                summary.healed++
+                continue
+            }
+
+            val verdict = if (confirmActive && !row.appDeletedCopy) {
+                // The user just came back from the cloud app's own free-up
+                // screen: everything that left the folder in that window left
+                // because the cloud collected it.
+                EvidenceRules.MissingVerdict.PROOF_OF_UPLOAD
             } else {
-                db.items().update(
-                    row.copy(
-                        state = decision.state.name,
-                        evidence = StateMachine.strongest(evidence, decision.evidence).name,
-                        goneReason = decision.reason?.name,
-                        confirmedAt = if (decision.reason == GoneReason.CONFIRMED) now else row.confirmedAt,
-                        updatedAt = now
-                    )
+                EvidenceRules.onCopyMissing(
+                    appDeletedIt = row.appDeletedCopy,
+                    txSinceRelease = tx,
+                    fileBytes = fileBytes,
+                    resendCount = row.resendCount
                 )
-                if (decision.reason == GoneReason.CONFIRMED) summary.confirmed++
+            }
+
+            when (verdict) {
+                EvidenceRules.MissingVerdict.WE_DELETED_IT ->
+                    db.items().update(
+                        row.copy(
+                            state = ItemState.GONE.name,
+                            goneReason = GoneReason.APP_DELETED.name,
+                            updatedAt = now
+                        )
+                    )
+
+                EvidenceRules.MissingVerdict.PROOF_OF_UPLOAD -> {
+                    db.items().update(
+                        row.copy(
+                            state = ItemState.GONE.name,
+                            goneReason = GoneReason.CONFIRMED.name,
+                            evidence = StateMachine.strongest(
+                                evidence, Evidence.CONFIRMED_EXACT
+                            ).name,
+                            confirmedAt = now,
+                            txObserved = tx,
+                            updatedAt = now
+                        )
+                    )
+                    releaser.recordDelivered(row, Evidence.CONFIRMED_EXACT.name, now)
+                    // Only a cloud that removes its own uploads behaves this
+                    // way, so this is also how the app learns what it is
+                    // talking to - without ever asking the user.
+                    watchdog.learnFreeUp(o.cloudSingle, now)
+                    summary.confirmed++
+                }
+
+                EvidenceRules.MissingVerdict.RESEND -> {
+                    // A slow upload that has not finished yet looks exactly
+                    // like a lost file. Where a re-send would cost the user a
+                    // duplicate, wait a day before believing the folder.
+                    if (now - releasedAt < quietMs) continue
+                    // Nothing to re-make it from. Sending it back to the queue
+                    // would park it in "waiting to optimise" for good, and
+                    // Home would count a file that can never move.
+                    if (row.originalMissing) {
+                        db.items().update(
+                            row.copy(state = ItemState.DONE.name, updatedAt = now)
+                        )
+                        continue
+                    }
+                    if (alreadyInLedger(row)) {
+                        db.items().update(
+                            row.copy(state = ItemState.DONE.name, updatedAt = now)
+                        )
+                        continue
+                    }
+                    db.items().update(
+                        row.copy(
+                            state = ItemState.NEW.name,
+                            evidence = Evidence.NONE.name,
+                            goneReason = GoneReason.USER_DELETED.name,
+                            outputUri = null,
+                            releasedAt = null,
+                            batchId = null,
+                            appDeletedCopy = false,
+                            resendCount = row.resendCount + 1,
+                            updatedAt = now
+                        )
+                    )
+                    summary.healed++
+                }
+
+                EvidenceRules.MissingVerdict.GIVE_UP -> {
+                    // Twice is enough. Something removes this copy before the
+                    // cloud ever gets it, and a third round would only be the
+                    // same loop with more battery spent.
+                    db.items().update(
+                        row.copy(
+                            state = ItemState.SKIP.name,
+                            skipReason = "removed_before_upload",
+                            outputUri = null,
+                            updatedAt = now
+                        )
+                    )
+                    activity.record(
+                        ActivityLog.Kind.SKIPPED,
+                        detail = context.getString(R.string.activity_removed_early, row.displayName),
+                        count = 1,
+                        filterState = ItemState.SKIP.name
+                    )
+                }
             }
         }
     }
@@ -182,6 +303,38 @@ class MaintainEngine(private val context: Context) {
         for (row in db.items().gone()) {
             db.items().update(row.copy(state = ItemState.DONE.name, updatedAt = now))
         }
+    }
+
+    /**
+     * The copy travelled alone and the cloud app sent about its size.
+     *
+     * This is only ever attempted with exactly one copy in flight. With two,
+     * a byte total says something about the pair and nothing about either, and
+     * a claim about the wrong file is worse than no claim at all.
+     */
+    private suspend fun pacedEvidence(o: Options, now: Long) {
+        if (!UsageVerifier.hasUsageAccess(context)) return
+        val waiting = db.items().awaitingEvidence()
+            .filter { it.releasedAt != null && !Pacing.isTimedOut(it.releasedAt!!, now) }
+        if (waiting.size != 1) return
+        val row = waiting.first()
+        val fileBytes = row.outputBytes ?: return
+        val releasedAt = row.releasedAt ?: return
+        val tx = txSinceRelease(o, releasedAt, now) ?: return
+        if (!EvidenceRules.confirmedPaced(tx, fileBytes)) return
+        db.items().update(
+            row.copy(
+                evidence = Evidence.CONFIRMED_PACED.name,
+                confirmedAt = now,
+                txObserved = tx,
+                updatedAt = now
+            )
+        )
+        releaser.recordDelivered(row, Evidence.CONFIRMED_PACED.name, now)
+        AppLog.log(
+            context, "verify",
+            "${row.displayName}: paced confirm (tx=$tx for $fileBytes)"
+        )
     }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
@@ -197,7 +350,7 @@ class MaintainEngine(private val context: Context) {
      * deletion. So the batches are settled oldest first against one cumulative
      * total: a transmitted byte can only pay for one batch.
      */
-    private suspend fun verifyBatches(now: Long) {
+    private suspend fun verifyBatches(o: Options, now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val pending = db.batches().unverified()
             .filter { it.totalBytes > 0 && it.cloudPackage != null }
@@ -209,15 +362,17 @@ class MaintainEngine(private val context: Context) {
             var required = 0L
             for (batch in batches) {
                 required += batch.totalBytes
-                if (!VerifyMath.batchVerified(tx, required)) break
+                if (!EvidenceRules.batchVerified(tx, required)) break
                 db.batches().markVerified(batch.id, now)
                 for (row in db.items().released().filter { it.batchId == batch.id }) {
-                    val ev = evidenceOf(row)
-                    if (ev.ordinal < Evidence.VERIFIED.ordinal) {
-                        db.items().update(
-                            row.copy(evidence = Evidence.VERIFIED.name, updatedAt = now)
-                        )
-                    }
+                    if (evidenceOf(row).ordinal >= Evidence.VERIFIED.ordinal) continue
+                    db.items().update(
+                        row.copy(evidence = Evidence.VERIFIED.name, updatedAt = now)
+                    )
+                    // Batch-level proof is weaker than the per-file grades, but
+                    // it is still proof that these bytes left the phone, so the
+                    // copy must not be sent a second time.
+                    releaser.recordDelivered(row, Evidence.VERIFIED.name, now)
                 }
                 AppLog.log(
                     context, "verify",
@@ -277,12 +432,98 @@ class MaintainEngine(private val context: Context) {
         }
     }
 
-    // ---- b) daily release + a) anchor self-heal ---------------------------------
+    // ---- g) cloud health ---------------------------------------------------------
 
-    private suspend fun dailyRelease(o: Options, now: Long, summary: Summary) {
-        if (!releaser.hasReleasedToday(now)) {
-            summary.released += releaser.releaseBatch(o, now)
+    /**
+     * Checks that the cloud app is still doing its half of the job, and
+     * returns whether deletions must be held.
+     *
+     * The whole product rests on some other app quietly uploading a folder.
+     * When that stops being true the danger is not that copies pile up - it is
+     * that the app keeps reclaiming space against evidence that has stopped
+     * arriving.
+     */
+    private suspend fun cloudHealth(
+        o: Options,
+        now: Long,
+        entries: List<OutputInventory.Entry>
+    ): Boolean {
+        val waiting = db.items().awaitingEvidence()
+        val waitingBytes = waiting.sumOf { it.outputBytes ?: 0L }
+        val tx = txSinceRelease(o, now - CloudWatchdog.SILENCE_MS, now)
+        val shrank = o.lastOutputCount > 0 && entries.size < o.lastOutputCount
+        repo.setInt(OptionsRepo.K.LAST_OUTPUT_COUNT, entries.size)
+
+        val verdict = watchdog.check(
+            cloudId = o.cloudSingle,
+            waitingCopies = waiting.size,
+            waitingBytes = waitingBytes,
+            txLastWindow = tx,
+            folderShrank = shrank,
+            now = now
+        )
+
+        if (verdict.healthy) {
+            if (o.cloudProblem.isNotEmpty()) {
+                repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
+                activity.record(
+                    ActivityLog.Kind.RESUMED,
+                    detail = context.getString(R.string.activity_cloud_ok)
+                )
+                AppLog.log(context, "cloud", "health recovered")
+            }
+            return false
         }
+
+        val problem = verdict.problem!!.name
+        if (o.cloudProblem != problem) {
+            repo.setString(OptionsRepo.K.CLOUD_PROBLEM, problem)
+            activity.record(
+                ActivityLog.Kind.CLOUD_PROBLEM,
+                detail = verdict.message
+            )
+        }
+        Notifications.alert(
+            context, Notifications.ID_WARN_SAFETY,
+            context.getString(R.string.warn_cloud_title),
+            verdict.message ?: context.getString(R.string.warn_safety_text),
+            o, dedupKey = problem, route = "activity"
+        )
+        AppLog.log(context, "cloud", "problem: $problem - deletions held")
+        return true
+    }
+
+    // ---- b) paced release + a) anchor self-heal ---------------------------------
+
+    /**
+     * Releases a slice of the day's allowance, not the whole day at once.
+     *
+     * A day's worth of copies leaving together makes per-file proof
+     * impossible: the cloud app's byte counter cannot then say which of them
+     * arrived. Sending a few at a time - usually one - is what turns a byte
+     * count into evidence about a specific file.
+     */
+    private suspend fun pacedRelease(o: Options, now: Long, summary: Summary) {
+        val caps = watchdog.capsFor(o.cloudSingle)
+        val oracle = CloudCapability.hasDisappearanceOracle(caps)
+        val inFlight = db.items().awaitingEvidence().mapNotNull { it.releasedAt }
+        val slots = Pacing.slotsFree(inFlight, now, oracle)
+        val maxItems = Pacing.releaseSlots(
+            slotsFree = slots,
+            stagedWaiting = db.items().countByState(ItemState.STAGED.name),
+            perFileProofPossible = UsageVerifier.hasUsageAccess(context)
+        )
+        val releasedToday = releaser.bytesReleasedToday(now)
+        val budget = Pacing.dailyBudgetWithCatchUp(o.dailyCapBytes, carryForward(o, now))
+        val allowance = Pacing.allowanceNow(budget, releasedToday)
+        if (maxItems != 0 && allowance != 0L) {
+            summary.released += releaser.releaseBatch(
+                o, now,
+                capBytesOverride = allowance,
+                maxItems = maxItems
+            )
+        }
+
         // Anchor rule / never-empty: if an active output folder has no files but
         // staged content exists for it, restore content immediately (no dummies).
         val entries = inventory.query() ?: return
@@ -334,8 +575,7 @@ class MaintainEngine(private val context: Context) {
 
         val released = db.items().released()
         val waiting = released.count { evidenceOf(it).ordinal < Evidence.VERIFIED.ordinal }
-        val cloud = CloudApps.byId(o.cloudSingle)
-        val cloudPkg = CloudApps.installedPackage(context, cloud)
+        val cloudPkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle))
         // "Other app" has no package to detect, so installedPackage() is null
         // for it. Treating that as "no cloud app" pauses deletion forever: the
         // copies pile up, hit the extra-space limit, and compression stops for
@@ -352,11 +592,11 @@ class MaintainEngine(private val context: Context) {
         }
         if (DeletePlanner.safetyPause(cloudAvailable, tx3d, waiting)) {
             if (now - o.safetyPauseWarnedAt > 86_400_000L) {
-                Notifications.warn(
+                Notifications.alert(
                     context, Notifications.ID_WARN_SAFETY,
                     context.getString(R.string.warn_safety_title),
                     context.getString(R.string.warn_safety_text),
-                    o.warningsNotif
+                    o, dedupKey = "safety", route = "activity"
                 )
                 repo.setLong(OptionsRepo.K.SAFETY_WARNED_AT, now)
             }
@@ -410,18 +650,18 @@ class MaintainEngine(private val context: Context) {
             }
         }
         if (plan.agedUsed && !o.agedWarned) {
-            Notifications.warn(
+            Notifications.alert(
                 context, Notifications.ID_WARN_AGED,
                 context.getString(R.string.warn_aged_title),
                 context.getString(R.string.warn_aged_text),
-                o.warningsNotif
+                o, dedupKey = "aged", route = "files"
             )
             repo.setBool(OptionsRepo.K.AGED_WARNED, true)
         }
         AppLog.log(context, "delete", "freed ~${Formats.bytes(plan.freedBytes)} (${plan.ids.size} copies)")
     }
 
-    // ---- g) daily snapshot -------------------------------------------------------
+    // ---- h) daily snapshot -------------------------------------------------------
 
     private suspend fun dailySnapshot(o: Options, now: Long) {
         val today = Formats.dayKey(now)
@@ -447,12 +687,45 @@ class MaintainEngine(private val context: Context) {
 
     // ---- helpers -----------------------------------------------------------------
 
+    /**
+     * What yesterday's unused allowance leaves for today.
+     *
+     * A phone that was off, paused or out of range for a day should not lose
+     * that day's uploads for good, or a user who travels never catches up.
+     * The carry is capped at one day, because the point of the cap is the
+     * mobile-data bill, not tidiness.
+     */
+    private suspend fun carryForward(o: Options, now: Long): Long {
+        if (o.dailyCapBytes < 0) return 0L
+        val today = Formats.dayKey(now)
+        if (o.catchUpDay == today) return o.catchUpBytes
+        val startOfToday = Formats.startOfDay(now)
+        val startOfYesterday = startOfToday - 86_400_000L
+        val yesterday = db.batches().bytesSince(startOfYesterday) -
+            db.batches().bytesSince(startOfToday)
+        val carried = Pacing.carryForward(o.dailyCapBytes, yesterday.coerceAtLeast(0L))
+        repo.setString(OptionsRepo.K.CATCH_UP_DAY, today)
+        repo.setLong(OptionsRepo.K.CATCH_UP_BYTES, carried)
+        return carried
+    }
+
+    /** Bytes the chosen cloud app transmitted since [from]; null if unmeasurable. */
+    private fun txSinceRelease(o: Options, from: Long, now: Long): Long? {
+        val pkg = CloudApps.installedPackage(context, CloudApps.byId(o.cloudSingle)) ?: return null
+        val uid = CloudApps.uidOf(context, pkg) ?: return null
+        return UsageVerifier.txBytesForUid(context, uid, from, now)
+    }
+
+    private suspend fun alreadyInLedger(row: ItemRow): Boolean {
+        val sha = row.outputSha256 ?: return false
+        return db.ledger().bySha(sha) != null
+    }
+
     private fun folderOf(row: ItemRow): OutFolder =
         row.outputFolder?.let { runCatching { OutFolder.valueOf(it) }.getOrNull() }
             ?: OutFolder.SINGLE
 
-    private fun evidenceOf(row: ItemRow): Evidence =
-        runCatching { Evidence.valueOf(row.evidence) }.getOrDefault(Evidence.NONE)
+    private fun evidenceOf(row: ItemRow): Evidence = Evidence.parse(row.evidence)
 
     private fun normalizeRel(rel: String): String = rel.trimEnd('/')
 }

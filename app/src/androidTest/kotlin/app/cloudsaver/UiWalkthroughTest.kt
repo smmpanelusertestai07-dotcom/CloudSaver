@@ -179,6 +179,18 @@ class UiWalkthroughTest {
     }
 
     @Test
+    fun activityScreenRenders() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            runCatching {
+                compose.onNode(hasText("Activity", substring = true)).performScrollTo()
+                    .performClick()
+            }
+            shoot("27-activity")
+        }
+    }
+
+    @Test
     fun encryptedBackupDialogOpens() {
         setOnboardingDone(true)
         ActivityScenario.launch(MainActivity::class.java).use {

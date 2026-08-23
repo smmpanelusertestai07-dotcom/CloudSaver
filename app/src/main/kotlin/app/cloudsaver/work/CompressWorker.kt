@@ -10,12 +10,14 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.FgsBudget
+import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.Stager
@@ -179,6 +181,17 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 }
             }
 
+            if (processed > 0) {
+                runCatching {
+                    val saved = db.items().savedBytesSince(startAt)
+                    ActivityLog(app).record(
+                        ActivityLog.Kind.OPTIMISED,
+                        count = processed,
+                        bytes = saved,
+                        filterState = ItemState.STAGED.name
+                    )
+                }
+            }
             runCatching { MaintainEngine(app).run() }
                 .onFailure { AppLog.log(app, "work", "maintain failed: ${it.message}") }
         } finally {
@@ -219,6 +232,16 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         }
     }
 
+    /**
+     * What to work on next: this month's photos first, then the biggest of the
+     * backlog.
+     *
+     * Pure newest-first feels responsive - a photo taken this morning is
+     * backed up by lunch - but on a phone with ten years of gallery it then
+     * grinds through a thousand old screenshots for almost no space. Once the
+     * recent window is clear, size ordering frees the most per minute of
+     * encoding, so the numbers on Home start moving.
+     */
     private suspend fun nextItems(
         db: AppDb,
         o: Options,
@@ -229,10 +252,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val photos = plan.photos && o.scope != BackupScope.VIDEOS
         val videos = plan.videos && o.scope != BackupScope.PHOTOS
         if (!photos && !videos) return emptyList()
-        return db.items().nextEligible(
+        return db.items().nextByPriority(
             photos = photos,
             videos = videos,
             excludedBuckets = o.excludedBuckets,
+            freshAfter = System.currentTimeMillis() - FRESH_WINDOW_MS,
             limit = limit
         )
     }
@@ -242,6 +266,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     companion object {
         /** Guards the staging and temp directories against concurrent runs. */
         private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** Anything captured this recently counts as "what the user is thinking about". */
+        const val FRESH_WINDOW_MS = 30L * 86_400_000L
 
         const val KEY_MANUAL = "manual"
 

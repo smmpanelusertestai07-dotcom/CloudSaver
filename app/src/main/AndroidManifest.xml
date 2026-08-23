@@ -75,6 +75,16 @@
             android:foregroundServiceType="dataSync|mediaProcessing"
             tools:node="merge" />
 
+        <!-- "Mute for 7 days" on an alert. Not exported: only our own
+             PendingIntent ever fires it. -->
+        <receiver
+            android:name=".util.AlertActions"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.cloudsaver.MUTE_ALERTS" />
+            </intent-filter>
+        </receiver>
+
         <!-- Share the log file (offline share sheet). -->
         <provider
             android:name="androidx.core.content.FileProvider"

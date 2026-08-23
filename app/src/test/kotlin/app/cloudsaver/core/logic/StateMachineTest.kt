@@ -9,13 +9,13 @@ class StateMachineTest {
 
     @Test
     fun evidencePrecedenceStrongestWins() {
-        assertEquals(Evidence.CONFIRMED, StateMachine.strongest(Evidence.CONFIRMED, Evidence.VERIFIED))
-        assertEquals(Evidence.CONFIRMED, StateMachine.strongest(Evidence.AGED, Evidence.CONFIRMED))
+        assertEquals(Evidence.CONFIRMED_EXACT, StateMachine.strongest(Evidence.CONFIRMED_EXACT, Evidence.VERIFIED))
+        assertEquals(Evidence.CONFIRMED_EXACT, StateMachine.strongest(Evidence.AGED, Evidence.CONFIRMED_EXACT))
         assertEquals(Evidence.VERIFIED, StateMachine.strongest(Evidence.VERIFIED, Evidence.AGED))
         assertEquals(Evidence.AGED, StateMachine.strongest(Evidence.NONE, Evidence.AGED))
         assertEquals(Evidence.NONE, StateMachine.strongest(Evidence.NONE, Evidence.NONE))
         // Ordinal order IS the strength order - guard against reordering the enum.
-        assertTrue(Evidence.CONFIRMED.ordinal > Evidence.VERIFIED.ordinal)
+        assertTrue(Evidence.CONFIRMED_EXACT.ordinal > Evidence.VERIFIED.ordinal)
         assertTrue(Evidence.VERIFIED.ordinal > Evidence.AGED.ordinal)
         assertTrue(Evidence.AGED.ordinal > Evidence.NONE.ordinal)
     }
@@ -63,7 +63,7 @@ class StateMachineTest {
         )
         assertEquals(ItemState.GONE, d.state)
         assertEquals(GoneReason.CONFIRMED, d.reason)
-        assertEquals(Evidence.CONFIRMED, d.evidence)
+        assertEquals(Evidence.CONFIRMED_EXACT, d.evidence)
         assertFalse(d.backToNew)
     }
 
@@ -107,16 +107,16 @@ class StateMachineTest {
     @Test
     fun importMappingKeepsEvidenceAndTerminalStates() {
         assertEquals(
-            ItemState.DONE to Evidence.CONFIRMED,
-            StateMachine.importedState(ItemState.RELEASED, Evidence.CONFIRMED)
+            ItemState.DONE to Evidence.CONFIRMED_EXACT,
+            StateMachine.importedState(ItemState.RELEASED, Evidence.CONFIRMED_EXACT)
         )
         assertEquals(
             ItemState.DONE to Evidence.VERIFIED,
             StateMachine.importedState(ItemState.DONE, Evidence.VERIFIED)
         )
         assertEquals(
-            ItemState.FREED to Evidence.CONFIRMED,
-            StateMachine.importedState(ItemState.FREED, Evidence.CONFIRMED)
+            ItemState.FREED to Evidence.CONFIRMED_EXACT,
+            StateMachine.importedState(ItemState.FREED, Evidence.CONFIRMED_EXACT)
         )
         assertEquals(
             ItemState.NEW to Evidence.NONE,

@@ -18,10 +18,10 @@ class AnchorRuleTest {
     @Test
     fun newestPerFolderIsTheAnchor() {
         val copies = listOf(
-            copy(1, Evidence.CONFIRMED, OutFolder.PHOTOS, captureAt = 10),
-            copy(2, Evidence.CONFIRMED, OutFolder.PHOTOS, captureAt = 20),
-            copy(3, Evidence.CONFIRMED, OutFolder.VIDEOS, captureAt = 5),
-            copy(4, Evidence.CONFIRMED, OutFolder.VIDEOS, captureAt = 50)
+            copy(1, Evidence.CONFIRMED_EXACT, OutFolder.PHOTOS, captureAt = 10),
+            copy(2, Evidence.CONFIRMED_EXACT, OutFolder.PHOTOS, captureAt = 20),
+            copy(3, Evidence.CONFIRMED_EXACT, OutFolder.VIDEOS, captureAt = 5),
+            copy(4, Evidence.CONFIRMED_EXACT, OutFolder.VIDEOS, captureAt = 50)
         )
         assertEquals(setOf(2L, 4L), DeletePlanner.anchors(copies))
     }
@@ -29,8 +29,8 @@ class AnchorRuleTest {
     @Test
     fun anchorSurvivesEvenWithMaximalPressure() {
         val copies = listOf(
-            copy(1, Evidence.CONFIRMED, OutFolder.SINGLE, captureAt = 10),
-            copy(2, Evidence.CONFIRMED, OutFolder.SINGLE, captureAt = 20)
+            copy(1, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 10),
+            copy(2, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 20)
         )
         val plan = DeletePlanner.plan(copies, bytesToFree = Long.MAX_VALUE / 2)
         assertTrue(1L in plan.ids)
@@ -40,15 +40,15 @@ class AnchorRuleTest {
     @Test
     fun tieBreaksOnHighestId() {
         val copies = listOf(
-            copy(7, Evidence.CONFIRMED, OutFolder.SINGLE, captureAt = 10),
-            copy(8, Evidence.CONFIRMED, OutFolder.SINGLE, captureAt = 10)
+            copy(7, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 10),
+            copy(8, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 10)
         )
         assertEquals(setOf(8L), DeletePlanner.anchors(copies))
     }
 
     @Test
     fun singleFileFolderIsUntouchable() {
-        val copies = listOf(copy(1, Evidence.CONFIRMED, OutFolder.SINGLE, captureAt = 1))
+        val copies = listOf(copy(1, Evidence.CONFIRMED_EXACT, OutFolder.SINGLE, captureAt = 1))
         val plan = DeletePlanner.plan(copies, bytesToFree = Long.MAX_VALUE / 2)
         assertTrue(plan.ids.isEmpty())
     }

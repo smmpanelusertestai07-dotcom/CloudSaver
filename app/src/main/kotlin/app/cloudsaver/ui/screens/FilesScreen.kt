@@ -1,5 +1,13 @@
 package app.cloudsaver.ui.screens
 
+import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -7,9 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -17,10 +30,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,11 +55,15 @@ import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.components.StateBadge
 import app.cloudsaver.util.Formats
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun FilesScreen(vm: AppViewModel) {
     val items by vm.items.collectAsStateWithLifecycle()
     val query by vm.search.collectAsStateWithLifecycle()
+    val filter by vm.filesState.collectAsStateWithLifecycle()
+    val sort by vm.filesSort.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<ItemRow?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
 
@@ -64,17 +87,65 @@ fun FilesScreen(vm: AppViewModel) {
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         )
+
+        // Filters first, sort second: people look for "the ones that are done"
+        // far more often than they look for "the biggest".
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilesChip(stringResource(R.string.filter_all), filter == null) {
+                vm.filesState.value = null
+            }
+            FilesChip(stringResource(R.string.state_new), filter == ItemState.NEW.name) {
+                vm.filesState.value = ItemState.NEW.name
+            }
+            FilesChip(
+                stringResource(R.string.filter_in_progress),
+                filter == ItemState.RELEASED.name
+            ) { vm.filesState.value = ItemState.RELEASED.name }
+            FilesChip(stringResource(R.string.state_done), filter == ItemState.DONE.name) {
+                vm.filesState.value = ItemState.DONE.name
+            }
+            FilesChip(stringResource(R.string.state_skip), filter == ItemState.SKIP.name) {
+                vm.filesState.value = ItemState.SKIP.name
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilesChip(
+                stringResource(R.string.sort_newest),
+                sort == AppViewModel.FilesSort.NEWEST
+            ) { vm.filesSort.value = AppViewModel.FilesSort.NEWEST }
+            FilesChip(
+                stringResource(R.string.sort_saved),
+                sort == AppViewModel.FilesSort.SAVED
+            ) { vm.filesSort.value = AppViewModel.FilesSort.SAVED }
+            FilesChip(
+                stringResource(R.string.sort_largest),
+                sort == AppViewModel.FilesSort.LARGEST
+            ) { vm.filesSort.value = AppViewModel.FilesSort.LARGEST }
+        }
+        Spacer(Modifier.height(8.dp))
+
         if (items.isEmpty()) {
             EmptyState(
-                title = if (query.isEmpty()) {
-                    stringResource(R.string.files_empty_title)
-                } else {
-                    stringResource(R.string.files_no_match_title)
+                title = when {
+                    query.isNotEmpty() -> stringResource(R.string.files_no_match_title)
+                    filter != null -> stringResource(R.string.files_no_match_title)
+                    else -> stringResource(R.string.files_empty_title)
                 },
-                body = if (query.isEmpty()) {
-                    stringResource(R.string.files_empty)
-                } else {
-                    stringResource(R.string.files_no_match_body)
+                body = when {
+                    query.isNotEmpty() -> stringResource(R.string.files_no_match_body)
+                    filter != null -> stringResource(R.string.files_filter_empty)
+                    else -> stringResource(R.string.files_empty)
                 }
             )
         } else {
@@ -86,30 +157,35 @@ fun FilesScreen(vm: AppViewModel) {
                             .animateItem(),
                         onClick = { detail = row }
                     ) {
-                        Text(
-                            row.displayName,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1
-                        )
-                        Row(
-                            Modifier.padding(top = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            StateBadge(stateLabel(row), badgeTone(row))
-                            Text(
-                                // Once a copy exists, the saving is the point.
-                                row.outputBytes?.let { copy ->
-                                    stringResource(
-                                        R.string.files_size_pair,
-                                        Formats.bytes(row.sizeBytes),
-                                        Formats.bytes(copy)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Thumbnail(row)
+                            Column(Modifier.padding(start = 12.dp)) {
+                                Text(
+                                    row.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                                Row(
+                                    Modifier.padding(top = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    StateBadge(stateLabel(row), badgeTone(row))
+                                    Text(
+                                        // Once a copy exists, the saving is the point.
+                                        row.outputBytes?.let { copy ->
+                                            stringResource(
+                                                R.string.files_size_pair,
+                                                Formats.bytes(row.sizeBytes),
+                                                Formats.bytes(copy)
+                                            )
+                                        } ?: Formats.bytes(row.sizeBytes),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 10.dp)
                                     )
-                                } ?: Formats.bytes(row.sizeBytes),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 10.dp)
-                            )
+                                }
+                            }
                         }
                     }
                 }
@@ -153,6 +229,17 @@ fun FilesScreen(vm: AppViewModel) {
                     KeyValueRow(stringResource(R.string.detail_original), Formats.bytes(row.sizeBytes))
                     row.outputBytes?.let {
                         KeyValueRow(stringResource(R.string.detail_copy), Formats.bytes(it))
+                        val saved = row.sizeBytes - it
+                        if (saved > 0) {
+                            KeyValueRow(
+                                stringResource(R.string.detail_saved),
+                                stringResource(
+                                    R.string.detail_saved_value,
+                                    Formats.bytes(saved),
+                                    Formats.percentOf(saved, row.sizeBytes)
+                                )
+                            )
+                        }
                     }
                     KeyValueRow(stringResource(R.string.detail_captured), Formats.dateTime(row.captureAt))
                     row.releasedAt?.let {
@@ -181,6 +268,61 @@ fun FilesScreen(vm: AppViewModel) {
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun FilesChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+}
+
+/**
+ * The item's own picture, so a list of file names becomes a list of photos.
+ *
+ * MediaStore's own thumbnail cache is used rather than decoding the full
+ * image: it is what the gallery draws, so it is already on disk, and a Files
+ * list must never be the reason a scroll stutters. A missing thumbnail is
+ * normal - the original may be gone - and falls back to the app mark.
+ */
+@Composable
+private fun Thumbnail(row: ItemRow) {
+    val context = LocalContext.current
+    val source = row.outputUri ?: row.contentUri
+    val shape = RoundedCornerShape(10.dp)
+    val bitmap by produceState<Bitmap?>(initialValue = null, source) {
+        value = source?.let { uriString ->
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.loadThumbnail(
+                        Uri.parse(uriString), Size(128, 128), null
+                    )
+                }.getOrNull()
+            }
+        }
+    }
+    Box(
+        Modifier
+            .size(52.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center
+    ) {
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                painterResource(R.drawable.ic_stat_cloud),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
@@ -218,14 +360,15 @@ fun asIsReasonLabel(reason: String): String = when (reason) {
     "already_efficient" -> stringResource(R.string.asis_already_small)
     "not_smaller" -> stringResource(R.string.asis_not_smaller)
     "hdr_not_supported" -> stringResource(R.string.asis_hdr)
+    "removed_before_upload" -> stringResource(R.string.asis_removed_early)
     else -> stringResource(R.string.asis_other)
 }
 
 @Composable
 fun evidenceLabel(row: ItemRow): String {
-    val ev = runCatching { Evidence.valueOf(row.evidence) }.getOrDefault(Evidence.NONE)
-    return when (ev) {
-        Evidence.CONFIRMED -> stringResource(R.string.evidence_confirmed)
+    return when (Evidence.parse(row.evidence)) {
+        Evidence.CONFIRMED_EXACT -> stringResource(R.string.evidence_confirmed_exact)
+        Evidence.CONFIRMED_PACED -> stringResource(R.string.evidence_confirmed_paced)
         Evidence.VERIFIED -> stringResource(R.string.evidence_verified)
         Evidence.AGED -> stringResource(R.string.evidence_aged)
         Evidence.NONE -> stringResource(R.string.evidence_none)

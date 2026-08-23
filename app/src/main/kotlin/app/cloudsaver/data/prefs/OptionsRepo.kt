@@ -1,5 +1,6 @@
 package app.cloudsaver.data.prefs
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -64,7 +65,21 @@ data class Options(
     val safetyPauseWarnedAt: Long = 0,
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
-    val cloudDetected: Boolean = false
+    val cloudDetected: Boolean = false,
+    /** Files seen in the upload folder last pass, so a shrink is detectable. */
+    val lastOutputCount: Int = 0,
+    /** Active CloudWatchdog.Problem name, or "" when the cloud looks healthy. */
+    val cloudProblem: String = "",
+    /** Alerts are silenced until this instant ("Mute for 7 days"). */
+    val alertsMutedUntil: Long = 0,
+    /** Which alert was posted last, and when - the 24 h de-duplication pair. */
+    val lastAlertKey: String = "",
+    val lastAlertAt: Long = 0,
+    /** Newest Activity row the user has actually looked at. */
+    val activitySeenAt: Long = 0,
+    /** Days carried over when a day's upload allowance went unused. */
+    val catchUpBytes: Long = 0,
+    val catchUpDay: String = ""
 ) {
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
@@ -111,6 +126,14 @@ class OptionsRepo(private val context: Context) {
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
         val CLOUD_DETECTED = booleanPreferencesKey("cloudDetected")
+        val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
+        val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
+        val ALERTS_MUTED_UNTIL = longPreferencesKey("alertsMutedUntil")
+        val LAST_ALERT_KEY = stringPreferencesKey("lastAlertKey")
+        val LAST_ALERT_AT = longPreferencesKey("lastAlertAt")
+        val ACTIVITY_SEEN_AT = longPreferencesKey("activitySeenAt")
+        val CATCH_UP_BYTES = longPreferencesKey("catchUpBytes")
+        val CATCH_UP_DAY = stringPreferencesKey("catchUpDay")
     }
 
     val flow: Flow<Options> = context.dataStore.data.map { p ->
@@ -151,7 +174,15 @@ class OptionsRepo(private val context: Context) {
             safetyPauseWarnedAt = p[K.SAFETY_WARNED_AT] ?: 0,
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
-            cloudDetected = p[K.CLOUD_DETECTED] ?: false
+            cloudDetected = p[K.CLOUD_DETECTED] ?: false,
+            lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
+            cloudProblem = p[K.CLOUD_PROBLEM] ?: "",
+            alertsMutedUntil = p[K.ALERTS_MUTED_UNTIL] ?: 0,
+            lastAlertKey = p[K.LAST_ALERT_KEY] ?: "",
+            lastAlertAt = p[K.LAST_ALERT_AT] ?: 0,
+            activitySeenAt = p[K.ACTIVITY_SEEN_AT] ?: 0,
+            catchUpBytes = p[K.CATCH_UP_BYTES] ?: 0,
+            catchUpDay = p[K.CATCH_UP_DAY] ?: ""
         )
     }
 
@@ -248,7 +279,13 @@ class OptionsRepo(private val context: Context) {
     }
 
     companion object {
+        /**
+         * Only ever constructed with the application context, which lives as
+         * long as the process - there is no activity here to leak. DataStore
+         * itself must be a singleton, so this cannot be scoped narrower.
+         */
         @Volatile
+        @SuppressLint("StaticFieldLeak")
         private var instance: OptionsRepo? = null
 
         fun get(context: Context): OptionsRepo = instance ?: synchronized(this) {

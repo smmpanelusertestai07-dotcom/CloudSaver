@@ -16,6 +16,15 @@ object Storage {
         Long.MAX_VALUE
     }
 
+    /** Total size of the volume the app is configured to use. */
+    fun totalBytes(context: Context, storageVolume: String = ""): Long = try {
+        val vol = Volumes.selected(context, storageVolume)
+        val base = vol?.appDir ?: context.getExternalFilesDir(null) ?: Environment.getDataDirectory()
+        StatFs(base.absolutePath).totalBytes
+    } catch (e: Exception) {
+        0L
+    }
+
     /** Stage dir on the selected volume; falls back to internal if missing. */
     fun stageDir(context: Context, storageVolume: String = ""): File {
         val vol = Volumes.selected(context, storageVolume)
