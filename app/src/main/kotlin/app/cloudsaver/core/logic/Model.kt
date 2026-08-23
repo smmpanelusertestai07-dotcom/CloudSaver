@@ -95,6 +95,15 @@ object Defaults {
         SNAPSHOT_DIR_VISIBLE to SNAPSHOT_NAME_VISIBLE
     )
 
+    /**
+     * Where older builds wrote the automatic snapshot. Read-only: recovery
+     * still looks here so an upgrade keeps its state, but nothing is written
+     * here again and the file is removed once it has been read.
+     */
+    val LEGACY_SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
+        SNAPSHOT_DIR_VISIBLE to SNAPSHOT_NAME
+    )
+
     /** True for a snapshot target Android hides from the gallery and Files. */
     fun isHiddenSnapshotTarget(dir: String, name: String): Boolean =
         name.startsWith(".") || dir.split('/').any { it.startsWith(".") }

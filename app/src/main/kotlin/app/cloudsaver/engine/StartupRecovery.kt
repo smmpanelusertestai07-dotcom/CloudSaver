@@ -18,12 +18,19 @@ import app.cloudsaver.util.AppLog
  */
 class StartupRecovery(private val context: Context) {
 
-    data class Result(val restoredItems: Int, val removedPlaceholders: Int)
+    data class Result(
+        val restoredItems: Int,
+        val removedPlaceholders: Int,
+        val removedLegacyFiles: Int
+    )
 
     suspend fun run(): Result {
-        val removed = removeLegacyPlaceholders()
+        // Read the old visible snapshot before deleting it: on an upgrade it
+        // may be the only state left.
         val restored = restoreIfEmpty()
-        return Result(restored, removed)
+        val placeholders = removeLegacyPlaceholders()
+        val legacy = removeLegacyVisibleSnapshot()
+        return Result(restored, placeholders, legacy)
     }
 
     /**
@@ -51,6 +58,46 @@ class StartupRecovery(private val context: Context) {
             AppLog.log(context, "recovery", "restored $imported items from a snapshot")
         }
         return imported
+    }
+
+    /**
+     * Earlier builds wrote the automatic snapshot to a visible
+     * Documents/CloudSaver folder, which is exactly where someone browsing
+     * Files finds a folder they never created. Snapshots are hidden now, so
+     * the old visible one is removed once its contents have been read.
+     */
+    private fun removeLegacyVisibleSnapshot(): Int {
+        val resolver = context.contentResolver
+        val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
+            "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
+            "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
+        val args = arrayOf(
+            "${Defaults.SNAPSHOT_DIR_VISIBLE}/",
+            Defaults.SNAPSHOT_NAME,
+            context.packageName
+        )
+        return try {
+            val ids = mutableListOf<Long>()
+            resolver.query(
+                files, arrayOf(MediaStore.MediaColumns._ID), selection, args, null
+            )?.use { c ->
+                while (c.moveToNext()) ids += c.getLong(0)
+            }
+            var removed = 0
+            for (id in ids) {
+                val uri = android.content.ContentUris.withAppendedId(files, id)
+                if (runCatching { resolver.delete(uri, null, null) }.getOrDefault(0) > 0) {
+                    removed++
+                }
+            }
+            if (removed > 0) {
+                AppLog.log(context, "recovery", "removed the old visible snapshot")
+            }
+            removed
+        } catch (e: Exception) {
+            0
+        }
     }
 
     /**

@@ -109,7 +109,8 @@ class SnapshotStore(
      */
     suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
         var best: SnapshotCodec.Snapshot? = null
-        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
+        val sources = Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS
+        for ((dir, name) in sources) {
             val json = readFrom(dir, name) ?: continue
             val snapshot = try {
                 SnapshotCodec.decode(json)
