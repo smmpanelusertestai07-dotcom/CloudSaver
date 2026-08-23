@@ -40,7 +40,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
         options: Options,
         now: Long,
         onlyFolder: OutFolder? = null,
-        capBytesOverride: Long? = null
+        capBytesOverride: Long? = null,
+        maxItems: Int? = null
     ): Int {
         val staged = db.items().staged()
             .filter { it.stagePath != null && File(it.stagePath!!).exists() }
@@ -51,7 +52,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val plan = ReleasePlanner.plan(
             staged.map { ReleasePlanner.Staged(it.id, it.outputBytes ?: 0L, it.captureAt) },
             capBytes
-        )
+        ).let { if (maxItems != null) it.take(maxItems) else it }
         if (plan.isEmpty()) return 0
 
         val rowsById = staged.associateBy { it.id }
@@ -80,9 +81,14 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 batchBytes[folder] = (batchBytes[folder] ?: 0L) + (row.outputBytes ?: 0L)
             }
         }
-        // Record real batch sizes.
+        // Record real batch sizes. A batch where every file failed (a full
+        // volume, say) must not survive: hasReleasedToday() reads MAX(releasedAt)
+        // over all batches, so an empty one would convince the app it had
+        // already released today, and verifyBatches skips zero-byte batches so
+        // it would sit in unverified() forever.
         for ((folder, id) in batchIds) {
-            db.batches().setTotalBytes(id, batchBytes[folder] ?: 0L)
+            val bytes = batchBytes[folder] ?: 0L
+            if (bytes > 0) db.batches().setTotalBytes(id, bytes) else db.batches().deleteById(id)
         }
         return released
     }

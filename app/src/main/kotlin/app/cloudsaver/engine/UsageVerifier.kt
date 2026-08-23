@@ -50,12 +50,17 @@ object UsageVerifier {
         for (type in networkTypes) {
             try {
                 val stats = nsm.queryDetailsForUid(type, null, fromMs, toMs, uid)
-                val bucket = NetworkStats.Bucket()
-                while (stats.hasNextBucket()) {
-                    stats.getNextBucket(bucket)
-                    total += bucket.txBytes
+                try {
+                    val bucket = NetworkStats.Bucket()
+                    while (stats.hasNextBucket()) {
+                        stats.getNextBucket(bucket)
+                        total += bucket.txBytes
+                    }
+                } finally {
+                    // Binder-backed and finite: closing it in a finally keeps a
+                    // mid-iteration failure from leaking the handle.
+                    stats.close()
                 }
-                stats.close()
                 anySuccess = true
             } catch (se: SecurityException) {
                 return null

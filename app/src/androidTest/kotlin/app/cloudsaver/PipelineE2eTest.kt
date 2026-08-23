@@ -102,14 +102,24 @@ class PipelineE2eTest {
         val released = Releaser(context, db).releaseBatch(options, System.currentTimeMillis())
         assertEquals(3, released)
 
+        // MediaProvider re-derives DATE_TAKEN from EXIF when a file is
+        // published, and EXIF carries no timezone, so the absolute value
+        // depends on the device's zone. What the app actually promises is that
+        // a copy sorts next to its original in the cloud app, so compare the
+        // copy against the original rather than against a hard-coded instant.
+        val originalTaken = dateTakenOf(originals.first())
+        assertTrue("the fixture must have a capture date", originalTaken > 0)
+
         val inFolder = OutputInventory(context).query()
-        assertEquals(3, inFolder.size)
+        assertNotNull("the output folder must be readable", inFolder)
+        assertEquals(3, inFolder!!.size)
         for (entry in inFolder) {
             assertEquals(Defaults.OUTPUT_DIR, entry.relPath.trimEnd('/'))
             assertTrue("copy must be owned by us", entry.ownedByUs)
             assertTrue(
-                "DATE_TAKEN must match the original capture time",
-                abs(entry.dateTaken - captureAt) < 2000
+                "copy DATE_TAKEN ${entry.dateTaken} must match the original's " +
+                    "$originalTaken (fixture asked for $captureAt)",
+                abs(entry.dateTaken - originalTaken) < 2000
             )
             // The optimised copy keeps the shooting metadata.
             context.contentResolver.openInputStream(entry.uri)!!.use { input ->
@@ -193,8 +203,13 @@ class PipelineE2eTest {
             uri, arrayOf(MediaStore.MediaColumns.SIZE), null, null, null
         )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
 
+    private fun dateTakenOf(uri: Uri): Long =
+        context.contentResolver.query(
+            uri, arrayOf(MediaStore.MediaColumns.DATE_TAKEN), null, null, null
+        )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+
     private fun clearOutputFolder() {
-        for (entry in OutputInventory(context).query()) {
+        for (entry in OutputInventory(context).query().orEmpty()) {
             runCatching { context.contentResolver.delete(entry.uri, null, null) }
         }
         runCatching {

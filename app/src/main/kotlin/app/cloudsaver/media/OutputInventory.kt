@@ -24,21 +24,37 @@ class OutputInventory(private val context: Context) {
         val ownedByUs: Boolean
     )
 
-    fun query(): List<Entry> {
+    /**
+     * The output folder's contents, or null if any part could not be read.
+     *
+     * Absence from this list is evidence: callers read it as "the cloud app
+     * removed the copy after uploading it". A failed query would produce an
+     * empty list, which is indistinguishable from every copy having been
+     * uploaded - so a partial answer must be reported as no answer.
+     */
+    fun query(): List<Entry>? {
         val out = mutableListOf<Entry>()
         val volumes = try {
             MediaStore.getExternalVolumeNames(context)
         } catch (e: Exception) {
-            setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            return null
         }
+        if (volumes.isEmpty()) return null
         for (volume in volumes) {
-            queryCollection(MediaStore.Images.Media.getContentUri(volume), isVideo = false, out)
-            queryCollection(MediaStore.Video.Media.getContentUri(volume), isVideo = true, out)
+            val ok =
+                queryCollection(MediaStore.Images.Media.getContentUri(volume), false, out) &&
+                    queryCollection(MediaStore.Video.Media.getContentUri(volume), true, out)
+            if (!ok) return null
         }
         return out
     }
 
-    private fun queryCollection(collection: Uri, isVideo: Boolean, out: MutableList<Entry>) {
+    /** Returns false if the collection could not be read. */
+    private fun queryCollection(
+        collection: Uri,
+        isVideo: Boolean,
+        out: MutableList<Entry>
+    ): Boolean {
         val projection = arrayOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -49,8 +65,11 @@ class OutputInventory(private val context: Context) {
         )
         val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
         val args = arrayOf(Defaults.OUTPUT_DIR_LIKE)
-        try {
-            context.contentResolver.query(collection, projection, selection, args, null)?.use { c ->
+        return try {
+            val cursor = context.contentResolver
+                .query(collection, projection, selection, args, null)
+                ?: return false
+            cursor.use { c ->
                 val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val iName = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val iRel = c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
@@ -71,8 +90,10 @@ class OutputInventory(private val context: Context) {
                     )
                 }
             }
+            true
         } catch (e: Exception) {
-            // MediaStore hiccup - treat as empty; maintain will retry later.
+            // A hiccup is not proof of anything; maintain retries next pass.
+            false
         }
     }
 }

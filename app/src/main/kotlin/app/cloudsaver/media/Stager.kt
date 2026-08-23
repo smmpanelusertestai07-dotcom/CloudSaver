@@ -52,11 +52,20 @@ class Stager(private val context: Context, private val db: AppDb) {
         } catch (e: Exception) {
             fail(row, e.message ?: e.javaClass.simpleName)
             return false
+        } catch (oom: OutOfMemoryError) {
+            // A huge photo can exhaust the heap while being scaled or rotated.
+            // Left uncaught this escapes the worker without counting an
+            // attempt, so the same file is retried first on every run and
+            // nothing behind it is ever processed. Treat it as a failure so
+            // the item reaches SKIP after the usual three tries.
+            fail(row, "out_of_memory")
+            return false
         }
 
+        var stageFile: File? = null
         return try {
             val stageName = Fingerprint.outputName(row.displayName, row.fingerprint, result.ext)
-            val stageFile = File(Storage.stageDir(context, options.storageVolume), stageName)
+            stageFile = File(Storage.stageDir(context, options.storageVolume), stageName)
             stageFile.delete()
             if (!result.file.renameTo(stageFile)) {
                 result.file.copyTo(stageFile, overwrite = true)
@@ -87,7 +96,10 @@ class Stager(private val context: Context, private val db: AppDb) {
         } catch (ce: CancellationException) {
             throw ce
         } catch (e: Exception) {
+            // By this point the temp file may already have been renamed, so
+            // clean up both names rather than only the one we started with.
             result.file.delete()
+            stageFile?.delete()
             fail(row, e.message ?: e.javaClass.simpleName)
             false
         }

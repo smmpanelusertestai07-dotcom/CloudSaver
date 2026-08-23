@@ -14,6 +14,9 @@ class MaintainWorker(context: Context, params: WorkerParameters) :
         val started = System.currentTimeMillis()
         try {
             MaintainEngine(applicationContext).run()
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            // WorkManager stopped us; report that, do not claim success.
+            throw ce
         } catch (e: Exception) {
             AppLog.log(applicationContext, "maintain", "worker failed: ${e.message}")
         }

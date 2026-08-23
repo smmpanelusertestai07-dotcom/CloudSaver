@@ -212,9 +212,18 @@ class OptionsRepo(private val context: Context) {
             map["cloudPhotos"]?.let { p[K.CLOUD_PHOTOS] = it }
             map["cloudVideos"]?.let { p[K.CLOUD_VIDEOS] = it }
             map["speed"]?.let { p[K.SPEED] = it }
-            map["dailyCapMb"]?.toIntOrNull()?.let { p[K.DAILY_CAP_MB] = it }
-            map["minFreeMb"]?.toIntOrNull()?.let { p[K.MIN_FREE_MB] = it }
-            map["maxExtraMb"]?.toIntOrNull()?.let { p[K.MAX_EXTRA_MB] = it }
+            // Only values the UI itself offers. A hand-edited backup could
+            // otherwise set an absurd minimum-free figure, which makes the
+            // resource gate refuse to run for good.
+            map["dailyCapMb"]?.toIntOrNull()
+                ?.takeIf { it in Defaults.DAILY_CAP_CHOICES_MB }
+                ?.let { p[K.DAILY_CAP_MB] = it }
+            map["minFreeMb"]?.toIntOrNull()
+                ?.takeIf { it in Defaults.MIN_FREE_CHOICES_MB }
+                ?.let { p[K.MIN_FREE_MB] = it }
+            map["maxExtraMb"]?.toIntOrNull()
+                ?.takeIf { it in Defaults.MAX_EXTRA_CHOICES_MB }
+                ?.let { p[K.MAX_EXTRA_MB] = it }
             map["preset"]?.let { p[K.PRESET] = it }
             map["codec"]?.let { p[K.CODEC] = it }
             map["theme"]?.let { p[K.THEME] = it }

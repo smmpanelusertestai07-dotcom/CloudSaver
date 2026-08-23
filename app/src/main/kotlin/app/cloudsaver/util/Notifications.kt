@@ -70,7 +70,12 @@ object Notifications {
             .build()
     }
 
-    fun warn(context: Context, id: Int, title: String, text: String) {
+    /**
+     * Posts a warning. [enabled] is the user's "Warnings" setting, passed in by
+     * the caller because reading it here would mean blocking on DataStore.
+     */
+    fun warn(context: Context, id: Int, title: String, text: String, enabled: Boolean = true) {
+        if (!enabled) return
         if (!canPost(context)) return
         val n = NotificationCompat.Builder(context, CH_WARNINGS)
             .setSmallIcon(R.drawable.ic_stat_cloud)

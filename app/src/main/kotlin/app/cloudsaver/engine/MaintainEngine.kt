@@ -58,14 +58,15 @@ class MaintainEngine(private val context: Context) {
         val volumeMissing = o.storageVolume.isNotEmpty() &&
             app.cloudsaver.util.Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
-            runCatching { verifyBatches(now) }
-            runCatching { ageEvidence(now) }
-            runCatching { dailySnapshot(o, now) }
+            step("verify") { verifyBatches(now) }
+            step("age") { ageEvidence(now) }
+            step("snapshot") { dailySnapshot(o, now) }
             if (now - o.volumeWarnedAt > 86_400_000L) {
                 Notifications.warn(
                     context, Notifications.ID_WARN_SPACE,
                     context.getString(R.string.warn_volume_title),
-                    context.getString(R.string.warn_volume_text)
+                    context.getString(R.string.warn_volume_text),
+                    o.warningsNotif
                 )
                 repo.setLong(OptionsRepo.K.VOLUME_WARNED_AT, now)
             }
@@ -73,29 +74,43 @@ class MaintainEngine(private val context: Context) {
             return summary
         }
 
+        // A null listing means MediaStore could not be read. Absence is
+        // evidence here, so a failed read must not be mistaken for an empty
+        // folder; skip the passes that interpret it and retry next hour.
         val entries = inventory.query()
-
-        runCatching { detectGone(o, now, entries, summary) }
-            .onFailure { AppLog.log(context, "maintain", "detectGone: ${it.message}") }
-        runCatching { promoteGone(now) }
-            .onFailure { AppLog.log(context, "maintain", "promoteGone: ${it.message}") }
-        runCatching { verifyBatches(now) }
-            .onFailure { AppLog.log(context, "maintain", "verify: ${it.message}") }
-        runCatching { ageEvidence(now) }
-            .onFailure { AppLog.log(context, "maintain", "age: ${it.message}") }
-        runCatching { selfHealStage(now) }
-            .onFailure { AppLog.log(context, "maintain", "healStage: ${it.message}") }
-        runCatching { originalsPresence(now) }
-            .onFailure { AppLog.log(context, "maintain", "originals: ${it.message}") }
-        if (!o.pauseAll) {
-            runCatching { dailyRelease(o, now, summary) }
-                .onFailure { AppLog.log(context, "maintain", "release: ${it.message}") }
+        if (entries == null) {
+            AppLog.log(context, "maintain", "output folder unreadable - skipping this pass")
+            return summary
         }
-        runCatching { lazyDelete(o, now, summary) }
-            .onFailure { AppLog.log(context, "maintain", "delete: ${it.message}") }
-        runCatching { dailySnapshot(o, now) }
-            .onFailure { AppLog.log(context, "maintain", "snapshot: ${it.message}") }
+
+        step("detectGone") { detectGone(o, now, entries, summary) }
+        step("promoteGone") { promoteGone(now) }
+        step("verify") { verifyBatches(now) }
+        step("age") { ageEvidence(now) }
+        step("healStage") { selfHealStage(now) }
+        step("originals") { originalsPresence(now) }
+        if (!o.pauseAll) {
+            step("release") { dailyRelease(o, now, summary) }
+        }
+        step("delete") { lazyDelete(o, now, summary) }
+        step("snapshot") { dailySnapshot(o, now) }
         return summary
+    }
+
+    /**
+     * Runs one maintenance step, logging a failure instead of abandoning the
+     * rest of the pass. Cancellation is rethrown: runCatching would swallow it
+     * (CancellationException is an Exception in Kotlin), so a stopped worker
+     * would grind through every remaining step and then report success.
+     */
+    private inline fun step(name: String, body: () -> Unit) {
+        try {
+            body()
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Throwable) {
+            AppLog.log(context, "maintain", "$name: ${e.message}")
+        }
     }
 
     /** Quick pass used by the in-app "Confirm uploads" flow; returns confirmed count. */
@@ -103,8 +118,9 @@ class MaintainEngine(private val context: Context) {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
-        runCatching { detectGone(o, now, inventory.query(), summary) }
-        runCatching { promoteGone(now) }
+        val entries = inventory.query() ?: return 0
+        step("detectGone") { detectGone(o, now, entries, summary) }
+        step("promoteGone") { promoteGone(now) }
         return summary.confirmed
     }
 
@@ -170,14 +186,30 @@ class MaintainEngine(private val context: Context) {
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
 
+    /**
+     * Marks batches VERIFIED once the cloud app has actually transmitted
+     * enough bytes to account for them.
+     *
+     * Every unverified batch's window ends at now, so the windows all overlap.
+     * Checking each batch on its own would let a single upload burst satisfy
+     * all of them at once - five 250 MB batches "verified" by 300 MB of
+     * traffic - and VERIFIED is what puts an original in front of the user for
+     * deletion. So the batches are settled oldest first against one cumulative
+     * total: a transmitted byte can only pay for one batch.
+     */
     private suspend fun verifyBatches(now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
-        for (batch in db.batches().unverified()) {
-            if (batch.totalBytes <= 0) continue
-            val pkg = batch.cloudPackage ?: continue
+        val pending = db.batches().unverified()
+            .filter { it.totalBytes > 0 && it.cloudPackage != null }
+            .sortedBy { it.releasedAt }
+        for ((pkg, batches) in pending.groupBy { it.cloudPackage!! }) {
             val uid = CloudApps.uidOf(context, pkg) ?: continue
-            val tx = UsageVerifier.txBytesForUid(context, uid, batch.releasedAt, now) ?: continue
-            if (VerifyMath.batchVerified(tx, batch.totalBytes)) {
+            val since = batches.first().releasedAt
+            val tx = UsageVerifier.txBytesForUid(context, uid, since, now) ?: continue
+            var required = 0L
+            for (batch in batches) {
+                required += batch.totalBytes
+                if (!VerifyMath.batchVerified(tx, required)) break
                 db.batches().markVerified(batch.id, now)
                 for (row in db.items().released().filter { it.batchId == batch.id }) {
                     val ev = evidenceOf(row)
@@ -187,7 +219,10 @@ class MaintainEngine(private val context: Context) {
                         )
                     }
                 }
-                AppLog.log(context, "verify", "batch ${batch.id} verified (tx=$tx of ${batch.totalBytes})")
+                AppLog.log(
+                    context, "verify",
+                    "batch ${batch.id} verified (tx=$tx covers $required cumulative)"
+                )
             }
         }
     }
@@ -222,11 +257,14 @@ class MaintainEngine(private val context: Context) {
     }
 
     private suspend fun originalsPresence(now: Long) {
-        val present = scanner.presentIds()
-        if (present.isEmpty()) return // permission missing or MediaStore down - don't judge
+        // Null means the read was incomplete (permission missing, MediaStore
+        // down, a volume unmounted mid-query). Judging on a partial answer
+        // would write off every original it failed to see.
+        val present = scanner.presentKeys() ?: return
+        if (present.isEmpty()) return
         for (row in db.items().all()) {
             val msId = row.mediaStoreId ?: continue
-            val missing = msId !in present
+            val missing = MediaScanner.presenceKeyOf(row.contentUri, msId) !in present
             if (missing == row.originalMissing) continue
             if (missing && row.state == ItemState.NEW.name) {
                 // Nothing was processed and the original is gone: nothing to do.
@@ -247,7 +285,7 @@ class MaintainEngine(private val context: Context) {
         }
         // Anchor rule / never-empty: if an active output folder has no files but
         // staged content exists for it, restore content immediately (no dummies).
-        val entries = inventory.query()
+        val entries = inventory.query() ?: return
         val byFolder = entries.groupBy { normalizeRel(it.relPath) }
         val activeFolders = if (o.outputMode == OutputMode.SEPARATE) {
             listOf(OutFolder.PHOTOS, OutFolder.VIDEOS)
@@ -257,10 +295,15 @@ class MaintainEngine(private val context: Context) {
         for (folder in activeFolders) {
             val has = byFolder[Defaults.outFolderRelPath(folder)]?.isNotEmpty() == true
             if (!has) {
+                // Exactly one file, so the folder stops being empty without
+                // shipping the whole staging backlog past the daily cap the
+                // user set. The byte cap is lifted only so a single large file
+                // can still anchor the folder.
                 val n = releaser.releaseBatch(
                     o, now, onlyFolder = folder,
-                    capBytesOverride = -1L
-                ).coerceAtMost(1)
+                    capBytesOverride = -1L,
+                    maxItems = 1
+                )
                 if (n > 0) {
                     summary.released += n
                     summary.healed++
@@ -293,6 +336,13 @@ class MaintainEngine(private val context: Context) {
         val waiting = released.count { evidenceOf(it).ordinal < Evidence.VERIFIED.ordinal }
         val cloud = CloudApps.byId(o.cloudSingle)
         val cloudPkg = CloudApps.installedPackage(context, cloud)
+        // "Other app" has no package to detect, so installedPackage() is null
+        // for it. Treating that as "no cloud app" pauses deletion forever: the
+        // copies pile up, hit the extra-space limit, and compression stops for
+        // good. Availability follows the same rule the health check uses; with
+        // no package there is simply no traffic to measure, so deletion falls
+        // back to the age rule in DeletePlanner.
+        val cloudAvailable = CloudApps.isAppInstalled(context, o.cloudSingle)
         val tx3d = cloudPkg?.let { pkg ->
             CloudApps.uidOf(context, pkg)?.let { uid ->
                 UsageVerifier.txBytesForUid(
@@ -300,12 +350,13 @@ class MaintainEngine(private val context: Context) {
                 )
             }
         }
-        if (DeletePlanner.safetyPause(cloudPkg != null, tx3d, waiting)) {
+        if (DeletePlanner.safetyPause(cloudAvailable, tx3d, waiting)) {
             if (now - o.safetyPauseWarnedAt > 86_400_000L) {
                 Notifications.warn(
                     context, Notifications.ID_WARN_SAFETY,
                     context.getString(R.string.warn_safety_title),
-                    context.getString(R.string.warn_safety_text)
+                    context.getString(R.string.warn_safety_text),
+                    o.warningsNotif
                 )
                 repo.setLong(OptionsRepo.K.SAFETY_WARNED_AT, now)
             }
@@ -313,7 +364,7 @@ class MaintainEngine(private val context: Context) {
             return
         }
 
-        val entries = inventory.query()
+        val entries = inventory.query() ?: return
         val presentNames = entries.groupBy { normalizeRel(it.relPath) }
             .mapValues { (_, v) -> v.map { it.name }.toHashSet() }
         val copies = released.mapNotNull { row ->
@@ -362,7 +413,8 @@ class MaintainEngine(private val context: Context) {
             Notifications.warn(
                 context, Notifications.ID_WARN_AGED,
                 context.getString(R.string.warn_aged_title),
-                context.getString(R.string.warn_aged_text)
+                context.getString(R.string.warn_aged_text),
+                o.warningsNotif
             )
             repo.setBool(OptionsRepo.K.AGED_WARNED, true)
         }

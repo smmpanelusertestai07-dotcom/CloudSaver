@@ -529,7 +529,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .filter { it.state == ItemState.RELEASED.name }
                 .map { it.fingerprint }
                 .toHashSet()
-            val foreign = OutputInventory(ctx).query().filter { entry ->
+            val foreign = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
                 if (entry.ownedByUs) return@filter false
                 val fp = Fingerprint.fpFromOutputName(entry.name)
                 fp == null || fp !in knownFps

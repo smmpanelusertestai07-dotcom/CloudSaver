@@ -38,6 +38,23 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // The periodic run, the FAST content trigger and "Run now" are three
+        // different unique work names, so WorkManager will happily run them at
+        // once. They share one staging directory and one temp directory, and
+        // every run starts by clearing the temp directory - which would delete
+        // a sibling's half-written encode out from under it. One at a time.
+        if (!running.compareAndSet(false, true)) {
+            AppLog.log(applicationContext, "work", "another run is active; skipping")
+            return Result.success()
+        }
+        return try {
+            runOnce()
+        } finally {
+            running.set(false)
+        }
+    }
+
+    private suspend fun runOnce(): Result {
         val app = applicationContext
         val repo = OptionsRepo.get(app)
         val options = repo.current()
@@ -205,25 +222,24 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         plan: RunDecider.Plan,
         limit: Int
     ): List<ItemRow> {
-        val candidates = db.items().newestNew(limit * 8)
-        return candidates.asSequence()
-            .filter {
-                when (o.scope) {
-                    BackupScope.ALL -> true
-                    BackupScope.PHOTOS -> !it.isVideo
-                    BackupScope.VIDEOS -> it.isVideo
-                }
-            }
-            // Only the kinds of work the current power state allows.
-            .filter { if (it.isVideo) plan.videos else plan.photos }
-            .filter { it.bucket == null || it.bucket !in o.excludedBuckets }
-            .take(limit)
-            .toList()
+        // What the user asked for, narrowed to what this power state allows.
+        val photos = plan.photos && o.scope != BackupScope.VIDEOS
+        val videos = plan.videos && o.scope != BackupScope.PHOTOS
+        if (!photos && !videos) return emptyList()
+        return db.items().nextEligible(
+            photos = photos,
+            videos = videos,
+            excludedBuckets = o.excludedBuckets,
+            limit = limit
+        )
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo(applicationContext)
 
     companion object {
+        /** Guards the staging and temp directories against concurrent runs. */
+        private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+
         const val KEY_MANUAL = "manual"
 
         fun foregroundInfo(context: Context): ForegroundInfo {

@@ -62,13 +62,25 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 existing.bucket != f.bucket ||
                 existing.originalMissing
             ) {
-                // Moved/renamed folder: same fingerprint, refresh location only.
+                // Moved/renamed folder: same fingerprint, refresh location.
+                // An item parked in DONE only because its original had vanished
+                // (nothing was ever staged or released for it) would otherwise
+                // stay there forever, since DONE is terminal - put it back in
+                // the queue now that the original is here again.
+                val neverProcessed = existing.outputUri == null &&
+                    existing.releasedAt == null &&
+                    existing.stagePath == null
+                val revived = existing.state == ItemState.DONE.name &&
+                    existing.originalMissing &&
+                    neverProcessed
                 db.items().update(
                     existing.copy(
                         mediaStoreId = f.mediaStoreId,
                         contentUri = f.uri,
                         bucket = f.bucket,
                         originalMissing = false,
+                        state = if (revived) ItemState.NEW.name else existing.state,
+                        goneReason = if (revived) null else existing.goneReason,
                         updatedAt = now
                     )
                 )
@@ -153,14 +165,23 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         }
     }
 
-    /** Fast projection of every present MediaStore id (original-missing detection). */
-    fun presentIds(): Set<Long> {
-        val ids = HashSet<Long>(4096)
+    /**
+     * Every original currently present, as volume-qualified keys.
+     *
+     * Returns null when any volume could not be read. Callers use this to
+     * decide that originals have been deleted, and a partial answer looks
+     * exactly like a mass deletion: eject an SD card mid-query and every
+     * photo on it would be written off. Incomplete means "do not judge".
+     */
+    fun presentKeys(): Set<String>? {
         val volumes = try {
             MediaStore.getExternalVolumeNames(context)
         } catch (e: Exception) {
-            setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            AppLog.log(context, "scan", "volume list failed: ${e.message}")
+            return null
         }
+        if (volumes.isEmpty()) return null
+        val keys = HashSet<String>(4096)
         val projection = arrayOf(MediaStore.MediaColumns._ID)
         for (volume in volumes) {
             for (collection in listOf(
@@ -168,16 +189,38 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 MediaStore.Video.Media.getContentUri(volume)
             )) {
                 try {
-                    context.contentResolver.query(collection, projection, null, null, null)?.use { c ->
+                    val cursor = context.contentResolver
+                        .query(collection, projection, null, null, null)
+                        ?: return null
+                    cursor.use { c ->
                         val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
-                        while (c.moveToNext()) ids.add(c.getLong(iId))
+                        while (c.moveToNext()) keys.add(presenceKey(volume, c.getLong(iId)))
                     }
                 } catch (e: Exception) {
-                    // Volume unmounted mid-query - skip.
+                    AppLog.log(context, "scan", "presence query failed on $volume: ${e.message}")
+                    return null
                 }
             }
         }
-        return ids
+        return keys
+    }
+
+    companion object {
+        /**
+         * MediaStore _ID is unique per volume, not globally, so presence has to
+         * be keyed by both - otherwise a deleted SD-card photo can look present
+         * because an unrelated internal file happens to share its id.
+         */
+        fun presenceKey(volume: String, id: Long): String = "$volume:$id"
+
+        /** The presence key for a stored row, taking the volume from its uri. */
+        fun presenceKeyOf(contentUri: String?, mediaStoreId: Long): String {
+            val volume = contentUri
+                ?.let { runCatching { android.net.Uri.parse(it).pathSegments.firstOrNull() }
+                    .getOrNull() }
+                ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
+            return presenceKey(volume, mediaStoreId)
+        }
     }
 
     /** Distinct gallery folders for the include/exclude option. */

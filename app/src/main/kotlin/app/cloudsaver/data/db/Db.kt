@@ -115,6 +115,27 @@ interface ItemDao {
     )
     suspend fun newestNew(limit: Int): List<ItemRow>
 
+    /**
+     * The next items this run may actually process, newest first.
+     *
+     * Eligibility is decided in SQL rather than after the fact: filtering a
+     * fetched page in Kotlin lets ineligible rows (wrong media kind, excluded
+     * folder) occupy the whole window forever, and since they never leave the
+     * NEW state the queue stalls permanently.
+     */
+    @Query(
+        "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1)) " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "ORDER BY captureAt DESC LIMIT :limit"
+    )
+    suspend fun nextEligible(
+        photos: Boolean,
+        videos: Boolean,
+        excludedBuckets: Collection<String>,
+        limit: Int
+    ): List<ItemRow>
+
     @Query("SELECT * FROM items WHERE state = 'STAGED'")
     suspend fun staged(): List<ItemRow>
 
@@ -205,6 +226,10 @@ interface BatchDao {
 
     @Query("UPDATE batches SET totalBytes = :bytes WHERE id = :id")
     suspend fun setTotalBytes(id: Long, bytes: Long)
+
+    /** Drops a batch in which nothing was actually released. */
+    @Query("DELETE FROM batches WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     @Query("SELECT COALESCE(SUM(totalBytes), 0) FROM batches WHERE releasedAt >= :fromMs")
     suspend fun bytesSince(fromMs: Long): Long
