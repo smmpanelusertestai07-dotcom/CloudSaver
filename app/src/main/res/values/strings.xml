@@ -53,6 +53,9 @@
 
     <!-- files -->
     <string name="files_search">Search files</string>
+    <string name="files_empty_title">No files yet</string>
+    <string name="files_no_match_title">No matches</string>
+    <string name="files_no_match_body">Try a different name.</string>
     <string name="files_empty">Nothing here yet. The first scan runs shortly after setup.</string>
     <string name="state_new">Queued</string>
     <string name="state_staged">Optimised</string>

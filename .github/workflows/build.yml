@@ -225,10 +225,8 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          profile: pixel_6
-          ram-size: 4096M
-          disk-size: 6G
           force-avd-creation: false
+          emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: |
@@ -238,15 +236,26 @@ jobs:
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
 
+            mkdir -p artifacts/screenshots
+            FAILED=0
+
             echo "::group::Instrumented end-to-end tests"
-            ./gradlew connectedDebugAndroidTest --no-daemon
+            ./gradlew connectedDebugAndroidTest --no-daemon || FAILED=1
             echo "::endgroup::"
 
-            echo "::group::Collect screenshots"
-            mkdir -p artifacts/screenshots
+            # Always collect the evidence, pass or fail.
+            echo "::group::Collect screenshots and logs"
             adb pull /sdcard/Android/data/app.cloudsaver/files/screenshots artifacts/ || true
             ls -la artifacts/screenshots || true
+            adb logcat -d > artifacts/logcat.txt || true
+            adb logcat -d -b crash > artifacts/logcat-crash.txt || true
             echo "::endgroup::"
+
+            if [ "$FAILED" -ne 0 ]; then
+              echo "::error::Instrumented tests failed"
+              tail -80 artifacts/logcat-crash.txt || true
+              exit 1
+            fi
 
             echo "::group::Install the signed release APK and launch it"
             adb uninstall app.cloudsaver || true
@@ -273,7 +282,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: emulator-screenshots
-          path: artifacts/screenshots
+          path: |
+            artifacts/screenshots
+            artifacts/logcat-crash.txt
           if-no-files-found: warn
 
       - name: Upload instrumentation report

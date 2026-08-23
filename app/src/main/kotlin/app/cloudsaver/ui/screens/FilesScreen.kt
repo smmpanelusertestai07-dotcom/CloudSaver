@@ -60,17 +60,23 @@ fun FilesScreen(vm: AppViewModel) {
                 .padding(vertical = 8.dp)
         )
         if (items.isEmpty()) {
-            Text(
-                stringResource(R.string.files_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(vertical = 16.dp)
+            app.cloudsaver.ui.components.EmptyState(
+                title = if (query.isEmpty()) {
+                    stringResource(R.string.files_empty_title)
+                } else {
+                    stringResource(R.string.files_no_match_title)
+                },
+                body = if (query.isEmpty()) {
+                    stringResource(R.string.files_empty)
+                } else {
+                    stringResource(R.string.files_no_match_body)
+                }
             )
         }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(items, key = { it.id }) { row ->
                 AppCard(
-                    modifier = Modifier.padding(vertical = 4.dp),
+                    modifier = Modifier.padding(vertical = 5.dp),
                     onClick = { detail = row }
                 ) {
                     Text(
