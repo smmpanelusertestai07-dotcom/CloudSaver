@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup (API 29-30): keep DB + settings, drop logs and temp work. -->
+<full-backup-content>
+    <exclude
+        domain="file"
+        path="logs" />
+</full-backup-content>

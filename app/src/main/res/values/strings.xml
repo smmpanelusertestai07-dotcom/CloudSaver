@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">LiteSaver</string>
+
+    <!-- common -->
+    <string name="ok">OK</string>
+    <string name="back">Back</string>
+    <string name="skip">Skip</string>
+
+    <!-- navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_files">Files</string>
+    <string name="nav_storage">Storage</string>
+    <string name="nav_options">Options</string>
+    <string name="nav_help">Help</string>
+
+    <!-- home -->
+    <string name="status_paused">Everything is paused. Turn it on in Options.</string>
+    <string name="status_working">%1$d items in the queue. The app works on its own.</string>
+    <string name="status_idle">All up to date. Relax.</string>
+    <string name="status_fresh">The first scan starts soon.</string>
+    <string name="chip_paused">Paused</string>
+    <string name="chip_battery">Battery restricted</string>
+    <string name="chip_usage">Usage access off</string>
+    <string name="chip_cloud">Cloud app missing</string>
+    <string name="chip_space">Low space</string>
+    <string name="count_waiting">Waiting</string>
+    <string name="count_in_folder">In cloud folder</string>
+    <string name="count_confirmed">Uploaded ✓ confirmed</string>
+    <string name="count_likely">Uploaded (likely)</string>
+    <string name="savings_title">Savings</string>
+    <string name="savings_line">%1$s saved, %2$d items compressed</string>
+    <string name="last_run">Last run: %1$s</string>
+    <string name="btn_run_now">Run now</string>
+    <string name="btn_confirm_uploads">Confirm uploads</string>
+    <string name="confirm_explainer">Confirm uploads: run your cloud app\'s "Free up space". Copies removed there count as definitely uploaded.</string>
+    <string name="confirm_result_title">Confirm result</string>
+    <string name="confirm_result_line">%1$d files confirmed</string>
+    <string name="old_files_title">Files from an old install found</string>
+    <string name="old_files_text">Pictures/LiteSaver has %1$d files from a previous install. Clean them once?</string>
+    <string name="old_files_clean">Clean up</string>
+    <string name="old_files_keep">Keep them</string>
+
+    <!-- tamper evidence (13.A) -->
+    <string name="tamper_title">Modified copy</string>
+    <string name="tamper_text">This is not the official build - install the official APK. Deleting is disabled for safety.</string>
+    <string name="tamper_freeup_blocked">This tool is off because this copy of the app was modified. Install the official APK.</string>
+
+    <!-- files -->
+    <string name="files_search">Search by name</string>
+    <string name="files_empty">No items yet. Let the first scan finish.</string>
+    <string name="state_new">Queued</string>
+    <string name="state_staged">Compressed</string>
+    <string name="state_released">In cloud folder</string>
+    <string name="state_done">Done</string>
+    <string name="state_skip">Skipped</string>
+    <string name="state_freed">Original freed</string>
+    <string name="state_unknown">Unknown (import)</string>
+    <string name="evidence_confirmed">Confirmed uploaded</string>
+    <string name="evidence_verified">Verified by data</string>
+    <string name="evidence_aged">Likely by time</string>
+    <string name="evidence_none">No proof</string>
+    <string name="detail_state">Status</string>
+    <string name="detail_evidence">Upload proof</string>
+    <string name="detail_original">Original size</string>
+    <string name="detail_copy">Copy size</string>
+    <string name="detail_copy_name">Copy name</string>
+    <string name="detail_captured">Capture date</string>
+    <string name="detail_released">Release date</string>
+    <string name="detail_reason">Reason</string>
+    <string name="detail_original_missing">The original is no longer in the gallery.</string>
+
+    <!-- storage -->
+    <string name="storage_used_title">Space used by the app</string>
+    <string name="storage_stage">Stage (hidden copies)</string>
+    <string name="storage_output">Cloud folder copies</string>
+    <string name="storage_volumes_title">Storage volumes</string>
+    <string name="volume_internal">Internal</string>
+    <string name="volume_sd">SD card</string>
+    <string name="volume_free_line">%1$s free of %2$s</string>
+    <string name="volume_active_mark">(in use)</string>
+    <string name="volume_missing_warning">The chosen SD card is not available. LiteSaver paused safely.</string>
+    <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, LiteSaver pauses safely.</string>
+    <string name="storage_reclaim_title">Reclaimable from originals</string>
+    <string name="storage_reclaim_line">%1$s of originals are confirmed uploaded</string>
+    <string name="storage_freeup_open">Open Free-up tool</string>
+    <string name="storage_freeup_hidden">Enable the Free-up tool in Options first.</string>
+    <string name="storage_temp_title">Temp files</string>
+    <string name="storage_temp_text">Clear temp files from unfinished work here.</string>
+    <string name="storage_clean_temp">Clean temp</string>
+
+    <!-- free-up -->
+    <string name="freeup_title">Free up originals</string>
+    <string name="freeup_subtitle">Total reclaimable: %1$s</string>
+    <string name="freeup_explainer">Only originals whose copy is confirmed uploaded show here. Deleting always goes through Android\'s own confirmation - LiteSaver never deletes originals by itself.</string>
+    <string name="freeup_select_all">Select all</string>
+    <string name="freeup_delete">Delete (%1$s)</string>
+    <string name="freeup_empty">No confirmed-uploaded originals yet. Run "Confirm uploads" first.</string>
+
+    <!-- lock -->
+    <string name="lock_title">LiteSaver is locked</string>
+    <string name="lock_subtitle">Unlock with fingerprint or PIN</string>
+    <string name="lock_unlock">Unlock</string>
+
+    <!-- options -->
+    <string name="opt_scope">What to back up</string>
+    <string name="opt_scope_hint">Photos, videos, or both.</string>
+    <string name="scope_all">All</string>
+    <string name="scope_photos">Photos</string>
+    <string name="scope_videos">Videos</string>
+    <string name="opt_folders">Folders</string>
+    <string name="opt_folders_hint">Which gallery folders are included.</string>
+    <string name="folders_all">All folders</string>
+    <string name="folders_excluded">%1$d folders excluded</string>
+    <string name="folders_loading">Loading folders…</string>
+    <string name="opt_output">Output folders</string>
+    <string name="opt_output_hint">One folder, or separate Photos/Videos.</string>
+    <string name="output_single">Single</string>
+    <string name="output_separate">Separate</string>
+    <string name="opt_cloud">Cloud app</string>
+    <string name="cloud_for_all">Cloud app</string>
+    <string name="cloud_for_photos">For photos</string>
+    <string name="cloud_for_videos">For videos</string>
+    <string name="cloud_intended">LiteSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that have no compression of their own. Clouds like Google Photos and OneDrive already compress for you.</string>
+    <string name="cloud_recommended">Recommended</string>
+    <string name="cloud_installed_mark">Installed on this phone</string>
+    <string name="cloud_section_e2ee">Best fit (E2EE)</string>
+    <string name="cloud_section_also">Also works</string>
+    <string name="opt_speed">Speed</string>
+    <string name="opt_speed_hint">When to compress.</string>
+    <string name="speed_charging">Charging only</string>
+    <string name="speed_anytime">Anytime</string>
+    <string name="speed_instant">Instant</string>
+    <string name="opt_daily_cap">Daily release cap</string>
+    <string name="opt_daily_cap_hint">Only this much data enters the cloud folder per day - that is the network cap.</string>
+    <string name="unlimited">Unlimited</string>
+    <string name="unlimited_warning">Note: unlimited can use much more data and battery.</string>
+    <string name="opt_space">Phone space</string>
+    <string name="opt_space_hint">Keep this much free, and let the app use at most this much extra.</string>
+    <string name="space_min_free">Minimum free</string>
+    <string name="space_max_extra">App max extra</string>
+    <string name="opt_volume">Storage location</string>
+    <string name="opt_volume_hint">Where the app keeps its copies (stage + LiteSaver folder).</string>
+    <string name="opt_preset">Quality preset</string>
+    <string name="opt_preset_hint">Storage saver is the default; applies to new items.</string>
+    <string name="preset_storage">Storage saver</string>
+    <string name="preset_balanced">Balanced</string>
+    <string name="preset_max">Max saver</string>
+    <string name="opt_codec">Video codec</string>
+    <string name="opt_codec_hint">H.264 plays everywhere; HEVC is smaller but not every device supports it.</string>
+    <string name="codec_h264">H.264</string>
+    <string name="codec_hevc">HEVC</string>
+    <string name="codec_hevc_warning">Note: older devices and TVs may not play HEVC.</string>
+    <string name="opt_theme">Theme</string>
+    <string name="opt_theme_hint">Light, dark, or follow system.</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_dynamic">Dynamic colour (Android 12+)</string>
+    <string name="opt_lock">App lock</string>
+    <string name="opt_lock_hint">Options, Files and Free-up behind fingerprint/PIN.</string>
+    <string name="opt_warnings">Warning notifications</string>
+    <string name="opt_warnings_hint">Notifications only for real problems.</string>
+    <string name="opt_freeup">Show Free-up tool</string>
+    <string name="opt_freeup_hint">The manual tool that deletes originals. Use with care.</string>
+    <string name="opt_freeup_verified">Also allow VERIFIED ≥ 30 days</string>
+    <string name="opt_freeup_verified_warning">Note: VERIFIED is data-count proof only, not exact.</string>
+    <string name="opt_unknown">Reprocess unknown items</string>
+    <string name="opt_unknown_hint">Re-compress imported items that have no proof.</string>
+    <string name="opt_unknown_warning">Note: may create duplicates in the cloud.</string>
+    <string name="opt_pause">Pause everything</string>
+    <string name="opt_pause_hint">Stops both compression and release.</string>
+    <string name="opt_transfer">State export/import</string>
+    <string name="opt_transfer_hint">Save the state JSON anywhere (like a cloud drive) or bring it back.</string>
+    <string name="transfer_export">Export</string>
+    <string name="transfer_import">Import</string>
+    <string name="transfer_export_ok">Export done</string>
+    <string name="transfer_import_ok">Import done</string>
+    <string name="transfer_failed">That did not work. Try again.</string>
+    <string name="options_footer">Changing options never deletes anything. Preset and codec apply to future items only.</string>
+
+    <!-- cloud calculator (13.C) -->
+    <string name="calc_title">Cloud calculator</string>
+    <string name="calc_open">Open calculator</string>
+    <string name="calc_entry_hint">See how much fits in your cloud space.</string>
+    <string name="calc_mode_both">Photos + Videos</string>
+    <string name="calc_mix_label">Photos %1$d%% · Videos %2$d%% (storage share)</string>
+    <string name="calc_input_label">Cloud free space (GB)</string>
+    <string name="calc_prefill_note">Typical value for %1$s - confirm in your cloud app, plans change.</string>
+    <string name="calc_enter">Type your cloud free space above to see what fits.</string>
+    <string name="calc_line1">%1$s GB cloud ≈ %2$s GB of originals</string>
+    <string name="calc_cap_photos">Room for about %1$s photos.</string>
+    <string name="calc_cap_videos">Room for about %1$s hours of video.</string>
+    <string name="calc_cap_both">Room for about %1$s photos + %2$s hours of video (your mix).</string>
+    <string name="calc_gallery_line">Your gallery: %1$s GB → compressed ≈ %2$s GB.</string>
+    <string name="calc_fits">It fits.</string>
+    <string name="calc_needs">Needs %1$s GB more.</string>
+    <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
+    <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
+    <string name="calc_badge_measured">Based on %1$d of your files</string>
+    <string name="calc_estimate_note">All numbers are estimates.</string>
+    <string name="calc_quality_storage">Quality on this preset: video ~90-95%%, photo ~97%%.</string>
+    <string name="calc_quality_balanced">Quality on this preset: video ~95%%, photo ~98%%.</string>
+    <string name="calc_quality_max">Quality on this preset: video ~85-90%%, photo ~95%%.</string>
+
+    <!-- cloud checklists (13.B; max 5 short lines each) -->
+    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → ONLY LiteSaver.</string>
+    <string name="cl_mega">In MEGA: Camera uploads folder = LiteSaver · Video quality = Original (else videos get compressed twice) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
+    <string name="cl_filen">In Filen: turn on auto-upload for ONLY the LiteSaver folder. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
+    <string name="cl_proton">In Proton Drive: turn on auto-upload for ONLY the LiteSaver folder. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
+    <string name="cl_nextcloud">In Nextcloud: Auto upload → add ONLY the LiteSaver folder.</string>
+    <string name="cl_immich">In Immich: backup album = LiteSaver only.</string>
+    <string name="cl_onedrive">In OneDrive: back up ONLY the LiteSaver folder. Note: not end-to-end encrypted - OneDrive can see your files.</string>
+    <string name="cl_other">In your app: pick the LiteSaver folder yourself and back up only that folder.</string>
+    <string name="cl_gphotos_no">Not supported: the Camera folder cannot be excluded, so originals would upload too. Google Photos also has its own Storage saver.</string>
+    <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
+
+    <!-- onboarding -->
+    <string name="onb_tagline">A storage saver for your gallery - offline, private, automatic.</string>
+    <string name="onb_start">Get started</string>
+    <string name="onb_done_next">Done, next</string>
+    <string name="onb_finish">Finish setup</string>
+    <string name="onb0_title">Welcome!</string>
+    <string name="onb0_text">LiteSaver makes small copies of your photos and videos. Your cloud app backs up only the Pictures/LiteSaver folder. Originals are never touched.</string>
+    <string name="onb0_import">Import previous state (reinstall)</string>
+    <string name="onb1_title">1. Media permission</string>
+    <string name="onb1_text">Permission to read the gallery is needed. "Allow all" works best.</string>
+    <string name="onb1_grant">Grant permission</string>
+    <string name="onb1_appinfo">Not asking? Open app info</string>
+    <string name="onb2_title">2. Notifications</string>
+    <string name="onb2_text">A small silent notification shows while working. The app still works if you say no.</string>
+    <string name="onb2_grant">Allow</string>
+    <string name="onb3_title">3. Stop the battery killer</string>
+    <string name="onb3_text">Turn off battery optimization so the phone does not kill background work. On Xiaomi/Oppo/Vivo also enable auto-start.</string>
+    <string name="onb3_battery">Open battery dialog</string>
+    <string name="onb3_autostart">Open auto-start page</string>
+    <string name="onb3_fallback">If the page does not open: Settings → Battery → LiteSaver → No restrictions.</string>
+    <string name="onb4_title">4. Usage access (recommended)</string>
+    <string name="onb4_text">Lets LiteSaver see how much the cloud app uploaded - used to verify uploads.</string>
+    <string name="onb4_grant">Grant usage access</string>
+    <string name="onb5_title">5. Cloud app setup</string>
+    <string name="onb5_text">Found: %1$s. In that app, back up ONLY the LiteSaver folder.</string>
+    <string name="onb5_open">Open %1$s</string>
+    <string name="onb6_title">6. Test run</string>
+    <string name="onb6_text">We compress 3 items and show before/after sizes.</string>
+    <string name="onb6_run">Run test</string>
+    <string name="onb6_running">Running…</string>
+    <string name="onb6_none">No items found yet. Check the permission.</string>
+
+    <!-- help -->
+    <string name="help_faq">FAQ</string>
+    <string name="help_quality">Quality &amp; Technology</string>
+    <string name="help_logs">Logs</string>
+    <string name="help_privacy">Privacy &amp; Terms</string>
+    <string name="help_licenses">Licenses</string>
+    <string name="help_about">About</string>
+    <string name="help_rerun_setup">Re-run setup</string>
+    <string name="logs_share">Share log</string>
+    <string name="logs_clear">Clear log</string>
+    <string name="logs_empty">The log is empty.</string>
+    <string name="about_version">Version</string>
+    <string name="about_sha">APK SHA-256</string>
+    <string name="about_text">LiteSaver is an offline storage saver. No account, no ads, no internet.</string>
+
+    <string name="privacy_text">LiteSaver is 100%% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders (Pictures/LiteSaver, Documents/LiteSaver). Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; LiteSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
+
+    <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
+
+    <!-- quality page -->
+    <string name="quality_intro">Everything happens on the phone. Video bitrate comes from output pixels × fps (H.264: 0.10 bits per pixel per frame, HEVC: 0.065). 1080p30 H.264 ≈ 6 Mbps. Photos are resized to the preset megapixel limit at JPEG quality 80-85.</string>
+    <string name="quality_codec_title">H.264 vs HEVC</string>
+    <string name="quality_codec_text">H.264 plays on every device. HEVC is about 35%% smaller at the same quality, but older devices may not support it. H.264 is the default.</string>
+    <string name="quality_table_title">Savings (approx.)</string>
+    <string name="quality_row1_k">1080p video</string>
+    <string name="quality_row1_v">60-75%% smaller at ~90-95%% quality</string>
+    <string name="quality_row2_k">4K → 1080p</string>
+    <string name="quality_row2_v">75-85%% saved</string>
+    <string name="quality_row3_k">12 MP photo</string>
+    <string name="quality_row3_v">~30%% smaller, invisible loss</string>
+    <string name="quality_row4_k">&gt;16 MP photo</string>
+    <string name="quality_row4_v">~75%% saved</string>
+    <string name="quality_outro">EXIF, GPS and dates are always copied. Rotation is baked in upright. If a compressed file would be bigger, the original is copied as-is - an item is never lost.</string>
+
+    <!-- FAQ -->
+    <string name="faq_q1">What does LiteSaver do?</string>
+    <string name="faq_a1">It makes compressed copies of your gallery in Pictures/LiteSaver. Your cloud app backs up only that folder. Originals stay exactly as they are.</string>
+    <string name="faq_q2">Are originals ever deleted?</string>
+    <string name="faq_a2">Never automatically. Only via the manual Free-up tool - you select, and Android\'s own dialog confirms.</string>
+    <string name="faq_q3">Will dates change?</string>
+    <string name="faq_a3">No. Every copy gets the original capture date (EXIF + file date), so the cloud timeline stays correct.</string>
+    <string name="faq_q4">How much quality is lost?</string>
+    <string name="faq_a4">On the Storage saver preset videos keep ~90-95%% visual quality and photo loss is invisible. Details on the Quality page.</string>
+    <string name="faq_q5">What is the daily cap?</string>
+    <string name="faq_a5">Only that much data enters the cloud folder per day (default 250 MB). It doubles as the upload network limit.</string>
+    <string name="faq_q6">Someone deleted a file from the LiteSaver folder?</string>
+    <string name="faq_a6">If there was no upload proof, LiteSaver makes the copy again. The original is always safe.</string>
+    <string name="faq_q7">Play Protect shows a warning?</string>
+    <string name="faq_a7">Normal for sideloaded APKs. Choose "More details" → "Install anyway". The app is offline and holds no network permission.</string>
+    <string name="faq_q8">What happens on uninstall/reinstall?</string>
+    <string name="faq_a8">Android Auto Backup + Documents/LiteSaver/state.json + manual Export restore the state. Items without proof become UNKNOWN - those can never delete originals.</string>
+    <string name="faq_q9">Cloud storage is full?</string>
+    <string name="faq_a9">Uploads stop, and LiteSaver also stops deleting copies (safety pause). Make room in the cloud or upgrade the plan.</string>
+    <string name="faq_q10">How does upload confirmation work?</string>
+    <string name="faq_a10">The cloud app\'s own "Free up space" deletes only uploaded files. Copies that disappear after "Confirm uploads" are the exact proof. Usage access adds data-count verification.</string>
+    <string name="faq_q11">Does the app use the internet?</string>
+    <string name="faq_a11">No. The INTERNET permission is removed from the manifest itself. Uploading is always done by your cloud app.</string>
+    <string name="faq_q12">How much battery does it use?</string>
+    <string name="faq_a12">By default it compresses only while charging, with heat and battery limits. The daily release is just a file move.</string>
+    <string name="faq_q13">Is the SD card supported?</string>
+    <string name="faq_a13">Yes. Everything the gallery shows (all volumes) is scanned, and you can keep the LiteSaver folder on the SD card.</string>
+    <string name="faq_q14">Why is the output folder never empty?</string>
+    <string name="faq_a14">The anchor rule: the newest file of each output folder is never deleted, so the cloud app never forgets the folder. No dummy files.</string>
+    <string name="faq_q15">What about HEIC/RAW/GIF?</string>
+    <string name="faq_a15">HEIC is compressed (to JPEG). RAW, GIF, SVG and similar are copied as-is - nothing is ever dropped.</string>
+    <string name="faq_q16">Which cloud apps work?</string>
+    <string name="faq_a16">Best fit (E2EE): Ente (recommended), MEGA, Filen, Proton Drive. Also works: Nextcloud, Immich, OneDrive, or any app that can back up one chosen folder. Google Photos and Dropbox cannot work - they cannot back up just one custom folder.</string>
+
+    <!-- notifications -->
+    <string name="channel_working">Working</string>
+    <string name="channel_warnings">Warnings</string>
+    <string name="notif_working_title">LiteSaver is working</string>
+    <string name="notif_working_text">Compressing media…</string>
+    <string name="warn_aged_title">Deleted without solid proof</string>
+    <string name="warn_aged_text">To free space, some old copies with only time-based proof were deleted. Originals are completely safe.</string>
+    <string name="warn_safety_title">Uploads look stuck</string>
+    <string name="warn_safety_text">The cloud app has uploaded nothing for 3 days, so LiteSaver paused deleting copies. Open the cloud app and check.</string>
+    <string name="warn_volume_title">SD card missing</string>
+    <string name="warn_volume_text">The chosen storage is not available. LiteSaver paused file work. Your state is safe.</string>
+</resources>
