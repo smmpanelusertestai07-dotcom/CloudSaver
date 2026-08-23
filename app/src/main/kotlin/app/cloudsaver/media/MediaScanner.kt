@@ -3,6 +3,7 @@ package app.cloudsaver.media
 import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
+import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
@@ -129,7 +130,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             while (c.moveToNext()) {
                 val rel = c.getString(iRel)
                 // Never re-ingest our own output copies.
-                if (rel != null && rel.startsWith("Pictures/CloudSaver")) continue
+                if (Defaults.isOutputPath(rel)) continue
                 val name = c.getString(iName) ?: continue
                 val size = c.getLong(iSize)
                 if (size <= 0) continue

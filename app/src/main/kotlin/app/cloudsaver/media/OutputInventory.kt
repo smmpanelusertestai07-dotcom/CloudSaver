@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import app.cloudsaver.core.logic.Defaults
 
 /**
  * What is actually inside Pictures/CloudSaver right now (MediaStore view).
@@ -47,7 +48,7 @@ class OutputInventory(private val context: Context) {
             MediaStore.MediaColumns.OWNER_PACKAGE_NAME
         )
         val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?"
-        val args = arrayOf("Pictures/CloudSaver%")
+        val args = arrayOf(Defaults.OUTPUT_DIR_LIKE)
         try {
             context.contentResolver.query(collection, projection, selection, args, null)?.use { c ->
                 val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)

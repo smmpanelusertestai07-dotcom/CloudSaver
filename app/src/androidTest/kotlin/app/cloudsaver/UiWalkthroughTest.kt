@@ -24,6 +24,8 @@ import java.io.File
  * written to the app's external files dir so CI can pull them as artifacts -
  * that is how the design gets reviewed after each change.
  */
+private const val SHOT_DIR = "Pictures/CSTestShots/"
+
 @RunWith(AndroidJUnit4::class)
 class UiWalkthroughTest {
 
@@ -41,13 +43,32 @@ class UiWalkthroughTest {
     private val target: Context get() = instrumentation.targetContext
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
 
-    private fun shotDir(): File =
-        File(target.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+    /**
+     * Android 11+ hides /sdcard/Android/data from adb, so screenshots are
+     * published through MediaStore into Pictures/CSTestShots, which adb can
+     * pull. (The pipeline only ever looks at Pictures/CloudSaver, so these
+     * never interfere with it.)
+     */
+    private fun publish(name: String, png: ByteArray) {
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, SHOT_DIR)
+        }
+        val collection = android.provider.MediaStore.Images.Media
+            .getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val uri = target.contentResolver.insert(collection, values) ?: return
+        target.contentResolver.openOutputStream(uri)?.use { it.write(png) }
+    }
 
     private fun shoot(name: String) {
         compose.waitForIdle()
         device.waitForIdle()
-        device.takeScreenshot(File(shotDir(), "$name.png"))
+        val temp = File(target.cacheDir, "$name.png")
+        if (device.takeScreenshot(temp) && temp.exists()) {
+            publish(name, temp.readBytes())
+            temp.delete()
+        }
     }
 
     private fun setOnboardingDone(done: Boolean) = runBlocking {
@@ -68,9 +89,10 @@ class UiWalkthroughTest {
             val canvas = android.graphics.Canvas(bitmap)
             drawable.setBounds(0, 0, size, size)
             drawable.draw(canvas)
-            File(shotDir(), "00-app-icon-$size.png").outputStream().use { out ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-            }
+            val bytes = java.io.ByteArrayOutputStream().also {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }.toByteArray()
+            publish("00-app-icon-$size", bytes)
             bitmap.recycle()
         }
         // The monochrome layer must exist for themed icons on Android 13+.

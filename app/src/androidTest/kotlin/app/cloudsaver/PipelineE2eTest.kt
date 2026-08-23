@@ -61,7 +61,7 @@ class PipelineE2eTest {
     }
 
     @Test
-    fun photosAreOptimisedReleasedAndDatedCorrectly() = runBlocking {
+    fun photosAreOptimisedReleasedAndDatedCorrectly() = runBlockingTest {
         val originals = (1..3).map { i ->
             MediaFixtures.insertPhoto(
                 context,
@@ -147,11 +147,11 @@ class PipelineE2eTest {
     }
 
     @Test
-    fun videoIsOptimisedOrSafelyCopied() = runBlocking {
+    fun videoIsOptimisedOrSafelyCopied() = runBlockingTest {
         val uri = MediaFixtures.insertVideo(context, "e2e_clip.mp4")
         if (uri == null) {
             // No usable encoder on this image; nothing to assert.
-            return@runBlocking
+            return@runBlockingTest
         }
         val srcSize = sizeOf(uri)
         val db = AppDb.get(context)
@@ -172,7 +172,7 @@ class PipelineE2eTest {
     }
 
     @Test
-    fun skippedAndEmptyStatesDoNotCrash() = runBlocking {
+    fun skippedAndEmptyStatesDoNotCrash() = runBlockingTest {
         val db = AppDb.get(context)
         // No fixtures at all: every stage must be a no-op, not an exception.
         MediaScanner(context, db).scan()
@@ -181,6 +181,11 @@ class PipelineE2eTest {
             System.currentTimeMillis()
         )
         MaintainEngine(context).run()
+    }
+
+    /** JUnit needs void test methods; this pins the return type to Unit. */
+    private fun runBlockingTest(body: suspend () -> Unit) {
+        runBlocking { body() }
     }
 
     private fun sizeOf(uri: Uri): Long =

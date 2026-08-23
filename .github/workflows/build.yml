@@ -243,9 +243,10 @@ jobs:
             ./gradlew connectedDebugAndroidTest --no-daemon || FAILED=1
             echo "::endgroup::"
 
-            # Always collect the evidence, pass or fail.
+            # Always collect the evidence, pass or fail. The tests publish PNGs
+            # through MediaStore because adb cannot read /sdcard/Android/data.
             echo "::group::Collect screenshots and logs"
-            adb pull /sdcard/Android/data/app.cloudsaver/files/screenshots artifacts/ || true
+            adb pull /sdcard/Pictures/CSTestShots/. artifacts/screenshots/ || true
             ls -la artifacts/screenshots || true
             adb logcat -d > artifacts/logcat.txt || true
             adb logcat -d -b crash > artifacts/logcat-crash.txt || true

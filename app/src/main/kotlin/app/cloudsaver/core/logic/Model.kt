@@ -75,4 +75,18 @@ object Defaults {
         OutFolder.PHOTOS -> OUTPUT_DIR_PHOTOS
         OutFolder.VIDEOS -> OUTPUT_DIR_VIDEOS
     }
+
+    /**
+     * SQL pattern for "inside the output folder". The trailing slash matters:
+     * without it, an unrelated user folder such as Pictures/CloudSaverBackup
+     * would match too, and the app would treat those files as its own.
+     */
+    const val OUTPUT_DIR_LIKE = "$OUTPUT_DIR/%"
+
+    /** True only for the output folder itself or something inside it. */
+    fun isOutputPath(relativePath: String?): Boolean {
+        if (relativePath.isNullOrEmpty()) return false
+        val path = relativePath.trimEnd('/')
+        return path == OUTPUT_DIR || path.startsWith("$OUTPUT_DIR/")
+    }
 }

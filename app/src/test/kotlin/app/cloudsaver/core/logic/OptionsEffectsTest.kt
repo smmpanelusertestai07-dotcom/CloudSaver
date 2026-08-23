@@ -2,6 +2,7 @@ package app.cloudsaver.core.logic
 
 import app.cloudsaver.data.prefs.Options
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,4 +76,35 @@ class OptionsEffectsTest {
             assertTrue(!Defaults.outFolderRelPath(folder).startsWith("DCIM"))
         }
     }
+
+    @Test
+    fun onlyTheRealOutputFolderCountsAsOurs() {
+        for (folder in OutFolder.entries) {
+            val path = Defaults.outFolderRelPath(folder)
+            assertTrue(Defaults.isOutputPath(path))
+            assertTrue(Defaults.isOutputPath("$path/"))
+        }
+        assertTrue(Defaults.isOutputPath("Pictures/CloudSaver/.cloudsaver/"))
+
+        // A user folder that merely starts with the same letters is not ours.
+        assertFalse(Defaults.isOutputPath("Pictures/CloudSaverBackup/"))
+        assertFalse(Defaults.isOutputPath("Pictures/CloudSaver2/"))
+        assertFalse(Defaults.isOutputPath("Pictures/CSTestShots/"))
+        assertFalse(Defaults.isOutputPath("DCIM/Camera/"))
+        assertFalse(Defaults.isOutputPath(null))
+        assertFalse(Defaults.isOutputPath(""))
+
+        // The SQL pattern must draw the same line.
+        assertEquals("Pictures/CloudSaver/%", Defaults.OUTPUT_DIR_LIKE)
+        assertTrue(sqlLike("Pictures/CloudSaver/", Defaults.OUTPUT_DIR_LIKE))
+        assertTrue(sqlLike("Pictures/CloudSaver/Photos/", Defaults.OUTPUT_DIR_LIKE))
+        assertFalse(sqlLike("Pictures/CloudSaverBackup/", Defaults.OUTPUT_DIR_LIKE))
+    }
+
+    /** Minimal stand-in for SQLite LIKE: only '%' is used in our patterns. */
+    private fun sqlLike(value: String, pattern: String): Boolean =
+        Regex(
+            pattern.split("%").joinToString(".*") { Regex.escape(it) },
+            RegexOption.IGNORE_CASE
+        ).matches(value)
 }
