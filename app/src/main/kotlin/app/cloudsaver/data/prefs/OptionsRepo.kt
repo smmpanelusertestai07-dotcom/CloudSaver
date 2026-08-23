@@ -41,6 +41,8 @@ data class Options(
     val storageVolume: String = "",
     val appLock: Boolean = false,
     val warningsNotif: Boolean = true,
+    /** A legacy placeholder image was cleaned up; show the notice once. */
+    val placeholderRemoved: Boolean = false,
     val showFreeUp: Boolean = false,
     val freeUpAllowVerified30: Boolean = false,
     val reprocessUnknown: Boolean = false,
@@ -94,6 +96,7 @@ class OptionsRepo(private val context: Context) {
         val REPROCESS_UNKNOWN = booleanPreferencesKey("reprocessUnknown")
         val PAUSE_ALL = booleanPreferencesKey("pauseAll")
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
+        val PLACEHOLDER_REMOVED = booleanPreferencesKey("placeholderRemoved")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
         val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
         val LAST_CONFIRM_COUNT = intPreferencesKey("lastConfirmCount")
@@ -129,6 +132,7 @@ class OptionsRepo(private val context: Context) {
             storageVolume = p[K.STORAGE_VOLUME] ?: "",
             appLock = p[K.APP_LOCK] ?: false,
             warningsNotif = p[K.WARNINGS_NOTIF] ?: true,
+            placeholderRemoved = p[K.PLACEHOLDER_REMOVED] ?: false,
             showFreeUp = p[K.SHOW_FREE_UP] ?: false,
             freeUpAllowVerified30 = p[K.FREE_UP_VERIFIED30] ?: false,
             reprocessUnknown = p[K.REPROCESS_UNKNOWN] ?: false,

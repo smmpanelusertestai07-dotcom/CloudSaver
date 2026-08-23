@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Themed-icon layer: same silhouette as the colour mark, single colour. -->
+<!--
+    Themed-icon layer (Android 13+): the same silhouette as the colour mark in
+    one colour. Cloud, arrow and the compressed bar are separate paths so the
+    arrow stays a hole rather than filling in.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -8,5 +12,8 @@
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M39,76 A16,16 0 0 1 23,60 A16,16 0 0 1 35.3,44.4 A20,20 0 0 1 75,48.6 A14,14 0 0 1 71,76 Z M54,40 L68,54 L60,54 L60,68 L48,68 L48,54 L40,54 Z" />
+        android:pathData="M40,66 A14,14 0 0 1 26,52 A14,14 0 0 1 37.4,38.2 A18,18 0 0 1 71.9,40.6 A13,13 0 0 1 69,66 Z M54,32 L65,44 L58.5,44 L58.5,60 L49.5,60 L49.5,44 L43,44 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M46,72 H62 A4,4 0 0 1 62,80 H46 A4,4 0 0 1 46,72 Z" />
 </vector>

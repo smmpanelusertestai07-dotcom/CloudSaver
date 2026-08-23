@@ -65,10 +65,39 @@ object Defaults {
     const val OUTPUT_DIR = "Pictures/CloudSaver"
     const val OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
     const val OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
-    const val DOCS_DIR = "Documents/CloudSaver"
-    /** Hidden snapshot next to the output copies; survives a clear-data. */
-    const val HIDDEN_SNAPSHOT_DIR = "Pictures/CloudSaver/.cloudsaver"
+    /**
+     * Where automatic safety snapshots go, best first. All hidden: the app
+     * never puts a visible file anywhere the user browses unless they tap
+     * Export. Each entry is a relative directory; the last one is the
+     * visible last resort, used only if every hidden option is refused.
+     *
+     *  1. beside the output copies, so the state travels with the folder,
+     *  2. a hidden dot-folder in Documents, so it survives the output folder
+     *     being deleted,
+     *  3. a hidden dot-FILE, for MediaProvider builds that reject
+     *     dot-directories,
+     *  4. a visible file, explained in the FAQ, if nothing hidden works.
+     */
+    const val SNAPSHOT_DIR_OUTPUT = "Pictures/CloudSaver/.cloudsaver"
+    const val SNAPSHOT_DIR_DOCUMENTS = "Documents/.cloudsaver"
+    const val SNAPSHOT_DIR_DOTFILE = "Pictures/CloudSaver"
+    const val SNAPSHOT_DIR_VISIBLE = "Documents/CloudSaver"
+
     const val SNAPSHOT_NAME = "state.json"
+    const val SNAPSHOT_NAME_DOTFILE = ".cloudsaver.json"
+    const val SNAPSHOT_NAME_VISIBLE = "backup.json"
+
+    /** Snapshot targets in the order they are tried, as (directory, filename). */
+    val SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
+        SNAPSHOT_DIR_OUTPUT to SNAPSHOT_NAME,
+        SNAPSHOT_DIR_DOCUMENTS to SNAPSHOT_NAME,
+        SNAPSHOT_DIR_DOTFILE to SNAPSHOT_NAME_DOTFILE,
+        SNAPSHOT_DIR_VISIBLE to SNAPSHOT_NAME_VISIBLE
+    )
+
+    /** True for a snapshot target Android hides from the gallery and Files. */
+    fun isHiddenSnapshotTarget(dir: String, name: String): Boolean =
+        name.startsWith(".") || dir.split('/').any { it.startsWith(".") }
 
     fun outFolderRelPath(folder: OutFolder): String = when (folder) {
         OutFolder.SINGLE -> OUTPUT_DIR

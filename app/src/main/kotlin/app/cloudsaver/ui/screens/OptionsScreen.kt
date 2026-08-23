@@ -44,8 +44,10 @@ import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
 
@@ -234,40 +236,40 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     },
                     o.storageVolume
                 ) { vm.setStorageVolume(it) }
-                for (vol in volumes) {
-                    val used = (vol.totalBytes - vol.freeBytes).coerceAtLeast(0)
-                    val fraction = if (vol.totalBytes > 0) {
-                        used.toFloat() / vol.totalBytes
+                // Only the chosen volume's capacity belongs here; the Storage
+                // tab is where every volume is listed.
+                val chosen = volumes.firstOrNull { vol ->
+                    if (o.storageVolume.isEmpty()) vol.isPrimary
+                    else vol.mediaVolumeName == o.storageVolume
+                }
+                if (chosen != null) {
+                    val used = (chosen.totalBytes - chosen.freeBytes).coerceAtLeast(0)
+                    val fraction = if (chosen.totalBytes > 0) {
+                        used.toFloat() / chosen.totalBytes
                     } else {
                         0f
                     }
+                    MeterBar(
+                        fraction = fraction,
+                        warn = fraction > 0.9f,
+                        modifier = Modifier.padding(top = 12.dp)
+                    )
                     Text(
-                        (if (vol.isPrimary) stringResource(R.string.volume_internal)
-                        else stringResource(R.string.volume_sd)) + ": " +
-                            stringResource(
-                                R.string.volume_free_line,
-                                Formats.bytes(vol.freeBytes),
-                                Formats.bytes(vol.totalBytes)
-                            ),
+                        stringResource(
+                            R.string.volume_free_line,
+                            Formats.bytes(chosen.freeBytes),
+                            Formats.bytes(chosen.totalBytes)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp)
                     )
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                if (o.storageVolume.isNotEmpty() &&
-                    volumes.none { it.mediaVolumeName == o.storageVolume }
-                ) {
+                } else if (o.storageVolume.isNotEmpty()) {
                     WarningText(stringResource(R.string.volume_missing_warning))
                 }
-                Text(
-                    stringResource(R.string.volume_sd_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                if (o.storageVolume.isNotEmpty()) {
+                    WarningNote(stringResource(R.string.volume_sd_note))
+                }
             }
         }
 

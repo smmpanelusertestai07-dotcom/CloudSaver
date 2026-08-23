@@ -18,8 +18,16 @@ import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.util.AppLog
 
 /**
- * State durability: daily JSON snapshot to Documents/CloudSaver/state.json,
- * manual Export/Import via SAF, plus Android Auto Backup of the Room DB.
+ * State durability. Room is the source of truth; these snapshots exist so the
+ * app can recover after clear-data or a reinstall.
+ *
+ * Automatic snapshots are hidden - the app never leaves a visible file where
+ * the user browses unless they tap Export. Targets are tried in order (beside
+ * the output copies, a hidden dot-folder in Documents, a hidden dot-file, and
+ * only then a visible file for devices that refuse every hidden option), and
+ * writing continues past a target that fails so one refusal does not cost the
+ * others.
+ *
  * Items imported without upload evidence become UNKNOWN (never freed, never
  * reprocessed unless the user opts in).
  */
@@ -70,55 +78,103 @@ class SnapshotStore(
     }
 
     /**
-     * Daily snapshot to Documents/CloudSaver/state.json plus a hidden copy in
-     * Pictures/CloudSaver/.cloudsaver/state.json, so the state also travels with
-     * the output folder itself. Returns true when at least one copy was written.
+     * Writes the safety snapshot to every hidden target that accepts it.
+     *
+     * The visible last-resort target is only attempted when no hidden one
+     * worked, so a normal device never gets a CloudSaver file it can see.
+     * Returns true when at least one copy was written.
      */
-    suspend fun writeDocumentsSnapshot(): Boolean {
+    suspend fun writeSafetySnapshot(): Boolean {
         val json = SnapshotCodec.encode(build())
-        val docs = writeTo(json, Defaults.DOCS_DIR)
-        // Best effort: some OEM MediaStore builds reject dot-directories.
-        val hidden = writeTo(json, Defaults.HIDDEN_SNAPSHOT_DIR)
-        return docs || hidden
+        var wroteHidden = false
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
+            if (!Defaults.isHiddenSnapshotTarget(dir, name)) continue
+            if (writeTo(json, dir, name)) wroteHidden = true
+        }
+        if (wroteHidden) return true
+
+        AppLog.log(context, "snapshot", "no hidden target accepted; using visible fallback")
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
+            if (Defaults.isHiddenSnapshotTarget(dir, name)) continue
+            if (writeTo(json, dir, name)) return true
+        }
+        return false
     }
 
-    /** Writes/updates state.json in [relativeDir] through MediaStore Files. */
-    private fun writeTo(json: String, relativeDir: String): Boolean {
+    /**
+     * Reads back the newest snapshot that passes its integrity check, trying
+     * the targets in order. A corrupted or hand-edited copy is skipped rather
+     * than trusted - it could otherwise promote evidence and put an original
+     * in front of the user for deletion.
+     */
+    suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
+        var best: SnapshotCodec.Snapshot? = null
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
+            val json = readFrom(dir, name) ?: continue
+            val snapshot = try {
+                SnapshotCodec.decode(json)
+            } catch (e: Exception) {
+                AppLog.log(context, "snapshot", "ignoring $dir/$name: ${e.message}")
+                continue
+            }
+            if (best == null || snapshot.exportedAt > best.exportedAt) best = snapshot
+        }
+        return best
+    }
+
+    /** Locates an app-owned snapshot file, or null. */
+    private fun findSnapshot(relativeDir: String, name: String): Uri? {
         val resolver = context.contentResolver
         val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
+            "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
+            "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
+        val args = arrayOf(name, "$relativeDir/", context.packageName)
         return try {
-            var target: Uri? = null
-            val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
-                "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
-                "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
-            val args = arrayOf(
-                Defaults.SNAPSHOT_NAME,
-                "$relativeDir/",
-                context.packageName
-            )
+            var found: Uri? = null
             resolver.query(
                 files, arrayOf(MediaStore.MediaColumns._ID), selection, args, null
             )?.use { c ->
                 if (c.moveToFirst()) {
-                    target = android.content.ContentUris.withAppendedId(files, c.getLong(0))
+                    found = android.content.ContentUris.withAppendedId(files, c.getLong(0))
                 }
             }
-            if (target == null) {
+            found
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun readFrom(relativeDir: String, name: String): String? {
+        val uri = findSnapshot(relativeDir, name) ?: return null
+        return try {
+            context.contentResolver.openInputStream(uri)?.use {
+                it.readBytes().toString(Charsets.UTF_8)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Writes/updates [name] in [relativeDir] through MediaStore Files. */
+    private fun writeTo(json: String, relativeDir: String, name: String): Boolean {
+        val resolver = context.contentResolver
+        val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        return try {
+            val target = findSnapshot(relativeDir, name) ?: run {
                 val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, Defaults.SNAPSHOT_NAME)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
                     put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativeDir/")
                 }
-                target = resolver.insert(files, values)
-            }
-            val uri = target ?: return false
-            resolver.openOutputStream(uri, "wt")?.use { out ->
+                resolver.insert(files, values)
+            } ?: return false
+            resolver.openOutputStream(target, "wt")?.use { out ->
                 out.write(json.toByteArray(Charsets.UTF_8))
             } ?: return false
-            AppLog.log(context, "snapshot", "wrote $relativeDir/${Defaults.SNAPSHOT_NAME}")
             true
         } catch (e: Exception) {
-            AppLog.log(context, "snapshot", "write to $relativeDir failed: ${e.message}")
+            AppLog.log(context, "snapshot", "write to $relativeDir/$name failed: ${e.message}")
             false
         }
     }

@@ -41,6 +41,9 @@
     <string name="confirm_explainer">Verify backup opens your cloud app so you can run its own \&quot;Free up space\&quot;. Whatever it removes is proof those files are safely uploaded.</string>
     <string name="confirm_result_title">Backup verified</string>
     <string name="confirm_result_line">%1$d files confirmed as backed up</string>
+    <string name="placeholder_removed_title">Old placeholder removed</string>
+    <string name="placeholder_removed_text">An earlier version kept a small placeholder image in your upload folder. It is gone now. If it still shows in your cloud, delete it there once \u2014 it will not come back.</string>
+    <string name="dismiss">Dismiss</string>
     <string name="old_files_title">Leftover files found</string>
     <string name="old_files_text">%1$d files in Pictures/CloudSaver are from an earlier install. Remove them?</string>
     <string name="old_files_clean">Remove</string>
@@ -93,7 +96,7 @@
     <string name="storage_stage">Optimised copies on device</string>
     <string name="storage_output">Waiting in upload folder</string>
     <string name="storage_volumes_title">Storage volumes</string>
-    <string name="volume_internal">Internal</string>
+    <string name="volume_internal">Internal storage</string>
     <string name="volume_sd">SD card</string>
     <string name="volume_free_line">%1$s free of %2$s</string>
     <string name="volume_active_mark">(in use)</string>
@@ -180,7 +183,7 @@
     <string name="space_min_free">Keep free</string>
     <string name="space_max_extra">CloudSaver may use</string>
     <string name="opt_volume">Storage location</string>
-    <string name="opt_volume_hint">Where the app keeps its copies (stage + CloudSaver folder).</string>
+    <string name="opt_volume_hint">Where CloudSaver keeps its optimised copies and the upload folder.</string>
     <string name="opt_preset">Quality</string>
     <string name="opt_preset_hint">Applies to files optimised from now on.</string>
     <string name="preset_storage">Storage saver</string>
@@ -271,7 +274,8 @@
     <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
 
     <!-- onboarding -->
-    <string name="onb_tagline">Back up your whole gallery without filling up your cloud.</string>
+    <string name="app_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
+    <string name="onb_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
     <string name="onb_step_counter">Step %1$d of %2$d</string>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
@@ -318,7 +322,7 @@
     <string name="about_sha">APK SHA-256</string>
     <string name="about_text">CloudSaver is an offline storage saver. No account, no ads, no internet access.</string>
 
-    <string name="privacy_text">CloudSaver is 100%% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders (Pictures/CloudSaver, Documents/CloudSaver). Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
+    <string name="privacy_text">CloudSaver is 100%% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders. Automatic safety snapshots are hidden files, so nothing shows up in your gallery or Files app unless you tap Export yourself. Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
 
     <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
 
@@ -353,7 +357,7 @@
     <string name="faq_q7">Play Protect shows a warning?</string>
     <string name="faq_a7">Normal for sideloaded APKs. Choose "More details" → "Install anyway". The app is offline and holds no network permission.</string>
     <string name="faq_q8">What happens on uninstall/reinstall?</string>
-    <string name="faq_a8">Android Auto Backup + Documents/CloudSaver/state.json + manual Export restore the state. Items without proof become UNKNOWN - those can never delete originals.</string>
+    <string name="faq_a8">CloudSaver keeps hidden safety snapshots (in Pictures/CloudSaver/.cloudsaver and Documents/.cloudsaver) alongside Android Auto Backup, so clearing data or reinstalling restores your state by itself. Each snapshot carries a checksum; an edited or damaged one is ignored rather than trusted. Items that come back without proof of upload become UNKNOWN - those can never delete originals. Very rarely a phone refuses every hidden location; then you will see one visible Documents/CloudSaver/backup.json, which is safe to leave alone.</string>
     <string name="faq_q9">Cloud storage is full?</string>
     <string name="faq_a9">Uploads stop, and CloudSaver also stops deleting copies (safety pause). Make room in the cloud or upgrade the plan.</string>
     <string name="faq_q10">How does upload confirmation work?</string>

@@ -402,6 +402,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun urisFor(rows: List<ItemRow>): List<Uri> =
         rows.mapNotNull { it.contentUri?.let(Uri::parse) }
 
+    /** Clears the one-time notice about the removed legacy placeholder. */
+    fun dismissPlaceholderNotice() {
+        viewModelScope.launch {
+            repo.setBool(OptionsRepo.K.PLACEHOLDER_REMOVED, false)
+        }
+    }
+
     fun onFreedConfirmed(rows: List<ItemRow>) {
         viewModelScope.launch(Dispatchers.Default) {
             val now = System.currentTimeMillis()
@@ -411,6 +418,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             loadFreeUp()
+            // Snapshot right away rather than waiting for the daily pass: the
+            // originals this just recorded as freed no longer exist, so this
+            // state cannot be rebuilt by rescanning.
+            runCatching { MaintainEngine(ctx).snapshotNow() }
         }
     }
 

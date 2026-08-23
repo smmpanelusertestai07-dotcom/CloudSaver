@@ -101,16 +101,47 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp)
             )
-            Text(
-                stringResource(R.string.app_name),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
+            Column(
+                Modifier
                     .weight(1f)
                     .padding(start = 10.dp)
-            )
+            ) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.app_tagline),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             IconButton(onClick = { nav.navigate(Routes.HELP) }) {
                 Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.nav_help))
+            }
+        }
+
+        // Shown once, after an old placeholder image was cleaned up.
+        AnimatedVisibility(
+            visible = options.placeholderRemoved,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AppCard(modifier = Modifier.padding(top = 10.dp)) {
+                Text(
+                    stringResource(R.string.placeholder_removed_title),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    stringResource(R.string.placeholder_removed_text),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                TextButton(onClick = { vm.dismissPlaceholderNotice() }) {
+                    Text(stringResource(R.string.dismiss))
+                }
             }
         }
 

@@ -4,13 +4,25 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * JSON state snapshot: written daily to Documents/CloudSaver/state.json and via
- * manual Export (SAF). Survives clear-data / uninstall; on fresh install the
- * newest snapshot can be imported. Uses the platform org.json (no dependency).
+ * JSON state snapshot: written daily to hidden locations and via manual Export
+ * (SAF). Survives clear-data / uninstall; on fresh install the newest valid
+ * snapshot can be imported. Uses the platform org.json (no dependency).
+ *
+ * Every snapshot carries a schema version and a SHA-256 of its own payload, so
+ * a hand-edited or truncated file is rejected rather than trusted - a snapshot
+ * can promote an item's evidence, and evidence is what offers an original for
+ * deletion. It holds names, dates, sizes and hashes only; never media content.
  */
 object SnapshotCodec {
 
-    const val VERSION = 1
+    /** Bumped when the payload shape changes; older versions are still read. */
+    const val VERSION = 2
+
+    /** Oldest schema this build understands. */
+    const val MIN_SUPPORTED_VERSION = 1
+
+    private const val KEY_PAYLOAD = "payload"
+    private const val KEY_INTEGRITY = "sha256"
 
     data class SnapItem(
         val fingerprint: String,
@@ -48,7 +60,18 @@ object SnapshotCodec {
         val batches: List<SnapBatch>
     )
 
+    /** Envelope: {"app","schemaVersion","sha256","payload":{...}}. */
     fun encode(snapshot: Snapshot): String {
+        val payload = encodePayload(snapshot)
+        return JSONObject().apply {
+            put("app", "CloudSaver")
+            put("schemaVersion", snapshot.version)
+            put(KEY_INTEGRITY, sha256Hex(payload))
+            put(KEY_PAYLOAD, JSONObject(payload))
+        }.toString()
+    }
+
+    private fun encodePayload(snapshot: Snapshot): String {
         val root = JSONObject()
         root.put("app", "CloudSaver")
         root.put("version", snapshot.version)
@@ -93,8 +116,42 @@ object SnapshotCodec {
         return root.toString()
     }
 
+    /** Thrown when a snapshot is unreadable, too new, or fails its hash. */
+    class InvalidSnapshotException(message: String) : Exception(message)
+
+    /**
+     * Reads a snapshot, verifying the schema version and the integrity hash.
+     * Version 1 files predate the envelope and are accepted as-is; from
+     * version 2 on, a payload whose hash does not match is refused.
+     */
     fun decode(json: String): Snapshot {
-        val root = JSONObject(json)
+        val outer = try {
+            JSONObject(json)
+        } catch (e: Exception) {
+            throw InvalidSnapshotException("not JSON")
+        }
+        if (!outer.has(KEY_PAYLOAD)) {
+            // Version 1: the payload was the whole document.
+            return decodePayload(outer)
+        }
+        val schema = outer.optInt("schemaVersion", VERSION)
+        if (schema < MIN_SUPPORTED_VERSION) {
+            throw InvalidSnapshotException("schema $schema is too old")
+        }
+        if (schema > VERSION) {
+            throw InvalidSnapshotException("schema $schema is newer than $VERSION")
+        }
+        val payload = outer.optJSONObject(KEY_PAYLOAD)
+            ?: throw InvalidSnapshotException("no payload")
+        val expected = outer.optString(KEY_INTEGRITY, "")
+        val actual = sha256Hex(payload.toString())
+        if (expected.isEmpty() || !expected.equals(actual, ignoreCase = true)) {
+            throw InvalidSnapshotException("integrity hash mismatch")
+        }
+        return decodePayload(payload)
+    }
+
+    private fun decodePayload(root: JSONObject): Snapshot {
         val optionsObj = root.optJSONObject("options") ?: JSONObject()
         val options = mutableMapOf<String, String>()
         for (key in optionsObj.keys()) options[key] = optionsObj.optString(key, "")
@@ -143,6 +200,14 @@ object SnapshotCodec {
             items = items,
             batches = batches
         )
+    }
+
+    fun sha256Hex(text: String): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(text.toByteArray(Charsets.UTF_8))
+        return buildString(digest.size * 2) {
+            for (b in digest) append("%02x".format(b))
+        }
     }
 
     /** Applies the fresh-install import mapping to one snapshot item. */

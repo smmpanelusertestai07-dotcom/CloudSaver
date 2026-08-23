@@ -137,19 +137,33 @@ object MediaFixtures {
      * update can be thrown away.
      */
     private fun publishWithDate(context: Context, uri: Uri, captureMillis: Long) {
-        context.contentResolver.update(
+        val resolver = context.contentResolver
+        resolver.update(
             uri,
             ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
             null,
             null
         )
-        context.contentResolver.update(
-            uri,
-            ContentValues().apply { put(MediaStore.MediaColumns.DATE_TAKEN, captureMillis) },
-            null,
-            null
-        )
+        // Publishing triggers a metadata scan. It should be done by the time
+        // update() returns, but read the date back and retry rather than let a
+        // slow emulator turn into a mystery test failure.
+        repeat(5) {
+            resolver.update(
+                uri,
+                ContentValues().apply { put(MediaStore.MediaColumns.DATE_TAKEN, captureMillis) },
+                null,
+                null
+            )
+            if (dateTaken(context, uri) == captureMillis) return
+            Thread.sleep(200)
+        }
     }
+
+    /** The DATE_TAKEN MediaStore currently reports, or 0. */
+    fun dateTaken(context: Context, uri: Uri): Long =
+        context.contentResolver.query(
+            uri, arrayOf(MediaStore.MediaColumns.DATE_TAKEN), null, null, null
+        )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
 
     /** Minimal buffer-mode encoder: NV12 frames in, MP4 out. */
     private fun encodeH264(out: File, width: Int, height: Int, frames: Int): Boolean {

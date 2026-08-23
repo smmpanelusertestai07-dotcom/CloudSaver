@@ -426,8 +426,22 @@ class MaintainEngine(private val context: Context) {
     private suspend fun dailySnapshot(o: Options, now: Long) {
         val today = Formats.dayKey(now)
         if (o.lastSnapshotDay == today) return
-        if (snapshots.writeDocumentsSnapshot()) {
+        if (snapshots.writeSafetySnapshot()) {
             repo.setString(OptionsRepo.K.LAST_SNAPSHOT_DAY, today)
+        }
+    }
+
+    /**
+     * Snapshot immediately, outside the daily rhythm. Called after Free-up,
+     * where the state just changed in a way that cannot be reconstructed:
+     * the originals it recorded are gone.
+     */
+    suspend fun snapshotNow() {
+        if (snapshots.writeSafetySnapshot()) {
+            repo.setString(
+                OptionsRepo.K.LAST_SNAPSHOT_DAY,
+                Formats.dayKey(System.currentTimeMillis())
+            )
         }
     }
 
