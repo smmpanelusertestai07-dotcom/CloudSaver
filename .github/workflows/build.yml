@@ -84,6 +84,9 @@ jobs:
       - name: Sign APK (apksigner, v2+v3)
         run: |
           set -eu
+          VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "APK_NAME=CloudSaver-$VERSION.apk" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
           [ -f "$UNSIGNED" ] || UNSIGNED=app/build/outputs/apk/release/app-release.apk
@@ -95,14 +98,16 @@ jobs:
             --key-pass env:KEY_PASSWORD \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
-            --out CloudSaver-release.apk \
+            --out "CloudSaver-$VERSION.apk" \
             CloudSaver-aligned.apk
-          "$BT/apksigner" verify --print-certs CloudSaver-release.apk
+          "$BT/apksigner" verify --print-certs "CloudSaver-$VERSION.apk"
+          # The emulator job installs a fixed name, so keep one alongside it.
+          cp "CloudSaver-$VERSION.apk" CloudSaver-release.apk
 
       - name: Size gate (max 15 MB)
         run: |
           set -eu
-          SIZE=$(stat -c%s CloudSaver-release.apk)
+          SIZE=$(stat -c%s "$APK_NAME")
           echo "APK size: $SIZE bytes ($(( SIZE / 1048576 )) MiB)"
           if [ "$SIZE" -gt 15728640 ]; then
             echo "::error::APK exceeds the 15 MB limit"
@@ -113,10 +118,8 @@ jobs:
       - name: Compute checksums and version
         run: |
           set -eu
-          APK_SHA=$(sha256sum CloudSaver-release.apk | cut -d' ' -f1)
+          APK_SHA=$(sha256sum "$APK_NAME" | cut -d' ' -f1)
           echo "APK_SHA256=$APK_SHA" >> "$GITHUB_ENV"
-          VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Version: $VERSION / APK SHA-256: $APK_SHA"
 
       - name: Generate release notes
@@ -131,7 +134,7 @@ jobs:
           cloud app backs up only that folder. Originals are never touched
           automatically. Everything else is explained inside the app (Help).
 
-          Install: download CloudSaver-release.apk below and open it on your phone.
+          Install: download ${APK_NAME} below and open it on your phone.
           Play Protect may warn about a sideloaded APK - choose "More details" ->
           "Install anyway". The app holds no INTERNET permission.
 
@@ -173,7 +176,7 @@ jobs:
         with:
           name: CloudSaver-release.apk
           path: |
-            CloudSaver-release.apk
+            CloudSaver-*.apk
             RELEASE_NOTES.md
           if-no-files-found: error
 
@@ -294,10 +297,10 @@ jobs:
           set -eu
           TAG="v${VERSION}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" CloudSaver-release.apk --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" "CloudSaver-${VERSION}.apk" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" CloudSaver-release.apk \
+            gh release create "$TAG" "CloudSaver-${VERSION}.apk" \
               --title "CloudSaver $TAG" \
               --notes-file RELEASE_NOTES.md \
               --repo "$GITHUB_REPOSITORY"

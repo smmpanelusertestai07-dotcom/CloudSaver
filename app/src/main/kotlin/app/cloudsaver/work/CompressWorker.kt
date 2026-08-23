@@ -193,6 +193,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             }
             repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
             repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
+            // Never leave a "working" icon in the status bar once the run is
+            // over, whatever ended it.
+            Notifications.clearWorking(app)
             reschedule(app, repo)
         }
         return Result.success()

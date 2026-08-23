@@ -15,8 +15,15 @@ android {
         applicationId = "app.cloudsaver"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.2"
+        // Semantic version, and a versionCode derived from it rather than
+        // hand-incremented: major*10000 + minor*100 + patch. It is always
+        // monotonic, it never collides across branches, and it leaves room
+        // for 99 minors and 99 patches without ever needing a reset.
+        //   3.0.0 -> 30000
+        versionName = "3.0.0"
+        versionCode = versionName!!.split(".").let { (major, minor, patch) ->
+            major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
+        }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Tamper evidence: CI passes -PsigningCertSha256=<sha256 of the release

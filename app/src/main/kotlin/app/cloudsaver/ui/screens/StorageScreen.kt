@@ -154,23 +154,25 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 },
                 modifier = Modifier.padding(top = 2.dp)
             )
-            // The button only makes sense once something is actually reclaimable.
+            // No setting gates this. The card offers the action exactly when
+            // there are originals whose copies are confirmed backed up, and
+            // Android's own dialog still confirms every deletion.
             AnimatedVisibility(
-                visible = options.showFreeUp && reclaimable > 0,
+                visible = reclaimable > 0,
                 enter = fadeIn() + expandVertically()
             ) {
-                Button(
-                    onClick = { nav.navigate(Routes.FREE_UP) },
-                    modifier = Modifier.padding(top = 12.dp)
-                ) { Text(stringResource(R.string.storage_freeup_open)) }
-            }
-            if (!options.showFreeUp) {
-                Text(
-                    stringResource(R.string.storage_freeup_hidden),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Column {
+                    Text(
+                        stringResource(R.string.storage_reclaim_consent),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onPrimaryContainer.copy(alpha = 0.85f),
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Button(
+                        onClick = { nav.navigate(Routes.FREE_UP) },
+                        modifier = Modifier.padding(top = 12.dp)
+                    ) { Text(stringResource(R.string.storage_freeup_open)) }
+                }
             }
         }
 

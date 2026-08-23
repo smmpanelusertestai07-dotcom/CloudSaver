@@ -293,6 +293,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ),
                 o.preset.name
             ) { vm.setPreset(Preset.valueOf(it)) }
+            // Say what each preset actually does, in numbers.
+            ChoiceNote(
+                when (o.preset) {
+                    Preset.STORAGE_SAVER -> stringResource(R.string.preset_storage_detail)
+                    Preset.BALANCED -> stringResource(R.string.preset_balanced_detail)
+                    Preset.MAX_SAVER -> stringResource(R.string.preset_max_detail)
+                }
+            )
+            ChoiceNote(stringResource(R.string.applies_to_new_only))
         }
 
         // 9. Codec
@@ -304,7 +313,13 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ),
                 o.codec.name
             ) { vm.setCodec(VideoCodec.valueOf(it)) }
-            if (o.codec == VideoCodec.HEVC) WarningText(stringResource(R.string.codec_hevc_warning))
+            ChoiceNote(
+                when (o.codec) {
+                    VideoCodec.H264 -> stringResource(R.string.codec_h264_detail)
+                    VideoCodec.HEVC -> stringResource(R.string.codec_hevc_detail)
+                }
+            )
+            ChoiceNote(stringResource(R.string.applies_to_new_only))
         }
 
 
@@ -333,20 +348,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
         OptionCard(stringResource(R.string.opt_warnings), stringResource(R.string.opt_warnings_hint)) {
             SwitchRow(stringResource(R.string.opt_warnings), o.warningsNotif) { vm.setWarningsNotif(it) }
-        }
-        OptionCard(stringResource(R.string.opt_freeup), stringResource(R.string.opt_freeup_hint)) {
-            SwitchRow(stringResource(R.string.opt_freeup), o.showFreeUp) { vm.setShowFreeUp(it) }
-            if (o.showFreeUp) {
-                SwitchRow(
-                    stringResource(R.string.opt_freeup_verified),
-                    o.freeUpAllowVerified30
-                ) { vm.setFreeUpVerified30(it) }
-                if (o.freeUpAllowVerified30) WarningText(stringResource(R.string.opt_freeup_verified_warning))
-            }
-        }
-        OptionCard(stringResource(R.string.opt_unknown), stringResource(R.string.opt_unknown_hint)) {
-            SwitchRow(stringResource(R.string.opt_unknown), o.reprocessUnknown) { vm.setReprocessUnknown(it) }
-            if (o.reprocessUnknown) WarningText(stringResource(R.string.opt_unknown_warning))
         }
         OptionCard(stringResource(R.string.opt_pause), stringResource(R.string.opt_pause_hint)) {
             SwitchRow(stringResource(R.string.opt_pause), o.pauseAll) { vm.setPauseAll(it) }
@@ -637,6 +638,17 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+/** One quiet line under a choice, saying what the selection means. */
+@Composable
+private fun ChoiceNote(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp)
+    )
 }
 
 @Composable

@@ -25,10 +25,10 @@
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="chip_space">Storage low</string>
-    <string name="count_waiting">In queue</string>
-    <string name="count_in_folder">Ready to upload</string>
+    <string name="count_waiting">Waiting to optimise</string>
+    <string name="count_in_folder">Optimised, waiting for your cloud</string>
     <string name="count_confirmed">Backed up</string>
-    <string name="count_likely">Likely backed up</string>
+    <string name="count_skipped">Skipped</string>
     <string name="hero_saved_label">Space saved</string>
     <string name="hero_saved_sub">across %1$d optimised files</string>
     <string name="section_attention">Needs attention</string>
@@ -106,8 +106,8 @@
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
     <string name="storage_reclaim_title">Space you can reclaim</string>
     <string name="storage_reclaim_caption">of originals are confirmed backed up and safe to remove</string>
+    <string name="storage_reclaim_consent">Android asks you to confirm each deletion, so nothing is removed without you seeing it.</string>
     <string name="storage_freeup_open">Reclaim space</string>
-    <string name="storage_freeup_hidden">Turn on \&quot;Reclaim space\&quot; in Settings to use this.</string>
     <string name="storage_temp_title">Temporary files</string>
     <string name="storage_temp_text">Leftovers from interrupted work.</string>
     <string name="storage_clean_temp">Clear</string>
@@ -168,9 +168,9 @@
     <string name="speed_smart">Smart</string>
     <string name="speed_charging">Charging only</string>
     <string name="speed_fast">Fast</string>
-    <string name="speed_smart_note">Works while charging, and on battery above 30%% when the screen is off (up to 30 min a day). Photos also run with the screen on.</string>
+    <string name="speed_smart_note" formatted="false">Works while charging, and on battery above 30% when the screen is off (up to 30 min a day). Photos also run with the screen on.</string>
     <string name="speed_charging_note">Only while charging. Zero battery use.</string>
-    <string name="speed_fast_note">Starts as soon as new photos arrive; works on battery above 25%% for up to 60 min a day. Uses a little more battery.</string>
+    <string name="speed_fast_note" formatted="false">Starts as soon as new photos arrive; works on battery above 25% for up to 60 min a day. Uses a little more battery.</string>
 
     <!-- wait reasons shown on Home (13.G) -->
     <string name="wait_saver">Paused: Battery Saver is on</string>
@@ -191,12 +191,18 @@
     <string name="opt_volume">Storage location</string>
     <string name="opt_volume_hint">Where CloudSaver keeps its optimised copies and the upload folder.</string>
     <string name="opt_preset">Quality</string>
-    <string name="opt_preset_hint">Applies to files optimised from now on.</string>
+    <string name="opt_preset_hint">How small the optimised copies are, and how much quality that costs.</string>
     <string name="preset_storage">Storage saver</string>
     <string name="preset_balanced">Balanced</string>
     <string name="preset_max">Max saver</string>
-    <string name="opt_codec">Video format</string>
-    <string name="opt_codec_hint">H.264 plays everywhere; HEVC is smaller but not every device supports it.</string>
+    <string name="preset_storage_detail" formatted="false">1080p video, 16 MP photos. About 90-95% of the original quality, and the biggest space saving. Recommended.</string>
+    <string name="preset_balanced_detail">1440p video, 24 MP photos. Better quality, less saving.</string>
+    <string name="preset_max_detail">720p video, 8 MP photos. The most saving, with quality loss you can see.</string>
+    <string name="codec_h264_detail">Plays everywhere. Recommended.</string>
+    <string name="codec_hevc_detail" formatted="false">30-40% smaller at the same quality, but some older devices and cloud web players cannot play it.</string>
+    <string name="applies_to_new_only">Changes apply to new items only. Already-processed files are not redone.</string>
+    <string name="opt_codec">Video codec (inside MP4)</string>
+    <string name="opt_codec_hint">How video is compressed inside the MP4 file.</string>
     <string name="codec_h264">H.264</string>
     <string name="codec_hevc">HEVC</string>
     <string name="codec_hevc_warning">Note: older devices and TVs may not play HEVC.</string>
@@ -210,13 +216,6 @@
     <string name="opt_lock_hint">Require fingerprint or PIN for Settings, Files and Reclaim space.</string>
     <string name="opt_warnings">Alerts</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
-    <string name="opt_freeup">Show \&quot;Reclaim space\&quot;</string>
-    <string name="opt_freeup_hint">Lets you delete originals that are confirmed backed up.</string>
-    <string name="opt_freeup_verified">Also allow VERIFIED ≥ 30 days</string>
-    <string name="opt_freeup_verified_warning">Note: VERIFIED is data-count proof only, not exact.</string>
-    <string name="opt_unknown">Re-optimise unverified files</string>
-    <string name="opt_unknown_hint">Process restored files that have no backup proof.</string>
-    <string name="opt_unknown_warning">Note: may create duplicates in the cloud.</string>
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and uploading until you turn it back on.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
@@ -263,9 +262,9 @@
     <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
     <string name="calc_badge_measured">Based on %1$d of your files</string>
     <string name="calc_estimate_note">All numbers are estimates.</string>
-    <string name="calc_quality_storage">Quality on this preset: video ~90-95%%, photo ~97%%.</string>
-    <string name="calc_quality_balanced">Quality on this preset: video ~95%%, photo ~98%%.</string>
-    <string name="calc_quality_max">Quality on this preset: video ~85-90%%, photo ~95%%.</string>
+    <string name="calc_quality_storage" formatted="false">Quality on this preset: video ~90-95%, photo ~97%.</string>
+    <string name="calc_quality_balanced" formatted="false">Quality on this preset: video ~95%, photo ~98%.</string>
+    <string name="calc_quality_max" formatted="false">Quality on this preset: video ~85-90%, photo ~95%.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
     <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → ONLY CloudSaver.</string>
@@ -324,27 +323,26 @@
     <string name="logs_share">Share log</string>
     <string name="logs_clear">Clear log</string>
     <string name="logs_empty">The log is empty.</string>
-    <string name="about_version">Version</string>
-    <string name="about_sha">APK SHA-256</string>
-    <string name="about_text">CloudSaver is an offline storage saver. No account, no ads, no internet access.</string>
+    <string name="about_version_line">Version %1$s</string>
+    <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
-    <string name="privacy_text">CloudSaver is 100%% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders. Automatic safety snapshots are hidden files, so nothing shows up in your gallery or Files app unless you tap Export yourself. Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
+    <string name="privacy_text" formatted="false">CloudSaver is 100% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders. Automatic safety snapshots are hidden files, so nothing shows up in your gallery or Files app unless you tap Export yourself. Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
 
     <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
 
     <!-- quality page -->
     <string name="quality_intro">Everything happens on the phone. Video bitrate comes from output pixels × fps (H.264: 0.10 bits per pixel per frame, HEVC: 0.065). 1080p30 H.264 ≈ 6 Mbps. Photos are resized to the preset megapixel limit at JPEG quality 80-85.</string>
     <string name="quality_codec_title">H.264 vs HEVC</string>
-    <string name="quality_codec_text">H.264 plays on every device. HEVC is about 35%% smaller at the same quality, but older devices may not support it. H.264 is the default.</string>
+    <string name="quality_codec_text" formatted="false">H.264 plays on every device. HEVC is about 35% smaller at the same quality, but older devices may not support it. H.264 is the default.</string>
     <string name="quality_table_title">Savings (approx.)</string>
     <string name="quality_row1_k">1080p video</string>
-    <string name="quality_row1_v">60-75%% smaller at ~90-95%% quality</string>
+    <string name="quality_row1_v" formatted="false">60-75% smaller at ~90-95% quality</string>
     <string name="quality_row2_k">4K → 1080p</string>
-    <string name="quality_row2_v">75-85%% saved</string>
+    <string name="quality_row2_v" formatted="false">75-85% saved</string>
     <string name="quality_row3_k">12 MP photo</string>
-    <string name="quality_row3_v">~30%% smaller, invisible loss</string>
+    <string name="quality_row3_v" formatted="false">~30% smaller, invisible loss</string>
     <string name="quality_row4_k">&gt;16 MP photo</string>
-    <string name="quality_row4_v">~75%% saved</string>
+    <string name="quality_row4_v" formatted="false">~75% saved</string>
     <string name="quality_outro">EXIF, GPS and dates are always copied. Rotation is baked in upright. If a compressed file would be bigger, the original is copied as-is - an item is never lost.</string>
 
     <!-- FAQ -->
@@ -355,7 +353,7 @@
     <string name="faq_q3">Will dates change?</string>
     <string name="faq_a3">No. Every copy gets the original capture date (EXIF + file date), so the cloud timeline stays correct.</string>
     <string name="faq_q4">How much quality is lost?</string>
-    <string name="faq_a4">On the Storage saver preset videos keep ~90-95%% visual quality and photo loss is invisible. Details on the Quality page.</string>
+    <string name="faq_a4" formatted="false">On the Storage saver preset videos keep ~90-95% visual quality and photo loss is invisible. Details on the Quality page.</string>
     <string name="faq_q5">What is the daily cap?</string>
     <string name="faq_a5">Only that much data enters the cloud folder per day (default 250 MB). It doubles as the upload network limit.</string>
     <string name="faq_q6">Someone deleted a file from the CloudSaver folder?</string>
@@ -371,7 +369,7 @@
     <string name="faq_q11">Does the app use the internet?</string>
     <string name="faq_a11">No. The INTERNET permission is removed from the manifest itself. Uploading is always done by your cloud app.</string>
     <string name="faq_q12">How much battery does it use?</string>
-    <string name="faq_a12">Smart mode (the default) works freely while charging. On battery it only starts above 30%%, with the screen off, and stops after 30 minutes of work a day - photos are lighter, so they may also run with the screen on. Battery Saver, a warm phone or a low battery pause it right away, and Home always tells you what it is waiting for. Charging only mode uses no battery at all.</string>
+    <string name="faq_a12" formatted="false">Smart mode (the default) works freely while charging. On battery it only starts above 30%, with the screen off, and stops after 30 minutes of work a day - photos are lighter, so they may also run with the screen on. Battery Saver, a warm phone or a low battery pause it right away, and Home always tells you what it is waiting for. Charging only mode uses no battery at all.</string>
     <string name="faq_q13">Is the SD card supported?</string>
     <string name="faq_a13">Yes. Everything the gallery shows (all volumes) is scanned, and you can keep the CloudSaver folder on the SD card.</string>
     <string name="faq_q14">Why is the output folder never empty?</string>

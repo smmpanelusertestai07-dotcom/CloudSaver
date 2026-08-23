@@ -71,6 +71,19 @@ object Notifications {
     }
 
     /**
+     * Takes down the ongoing "working" notification.
+     *
+     * WorkManager usually clears a foreground notification when the worker
+     * finishes, but not on every path - a cancelled or crashed run can leave
+     * the status-bar icon behind, and an icon that says the app is busy while
+     * it is idle is a lie the user cannot dismiss. The worker calls this in a
+     * finally block so the icon always goes.
+     */
+    fun clearWorking(context: Context) {
+        runCatching { NotificationManagerCompat.from(context).cancel(ID_WORKING) }
+    }
+
+    /**
      * Posts a warning. [enabled] is the user's "Warnings" setting, passed in by
      * the caller because reading it here would mean blocking on DataStore.
      */

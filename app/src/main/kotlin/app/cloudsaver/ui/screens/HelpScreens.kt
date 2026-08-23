@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -36,9 +37,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,6 +92,15 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
         HelpLink(stringResource(R.string.help_licenses)) { nav.navigate(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.navigate(Routes.HELP_ABOUT) }
         HelpLink(stringResource(R.string.help_rerun_setup)) { vm.restartOnboarding() }
+        Text(
+            stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -293,26 +305,37 @@ fun HelpLicensesScreen(nav: NavHostController) {
 
 @Composable
 fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
-    val sha by vm.apkSha.collectAsStateWithLifecycle()
-    LaunchedEffect(Unit) { vm.computeApkSha() }
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
-            KeyValueRow(stringResource(R.string.about_version), BuildConfig.VERSION_NAME)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(R.drawable.ic_stat_cloud),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp)
+                )
+                Column(Modifier.padding(start = 12.dp)) {
+                    Text(
+                        stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Text(
-                stringResource(R.string.about_sha),
+                stringResource(R.string.app_tagline),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            Text(
-                sha.ifEmpty { "..." },
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                modifier = Modifier.padding(top = 14.dp)
             )
             Text(
                 stringResource(R.string.about_text),
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
             )
         }

@@ -263,8 +263,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 highlight = true
             )
             MetricTile(
-                counters.likely.toString(),
-                stringResource(R.string.count_likely),
+                counters.skipped.toString(),
+                stringResource(R.string.count_skipped),
                 Modifier.weight(1f)
             )
         }

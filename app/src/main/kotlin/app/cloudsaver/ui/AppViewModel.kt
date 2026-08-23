@@ -66,24 +66,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- counters (Home) ----------------------------------------------------
 
+    /** The four stages an item passes through, as Home shows them. */
     data class Counters(
         val waiting: Int = 0,
         val inFolder: Int = 0,
         val confirmed: Int = 0,
-        val likely: Int = 0
+        val skipped: Int = 0
     )
 
     val counters: StateFlow<Counters> = combine(
         db.items().stateCountsFlow(),
         db.items().confirmedCountFlow(),
         db.items().verifiedCountFlow()
-    ) { states, confirmed, likely ->
+    ) { states, confirmed, verified ->
         val byState = states.associate { it.state to it.cnt }
         Counters(
-            waiting = (byState[ItemState.NEW.name] ?: 0) + (byState[ItemState.STAGED.name] ?: 0),
-            inFolder = byState[ItemState.RELEASED.name] ?: 0,
-            confirmed = confirmed,
-            likely = likely
+            waiting = byState[ItemState.NEW.name] ?: 0,
+            inFolder = (byState[ItemState.STAGED.name] ?: 0) +
+                (byState[ItemState.RELEASED.name] ?: 0),
+            // Both count as backed up on Home; how strong the evidence is
+            // belongs in the item's details, not in a headline number.
+            confirmed = confirmed + verified,
+            skipped = byState[ItemState.SKIP.name] ?: 0
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, Counters())
 
