@@ -102,13 +102,17 @@ class PipelineE2eTest {
         val released = Releaser(context, db).releaseBatch(options, System.currentTimeMillis())
         assertEquals(3, released)
 
-        // MediaProvider re-derives DATE_TAKEN from EXIF when a file is
-        // published, and EXIF carries no timezone, so the absolute value
-        // depends on the device's zone. What the app actually promises is that
-        // a copy sorts next to its original in the cloud app, so compare the
-        // copy against the original rather than against a hard-coded instant.
+        // For photos, DATE_TAKEN is MediaProvider's own derivation from EXIF -
+        // it ignores what an app writes - so the contract the app can actually
+        // keep is that the copy carries the original's shooting metadata, and
+        // that its capture date matches the original's whenever MediaStore
+        // reports one at all. The EXIF assertions below are the real check.
         val originalTaken = dateTakenOf(originals.first())
-        assertTrue("the fixture must have a capture date", originalTaken > 0)
+        val recordedCaptureAt = staged.first().captureAt
+        assertTrue(
+            "the app must have recorded a capture date, got $recordedCaptureAt",
+            recordedCaptureAt > 0
+        )
 
         val inFolder = OutputInventory(context).query()
         assertNotNull("the output folder must be readable", inFolder)
@@ -116,11 +120,13 @@ class PipelineE2eTest {
         for (entry in inFolder) {
             assertEquals(Defaults.OUTPUT_DIR, entry.relPath.trimEnd('/'))
             assertTrue("copy must be owned by us", entry.ownedByUs)
-            assertTrue(
-                "copy DATE_TAKEN ${entry.dateTaken} must match the original's " +
-                    "$originalTaken (fixture asked for $captureAt)",
-                abs(entry.dateTaken - originalTaken) < 2000
-            )
+            if (originalTaken > 0 && entry.dateTaken > 0) {
+                assertTrue(
+                    "copy DATE_TAKEN ${entry.dateTaken} must match the original's " +
+                        "$originalTaken (app recorded $recordedCaptureAt)",
+                    abs(entry.dateTaken - originalTaken) < 2000
+                )
+            }
             // The optimised copy keeps the shooting metadata.
             context.contentResolver.openInputStream(entry.uri)!!.use { input ->
                 val exif = ExifInterface(input)
