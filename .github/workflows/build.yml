@@ -206,6 +206,24 @@ jobs:
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # A stock runner has ~7.3 GB free, and the AVD wants 7.37 GB for its
+      # userdata partition alone - it dies at launch with "Not enough space to
+      # create userdata partition". None of these toolchains are used here.
+      - name: Free disk space for the emulator
+        run: |
+          echo "Before:"
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android/sdk/ndk \
+                      /opt/hostedtoolcache/CodeQL \
+                      /usr/share/dotnet \
+                      /usr/share/swift \
+                      /opt/ghc /usr/local/.ghcup \
+                      /usr/local/share/boost \
+                      /usr/local/share/powershell || true
+          docker image prune -af || true
+          echo "After:"
+          df -h / | tail -1
+
       # The runner has the hardware but not the permission by default.
       - name: Enable KVM
         run: |
@@ -226,6 +244,10 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: false
+          # Well under the 7.37 GB default; the suite writes only a few MB.
+          # (disk.dataPartition.size takes a suffix - hw.ramSize does not,
+          # which is why ram-size must stay unset.)
+          disk-size: 6G
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
@@ -246,7 +268,11 @@ jobs:
             # Always collect the evidence, pass or fail. The tests publish PNGs
             # through MediaStore because adb cannot read /sdcard/Android/data.
             echo "::group::Collect screenshots and logs"
-            adb pull /sdcard/Pictures/CSTestShots/. artifacts/screenshots/ || true
+            adb pull /sdcard/Pictures/CSTestShots artifacts/ || true
+            # adb creates artifacts/CSTestShots; flatten it into screenshots/.
+            if [ -d artifacts/CSTestShots ]; then
+              mv artifacts/CSTestShots/* artifacts/screenshots/ 2>/dev/null || true
+            fi
             ls -la artifacts/screenshots || true
             adb logcat -d > artifacts/logcat.txt || true
             adb logcat -d -b crash > artifacts/logcat-crash.txt || true
