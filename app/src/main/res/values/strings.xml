@@ -72,6 +72,8 @@
     <string name="evidence_verified">Verified by upload size</string>
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
+    <string name="detail_open">Open</string>
+    <string name="detail_open_failed">No app on this phone can open this file.</string>
     <string name="detail_state">Status</string>
     <string name="detail_evidence">Verification</string>
     <string name="detail_original">Original</string>
@@ -143,6 +145,10 @@
     <string name="opt_folders_hint">Choose which gallery albums are included.</string>
     <string name="folders_all">All albums</string>
     <string name="folders_excluded">%1$d albums excluded</string>
+    <string name="folders_auto_excluded">Excluded automatically</string>
+    <string name="folders_reason_ours">CloudSaver\&apos;s own upload folder</string>
+    <string name="folders_reason_hidden">Hidden folder</string>
+    <string name="folders_reason_compressed">Old compressed copies (excluded)</string>
     <string name="folders_loading">Loading albums…</string>
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>

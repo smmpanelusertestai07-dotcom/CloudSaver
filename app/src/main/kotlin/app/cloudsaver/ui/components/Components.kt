@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.cloudsaver.ui.theme.BrandCyan
 import app.cloudsaver.ui.theme.BrandIndigo
 import app.cloudsaver.ui.theme.BrandMint
@@ -75,12 +77,22 @@ private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier
     return this.scale(scale)
 }
 
-/** App-wide background: theme surface plus two soft brand glows. */
+/**
+ * App-wide background: theme surface plus two soft brand glows.
+ *
+ * It also provides LocalContentColor. Material 3 leaves that to Surface, not
+ * to MaterialTheme, so a plain Box root leaves every Text that does not name
+ * its own colour painting in the default black - invisible on a dark
+ * background, and correct-looking in light mode purely by accident.
+ */
 @Composable
 fun AppBackground(content: @Composable () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val dark = LocalIsDarkTheme.current
     val glow = if (dark) 0.20f else 0.14f
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalContentColor provides scheme.onBackground
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -102,6 +114,7 @@ fun AppBackground(content: @Composable () -> Unit) {
                 .background(BrandCyan.copy(alpha = glow * 0.8f), CircleShape)
         )
         content()
+    }
     }
 }
 
@@ -313,12 +326,22 @@ fun SegmentedChoice(
                     .padding(vertical = 10.dp, horizontal = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
+                // A clipped option is a broken option: "Unlimited" showing as
+                // "Unlimi" tells the user nothing. Shrink the label to fit the
+                // segment rather than cutting it off, so every phone width
+                // shows the whole word.
                 Text(
                     label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    maxLines = 1
+                    maxLines = 1,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = 9.sp,
+                        maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                        stepSize = 0.5.sp
+                    )
                 )
             }
         }

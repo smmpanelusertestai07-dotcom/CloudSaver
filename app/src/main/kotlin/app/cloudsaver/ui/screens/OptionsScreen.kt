@@ -37,6 +37,7 @@ import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
@@ -433,6 +434,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
     if (showFolders) {
         val buckets by vm.buckets.collectAsStateWithLifecycle()
+        val lockedBuckets by vm.lockedBuckets.collectAsStateWithLifecycle()
         AlertDialog(
             onDismissRequest = { showFolders = false },
             confirmButton = {
@@ -462,6 +464,47 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                                 }
                             )
                             Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    // Folders holding another pipeline's compressed copies.
+                    // Shown so the absence is explained, but never selectable:
+                    // re-compressing copies of copies helps nobody.
+                    if (lockedBuckets.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            stringResource(R.string.folders_auto_excluded),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        for ((bucket, reason) in lockedBuckets) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp)
+                            ) {
+                                Checkbox(checked = false, enabled = false, onCheckedChange = null)
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        bucket,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        stringResource(
+                                            when (reason) {
+                                                ScanSources.Reason.OUR_OUTPUT ->
+                                                    R.string.folders_reason_ours
+                                                ScanSources.Reason.HIDDEN ->
+                                                    R.string.folders_reason_hidden
+                                                else -> R.string.folders_reason_compressed
+                                            }
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                            }
                         }
                     }
                 }

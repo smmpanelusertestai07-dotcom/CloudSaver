@@ -3,8 +3,10 @@ package app.cloudsaver.engine
 import android.content.Context
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.util.AppLog
 
 /**
@@ -21,7 +23,8 @@ class StartupRecovery(private val context: Context) {
     data class Result(
         val restoredItems: Int,
         val removedPlaceholders: Int,
-        val removedLegacyFiles: Int
+        val removedLegacyFiles: Int,
+        val purgedFromOutputFolders: Int
     )
 
     suspend fun run(): Result {
@@ -30,7 +33,46 @@ class StartupRecovery(private val context: Context) {
         val restored = restoreIfEmpty()
         val placeholders = removeLegacyPlaceholders()
         val legacy = removeLegacyVisibleSnapshot()
-        return Result(restored, placeholders, legacy)
+        val purged = purgeOutputFolderItems()
+        return Result(restored, placeholders, legacy, purged)
+    }
+
+    /**
+     * Older builds scanned every folder, so another pipeline's output - Ente's
+     * upload folder, or this app's own copies under a previous name - could
+     * already be queued for re-compression. Those rows are dropped.
+     *
+     * Only NEW and STAGED go: a RELEASED row carries upload evidence that the
+     * user's Free-up decisions rest on, and that must not be rewritten here.
+     */
+    private suspend fun purgeOutputFolderItems(): Int {
+        val db = AppDb.get(context)
+        val scanner = MediaScanner(context, db)
+        val excluded = runCatching { scanner.excludedBucketReasons() }.getOrNull() ?: return 0
+        if (excluded.isEmpty()) return 0
+
+        var purged = 0
+        for (state in listOf(ItemState.NEW, ItemState.STAGED)) {
+            for (row in db.items().byState(state.name)) {
+                val bucket = row.bucket ?: continue
+                if (bucket !in excluded) continue
+                // A staged copy has a file behind it; drop that too.
+                row.stagePath?.let { runCatching { java.io.File(it).delete() } }
+                db.items().delete(row)
+                purged++
+            }
+        }
+        if (purged > 0) {
+            // Keep the picker honest about it from now on.
+            val repo = OptionsRepo.get(context)
+            val current = repo.current().excludedBuckets
+            repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, current + excluded.keys)
+            AppLog.log(
+                context, "recovery",
+                "purged $purged queued items from ${excluded.keys.joinToString()}"
+            )
+        }
+        return purged
     }
 
     /**

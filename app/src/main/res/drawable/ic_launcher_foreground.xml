@@ -7,41 +7,62 @@
     android:viewportHeight="108">
 
     <!--
-        Compress, then back up: a white cloud with an upward arrow cut out of
-        it, over a short bar standing for the compressed copy.
+        Compress, then back up: a glass cloud with an upward arrow cut clean
+        out of it, over a short bar standing for the compressed copy.
 
-        Drawn straight in the 108 viewport and kept inside the 66 unit safe
-        circle around (54,54), so no launcher mask crops it. Cloud lobes:
-        left (40,52) r14, top (55,42) r18, right (69,53) r13. The arrow is part
-        of the same path with evenOdd, which keeps the cloud one clean surface.
+        Drawn in the 108 viewport and kept inside the 66 unit safe circle
+        around (54,54), so no launcher mask crops it. Cloud lobes: left (40,52)
+        r14, top (55,42) r18, right (69,53) r13. The arrow belongs to the same
+        path with evenOdd, so the night background shows through it and the
+        cloud stays one unbroken gradient surface.
     -->
     <path
         android:fillType="evenOdd"
         android:pathData="M40,66 A14,14 0 0 1 26,52 A14,14 0 0 1 37.4,38.2 A18,18 0 0 1 71.9,40.6 A13,13 0 0 1 69,66 Z M54,32 L65,44 L58.5,44 L58.5,60 L49.5,60 L49.5,44 L43,44 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:endX="74"
-                android:endY="66"
-                android:startX="32"
+                android:endX="76"
+                android:endY="68"
+                android:startX="30"
                 android:startY="26"
                 android:type="linear">
                 <item
-                    android:color="#FFFFFFFF"
+                    android:color="#FFCFF8FF"
                     android:offset="0" />
                 <item
-                    android:color="#FFF4FAFF"
-                    android:offset="0.6" />
+                    android:color="#FF56D6F2"
+                    android:offset="0.34" />
                 <item
-                    android:color="#FFDCEBFB"
+                    android:color="#FF5B63F0"
+                    android:offset="0.74" />
+                <item
+                    android:color="#FF4B3FD4"
                     android:offset="1" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Specular sweep along the top edge: the gloss on the cloud. -->
-    <path
-        android:pathData="M39.2,37.4 A17.2,17.2 0 0 1 65.1,26.6 L61.9,32.4 A11,11 0 0 0 45.2,39.4 Z"
-        android:fillColor="#59FFFFFF" />
+    <!-- Specular sweep along the top edge: the shine on the glass. -->
+    <path android:pathData="M39.2,37.4 A17.2,17.2 0 0 1 65.1,26.6 L61.9,32.4 A11,11 0 0 0 45.2,39.4 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="66"
+                android:endY="27"
+                android:startX="39"
+                android:startY="38"
+                android:type="linear">
+                <item
+                    android:color="#E6FFFFFF"
+                    android:offset="0" />
+                <item
+                    android:color="#66FFFFFF"
+                    android:offset="0.6" />
+                <item
+                    android:color="#00FFFFFF"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
     <!-- The compressed copy: the one warm accent in the mark. -->
     <path

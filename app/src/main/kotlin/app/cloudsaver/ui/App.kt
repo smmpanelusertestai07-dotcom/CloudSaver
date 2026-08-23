@@ -98,6 +98,10 @@ private fun MainNav(vm: AppViewModel) {
 
     Scaffold(
         containerColor = Color.Transparent,
+        // contentColorFor(Transparent) is Unspecified, and Surface would then
+        // hand that down as the content colour, undoing what AppBackground set
+        // and leaving unstyled text black on the dark palette.
+        contentColor = MaterialTheme.colorScheme.onBackground,
         bottomBar = {
             if (route in setOf(Routes.HOME, Routes.FILES, Routes.STORAGE, Routes.OPTIONS)) {
                 NavigationBar(

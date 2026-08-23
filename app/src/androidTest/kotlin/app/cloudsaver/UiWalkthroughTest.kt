@@ -77,6 +77,37 @@ class UiWalkthroughTest {
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
     }
 
+    private fun setTheme(mode: String) = runBlocking {
+        OptionsRepo.get(target).setString(OptionsRepo.K.THEME, mode)
+    }
+
+    /**
+     * Photographs the main screens with the dark palette forced on.
+     *
+     * Material 3 leaves LocalContentColor to Surface rather than to
+     * MaterialTheme, so a missing one paints unstyled text black - which looks
+     * perfectly fine in light mode and is invisible in dark. Only a dark-mode
+     * shot catches that, and the emulator runs light by default.
+     */
+    @Test
+    fun everyMainScreenRendersInDarkTheme() {
+        setOnboardingDone(true)
+        setTheme("DARK")
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                shoot("50-dark-home")
+                compose.onNodeWithText("Storage").performClick()
+                shoot("51-dark-storage")
+                compose.onNodeWithText("Settings").performClick()
+                shoot("52-dark-settings")
+                compose.onNodeWithText("Files").performClick()
+                shoot("53-dark-files")
+            }
+        } finally {
+            setTheme("SYSTEM")
+        }
+    }
+
     /** Renders the launcher icon itself so the logo can be reviewed too. */
     @Test
     fun appIconRenders() {

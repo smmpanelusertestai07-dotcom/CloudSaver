@@ -6,41 +6,44 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Sky to deep blue, so a white mark carries on any launcher. -->
+    <!-- Deep night, so the glossy mark reads on light and dark launchers alike. -->
     <path android:pathData="M0,0h108v108h-108z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:endX="94"
-                android:endY="100"
-                android:startX="14"
-                android:startY="8"
+                android:endX="100"
+                android:endY="104"
+                android:startX="8"
+                android:startY="4"
                 android:type="linear">
                 <item
-                    android:color="#FF38BDF8"
+                    android:color="#FF2A3568"
                     android:offset="0" />
                 <item
-                    android:color="#FF2A7FEA"
-                    android:offset="0.52" />
+                    android:color="#FF161C3C"
+                    android:offset="0.55" />
                 <item
-                    android:color="#FF1D4ED8"
+                    android:color="#FF090C1C"
                     android:offset="1" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Light pooling behind the mark gives the surface some depth. -->
-    <path android:pathData="M54,50m-46,0a46,46 0 1,1 92,0a46,46 0 1,1 -92,0">
+    <!-- Cool light pooling behind the cloud; lifts the mark off the ground. -->
+    <path android:pathData="M54,54m-48,0a48,48 0 1,1 96,0a48,48 0 1,1 -96,0">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:centerX="42"
-                android:centerY="34"
-                android:gradientRadius="52"
+                android:centerX="48"
+                android:centerY="42"
+                android:gradientRadius="48"
                 android:type="radial">
                 <item
-                    android:color="#4DFFFFFF"
+                    android:color="#6642A6FF"
                     android:offset="0" />
                 <item
-                    android:color="#00FFFFFF"
+                    android:color="#2E3C6BFF"
+                    android:offset="0.55" />
+                <item
+                    android:color="#00000000"
                     android:offset="1" />
             </gradient>
         </aapt:attr>

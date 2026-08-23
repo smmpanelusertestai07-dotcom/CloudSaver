@@ -42,6 +42,7 @@ fun FilesScreen(vm: AppViewModel) {
     val items by vm.items.collectAsStateWithLifecycle()
     val query by vm.search.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<ItemRow?>(null) }
+    var openError by remember { mutableStateOf<String?>(null) }
 
     Column(
         Modifier
@@ -116,11 +117,33 @@ fun FilesScreen(vm: AppViewModel) {
         }
     }
 
+    openError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { openError = null },
+            confirmButton = {
+                TextButton(onClick = { openError = null }) { Text(stringResource(R.string.ok)) }
+            },
+            text = { Text(message) }
+        )
+    }
+
     detail?.let { row ->
         AlertDialog(
             onDismissRequest = { detail = null },
             confirmButton = {
                 TextButton(onClick = { detail = null }) { Text(stringResource(R.string.ok)) }
+            },
+            dismissButton = {
+                // Opening the copy, not just describing it, is what tells the
+                // user the optimised file is really fine to keep.
+                val cannotOpen = stringResource(R.string.detail_open_failed)
+                TextButton(onClick = {
+                    if (!vm.openInViewer(row)) {
+                        openError = cannotOpen
+                    } else {
+                        detail = null
+                    }
+                }) { Text(stringResource(R.string.detail_open)) }
             },
             title = { Text(row.displayName, maxLines = 2) },
             text = {

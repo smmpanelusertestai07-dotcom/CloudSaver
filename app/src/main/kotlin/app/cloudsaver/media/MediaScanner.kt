@@ -6,6 +6,7 @@ import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.util.AppLog
@@ -33,7 +34,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
 
     /** Upserts everything into the DB; returns the number of new items. */
     suspend fun scan(): Int {
-        val found = queryAll()
+        val found = excludeOutputFolders(queryAll())
         var newItems = 0
         val now = System.currentTimeMillis()
         for (f in found) {
@@ -141,7 +142,10 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             val iRel = c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
             while (c.moveToNext()) {
                 val rel = c.getString(iRel)
-                // Never re-ingest our own output copies.
+                // Our own output, hidden folders and other pipelines' output
+                // are dropped later by excludeOutputFolders(), which can also
+                // judge a folder by its contents. Only the cheap, certain case
+                // is short-circuited here.
                 if (Defaults.isOutputPath(rel)) continue
                 val name = c.getString(iName) ?: continue
                 val size = c.getLong(iSize)
@@ -223,7 +227,49 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         }
     }
 
-    /** Distinct gallery folders for the include/exclude option. */
+    /**
+     * Drops folders the app must never process: its own output, hidden
+     * folders, folders named after a known pipeline, and folders whose
+     * contents look like compressed copies. The content check needs the whole
+     * folder in hand, which is why it happens here rather than per row.
+     */
+    fun excludeOutputFolders(found: List<Found>): List<Found> {
+        val looksLikeOutput = found
+            .groupBy { folderKey(it) }
+            .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
+            .keys
+        return found.filter { f ->
+            ScanSources.exclusionReason(
+                relativePath = f.relativePath,
+                bucketName = f.bucket,
+                looksLikeOutput = folderKey(f) in looksLikeOutput
+            ) == null
+        }
+    }
+
+    /** Folders the picker must show as excluded, with the reason. */
+    fun excludedBucketReasons(): Map<String, ScanSources.Reason> {
+        val found = queryAll()
+        val looksLikeOutput = found
+            .groupBy { folderKey(it) }
+            .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
+            .keys
+        val out = HashMap<String, ScanSources.Reason>()
+        for (f in found) {
+            val bucket = f.bucket ?: continue
+            val reason = ScanSources.exclusionReason(
+                relativePath = f.relativePath,
+                bucketName = bucket,
+                looksLikeOutput = folderKey(f) in looksLikeOutput
+            ) ?: continue
+            out[bucket] = reason
+        }
+        return out
+    }
+
+    private fun folderKey(f: Found): String = f.relativePath ?: f.bucket ?: ""
+
+    /** Distinct gallery folders the user may actually choose between. */
     fun buckets(): List<String> =
-        queryAll().mapNotNull { it.bucket }.distinct().sorted()
+        excludeOutputFolders(queryAll()).mapNotNull { it.bucket }.distinct().sorted()
 }

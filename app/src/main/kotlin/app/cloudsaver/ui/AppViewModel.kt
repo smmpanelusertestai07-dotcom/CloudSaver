@@ -14,6 +14,7 @@ import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
@@ -314,9 +315,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val buckets = MutableStateFlow<List<String>>(emptyList())
 
+    /** Folders the app refuses to scan, with why - shown greyed out in the picker. */
+    val lockedBuckets = MutableStateFlow<List<Pair<String, ScanSources.Reason>>>(emptyList())
+
     fun loadBuckets() {
         viewModelScope.launch(Dispatchers.IO) {
-            buckets.value = runCatching { MediaScanner(ctx, db).buckets() }.getOrDefault(emptyList())
+            val scanner = MediaScanner(ctx, db)
+            buckets.value = runCatching { scanner.buckets() }.getOrDefault(emptyList())
+            lockedBuckets.value = runCatching {
+                scanner.excludedBucketReasons().toList().sortedBy { it.first }
+            }.getOrDefault(emptyList())
         }
     }
 
@@ -401,6 +409,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun urisFor(rows: List<ItemRow>): List<Uri> =
         rows.mapNotNull { it.contentUri?.let(Uri::parse) }
+
+    /**
+     * Opens an item in whatever viewer the phone uses for it.
+     *
+     * Prefers the released copy when there is one - that is the file the user
+     * is being told about - and falls back to the original. Read permission is
+     * granted to the receiving app for that one uri only, and the chooser is
+     * used so it works even where no default viewer is set.
+     */
+    fun openInViewer(row: ItemRow): Boolean {
+        val uriString = row.outputUri ?: row.contentUri ?: return false
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return false
+        val mime = row.mimeType.ifEmpty { if (row.isVideo) "video/*" else "image/*" }
+        val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            )
+        }
+        val chooser = android.content.Intent.createChooser(view, null).apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching { ctx.startActivity(chooser) }.isSuccess
+    }
 
     /** Clears the one-time notice about the removed legacy placeholder. */
     fun dismissPlaceholderNotice() {

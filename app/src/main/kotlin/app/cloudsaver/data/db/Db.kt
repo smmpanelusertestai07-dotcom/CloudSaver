@@ -109,6 +109,10 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = :state")
     suspend fun byState(state: String): List<ItemRow>
 
+    /** Drops a row entirely; used when a folder turns out to be another pipeline's output. */
+    @androidx.room.Delete
+    suspend fun delete(row: ItemRow)
+
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
             "ORDER BY captureAt DESC LIMIT :limit"
