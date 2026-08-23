@@ -1,0 +1,281 @@
+package app.litesaver.ui.screens
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.litesaver.R
+import app.litesaver.data.CloudApps
+import app.litesaver.ui.AppViewModel
+import app.litesaver.ui.components.GlassCard
+import app.litesaver.util.Formats
+import app.litesaver.util.OemPages
+import app.litesaver.util.Permissions
+
+/**
+ * One-time onboarding: 6 step cards, one button each, re-runnable from Help.
+ * Steps: media permission, notifications, battery, usage access, cloud
+ * checklist, test run.
+ */
+@Composable
+fun OnboardingScreen(vm: AppViewModel) {
+    val options by vm.options.collectAsStateWithLifecycle()
+    var step by remember { mutableIntStateOf(options.onboardingStep.coerceIn(0, 6)) }
+    var showCalc by remember { androidx.compose.runtime.mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    fun goTo(next: Int) {
+        step = next.coerceIn(0, 6)
+        vm.setOnboardingStep(step)
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { goTo(if (Permissions.hasMediaRead(context)) 2 else 1) }
+
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { goTo(3) }
+
+    val importOkLabel = stringResource(R.string.transfer_import_ok)
+    val failedLabel = stringResource(R.string.transfer_failed)
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            vm.importState(uri, importOkLabel, failedLabel)
+        }
+    }
+
+    val transferMessage by vm.transferMessage.collectAsStateWithLifecycle()
+    val testItems by vm.testRun.collectAsStateWithLifecycle()
+    val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp)
+    ) {
+        Spacer(Modifier.height(24.dp))
+        Text(
+            stringResource(R.string.app_name),
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            stringResource(R.string.onb_tagline),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(12.dp))
+        if (showCalc) {
+            Text(
+                stringResource(R.string.calc_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            CalculatorContent(vm)
+            Button(
+                onClick = { showCalc = false },
+                modifier = Modifier.padding(top = 10.dp)
+            ) { Text(stringResource(R.string.back)) }
+            Spacer(Modifier.height(24.dp))
+            return@Column
+        }
+        LinearProgressIndicator(
+            progress = { (step + 1) / 7f },
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        when (step) {
+            0 -> StepCard(
+                title = stringResource(R.string.onb0_title),
+                text = stringResource(R.string.onb0_text),
+                buttonLabel = stringResource(R.string.onb_start),
+                onButton = { goTo(1) }
+            ) {
+                TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }) {
+                    Text(stringResource(R.string.onb0_import))
+                }
+                transferMessage?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            1 -> StepCard(
+                title = stringResource(R.string.onb1_title),
+                text = stringResource(R.string.onb1_text),
+                buttonLabel = if (Permissions.hasMediaRead(context)) {
+                    stringResource(R.string.onb_done_next)
+                } else {
+                    stringResource(R.string.onb1_grant)
+                },
+                onButton = {
+                    if (Permissions.hasMediaRead(context)) goTo(2)
+                    else permissionLauncher.launch(Permissions.mediaPermissionsToRequest())
+                }
+            ) {
+                TextButton(onClick = { OemPages.openAppInfo(context) }) {
+                    Text(stringResource(R.string.onb1_appinfo))
+                }
+            }
+
+            2 -> StepCard(
+                title = stringResource(R.string.onb2_title),
+                text = stringResource(R.string.onb2_text),
+                buttonLabel = stringResource(R.string.onb2_grant),
+                onButton = {
+                    if (android.os.Build.VERSION.SDK_INT >= 33 && !Permissions.hasNotifications(context)) {
+                        notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        goTo(3)
+                    }
+                },
+                onSkip = { goTo(3) }
+            )
+
+            3 -> StepCard(
+                title = stringResource(R.string.onb3_title),
+                text = stringResource(R.string.onb3_text),
+                buttonLabel = stringResource(R.string.onb3_battery),
+                onButton = { OemPages.requestIgnoreBatteryOptimizations(context) },
+                onSkip = { goTo(4) }
+            ) {
+                OutlinedButton(onClick = {
+                    if (!OemPages.openAutoStart(context)) OemPages.openAppInfo(context)
+                }) { Text(stringResource(R.string.onb3_autostart)) }
+                Text(
+                    stringResource(R.string.onb3_fallback),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(onClick = { goTo(4) }, modifier = Modifier.padding(top = 6.dp)) {
+                    Text(stringResource(R.string.onb_done_next))
+                }
+            }
+
+            4 -> StepCard(
+                title = stringResource(R.string.onb4_title),
+                text = stringResource(R.string.onb4_text),
+                buttonLabel = stringResource(R.string.onb4_grant),
+                onButton = { OemPages.openUsageAccess(context) },
+                onSkip = { goTo(5) }
+            ) {
+                Button(onClick = { goTo(5) }, modifier = Modifier.padding(top = 6.dp)) {
+                    Text(stringResource(R.string.onb_done_next))
+                }
+            }
+
+            5 -> {
+                val detected = remember { CloudApps.detectDefault(context) }
+                StepCard(
+                    title = stringResource(R.string.onb5_title),
+                    text = stringResource(R.string.cloud_intended),
+                    buttonLabel = stringResource(R.string.onb_done_next),
+                    onButton = { goTo(6) }
+                ) {
+                    Text(
+                        stringResource(R.string.onb5_text, detected.label),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    detected.checklistRes?.let { res ->
+                        Text(
+                            stringResource(res),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                    if (detected.packages.isNotEmpty()) {
+                        OutlinedButton(onClick = { CloudApps.launch(context, detected.id) }) {
+                            Text(stringResource(R.string.onb5_open, detected.label))
+                        }
+                    }
+                    OutlinedButton(onClick = { showCalc = true }) {
+                        Text(stringResource(R.string.calc_open))
+                    }
+                }
+            }
+
+            6 -> StepCard(
+                title = stringResource(R.string.onb6_title),
+                text = stringResource(R.string.onb6_text),
+                buttonLabel = if (testRunning) {
+                    stringResource(R.string.onb6_running)
+                } else {
+                    stringResource(R.string.onb6_run)
+                },
+                onButton = { if (!testRunning) vm.startTestRun() }
+            ) {
+                testItems?.let { list ->
+                    if (list.isEmpty()) {
+                        Text(stringResource(R.string.onb6_none))
+                    }
+                    for (item in list) {
+                        Text(
+                            "${item.name}: ${Formats.bytes(item.before)} -> ${Formats.bytes(item.after)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                Button(
+                    onClick = { vm.finishOnboarding() },
+                    modifier = Modifier.padding(top = 8.dp)
+                ) { Text(stringResource(R.string.onb_finish)) }
+            }
+        }
+
+        if (step > 0) {
+            TextButton(onClick = { goTo(step - 1) }) { Text(stringResource(R.string.back)) }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun StepCard(
+    title: String,
+    text: String,
+    buttonLabel: String,
+    onButton: () -> Unit,
+    onSkip: (() -> Unit)? = null,
+    extra: @Composable () -> Unit = {}
+) {
+    GlassCard {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(10.dp))
+        Row {
+            Button(onClick = onButton) { Text(buttonLabel) }
+            if (onSkip != null) {
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                TextButton(onClick = onSkip) { Text(stringResource(R.string.skip)) }
+            }
+        }
+        extra()
+    }
+}
