@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -87,6 +89,10 @@ private fun MainNav(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
     var unlocked by remember { mutableStateOf(false) }
     val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity
+
+    // A lock that only ever asks once is not a lock: re-arm it whenever the
+    // app leaves the foreground, so returning to it authenticates again.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { unlocked = false }
 
     val needsLock = options.appLock && !unlocked && route in Routes.LOCKED
 

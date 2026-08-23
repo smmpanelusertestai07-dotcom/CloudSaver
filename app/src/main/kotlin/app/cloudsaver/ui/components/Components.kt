@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import app.cloudsaver.ui.theme.BrandCyan
 import app.cloudsaver.ui.theme.BrandIndigo
 import app.cloudsaver.ui.theme.BrandMint
+import app.cloudsaver.ui.theme.BrandViolet
 import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
 
@@ -124,7 +125,11 @@ fun AppCard(
     Column(modifier = box.padding(18.dp), content = content)
 }
 
-/** Brand gradient card used for the dashboard hero. */
+/**
+ * Brand gradient card used for the dashboard hero. Its content is white, so
+ * both ends of the gradient have to carry white text: indigo is 4.7:1 and
+ * violet 7.1:1, while the brand cyan would be 1.7:1 and unreadable.
+ */
 @Composable
 fun HeroCard(
     modifier: Modifier = Modifier,
@@ -134,9 +139,7 @@ fun HeroCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(CardShape)
-            .background(
-                Brush.linearGradient(listOf(BrandIndigo, BrandCyan.copy(alpha = 0.85f)))
-            )
+            .background(Brush.linearGradient(listOf(BrandIndigo, BrandViolet)))
             .padding(20.dp),
         content = content
     )
