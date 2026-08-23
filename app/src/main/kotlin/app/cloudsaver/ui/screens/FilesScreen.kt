@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -30,7 +31,10 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.BadgeTone
+import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.components.StateBadge
 import app.cloudsaver.util.Formats
 
 @Composable
@@ -60,7 +64,7 @@ fun FilesScreen(vm: AppViewModel) {
                 .padding(vertical = 8.dp)
         )
         if (items.isEmpty()) {
-            app.cloudsaver.ui.components.EmptyState(
+            EmptyState(
                 title = if (query.isEmpty()) {
                     stringResource(R.string.files_empty_title)
                 } else {
@@ -72,31 +76,40 @@ fun FilesScreen(vm: AppViewModel) {
                     stringResource(R.string.files_no_match_body)
                 }
             )
-        }
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(items, key = { it.id }) { row ->
-                AppCard(
-                    modifier = Modifier.padding(vertical = 5.dp),
-                    onClick = { detail = row }
-                ) {
-                    Text(
-                        row.displayName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
-                    Row {
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(items, key = { it.id }) { row ->
+                    AppCard(
+                        modifier = Modifier
+                            .padding(vertical = 5.dp)
+                            .animateItem(),
+                        onClick = { detail = row }
+                    ) {
                         Text(
-                            stateLabel(row),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            row.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
                         )
-                        Spacer(Modifier.padding(horizontal = 4.dp))
-                        Text(
-                            Formats.bytes(row.sizeBytes),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            Modifier.padding(top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            StateBadge(stateLabel(row), badgeTone(row))
+                            Text(
+                                // Once a copy exists, the saving is the point.
+                                row.outputBytes?.let { copy ->
+                                    stringResource(
+                                        R.string.files_size_pair,
+                                        Formats.bytes(row.sizeBytes),
+                                        Formats.bytes(copy)
+                                    )
+                                } ?: Formats.bytes(row.sizeBytes),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 10.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -145,6 +158,16 @@ fun FilesScreen(vm: AppViewModel) {
                 }
             }
         )
+    }
+}
+
+private fun badgeTone(row: ItemRow): BadgeTone {
+    val state = runCatching { ItemState.valueOf(row.state) }.getOrDefault(ItemState.UNKNOWN)
+    return when (state) {
+        ItemState.NEW -> BadgeTone.NEUTRAL
+        ItemState.STAGED, ItemState.RELEASED -> BadgeTone.PROGRESS
+        ItemState.GONE, ItemState.DONE, ItemState.FREED -> BadgeTone.SUCCESS
+        ItemState.SKIP, ItemState.UNKNOWN -> BadgeTone.MUTED
     }
 }
 

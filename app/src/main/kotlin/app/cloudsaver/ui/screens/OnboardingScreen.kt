@@ -2,6 +2,16 @@ package app.cloudsaver.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,9 +21,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -22,8 +33,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +46,8 @@ import app.cloudsaver.R
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.Permissions
@@ -45,7 +61,7 @@ import app.cloudsaver.util.Permissions
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
     var step by remember { mutableIntStateOf(options.onboardingStep.coerceIn(0, 6)) }
-    var showCalc by remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showCalc by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     fun goTo(next: Int) {
@@ -74,7 +90,7 @@ fun OnboardingScreen(vm: AppViewModel) {
         }
     }
     pendingImport?.let { uri ->
-        app.cloudsaver.ui.components.PasswordDialog(
+        PasswordDialog(
             title = stringResource(R.string.restore_password_title),
             body = stringResource(R.string.restore_password_body),
             confirmMode = false,
@@ -101,11 +117,9 @@ fun OnboardingScreen(vm: AppViewModel) {
             .padding(20.dp)
     ) {
         Spacer(Modifier.height(28.dp))
-        androidx.compose.foundation.layout.Row(
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.Icon(
-                androidx.compose.ui.res.painterResource(R.drawable.ic_stat_cloud),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                painterResource(R.drawable.ic_stat_cloud),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(36.dp)
@@ -144,15 +158,23 @@ fun OnboardingScreen(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 18.dp)
         )
-        LinearProgressIndicator(
-            progress = { (step + 1) / 7f },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp, bottom = 14.dp),
-            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-        )
+        StepDots(current = step, total = 7)
 
-        when (step) {
+        AnimatedContent(
+            targetState = step,
+            transitionSpec = {
+                // Slide the way the user is travelling through the steps.
+                val forward = targetState > initialState
+                val width = if (forward) 1 else -1
+                (slideInHorizontally(tween(260)) { it * width / 3 } + fadeIn(tween(260)))
+                    .togetherWith(
+                        slideOutHorizontally(tween(200)) { -it * width / 3 } + fadeOut(tween(160))
+                    )
+                    .using(SizeTransform(clip = false))
+            },
+            label = "onboardingStep"
+        ) { shown ->
+        when (shown) {
             0 -> StepCard(
                 title = stringResource(R.string.onb0_title),
                 text = stringResource(R.string.onb0_text),
@@ -274,12 +296,21 @@ fun OnboardingScreen(vm: AppViewModel) {
             ) {
                 testItems?.let { list ->
                     if (list.isEmpty()) {
-                        Text(stringResource(R.string.onb6_none))
+                        Text(
+                            stringResource(R.string.onb6_none),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     for (item in list) {
-                        Text(
-                            "${item.name}: ${Formats.bytes(item.before)} -> ${Formats.bytes(item.after)}",
-                            style = MaterialTheme.typography.bodySmall
+                        KeyValueRow(
+                            item.name,
+                            stringResource(
+                                R.string.files_size_pair,
+                                Formats.bytes(item.before),
+                                Formats.bytes(item.after)
+                            )
                         )
                     }
                 }
@@ -289,11 +320,35 @@ fun OnboardingScreen(vm: AppViewModel) {
                 ) { Text(stringResource(R.string.onb_finish)) }
             }
         }
+        }
 
         if (step > 0) {
             TextButton(onClick = { goTo(step - 1) }) { Text(stringResource(R.string.back)) }
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** Progress as dots: the active step is a wide pill, the rest are small. */
+@Composable
+private fun StepDots(current: Int, total: Int) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
+    ) {
+        for (index in 0 until total) {
+            val done = index <= current
+            Box(
+                Modifier
+                    .padding(end = 6.dp)
+                    .size(width = if (index == current) 22.dp else 8.dp, height = 8.dp)
+                    .background(
+                        if (done) scheme.primary else scheme.surfaceContainerHighest,
+                        CircleShape
+                    )
+            )
+        }
     }
 }
 

@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -316,6 +318,70 @@ fun SegmentedChoice(
             }
         }
     }
+}
+
+/**
+ * Rounded capacity bar that animates to its new value. [fraction] is how full
+ * the volume is, so the filled part is what is already used.
+ */
+@Composable
+fun MeterBar(
+    fraction: Float,
+    modifier: Modifier = Modifier,
+    warn: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+    val target = fraction.coerceIn(0f, 1f)
+    val animated by animateFloatAsState(
+        targetValue = target,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "meter"
+    )
+    val fill = if (warn) scheme.error else scheme.primary
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(CircleShape)
+            .background(scheme.surfaceContainerHighest)
+    ) {
+        Box(
+            Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(animated)
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(fill.copy(alpha = 0.75f), fill)
+                    )
+                )
+        )
+    }
+}
+
+/** Severity a status badge should read as. */
+enum class BadgeTone { NEUTRAL, PROGRESS, SUCCESS, MUTED }
+
+/** Small filled pill that carries an item's state at a glance. */
+@Composable
+fun StateBadge(text: String, tone: BadgeTone, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val (background, foreground) = when (tone) {
+        BadgeTone.NEUTRAL -> scheme.surfaceContainerHighest to scheme.onSurfaceVariant
+        BadgeTone.PROGRESS -> scheme.primaryContainer to scheme.onPrimaryContainer
+        BadgeTone.SUCCESS -> scheme.secondaryContainer to scheme.onSecondaryContainer
+        BadgeTone.MUTED -> scheme.surfaceContainerHigh to scheme.outline
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = foreground,
+        maxLines = 1,
+        modifier = modifier
+            .clip(CircleShape)
+            .background(background)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    )
 }
 
 /** Inline note used for warnings under an option. */

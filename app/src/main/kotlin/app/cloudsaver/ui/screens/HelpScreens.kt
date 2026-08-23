@@ -1,6 +1,12 @@
 package app.cloudsaver.ui.screens
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -23,9 +32,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -83,7 +95,22 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
 @Composable
 private fun HelpLink(label: String, onClick: () -> Unit) {
     AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onClick) {
-        Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -111,20 +138,45 @@ fun HelpFaqScreen(nav: NavHostController) {
     var open by remember { mutableIntStateOf(-1) }
     HelpPage(nav, stringResource(R.string.help_faq)) {
         FAQ.forEachIndexed { index, (q, a) ->
+            val expanded = open == index
+            val arrow by animateFloatAsState(
+                targetValue = if (expanded) 0f else -90f,
+                label = "faqArrow"
+            )
             AppCard(
                 modifier = Modifier.padding(vertical = 4.dp),
-                onClick = { open = if (open == index) -1 else index }
+                onClick = { open = if (expanded) -1 else index }
             ) {
-                Text(
-                    stringResource(q),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-                if (open == index) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(q),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .rotate(arrow)
+                    )
+                }
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
                     Text(
                         stringResource(a),
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 6.dp)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
             }
@@ -207,7 +259,9 @@ fun HelpLogsScreen(nav: NavHostController) {
         AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
             Text(
                 if (text.isEmpty()) stringResource(R.string.logs_empty) else text,
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = if (text.isEmpty()) null else FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -253,6 +307,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             Text(
                 sha.ifEmpty { "..." },
                 style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(

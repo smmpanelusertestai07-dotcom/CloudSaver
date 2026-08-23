@@ -33,6 +33,9 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.BadgeTone
+import app.cloudsaver.ui.components.EmptyState
+import app.cloudsaver.ui.components.StateBadge
 import app.cloudsaver.util.Formats
 
 /**
@@ -108,46 +111,58 @@ fun FreeUpScreen(vm: AppViewModel, nav: NavHostController) {
             stringResource(R.string.freeup_explainer),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 6.dp)
+            modifier = Modifier.padding(vertical = 8.dp)
         )
+
+        if (items.isEmpty()) {
+            EmptyState(
+                title = stringResource(R.string.freeup_empty_title),
+                body = stringResource(R.string.freeup_empty)
+            )
+            return@Column
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = {
-                selected = if (selected.size == items.size) emptySet() else items.map { it.id }.toSet()
-            }) { Text(stringResource(R.string.freeup_select_all)) }
-            Spacer(Modifier.weight(1f))
-            Button(
-                enabled = selectedRows.isNotEmpty(),
-                onClick = {
-                    val uris = vm.urisFor(selectedRows)
-                    if (uris.isNotEmpty()) {
-                        val sender = vm.requestDelete(uris) { deleted ->
-                            vm.onFreedByUris(deleted)
-                        }
-                        sender?.let {
-                            deleteLauncher.launch(IntentSenderRequest.Builder(it).build())
-                        }
-                        selected = emptySet()
-                    }
+                selected = if (selected.size == items.size) {
+                    emptySet()
+                } else {
+                    items.map { it.id }.toSet()
                 }
-            ) { Text(stringResource(R.string.freeup_delete, Formats.bytes(totalBytes))) }
-        }
-        if (items.isEmpty()) {
-            Spacer(Modifier.height(16.dp))
-            AppCard {
+            }) {
                 Text(
-                    stringResource(R.string.freeup_empty),
-                    style = MaterialTheme.typography.bodyMedium
+                    if (selected.size == items.size) {
+                        stringResource(R.string.freeup_select_none)
+                    } else {
+                        stringResource(R.string.freeup_select_all)
+                    }
                 )
             }
+            Spacer(Modifier.weight(1f))
+            Text(
+                stringResource(R.string.freeup_selected_count, selectedRows.size, items.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+
+        LazyColumn(Modifier.weight(1f)) {
             items(items, key = { it.id }) { row ->
-                AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+                val checked = row.id in selected
+                AppCard(
+                    modifier = Modifier
+                        .padding(vertical = 4.dp)
+                        .animateItem(),
+                    tonal = checked,
+                    onClick = {
+                        selected = if (checked) selected - row.id else selected + row.id
+                    }
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
-                            checked = row.id in selected,
-                            onCheckedChange = { checked ->
-                                selected = if (checked) selected + row.id else selected - row.id
+                            checked = checked,
+                            onCheckedChange = { on ->
+                                selected = if (on) selected + row.id else selected - row.id
                             }
                         )
                         Column(Modifier.weight(1f)) {
@@ -156,15 +171,42 @@ fun FreeUpScreen(vm: AppViewModel, nav: NavHostController) {
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1
                             )
-                            Text(
-                                "${Formats.bytes(row.sizeBytes)} - ${evidenceLabel(row)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Row(
+                                Modifier.padding(top = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                StateBadge(evidenceLabel(row), BadgeTone.SUCCESS)
+                                Text(
+                                    Formats.bytes(row.sizeBytes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 10.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
+        // The destructive action sits apart from the list, always reachable.
+        Button(
+            enabled = selectedRows.isNotEmpty(),
+            onClick = {
+                val uris = vm.urisFor(selectedRows)
+                if (uris.isNotEmpty()) {
+                    val sender = vm.requestDelete(uris) { deleted ->
+                        vm.onFreedByUris(deleted)
+                    }
+                    sender?.let {
+                        deleteLauncher.launch(IntentSenderRequest.Builder(it).build())
+                    }
+                    selected = emptySet()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+        ) { Text(stringResource(R.string.freeup_delete, Formats.bytes(totalBytes))) }
     }
 }

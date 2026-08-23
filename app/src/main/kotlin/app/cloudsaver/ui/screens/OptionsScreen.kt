@@ -45,6 +45,7 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.PasswordDialog
+import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
 
@@ -103,6 +104,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         )
         Spacer(Modifier.height(10.dp))
 
+        SectionHeader(stringResource(R.string.opt_group_backup))
         // 1. What to back up
         OptionCard(stringResource(R.string.opt_scope), stringResource(R.string.opt_scope_hint)) {
             SegmentedChoice(
@@ -163,6 +165,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_schedule))
         // 5. Speed
         OptionCard(stringResource(R.string.opt_speed), stringResource(R.string.opt_speed_hint)) {
             SegmentedChoice(
@@ -196,6 +200,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_space))
         // 7. Phone space
         OptionCard(stringResource(R.string.opt_space), stringResource(R.string.opt_space_hint)) {
             Text(stringResource(R.string.space_min_free), style = MaterialTheme.typography.labelLarge)
@@ -272,6 +278,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_quality))
         // 8. Preset
         OptionCard(stringResource(R.string.opt_preset), stringResource(R.string.opt_preset_hint)) {
             SegmentedChoice(
@@ -296,6 +304,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             if (o.codec == VideoCodec.HEVC) WarningText(stringResource(R.string.codec_hevc_warning))
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_appearance))
         // 10. Theme
         OptionCard(stringResource(R.string.opt_theme), stringResource(R.string.opt_theme_hint)) {
             SegmentedChoice(
@@ -312,6 +322,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             ) { vm.setDynamicColor(it) }
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_privacy))
         // 12-16. Switches
         OptionCard(stringResource(R.string.opt_lock), stringResource(R.string.opt_lock_hint)) {
             SwitchRow(stringResource(R.string.opt_lock), o.appLock) { vm.setAppLock(it) }
@@ -337,6 +349,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             SwitchRow(stringResource(R.string.opt_pause), o.pauseAll) { vm.setPauseAll(it) }
         }
 
+
+        SectionHeader(stringResource(R.string.opt_group_backup_restore))
         // 17. Export / Import
         OptionCard(stringResource(R.string.opt_transfer), stringResource(R.string.opt_transfer_hint)) {
             Row {

@@ -52,6 +52,7 @@
     <string name="tamper_freeup_blocked">This tool is off because this copy of the app was modified. Install the official APK.</string>
 
     <!-- files -->
+    <string name="files_size_pair">%1$s → %2$s</string>
     <string name="files_search">Search files</string>
     <string name="files_empty_title">No files yet</string>
     <string name="files_no_match_title">No matches</string>
@@ -99,7 +100,7 @@
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
     <string name="storage_reclaim_title">Space you can reclaim</string>
-    <string name="storage_reclaim_line">%1$s of originals are confirmed backed up</string>
+    <string name="storage_reclaim_caption">of originals are confirmed backed up and safe to remove</string>
     <string name="storage_freeup_open">Reclaim space</string>
     <string name="storage_freeup_hidden">Turn on \&quot;Reclaim space\&quot; in Settings to use this.</string>
     <string name="storage_temp_title">Temporary files</string>
@@ -112,7 +113,10 @@
     <string name="freeup_explainer">Only originals already confirmed as backed up are listed. Android asks you to confirm every deletion - CloudSaver never removes originals on its own.</string>
     <string name="freeup_select_all">Select all</string>
     <string name="freeup_delete">Delete originals (%1$s)</string>
-    <string name="freeup_empty">Nothing to reclaim yet. Run Verify backup first.</string>
+    <string name="freeup_empty_title">Nothing to reclaim yet</string>
+    <string name="freeup_select_none">Clear selection</string>
+    <string name="freeup_selected_count">%1$d of %2$d selected</string>
+    <string name="freeup_empty">Originals appear here once their copies are confirmed backed up. Run Verify backup to check.</string>
 
     <!-- lock -->
     <string name="lock_title">CloudSaver is locked</string>
@@ -120,6 +124,13 @@
     <string name="lock_unlock">Unlock</string>
 
     <!-- options -->
+    <string name="opt_group_backup">What gets backed up</string>
+    <string name="opt_group_schedule">When it runs</string>
+    <string name="opt_group_space">Space limits</string>
+    <string name="opt_group_quality">Quality</string>
+    <string name="opt_group_appearance">Appearance</string>
+    <string name="opt_group_privacy">Privacy and safety</string>
+    <string name="opt_group_backup_restore">Backup and restore</string>
     <string name="opt_scope">What to back up</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
     <string name="scope_all">All</string>
@@ -232,13 +243,13 @@
     <string name="calc_input_label">Cloud free space (GB)</string>
     <string name="calc_prefill_note">Typical value for %1$s - confirm in your cloud app, plans change.</string>
     <string name="calc_enter">Type your cloud free space above to see what fits.</string>
-    <string name="calc_line1">%1$s GB cloud ≈ %2$s GB of originals</string>
-    <string name="calc_cap_photos">Room for about %1$s photos.</string>
-    <string name="calc_cap_videos">Room for about %1$s hours of video.</string>
-    <string name="calc_cap_both">Room for about %1$s photos + %2$s hours of video (your mix).</string>
+    <string name="calc_hero_value">%1$s GB</string>
+    <string name="calc_hero_caption">of original photos and videos fit in %1$s GB of cloud storage</string>
+    <string name="calc_tile_photos">Photos</string>
+    <string name="calc_tile_video_hours">Hours of video</string>
     <string name="calc_gallery_line">Your gallery: %1$s GB → compressed ≈ %2$s GB.</string>
-    <string name="calc_fits">It fits.</string>
-    <string name="calc_needs">Needs %1$s GB more.</string>
+    <string name="calc_fits">Your gallery fits</string>
+    <string name="calc_needs">Needs %1$s GB more</string>
     <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
     <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
     <string name="calc_badge_measured">Based on %1$d of your files</string>
