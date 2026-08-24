@@ -34,6 +34,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,6 +89,25 @@ fun FilesScreen(vm: AppViewModel) {
     var detail by remember { mutableStateOf<ItemRow?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
 
+    // Y2.7: skipping a file is undoable, and says where the list lives. It
+    // is a decision about someone's photograph made with one tap, so it needs
+    // a way back that does not involve hunting through Settings.
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val skippedMessage = stringResource(R.string.never_optimise_undo)
+    val undoLabel = stringResource(R.string.undo)
+    val onSkip: (Long) -> Unit = { id ->
+        vm.setNeverOptimise(id, true)
+        scope.launch {
+            val result = snackbar.showSnackbar(
+                message = skippedMessage,
+                actionLabel = undoLabel,
+                duration = SnackbarDuration.Long
+            )
+            if (result == SnackbarResult.ActionPerformed) vm.setNeverOptimise(id, false)
+        }
+    }
+
     var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
     var sizeBand by rememberSaveable { mutableStateOf(ListFilters.Size.ANY) }
     var album by rememberSaveable { mutableStateOf<String?>(null) }
@@ -100,6 +125,7 @@ fun FilesScreen(vm: AppViewModel) {
     val selectedBytes = chosen.sumOf { it.sizeBytes }
     val anyFilter = statusFilter != null || !state.isDefault
 
+    Box(Modifier.fillMaxSize()) {
     ListScreenScaffold(
         title = stringResource(R.string.nav_files),
         onBack = {},
@@ -182,6 +208,8 @@ fun FilesScreen(vm: AppViewModel) {
             )
         }
     }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
 
     openError?.let { message ->
         AlertDialog(
@@ -231,7 +259,7 @@ fun FilesScreen(vm: AppViewModel) {
                             }) { Text(stringResource(R.string.detail_try_again)) }
 
                             RowActions.Action.NEVER_OPTIMISE -> TextButton(onClick = {
-                                vm.setNeverOptimise(row.id, true)
+                                onSkip(row.id)
                                 detail = null
                             }) { Text(stringResource(R.string.never_optimise)) }
 

@@ -66,10 +66,8 @@ import androidx.compose.foundation.layout.size
 import app.cloudsaver.ui.components.FileRow
 import app.cloudsaver.ui.components.ListSearchField
 import app.cloudsaver.ui.components.ListTail
-import app.cloudsaver.ui.components.SelectionBar
 import app.cloudsaver.core.logic.ProofLine
 import app.cloudsaver.core.logic.Projection
-import app.cloudsaver.ui.components.ChipRow
 import app.cloudsaver.ui.Routes
 
 /** A page header with a back arrow, shared by the Find space screens. */

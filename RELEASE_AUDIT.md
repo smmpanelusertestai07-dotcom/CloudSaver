@@ -197,3 +197,99 @@ Video caps read "1920 px across" rather than "1920 across".
 
 W12.3, the manual pass on a real phone, is unchanged from 4.0.0: it has not
 been done and cannot be done from a build container.
+
+---
+
+# 5.0.0 — FINAL PROMPT v5.0, Y1 to Y11
+
+One line per section, saying what was done. What could not be done is at the
+bottom, stated plainly rather than left to be discovered.
+
+## The screenshots that came with the prompt
+
+Four faults were visible in them, and all four were real:
+
+- **"Photos come out about 100% smaller."** `shrinkPercent` computed
+  `(1 - ratio) * 100` and an unmeasured ratio is `0.0`, so "no measurement"
+  rendered as the largest possible saving. It is nullable now; where there is
+  no measurement the screen says so.
+- **"Your gallery now: 0.00 GB"** on a phone holding 3,471 files.
+  `ProfileBuilder.current()` returned an empty profile whenever no
+  `media_profile` row existed. How big a gallery is comes off a MediaStore
+  scan and has nothing to do with whether anything has been encoded, so the
+  row is built on demand.
+- **Tapping a skipped-reason chip stranded the user in Files with the Home
+  tab dead.** A plain `navigate()` to a tab route pushes a second copy of
+  that tab; the bar then reads the app as already being there. Every route
+  now goes through `goTo`.
+- **The skipped chips were sliced off at the screen edge** — "1 · You askec".
+  They are facts, not filters, so they are full-width rows with an icon.
+
+## Y1 to Y11
+
+- **Y1 — one shared list framework.** `ListScreenScaffold` gives Files, Exact
+  duplicates, Biggest files, Reclaim and Kept copies the same search, filter
+  chips that state their value and scroll rather than wrap, a sort sheet, a
+  selection that survives rotation and process death, skeleton rows, and
+  separate empty states for "nothing here" and "nothing matches these
+  filters". `ListFilters` holds the rules as pure functions, tested.
+- **Y2 — row actions by state.** `RowActions` decides from a row's state
+  alone, so no screen can offer an action that cannot do anything. An
+  optimised copy is no longer offered "never optimise": that is what made the
+  counters disagree with no way to tell why. Removing an original still
+  requires per-file proof, and skipping a file is undoable from a snackbar
+  that says where the list lives.
+- **Y3 — wording.** No implementation vocabulary reaches the user; "waiting
+  for proof" is replaced by the file's real state everywhere. Enforced by
+  `PlainEnglishTest` rather than by memory.
+- **Y4 — Exact duplicates rewritten.** Two plain opening lines, an
+  always-visible warning card (with the Android 10 wording where there is no
+  trash), group headers over "checked byte by byte", full filters and
+  selection, and a confirmation sheet before Android's own dialog.
+- **Y5 — Biggest files.** Sentence header, rows saying what the file would
+  become, actions from the shared rule, and a bottom bar that says "3 of 12
+  are not backed up yet" and offers to narrow rather than failing part way.
+- **Y6 — Files.** Type, Album and Size chips beside Status, sort in the
+  shared sheet, long-press selection.
+- **Y7 — Reclaim and Kept copies.** Reclaim keeps its modes, targets and
+  two-step confirm — it is the deletion path, not something to rewrite for
+  tidiness — but gains the shared search and one filter row in place of three
+  private rows of chips. Kept copies is on the scaffold, and its per-row
+  full-width button moved into the overflow.
+- **Y8 — theme.** The palette was already defined once by role with no
+  hard-coded colours outside the theme file, so the work was proving it:
+  `ContrastTest` computes WCAG relative luminance for every pair the app
+  uses, in both themes, and holds them to 4.5:1 and 3:1. All pass. `Dimens`
+  puts the rhythm in one place.
+- **Y9 — navigation.** Every route audited; `NavigationSafetyTest` fails the
+  build on a direct `navigate()`, on a `goTo` that stops distinguishing tabs
+  from pushes, and on any screen that can be entered but not left.
+- **Y10 — automation.** The manual set is unchanged and is the set Y10.1
+  lists. No manual action skips proof, trash-first, Android's own dialog, or
+  the result summary.
+- **Y11 — cleanup and gate.** 22 dead strings and two superseded components
+  (`ChipRow`, `SelectionBar`) removed; 712 strings declared, none unused; one
+  formatter, one projection, one list framework, one theme package, no TODOs.
+  R8 full mode is on. Lint, 354 unit tests and the instrumented compile are
+  green.
+
+## One deletion path — what that means exactly
+
+Only `ReclaimEngine` removes a user's original, and only with per-file proof,
+trash-first, and Android's own confirmation. Four other places call
+`contentResolver.delete`, and all four target files **CloudSaver itself
+wrote** into `Pictures/CloudSaver`: a kept light copy the user asked to
+remove, leftovers from an earlier install, a stuck pending output, and a
+released copy being cleaned up. Routing those through the reclaim path would
+be wrong, not tidier — it would demand cloud proof before the app may tidy up
+after itself.
+
+## Not done, and why
+
+- **Y11.6, the manual device pass.** Not done and not possible from a build
+  container: it needs a real phone, a real gallery, a real cloud app and real
+  hardware encoding. Nothing in this session has run against any of them.
+  This is the same gap recorded at 4.0.0 and 4.1.0.
+- **Signing secrets.** `KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and
+  `KEY_PASSWORD` are the repository owner's to add. Until they exist, release
+  builds are unsigned and will not install over an earlier version.

@@ -40,7 +40,6 @@
         <item quantity="one">%1$d video</item>
         <item quantity="other">%1$d videos</item>
     </plurals>
-    <string name="skipped_group_title">Skipped, and why</string>
     <plurals name="skipped_reason_row">
         <item quantity="one">%1$d file · %2$s</item>
         <item quantity="other">%1$d files · %2$s</item>
@@ -110,10 +109,7 @@
     <string name="detail_album">Album</string>
     <string name="detail_preset">Quality used</string>
     <string name="detail_folder">Upload folder</string>
-    <string name="files_search">Search files</string>
     <string name="files_empty_title">No files yet</string>
-    <string name="files_no_match_title">No matches</string>
-    <string name="files_no_match_body">Try a different name.</string>
     <string name="files_empty">Nothing here yet. The first scan runs shortly after setup.</string>
     <string name="state_new">Queued</string>
     <string name="state_staged">Optimised</string>
@@ -129,7 +125,6 @@
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
     <string name="detail_open">Open</string>
-    <string name="detail_optimise_now">Optimise now</string>
     <string name="detail_optimise_again">Allow optimising again</string>
     <string name="detail_optimise_first">Optimise this first</string>
     <string name="detail_try_again">Try again</string>
@@ -158,10 +153,7 @@
 
     <string name="filter_all">All</string>
     <string name="filter_in_progress">In progress</string>
-    <string name="sort_newest">Newest</string>
-    <string name="sort_saved">Biggest saving</string>
     <string name="sort_largest">Largest file</string>
-    <string name="files_filter_empty">Nothing in this group yet.</string>
     <string name="detail_saved">Space saved</string>
     <string name="detail_saved_value">%1$s (%2$s smaller)</string>
     <string name="asis_removed_early">Removed from the upload folder before your cloud collected it</string>
@@ -228,9 +220,6 @@
     <string name="reclaim_target_label">Free a set amount</string>
     <string name="reclaim_all_eligible">Everything eligible</string>
     <string name="reclaim_clear">Clear</string>
-    <string name="reclaim_only_videos">Only videos</string>
-    <string name="reclaim_over_100">Over 100 MB</string>
-    <string name="reclaim_invert">Invert</string>
     <string name="reclaim_will_free">You will free %1$s</string>
     <plurals name="reclaim_selected">
         <item quantity="one">%1$d of %2$d selected</item>
@@ -350,7 +339,6 @@
     <string name="kept_intro">These are your photos, at optimised quality. CloudSaver never deletes them, never re-optimises them, and they do not count against its space limit. They live in:</string>
     <string name="kept_empty_title">No light copies yet</string>
     <string name="kept_empty_body">Choosing "Replace with light copy" in Reclaim space puts the smaller version here.</string>
-    <string name="kept_row">%1$s · %2$s</string>
     <string name="kept_remove">Remove the light copy</string>
     <string name="kept_remove_title">Remove this light copy?</string>
     <string name="kept_remove_body">Your cloud still has this file. Removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
@@ -656,7 +644,6 @@
         <item quantity="one">Copy folder path</item>
         <item quantity="other">Copy both folder paths</item>
     </plurals>
-    <string name="biggest_no_match">Nothing matches \u201c%1$s\u201d.</string>
     <string name="biggest_no_album">No album</string>
     <string name="biggest_header_plain">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</string>
     <string name="biggest_header_plain_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
@@ -666,7 +653,6 @@
     <string name="list_select_backed_up">Select only the backed-up ones</string>
     <string name="list_sort_saving">Biggest possible saving</string>
     <string name="list_sort_newest">Newest</string>
-    <string name="biggest_saving">saves ~%1$s</string>
     <string name="biggest_detail">%1$s \u00b7 %2$s</string>
     <string name="biggest_detail_video">%1$s \u00b7 %2$s \u00b7 %3$s</string>
     <string name="biggest_cannot_open">Cannot open this file. It may have been moved or deleted.</string>
@@ -715,8 +701,6 @@
     <string name="list_clear_search">Clear search</string>
     <string name="list_more_actions">More actions</string>
     <string name="list_clear_selection">Deselect all</string>
-    <string name="list_selected">%1$d selected \u00b7 frees %2$s</string>
-    <string name="list_select_all">Select all</string>
     <string name="list_sort_largest">Largest</string>
     <string name="list_sort_oldest">Oldest</string>
     <string name="list_sort_saved">Most saved</string>
@@ -747,11 +731,9 @@
     </plurals>
     <string name="dupes_sort_space">Most space</string>
     <string name="dupes_sort_copies">Most copies</string>
-    <string name="dupes_sort_name">Name</string>
     <string name="list_open">Open</string>
     <string name="list_optimise_first">Optimise this first</string>
     <string name="list_never">Never optimise this file</string>
-    <string name="list_remove">Remove</string>
     <string name="proof_cloud_removed">Your cloud app removed this copy after uploading it.</string>
     <string name="proof_size_matched">Your cloud app uploaded this much data right after we added the file.</string>
     <string name="proof_identical">These files are exactly the same \u2014 checked byte by byte.</string>
@@ -778,15 +760,12 @@
     <string name="dupes_confirm_where">They go to your gallery\u2019s trash, where you can restore them for 30 days.</string>
     <string name="dupes_confirm_where_legacy">On this phone they are deleted straight away \u2014 there is no trash to restore them from.</string>
     <string name="dupes_confirm_safe">A copy of every file stays on your phone.</string>
-    <string name="dupes_extra_label">Extra copy</string>
     <string name="dupes_sort_oldest">Oldest</string>
     <string name="dupes_removed_title">Extras removed</string>
     <plurals name="dupes_removed_body">
         <item quantity="one">%d extra copy moved to your gallery trash. The original is untouched, and the trash keeps it for 30 days.</item>
         <item quantity="other">%d extra copies moved to your gallery trash. The originals are untouched, and the trash keeps them for 30 days.</item>
     </plurals>
-    <string name="biggest_header">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</string>
-    <string name="biggest_header_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
     <string name="reclaim_confirm_proof">%1$d \u00b7 %2$s</string>
     <string name="reclaim_done_dropped">%1$d no longer qualified and were left alone (%2$s).</string>
     <string name="faq_q1">What does CloudSaver do?</string>
@@ -878,7 +857,6 @@
     <string name="detail_kept_all">All of them — this file was already under the limit</string>
     <string name="quality_kept_overall">Detail kept: %1$d%% on average</string>
     <string name="quality_kept_overall_sub">Measured across %1$d optimised files on this phone.</string>
-    <string name="quality_kept_none">Detail kept is measured once files have been optimised.</string>
     <string name="quality_detail_title">Detail kept</string>
     <string name="quality_detail_body">How much of the original\'s detail survives. Anything already under the limit keeps all of it \u2014 it is only re-saved, never shrunk.</string>
     <string name="quality_detail_photo">%1$d MP photo</string>

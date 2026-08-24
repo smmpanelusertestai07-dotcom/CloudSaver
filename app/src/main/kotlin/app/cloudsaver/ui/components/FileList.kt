@@ -79,30 +79,6 @@ fun ListSearchField(
     )
 }
 
-/** A scrolling row of single-choice chips. */
-@Composable
-fun <T> ChipRow(
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        for ((value, label) in options) {
-            FilterChip(
-                selected = value == selected,
-                onClick = { onSelect(value) },
-                label = { Text(label) }
-            )
-        }
-    }
-}
-
 /**
  * One file in a find-space list.
  *
@@ -194,45 +170,6 @@ fun FileRow(
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * The bar that appears once something is selected.
- *
- * It states what will be freed before the action, not after: a person about to
- * remove forty files should not have to add up the list themselves.
- */
-@Composable
-fun SelectionBar(
-    countLabel: String,
-    actionLabel: String,
-    onAction: () -> Unit,
-    onClear: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 3.dp,
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onClear) {
-                Text(stringResource(R.string.list_clear_selection))
-            }
-            Text(
-                countLabel,
-                style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-            )
-            Button(onClick = onAction, enabled = enabled) { Text(actionLabel) }
         }
     }
 }
