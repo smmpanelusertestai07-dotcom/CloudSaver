@@ -372,7 +372,9 @@ class MaintainEngine(private val context: Context) {
     private suspend fun pacedEvidence(o: Options, now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
         val waiting = db.items().awaitingEvidence()
-            .filter { it.releasedAt != null && !Pacing.isTimedOut(it.releasedAt!!, now) }
+            .mapNotNull { row -> row.releasedAt?.let { row to it } }
+            .filter { (_, releasedAt) -> !Pacing.isTimedOut(releasedAt, now) }
+            .map { (row, _) -> row }
         if (waiting.size != 1) return
         val row = waiting.first()
         val fileBytes = row.outputBytes ?: return

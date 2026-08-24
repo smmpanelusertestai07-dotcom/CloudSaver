@@ -60,6 +60,7 @@ import app.cloudsaver.ui.theme.BrandMint
 import app.cloudsaver.ui.theme.BrandViolet
 import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
+import kotlinx.coroutines.launch
 
 /**
  * The shared design system: one card style, one tile style, one selector.
@@ -611,6 +612,37 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
 }
 
 /**
+ * Puts a folder path on the clipboard, and says so where the system does not.
+ *
+ * Returned as a callback so the two places that print a path - the setup
+ * summary and the Storage screen - copy it identically.
+ */
+@Composable
+fun rememberPathCopier(): (String) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val copied = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.path_copied)
+    return { path ->
+        scope.launch {
+            clipboard.setClipEntry(
+                androidx.compose.ui.platform.ClipEntry(
+                    android.content.ClipData.newPlainText(copied, path)
+                )
+            )
+            // Android 13 and up shows its own clipboard confirmation; a second
+            // toast on top of it is noise.
+            if (android.os.Build.VERSION.SDK_INT < 33) {
+                val toast = android.widget.Toast.makeText(
+                    context, copied, android.widget.Toast.LENGTH_SHORT
+                )
+                toast.show()
+            }
+        }
+    }
+}
+
+/**
  * A folder path, with a one-tap copy.
  *
  * Paths are shown so they can be typed into a cloud app's folder picker, and
@@ -620,9 +652,7 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun PathLine(path: String, modifier: Modifier = Modifier) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    val copied = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.path_copied)
+    val copyPath = rememberPathCopier()
     val copyLabel = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.copy_path_action)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -636,16 +666,7 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
             modifier = Modifier.weight(1f)
         )
         androidx.compose.material3.IconButton(
-            onClick = {
-                clipboard.setText(androidx.compose.ui.text.AnnotatedString(path))
-                // Android 13 and up shows its own clipboard confirmation.
-                if (android.os.Build.VERSION.SDK_INT < 33) {
-                    val toast = android.widget.Toast.makeText(
-                        context, copied, android.widget.Toast.LENGTH_SHORT
-                    )
-                    toast.show()
-                }
-            },
+            onClick = { copyPath(path) },
             modifier = Modifier.size(32.dp)
         ) {
             Icon(

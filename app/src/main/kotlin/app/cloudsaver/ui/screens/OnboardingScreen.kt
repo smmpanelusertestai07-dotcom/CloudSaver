@@ -609,19 +609,9 @@ fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
  */
 @Composable
 fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val paths = OutputPaths.forMode(mode)
-    val copiedLabel = stringResource(R.string.path_copied)
-    OutlinedButton(onClick = {
-        clipboard.setText(androidx.compose.ui.text.AnnotatedString(paths.joinToString("\n")))
-        // Android 13+ shows its own clipboard confirmation; a second toast on
-        // top of it is noise.
-        if (android.os.Build.VERSION.SDK_INT < 33) {
-            android.widget.Toast.makeText(context, copiedLabel, android.widget.Toast.LENGTH_SHORT)
-                .show()
-        }
-    }) {
+    val copyPath = app.cloudsaver.ui.components.rememberPathCopier()
+    OutlinedButton(onClick = { copyPath(paths.joinToString("\n")) }) {
         Text(
             pluralStringResource(R.plurals.copy_path, paths.size, paths.size)
         )

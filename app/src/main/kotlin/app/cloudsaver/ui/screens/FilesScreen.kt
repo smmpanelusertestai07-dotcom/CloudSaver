@@ -301,14 +301,14 @@ fun FilesScreen(vm: AppViewModel) {
                             }
                         )
                     }
-                    if (row.outputFolder != null) {
+                    row.outputFolder?.let { folder ->
                         // Where it went, so the folder to select in the cloud
                         // app is never a guess.
                         KeyValueRow(
                             stringResource(R.string.detail_folder),
                             app.cloudsaver.core.logic.Defaults.outFolderRelPath(
                                 runCatching {
-                                    app.cloudsaver.core.logic.OutFolder.valueOf(row.outputFolder!!)
+                                    app.cloudsaver.core.logic.OutFolder.valueOf(folder)
                                 }.getOrDefault(app.cloudsaver.core.logic.OutFolder.SINGLE)
                             )
                         )
@@ -317,10 +317,10 @@ fun FilesScreen(vm: AppViewModel) {
                         KeyValueRow(stringResource(R.string.detail_reason), it)
                     }
                     // Items copied byte-for-byte explain themselves here.
-                    if (row.outputBytes != null && row.lastError != null) {
+                    row.lastError?.takeIf { row.outputBytes != null }?.let { error ->
                         KeyValueRow(
                             stringResource(R.string.detail_as_is),
-                            asIsReasonLabel(row.lastError!!)
+                            asIsReasonLabel(error)
                         )
                     }
                     if (row.originalMissing) {

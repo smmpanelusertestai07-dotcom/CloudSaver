@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.outlined.Backup
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DataUsage
 import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
@@ -960,7 +960,7 @@ private val IconAlerts = Icons.Outlined.Notifications
 private val IconPause = Icons.Outlined.PauseCircle
 private val IconExcluded = Icons.Outlined.Block
 private val IconTransfer = Icons.Outlined.Backup
-private val IconHelp = Icons.Outlined.HelpOutline
+private val IconHelp = Icons.AutoMirrored.Outlined.HelpOutline
 private val IconActivity = Icons.Outlined.History
 
 private val InfoIcon = Icons.Outlined.Info

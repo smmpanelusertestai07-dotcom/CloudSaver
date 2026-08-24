@@ -47,7 +47,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         maxItems: Int? = null
     ): Int {
         val staged = db.items().staged()
-            .filter { it.stagePath != null && File(it.stagePath!!).exists() }
+            .filter { row -> row.stagePath?.let { File(it).exists() } == true }
             .filter { onlyFolder == null || it.outputFolder == onlyFolder.name }
             .filter { !alreadyDelivered(it) }
         if (staged.isEmpty()) return 0

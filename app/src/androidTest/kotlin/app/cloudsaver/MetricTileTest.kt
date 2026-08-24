@@ -2,26 +2,33 @@ package app.cloudsaver
 
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
+import app.cloudsaver.ui.components.TileHeight
 import app.cloudsaver.ui.theme.CloudSaverTheme
-import app.cloudsaver.core.logic.ThemeMode
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The dashboard counter has to stay readable at every width it can reach.
+ * The dashboard tile has to hold its cell at every count it can show.
  *
- * Two bugs live here. One: the counter used to cross-fade two overlapping
- * Texts, so a changing number rendered as a ghost of the old one on top of the
- * new. Two: a five-digit count in a narrow tile clipped instead of shrinking.
- * Both look like a rendering fault to the person holding the phone.
+ * The bug this guards: a tile that grows or collapses with the length of its
+ * number makes the whole grid jump as counts tick over, which reads as a
+ * rendering fault rather than as progress.
+ *
+ * Assertions go through the tile's content description, because [MetricTile]
+ * deliberately collapses its two Texts into one label for screen readers -
+ * "99,999" and "Checked" announced as separate nodes is worse than
+ * "Checked: 99,999". That is also the only text a semantics query can see.
  */
 @RunWith(AndroidJUnit4::class)
 class MetricTileTest {
@@ -41,47 +48,60 @@ class MetricTileTest {
         }
     }
 
+    private fun assertHoldsItsCell(value: String, width: Int) {
+        compose.onNodeWithContentDescription("Waiting: $value")
+            .assertIsDisplayed()
+            .assertWidthIsEqualTo(width.dp)
+            .assertHeightIsEqualTo(TileHeight)
+    }
+
     @Test
-    fun oneDigitIsDisplayed() {
+    fun oneDigitHoldsTheCell() {
         showTile("1", 120)
-        compose.onNodeWithText("1").assertIsDisplayed()
+        assertHoldsItsCell("1", 120)
     }
 
     @Test
-    fun twoDigitsAreDisplayed() {
+    fun twoDigitsHoldTheCell() {
         showTile("12", 120)
-        compose.onNodeWithText("12").assertIsDisplayed()
+        assertHoldsItsCell("12", 120)
     }
 
     @Test
-    fun fourDigitsAreDisplayed() {
+    fun fourDigitsHoldTheCell() {
         showTile("2,411", 120)
-        compose.onNodeWithText("2,411").assertIsDisplayed()
+        assertHoldsItsCell("2,411", 120)
     }
 
     @Test
-    fun fiveDigitsAreDisplayedEvenInANarrowTile() {
-        // The width that used to clip.
+    fun fiveDigitsHoldTheCellEvenWhenNarrow() {
+        // The width a four-up row leaves on a small phone.
         showTile("99,999", 96)
-        compose.onNodeWithText("99,999").assertIsDisplayed()
+        assertHoldsItsCell("99,999", 96)
     }
 
     @Test
     fun everyTileInAGridIsDisplayed() {
+        val tiles = listOf(
+            "1" to "Waiting",
+            "12" to "Copied",
+            "2,411" to "Uploaded",
+            "99,999" to "Checked"
+        )
         compose.setContent {
             CloudSaverTheme(mode = ThemeMode.LIGHT, dynamicColor = false) {
                 MetricGrid(
-                    tiles = listOf<@androidx.compose.runtime.Composable (Modifier) -> Unit>(
-                        { m -> MetricTile("1", "Waiting", m) },
-                        { m -> MetricTile("12", "Copied", m) },
-                        { m -> MetricTile("2,411", "Uploaded", m) },
-                        { m -> MetricTile("99,999", "Checked", m) }
-                    )
+                    tiles = tiles.map { (value, label) ->
+                        { m: Modifier -> MetricTile(value, label, m) }
+                    }
                 )
             }
         }
-        for (value in listOf("1", "12", "2,411", "99,999")) {
-            compose.onNodeWithText(value).assertIsDisplayed()
+        // Four tiles means two rows of two, and every cell must be on screen.
+        for ((value, label) in tiles) {
+            compose.onNodeWithContentDescription("$label: $value")
+                .assertIsDisplayed()
+                .assertHeightIsEqualTo(TileHeight)
         }
     }
 }
