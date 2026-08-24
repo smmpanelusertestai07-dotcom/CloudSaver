@@ -56,6 +56,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
@@ -72,6 +73,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
         /** The most the trial ever touches. Enough to prove it, cheap to run. */
         const val TRIAL_SIZE = 3
+
+        /**
+         * How long the search waits for the typing to stop.
+         *
+         * Long enough that a word is one query rather than five, short enough
+         * that the pause between words already shows results.
+         */
+        const val SEARCH_DEBOUNCE_MS = 220L
 
         /** Nothing run for this long, with work waiting, means the OS killed us. */
         const val BACKGROUND_STALL_MS = 48 * 3_600_000L
@@ -338,8 +347,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val filesSort = MutableStateFlow(FilesSort.NEWEST)
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    /**
+     * Search results, one query behind the keyboard rather than one per key.
+     *
+     * Typing "beach" used to start five database queries and throw four of
+     * them away, which on a large library is five scans of the items table
+     * while the finger is still moving. The debounce is short enough that a
+     * pause between words already shows results, and distinctUntilChanged
+     * stops a re-emitted identical term from re-querying at all.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
     private val searchResults: StateFlow<List<ItemRow>> = search
+        .debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }
+        .distinctUntilChanged()
         .flatMapLatest { q -> db.items().searchFlow(q, 500) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

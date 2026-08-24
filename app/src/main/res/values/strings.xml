@@ -846,6 +846,7 @@
     <string name="trial_activity">Trial run on a few photos</string>
     <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
     <string name="trial_kept_detail">Detail kept: %1$d%% of the original pixels.</string>
+    <string name="trial_next">The copies are made. They are added to your upload folder on the next run, so your gallery does not change yet.</string>
     <string name="quality_current_title">Your setting</string>
     <string name="quality_current_limits">Photos up to %1$d MP, video up to %2$d px across, saved at JPEG quality %3$d.</string>
     <string name="quality_current_headroom">That is about %1$s times more detail than a phone screen can display.</string>

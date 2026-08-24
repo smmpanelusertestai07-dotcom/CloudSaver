@@ -135,6 +135,16 @@ fun TrialCard(
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
+                // The trial makes the copies but does not publish them: that
+                // is the release step, which is paced. Without this line the
+                // app reports three optimised photos and the gallery shows no
+                // CloudSaver album, which reads as the trial having failed.
+                Text(
+                    stringResource(R.string.trial_next),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }
