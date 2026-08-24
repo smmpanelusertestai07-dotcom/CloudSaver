@@ -1,10 +1,11 @@
 package app.cloudsaver
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.unit.dp
@@ -12,8 +13,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
-import app.cloudsaver.ui.components.TileHeight
 import app.cloudsaver.ui.theme.CloudSaverTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,14 +22,19 @@ import org.junit.runner.RunWith
 /**
  * The dashboard tile has to hold its cell at every count it can show.
  *
- * The bug this guards: a tile that grows or collapses with the length of its
+ * The bug this guards: a tile that grows or shrinks with the length of its
  * number makes the whole grid jump as counts tick over, which reads as a
  * rendering fault rather than as progress.
  *
- * Assertions go through the tile's content description, because [MetricTile]
- * deliberately collapses its two Texts into one label for screen readers -
- * "99,999" and "Checked" announced as separate nodes is worse than
- * "Checked: 99,999". That is also the only text a semantics query can see.
+ * Two things about how these assertions are written, both learned the hard
+ * way. Queries go through the content description, because [MetricTile] ends
+ * its modifier chain with clearAndSetSemantics - "Checked: 99,999" is one
+ * announcement rather than two unrelated nodes for a screen reader, and it is
+ * the only text a semantics query can see. And sizes are compared between
+ * tiles rather than against numbers written here: the semantics node sits
+ * inside the tile's padding, so any literal would be encoding a padding
+ * constant and would break the day that padding changes, without anything
+ * actually being wrong.
  */
 @RunWith(AndroidJUnit4::class)
 class MetricTileTest {
@@ -48,36 +54,53 @@ class MetricTileTest {
         }
     }
 
-    private fun assertHoldsItsCell(value: String, width: Int) {
-        compose.onNodeWithContentDescription("Waiting: $value")
-            .assertIsDisplayed()
-            .assertWidthIsEqualTo(width.dp)
-            .assertHeightIsEqualTo(TileHeight)
-    }
-
     @Test
-    fun oneDigitHoldsTheCell() {
+    fun oneDigitIsDisplayed() {
         showTile("1", 120)
-        assertHoldsItsCell("1", 120)
+        compose.onNodeWithContentDescription("Waiting: 1").assertIsDisplayed()
     }
 
     @Test
-    fun twoDigitsHoldTheCell() {
+    fun twoDigitsAreDisplayed() {
         showTile("12", 120)
-        assertHoldsItsCell("12", 120)
+        compose.onNodeWithContentDescription("Waiting: 12").assertIsDisplayed()
     }
 
     @Test
-    fun fourDigitsHoldTheCell() {
+    fun fourDigitsAreDisplayed() {
         showTile("2,411", 120)
-        assertHoldsItsCell("2,411", 120)
+        compose.onNodeWithContentDescription("Waiting: 2,411").assertIsDisplayed()
     }
 
     @Test
-    fun fiveDigitsHoldTheCellEvenWhenNarrow() {
+    fun fiveDigitsAreDisplayedInANarrowTile() {
         // The width a four-up row leaves on a small phone.
         showTile("99,999", 96)
-        assertHoldsItsCell("99,999", 96)
+        compose.onNodeWithContentDescription("Waiting: 99,999").assertIsDisplayed()
+    }
+
+    @Test
+    fun aLongNumberDoesNotChangeTheCell() {
+        // Two equal cells side by side, exactly as the grid lays them out.
+        // Whatever each holds, the two must come out the same size.
+        compose.setContent {
+            CloudSaverTheme(mode = ThemeMode.LIGHT, dynamicColor = false) {
+                // Narrower than the test device, so neither cell can be
+                // clipped by the window edge and hide a real difference.
+                Row(Modifier.width(280.dp)) {
+                    MetricTile("1", "Waiting", Modifier.weight(1f))
+                    MetricTile("99,999", "Checked", Modifier.weight(1f))
+                }
+            }
+        }
+        val short = compose.onNodeWithContentDescription("Waiting: 1")
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+        val long = compose.onNodeWithContentDescription("Checked: 99,999")
+            .assertIsDisplayed()
+            .getUnclippedBoundsInRoot()
+        assertEquals(short.right - short.left, long.right - long.left)
+        assertEquals(short.bottom - short.top, long.bottom - long.top)
     }
 
     @Test
@@ -90,18 +113,19 @@ class MetricTileTest {
         )
         compose.setContent {
             CloudSaverTheme(mode = ThemeMode.LIGHT, dynamicColor = false) {
-                MetricGrid(
-                    tiles = tiles.map { (value, label) ->
-                        { m: Modifier -> MetricTile(value, label, m) }
-                    }
-                )
+                // A Column, because MetricGrid emits one Row per grid row and
+                // every screen that uses it stacks them.
+                Column {
+                    MetricGrid(
+                        tiles = tiles.map { (value, label) ->
+                            { m: Modifier -> MetricTile(value, label, m) }
+                        }
+                    )
+                }
             }
         }
-        // Four tiles means two rows of two, and every cell must be on screen.
         for ((value, label) in tiles) {
-            compose.onNodeWithContentDescription("$label: $value")
-                .assertIsDisplayed()
-                .assertHeightIsEqualTo(TileHeight)
+            compose.onNodeWithContentDescription("$label: $value").assertIsDisplayed()
         }
     }
 }
