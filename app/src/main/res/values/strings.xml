@@ -233,6 +233,13 @@
     <string name="reclaim_delete">Delete permanently</string>
     <string name="reclaim_continue">Continue</string>
     <string name="reclaim_why_android_asks">Android asks you to confirm because these files belong to your gallery, not to CloudSaver.</string>
+    <string name="reclaim_compare">Compare</string>
+    <string name="compare_original">Original</string>
+    <string name="compare_optimised">Optimised</string>
+    <string name="compare_keep_this">Keep this one</string>
+    <string name="compare_hint">Drag to compare. Check a few before removing a batch - your eyes are the only test that matters here.</string>
+    <string name="compare_in_cloud">This copy is already in your cloud and no longer on the phone, so there is nothing to show side by side. The recorded sizes are below.</string>
+    <string name="reclaim_no_trash_here">This phone runs Android 10, which has no gallery trash. Removing an original here cannot be undone, and Android will ask you to confirm each file separately.</string>
     <string name="reclaim_no_internet">CloudSaver has no internet permission, so it can never bring a file back from your cloud. Only your cloud app can download it again.</string>
     <string name="reclaim_understand">I understand my cloud has the optimised copy, not the original.</string>
     <plurals name="reclaim_group_header">
@@ -623,6 +630,15 @@
     <string name="about_package">Package</string>
     <string name="about_network">Network access</string>
     <string name="about_network_value">None - the permission is not in the app</string>
+    <string name="about_requires_title">Works on</string>
+    <string name="about_requires">Android</string>
+    <string name="about_requires_value">10 to 16 (2019 phones onwards)</string>
+    <string name="about_running_on">This phone</string>
+    <string name="about_running_value">Android %1$s (API %2$d)</string>
+    <string name="about_support_full">Android 11 and later: everything works, and anything you remove goes to your gallery\'s trash, where it can be restored for 30 days.</string>
+    <string name="about_support_ten">Android 10: everything works except undo. That version has no gallery trash, so a removed original cannot be brought back, and Android asks about each file separately.</string>
+    <string name="about_this_phone_full">Your phone gets every feature, including 30-day recovery.</string>
+    <string name="about_this_phone_limited">On your phone, removed originals cannot be recovered.</string>
     <string name="about_technical">Technical details</string>
     <string name="about_cert">Signing certificate (SHA-256)</string>
     <string name="about_cert_dev">Development build - not checked</string>
@@ -710,6 +726,9 @@
     <string name="faq_a24">Your kept light copies stay in Pictures/Light copies and remain in your gallery, because they are ordinary files in an ordinary album. Copies still waiting stay in Pictures/CloudSaver until your cloud app takes them. Temporary work files are removed by Android along with the app. Your cloud is untouched. The app\'s own history survives only in its hidden state file or in a backup you save - Settings has a "Prepare for uninstall" screen that shows all of this and can move the light copies anywhere you like first.</string>
     <string name="faq_q25">The CloudSaver album disappeared from my gallery - is something wrong?</string>
     <string name="faq_a25">No. The upload folder is a working folder: once your cloud app has collected the files, it is empty, and galleries hide empty folders. It reappears the next time CloudSaver adds a batch. An empty CloudSaver album is the sign that everything is working, not that something broke.</string>
+
+    <string name="faq_q26">Which Android versions does CloudSaver work on?</string>
+    <string name="faq_a26">Android 10 through Android 16 - every phone from 2019 onwards. On Android 11 and later everything works completely, including the safety net: anything you remove in Reclaim space goes to your gallery\'s trash and can be restored for 30 days. On Android 10 every feature still works, with one difference you should know about: that version of Android has no gallery trash, so a removed original is gone for good and Android asks you to confirm each file separately. CloudSaver says which of the two your phone is, on the About page and on the Reclaim screen itself.</string>
 
     <!-- notifications -->
     <string name="channel_working">Working</string>

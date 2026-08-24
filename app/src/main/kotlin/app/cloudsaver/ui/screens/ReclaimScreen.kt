@@ -77,6 +77,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val grouping by rvm.grouping.collectAsStateWithLifecycle()
 
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
+    var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
     var understood by remember { mutableStateOf(options.reclaimUnderstood) }
 
     LaunchedEffect(Unit) { rvm.load() }
@@ -268,7 +269,8 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     ReclaimRow(
                         entry = entry,
                         checked = entry.id in selected,
-                        onToggle = { rvm.toggle(entry.id) }
+                        onToggle = { rvm.toggle(entry.id) },
+                        onCompare = { compare = entry }
                     )
                 }
             }
@@ -332,8 +334,21 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         }
                     },
                     enabled = selected.isNotEmpty() && understood
-                ) { Text(stringResource(R.string.reclaim_trash)) }
-                if (mode != ReclaimRules.Mode.COPIES_ONLY) {
+                ) {
+                    // On a phone with no trash this button deletes for good,
+                    // so it says so rather than promising a recovery that
+                    // does not exist.
+                    Text(
+                        stringResource(
+                            if (rvm.canUndoRemoval || mode == ReclaimRules.Mode.COPIES_ONLY) {
+                                R.string.reclaim_trash
+                            } else {
+                                R.string.reclaim_delete
+                            }
+                        )
+                    )
+                }
+                if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
                     TextButton(
                         onClick = { confirmBig = true },
                         enabled = selected.isNotEmpty() && understood
@@ -347,11 +362,31 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+                if (!rvm.canUndoRemoval) {
+                    Text(
+                        stringResource(R.string.reclaim_no_trash_here),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
         }
     }
 
     // A batch this large is worth stating in words before the system dialog.
+    compare?.let { entry ->
+        CompareSheet(
+            row = entry.row,
+            onDismiss = { compare = null },
+            onKeepThisOne = {
+                // Taking it out of the batch is the whole point of looking.
+                if (entry.id in selected) rvm.toggle(entry.id)
+                compare = null
+            }
+        )
+    }
+
     confirmBig?.let { permanent ->
         AlertDialog(
             onDismissRequest = { confirmBig = null },
@@ -519,7 +554,8 @@ private fun ModePicker(
 private fun ReclaimRow(
     entry: ReclaimViewModel.Entry,
     checked: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onCompare: () -> Unit
 ) {
     AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onToggle) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -550,6 +586,11 @@ private fun ReclaimRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+            // Seeing the two versions is the only quality test that counts,
+            // and it belongs one tap from the checkbox.
+            TextButton(onClick = onCompare) {
+                Text(stringResource(R.string.reclaim_compare))
             }
         }
     }

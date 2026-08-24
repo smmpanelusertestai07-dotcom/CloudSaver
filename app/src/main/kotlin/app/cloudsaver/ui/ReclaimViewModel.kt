@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import app.cloudsaver.core.logic.DuplicateRules
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.CloudApps
@@ -88,6 +89,15 @@ class ReclaimViewModel(
 
     val skipFavourites = MutableStateFlow(true)
     val skipSmall = MutableStateFlow(true)
+
+    /**
+     * Whether this phone can undo a removal.
+     *
+     * Android 10 has no media trash. Offering "Move to trash" there and then
+     * permanently deleting would be the worst thing this screen could do, so
+     * the screen asks this and words itself accordingly.
+     */
+    val canUndoRemoval: Boolean = Platform.canTrash(Build.VERSION.SDK_INT)
 
     /** Result of the last batch, and of a dry run. */
     val lastResult = MutableStateFlow<ReclaimEngine.Result?>(null)
@@ -270,7 +280,12 @@ class ReclaimViewModel(
 
     fun needsSecondConfirmation(permanent: Boolean): Boolean =
         ReclaimRules.needsSecondConfirmation(
-            selectedEntries().map { it.candidate }, entries.value.size, mode.value, permanent
+            selectedEntries().map { it.candidate },
+            entries.value.size,
+            mode.value,
+            // Without a trash to fall back on, every removal of an original is
+            // permanent, whatever the button was called.
+            permanent = permanent || (!canUndoRemoval && mode.value != ReclaimRules.Mode.COPIES_ONLY)
         )
 
     // ---- dry run and export --------------------------------------------------

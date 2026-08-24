@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.BuildConfig
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
@@ -153,7 +154,8 @@ private val FAQ = listOf(
     R.string.faq_q22 to R.string.faq_a22,
     R.string.faq_q23 to R.string.faq_a23,
     R.string.faq_q24 to R.string.faq_a24,
-    R.string.faq_q25 to R.string.faq_a25
+    R.string.faq_q25 to R.string.faq_a25,
+    R.string.faq_q26 to R.string.faq_a26
 )
 
 @Composable
@@ -417,6 +419,63 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 10.dp)
             )
         }
+        // Compatibility belongs on About, where people look for it before
+        // sending the file to someone else. It states what fully works, not
+        // just what installs.
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_requires_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            KeyValueRow(
+                stringResource(R.string.about_requires),
+                stringResource(R.string.about_requires_value)
+            )
+            KeyValueRow(
+                stringResource(R.string.about_running_on),
+                stringResource(
+                    R.string.about_running_value,
+                    Platform.releaseName(android.os.Build.VERSION.SDK_INT),
+                    android.os.Build.VERSION.SDK_INT
+                )
+            )
+            Text(
+                stringResource(R.string.about_support_full),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            Text(
+                stringResource(R.string.about_support_ten),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            // Say plainly which of the two this phone is.
+            Text(
+                stringResource(
+                    if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
+                        Platform.Support.FULL
+                    ) {
+                        R.string.about_this_phone_full
+                    } else {
+                        R.string.about_this_phone_limited
+                    }
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
+                    Platform.Support.FULL
+                ) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+                modifier = Modifier.padding(top = 10.dp)
+            )
+        }
+
         // Build number and hashes matter to about one reader in a thousand,
         // and reading like a crash report to the rest.
         var technical by remember { mutableStateOf(false) }
