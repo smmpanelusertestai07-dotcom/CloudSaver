@@ -258,12 +258,6 @@ class ReclaimViewModel(
         persistSelection()
     }
 
-    fun invertSelection() {
-        val visible = visible().map { it.id }.toSet()
-        selected.value = visible - selected.value
-        persistSelection()
-    }
-
     fun clearSelection() {
         selected.value = emptySet()
         persistSelection()
@@ -279,16 +273,6 @@ class ReclaimViewModel(
      */
     fun selectOnly(id: Long) {
         selected.value = setOf(id)
-        persistSelection()
-    }
-
-    fun selectOnlyVideos() {
-        selected.value = visible().filter { it.row.isVideo }.map { it.id }.toSet()
-        persistSelection()
-    }
-
-    fun selectLargerThan(bytes: Long) {
-        selected.value = visible().filter { it.row.sizeBytes >= bytes }.map { it.id }.toSet()
         persistSelection()
     }
 
