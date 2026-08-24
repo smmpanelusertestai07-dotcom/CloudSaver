@@ -51,6 +51,20 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudOff
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Tune
 
 /**
  * What the app has actually been doing.
@@ -94,6 +108,36 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
+            // Export and Clear belong in an overflow: they are occasional, and
+            // as buttons they sat above the list competing with it.
+            var menuOpen by remember { mutableStateOf(false) }
+            androidx.compose.foundation.layout.Box {
+                IconButton(onClick = { menuOpen = true }, enabled = rows.isNotEmpty()) {
+                    Icon(
+                        Icons.Outlined.MoreVert,
+                        contentDescription = stringResource(R.string.list_more_actions)
+                    )
+                }
+                androidx.compose.material3.DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false }
+                ) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(stringResource(R.string.activity_export)) },
+                        onClick = {
+                            menuOpen = false
+                            exportLauncher.launch("cloudsaver-activity.txt")
+                        }
+                    )
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text(stringResource(R.string.activity_clear)) },
+                        onClick = {
+                            menuOpen = false
+                            confirmClear = true
+                        }
+                    )
+                }
+            }
         }
 
         SegmentedChoice(
@@ -128,17 +172,6 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
             modifier = Modifier.padding(top = 8.dp)
         )
 
-        Spacer(Modifier.height(4.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(
-                onClick = { exportLauncher.launch("cloudsaver-activity.txt") },
-                enabled = rows.isNotEmpty()
-            ) { Text(stringResource(R.string.activity_export)) }
-            TextButton(
-                onClick = { confirmClear = true },
-                enabled = rows.isNotEmpty()
-            ) { Text(stringResource(R.string.activity_clear)) }
-        }
 
         if (rows.isEmpty()) {
             EmptyState(
@@ -208,6 +241,15 @@ private fun ActivityCard(row: ActivityRow, nav: NavHostController, vm: AppViewMo
         }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                iconFor(kind),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(20.dp)
+                    .padding(end = 0.dp)
+            )
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     // A settings change says what changed and to what, in one
@@ -333,3 +375,21 @@ private fun settingValue(change: ActivityWording.Change): String {
     }
     return res?.let { stringResource(it) } ?: change.value
 }
+
+/** Every event type has a glyph, so the list can be scanned rather than read. */
+@Composable
+private fun iconFor(kind: ActivityLog.Kind?): androidx.compose.ui.graphics.vector.ImageVector =
+    when (kind) {
+        ActivityLog.Kind.OPTIMISED -> Icons.Outlined.Bolt
+        ActivityLog.Kind.RELEASED -> Icons.Outlined.CloudUpload
+        ActivityLog.Kind.BACKED_UP -> Icons.Outlined.CloudDone
+        ActivityLog.Kind.RECLAIMED -> Icons.Outlined.DeleteSweep
+        ActivityLog.Kind.PAUSED -> Icons.Outlined.PauseCircle
+        ActivityLog.Kind.RESUMED -> Icons.Outlined.PlayCircle
+        ActivityLog.Kind.CLOUD_PROBLEM -> Icons.Outlined.CloudOff
+        ActivityLog.Kind.SKIPPED -> Icons.Outlined.Block
+        ActivityLog.Kind.SETTINGS_CHANGED -> Icons.Outlined.Tune
+        ActivityLog.Kind.RECOVERED -> Icons.Outlined.Restore
+        ActivityLog.Kind.PROBLEM -> Icons.Outlined.ErrorOutline
+        null -> Icons.Outlined.Info
+    }

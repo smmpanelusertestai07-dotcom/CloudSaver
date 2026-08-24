@@ -105,6 +105,10 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     // folder or the backup quietly stops covering new files. Confirmed, not
     // applied on a stray tap.
     var pendingLayout by remember { mutableStateOf<OutputMode?>(null) }
+    // Moving to or from the SD card applies to new files only, and the ones
+    // already written stay where they are. That is worth saying before the
+    // change, not discovering afterwards.
+    var pendingVolume by remember { mutableStateOf<String?>(null) }
     var cloudPickerFor by remember { mutableStateOf<String?>(null) } // "single"|"photos"|"videos"
 
     val exportOkLabel = stringResource(R.string.transfer_export_ok)
@@ -358,7 +362,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                         }
                     },
                     o.storageVolume
-                ) { vm.setStorageVolume(it) }
+                ) { pendingVolume = it }
                 // Only the chosen volume's capacity belongs here; the Storage
                 // tab is where every volume is listed.
                 val chosen = volumes.firstOrNull { vol ->
@@ -379,9 +383,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Text(
                         stringResource(
-                            R.string.volume_free_line,
-                            Formats.bytes(chosen.freeBytes),
-                            Formats.bytes(chosen.totalBytes)
+                            R.string.volume_free_line, Formats.bytes(chosen.freeBytes)
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -616,6 +618,37 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             onDismiss = { vm.cancelPendingImport() },
             onConfirm = { password ->
                 vm.importState(uri, password, importOkLabel, failedLabel, wrongPasswordLabel)
+            }
+        )
+    }
+
+    pendingVolume?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingVolume = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setStorageVolume(target)
+                    pendingVolume = null
+                }) { Text(stringResource(R.string.volume_switch_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingVolume = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.volume_switch_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.volume_switch_body))
+                    if (target.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.volume_sd_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         )
     }

@@ -60,6 +60,7 @@ import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Permissions
+import app.cloudsaver.ui.components.SegmentedChoice
 
 /**
  * One-time setup.
@@ -479,6 +480,36 @@ fun OnboardingScreen(vm: AppViewModel) {
                     stringResource(R.string.onb_ready_cloud),
                     CloudApps.byId(options.cloudSingle).label
                 )
+                // Only where there is a card to choose. On a phone without
+                // one this question has a single possible answer, and asking
+                // it anyway is a step that teaches nothing.
+                val volumes by vm.volumes.collectAsStateWithLifecycle()
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshVolumes() }
+                if (volumes.size > 1) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        stringResource(R.string.onb_ready_where),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    SegmentedChoice(
+                        volumes.map { vol ->
+                            val value = if (vol.isPrimary) "" else vol.mediaVolumeName
+                            value to stringResource(
+                                if (vol.isPrimary) R.string.volume_internal
+                                else R.string.volume_sd
+                            )
+                        },
+                        options.storageVolume
+                    ) { vm.setStorageVolume(it) }
+                    Text(
+                        stringResource(R.string.onb_ready_sd_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 Spacer(Modifier.height(10.dp))
                 // The folder is printed, not described: this exact string is
                 // what has to be picked inside the cloud app.

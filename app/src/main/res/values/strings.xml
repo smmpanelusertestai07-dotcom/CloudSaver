@@ -580,42 +580,21 @@
     <string name="logs_clear">Clear log</string>
     <string name="logs_empty">The log is empty.</string>
     <string name="about_version_line">Version %1$s</string>
-    <string name="about_requires_title">Works on</string>
-    <string name="about_requires">Android</string>
-    <string name="about_requires_value">10 to 16 (2019 phones onwards)</string>
-    <string name="about_running_on">This phone</string>
-    <string name="about_running_value">Android %1$s (API %2$d)</string>
-    <string name="about_support_full">Android 11 and later: everything works, and anything you remove goes to your gallery\'s trash, where it can be restored for 30 days.</string>
-    <string name="about_support_ten">Android 10: everything works except undo. That version has no gallery trash, so a removed original cannot be brought back, and Android asks about each file separately.</string>
-    <string name="about_this_phone_full">Your phone gets every feature, including 30-day recovery.</string>
-    <string name="about_this_phone_limited">On your phone, removed originals cannot be recovered.</string>
+    <string name="about_requires_title">Works on your phone</string>
     <string name="about_partner">Made to work with your cloud app. It never uploads anything itself.</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
-    <string name="privacy_text" formatted="false">CloudSaver is 100% offline - it does not even hold the INTERNET permission. Your photos, videos, names and locations never leave the phone. No analytics, no ads, no accounts. The app writes only to its own folders. Automatic safety snapshots are hidden files, so nothing shows up in your gallery or Files app unless you tap Export yourself. Originals are never deleted automatically. State snapshots contain only file names, dates, sizes and hashes - never your photos or thumbnails. One honest note: no Android app can be made impossible to decompile; CloudSaver protects you with least privilege and tamper evidence instead. Terms: the app is provided as is, without any warranty; keep checking your cloud backup yourself.</string>
 
     <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
 
     <!-- quality page -->
-    <string name="quality_terms_title">The words used here</string>
-    <string name="quality_term_preset">Preset</string>
-    <string name="quality_term_preset_v">The size limit you picked. Higher limit, better quality, less space saved.</string>
-    <string name="quality_term_mp">Megapixel (MP)</string>
-    <string name="quality_term_mp_v">How much detail a photo holds. A 12 MP photo has about 12 million dots of colour.</string>
-    <string name="quality_term_p">1080p, 4K</string>
-    <string name="quality_term_p_v">How large a video frame is. 4K is four times the size of 1080p, and roughly four times the file.</string>
-    <string name="quality_term_codec">Codec</string>
-    <string name="quality_term_codec_v">The method used to pack a video into a file. H.264 and HEVC are the two here.</string>
     <string name="quality_explained_title">Quality explained</string>
     <string name="quality_measured_title">On this phone so far</string>
     <string name="quality_measured_photos">Your photos came out %1$s smaller on average (%2$s files).</string>
     <string name="quality_measured_videos">Your videos came out %1$s smaller on average (%2$s files).</string>
     <string name="quality_measured_none">Nothing has been optimised yet, so there is nothing measured to show.</string>
-    <string name="quality_caps">A preset is a ceiling, not a target. A 48-megapixel photo is brought down to the limit; a 6-megapixel photo is left exactly as it is. Video works the same way.</string>
-    <string name="quality_percent_meaning">Everything below is a rough guide. The line above is the only real measurement — it comes from your own files.</string>
     <string name="quality_originals_safe">Whatever the setting, your originals are never edited, moved or deleted by this.</string>
-    <string name="quality_intro">All the work happens on your phone. Photos are made smaller and saved again; videos are re-recorded at a lower quality setting. Nothing is uploaded to do it.</string>
     <string name="quality_codec_title">H.264 or HEVC?</string>
     <string name="quality_codec_text" formatted="false">Two ways of packing a video. H.264 plays on everything, including old phones and TVs. HEVC makes files about a third smaller for the same picture, but some older devices cannot play it. If you are unsure, keep H.264.</string>
     <string name="quality_table_title">What to expect</string>
@@ -627,68 +606,11 @@
     <string name="quality_row3_v" formatted="false">About 30% smaller, no visible difference</string>
     <string name="quality_row4_k">Photo over 16 MP</string>
     <string name="quality_row4_v" formatted="false">About 75% smaller</string>
-    <string name="quality_outro">Dates, camera details and location are copied across, and photos come out the right way up. If the smaller version would somehow be bigger, the original is copied unchanged - nothing is ever skipped.</string>
 
     <!-- FAQ -->
-    <string name="faq_q1">What does CloudSaver do?</string>
-    <string name="faq_a1">It does four things, in order. It finds the photos and videos in your gallery, makes a smaller copy of each one, puts those copies in a folder called Pictures/CloudSaver, and then keeps track of which ones reached your cloud. It never uploads anything itself - your own cloud app does that, and you point it at that one folder. Your originals stay exactly where they are the whole time.</string>
-    <string name="faq_q2">Where do the optimised copies go?</string>
-    <string name="faq_a2">With the default layout, into Pictures/CloudSaver. If you switch to separate folders they go into Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, back up only that folder or those folders - nothing else. A small hidden state file lives beside them so CloudSaver can recover its records if the app is reinstalled; it holds names, dates and sizes only, never your pictures.</string>
-    <string name="faq_q3">Are my originals ever touched?</string>
-    <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Reclaim space, choose files yourself, and confirm Android’s own deletion dialog. Even then, only files CloudSaver can show reached your cloud are offered.</string>
-    <string name="faq_q4">How much quality is lost, and how is that measured?</string>
-    <string name="faq_a4" formatted="false">On the default Storage saver preset, video is capped at 1080p and keeps roughly 90-95% of the original’s visual quality, and photos are capped at 16 MP where the loss is about 3% and hard to see. Those percentages are estimates for the encoder settings, not measurements of your files. What CloudSaver does measure is size: open Quality explained to see how much your own photos and videos actually shrank. The preset is a ceiling, so a photo already under the limit is left alone.</string>
-    <string name="faq_q5">Are dates, GPS and file names kept?</string>
-    <string name="faq_a5">Yes. Every copy carries the original shooting date, camera details and GPS from the original’s EXIF, and the file date is set to match. That is why the copies appear in your cloud in the same order as your gallery instead of all dated today. The file name keeps the original name with a short unique code added, so two photos with the same name never collide.</string>
-    <string name="faq_q6">How does CloudSaver know a file reached my cloud?</string>
-    <string name="faq_a6">Copies are added to the upload folder a few at a time rather than all at once, and CloudSaver watches how many bytes your cloud app sends. There are three levels of certainty. Strongest: your cloud app removed the copy itself after uploading it - that is direct proof. Next: the copy went out alone and the bytes sent match its size. Weakest: enough time passed with no way to measure. Only the first two can ever offer an original for removal.</string>
-    <string name="faq_q7">What if my cloud app has no duplicate check?</string>
-    <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content. Once a file is on that list it is never sent again, even if it disappears from the upload folder later - which is exactly what happens when a cloud app tidies up after itself. The record survives reinstalling the app. What CloudSaver cannot control is what your cloud app does with files you add by other means.</string>
-    <string name="faq_q8">How much mobile data does it use?</string>
-    <string name="faq_a8">None of its own. CloudSaver has no internet permission at all, so it physically cannot send anything. All the data is your cloud app uploading the folder, and the daily upload limit is what controls it: by default CloudSaver adds at most 250 MB a day to that folder, so that is the most your cloud app has to upload. Raise or lower it in Settings.</string>
-    <string name="faq_q9">How much phone space does it use?</string>
-    <string name="faq_a9">Two separate limits control this. “Keep this much phone space free” is about your phone: CloudSaver stops working entirely if free space drops below it, so it can never fill your device. “Space CloudSaver may use” is about CloudSaver: it caps the optimised copies waiting to be uploaded, and when it fills, the oldest already-confirmed copies are deleted first. For example, with 1.5 GB free kept and a 1.5 GB app limit, CloudSaver holds at most 1.5 GB of copies and stops if your phone drops under 1.5 GB free.</string>
-    <string name="faq_q10">Why did it pause?</string>
-    <string name="faq_a10" formatted="false">Home always says which reason applies. It waits for a charger in Charging only mode; it needs battery above 30% (25% on Fast) otherwise; it stops when Battery Saver is on, when the phone is warm, or when the day’s 30 minutes of video work are used - that resets at midnight, and plugging in continues immediately. It also stops if your phone is low on space, and it stops deleting anything if your cloud app looks like it has stopped uploading.</string>
-    <string name="faq_q11">Someone deleted a file from the CloudSaver folder - what now?</string>
-    <string name="faq_a11">If CloudSaver had already confirmed that file reached your cloud, nothing happens: the disappearance is the proof, and the original was never at risk. If it had not been confirmed, CloudSaver simply makes the copy again - up to twice. After the second time it stops and marks the file as removed before upload, because something is clearly deleting copies faster than your cloud can take them, and looping forever would just waste battery.</string>
-    <string name="faq_q12">What about HEIC, RAW, GIF and motion photos?</string>
-    <string name="faq_a12">HEIC photos are converted to JPEG and compressed like any other photo. RAW, GIF, SVG and similar formats are copied byte-for-byte, because compressing them would either fail or destroy what makes them useful. Motion photos, portrait/depth photos and multi-picture files are also copied unchanged, since the extra frames or depth data only survive in the original file. Nothing is ever dropped - every file either gets a smaller copy or an exact one, and Files tells you which.</string>
-    <string name="faq_q13">What happens on uninstall, clear data, or a new phone?</string>
-    <string name="faq_a13">CloudSaver writes a small hidden state file next to your copies and in Documents, and those survive clearing data and reinstalling. On the next launch it reads the newest valid one and restores what it knew, including the record of which files already reached your cloud. Items that come back without proof of upload are marked unverified, and unverified items can never offer an original for removal - so a restore can never cost you a photo. On a brand-new phone, CloudSaver starts fresh unless you restore a backup file yourself.</string>
-    <string name="faq_q14">Which cloud apps work, which do not, and why?</string>
-    <string name="faq_a14">Anything that can back up one folder you choose. Best fit, because they are end-to-end encrypted and do no compression of their own: Ente (recommended), MEGA, Filen and Proton Drive. Also fine: Nextcloud, Immich, OneDrive, or any other app with a custom folder setting. Google Photos and Dropbox cannot work: their mobile apps back up the camera roll and cannot be pointed at one folder, so your originals would upload too.</string>
-    <string name="faq_q15">Cloud storage is full - what happens?</string>
-    <string name="faq_a15">CloudSaver notices that copies are piling up while nothing is being uploaded, tells you once, and stops deleting anything at all until uploads start again. Nothing is lost: your originals are untouched and the copies stay on the phone until its own space limit is reached, after which it simply stops making new ones. Free up room in your cloud or upgrade the plan and it resumes on its own.</string>
-    <string name="faq_q16">Does anything leave my phone?</string>
-    <string name="faq_a16">No. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere - not analytics, not crash reports, not a file. There are no accounts and no ads. Everything CloudSaver stores stays on the phone: the optimised copies, a local database of what it has done, and the hidden state file. Only your cloud app talks to the internet, and only about the folder you pointed it at.</string>
 
 
-    <string name="faq_q17">What does Reclaim space do?</string>
-    <string name="faq_a17">It is the one screen in CloudSaver that can remove an original, and it only ever removes what you select. Three modes: "Replace with light copy" removes the original and keeps the smaller version in your gallery; "Free up fully" removes the original and keeps nothing locally, so the file lives only in your cloud; "Remove CloudSaver\'s copies only" never touches an original at all. The default is to move files to your gallery\'s trash, where they stay recoverable for 30 days. Android shows its own confirmation dialog every time, because these files belong to your gallery rather than to CloudSaver.</string>
-    <string name="faq_q18">If I remove originals, what will I see in my gallery?</string>
-    <string name="faq_a18">With "Replace with light copy" the photo stays right where it was, at optimised quality, in an album called Light copies. You can still open it, share it and scroll past it - it is simply a smaller file now. With "Free up fully" the photo is gone from the phone and lives only in your cloud, so you open it in your cloud app instead. Both modes leave your cloud exactly as it was.</string>
-    <string name="faq_q19">Can CloudSaver bring a file back from my cloud?</string>
-    <string name="faq_a19">No, and it never will be able to. The app has no internet permission at all, so there is no code path that could download anything. Only your cloud app can fetch a file back. What CloudSaver can do is prefer the trash: files moved there are restorable from your gallery for 30 days, and the Recently reclaimed screen lists them with a Restore button.</string>
-    <string name="faq_q20">How do I free a specific amount of space quickly?</string>
-    <string name="faq_a20">Open Reclaim space and tap one of the target chips - 1 GB, 5 GB or 10 GB. CloudSaver selects eligible files largest-first until it reaches that number, then tells you exactly what it picked. Adjust the selection if you want, tap "Preview result" to see what would happen without anything happening, and check a few files in the compare view first if you want to see the quality for yourself.</string>
-    <string name="faq_q21">How does CloudSaver find duplicates?</string>
-    <string name="faq_a21">By comparing files byte for byte. It first groups files of exactly the same length, since files of different lengths cannot be identical, and only then reads and hashes those - so a large gallery costs very little to check. Files are grouped only when their hashes match, which means they are the same file, not merely similar. CloudSaver keeps the oldest copy and offers the extras; removing an extra is safe even before anything is uploaded, because an identical copy stays on your phone.</string>
-    <string name="faq_q22">Why doesn\'t it find similar photos?</string>
-    <string name="faq_a22">Because that would be a guess. Deciding which of two nearly identical shots is the better one is a judgement about your memory, not a fact about your storage, and a wrong guess deletes the photo you wanted to keep. CloudSaver only acts on things it can prove: hashes, sizes, dates and upload evidence. Your cloud app may offer similar-photo cleanup separately, and that is the right place for it.</string>
-    <string name="faq_q23">Where do reclaimed files go, and can I get them back?</string>
-    <string name="faq_a23">By default into your gallery\'s trash, where Android keeps them for 30 days. The Recently reclaimed screen lists every batch with its files and a Restore button for anything still in the trash. If you chose "Delete permanently" instead, the files are gone and the screen says so plainly. CloudSaver can never re-download anything from your cloud, so the trash is the only local safety net.</string>
-    <string name="faq_q24">What happens to my files if I uninstall CloudSaver?</string>
-    <string name="faq_a24">Your kept light copies stay in Pictures/Light copies and remain in your gallery, because they are ordinary files in an ordinary album. Copies still waiting stay in Pictures/CloudSaver until your cloud app takes them. Temporary work files are removed by Android along with the app. Your cloud is untouched. Only the app\'s own history goes - and even that comes back from a hidden state file, or from a backup you saved under Settings \u203a Backup and restore. Nothing you would miss needs moving first.</string>
-    <string name="faq_q25">The CloudSaver album disappeared from my gallery - is something wrong?</string>
-    <string name="faq_a25">No. The upload folder is a working folder: once your cloud app has collected the files, it is empty, and galleries hide empty folders. It reappears the next time CloudSaver adds a batch. An empty CloudSaver album is the sign that everything is working, not that something broke.</string>
 
-    <string name="faq_q27">Does CloudSaver start on its own?</string>
-    <string name="faq_a27">Yes, once you have tapped Start backing up at the end of setup - that tap is what switches it on, and nothing runs before it. After that Android wakes it about every half hour to check whether the conditions you chose are met. It also comes back by itself after a restart. It never starts during setup, and it stops completely while Pause is on.</string>
-    <string name="faq_q28">Do I have to open the app for it to work?</string>
-    <string name="faq_a28">No. Everything happens in the background. Opening the app is only to see what happened, change a setting, or reclaim space. If nothing has run for two days while files were waiting, Home says so and points at the phone setting that is blocking it.</string>
-    <string name="faq_q26">Which Android versions does CloudSaver work on?</string>
-    <string name="faq_a26">Android 10 through Android 16 - every phone from 2019 onwards. On Android 11 and later everything works completely, including the safety net: anything you remove in Reclaim space goes to your gallery\'s trash and can be restored for 30 days. On Android 10 every feature still works, with one difference you should know about: that version of Android has no gallery trash, so a removed original is gone for good and Android asks you to confirm each file separately. CloudSaver says which of the two your phone is, on the About page and on the Reclaim screen itself.</string>
 
     <!-- notifications -->
     <string name="channel_working">Working</string>
@@ -793,4 +715,67 @@
     <string name="biggest_header_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
     <string name="reclaim_confirm_proof">%1$d \u00b7 %2$s</string>
     <string name="reclaim_done_dropped">%1$d no longer qualified and were left alone (%2$s).</string>
+    <string name="faq_q1">What does CloudSaver do?</string>
+    <string name="faq_a1">It makes a smaller copy of each photo and video in the albums you chose, and puts those copies in one folder on your phone. You point your own cloud app at that folder, so only the small copies get uploaded and your cloud plan lasts much longer. Your originals stay exactly where they are, untouched. Everything happens on the phone: CloudSaver has no internet permission and cannot upload anything itself.</string>
+
+    <string name="faq_q2">Where do the optimised copies go, and what do I select in my cloud app?</string>
+    <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button, so you never have to type it.</string>
+
+    <string name="faq_q3">Are my originals ever touched?</string>
+    <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Reclaim space, select files yourself, and confirm Android\'s own deletion dialog. Even then it goes to your gallery trash first, where it stays for 30 days.</string>
+
+    <string name="faq_q4">How much quality is lost?</string>
+    <string name="faq_a4" formatted="false">On the default setting, a 12-megapixel photo comes out about 30% smaller with no difference you can see on a phone. Photos above 16 megapixels come down to 16, saving about 75%. Video is capped at 1080p and comes out 60\u201375% smaller, keeping close to the original at normal viewing size. Higher and lower settings are in Settings under Quality, and the app shows what it actually measured on your own files.</string>
+
+    <string name="faq_q5">Are dates, locations and file names kept?</string>
+    <string name="faq_a5">Yes. Every copy carries the original\'s shooting date, camera details and GPS location, and the file date is set to match. That is why the copies land in the right place chronologically in your cloud instead of all appearing as today. The file name keeps the original name with a short code added, so a copy can always be matched back to its original.</string>
+
+    <string name="faq_q6">How does CloudSaver know a file reached my cloud?</string>
+    <string name="faq_a6">Two ways, both watched automatically. Some cloud apps delete their own copy after uploading it; when one disappears from the folder and CloudSaver did not remove it, that is proof. Otherwise CloudSaver adds copies a few at a time and watches how many bytes your cloud app sends, so a matching amount right after one file goes out is proof for that file. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal.</string>
+
+    <string name="faq_q7">What if my cloud app makes duplicates?</string>
+    <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content rather than by name. Once a file is on that list it is never sent again, even if you clear the app\'s data or reinstall it. If your phone itself holds the same photo twice, Find space shows those groups and optimises the file only once \u2014 the extras are marked as already handled, not treated as problems.</string>
+
+    <string name="faq_q8">Someone deleted a file from the CloudSaver folder \u2014 what now?</string>
+    <string name="faq_a8">If CloudSaver had already confirmed that file reached your cloud, nothing happens: the disappearance is exactly what an upload looks like, and the original was never at risk. If it had not been confirmed, CloudSaver treats the copy as lost and simply makes it again on the next run. Either way your original is untouched, because the app only ever removes an original after you confirm it yourself.</string>
+
+    <string name="faq_q9">What about HEIC, RAW, GIF and motion photos?</string>
+    <string name="faq_a9">HEIC photos are converted to JPEG and made smaller like any other photo. RAW, GIF and similar formats are copied exactly as they are, because compressing them either loses something that matters or makes the file bigger. Motion photos keep their video part intact. Anything copied unchanged is listed on the Files screen so you can see it happened on purpose \u2014 it is the app refusing to damage something, not a failure.</string>
+
+    <string name="faq_q10">What happens if I uninstall, clear data, or change phones?</string>
+    <string name="faq_a10">Your photos are unaffected. Optimised copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay in your gallery, and your cloud is untouched. CloudSaver\'s own history survives in a hidden file under Documents and Download, so reinstalling restores what it already knew and it does not redo work. On a new phone, install CloudSaver and copy that folder across, or use Save backup in Settings first.</string>
+
+    <string name="faq_q11">What does Reclaim space do, and can I get files back?</string>
+    <string name="faq_a11">It is the one screen that can remove an original, and it only ever removes what you select. It lists files whose copies your cloud has provably collected, shows the proof for each one, and offers three modes \u2014 keep a light copy in your gallery, remove the original entirely, or just clear the copies waiting on your phone. Removed files go to your gallery trash, where Android keeps them for 30 days, and the Recently reclaimed screen lists every batch with a Restore button.</string>
+
+    <string name="faq_q12">Does anything leave my phone?</string>
+    <string name="faq_a12">Nothing, from CloudSaver. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere \u2014 not analytics, not crash reports, not your photos. All the network traffic you will see is your own cloud app uploading the folder, exactly as it would for any other folder. You can check this yourself in Android\'s app info screen, where CloudSaver has no network permission to grant or deny.</string>
+    <string name="about_running_full">Android %1$s \u2014 everything works.</string>
+    <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
+    <string name="about_advanced">Advanced</string>
+    <string name="about_network_title">Network access</string>
+    <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>
+
+    <string name="privacy_b1_title">Nothing leaves your phone</string>
+    <string name="privacy_b1">CloudSaver has no internet permission, so it cannot send anything anywhere. There is no account to create and no sign-in. There are no ads and no analytics of any kind.</string>
+    <string name="privacy_b2_title">What the app can see</string>
+    <string name="privacy_b2">Only the albums you included during setup. Albums you leave out are never read. You can change the list at any time in Settings.</string>
+    <string name="privacy_b3_title">What the app stores</string>
+    <string name="privacy_b3">File names, dates, sizes and fingerprints \u2014 the details needed to avoid doing the same work twice. Never your photos, and never thumbnails of them. It is all kept on the phone.</string>
+    <string name="privacy_b4_title">What it never does</string>
+    <string name="privacy_b4">It never edits, moves or deletes your originals on its own. The only removals come from you, through Android\'s own confirmation. Nothing is deleted to make room for anything else.</string>
+    <string name="privacy_b5_title">One honest note</string>
+    <string name="privacy_b5">No Android app can be made impossible to inspect, and anyone claiming otherwise is selling something. CloudSaver protects you by holding no secrets worth stealing and by checking that its own code has not been altered.</string>
+    <string name="privacy_b6_title">Terms</string>
+    <string name="privacy_b6">The app is provided as is, without warranty of any kind. It is a helper, not a backup service. Keep checking your cloud app yourself.</string>
+    <string name="licenses_intro">CloudSaver is built with these open-source libraries.</string>
+    <string name="quality_what_title">What happens</string>
+    <string name="quality_what">A smaller copy is made and put in your upload folder. Your original is not touched, moved or changed in any way. A preset is a ceiling, not a target: a small photo is left exactly as it is.</string>
+    <string name="quality_look_title">How it looks</string>
+    <string name="quality_look">Photos look the same on a phone screen. Videos keep close to the original at 1080p. On a large monitor, side by side, you may spot a difference in fine detail.</string>
+    <string name="volume_switch_title">Change where files are kept?</string>
+    <string name="volume_switch_body">This applies to new files only. Files already written stay where they are and are still uploaded.</string>
+    <string name="volume_switch_confirm">Change location</string>
+    <string name="onb_ready_where">Where CloudSaver keeps its files</string>
+    <string name="onb_ready_sd_note">SD cards are slower and can be removed. If it is removed, CloudSaver pauses and nothing is lost.</string>
 </resources>

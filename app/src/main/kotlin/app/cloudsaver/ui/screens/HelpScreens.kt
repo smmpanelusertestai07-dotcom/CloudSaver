@@ -56,6 +56,17 @@ import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Formats
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.WifiOff
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Movie
 
 @Composable
 private fun HelpPage(
@@ -140,23 +151,7 @@ private val FAQ = listOf(
     R.string.faq_q9 to R.string.faq_a9,
     R.string.faq_q10 to R.string.faq_a10,
     R.string.faq_q11 to R.string.faq_a11,
-    R.string.faq_q12 to R.string.faq_a12,
-    R.string.faq_q13 to R.string.faq_a13,
-    R.string.faq_q14 to R.string.faq_a14,
-    R.string.faq_q15 to R.string.faq_a15,
-    R.string.faq_q16 to R.string.faq_a16,
-    R.string.faq_q17 to R.string.faq_a17,
-    R.string.faq_q18 to R.string.faq_a18,
-    R.string.faq_q19 to R.string.faq_a19,
-    R.string.faq_q20 to R.string.faq_a20,
-    R.string.faq_q21 to R.string.faq_a21,
-    R.string.faq_q22 to R.string.faq_a22,
-    R.string.faq_q23 to R.string.faq_a23,
-    R.string.faq_q24 to R.string.faq_a24,
-    R.string.faq_q25 to R.string.faq_a25,
-    R.string.faq_q26 to R.string.faq_a26,
-    R.string.faq_q27 to R.string.faq_a27,
-    R.string.faq_q28 to R.string.faq_a28
+    R.string.faq_q12 to R.string.faq_a12
 )
 
 @Composable
@@ -210,42 +205,87 @@ fun HelpFaqScreen(nav: NavHostController) {
     }
 }
 
-/** One term and its one-line meaning, stacked rather than in a column pair. */
-@Composable
-private fun TermRow(term: String, meaning: String) {
-    Column(Modifier.padding(top = 10.dp)) {
-        Text(
-            term,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
-        Text(
-            meaning,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
+/**
+ * What optimising does, in five short blocks and no jargon.
+ *
+ * The glossary is gone with the words it existed to explain: a page that has
+ * to define "bits per pixel" before it can make its point was making the
+ * wrong point. What is left is what happens, how small, how it looks, what
+ * this phone actually measured, and the one real choice.
+ */
 @Composable
 fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
     val measured by vm.measuredQuality.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refreshMeasuredQuality() }
 
     HelpPage(nav, stringResource(R.string.quality_explained_title)) {
-        // This phone's own numbers come first: they are the only figures here
-        // that are a measurement rather than an estimate.
-        AppCard(modifier = Modifier.padding(vertical = 4.dp), tonal = measured.hasAny) {
-            Text(
-                stringResource(R.string.quality_measured_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+        QualityBlock(
+            Icons.Outlined.AutoAwesome,
+            stringResource(R.string.quality_what_title),
+            stringResource(R.string.quality_what)
+        )
+
+        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Compress,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.quality_table_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            KeyValueRow(
+                stringResource(R.string.quality_row1_k),
+                stringResource(R.string.quality_row1_v)
             )
+            KeyValueRow(
+                stringResource(R.string.quality_row2_k),
+                stringResource(R.string.quality_row2_v)
+            )
+            KeyValueRow(
+                stringResource(R.string.quality_row3_k),
+                stringResource(R.string.quality_row3_v)
+            )
+            KeyValueRow(
+                stringResource(R.string.quality_row4_k),
+                stringResource(R.string.quality_row4_v)
+            )
+        }
+
+        QualityBlock(
+            Icons.Outlined.Visibility,
+            stringResource(R.string.quality_look_title),
+            stringResource(R.string.quality_look)
+        )
+
+        // This phone's own numbers: the only figures on the page that are a
+        // measurement rather than a guide.
+        AppCard(modifier = Modifier.padding(vertical = 4.dp), tonal = measured.hasAny) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Insights,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.quality_measured_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             if (!measured.hasAny) {
                 Text(
                     stringResource(R.string.quality_measured_none),
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = 6.dp)
                 )
             } else {
                 if (measured.photoCount > 0) {
@@ -256,7 +296,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                             Formats.count(measured.photoCount)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 6.dp)
                     )
                 }
                 if (measured.videoCount > 0) {
@@ -271,83 +311,51 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     )
                 }
             }
-            Text(
-                stringResource(R.string.quality_percent_meaning),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
-            )
         }
-        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.quality_caps),
-                style = MaterialTheme.typography.bodyMedium
+
+        QualityBlock(
+            Icons.Outlined.Movie,
+            stringResource(R.string.quality_codec_title),
+            stringResource(R.string.quality_codec_text)
+        )
+
+        Text(
+            stringResource(R.string.quality_originals_safe),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 12.dp)
+        )
+    }
+}
+
+/** One titled block of the quality page. */
+@Composable
+private fun QualityBlock(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String
+) {
+    AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
             )
+            Spacer(Modifier.width(10.dp))
             Text(
-                stringResource(R.string.quality_intro),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.quality_codec_title),
+                title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            Text(
-                stringResource(R.string.quality_codec_text),
-                style = MaterialTheme.typography.bodyMedium
-            )
         }
-        // The words the rest of this page leans on, defined once. A page that
-        // explains quality in terms nobody has been taught explains nothing.
-        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.quality_terms_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            TermRow(
-                stringResource(R.string.quality_term_preset),
-                stringResource(R.string.quality_term_preset_v)
-            )
-            TermRow(
-                stringResource(R.string.quality_term_mp),
-                stringResource(R.string.quality_term_mp_v)
-            )
-            TermRow(
-                stringResource(R.string.quality_term_p),
-                stringResource(R.string.quality_term_p_v)
-            )
-            TermRow(
-                stringResource(R.string.quality_term_codec),
-                stringResource(R.string.quality_term_codec_v)
-            )
-        }
-        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.quality_table_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            KeyValueRow(stringResource(R.string.quality_row1_k), stringResource(R.string.quality_row1_v))
-            KeyValueRow(stringResource(R.string.quality_row2_k), stringResource(R.string.quality_row2_v))
-            KeyValueRow(stringResource(R.string.quality_row3_k), stringResource(R.string.quality_row3_v))
-            KeyValueRow(stringResource(R.string.quality_row4_k), stringResource(R.string.quality_row4_v))
-        }
-        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-            Text(
-                stringResource(R.string.quality_outro),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                stringResource(R.string.quality_originals_safe),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 
@@ -397,12 +405,69 @@ fun HelpLogsScreen(nav: NavHostController) {
 @Composable
 fun HelpPrivacyScreen(nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.help_privacy)) {
-        AppCard {
+        // Six short blocks with icons rather than one paragraph. The old wall
+        // of text said all of this and nobody read any of it.
+        PrivacyBlock(
+            Icons.Outlined.WifiOff,
+            stringResource(R.string.privacy_b1_title),
+            stringResource(R.string.privacy_b1)
+        )
+        PrivacyBlock(
+            Icons.Outlined.Visibility,
+            stringResource(R.string.privacy_b2_title),
+            stringResource(R.string.privacy_b2)
+        )
+        PrivacyBlock(
+            Icons.Outlined.Storage,
+            stringResource(R.string.privacy_b3_title),
+            stringResource(R.string.privacy_b3)
+        )
+        PrivacyBlock(
+            Icons.Outlined.Shield,
+            stringResource(R.string.privacy_b4_title),
+            stringResource(R.string.privacy_b4)
+        )
+        PrivacyBlock(
+            Icons.Outlined.Info,
+            stringResource(R.string.privacy_b5_title),
+            stringResource(R.string.privacy_b5)
+        )
+        PrivacyBlock(
+            Icons.Outlined.Gavel,
+            stringResource(R.string.privacy_b6_title),
+            stringResource(R.string.privacy_b6)
+        )
+    }
+}
+
+/** One titled block of the privacy page: icon, heading, three sentences. */
+@Composable
+private fun PrivacyBlock(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String
+) {
+    AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(10.dp))
             Text(
-                stringResource(R.string.privacy_text),
-                style = MaterialTheme.typography.bodyMedium
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
             )
         }
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }
 
@@ -411,8 +476,14 @@ fun HelpLicensesScreen(nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.help_licenses)) {
         AppCard {
             Text(
+                stringResource(R.string.licenses_intro),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Text(
                 stringResource(R.string.licenses_text),
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp)
             )
         }
     }
@@ -455,63 +526,67 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        // Compatibility belongs on About, where people look for it before
-        // sending the file to someone else. It states what fully works, not
-        // just what installs.
+        // What this phone gets, and nothing about any other phone. Version
+        // ranges and "2019 onwards" made a reader work out whether the
+        // sentence applied to them; this one already knows.
         AppCard(modifier = Modifier.padding(top = 10.dp)) {
             Text(
                 stringResource(R.string.about_requires_title),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            KeyValueRow(
-                stringResource(R.string.about_requires),
-                stringResource(R.string.about_requires_value)
-            )
-            KeyValueRow(
-                stringResource(R.string.about_running_on),
-                stringResource(
-                    R.string.about_running_value,
-                    Platform.releaseName(android.os.Build.VERSION.SDK_INT),
-                    android.os.Build.VERSION.SDK_INT
-                )
-            )
-            // Say plainly which of the two this phone is.
+            val release = Platform.releaseName(android.os.Build.VERSION.SDK_INT)
+            val full = Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
+                Platform.Support.FULL
             Text(
                 stringResource(
-                    if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
-                        Platform.Support.FULL
-                    ) {
-                        R.string.about_this_phone_full
-                    } else {
-                        R.string.about_this_phone_limited
-                    }
+                    if (full) R.string.about_running_full else R.string.about_running_ten,
+                    release
                 ),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
-                    Platform.Support.FULL
-                ) {
-                    MaterialTheme.colorScheme.primary
+                color = if (full) {
+                    MaterialTheme.colorScheme.onSurface
                 } else {
                     MaterialTheme.colorScheme.error
                 },
-                modifier = Modifier.padding(top = 10.dp)
+                modifier = Modifier.padding(top = 6.dp)
             )
-            Text(
-                stringResource(
-                    if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
-                        Platform.Support.FULL
-                    ) {
-                        R.string.about_support_full
-                    } else {
-                        R.string.about_support_ten
-                    }
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+        }
+
+        // Anything technical lives behind one row, closed by default.
+        var advanced by remember { mutableStateOf(false) }
+        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { advanced = !advanced }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.about_advanced),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f)
+                )
+                val arrow by animateFloatAsState(
+                    targetValue = if (advanced) 0f else -90f,
+                    label = "advancedArrow"
+                )
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(arrow)
+                )
+            }
+            AnimatedVisibility(
+                visible = advanced,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    KeyValueRow(
+                        stringResource(R.string.about_network_title),
+                        stringResource(R.string.about_network_none)
+                    )
+                    KeyValueRow("Package", BuildConfig.APPLICATION_ID)
+                    KeyValueRow("Build", BuildConfig.VERSION_CODE.toString())
+                }
+            }
         }
 
         AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {
