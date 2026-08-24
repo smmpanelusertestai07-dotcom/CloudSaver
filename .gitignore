@@ -1,5 +1,7 @@
 *.iml
 .gradle/
+# Kotlin compiler daemon session markers - build scratch, not source.
+.kotlin/
 /local.properties
 /.idea/
 .DS_Store
