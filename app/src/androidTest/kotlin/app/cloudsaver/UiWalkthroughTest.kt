@@ -164,7 +164,7 @@ class UiWalkthroughTest {
             }
             shoot("24-settings-quality")
             runCatching {
-                compose.onNode(hasText("Backup & restore", substring = true)).performScrollTo()
+                compose.onNode(hasText("Backup and restore", substring = true)).performScrollTo()
             }
             shoot("25-settings-backup")
 
@@ -182,11 +182,39 @@ class UiWalkthroughTest {
     fun activityScreenRenders() {
         setOnboardingDone(true)
         ActivityScenario.launch(MainActivity::class.java).use {
+            // Activity lives under Settings now, with the other reference
+            // material, rather than competing for room on Home.
+            compose.onNodeWithText("Settings").performClick()
             runCatching {
                 compose.onNode(hasText("Activity", substring = true)).performScrollTo()
                     .performClick()
             }
             shoot("27-activity")
+        }
+    }
+
+    @Test
+    fun helpScreenRenders() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Settings").performClick()
+            runCatching {
+                compose.onNode(hasText("Help and info", substring = true)).performScrollTo()
+            }
+            shoot("28-settings-help")
+        }
+    }
+
+    @Test
+    fun biggestFilesScreenRenders() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText("Storage").performClick()
+            runCatching {
+                compose.onNode(hasText("Biggest", substring = true)).performScrollTo()
+                    .performClick()
+            }
+            shoot("29-biggest-space-users")
         }
     }
 

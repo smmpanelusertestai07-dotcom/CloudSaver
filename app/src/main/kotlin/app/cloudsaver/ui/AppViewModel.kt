@@ -76,6 +76,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val options: StateFlow<Options> =
         repo.flow.stateIn(viewModelScope, SharingStarted.Eagerly, Options())
 
+    /**
+     * False until DataStore has actually handed over the stored options.
+     *
+     * [options] has to start on something, and that something is the defaults
+     * - which say setup has not been done. Rendering on that first value
+     * flashed the welcome card at every returning user for a frame or two, and
+     * made a resumed setup restart from the beginning.
+     */
+    val optionsLoaded: StateFlow<Boolean> = repo.flow
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     /** 13.A tamper evidence: true = re-signed/modified copy, deletions disabled. */
     val tampered = MutableStateFlow(false)
 
@@ -1095,6 +1107,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repo.setBool(OptionsRepo.K.ONBOARDING_DONE, false)
             repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
+            // Setup is unfinished again, so nothing should be scheduled until
+            // it is finished again.
+            Scheduler.cancelAll(ctx)
         }
     }
 

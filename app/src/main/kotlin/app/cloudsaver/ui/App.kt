@@ -81,12 +81,15 @@ object Routes {
 @Composable
 fun App(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
+    val loaded by vm.optionsLoaded.collectAsStateWithLifecycle()
     CloudSaverTheme(mode = options.theme, dynamicColor = options.dynamicColor) {
         AppBackground {
-            if (!options.onboardingDone) {
-                OnboardingScreen(vm)
-            } else {
-                MainNav(vm)
+            when {
+                // One frame of the app's own background rather than a flash of
+                // the welcome card at someone who set this up months ago.
+                !loaded -> Unit
+                !options.onboardingDone -> OnboardingScreen(vm)
+                else -> MainNav(vm)
             }
         }
     }

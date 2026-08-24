@@ -32,8 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,15 +72,30 @@ import app.cloudsaver.util.Permissions
 @Composable
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
-    var step by remember {
-        mutableIntStateOf(options.onboardingStep.coerceIn(0, OnboardingSteps.TOTAL - 1))
-    }
     val context = androidx.compose.ui.platform.LocalContext.current
-    // Where setup was when it was last left. Remembered once, so the banner
-    // does not vanish the moment they take the next step.
-    val resumedAt = remember { options.onboardingStep }
+
+    // The options flow starts on defaults and the stored value arrives a frame
+    // or two later, so the saved step cannot simply be read at composition -
+    // doing that sent everyone back to the welcome card. Instead the position
+    // follows the stored value until the first tap, and is the user's from
+    // then on.
+    var step by rememberSaveable { mutableIntStateOf(0) }
+    var moved by rememberSaveable { mutableStateOf(false) }
+    // Where setup was when it was last left, for the banner. Frozen at the
+    // first tap so it does not follow the user forward.
+    var resumedAt by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(options.onboardingStep, moved) {
+        if (moved) return@LaunchedEffect
+        val stored = options.onboardingStep.coerceIn(0, OnboardingSteps.TOTAL - 1)
+        if (stored > step) {
+            step = stored
+            resumedAt = stored
+        }
+    }
 
     fun goTo(next: Int) {
+        moved = true
         step = next.coerceIn(0, OnboardingSteps.TOTAL - 1)
         vm.setOnboardingStep(step)
     }

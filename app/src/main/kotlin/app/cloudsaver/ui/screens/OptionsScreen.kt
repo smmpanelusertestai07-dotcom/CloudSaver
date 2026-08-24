@@ -472,12 +472,37 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
 
+        SectionHeader(stringResource(R.string.opt_group_privacy))
+        // Switches sit on the row itself. Wrapping one in a card that repeats
+        // its own title read as two settings with the same name.
+        SwitchCard(
+            title = stringResource(R.string.opt_lock),
+            hint = stringResource(R.string.opt_lock_hint),
+            icon = IconLock,
+            checked = o.appLock
+        ) { vm.setAppLock(it) }
+        SwitchCard(
+            title = stringResource(R.string.opt_warnings),
+            hint = stringResource(R.string.opt_warnings_hint),
+            icon = IconAlerts,
+            checked = o.warningsNotif
+        ) { vm.setWarningsNotif(it) }
+        SwitchCard(
+            title = stringResource(R.string.opt_pause),
+            hint = stringResource(R.string.opt_pause_hint),
+            icon = IconPause,
+            checked = o.pauseAll
+        ) { vm.setPauseAll(it) }
+
+        // The list of files the user said never to touch belongs with the
+        // other safety settings, not among the colours.
         val excludedFiles by vm.neverOptimiseCount.collectAsStateWithLifecycle()
         if (excludedFiles > 0) {
             OptionCard(
                 stringResource(R.string.never_optimise_title),
                 stringResource(R.string.never_optimise_hint),
-                icon = IconExcluded
+                icon = IconExcluded,
+                value = Formats.count(excludedFiles)
             ) {
                 Text(
                     pluralStringResource(
@@ -490,30 +515,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(stringResource(R.string.never_optimise_clear))
                 }
             }
-        }
-
-        SectionHeader(stringResource(R.string.opt_group_privacy))
-        // 12-16. Switches
-        OptionCard(
-            stringResource(R.string.opt_lock),
-            stringResource(R.string.opt_lock_hint),
-            icon = IconLock
-        ) {
-            SwitchRow(stringResource(R.string.opt_lock), o.appLock) { vm.setAppLock(it) }
-        }
-        OptionCard(
-            stringResource(R.string.opt_warnings),
-            stringResource(R.string.opt_warnings_hint),
-            icon = IconAlerts
-        ) {
-            SwitchRow(stringResource(R.string.opt_warnings), o.warningsNotif) { vm.setWarningsNotif(it) }
-        }
-        OptionCard(
-            stringResource(R.string.opt_pause),
-            stringResource(R.string.opt_pause_hint),
-            icon = IconPause
-        ) {
-            SwitchRow(stringResource(R.string.opt_pause), o.pauseAll) { vm.setPauseAll(it) }
         }
 
 
@@ -1030,6 +1031,49 @@ private fun OptionCard(
             }
         }
         content()
+    }
+}
+
+/**
+ * A setting that is just on or off: same row shape as [OptionCard], with the
+ * switch where the value would be. Tapping anywhere on the row toggles it.
+ */
+@Composable
+private fun SwitchCard(
+    title: String,
+    hint: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    AppCard(
+        modifier = Modifier.padding(vertical = 5.dp),
+        onClick = { onChange(!checked) }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = checked, onCheckedChange = onChange)
+        }
     }
 }
 

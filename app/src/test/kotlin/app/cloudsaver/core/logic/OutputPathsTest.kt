@@ -1,6 +1,7 @@
 package app.cloudsaver.core.logic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,5 +47,22 @@ class OutputPathsTest {
     fun `joined reads as a sentence`() {
         assertEquals("Pictures/CloudSaver", OutputPaths.joined(OutputMode.SINGLE))
         assertTrue(OutputPaths.joined(OutputMode.SEPARATE).contains(" and "))
+    }
+
+    @Test
+    fun `a MediaStore relative path maps back to its output folder`() {
+        // MediaStore hands these back with a trailing slash.
+        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor("Pictures/CloudSaver/"))
+        assertEquals(OutFolder.PHOTOS, OutputPaths.folderFor("Pictures/CloudSaver/Photos/"))
+        assertEquals(OutFolder.VIDEOS, OutputPaths.folderFor("Pictures/CloudSaver/Videos/"))
+        assertEquals(OutFolder.SINGLE, OutputPaths.folderFor("Pictures/CloudSaver"))
+    }
+
+    @Test
+    fun `somebody else's folder is not one of ours`() {
+        assertNull(OutputPaths.folderFor("DCIM/Camera/"))
+        assertNull(OutputPaths.folderFor("Pictures/"))
+        assertNull(OutputPaths.folderFor("Pictures/CloudSaverBackup/"))
+        assertNull(OutputPaths.folderFor(""))
     }
 }

@@ -51,6 +51,7 @@ import app.cloudsaver.ui.ReclaimViewModel
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
 
 /**
@@ -308,7 +309,8 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             }
             Text(
                 stringResource(R.string.reclaim_will_free, Formats.bytes(freed)),
-                style = MaterialTheme.typography.titleMedium,
+                // Tabular: this total changes with every tick of a checkbox.
+                style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
                 fontWeight = FontWeight.SemiBold
             )
             Text(
