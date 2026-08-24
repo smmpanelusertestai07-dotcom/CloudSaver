@@ -40,7 +40,10 @@ object Projection {
     fun forItem(sizeBytes: Long, isVideo: Boolean, measured: Double): Long {
         if (sizeBytes <= 0) return 0
         val kept = ratioFor(isVideo, measured).coerceIn(CapacityMath.CLAMP_MIN, CapacityMath.CLAMP_MAX)
-        return (sizeBytes * (1 - kept)).toLong().coerceAtLeast(0)
+        // Rounded, not truncated: truncation lost a byte per file, so a
+        // queue projected as "1.00 GB" arrived one byte short of it and the
+        // two halves of a split no longer added up to the whole.
+        return Math.round(sizeBytes * (1 - kept)).coerceAtLeast(0)
     }
 
     /**

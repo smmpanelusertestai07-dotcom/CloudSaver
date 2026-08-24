@@ -429,8 +429,8 @@
     <string name="codec_h264_detail">Plays everywhere. Recommended.</string>
     <string name="codec_hevc_detail" formatted="false">30-40% smaller at the same quality, but some older devices and cloud web players cannot play it.</string>
     <string name="applies_to_new_only">Changes apply to new items only. Already-processed files are not redone.</string>
-    <string name="opt_codec">Video format (inside MP4)</string>
-    <string name="opt_codec_hint">How video is compressed inside the MP4 file.</string>
+    <string name="opt_codec">Video format</string>
+    <string name="opt_codec_hint">H.264 plays everywhere. HEVC is smaller.</string>
     <string name="codec_h264">H.264</string>
     <string name="codec_hevc">HEVC</string>
     <string name="opt_theme">Theme</string>
@@ -489,13 +489,13 @@
     <string name="calc_pace">Last 30 days: %1$s GB added.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
-    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → ONLY CloudSaver.</string>
+    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → CloudSaver, and nothing else.</string>
     <string name="cl_mega">In MEGA: Camera uploads folder = CloudSaver · Video quality = Original (else videos get compressed twice) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
-    <string name="cl_filen">In Filen: turn on auto-upload for ONLY the CloudSaver folder. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
-    <string name="cl_proton">In Proton Drive: turn on auto-upload for ONLY the CloudSaver folder. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
-    <string name="cl_nextcloud">In Nextcloud: Auto upload → add ONLY the CloudSaver folder.</string>
+    <string name="cl_filen">In Filen: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
+    <string name="cl_proton">In Proton Drive: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
+    <string name="cl_nextcloud">In Nextcloud: Auto upload → add the CloudSaver folder, and nothing else.</string>
     <string name="cl_immich">In Immich: backup album = CloudSaver only.</string>
-    <string name="cl_onedrive">In OneDrive: back up ONLY the CloudSaver folder. Note: not end-to-end encrypted - OneDrive can see your files.</string>
+    <string name="cl_onedrive">In OneDrive: back up the CloudSaver folder and no other. Note: not end-to-end encrypted - OneDrive can see your files.</string>
     <string name="cl_other">In your app: pick the CloudSaver folder yourself and back up only that folder.</string>
     <string name="cl_gphotos_no">Not supported: the Camera folder cannot be excluded, so originals would upload too. Google Photos also has its own Storage saver.</string>
     <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>

@@ -121,4 +121,33 @@ class DuplicateRulesTest {
             DuplicateRules.group(listOf(entry(1, sha = null), entry(2, sha = null))).isEmpty()
         )
     }
+
+    @Test
+    fun `the keeper is never one of the removable extras`() {
+        // The whole reason removing a duplicate is safe is that one identical
+        // file stays. A keeper that could also be selected would break that.
+        val entries = listOf(
+            entry(1, size = 100, sha = "aa", capturedAt = 300),
+            entry(2, size = 100, sha = "aa", capturedAt = 100),
+            entry(3, size = 100, sha = "aa", capturedAt = 200)
+        )
+        for (group in DuplicateRules.group(entries)) {
+            assertFalse(
+                "the keeper appears among its own extras",
+                group.extras.any { it.id == group.keeper.id }
+            )
+            assertEquals(entries.size, group.all.size)
+            assertEquals(entries.size - 1, group.extras.size)
+        }
+    }
+
+    @Test
+    fun `reclaimable bytes never include the file that stays`() {
+        val entries = listOf(
+            entry(1, size = 100, sha = "aa", capturedAt = 100),
+            entry(2, size = 100, sha = "aa", capturedAt = 200)
+        )
+        val group = DuplicateRules.group(entries).single()
+        assertEquals(100L, group.reclaimableBytes)
+    }
 }
