@@ -10,6 +10,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.core.logic.DuplicateRules
 import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.core.logic.ReclaimRules
@@ -181,9 +182,30 @@ class ReclaimViewModel(
     )
 
     /** The list after filters, sorting and any active suggestion. */
+    /**
+     * The shared list filters, so Reclaim narrows the same way as every other
+     * list rather than through its own private set of chips.
+     */
+    val listFilter = MutableStateFlow(ListFilters.State())
+
     fun visible(): List<Entry> {
         val now = System.currentTimeMillis()
         var list = entries.value
+        val shared = listFilter.value
+        if (!shared.isDefault || shared.query.isNotBlank()) {
+            list = list.filter {
+                ListFilters.matches(
+                    ListFilters.Candidate(
+                        id = it.id,
+                        name = it.row.displayName,
+                        album = it.row.bucket,
+                        sizeBytes = it.row.sizeBytes,
+                        isVideo = it.row.isVideo
+                    ),
+                    shared
+                )
+            }
+        }
         suggestion.value?.let { kind ->
             val filter = Suggestions.ALL.first { it.kind == kind }
             val keep = Suggestions.apply(

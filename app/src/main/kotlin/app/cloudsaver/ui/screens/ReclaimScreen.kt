@@ -43,6 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.typeFilter
+import app.cloudsaver.ui.components.sizeFilter
+import app.cloudsaver.ui.components.albumFilter
+import app.cloudsaver.ui.components.ListSearchField
+import app.cloudsaver.ui.components.ListOption
+import app.cloudsaver.ui.components.ListFilterRow
+import app.cloudsaver.ui.components.ListFilter
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.prefs.OptionsRepo
@@ -99,6 +107,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri -> uri?.let { rvm.exportSelection(it, exportOk, exportFail) } }
 
+    val shared by rvm.listFilter.collectAsStateWithLifecycle()
     val visible = rvm.visible()
     val groups = rvm.groups()
     val selectedEntries = rvm.selectedEntries()
@@ -170,69 +179,51 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     )
                 }
             }
+            // Search and the same four chips as every other list, in place of
+            // the three private rows of chips this screen used to carry. The
+            // proof and grouping choices stay, because they are Reclaim's own
+            // question, but they now open sheets like everything else.
+            item("search") {
+                ListSearchField(
+                    shared.query,
+                    { rvm.listFilter.value = shared.copy(query = it) },
+                    Modifier.padding(top = 10.dp)
+                )
+            }
             item("filters") {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = suggestion == null,
-                        onClick = { rvm.suggestion.value = null },
-                        label = { Text(stringResource(R.string.filter_all)) }
-                    )
-                    for (filter in Suggestions.ALL.filter { it.kind != Suggestions.Kind.DUPLICATES }) {
-                        FilterChip(
-                            selected = suggestion == filter.kind,
-                            onClick = { rvm.suggestion.value = filter.kind },
-                            label = { Text(suggestionLabel(filter.kind)) }
-                        )
-                    }
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    for (option in ReclaimViewModel.Sort.entries) {
-                        FilterChip(
-                            selected = sort == option,
-                            onClick = { rvm.setSort(option) },
-                            label = { Text(sortLabel(option)) }
-                        )
-                    }
-                    for (option in ReclaimViewModel.Grouping.entries) {
-                        FilterChip(
-                            selected = grouping == option,
-                            onClick = { rvm.setGrouping(option) },
-                            label = { Text(groupingLabel(option)) }
-                        )
-                    }
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = { rvm.selectOnlyVideos() },
-                        label = { Text(stringResource(R.string.reclaim_only_videos)) }
-                    )
-                    AssistChip(
-                        onClick = { rvm.selectLargerThan(100L * 1_000_000) },
-                        label = { Text(stringResource(R.string.reclaim_over_100)) }
-                    )
-                    AssistChip(
-                        onClick = { rvm.invertSelection() },
-                        label = { Text(stringResource(R.string.reclaim_invert)) }
+                val albums = remember(entries) {
+                    ListFilters.albumCounts(
+                        entries.map {
+                            ListFilters.Candidate(
+                                it.id, it.row.displayName, it.row.bucket,
+                                it.row.sizeBytes, it.row.isVideo
+                            )
+                        }
                     )
                 }
+                ListFilterRow(
+                    filters = listOf(
+                        typeFilter(shared.type) {
+                            rvm.listFilter.value = shared.copy(type = it)
+                        },
+                        proofFilter(suggestion) { rvm.suggestion.value = it },
+                        albumFilter(shared.album, albums) {
+                            rvm.listFilter.value = shared.copy(album = it)
+                        },
+                        sizeFilter(shared.size) {
+                            rvm.listFilter.value = shared.copy(size = it)
+                        },
+                        groupingFilter(grouping) { rvm.setGrouping(it) }
+                    ),
+                    sort = ListFilter(
+                        name = stringResource(R.string.filter_sort),
+                        valueLabel = null,
+                        options = ReclaimViewModel.Sort.entries.map { option ->
+                            ListOption(sortLabel(option), sort == option) { rvm.setSort(option) }
+                        }
+                    ),
+                    modifier = Modifier.padding(top = 10.dp)
+                )
                 Text(
                     stringResource(R.string.reclaim_no_internet),
                     style = MaterialTheme.typography.bodySmall,
@@ -735,3 +726,50 @@ private fun refusalLabel(refusal: ReclaimRules.Refusal): String = when (refusal)
     ReclaimRules.Refusal.FAVOURITE -> stringResource(R.string.refuse_favourite)
     ReclaimRules.Refusal.TOO_SMALL -> stringResource(R.string.refuse_small)
 }
+
+/**
+ * Reclaim's own filter: which kind of proof a file has.
+ *
+ * It is the question this screen exists to answer, so it keeps its place in
+ * the row - but as a sheet, with the others, rather than as a private strip of
+ * chips above them.
+ */
+@Composable
+private fun proofFilter(
+    selected: Suggestions.Kind?,
+    onSelect: (Suggestions.Kind?) -> Unit
+): ListFilter {
+    val kinds = Suggestions.ALL.filter { it.kind != Suggestions.Kind.DUPLICATES }
+    val allLabel = stringResource(R.string.filter_all)
+    return ListFilter(
+        name = stringResource(R.string.filter_proof),
+        valueLabel = selected?.let { suggestionLabel(it) },
+        options = buildList {
+            add(ListOption(allLabel, selected == null) { onSelect(null) })
+            for (filter in kinds) {
+                add(
+                    ListOption(suggestionLabel(filter.kind), selected == filter.kind) {
+                        onSelect(filter.kind)
+                    }
+                )
+            }
+        }
+    )
+}
+
+/** How the list is grouped, as a sheet rather than a second row of chips. */
+@Composable
+private fun groupingFilter(
+    selected: ReclaimViewModel.Grouping,
+    onSelect: (ReclaimViewModel.Grouping) -> Unit
+): ListFilter = ListFilter(
+    name = stringResource(R.string.filter_grouping),
+    valueLabel = if (selected == ReclaimViewModel.Grouping.entries.first()) {
+        null
+    } else {
+        groupingLabel(selected)
+    },
+    options = ReclaimViewModel.Grouping.entries.map { option ->
+        ListOption(groupingLabel(option), option == selected) { onSelect(option) }
+    }
+)

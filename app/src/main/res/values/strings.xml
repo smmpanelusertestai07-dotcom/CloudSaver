@@ -353,7 +353,7 @@
     <string name="kept_row">%1$s · %2$s</string>
     <string name="kept_remove">Remove the light copy</string>
     <string name="kept_remove_title">Remove this light copy?</string>
-    <string name="kept_remove_body">The cloud still has this file; removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
+    <string name="kept_remove_body">Your cloud still has this file. Removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
 
     <!-- prepare for uninstall -->
     <plurals name="uninstall_move_done">
@@ -733,6 +733,7 @@
     <string name="filter_album">Album</string>
     <string name="filter_size">Size</string>
     <string name="filter_proof">Backed up by</string>
+    <string name="filter_grouping">Group by</string>
     <string name="filter_sort">Sort</string>
     <string name="filter_any">Any</string>
     <string name="filter_over_10mb">Over 10 MB</string>
@@ -752,10 +753,10 @@
     <string name="list_never">Never optimise this file</string>
     <string name="list_remove">Remove</string>
     <string name="proof_cloud_removed">Your cloud app removed this copy after uploading it.</string>
-    <string name="proof_size_matched">Your cloud app uploaded this much data right after we added it.</string>
-    <string name="proof_identical">Identical file \u2014 same content fingerprint.</string>
-    <string name="proof_time_only">Waiting for proof \u2014 only its age is known.</string>
-    <string name="proof_waiting">Waiting for proof.</string>
+    <string name="proof_size_matched">Your cloud app uploaded this much data right after we added the file.</string>
+    <string name="proof_identical">These files are exactly the same \u2014 checked byte by byte.</string>
+    <string name="proof_time_only">Not backed up yet \u2014 only how long it has been waiting is known.</string>
+    <string name="proof_waiting">Not backed up yet.</string>
     <string name="dupes_removed_detail">Extra copies removed \u2014 an identical file stayed on the phone</string>
     <string name="dupes_intro">The same file saved more than once on your phone.</string>
     <string name="dupes_group_proof">Checked byte by byte \u2014 the files are identical.</string>
@@ -834,7 +835,7 @@
     <string name="privacy_b2_title">What the app can see</string>
     <string name="privacy_b2">Only the albums you included during setup. Albums you leave out are never read. You can change the list at any time in Settings.</string>
     <string name="privacy_b3_title">What the app stores</string>
-    <string name="privacy_b3">File names, dates, sizes and fingerprints \u2014 the details needed to avoid doing the same work twice. Never your photos, and never thumbnails of them. It is all kept on the phone.</string>
+    <string name="privacy_b3">File names, dates, sizes and a short code that identifies each file \u2014 the details needed to avoid doing the same work twice. Never your photos, and never thumbnails of them. It is all kept on the phone.</string>
     <string name="privacy_b4_title">What it never does</string>
     <string name="privacy_b4">It never edits, moves or deletes your originals on its own. The only removals come from you, through Android\'s own confirmation. Nothing is deleted to make room for anything else.</string>
     <string name="privacy_b5_title">One honest note</string>

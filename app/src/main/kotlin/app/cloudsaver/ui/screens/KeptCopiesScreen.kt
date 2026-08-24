@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.typeFilter
+import app.cloudsaver.ui.components.rememberListSelection
+import app.cloudsaver.ui.components.albumFilter
+import app.cloudsaver.ui.components.SearchEmptyState
+import app.cloudsaver.ui.components.ListScreenScaffold
+import app.cloudsaver.ui.components.FilteredEmptyState
+import app.cloudsaver.ui.components.FileRow
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.db.ItemRow
@@ -80,55 +89,83 @@ private fun Page(
 fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
     val rows by vm.keptCopies.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<ItemRow?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
+    var album by rememberSaveable { mutableStateOf<String?>(null) }
+    val selection = rememberListSelection()
     LaunchedEffect(Unit) { vm.loadKeptCopies() }
 
-    Page(nav, stringResource(R.string.kept_title)) {
-        if (rows.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.kept_empty_title),
-                body = stringResource(R.string.kept_empty_body)
-            )
-            return@Page
-        }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            item("intro") {
-                AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
-                    Text(
-                        stringResource(R.string.kept_intro),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        Defaults.KEPT_DIR,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
-            items(rows, key = { it.id }) { row ->
-                AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
-                    Text(
-                        row.displayName,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
-                    )
-                    Text(
-                        stringResource(
-                            R.string.kept_row,
-                            Formats.bytes(row.outputBytes ?: 0L),
-                            row.bucket ?: "-"
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    TextButton(onClick = { confirm = row }) {
-                        Text(stringResource(R.string.kept_remove))
+    val state = ListFilters.State(type, ListFilters.Size.ANY, album, query)
+    val shown = remember(rows, state) {
+        rows.filter { ListFilters.matches(it.toKeptCandidate(), state) }
+    }
+    val albums = remember(rows) { ListFilters.albumCounts(rows.map { it.toKeptCandidate() }) }
+    val removeLabel = stringResource(R.string.kept_remove)
+
+    ListScreenScaffold(
+        title = stringResource(R.string.kept_title),
+        onBack = { nav.popBackStack() },
+        query = query,
+        onQuery = { query = it },
+        filters = listOf(
+            typeFilter(type) { type = it },
+            albumFilter(album, albums) { album = it }
+        ),
+        sort = null,
+        selection = selection,
+        matchingCount = shown.size,
+        onSelectAll = { selection.selectAll(shown.map { it.id }) },
+        onResetFilters = {
+            type = ListFilters.Type.ALL
+            album = null
+        },
+        loading = false,
+        isEmpty = shown.isEmpty(),
+        emptyContent = {
+            when {
+                rows.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                rows.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        album = null
                     }
-                }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.kept_empty_title),
+                    body = stringResource(R.string.kept_empty_body)
+                )
             }
-            item("tail") { Spacer(Modifier.height(24.dp)) }
+        },
+        intro = {
+            AppCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(
+                    stringResource(R.string.kept_intro),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    Defaults.KEPT_DIR,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+    ) {
+        items(shown, key = { it.id }) { row ->
+            // The action sits in the overflow like every other list. A
+            // full-width button inside each row turned a list of files into a
+            // wall of controls with the files squeezed between them.
+            FileRow(
+                name = row.displayName,
+                context = row.bucket ?: stringResource(R.string.biggest_no_album),
+                size = Formats.bytes(row.outputBytes ?: 0L),
+                proof = null,
+                thumbnail = { Thumbnail(row) },
+                actions = listOf(removeLabel to { confirm = row }),
+                onClick = { confirm = row }
+            )
         }
     }
 
@@ -151,3 +188,12 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
         )
     }
 }
+
+/** A kept copy as the shared filters need to see it. */
+private fun ItemRow.toKeptCandidate() = ListFilters.Candidate(
+    id = id,
+    name = displayName,
+    album = bucket,
+    sizeBytes = outputBytes ?: sizeBytes,
+    isVideo = isVideo
+)
