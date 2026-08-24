@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.core.logic.ActivityWording
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
@@ -68,6 +69,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         /** Minimum time between Home status-line changes (G2). */
         const val STATUS_DEBOUNCE_MS = 800L
+
+        /** The most the trial ever touches. Enough to prove it, cheap to run. */
+        const val TRIAL_SIZE = 3
 
         /** Nothing run for this long, with work waiting, means the OS killed us. */
         const val BACKGROUND_STALL_MS = 48 * 3_600_000L
@@ -1204,7 +1208,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- test run (onboarding step 6) ---------------------------------------
 
-    data class TestItem(val name: String, val before: Long, val after: Long)
+    data class TestItem(
+        val name: String,
+        val before: Long,
+        val after: Long,
+        /** Pixels kept, or null when the encoder did not record them. */
+        val keptPercent: Int? = null
+    )
+
+    /**
+     * How many photos the trial would actually do.
+     *
+     * The button used to promise "3 files" whatever was there, so a phone
+     * with two waiting photos was told a number the app could not deliver.
+     */
+    val trialSize: StateFlow<Int> = db.items().waitingPhotoCountFlow()
+        .map { it.coerceAtMost(TRIAL_SIZE) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    /**
+     * Detail kept across this phone's optimised files, and the sample it was
+     * measured on. Zero files means no figure, and the UI says nothing rather
+     * than showing 0%.
+     */
+    data class DetailKept(val percent: Int, val files: Int)
+
+    val detailKept: StateFlow<DetailKept?> = combine(
+        db.items().detailKeptPercentFlow(),
+        db.items().detailKeptSampleFlow()
+    ) { percent, files ->
+        if (files <= 0) null else DetailKept(percent.toInt().coerceIn(1, 100), files)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val testRun = MutableStateFlow<List<TestItem>?>(null)
     val testRunning = MutableStateFlow(false)
@@ -1217,18 +1251,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val o = repo.current()
                 MediaScanner(ctx, db).scan()
                 val stager = Stager(ctx, db)
-                val picked = db.items().newestNew(12).filter { !it.isVideo }.take(3)
-                    .ifEmpty { db.items().newestNew(3) }
+                val picked = db.items().newestNewPhotos(TRIAL_SIZE)
                 val results = mutableListOf<TestItem>()
                 for (row in picked) {
                     if (stager.stageOne(row, o)) {
                         val updated = db.items().byId(row.id)
                         results += TestItem(
-                            row.displayName, row.sizeBytes, updated?.outputBytes ?: row.sizeBytes
+                            name = row.displayName,
+                            before = row.sizeBytes,
+                            after = updated?.outputBytes ?: row.sizeBytes,
+                            keptPercent = updated?.let {
+                                QualityKept.measuredDetailKeptPercent(it.srcPixels, it.outPixels)
+                            }
                         )
                     }
                 }
                 testRun.value = results
+                if (results.isNotEmpty()) {
+                    activityLog.record(
+                        ActivityLog.Kind.OPTIMISED,
+                        detail = ctx.getString(R.string.trial_activity),
+                        count = results.size,
+                        bytes = results.sumOf { (it.before - it.after).coerceAtLeast(0) }
+                    )
+                }
             } finally {
                 testRunning.value = false
             }

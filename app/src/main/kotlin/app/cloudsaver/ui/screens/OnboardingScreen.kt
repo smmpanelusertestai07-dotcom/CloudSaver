@@ -61,6 +61,7 @@ import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.ui.components.TrialCard
 
 /**
  * One-time setup.
@@ -143,6 +144,7 @@ fun OnboardingScreen(vm: AppViewModel) {
     val transferMessage by vm.transferMessage.collectAsStateWithLifecycle()
     val testItems by vm.testRun.collectAsStateWithLifecycle()
     val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+    val trialSize by vm.trialSize.collectAsStateWithLifecycle()
 
     Column(
         Modifier
@@ -464,9 +466,12 @@ fun OnboardingScreen(vm: AppViewModel) {
                 buttonLabel = stringResource(R.string.onb_ready_start),
                 onButton = { vm.finishOnboarding() }
             ) {
+                val allAlbums by vm.buckets.collectAsStateWithLifecycle()
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
+                val includedAlbums = allAlbums.count { it !in options.excludedBuckets }
                 SummaryLine(
                     stringResource(R.string.onb_ready_what),
-                    scopeSummary(options.scope, options.excludedBuckets.size)
+                    scopeSummary(options.scope, includedAlbums, allAlbums.size)
                 )
                 SummaryLine(
                     stringResource(R.string.onb_ready_quality),
@@ -517,40 +522,13 @@ fun OnboardingScreen(vm: AppViewModel) {
                 CopyPathButton(options.outputMode)
 
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    stringResource(R.string.onb_ready_trial),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                TrialCard(
+                    size = trialSize,
+                    running = testRunning,
+                    results = testItems,
+                    onRun = { vm.startTestRun() }
                 )
-                OutlinedButton(
-                    enabled = !testRunning,
-                    onClick = { if (!testRunning) vm.startTestRun() }
-                ) {
-                    Text(
-                        if (testRunning) stringResource(R.string.onb6_running)
-                        else stringResource(R.string.onb6_run)
-                    )
-                }
-                testItems?.let { list ->
-                    if (list.isEmpty()) {
-                        Text(
-                            stringResource(R.string.onb6_none),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-                    for (item in list) {
-                        KeyValueRow(
-                            item.name,
-                            stringResource(
-                                R.string.files_size_pair,
-                                Formats.bytes(item.before),
-                                Formats.bytes(item.after)
-                            )
-                        )
-                    }
-                }
+
             }
         }
         }
@@ -644,7 +622,7 @@ fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
     val copyPath = app.cloudsaver.ui.components.rememberPathCopier()
     OutlinedButton(onClick = { copyPath(paths.joinToString("\n")) }) {
         Text(
-            pluralStringResource(R.plurals.copy_path, paths.size, paths.size)
+            pluralStringResource(R.plurals.copy_path, paths.size)
         )
     }
 }
@@ -674,7 +652,11 @@ private fun SummaryLine(label: String, value: String) {
 }
 
 @Composable
-private fun scopeSummary(scope: app.cloudsaver.core.logic.BackupScope, excluded: Int): String {
+private fun scopeSummary(
+    scope: app.cloudsaver.core.logic.BackupScope,
+    included: Int,
+    total: Int
+): String {
     val what = stringResource(
         when (scope) {
             app.cloudsaver.core.logic.BackupScope.ALL -> R.string.scope_all
@@ -682,8 +664,14 @@ private fun scopeSummary(scope: app.cloudsaver.core.logic.BackupScope, excluded:
             app.cloudsaver.core.logic.BackupScope.VIDEOS -> R.string.scope_videos
         }
     )
-    return if (excluded == 0) what
-    else pluralStringResource(R.plurals.onb_ready_what_minus, excluded, what, excluded)
+    // Counted the same way the albums step counts them: what is included.
+    // Saying "All, minus 2 albums" one screen after "2 albums selected" asks
+    // the reader to do the subtraction and check the app's arithmetic.
+    return if (total <= 0 || included >= total) {
+        what
+    } else {
+        stringResource(R.string.onb_ready_what_albums, what, included, total)
+    }
 }
 
 @Composable

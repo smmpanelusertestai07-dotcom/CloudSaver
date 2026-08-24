@@ -46,6 +46,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -54,9 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.cloudsaver.ui.theme.BrandCyan
 import app.cloudsaver.ui.theme.BrandIndigo
-import app.cloudsaver.ui.theme.BrandMint
 import app.cloudsaver.ui.theme.BrandViolet
 import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
@@ -103,21 +102,35 @@ fun AppBackground(content: @Composable () -> Unit) {
             .fillMaxSize()
             .background(scheme.background)
     ) {
+        // The glows live in their own clipped layer behind the content.
+        //
+        // They used to be siblings of the content inside an unclipped Box, so
+        // a blurred circle offset past the edge spilled over whatever sat
+        // above it - most visibly as a green smear across the navigation bar,
+        // which reads as a rendering fault rather than as depth. Clipping the
+        // layer keeps the wash inside the page, and the second circle is now
+        // the brand indigo: a cyan glow on a dark background is simply green.
         Box(
             modifier = Modifier
-                .size(320.dp)
-                .offset(x = (-90).dp, y = (-120).dp)
-                .blur(90.dp)
-                .background(BrandIndigo.copy(alpha = glow), CircleShape)
-        )
-        Box(
-            modifier = Modifier
-                .size(260.dp)
-                .align(Alignment.BottomEnd)
-                .offset(x = 90.dp, y = 110.dp)
-                .blur(90.dp)
-                .background(BrandCyan.copy(alpha = glow * 0.8f), CircleShape)
-        )
+                .matchParentSize()
+                .clip(RectangleShape)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(320.dp)
+                    .offset(x = (-90).dp, y = (-120).dp)
+                    .blur(90.dp)
+                    .background(BrandIndigo.copy(alpha = glow), CircleShape)
+            )
+            Box(
+                modifier = Modifier
+                    .size(260.dp)
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 90.dp, y = 110.dp)
+                    .blur(90.dp)
+                    .background(BrandViolet.copy(alpha = glow * 0.7f), CircleShape)
+            )
+        }
         content()
     }
     }
@@ -292,7 +305,14 @@ fun MetricGrid(tiles: List<@Composable (Modifier) -> Unit>) {
 }
 
 /** Every progress tile is this tall, whatever it holds. */
-val TileHeight = 104.dp
+/**
+ * Tall enough for a big number and two lines of label.
+ *
+ * Fixed, so a count going from 9 to 10 cannot make the grid jump - and
+ * generous, because the label shrinks to fit the width but has nowhere to go
+ * if the cell is too short for its second line.
+ */
+val TileHeight = 112.dp
 
 /**
  * One settings row: icon, title, one line of what it does, then the control.

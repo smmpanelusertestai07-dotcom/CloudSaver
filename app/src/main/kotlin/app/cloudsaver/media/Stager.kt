@@ -85,6 +85,8 @@ class Stager(private val context: Context, private val db: AppDb) {
                     stagePath = stageFile.absolutePath,
                     outputName = stageFile.name,
                     outputBytes = stageFile.length(),
+                    srcPixels = result.srcPixels,
+                    outPixels = result.outPixels,
                     outputSha256 = sha,
                     outputFolder = folder.name,
                     presetUsed = options.preset.name,

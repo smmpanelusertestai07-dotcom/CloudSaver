@@ -41,8 +41,8 @@
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="chip_space">Storage low</string>
-    <string name="count_waiting">Waiting to optimise</string>
-    <string name="count_in_folder">Optimised, waiting for your cloud</string>
+    <string name="count_waiting">To optimise</string>
+    <string name="count_in_folder">In upload folder</string>
     <string name="count_confirmed">Backed up</string>
     <string name="count_skipped">Skipped</string>
     <string name="hero_saved_label">Space saved</string>
@@ -507,7 +507,7 @@
     <string name="onb_albums_text">Only the albums you tick get a light copy. Everything else is left completely alone.</string>
     <string name="onb_albums_confirm">These are right</string>
     <string name="onb_albums_all">Select all</string>
-    <string name="onb_albums_none">Clear all</string>
+    <string name="onb_albums_none">Deselect all</string>
     <string name="onb_albums_changeable">You can change this any time in Settings.</string>
     <string name="onb_ready_title">Ready to start</string>
     <string name="onb_ready_text">Nothing has been copied yet. Here is what will happen when you start.</string>
@@ -516,7 +516,6 @@
     <string name="onb_ready_quality">Quality</string>
     <string name="onb_ready_when">Runs</string>
     <string name="onb_ready_cloud">Your cloud app</string>
-    <string name="onb_ready_trial">Want proof first? Try it on three photos — your originals stay untouched.</string>
     <string name="onb_resume_title">Picking up where you left off</string>
     <string name="onb_resume_text">Setup was not finished, so nothing has run yet.</string>
     <string name="copy_path_action">Copy folder path</string>
@@ -541,9 +540,7 @@
     <string name="onb4_grant">Grant usage access</string>
     <string name="onb5_title">5. Point your cloud app here</string>
     <string name="onb5_open">Open %1$s</string>
-    <string name="onb6_run">Optimise 3 files</string>
-    <string name="onb6_running">Running…</string>
-    <string name="onb6_none">No items found yet. Check the permission.</string>
+    <string name="onb6_running">Optimising\u2026</string>
 
     <!-- setup: cloud step, power, folders, promises -->
     <string name="onb5_found">Found: %1$s</string>
@@ -590,9 +587,9 @@
 
     <!-- quality page -->
     <string name="quality_explained_title">Quality explained</string>
-    <string name="quality_measured_title">On this phone so far</string>
-    <string name="quality_measured_photos">Your photos came out %1$s smaller on average (%2$s files).</string>
-    <string name="quality_measured_videos">Your videos came out %1$s smaller on average (%2$s files).</string>
+    <string name="quality_measured_title">Measured on your files</string>
+    <string name="quality_measured_photos">Photos: %1$s smaller on average, measured on %2$s of your files. Detail is kept up to %3$d MP.</string>
+    <string name="quality_measured_videos">Videos: %1$s smaller on average, measured on %2$s of your files. Detail is kept up to %3$d px across.</string>
     <string name="quality_measured_none">Nothing has been optimised yet, so there is nothing measured to show.</string>
     <string name="quality_originals_safe">Whatever the setting, your originals are never edited, moved or deleted by this.</string>
     <string name="quality_codec_title">H.264 or HEVC?</string>
@@ -642,10 +639,6 @@
     <string name="biggest_cannot_open">Cannot open this file. It may have been moved or deleted.</string>
     <string name="kind_photo">Photo</string>
     <string name="kind_video">Video</string>
-    <plurals name="onb_ready_what_minus">
-        <item quantity="one">%1$s, minus %2$d album</item>
-        <item quantity="other">%1$s, minus %2$d albums</item>
-    </plurals>
     <plurals name="activity_retention">
         <item quantity="one">Kept automatically on this phone for %1$d day, up to %2$s entries. Nothing here is ever sent anywhere.</item>
         <item quantity="other">Kept automatically on this phone for %1$d days, up to %2$s entries. Nothing here is ever sent anywhere.</item>
@@ -677,20 +670,23 @@
     <string name="calc_check_inside">Check this number inside your cloud app.</string>
     <string name="calc_your_gallery">Your gallery</string>
     <string name="calc_quality_header">Quality</string>
-    <string name="calc_quality_photos">Photos come out about %1$d%% smaller.</string>
-    <string name="calc_quality_videos">Videos come out about %1$d%% smaller.</string>
+    <string name="calc_quality_photos">Photos: about %1$d%% smaller, up to %2$d MP kept.</string>
+    <string name="calc_quality_videos">Videos: about %1$d%% smaller, up to %2$d px across kept.</string>
     <string name="calc_quality_limits">Photos stay up to 16 MP, videos up to 1080p.</string>
     <string name="calc_basis_measured">Measured from %1$s of your photos and %2$s of your videos.</string>
     <string name="calc_basis_rough">Rough estimate \u2014 it becomes exact after your first 20 photos and 20 videos are optimised.</string>
     <string name="list_search">Search by name or album</string>
     <string name="list_clear_search">Clear search</string>
     <string name="list_more_actions">More actions</string>
-    <string name="list_clear_selection">Clear</string>
+    <string name="list_clear_selection">Deselect all</string>
     <string name="list_selected">%1$d selected \u00b7 frees %2$s</string>
     <string name="list_select_all">Select all</string>
     <string name="list_sort_largest">Largest</string>
     <string name="list_sort_oldest">Oldest</string>
     <string name="list_sort_saved">Most saved</string>
+    <string name="dupes_sort_space">Most space</string>
+    <string name="dupes_sort_copies">Most copies</string>
+    <string name="dupes_sort_name">Name</string>
     <string name="list_open">Open</string>
     <string name="list_optimise_first">Optimise this first</string>
     <string name="list_never">Never optimise this file</string>
@@ -778,4 +774,35 @@
     <string name="volume_switch_confirm">Change location</string>
     <string name="onb_ready_where">Where CloudSaver keeps its files</string>
     <string name="onb_ready_sd_note">SD cards are slower and can be removed. If it is removed, CloudSaver pauses and nothing is lost.</string>
+    <string name="onb_ready_what_albums">%1$s in %2$d of %3$d albums</string>
+    <string name="trial_title">See it on a few photos first</string>
+    <plurals name="trial_body">
+        <item quantity="one">Optimises %d photo so you can compare before and after. Your original is not touched.</item>
+        <item quantity="other">Optimises %d photos so you can compare before and after. Your originals are not touched.</item>
+    </plurals>
+    <plurals name="trial_action">
+        <item quantity="one">Try it on %d photo</item>
+        <item quantity="other">Try it on %d photos</item>
+    </plurals>
+    <string name="trial_none">No photos are waiting, so there is nothing to try it on yet.</string>
+    <string name="trial_done">Trial finished</string>
+    <string name="trial_activity">Trial run on a few photos</string>
+    <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
+    <string name="trial_kept_detail">Detail kept: %1$d%% of the original pixels.</string>
+    <string name="quality_current_title">Your setting</string>
+    <string name="quality_current_limits">Photos up to %1$d MP, video up to %2$d px across, saved at JPEG quality %3$d.</string>
+    <string name="quality_current_headroom">That is about %1$s times more detail than a phone screen can display.</string>
+    <string name="about_quality_title">Quality setting</string>
+    <string name="about_quality_line">%1$s · photos up to %2$d MP, video up to %3$d px across</string>
+    <string name="about_quality_change">Change or read how it works</string>
+    <string name="detail_kept">Detail kept</string>
+    <string name="detail_kept_value">%1$d%% of the original pixels</string>
+    <string name="detail_kept_all">All of them — this file was already under the limit</string>
+    <string name="quality_kept_overall">Detail kept: %1$d%% on average</string>
+    <string name="quality_kept_overall_sub">Measured across %1$d optimised files on this phone.</string>
+    <string name="quality_kept_none">Detail kept is measured once files have been optimised.</string>
+    <string name="quality_detail_title">Detail kept</string>
+    <string name="quality_detail_body">How much of the original\'s detail survives. Anything already under the limit keeps all of it \u2014 it is only re-saved, never shrunk.</string>
+    <string name="quality_detail_photo">%1$d MP photo</string>
+    <string name="quality_detail_kept">%1$d%% kept</string>
 </resources>

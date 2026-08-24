@@ -133,7 +133,15 @@ object VideoCompressor {
                 val outDur = if (export.durationMs > 0) export.durationMs else probeDurationMs(outFile)
                 val outBps = if (outDur > 0) outBytes * 8000L / outDur else Long.MAX_VALUE
                 if (BitrateCalc.resultAcceptable(srcBytes, outBytes, outBps, targetBps, probe.durationMs, outDur)) {
-                    return CompressResult(outFile, outBytes, asIs = false, reason = "compressed_${attempt.label}$hdrTag", ext = "mp4")
+                    return CompressResult(
+                        outFile,
+                        outBytes,
+                        asIs = false,
+                        reason = "compressed_${attempt.label}$hdrTag",
+                        ext = "mp4",
+                        srcPixels = upright.first.toLong() * upright.second.toLong(),
+                        outPixels = outW.toLong() * outH.toLong()
+                    )
                 }
                 AppLog.log(
                     context, "video",

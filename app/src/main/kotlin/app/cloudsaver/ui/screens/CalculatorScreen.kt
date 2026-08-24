@@ -56,6 +56,7 @@ import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandMuted
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
+import app.cloudsaver.core.logic.QualityKept
 
 /**
  * "How much of my gallery fits in my cloud?"
@@ -294,7 +295,9 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     Spacer(Modifier.width(10.dp))
                     Text(
                         stringResource(
-                            R.string.calc_quality_photos, profile.photos.shrinkPercent
+                            R.string.calc_quality_photos,
+                            profile.photos.shrinkPercent,
+                            QualityKept.photoCapMp(options.preset)
                         ),
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -312,7 +315,9 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     Spacer(Modifier.width(10.dp))
                     Text(
                         stringResource(
-                            R.string.calc_quality_videos, profile.videos.shrinkPercent
+                            R.string.calc_quality_videos,
+                            profile.videos.shrinkPercent,
+                            QualityKept.videoCapLongSide(options.preset)
                         ),
                         style = MaterialTheme.typography.bodyMedium
                     )

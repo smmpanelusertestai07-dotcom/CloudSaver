@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,6 +68,11 @@ import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Compress
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Movie
+import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.QualityKept
+import androidx.compose.material.icons.outlined.Straighten
+import androidx.compose.material.icons.outlined.Tune
+import app.cloudsaver.ui.components.SegmentedChoice
 
 @Composable
 private fun HelpPage(
@@ -216,14 +222,113 @@ fun HelpFaqScreen(nav: NavHostController) {
 @Composable
 fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
     val measured by vm.measuredQuality.collectAsStateWithLifecycle()
+    val kept by vm.detailKept.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.refreshMeasuredQuality() }
 
+    val options by vm.options.collectAsStateWithLifecycle()
+    val preset = options.preset
+
     HelpPage(nav, stringResource(R.string.quality_explained_title)) {
+        // Which setting is on right now, what it means in numbers, and the
+        // other two - all three visible, so choosing does not mean guessing
+        // what the names stand for.
+        AppCard(modifier = Modifier.padding(vertical = 4.dp), tonal = true) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.quality_current_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            SegmentedChoice(
+                listOf(
+                    Preset.STORAGE_SAVER.name to stringResource(R.string.preset_storage),
+                    Preset.BALANCED.name to stringResource(R.string.preset_balanced),
+                    Preset.MAX_SAVER.name to stringResource(R.string.preset_max)
+                ),
+                preset.name
+            ) { vm.setPreset(Preset.valueOf(it)) }
+            Text(
+                stringResource(
+                    R.string.quality_current_limits,
+                    QualityKept.photoCapMp(preset),
+                    QualityKept.videoCapLongSide(preset),
+                    QualityKept.jpegQuality(preset)
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+            Text(
+                stringResource(
+                    R.string.quality_current_headroom,
+                    String.format(java.util.Locale.US, "%.0f", QualityKept.screenHeadroom(preset))
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Text(
+                stringResource(R.string.applies_to_new_only),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+
         QualityBlock(
             Icons.Outlined.AutoAwesome,
             stringResource(R.string.quality_what_title),
             stringResource(R.string.quality_what)
         )
+
+        // Detail kept, per common size, on the preset that is actually on.
+        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Straighten,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.quality_detail_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                stringResource(R.string.quality_detail_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
+            )
+            for (mp in listOf(12.0, 24.0, 48.0)) {
+                KeyValueRow(
+                    stringResource(R.string.quality_detail_photo, mp.toInt()),
+                    stringResource(
+                        R.string.quality_detail_kept,
+                        QualityKept.photoDetailKeptPercent(mp, preset)
+                    )
+                )
+            }
+            for ((label, side) in listOf("1080p" to 1920, "4K" to 3840)) {
+                KeyValueRow(
+                    label,
+                    stringResource(
+                        R.string.quality_detail_kept,
+                        QualityKept.videoDetailKeptPercent(side, preset)
+                    )
+                )
+            }
+        }
 
         AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -293,7 +398,8 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                         stringResource(
                             R.string.quality_measured_photos,
                             "${measured.photoShrinkPercent}%",
-                            Formats.count(measured.photoCount)
+                            Formats.count(measured.photoCount),
+                            QualityKept.photoCapMp(preset)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 6.dp)
@@ -304,12 +410,30 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                         stringResource(
                             R.string.quality_measured_videos,
                             "${measured.videoShrinkPercent}%",
-                            Formats.count(measured.videoCount)
+                            Formats.count(measured.videoCount),
+                            QualityKept.videoCapLongSide(preset)
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
+            }
+            // The one figure that answers "how much quality did I lose" with a
+            // measurement instead of a policy: the pixels the encoder really
+            // kept, averaged over the files it really encoded.
+            kept?.let { k ->
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                Text(
+                    stringResource(R.string.quality_kept_overall, k.percent),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.quality_kept_overall_sub, k.files),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
         }
 
@@ -491,6 +615,8 @@ fun HelpLicensesScreen(nav: NavHostController) {
 
 @Composable
 fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
+    val options by vm.options.collectAsStateWithLifecycle()
+    val preset = options.preset
     HelpPage(nav, stringResource(R.string.help_about)) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -587,6 +713,52 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                     KeyValueRow("Build", BuildConfig.VERSION_CODE.toString())
                 }
             }
+        }
+
+        // The setting a reader is most likely to want from this page, shown as
+        // a fact with one way to act on it. The control itself stays on Quality
+        // explained: two places to change the same thing is two places to
+        // disagree about what it currently is.
+        AppCard(
+            modifier = Modifier.padding(top = 10.dp),
+            onClick = { nav.navigate(Routes.HELP_QUALITY) }
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Tune,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.about_quality_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text(
+                stringResource(
+                    R.string.about_quality_line,
+                    stringResource(
+                        when (preset) {
+                            Preset.STORAGE_SAVER -> R.string.preset_storage
+                            Preset.BALANCED -> R.string.preset_balanced
+                            Preset.MAX_SAVER -> R.string.preset_max
+                        }
+                    ),
+                    QualityKept.photoCapMp(preset),
+                    QualityKept.videoCapLongSide(preset)
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            Text(
+                stringResource(R.string.about_quality_change),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
         AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {

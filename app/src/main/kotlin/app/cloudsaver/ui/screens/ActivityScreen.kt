@@ -179,7 +179,7 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                 body = stringResource(R.string.activity_empty_body)
             )
         } else {
-            LazyColumn(Modifier.fillMaxSize()) {
+            LazyColumn(Modifier.weight(1f)) {
                 var lastDay = ""
                 for (row in rows) {
                     val day = Formats.date(row.atMs)

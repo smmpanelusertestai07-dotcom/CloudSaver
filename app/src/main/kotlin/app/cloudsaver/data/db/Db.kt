@@ -47,6 +47,13 @@ data class ItemRow(
     val outputUri: String? = null,
     val outputName: String? = null,
     val outputBytes: Long? = null,
+    /**
+     * Pixels the encoder actually read and actually wrote. Zero means unknown
+     * (an as-is copy, or a format the app never decoded), which every reader
+     * treats as "no detail figure" rather than as a 100% or 0% claim.
+     */
+    val srcPixels: Long = 0,
+    val outPixels: Long = 0,
     val outputSha256: String? = null,
     val outputFolder: String? = null,
     val presetUsed: String? = null,
@@ -283,6 +290,43 @@ interface ItemDao {
             "ORDER BY captureAt DESC LIMIT :limit"
     )
     suspend fun newestNew(limit: Int): List<ItemRow>
+
+    /**
+     * The newest photos still waiting, for the three-file trial.
+     *
+     * Photos only. A trial exists to give quick proof, and encoding one 4K
+     * clip on a phone can take minutes - long enough that "try it" reads as
+     * broken rather than as careful.
+     */
+    @Query(
+        "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND isVideo = 0 ORDER BY captureAt DESC LIMIT :limit"
+    )
+    suspend fun newestNewPhotos(limit: Int): List<ItemRow>
+
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND isVideo = 0"
+    )
+    fun waitingPhotoCountFlow(): Flow<Int>
+
+    /**
+     * Detail kept across every file the app really encoded, and how many that
+     * is.
+     *
+     * Averaged per file, not per pixel: the question a person is asking is
+     * "what happened to my photos", and one 8K video should not outvote two
+     * hundred of them. Rows with no recorded pixel counts are excluded rather
+     * than counted as either 0% or 100%.
+     */
+    @Query(
+        "SELECT COALESCE(AVG(CAST(outPixels AS REAL) * 100.0 / srcPixels), 0) FROM items " +
+            "WHERE srcPixels > 0 AND outPixels > 0"
+    )
+    fun detailKeptPercentFlow(): Flow<Double>
+
+    @Query("SELECT COUNT(*) FROM items WHERE srcPixels > 0 AND outPixels > 0")
+    fun detailKeptSampleFlow(): Flow<Int>
 
 
     @Query("SELECT * FROM items WHERE state = 'STAGED'")
@@ -739,7 +783,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -882,12 +926,28 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v5 records the pixels each encode read and wrote, so the detail-kept
+         * figure is measured per file instead of inferred from the preset.
+         * Existing rows keep 0, which reads as "not measured" everywhere.
+         */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE `items` ADD COLUMN `srcPixels` INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execSQL(
+                    "ALTER TABLE `items` ADD COLUMN `outPixels` INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
          * the app on the first launch after an update.
          */
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         @Volatile
         private var instance: AppDb? = null

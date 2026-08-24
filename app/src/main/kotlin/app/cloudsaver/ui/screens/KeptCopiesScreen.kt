@@ -46,7 +46,11 @@ import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.Formats
 
 @Composable
-private fun Page(nav: NavHostController, title: String, content: @Composable () -> Unit) {
+private fun Page(
+    nav: NavHostController,
+    title: String,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.padding(top = 8.dp, start = 4.dp, end = 16.dp),
@@ -86,7 +90,7 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
             )
             return@Page
         }
-        LazyColumn(Modifier.padding(horizontal = 16.dp)) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             item("intro") {
                 AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
                     Text(

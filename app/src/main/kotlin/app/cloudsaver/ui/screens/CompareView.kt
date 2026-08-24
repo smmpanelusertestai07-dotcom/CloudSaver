@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import app.cloudsaver.core.logic.QualityKept
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
@@ -161,6 +162,19 @@ fun CompareSheet(
                             )
                         )
                     }
+                }
+                // What the encoder really did to this file, not what the preset
+                // allows. Absent when the pixels were never recorded, because a
+                // blank is honest and an invented percentage is not.
+                QualityKept.measuredDetailKeptPercent(row.srcPixels, row.outPixels)?.let { kept ->
+                    KeyValueRow(
+                        stringResource(R.string.detail_kept),
+                        if (kept >= 100) {
+                            stringResource(R.string.detail_kept_all)
+                        } else {
+                            stringResource(R.string.detail_kept_value, kept)
+                        }
+                    )
                 }
                 Text(
                     stringResource(R.string.compare_hint),

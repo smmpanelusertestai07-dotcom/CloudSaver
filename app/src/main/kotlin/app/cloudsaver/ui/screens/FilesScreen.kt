@@ -149,7 +149,10 @@ fun FilesScreen(vm: AppViewModel) {
                 }
             )
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // weight, not fillMaxSize: inside a Column the latter asks for
+            // the parent's whole height, so the list overflowed the screen
+            // and its rows drew on top of the header above it.
+            LazyColumn(modifier = Modifier.weight(1f)) {
                 items(items, key = { it.id }) { row ->
                     AppCard(
                         modifier = Modifier

@@ -69,6 +69,7 @@ import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PowerPages
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Savings
@@ -83,6 +84,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Bolt
 import app.cloudsaver.core.logic.HomeAction
+import app.cloudsaver.ui.components.TrialCard
 
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
@@ -101,9 +103,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val skipReasons by vm.skipReasons.collectAsStateWithLifecycle()
     val statusWaiting by vm.statusWaiting.collectAsStateWithLifecycle()
     val running by vm.running.collectAsStateWithLifecycle()
+    val trialSize by vm.trialSize.collectAsStateWithLifecycle()
+    val testRunning by vm.testRunning.collectAsStateWithLifecycle()
+    val testItems by vm.testRun.collectAsStateWithLifecycle()
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
+    val detailKept by vm.detailKept.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -249,6 +255,26 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             Modifier.weight(1f)
                         )
                     }
+                }
+            }
+            // The cost side of the same story. Space saved on its own invites
+            // "yes, but what did it cost me?", and this is the measured answer
+            // rather than a reassuring adjective.
+            detailKept?.let { k ->
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.HighQuality,
+                        contentDescription = null,
+                        tint = OnBrandMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(R.string.quality_kept_overall, k.percent),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnBrandMuted
+                    )
                 }
             }
             // What finishing the queue would be worth. Labelled an estimate
@@ -481,6 +507,23 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                 }
             }
+        }
+
+        // The trial, until there is something real to look at instead.
+        //
+        // Skipping it during setup used to lose it for good, and it is the
+        // cheapest answer to "what will this actually do to my photos". Once
+        // files have genuinely been optimised the Files screen shows every
+        // before-and-after there is, so the trial stops being offered rather
+        // than sitting there forever proving something already proven.
+        if (processed == 0 && trialSize > 0) {
+            Spacer(Modifier.height(14.dp))
+            TrialCard(
+                size = trialSize,
+                running = testRunning,
+                results = testItems,
+                onRun = { vm.startTestRun() }
+            )
         }
 
         // Today's upload allowance, and when it refills. Without this, an app

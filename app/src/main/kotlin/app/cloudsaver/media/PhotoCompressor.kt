@@ -181,7 +181,15 @@ object PhotoCompressor {
                 // EXIF write failure is not fatal.
             }
 
-            return CompressResult(outFile, outFile.length(), asIs = false, reason = "compressed", ext = "jpg")
+            return CompressResult(
+                outFile,
+                outFile.length(),
+                asIs = false,
+                reason = "compressed",
+                ext = "jpg",
+                srcPixels = bounds.outWidth.toLong() * bounds.outHeight.toLong(),
+                outPixels = bitmap.width.toLong() * bitmap.height.toLong()
+            )
         } finally {
             bitmap.recycle()
         }

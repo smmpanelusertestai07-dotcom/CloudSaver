@@ -23,10 +23,14 @@ val OnBrandMuted = Color(0xE6FFFFFF)
 val OnBrandFaint = Color(0xBFFFFFFF)
 
 // Brand tones used by gradients and the logo.
-val BrandCyan = Color(0xFF56D6F2)
+//
+// Deliberately indigo through violet, with no green or cyan member. Those two
+// were here, and every soft-edged glow drawn from them read on a dark screen
+// as a green stain over whatever it fell behind - reported as a bug twice
+// before the cause was found. Keeping them out of the palette is what stops
+// the next gradient from reintroducing it.
 val BrandIndigo = Color(0xFF5B63F0)
 val BrandViolet = Color(0xFF4B3FD4)
-val BrandMint = Color(0xFF19C7A6)
 
 val LightScheme = lightColorScheme(
     primary = Color(0xFF4B4DDB),
@@ -35,9 +39,10 @@ val LightScheme = lightColorScheme(
     onPrimaryContainer = Color(0xFF120B63),
     inversePrimary = Color(0xFFC1C1FF),
 
-    // The secondary family is the brand's cyan, not a mint green. The
-    // navigation bar's selected indicator is drawn from secondaryContainer,
-    // and a green pill under an indigo header reads as a rendering fault.
+    // The secondary family is a blue that belongs to the indigo brand, not a
+    // mint green. The navigation bar draws its selected indicator from
+    // secondaryContainer, and a green pill under an indigo header reads as a
+    // rendering fault rather than as a selection.
     secondary = Color(0xFF2A5C9A),
     onSecondary = Color(0xFFFFFFFF),
     secondaryContainer = Color(0xFFD6E3FF),
@@ -81,8 +86,8 @@ val DarkScheme = darkColorScheme(
     onPrimaryContainer = Color(0xFFE2E0FF),
     inversePrimary = Color(0xFF4B4DDB),
 
-    // See the light scheme: brand cyan, so the navigation indicator belongs
-    // to the same family as everything above it.
+    // See the light scheme: the same blue family, so the navigation indicator
+    // belongs with everything above it.
     secondary = Color(0xFFA9C7FF),
     onSecondary = Color(0xFF102A4C),
     secondaryContainer = Color(0xFF2B4468),

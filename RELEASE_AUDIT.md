@@ -118,3 +118,82 @@ Required by X5. Every item states done or not done, and why.
 | Video format | Depends on what the user's other devices can play. |
 | Theme, App lock, Alerts | Ordinary personal preferences. |
 | Files you excluded | A list of past decisions, shown only when non-empty. |
+
+---
+
+# 4.1.0 — clarification patch X6 and the screenshot round
+
+Point by point against the message that arrived with five screenshots.
+
+## X6 — Exact duplicates is not removed
+
+Verified present, not re-added: `StorageScreen.kt` renders the row under
+**Find space** whenever `findSpace.duplicateBytes > 0`, with the reclaimable
+size on the right, and hides it at zero exactly like every other zero-value
+row. The screen behind it was already fully actionable per W4.3 — search,
+multi-select, **Remove extras** into the gallery trash, the keeper shown with
+its full folder path, and **Keep this one instead** on every extra. The one
+thing W4.3 listed that was missing was filters, so the group list now has
+**Most space / Most copies / Name**, matching the sort chips on Biggest files.
+
+## The rendering fault in the screenshot
+
+Not an animation problem. A `LazyColumn` inside a `Column` asks for the
+parent's *full* height unless it is given `weight(1f)`, so its rows are laid
+out past the bottom of the screen and the header ends up underneath them.
+Files and Activity were fixed first; auditing every `LazyColumn` in the app
+then found the same bug unreported on three more screens — Biggest files,
+Reclaim history and Kept copies. All seven now use `weight(1f)`.
+
+## The green shadow, in both themes
+
+Two separate causes, both removed:
+
+- `AppBackground` drew two large blurred circles as siblings of the content
+  with nothing clipping them, so they bled over whatever was on top. They now
+  live in a clipped layer behind the content, and the second circle is violet
+  rather than cyan — a soft cyan glow on a dark surface reads as green.
+- `BrandCyan` and `BrandMint` have been deleted from the palette entirely, not
+  merely stopped being used. A colour that is still there is a colour the next
+  gradient can pick up again.
+
+## Quality preserved, everywhere, measured
+
+This is the part that needed real work rather than new wording. The app was
+asserting quality figures it had no measurement for, so the encoders now
+record what they actually did:
+
+- `CompressResult` carries `srcPixels` and `outPixels`; both compressors fill
+  them from the dimensions they already had in hand, at no extra cost.
+- Room v5 stores them per file (`MIGRATION_4_5`, covered by `MigrationTest`).
+  Rows written before this keep 0, which every reader treats as "not
+  measured" rather than as 0%.
+- `QualityKept.measuredDetailKeptPercent` returns null when it does not know,
+  and no screen invents a number in its place.
+
+Where the figure now appears: the Home hero, next to space saved, because
+"what did it cost me" is the immediate next question; the Quality explained
+screen, as an average over the files it was measured on; the per-file compare
+sheet; and the trial card, which used to end on "the photos still look the
+same on a phone" — a claim nobody could check — and now reports the pixels
+that actually survived those three files.
+
+## Current preset, shown and changeable
+
+- **Quality explained** already carried the segmented control; it keeps it.
+- **About** shows the selected preset with its real caps and links to that
+  control rather than duplicating it. Two places to change one setting is two
+  places to disagree about what it currently is.
+
+## Terminology
+
+"Clear all" → **Deselect all** (it deselected; it cleared nothing). "3 photos"
+against a button reading "Optimise 3 files" → both now say photos, and both
+now say the number that is really waiting: the button was hard-coded to three
+on a phone that had two. "On this phone so far" → **Measured on your files**.
+Video caps read "1920 px across" rather than "1920 across".
+
+## Still not done
+
+W12.3, the manual pass on a real phone, is unchanged from 4.0.0: it has not
+been done and cannot be done from a build container.

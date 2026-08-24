@@ -97,6 +97,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
     val removed by rvm.duplicatesRemoved.collectAsStateWithLifecycle()
     val pending by rvm.pendingIntent.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
+    var sort by rememberSaveable { mutableStateOf(DupeSort.SPACE) }
 
     LaunchedEffect(Unit) { rvm.loadDuplicates() }
 
@@ -115,9 +116,9 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             )
             return@Page
         }
-        val shown = remember(groups, query) {
+        val shown = remember(groups, query, sort) {
             val q = query.trim()
-            if (q.isEmpty()) {
+            val matched = if (q.isEmpty()) {
                 groups
             } else {
                 groups.filter { g ->
@@ -125,6 +126,11 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
                         e.displayName.contains(q, true) || e.album?.contains(q, true) == true
                     }
                 }
+            }
+            when (sort) {
+                DupeSort.SPACE -> matched.sortedByDescending { it.reclaimableBytes }
+                DupeSort.COPIES -> matched.sortedByDescending { it.extras.size }
+                DupeSort.NAME -> matched.sortedBy { it.keeper.displayName.lowercase() }
             }
         }
         val selectedBytes = shown.flatMap { it.extras }
@@ -134,6 +140,18 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
                 item("search") {
                     ListSearchField(query, { query = it }, Modifier.padding(top = 8.dp))
+                }
+                item("sort") {
+                    ChipRow(
+                        options = listOf(
+                            DupeSort.SPACE to stringResource(R.string.dupes_sort_space),
+                            DupeSort.COPIES to stringResource(R.string.dupes_sort_copies),
+                            DupeSort.NAME to stringResource(R.string.dupes_sort_name)
+                        ),
+                        selected = sort,
+                        onSelect = { sort = it },
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
                 }
                 item("intro") {
                     AppCard(modifier = Modifier.padding(vertical = 8.dp), tonal = true) {
@@ -309,7 +327,7 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
         val couldSave = rows.sumOf { savingFor(it, profile) }
         val rough = profile.photos.ratio <= 0.0 || profile.videos.ratio <= 0.0
 
-        LazyColumn(Modifier.padding(horizontal = 16.dp)) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             item("search") {
                 ListSearchField(query, { query = it }, Modifier.padding(top = 8.dp))
             }
@@ -370,6 +388,8 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
 }
 
 private enum class BiggestSort { LARGEST, OLDEST, SAVED }
+
+private enum class DupeSort { SPACE, COPIES, NAME }
 
 /**
  * What optimising this one file would save, through the shared projection so
@@ -494,7 +514,7 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
             )
             return@Page
         }
-        LazyColumn(Modifier.padding(horizontal = 16.dp)) {
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             items(batches, key = { it.id }) { batch ->
                 AppCard(
                     modifier = Modifier.padding(vertical = 5.dp),

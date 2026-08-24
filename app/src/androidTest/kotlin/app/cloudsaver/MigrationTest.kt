@@ -68,6 +68,15 @@ class MigrationTest {
         db.items().update(carried.first().copy(txObserved = 4096, resendCount = 1))
         assertEquals(4096L, db.items().all().first().txObserved)
 
+        // v5's pixel counters: absent on an upgraded row, which is exactly how
+        // the UI tells "not measured" apart from "no detail kept".
+        assertEquals(0L, carried.first().srcPixels)
+        assertEquals(0L, carried.first().outPixels)
+        db.items().update(
+            carried.first().copy(srcPixels = 48_000_000, outPixels = 16_000_000)
+        )
+        assertEquals(16_000_000L, db.items().all().first().outPixels)
+
         // v4's columns and tables have to be there too.
         assertEquals(0, db.reclaim().itemsOf(1).size)
         assertNull("nothing hashed yet", carried.first().originalSha256)
