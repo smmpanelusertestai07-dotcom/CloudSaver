@@ -41,7 +41,9 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
+import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AnimatedNumber
@@ -67,9 +69,11 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
     val gallery by vm.calcGallery.collectAsStateWithLifecycle()
     val ratios by vm.calcRatios.collectAsStateWithLifecycle()
     val source by vm.calcSource.collectAsStateWithLifecycle()
+    val profile by vm.profile.collectAsStateWithLifecycle()
 
     LaunchedEffect(options.preset, options.codec, options.excludedBuckets, source) {
         vm.refreshCalculator()
+        vm.refreshProfile()
     }
 
     var mode by remember(options.scope) {
@@ -83,6 +87,7 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
     }
     var mixOverride by remember { mutableStateOf<Float?>(null) }
     var freeText by remember { mutableStateOf("") }
+    var detailsOpen by remember { mutableStateOf(false) }
     var prefilled by remember { mutableStateOf(false) }
 
     val cloudApp = CloudApps.byId(options.cloudSingle)
@@ -318,26 +323,127 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
             }
 
             Spacer(Modifier.height(10.dp))
-            AppCard {
-                Text(
-                    when (options.preset) {
-                        Preset.STORAGE_SAVER -> stringResource(R.string.calc_quality_storage)
-                        Preset.BALANCED -> stringResource(R.string.calc_quality_balanced)
-                        Preset.MAX_SAVER -> stringResource(R.string.calc_quality_max)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant
-                )
-                Text(
-                    stringResource(R.string.calc_estimate_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+            // Everything that produced the numbers above, folded away. Four
+            // lines on screen, the whole basis one tap below them.
+            AppCard(onClick = { detailsOpen = !detailsOpen }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.calc_details),
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        if (detailsOpen) "-" else "+",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                if (detailsOpen) {
+                    Column(Modifier.padding(top = 8.dp)) {
+                        if (profile.photos.count > 0) {
+                            Text(
+                                stringResource(
+                                    R.string.calc_detail_photos,
+                                    Formats.bytes(profile.photos.meanBytes),
+                                    "${profile.photos.shrinkPercent}%",
+                                    measuredWord(profile.photos.measured),
+                                    Formats.count(profile.photos.samples)
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant
+                            )
+                        }
+                        if (profile.videos.count > 0 && profile.videos.outMbPerMin > 0) {
+                            Text(
+                                stringResource(
+                                    R.string.calc_detail_videos,
+                                    fmt(profile.videos.outMbPerMin),
+                                    "${profile.videos.shrinkPercent}%",
+                                    measuredWord(profile.videos.measured),
+                                    Formats.count(profile.videos.samples)
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        if (profile.photos.asIsShare > 0 || profile.videos.asIsShare > 0) {
+                            Text(
+                                stringResource(
+                                    R.string.calc_detail_asis,
+                                    Formats.percent(profile.photos.asIsShare),
+                                    Formats.percent(profile.videos.asIsShare)
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        val error = maxOf(
+                            profile.photos.errorPercent, profile.videos.errorPercent
+                        )
+                        if (error > 0) {
+                            Text(
+                                stringResource(
+                                    R.string.calc_detail_accuracy, error.toInt()
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = scheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        // What-if, from the same maths and no extra controls.
+                        if (profile.videos.outMbPerMin > 0 && freeGb != null) {
+                            val other = if (options.codec == VideoCodec.H264) {
+                                VideoCodec.HEVC
+                            } else {
+                                VideoCodec.H264
+                            }
+                            val altMbMin = MediaProfile.videoMbPerMinFor(
+                                profile.videos, options.codec, other
+                            )
+                            if (altMbMin > 0) {
+                                val hours = freeGb * 1000.0 / altMbMin / 60.0
+                                Text(
+                                    stringResource(
+                                        R.string.calc_detail_whatif_codec,
+                                        other.name,
+                                        Formats.hours(hours)
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = scheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            when (options.preset) {
+                                Preset.STORAGE_SAVER -> stringResource(R.string.calc_quality_storage)
+                                Preset.BALANCED -> stringResource(R.string.calc_quality_balanced)
+                                Preset.MAX_SAVER -> stringResource(R.string.calc_quality_max)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            stringResource(R.string.calc_estimate_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+/** Three words at most: which of the two kinds of number this is. */
+@Composable
+private fun measuredWord(measured: Boolean): String = stringResource(
+    if (measured) R.string.calc_word_measured else R.string.calc_word_typical
+)
 
 /**
  * GB to two decimals, the way a cloud plan is written.

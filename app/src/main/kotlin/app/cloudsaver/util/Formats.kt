@@ -113,6 +113,13 @@ object Formats {
         return (b.toEpochDay() - a.toEpochDay()).toInt()
     }
 
+    /** "2026-08" and "2026", for grouping a long list by when things happened. */
+    fun monthKey(ms: Long): String =
+        SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date(ms))
+
+    fun yearKey(ms: Long): String =
+        SimpleDateFormat("yyyy", Locale.getDefault()).format(Date(ms))
+
     fun localDate(ms: Long): LocalDate =
         Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).toLocalDate()
 }

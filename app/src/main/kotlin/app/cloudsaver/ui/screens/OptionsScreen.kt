@@ -394,6 +394,25 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
 
+        val excludedFiles by vm.neverOptimiseCount.collectAsStateWithLifecycle()
+        if (excludedFiles > 0) {
+            OptionCard(
+                stringResource(R.string.never_optimise_title),
+                stringResource(R.string.never_optimise_hint)
+            ) {
+                Text(
+                    pluralStringResource(
+                        R.plurals.never_optimise_count, excludedFiles, excludedFiles
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                TextButton(onClick = { vm.clearNeverOptimise() }) {
+                    Text(stringResource(R.string.never_optimise_clear))
+                }
+            }
+        }
+
         SectionHeader(stringResource(R.string.opt_group_privacy))
         // 12-16. Switches
         OptionCard(stringResource(R.string.opt_lock), stringResource(R.string.opt_lock_hint)) {
@@ -417,6 +436,21 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             ) { vm.setFreeUpVerified30(it) }
         }
 
+
+        OptionCard(
+            stringResource(R.string.reclaim_reminder_title),
+            stringResource(R.string.reclaim_reminder_hint)
+        ) {
+            SegmentedChoice(
+                listOf(
+                    "0" to stringResource(R.string.reclaim_reminder_off),
+                    "1" to stringResource(R.string.calc_chip_gb, 1),
+                    "5" to stringResource(R.string.calc_chip_gb, 5),
+                    "10" to stringResource(R.string.calc_chip_gb, 10)
+                ),
+                o.reclaimReminderGb.toString()
+            ) { vm.setReclaimReminderGb(it.toInt()) }
+        }
 
         SectionHeader(stringResource(R.string.opt_group_backup_restore))
         // 17. Export / Import
@@ -452,6 +486,16 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     modifier = Modifier.padding(top = 6.dp)
                 )
             }
+        }
+
+        OptionCard(
+            stringResource(R.string.uninstall_title),
+            stringResource(R.string.uninstall_hint)
+        ) {
+            OutlinedButton(
+                onClick = { nav.navigate(Routes.UNINSTALL) },
+                modifier = Modifier.padding(top = 8.dp)
+            ) { Text(stringResource(R.string.uninstall_open)) }
         }
 
         Text(

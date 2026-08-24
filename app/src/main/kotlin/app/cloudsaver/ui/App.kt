@@ -33,7 +33,12 @@ import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
 import app.cloudsaver.ui.screens.FilesScreen
-import app.cloudsaver.ui.screens.FreeUpScreen
+import app.cloudsaver.ui.screens.BiggestFilesScreen
+import app.cloudsaver.ui.screens.DuplicatesScreen
+import app.cloudsaver.ui.screens.KeptCopiesScreen
+import app.cloudsaver.ui.screens.PrepareUninstallScreen
+import app.cloudsaver.ui.screens.ReclaimHistoryScreen
+import app.cloudsaver.ui.screens.ReclaimScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
 import app.cloudsaver.ui.screens.HelpFaqScreen
 import app.cloudsaver.ui.screens.HelpLicensesScreen
@@ -55,6 +60,11 @@ object Routes {
     const val OPTIONS = "options"
     const val FREE_UP = "freeup"
     const val ACTIVITY = "activity"
+    const val RECLAIM_HISTORY = "reclaim_history"
+    const val DUPLICATES = "duplicates"
+    const val BIGGEST = "biggest"
+    const val KEPT = "kept"
+    const val UNINSTALL = "uninstall"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
     const val HELP_QUALITY = "help_quality"
@@ -64,7 +74,7 @@ object Routes {
     const val HELP_ABOUT = "help_about"
 
     /** Screens behind the optional app lock. */
-    val LOCKED = setOf(FILES, OPTIONS, FREE_UP)
+    val LOCKED = setOf(FILES, OPTIONS, FREE_UP, RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT)
 }
 
 @Composable
@@ -84,6 +94,10 @@ fun App(vm: AppViewModel) {
 @Composable
 private fun MainNav(vm: AppViewModel) {
     val nav: NavHostController = rememberNavController()
+    // Reclaim keeps its own view model so a four-hundred-file selection
+    // survives a rotation; losing it silently is how someone deletes the
+    // wrong batch.
+    val reclaimVm: ReclaimViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: Routes.HOME
     val options by vm.options.collectAsStateWithLifecycle()
@@ -156,7 +170,12 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.FILES) { FilesScreen(vm) }
                 composable(Routes.STORAGE) { StorageScreen(vm, nav) }
                 composable(Routes.OPTIONS) { OptionsScreen(vm, nav) }
-                composable(Routes.FREE_UP) { FreeUpScreen(vm, nav) }
+                composable(Routes.FREE_UP) { ReclaimScreen(vm, reclaimVm, nav) }
+                composable(Routes.RECLAIM_HISTORY) { ReclaimHistoryScreen(reclaimVm, nav) }
+                composable(Routes.DUPLICATES) { DuplicatesScreen(reclaimVm, nav) }
+                composable(Routes.BIGGEST) { BiggestFilesScreen(vm, reclaimVm, nav) }
+                composable(Routes.KEPT) { KeptCopiesScreen(vm, nav) }
+                composable(Routes.UNINSTALL) { PrepareUninstallScreen(vm, nav) }
                 composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }

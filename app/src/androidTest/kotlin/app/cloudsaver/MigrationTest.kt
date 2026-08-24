@@ -13,6 +13,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,7 +44,7 @@ class MigrationTest {
     }
 
     @Test
-    fun version2DatabaseSurvivesTheUpgrade() = runBlocking {
+    fun version2DatabaseSurvivesEveryUpgrade() = runBlocking {
         seedVersion2()
 
         val db = Room.databaseBuilder(context, AppDb::class.java, dbName)
@@ -66,6 +67,33 @@ class MigrationTest {
         assertEquals(0, carried.first().resendCount)
         db.items().update(carried.first().copy(txObserved = 4096, resendCount = 1))
         assertEquals(4096L, db.items().all().first().txObserved)
+
+        // v4's columns and tables have to be there too.
+        assertEquals(0, db.reclaim().itemsOf(1).size)
+        assertNull("nothing hashed yet", carried.first().originalSha256)
+        assertNull("no profile until something is processed", db.profile().get("STORAGE_SAVER", "H264"))
+        db.profile().put(
+            app.cloudsaver.data.db.MediaProfileRow(
+                preset = "STORAGE_SAVER", codec = "H264", photoCount = 1, updatedAt = 1
+            )
+        )
+        assertNotNull(db.profile().get("STORAGE_SAVER", "H264"))
+        val batchId = db.reclaim().insertBatch(
+            app.cloudsaver.data.db.ReclaimBatchRow(
+                atMs = 1_700_000_000_000, mode = "FREE_UP_FULLY",
+                itemCount = 1, freedBytes = 2048, trashed = true
+            )
+        )
+        db.reclaim().insertItems(
+            listOf(
+                app.cloudsaver.data.db.ReclaimItemRow(
+                    batchId = batchId, fingerprint = "fp-1",
+                    displayName = "e2e_before_upgrade.jpg", originalBytes = 2048,
+                    optimisedBytes = 1024, trashed = true
+                )
+            )
+        )
+        assertEquals(1, db.reclaim().itemsOf(batchId).size)
 
         // And so must the three tables it created.
         db.ledger().insert(

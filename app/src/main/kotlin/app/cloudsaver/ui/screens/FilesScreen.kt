@@ -238,6 +238,29 @@ fun FilesScreen(vm: AppViewModel) {
                     }
                 }) { Text(stringResource(R.string.detail_open)) }
             },
+            icon = {
+                Row {
+                    if (row.state == app.cloudsaver.core.logic.ItemState.NEW.name ||
+                        row.state == app.cloudsaver.core.logic.ItemState.SKIP.name
+                    ) {
+                        TextButton(onClick = {
+                            vm.optimiseNow(row.id)
+                            detail = null
+                        }) { Text(stringResource(R.string.detail_optimise_now)) }
+                    }
+                    TextButton(onClick = {
+                        vm.setNeverOptimise(row.id, !row.neverOptimise)
+                        detail = null
+                    }) {
+                        Text(
+                            stringResource(
+                                if (row.neverOptimise) R.string.detail_optimise_again
+                                else R.string.never_optimise
+                            )
+                        )
+                    }
+                }
+            },
             title = { Text(row.displayName, maxLines = 2) },
             text = {
                 Column {
@@ -373,7 +396,8 @@ private fun badgeTone(row: ItemRow): BadgeTone {
     return when (state) {
         ItemState.NEW -> BadgeTone.NEUTRAL
         ItemState.STAGED, ItemState.RELEASED -> BadgeTone.PROGRESS
-        ItemState.GONE, ItemState.DONE, ItemState.FREED -> BadgeTone.SUCCESS
+        ItemState.GONE, ItemState.DONE, ItemState.FREED, ItemState.FREED_KEPT ->
+            BadgeTone.SUCCESS
         ItemState.SKIP, ItemState.UNKNOWN -> BadgeTone.MUTED
     }
 }
@@ -388,6 +412,7 @@ fun stateLabel(row: ItemRow): String {
         ItemState.GONE, ItemState.DONE -> stringResource(R.string.state_done)
         ItemState.SKIP -> stringResource(R.string.state_skip)
         ItemState.FREED -> stringResource(R.string.state_freed)
+        ItemState.FREED_KEPT -> stringResource(R.string.state_freed_kept)
         ItemState.UNKNOWN -> stringResource(R.string.state_unknown)
     }
 }

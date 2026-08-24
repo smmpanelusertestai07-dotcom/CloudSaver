@@ -168,7 +168,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                             val iRel =
                                 c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
                             while (c.moveToNext()) {
-                                if (Defaults.isOutputPath(c.getString(iRel))) continue
+                                if (Defaults.isAppOwnedPath(c.getString(iRel))) continue
                                 val bucket = c.getString(iBucket)
                                 if (bucket != null && bucket in skipBuckets) continue
                                 val size = c.getLong(iSize)
@@ -228,7 +228,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 // are dropped later by excludeOutputFolders(), which can also
                 // judge a folder by its contents. Only the cheap, certain case
                 // is short-circuited here.
-                if (Defaults.isOutputPath(rel)) continue
+                if (Defaults.isAppOwnedPath(rel)) continue
                 val name = c.getString(iName) ?: continue
                 val size = c.getLong(iSize)
                 if (size <= 0) continue

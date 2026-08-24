@@ -69,6 +69,96 @@ data class ItemRow(
     val encoderName: String? = null,
     /** Times a vanished copy was re-sent; two is the limit. */
     val resendCount: Int = 0,
+    /**
+     * SHA-256 of the ORIGINAL file, computed lazily and only where a size
+     * collision makes it worth the read. This is what makes duplicate
+     * detection a fact rather than a guess.
+     */
+    val originalSha256: String? = null,
+    /**
+     * Fingerprint of the item this one is a byte-identical copy of. Set means
+     * "already handled": never optimised, never released, never counted as a
+     * problem.
+     */
+    val duplicateOf: String? = null,
+    /** The user asked for this file to be left alone, permanently. */
+    val neverOptimise: Boolean = false,
+    /** Where the kept light copy lives once the original was replaced. */
+    val keptUri: String? = null,
+    /**
+     * Output size the profile predicted before this item was processed, kept
+     * against the real result so the app can state how wrong its estimates
+     * have been instead of implying they are exact.
+     */
+    val predictedBytes: Long = 0,
+    val updatedAt: Long = 0
+)
+
+/**
+ * One reclaim batch, so "what did I delete last week" has an answer.
+ *
+ * Kept for 30 days, which is exactly how long Android's own trash holds the
+ * files: past that there is nothing left to restore and nothing to say.
+ */
+@Entity(tableName = "reclaim_batches", indices = [Index("atMs")])
+data class ReclaimBatchRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val atMs: Long,
+    /** ReclaimMode name. */
+    val mode: String,
+    val itemCount: Int,
+    val freedBytes: Long,
+    /** True when the files went to the system trash rather than being erased. */
+    val trashed: Boolean
+)
+
+/** One file in a reclaim batch, with enough detail to find it again. */
+@Entity(
+    tableName = "reclaim_items",
+    indices = [Index("batchId"), Index("fingerprint")]
+)
+data class ReclaimItemRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val batchId: Long,
+    val fingerprint: String,
+    val displayName: String,
+    val album: String? = null,
+    val originalBytes: Long,
+    val optimisedBytes: Long,
+    /** The original's content uri, so a restore can un-trash exactly this file. */
+    val contentUri: String? = null,
+    val trashed: Boolean,
+    /** Set once the user restored it, so the row stops offering to. */
+    val restoredAt: Long? = null
+)
+
+/**
+ * What this phone's media actually looks like, per quality preset and codec.
+ *
+ * Every estimate the app shows is derived from here, so there is one place to
+ * be right and one place to say whether a figure was measured or assumed.
+ */
+@Entity(tableName = "media_profile", primaryKeys = ["preset", "codec"])
+data class MediaProfileRow(
+    val preset: String,
+    val codec: String,
+    val photoCount: Int = 0,
+    val photoBytes: Long = 0,
+    val photoMedianBytes: Long = 0,
+    val photoRatio: Double = 0.0,
+    val photoSamples: Int = 0,
+    val photoAsIsShare: Double = 0.0,
+    val videoCount: Int = 0,
+    val videoBytes: Long = 0,
+    val videoMedianBytes: Long = 0,
+    val videoMinutes: Double = 0.0,
+    val videoRatio: Double = 0.0,
+    val videoOutMbPerMin: Double = 0.0,
+    val videoSamples: Int = 0,
+    val videoAsIsShare: Double = 0.0,
+    /** Mean absolute percentage error of the last 200 predictions, per type. */
+    val photoErrorPercent: Double = 0.0,
+    val videoErrorPercent: Double = 0.0,
     val updatedAt: Long = 0
 )
 
@@ -156,6 +246,13 @@ data class StateCount(val state: String, val cnt: Int)
 /** Compression outcome sample for the cloud calculator. */
 data class RatioSample(val sizeBytes: Long, val outputBytes: Long, val durationMs: Long)
 
+/** What the profile predicted against what actually came out. */
+data class PredictionSample(
+    val sizeBytes: Long,
+    val outputBytes: Long,
+    val predictedBytes: Long
+)
+
 @Dao
 interface ItemDao {
 
@@ -234,6 +331,9 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL AND isVideo = :video")
     fun processedCountFlow(video: Boolean): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL AND isVideo = :video")
+    suspend fun processedCountFor(video: Boolean): Int
+
     /** Copies taken byte-for-byte; lastError carries the reason for those. */
     @Query(
         "SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL " +
@@ -247,6 +347,9 @@ interface ItemDao {
             "GROUP BY lastError ORDER BY cnt DESC LIMIT 5"
     )
     suspend fun asIsReasons(video: Boolean): List<StateCount>
+
+    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE state = 'NEW' AND originalMissing = 0")
+    suspend fun pendingBytes(): Long
 
     /** Bytes saved by work done since [fromMs] - what one run achieved. */
     @Query(
@@ -262,6 +365,80 @@ interface ItemDao {
             "GROUP BY skipReason ORDER BY cnt DESC LIMIT 6"
     )
     suspend fun skipReasons(): List<StateCount>
+
+    /**
+     * Originals whose size is shared with at least one other file, newest
+     * first. Only these are worth hashing: two files of different lengths
+     * cannot be byte-identical, so the read is skipped entirely.
+     */
+    @Query(
+        "SELECT * FROM items WHERE originalSha256 IS NULL AND originalMissing = 0 " +
+            "AND sizeBytes IN (" +
+            "SELECT sizeBytes FROM items WHERE originalMissing = 0 " +
+            "GROUP BY sizeBytes HAVING COUNT(*) > 1) " +
+            "ORDER BY sizeBytes DESC LIMIT :limit"
+    )
+    suspend fun sizeCollisions(limit: Int): List<ItemRow>
+
+    /** Every hashed original, for grouping byte-identical files. */
+    @Query(
+        "SELECT * FROM items WHERE originalSha256 IS NOT NULL AND originalMissing = 0 " +
+            "AND state != 'FREED' AND state != 'FREED_KEPT'"
+    )
+    suspend fun hashedOriginals(): List<ItemRow>
+
+    @Query("SELECT COUNT(*) FROM items WHERE neverOptimise = 1")
+    fun neverOptimiseCountFlow(): Flow<Int>
+
+    @Query("UPDATE items SET neverOptimise = 0 WHERE neverOptimise = 1")
+    suspend fun clearNeverOptimise()
+
+    /** The largest originals, for the "biggest space users" list. */
+    @Query(
+        "SELECT * FROM items WHERE originalMissing = 0 AND state != 'FREED' " +
+            "AND state != 'FREED_KEPT' ORDER BY sizeBytes DESC LIMIT :limit"
+    )
+    suspend fun largest(limit: Int): List<ItemRow>
+
+    /** Light copies the user kept, which are their files now. */
+    @Query("SELECT * FROM items WHERE keptUri IS NOT NULL ORDER BY captureAt DESC")
+    suspend fun keptCopies(): List<ItemRow>
+
+    @Query("SELECT COALESCE(SUM(outputBytes), 0) FROM items WHERE keptUri IS NOT NULL")
+    fun keptBytesFlow(): Flow<Long>
+
+    /**
+     * Everything reclaim may offer, before the per-item checks. The strict
+     * rules live in ReclaimRules; SQL only narrows the set.
+     */
+    @Query(
+        "SELECT * FROM items WHERE originalMissing = 0 AND contentUri IS NOT NULL " +
+            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
+            "AND evidence IN ('CONFIRMED_EXACT', 'CONFIRMED_PACED', 'CONFIRMED', 'VERIFIED') " +
+            "AND outputSha256 IS NOT NULL"
+    )
+    suspend fun reclaimCandidates(): List<ItemRow>
+
+    /** Prediction accuracy sample: what we said, and what happened. */
+    @Query(
+        "SELECT sizeBytes, outputBytes, predictedBytes FROM items " +
+            "WHERE outputBytes IS NOT NULL AND predictedBytes > 0 AND isVideo = :video " +
+            "ORDER BY updatedAt DESC LIMIT 200"
+    )
+    suspend fun predictionSamples(video: Boolean): List<PredictionSample>
+
+    /** Items added per month over the last half year, for the growth figure. */
+    @Query(
+        "SELECT strftime('%Y-%m', dateAdded, 'unixepoch') AS state, " +
+            "COUNT(*) AS cnt FROM items WHERE dateAdded > :sinceSeconds " +
+            "GROUP BY state ORDER BY state DESC"
+    )
+    suspend fun monthlyCounts(sinceSeconds: Long): List<StateCount>
+
+    @Query(
+        "SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE dateAdded > :sinceSeconds"
+    )
+    suspend fun bytesAddedSince(sinceSeconds: Long): Long
 
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
@@ -471,6 +648,53 @@ interface ActivityDao {
 }
 
 @Dao
+interface ReclaimDao {
+
+    @Insert
+    suspend fun insertBatch(row: ReclaimBatchRow): Long
+
+    @Insert
+    suspend fun insertItems(rows: List<ReclaimItemRow>)
+
+    @Query("SELECT * FROM reclaim_batches ORDER BY atMs DESC LIMIT :limit")
+    fun recentBatchesFlow(limit: Int): Flow<List<ReclaimBatchRow>>
+
+    @Query("SELECT * FROM reclaim_batches WHERE id = :id LIMIT 1")
+    suspend fun batch(id: Long): ReclaimBatchRow?
+
+    @Query("SELECT * FROM reclaim_items WHERE batchId = :batchId ORDER BY originalBytes DESC")
+    suspend fun itemsOf(batchId: Long): List<ReclaimItemRow>
+
+    @Query("SELECT * FROM reclaim_items WHERE batchId = :batchId ORDER BY originalBytes DESC")
+    fun itemsOfFlow(batchId: Long): Flow<List<ReclaimItemRow>>
+
+    @Query("UPDATE reclaim_items SET restoredAt = :at WHERE id = :id")
+    suspend fun markRestored(id: Long, at: Long)
+
+    /** History lives exactly as long as Android's own trash does. */
+    @Query("DELETE FROM reclaim_batches WHERE atMs < :before")
+    suspend fun pruneBatches(before: Long)
+
+    @Query(
+        "DELETE FROM reclaim_items WHERE batchId NOT IN (SELECT id FROM reclaim_batches)"
+    )
+    suspend fun pruneOrphanItems()
+}
+
+@Dao
+interface MediaProfileDao {
+
+    @Query("SELECT * FROM media_profile WHERE preset = :preset AND codec = :codec LIMIT 1")
+    suspend fun get(preset: String, codec: String): MediaProfileRow?
+
+    @Query("SELECT * FROM media_profile WHERE preset = :preset AND codec = :codec LIMIT 1")
+    fun flow(preset: String, codec: String): Flow<MediaProfileRow?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(row: MediaProfileRow)
+}
+
+@Dao
 interface CloudCapabilityDao {
 
     @Query("SELECT * FROM cloud_capability WHERE cloudId = :id LIMIT 1")
@@ -486,9 +710,10 @@ interface CloudCapabilityDao {
 @Database(
     entities = [
         ItemRow::class, BatchRow::class, DayBudgetRow::class,
-        LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class
+        LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
+        ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -499,6 +724,8 @@ abstract class AppDb : RoomDatabase() {
     abstract fun ledger(): LedgerDao
     abstract fun activity(): ActivityDao
     abstract fun capabilities(): CloudCapabilityDao
+    abstract fun reclaim(): ReclaimDao
+    abstract fun profile(): MediaProfileDao
 
     companion object {
         /** v2 adds the daily on-battery budget table (13.G). */
@@ -571,12 +798,70 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v4 adds duplicate detection, the reclaim history and the media
+         * profile that every estimate is derived from.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `originalSha256` TEXT")
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `duplicateOf` TEXT")
+                connection.execSQL(
+                    "ALTER TABLE `items` ADD COLUMN `neverOptimise` INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execSQL("ALTER TABLE `items` ADD COLUMN `keptUri` TEXT")
+                connection.execSQL(
+                    "ALTER TABLE `items` ADD COLUMN `predictedBytes` INTEGER NOT NULL DEFAULT 0"
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `reclaim_batches` (" +
+                        "`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "`atMs` INTEGER NOT NULL, `mode` TEXT NOT NULL, " +
+                        "`itemCount` INTEGER NOT NULL, `freedBytes` INTEGER NOT NULL, " +
+                        "`trashed` INTEGER NOT NULL)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reclaim_batches_atMs` " +
+                        "ON `reclaim_batches` (`atMs`)"
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `reclaim_items` (" +
+                        "`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "`batchId` INTEGER NOT NULL, `fingerprint` TEXT NOT NULL, " +
+                        "`displayName` TEXT NOT NULL, `album` TEXT, " +
+                        "`originalBytes` INTEGER NOT NULL, `optimisedBytes` INTEGER NOT NULL, " +
+                        "`contentUri` TEXT, `trashed` INTEGER NOT NULL, `restoredAt` INTEGER)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reclaim_items_batchId` " +
+                        "ON `reclaim_items` (`batchId`)"
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reclaim_items_fingerprint` " +
+                        "ON `reclaim_items` (`fingerprint`)"
+                )
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `media_profile` (" +
+                        "`preset` TEXT NOT NULL, `codec` TEXT NOT NULL, " +
+                        "`photoCount` INTEGER NOT NULL, `photoBytes` INTEGER NOT NULL, " +
+                        "`photoMedianBytes` INTEGER NOT NULL, `photoRatio` REAL NOT NULL, " +
+                        "`photoSamples` INTEGER NOT NULL, `photoAsIsShare` REAL NOT NULL, " +
+                        "`videoCount` INTEGER NOT NULL, `videoBytes` INTEGER NOT NULL, " +
+                        "`videoMedianBytes` INTEGER NOT NULL, `videoMinutes` REAL NOT NULL, " +
+                        "`videoRatio` REAL NOT NULL, `videoOutMbPerMin` REAL NOT NULL, " +
+                        "`videoSamples` INTEGER NOT NULL, `videoAsIsShare` REAL NOT NULL, " +
+                        "`photoErrorPercent` REAL NOT NULL, `videoErrorPercent` REAL NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, PRIMARY KEY(`preset`, `codec`))"
+                )
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
          * the app on the first launch after an update.
          */
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         @Volatile
         private var instance: AppDb? = null

@@ -11,6 +11,7 @@ import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.FgsBudget
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.db.AppDb
@@ -18,7 +19,9 @@ import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
+import app.cloudsaver.engine.DuplicateScanner
 import app.cloudsaver.engine.MaintainEngine
+import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.Stager
 import app.cloudsaver.util.AppLog
@@ -103,6 +106,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         }
 
         val deadline = startAt + min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft)
+        val profile = runCatching { ProfileBuilder(app).current(options) }
+            .getOrDefault(MediaProfile.Profile())
         var processed = 0
         var videoMsOnBattery = 0L
         var photosOnBattery = 0
@@ -152,7 +157,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 for (row in batch) {
                     if (System.currentTimeMillis() >= deadline || isStopped) break@loop
                     val itemStart = System.currentTimeMillis()
-                    val ok = stager.stageOne(row, live)
+                    val ratio = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
+                    val predicted = if (ratio > 0) (row.sizeBytes * ratio).toLong() else 0L
+                    val ok = stager.stageOne(row, live, predicted)
                     val took = System.currentTimeMillis() - itemStart
                     if (ok) {
                         processed++
@@ -192,8 +199,23 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     )
                 }
             }
+            // Duplicate hashing rides the same window as compression: it is
+            // disk work, so it belongs where the phone is already awake and
+            // plugged in rather than in its own wakeup.
+            runCatching {
+                val scanner = DuplicateScanner(app)
+                if (scanner.hashSome() > 0) scanner.markDuplicates()
+            }.onFailure { AppLog.log(app, "work", "duplicate scan failed: ${it.message}") }
+
             runCatching { MaintainEngine(app).run() }
                 .onFailure { AppLog.log(app, "work", "maintain failed: ${it.message}") }
+
+            // The profile is what every estimate is derived from, so it is
+            // rebuilt whenever there is new evidence to build it from.
+            if (processed > 0) {
+                runCatching { ProfileBuilder(app).rebuild(repo.current(), endOfRunNow()) }
+                    .onFailure { AppLog.log(app, "work", "profile failed: ${it.message}") }
+            }
         } finally {
             val endAt = System.currentTimeMillis()
             runCatching {
@@ -213,6 +235,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         }
         return Result.success()
     }
+
+    private fun endOfRunNow(): Long = System.currentTimeMillis()
 
     private fun plan(
         o: Options,

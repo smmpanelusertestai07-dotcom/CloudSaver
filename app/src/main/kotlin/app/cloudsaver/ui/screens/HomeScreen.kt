@@ -86,6 +86,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val statusWaiting by vm.statusWaiting.collectAsStateWithLifecycle()
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
+    val projection by vm.projectedSavings.collectAsStateWithLifecycle()
+    val findSpace by vm.findSpace.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -96,6 +98,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshCloudCaps()
         vm.refreshSkipReasons()
         vm.refreshPowerRequirements()
+        vm.refreshProjection()
+        if (options.reclaimReminderGb > 0) vm.refreshFindSpace()
     }
 
     val cleanupLauncher = rememberLauncherForActivityResult(
@@ -202,6 +206,16 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.9f)
             )
+            // What finishing the queue would be worth, from the same measured
+            // profile every other estimate uses.
+            if (projection > 0) {
+                Text(
+                    stringResource(R.string.hero_projection, Formats.bytes(projection)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
             // A single 4K clip can outweigh a thousand photos, so the two
             // numbers are worth keeping apart: this is the line that tells
             // someone whether turning videos on was worth it.
@@ -238,8 +252,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
         // Things that need the user's attention.
         val anyPower = power.any { !(it.readable && it.satisfied) }
+        val reclaimReady = options.reclaimReminderGb > 0 &&
+            findSpace.reclaimableBytes >= options.reclaimReminderGb * 1_000_000_000L
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.spaceLow
+            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped ||
+            reclaimReady
         AnimatedVisibility(
             visible = anyHealth,
             enter = fadeIn() + expandVertically(),
@@ -280,6 +297,27 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     if (health.spaceLow) {
                         StatusChip(stringResource(R.string.chip_space)) {
                             nav.navigate(Routes.STORAGE)
+                        }
+                    }
+                    // Opt-in only, and a chip rather than a notification: an
+                    // app that pings you to delete your photos is one you
+                    // learn to ignore.
+                    if (options.reclaimReminderGb > 0 &&
+                        findSpace.reclaimableBytes >=
+                        options.reclaimReminderGb * 1_000_000_000L
+                    ) {
+                        StatusChip(
+                            stringResource(
+                                R.string.chip_reclaim,
+                                Formats.bytes(findSpace.reclaimableBytes)
+                            )
+                        ) { nav.navigate(Routes.FREE_UP) }
+                    }
+                    // The phone stopped running us. Nothing else on this row
+                    // would show it, and the app would just look idle.
+                    if (health.backgroundWorkStopped) {
+                        StatusChip(stringResource(R.string.chip_stopped)) {
+                            vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
                         }
                     }
                 }
@@ -573,6 +611,8 @@ fun skipReasonLabel(reason: String): String = when (reason) {
     "removed_before_upload" -> stringResource(R.string.skip_removed_early)
     "no_uri" -> stringResource(R.string.skip_unreadable)
     "out_of_memory" -> stringResource(R.string.skip_too_large)
+    "user_excluded" -> stringResource(R.string.skip_user_excluded)
+    "duplicate" -> stringResource(R.string.skip_duplicate)
     else -> stringResource(R.string.skip_other)
 }
 

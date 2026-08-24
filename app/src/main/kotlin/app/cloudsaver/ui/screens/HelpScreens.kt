@@ -93,6 +93,7 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
         HelpLink(stringResource(R.string.help_privacy)) { nav.navigate(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.navigate(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.navigate(Routes.HELP_ABOUT) }
+        HelpLink(stringResource(R.string.uninstall_title)) { nav.navigate(Routes.UNINSTALL) }
         Text(
             stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.bodySmall,
@@ -143,7 +144,16 @@ private val FAQ = listOf(
     R.string.faq_q13 to R.string.faq_a13,
     R.string.faq_q14 to R.string.faq_a14,
     R.string.faq_q15 to R.string.faq_a15,
-    R.string.faq_q16 to R.string.faq_a16
+    R.string.faq_q16 to R.string.faq_a16,
+    R.string.faq_q17 to R.string.faq_a17,
+    R.string.faq_q18 to R.string.faq_a18,
+    R.string.faq_q19 to R.string.faq_a19,
+    R.string.faq_q20 to R.string.faq_a20,
+    R.string.faq_q21 to R.string.faq_a21,
+    R.string.faq_q22 to R.string.faq_a22,
+    R.string.faq_q23 to R.string.faq_a23,
+    R.string.faq_q24 to R.string.faq_a24,
+    R.string.faq_q25 to R.string.faq_a25
 )
 
 @Composable

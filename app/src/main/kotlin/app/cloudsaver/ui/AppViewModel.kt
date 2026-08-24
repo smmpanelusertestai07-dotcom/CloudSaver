@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.cloudsaver.R
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
 import app.cloudsaver.core.logic.Defaults
@@ -29,7 +30,10 @@ import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
+import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.engine.CloudWatchdog
+import app.cloudsaver.engine.DuplicateScanner
+import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
@@ -60,6 +64,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         /** Minimum time between Home status-line changes (G2). */
         const val STATUS_DEBOUNCE_MS = 800L
+
+        /** Nothing run for this long, with work waiting, means the OS killed us. */
+        const val BACKGROUND_STALL_MS = 48 * 3_600_000L
     }
 
     private val ctx get() = getApplication<Application>()
@@ -338,7 +345,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val usageAccessOff: Boolean = false,
         val cloudMissing: Boolean = false,
         val spaceLow: Boolean = false,
-        val paused: Boolean = false
+        val paused: Boolean = false,
+        /**
+         * Nothing has run for two days while work was waiting. Every other
+         * check can be green and the app still be dead, because the phone
+         * simply stopped scheduling it - and that failure is invisible.
+         */
+        val backgroundWorkStopped: Boolean = false
     )
 
     val health = MutableStateFlow(Health())
@@ -346,12 +359,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshHealth() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
+            val waiting = runCatching { db.items().countByState(ItemState.NEW.name) }
+                .getOrDefault(0)
+            val silentFor = System.currentTimeMillis() - o.lastRunAt
             health.value = Health(
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
                 spaceLow = Storage.freeBytes(ctx) < o.minFreeBytes,
-                paused = o.pauseAll
+                paused = o.pauseAll,
+                backgroundWorkStopped = !o.pauseAll && waiting > 0 &&
+                    o.lastRunAt > 0 && silentFor > BACKGROUND_STALL_MS
             )
         }
     }
@@ -490,6 +508,190 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     0L
                 }
             )
+        }
+    }
+
+    // ---- media profile: the one source every estimate reads from ------------
+
+    val profile = MutableStateFlow(MediaProfile.Profile())
+
+    fun refreshProfile() {
+        viewModelScope.launch(Dispatchers.IO) {
+            profile.value = ProfileBuilder(ctx).current(repo.current())
+        }
+    }
+
+    /** Rebuild on demand, for the screens that must not show a stale figure. */
+    fun rebuildProfile() {
+        viewModelScope.launch(Dispatchers.IO) {
+            ProfileBuilder(ctx).rebuild(repo.current())
+            profile.value = ProfileBuilder(ctx).current(repo.current())
+        }
+    }
+
+    /**
+     * What finishing the queue would save, from the measured profile.
+     *
+     * Zero when the profile has nothing measured yet: an invented projection
+     * would be the app's most visible number and its least defensible one.
+     */
+    val projectedSavings = MutableStateFlow(0L)
+
+    fun refreshProjection() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val p = ProfileBuilder(ctx).current(repo.current())
+            val waiting = db.items().pendingBytes()
+            projectedSavings.value = if (p.photos.ratio > 0 || p.videos.ratio > 0) {
+                val ratio = when {
+                    p.photos.ratio > 0 && p.videos.ratio > 0 ->
+                        (p.photos.ratio + p.videos.ratio) / 2
+                    p.photos.ratio > 0 -> p.photos.ratio
+                    else -> p.videos.ratio
+                }
+                (waiting * (1 - ratio)).toLong()
+            } else {
+                0L
+            }
+        }
+    }
+
+    // ---- find space (v2.3 G1) -----------------------------------------------
+
+    data class FindSpace(
+        val duplicateBytes: Long = 0,
+        val duplicateGroups: Int = 0,
+        val biggestBytes: Long = 0,
+        val reclaimableBytes: Long = 0,
+        val reclaimableCount: Int = 0
+    )
+
+    val findSpace = MutableStateFlow(FindSpace())
+
+    fun refreshFindSpace() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val groups = runCatching { DuplicateScanner(ctx).groups() }.getOrDefault(emptyList())
+            val largest = runCatching { db.items().largest(50) }.getOrDefault(emptyList())
+            val candidates = runCatching { db.items().reclaimCandidates() }.getOrDefault(emptyList())
+            findSpace.value = FindSpace(
+                duplicateBytes = groups.sumOf { it.reclaimableBytes },
+                duplicateGroups = groups.size,
+                biggestBytes = largest.sumOf { it.sizeBytes },
+                reclaimableBytes = candidates.sumOf { it.sizeBytes },
+                reclaimableCount = candidates.size
+            )
+        }
+    }
+
+    val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    val keptBytes: StateFlow<Long> =
+        db.items().keptBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+
+    val neverOptimiseCount: StateFlow<Int> = db.items().neverOptimiseCountFlow()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    fun clearNeverOptimise() {
+        viewModelScope.launch(Dispatchers.IO) { db.items().clearNeverOptimise() }
+    }
+
+    // ---- per-item controls (v2.2 B) -----------------------------------------
+
+    /** Bring one file to the front of the queue. */
+    fun optimiseNow(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val row = db.items().byId(id) ?: return@launch
+            val now = System.currentTimeMillis()
+            db.items().update(
+                row.copy(
+                    state = ItemState.NEW.name,
+                    skipReason = null,
+                    attempts = 0,
+                    // The queue is ordered by capture date, so "next" means
+                    // looking like the newest thing in the gallery.
+                    captureAt = now,
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
+    /** A permanent, reversible "leave this one alone". */
+    fun setNeverOptimise(id: Long, never: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val row = db.items().byId(id) ?: return@launch
+            val now = System.currentTimeMillis()
+            db.items().update(
+                row.copy(
+                    neverOptimise = never,
+                    state = if (never) ItemState.SKIP.name else ItemState.NEW.name,
+                    skipReason = if (never) "user_excluded" else null,
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
+    // ---- kept light copies (v2.4 J2) ----------------------------------------
+
+    val keptCopies = MutableStateFlow<List<ItemRow>>(emptyList())
+
+    fun loadKeptCopies() {
+        viewModelScope.launch(Dispatchers.IO) {
+            keptCopies.value = db.items().keptCopies()
+        }
+    }
+
+    /**
+     * Removes one kept light copy. No Android dialog is needed - the app
+     * created the file - which is exactly why the confirm sheet has to say
+     * what is being given up.
+     */
+    fun removeKeptCopy(row: ItemRow) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            if (uri != null) runCatching { ctx.contentResolver.delete(uri, null, null) }
+            db.items().update(
+                row.copy(
+                    keptUri = null,
+                    // Still reclaimed, just without the local copy now. It
+                    // must not go back in the queue: the cloud has it.
+                    state = ItemState.FREED.name,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            loadKeptCopies()
+        }
+    }
+
+    /**
+     * Copies the light copies into a folder the user picked, for anyone who
+     * wants them outside any app-created location entirely.
+     */
+    fun copyKeptCopiesTo(treeUri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, treeUri)
+            if (tree == null) {
+                transferMessage.value = ctx.getString(R.string.transfer_failed)
+                return@launch
+            }
+            var copied = 0
+            for (row in db.items().keptCopies()) {
+                val source = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+                    ?: continue
+                val name = row.outputName ?: row.displayName
+                val target = tree.createFile(row.mimeType, name) ?: continue
+                val ok = runCatching {
+                    ctx.contentResolver.openInputStream(source)?.use { input ->
+                        ctx.contentResolver.openOutputStream(target.uri)?.use { output ->
+                            input.copyTo(output, 128 * 1024)
+                        } ?: error("no output")
+                    } ?: error("no input")
+                }.isSuccess
+                if (ok) copied++ else target.delete()
+            }
+            transferMessage.value = ctx.resources.getQuantityString(R.plurals.uninstall_move_done, copied, copied)
         }
     }
 
@@ -679,6 +881,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setWarningsNotif(v: Boolean) = setBool(OptionsRepo.K.WARNINGS_NOTIF, v)
     fun setShowFreeUp(v: Boolean) = setBool(OptionsRepo.K.SHOW_FREE_UP, v)
     fun setFreeUpVerified30(v: Boolean) = setBool(OptionsRepo.K.FREE_UP_VERIFIED30, v)
+    fun setReclaimUnderstood(v: Boolean) = setBool(OptionsRepo.K.RECLAIM_UNDERSTOOD, v)
+    fun setReclaimReminderGb(v: Int) = setInt(OptionsRepo.K.RECLAIM_REMINDER_GB, v)
     fun setReprocessUnknown(v: Boolean) {
         setBool(OptionsRepo.K.REPROCESS_UNKNOWN, v)
         if (v) {

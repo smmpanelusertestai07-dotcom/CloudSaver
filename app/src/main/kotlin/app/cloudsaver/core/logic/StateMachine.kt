@@ -14,10 +14,13 @@ object StateMachine {
         ItemState.NEW to setOf(ItemState.STAGED, ItemState.SKIP, ItemState.DONE),
         ItemState.STAGED to setOf(ItemState.RELEASED, ItemState.NEW, ItemState.SKIP, ItemState.DONE),
         ItemState.RELEASED to setOf(ItemState.GONE, ItemState.NEW, ItemState.DONE),
-        ItemState.GONE to setOf(ItemState.DONE, ItemState.NEW, ItemState.FREED),
-        ItemState.DONE to setOf(ItemState.FREED, ItemState.NEW),
+        ItemState.GONE to setOf(
+            ItemState.DONE, ItemState.NEW, ItemState.FREED, ItemState.FREED_KEPT
+        ),
+        ItemState.DONE to setOf(ItemState.FREED, ItemState.FREED_KEPT, ItemState.NEW),
         ItemState.SKIP to setOf(ItemState.NEW),
         ItemState.FREED to emptySet(),
+        ItemState.FREED_KEPT to emptySet(),
         ItemState.UNKNOWN to setOf(ItemState.NEW)
     )
 
@@ -62,7 +65,9 @@ object StateMachine {
      * - SKIP stays SKIP; NEW/STAGED -> NEW (stage files do not survive reinstall)
      */
     fun importedState(state: ItemState, evidence: Evidence): Pair<ItemState, Evidence> = when (state) {
-        ItemState.FREED -> ItemState.FREED to evidence
+        // Both reclaimed states are terminal on import: the original is gone
+        // from the phone, so there is nothing left to reprocess either way.
+        ItemState.FREED, ItemState.FREED_KEPT -> state to evidence
         ItemState.UNKNOWN -> ItemState.UNKNOWN to evidence
         ItemState.RELEASED, ItemState.GONE, ItemState.DONE ->
             if (evidence == Evidence.NONE) ItemState.UNKNOWN to Evidence.NONE

@@ -25,6 +25,8 @@
     <string name="status_fresh">Getting ready to scan your gallery</string>
     <string name="chip_paused">Paused</string>
     <string name="chip_battery">Battery restricted</string>
+    <string name="chip_stopped">The system stopped background work</string>
+    <string name="hero_projection">If everything finishes: about %1$s saved</string>
     <string name="chip_auto_launch">Check auto-launch</string>
     <string name="chip_background">Check background activity</string>
     <string name="explain_waiting">Files found in your gallery that have not been optimised yet. CloudSaver works through them in the background.</string>
@@ -34,6 +36,8 @@
     <string name="skip_unreadable">File could not be read</string>
     <string name="skip_too_large">Too large to process in the space available</string>
     <string name="skip_other">Skipped to be safe</string>
+    <string name="skip_user_excluded">You asked CloudSaver to leave this one alone</string>
+    <string name="skip_duplicate">Same file already handled</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="chip_space">Storage low</string>
@@ -83,7 +87,6 @@
     <!-- tamper evidence (13.A) -->
     <string name="tamper_title">Modified copy</string>
     <string name="tamper_text">This is not the official build - install the official APK. Deleting is disabled for safety.</string>
-    <string name="tamper_freeup_blocked">This tool is off because this copy of the app was modified. Install the official APK.</string>
 
     <!-- files -->
     <string name="files_size_pair">%1$s → %2$s</string>
@@ -103,6 +106,7 @@
     <string name="state_done">Backed up</string>
     <string name="state_skip">Skipped</string>
     <string name="state_freed">Original removed</string>
+    <string name="state_freed_kept">Replaced with light copy</string>
     <string name="state_unknown">Unverified (restored)</string>
     <string name="evidence_confirmed_exact">Confirmed - your cloud collected it</string>
     <string name="evidence_confirmed_paced">Confirmed - sent and accounted for</string>
@@ -110,6 +114,8 @@
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
     <string name="detail_open">Open</string>
+    <string name="detail_optimise_now">Optimise now</string>
+    <string name="detail_optimise_again">Allow optimising again</string>
     <string name="detail_open_failed">No app on this phone can open this file.</string>
     <string name="detail_state">Status</string>
     <string name="detail_evidence">Verification</string>
@@ -167,6 +173,8 @@
     <string name="activity_settings">Settings changed</string>
     <string name="activity_recovered">State restored from a safety snapshot</string>
     <string name="activity_removed_early">%1$s kept disappearing before upload</string>
+    <string name="activity_pending_repaired">Finished publishing files a previous run left half-written</string>
+    <string name="activity_reclaim_skipped">%1$s was left alone - CloudSaver could not confirm it was safe</string>
     <string name="activity_cloud_ok">Your cloud app is uploading again</string>
 
     <!-- cloud health -->
@@ -181,6 +189,7 @@
     <string name="storage_stage">Optimised copies waiting on device</string>
     <string name="storage_stage_path">App storage (not visible in your gallery)</string>
     <string name="storage_output">Optimised copies in the upload folder</string>
+    <string name="storage_folder_lifecycle">The upload folder empties itself once your cloud app has taken the files, so your gallery stops showing it as an album. That is normal, not a failure - it comes back with the next batch.</string>
     <string name="storage_share_of_limit">%1$s of the %2$s CloudSaver may use</string>
     <string name="storage_volumes_title">Storage volumes</string>
     <string name="volume_internal">Internal storage</string>
@@ -201,14 +210,165 @@
 
     <!-- free-up -->
     <string name="freeup_title">Reclaim space</string>
-    <string name="freeup_subtitle">Up to %1$s can be freed</string>
-    <string name="freeup_explainer">Only originals CloudSaver can prove reached your cloud are listed. Android asks you to confirm every deletion - CloudSaver never removes an original on its own.</string>
-    <string name="freeup_select_all">Select all</string>
-    <string name="freeup_delete">Delete originals (%1$s)</string>
     <string name="freeup_empty_title">Nothing to reclaim yet</string>
-    <string name="freeup_select_none">Clear selection</string>
-    <string name="freeup_selected_count">%1$d of %2$d selected</string>
     <string name="freeup_empty">Originals appear here once CloudSaver can prove their copies reached your cloud. That happens on its own as your cloud app uploads.</string>
+
+    <!-- reclaim -->
+    <string name="reclaim_target_label">Free a set amount</string>
+    <string name="reclaim_all_eligible">Everything eligible</string>
+    <string name="reclaim_clear">Clear</string>
+    <string name="reclaim_only_videos">Only videos</string>
+    <string name="reclaim_over_100">Over 100 MB</string>
+    <string name="reclaim_invert">Invert</string>
+    <string name="reclaim_will_free">You will free %1$s</string>
+    <plurals name="reclaim_selected">
+        <item quantity="one">%1$d of %2$d selected</item>
+        <item quantity="other">%1$d of %2$d selected</item>
+    </plurals>
+    <string name="reclaim_preview">Preview result</string>
+    <string name="reclaim_export">Export list</string>
+    <string name="reclaim_export_ok">List saved</string>
+    <string name="reclaim_export_failed">Could not save the list.</string>
+    <string name="reclaim_trash">Move to trash</string>
+    <string name="reclaim_delete">Delete permanently</string>
+    <string name="reclaim_continue">Continue</string>
+    <string name="reclaim_why_android_asks">Android asks you to confirm because these files belong to your gallery, not to CloudSaver.</string>
+    <string name="reclaim_no_internet">CloudSaver has no internet permission, so it can never bring a file back from your cloud. Only your cloud app can download it again.</string>
+    <string name="reclaim_understand">I understand my cloud has the optimised copy, not the original.</string>
+    <plurals name="reclaim_group_header">
+        <item quantity="one">%1$s · %2$d file · %3$s</item>
+        <item quantity="other">%1$s · %2$d files · %3$s</item>
+    </plurals>
+    <string name="reclaim_row_meta">%1$s · confirmed %2$s</string>
+    <string name="reclaim_mode_replace">Replace with light copy</string>
+    <string name="reclaim_mode_replace_body">The original goes, and the optimised copy stays in your gallery at optimised quality. Saves most of the space.</string>
+    <string name="reclaim_mode_full">Free up fully</string>
+    <string name="reclaim_mode_full_body">The original goes and nothing is kept on the phone. The file then exists only in your cloud. Saves the most space.</string>
+    <string name="reclaim_mode_copies">Remove CloudSaver\'s copies only</string>
+    <string name="reclaim_mode_copies_body">Your originals are not touched at all. Only confirmed copies still sitting in the upload folder go, instead of waiting for the automatic cleanup. Zero risk.</string>
+    <string name="reclaim_mode_saving">Frees %1$s</string>
+    <string name="reclaim_confirm_title">Move these to the trash?</string>
+    <string name="reclaim_confirm_delete_title">Delete these permanently?</string>
+    <string name="reclaim_confirm_body">Remove %1$s originals and free %2$s?</string>
+    <string name="reclaim_preview_title">What would happen</string>
+    <string name="reclaim_preview_count">Files removed</string>
+    <string name="reclaim_preview_freed">Space freed</string>
+    <plurals name="reclaim_preview_dropped">
+        <item quantity="one">%1$d would be left alone:</item>
+        <item quantity="other">%1$d would be left alone:</item>
+    </plurals>
+    <string name="reclaim_done_title">Done</string>
+    <string name="reclaim_done_body">Freed %1$s across %2$s files.</string>
+    <string name="reclaim_done_trash">You can restore them from your gallery\'s trash for 30 days.</string>
+    <plurals name="reclaim_done_skipped">
+        <item quantity="one">%1$d was left alone - see Activity for why.</item>
+        <item quantity="other">%1$d were left alone - see Activity for why.</item>
+    </plurals>
+    <string name="reclaim_history_open">See history</string>
+    <string name="sort_oldest">Oldest</string>
+    <string name="sort_album">Album</string>
+    <string name="group_none">No grouping</string>
+    <string name="group_album">By album</string>
+    <string name="group_month">By month</string>
+    <string name="group_year">By year</string>
+    <string name="group_type">By type</string>
+    <string name="suggest_big_videos">Big old videos</string>
+    <string name="suggest_screenshots">Old screenshots</string>
+    <string name="suggest_old">Older than 2 years</string>
+    <string name="suggest_duplicates">Exact duplicates</string>
+    <string name="suggest_confirmed">Confirmed, over 30 days</string>
+    <string name="refuse_not_confirmed">not confirmed strongly enough</string>
+    <string name="refuse_too_recent">too recent</string>
+    <string name="refuse_no_proof">no upload record</string>
+    <string name="refuse_cloud">your cloud app needs attention</string>
+    <string name="refuse_state">not in a state we can act on</string>
+    <string name="refuse_gone">the original is already gone</string>
+    <string name="refuse_album">in an excluded album</string>
+    <string name="refuse_favourite">a favourite</string>
+    <string name="refuse_small">too small to bother</string>
+
+    <!-- find space -->
+    <string name="find_space_title">Find space</string>
+    <string name="find_duplicates">Exact duplicates</string>
+    <string name="find_duplicates_hint">Same file stored more than once</string>
+    <string name="find_biggest">Biggest space users</string>
+    <string name="find_biggest_hint">Your largest photos and videos</string>
+    <string name="find_suggestions">Suggestions</string>
+    <string name="find_suggestions_hint">Ready-made ways to free space</string>
+    <string name="find_space_honesty">CloudSaver only groups files it can prove are identical. It does not judge which of two similar photos is better, because that is a guess about your memories, not a fact about your files.</string>
+    <string name="dupes_empty_title">No duplicates found</string>
+    <string name="dupes_empty_body">CloudSaver compares files byte for byte. Nothing in your gallery is stored twice.</string>
+    <string name="dupes_intro">These files are byte-for-byte identical. Removing an extra is safe even before it is uploaded, because a copy stays on your phone.</string>
+    <plurals name="dupes_group_line">
+        <item quantity="one">%1$d extra copy · %2$s could be freed</item>
+        <item quantity="other">%1$d extra copies · %2$s could be freed</item>
+    </plurals>
+    <string name="dupes_keeper">Keeping the copy in %1$s</string>
+    <string name="dupes_extra">Extra in %1$s · %2$s</string>
+    <string name="biggest_empty_title">Nothing scanned yet</string>
+    <string name="biggest_empty_body">Your largest photos and videos appear here after the first scan.</string>
+    <plurals name="biggest_summary">
+        <item quantity="one">Your largest file uses %2$s - about %3$s could be saved by optimising it.</item>
+        <item quantity="other">Your %1$d largest files use %2$s - about %3$s could be saved by optimising them.</item>
+    </plurals>
+    <string name="biggest_row">%1$s · %2$s</string>
+    <string name="biggest_optimise_first">Optimise this first</string>
+    <string name="never_optimise">Never optimise this file</string>
+    <string name="never_optimise_title">Files you excluded</string>
+    <string name="never_optimise_hint">Files you asked CloudSaver to leave alone. Clearing the list puts them back in the queue.</string>
+    <string name="reclaim_reminder_title">Tell me when I can free space</string>
+    <string name="reclaim_reminder_hint">Adds a chip on Home when this much can be reclaimed. No notification, and never more than once a week.</string>
+    <string name="reclaim_reminder_off">Off</string>
+    <string name="uninstall_open">Open</string>
+    <string name="chip_reclaim">%1$s can be freed</string>
+    <plurals name="never_optimise_count">
+        <item quantity="one">%1$d file excluded by you</item>
+        <item quantity="other">%1$d files excluded by you</item>
+    </plurals>
+    <string name="never_optimise_clear">Clear the list</string>
+
+    <!-- reclaim history -->
+    <string name="reclaim_history">Recently reclaimed</string>
+    <string name="reclaim_history_hint">What you removed, and how to get it back</string>
+    <string name="history_empty_title">Nothing reclaimed yet</string>
+    <string name="history_empty_body">Every batch you reclaim is listed here for 30 days.</string>
+    <plurals name="history_line">
+        <item quantity="one">%1$d file · %2$s freed</item>
+        <item quantity="other">%1$d files · %2$s freed</item>
+    </plurals>
+    <string name="history_trashed">In your gallery\'s trash until %1$s</string>
+    <string name="history_permanent">Deleted permanently - cannot be restored</string>
+    <string name="history_restore">Restore these</string>
+    <string name="history_unknown">Check your gallery\'s trash</string>
+
+    <!-- kept light copies -->
+    <string name="kept_title">Kept light copies</string>
+    <string name="kept_manage">Manage light copies</string>
+    <string name="kept_intro">These are your photos, at optimised quality. CloudSaver never deletes them, never re-optimises them, and they do not count against its space limit. They live in:</string>
+    <string name="kept_empty_title">No light copies yet</string>
+    <string name="kept_empty_body">Choosing "Replace with light copy" in Reclaim space puts the smaller version here.</string>
+    <string name="kept_row">%1$s · %2$s</string>
+    <string name="kept_remove">Remove the light copy</string>
+    <string name="kept_remove_title">Remove this light copy?</string>
+    <string name="kept_remove_body">The cloud still has this file; removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
+
+    <!-- prepare for uninstall -->
+    <string name="uninstall_title">Prepare for uninstall</string>
+    <string name="uninstall_hint">What stays on your phone, and what goes</string>
+    <string name="uninstall_stays_title">Stays on your phone</string>
+    <string name="uninstall_kept">Kept light copies</string>
+    <string name="uninstall_waiting">Copies waiting to upload</string>
+    <string name="uninstall_cloud_note">Your cloud is untouched either way. CloudSaver has no internet permission, so it cannot change anything there.</string>
+    <string name="uninstall_goes_title">Goes with the app</string>
+    <string name="uninstall_goes_body">Temporary work files are removed by Android. The app\'s own history survives only in its hidden state file or in a backup you save.</string>
+    <string name="uninstall_save_history">Save my history</string>
+    <string name="uninstall_move_title">Move light copies somewhere else</string>
+    <string name="uninstall_move_body">Copy them into a folder you choose, completely outside any app-created location. Nothing is deleted.</string>
+    <string name="uninstall_move_action">Choose a folder</string>
+    <plurals name="uninstall_move_done">
+        <item quantity="one">Copied %1$d file.</item>
+        <item quantity="other">Copied %1$d files.</item>
+    </plurals>
 
     <!-- lock -->
     <string name="lock_title">CloudSaver is locked</string>
@@ -368,6 +528,14 @@
         <item quantity="one">Based on %1$d of your files</item>
         <item quantity="other">Based on %1$d of your files</item>
     </plurals>
+    <string name="calc_details">Details</string>
+    <string name="calc_word_measured">measured</string>
+    <string name="calc_word_typical">typical</string>
+    <string name="calc_detail_photos">Your photos: %1$s average, %2$s smaller after optimising (%3$s, %4$s files).</string>
+    <string name="calc_detail_videos">Your videos: %1$s MB per minute after optimising, %2$s smaller (%3$s, %4$s files).</string>
+    <string name="calc_detail_asis">Copied as-is: %1$s of photos, %2$s of videos.</string>
+    <string name="calc_detail_accuracy">Estimates have been within about %1$d%% on your files.</string>
+    <string name="calc_detail_whatif_codec">With %1$s instead: about %2$s of video would fit.</string>
     <string name="calc_estimate_note">All numbers are estimates.</string>
     <string name="calc_quality_storage" formatted="false">Quality on this preset: video ~90-95%, photo ~97%.</string>
     <string name="calc_quality_balanced" formatted="false">Quality on this preset: video ~95%, photo ~98%.</string>
@@ -523,6 +691,25 @@
     <string name="faq_q16">Does anything leave my phone?</string>
     <string name="faq_a16">No. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere - not analytics, not crash reports, not a file. There are no accounts and no ads. Everything CloudSaver stores stays on the phone: the optimised copies, a local database of what it has done, and the hidden state file. Only your cloud app talks to the internet, and only about the folder you pointed it at.</string>
 
+
+    <string name="faq_q17">What does Reclaim space do?</string>
+    <string name="faq_a17">It is the one screen in CloudSaver that can remove an original, and it only ever removes what you select. Three modes: "Replace with light copy" removes the original and keeps the smaller version in your gallery; "Free up fully" removes the original and keeps nothing locally, so the file lives only in your cloud; "Remove CloudSaver\'s copies only" never touches an original at all. The default is to move files to your gallery\'s trash, where they stay recoverable for 30 days. Android shows its own confirmation dialog every time, because these files belong to your gallery rather than to CloudSaver.</string>
+    <string name="faq_q18">If I remove originals, what will I see in my gallery?</string>
+    <string name="faq_a18">With "Replace with light copy" the photo stays right where it was, at optimised quality, in an album called Light copies. You can still open it, share it and scroll past it - it is simply a smaller file now. With "Free up fully" the photo is gone from the phone and lives only in your cloud, so you open it in your cloud app instead. Both modes leave your cloud exactly as it was.</string>
+    <string name="faq_q19">Can CloudSaver bring a file back from my cloud?</string>
+    <string name="faq_a19">No, and it never will be able to. The app has no internet permission at all, so there is no code path that could download anything. Only your cloud app can fetch a file back. What CloudSaver can do is prefer the trash: files moved there are restorable from your gallery for 30 days, and the Recently reclaimed screen lists them with a Restore button.</string>
+    <string name="faq_q20">How do I free a specific amount of space quickly?</string>
+    <string name="faq_a20">Open Reclaim space and tap one of the target chips - 1 GB, 5 GB or 10 GB. CloudSaver selects eligible files largest-first until it reaches that number, then tells you exactly what it picked. Adjust the selection if you want, tap "Preview result" to see what would happen without anything happening, and check a few files in the compare view first if you want to see the quality for yourself.</string>
+    <string name="faq_q21">How does CloudSaver find duplicates?</string>
+    <string name="faq_a21">By comparing files byte for byte. It first groups files of exactly the same length, since files of different lengths cannot be identical, and only then reads and hashes those - so a large gallery costs very little to check. Files are grouped only when their hashes match, which means they are the same file, not merely similar. CloudSaver keeps the oldest copy and offers the extras; removing an extra is safe even before anything is uploaded, because an identical copy stays on your phone.</string>
+    <string name="faq_q22">Why doesn\'t it find similar photos?</string>
+    <string name="faq_a22">Because that would be a guess. Deciding which of two nearly identical shots is the better one is a judgement about your memory, not a fact about your storage, and a wrong guess deletes the photo you wanted to keep. CloudSaver only acts on things it can prove: hashes, sizes, dates and upload evidence. Your cloud app may offer similar-photo cleanup separately, and that is the right place for it.</string>
+    <string name="faq_q23">Where do reclaimed files go, and can I get them back?</string>
+    <string name="faq_a23">By default into your gallery\'s trash, where Android keeps them for 30 days. The Recently reclaimed screen lists every batch with its files and a Restore button for anything still in the trash. If you chose "Delete permanently" instead, the files are gone and the screen says so plainly. CloudSaver can never re-download anything from your cloud, so the trash is the only local safety net.</string>
+    <string name="faq_q24">What happens to my files if I uninstall CloudSaver?</string>
+    <string name="faq_a24">Your kept light copies stay in Pictures/Light copies and remain in your gallery, because they are ordinary files in an ordinary album. Copies still waiting stay in Pictures/CloudSaver until your cloud app takes them. Temporary work files are removed by Android along with the app. Your cloud is untouched. The app\'s own history survives only in its hidden state file or in a backup you save - Settings has a "Prepare for uninstall" screen that shows all of this and can move the light copies anywhere you like first.</string>
+    <string name="faq_q25">The CloudSaver album disappeared from my gallery - is something wrong?</string>
+    <string name="faq_a25">No. The upload folder is a working folder: once your cloud app has collected the files, it is empty, and galleries hide empty folders. It reappears the next time CloudSaver adds a batch. An empty CloudSaver album is the sign that everything is working, not that something broke.</string>
 
     <!-- notifications -->
     <string name="channel_working">Working</string>

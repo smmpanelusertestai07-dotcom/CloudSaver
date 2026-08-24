@@ -23,8 +23,14 @@ import kotlinx.coroutines.CancellationException
  */
 class Stager(private val context: Context, private val db: AppDb) {
 
-    /** Returns true when the item is now STAGED. */
-    suspend fun stageOne(row: ItemRow, options: Options): Boolean {
+    /**
+     * Returns true when the item is now STAGED.
+     *
+     * [predictedBytes] is what the profile expected this file to come out at.
+     * Storing it next to the real result is what lets the app tell the user
+     * how wrong its estimates have been, instead of implying they are exact.
+     */
+    suspend fun stageOne(row: ItemRow, options: Options, predictedBytes: Long = 0): Boolean {
         val uriString = row.contentUri
         if (uriString == null) {
             skip(row, "no_uri")
@@ -83,6 +89,7 @@ class Stager(private val context: Context, private val db: AppDb) {
                     outputFolder = folder.name,
                     presetUsed = options.preset.name,
                     codecUsed = options.codec.name,
+                    predictedBytes = predictedBytes,
                     skipReason = null,
                     lastError = if (result.asIs) result.reason else null,
                     updatedAt = System.currentTimeMillis()

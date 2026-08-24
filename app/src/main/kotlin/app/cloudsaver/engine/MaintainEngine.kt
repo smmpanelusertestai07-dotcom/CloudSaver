@@ -91,6 +91,7 @@ class MaintainEngine(private val context: Context) {
             return summary
         }
 
+        step("pending") { repairStalePending(now) }
         step("detectGone") { detectGone(o, now, entries, summary) }
         step("promoteGone") { promoteGone(now) }
         step("paced") { pacedEvidence(o, now) }
@@ -138,6 +139,7 @@ class MaintainEngine(private val context: Context) {
         val now = System.currentTimeMillis()
         val summary = Summary()
         val entries = inventory.query() ?: return 0
+        step("pending") { repairStalePending(now) }
         step("detectGone") { detectGone(o, now, entries, summary) }
         step("promoteGone") { promoteGone(now) }
         step("paced") { pacedEvidence(o, now) }
@@ -296,6 +298,61 @@ class MaintainEngine(private val context: Context) {
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Finishes or removes anything left half-published.
+     *
+     * A row stuck with IS_PENDING=1 is invisible to the cloud app and Android
+     * erases it after about a week - which arrives at the user as a file that
+     * silently never uploaded and then vanished. Anything older than a day is
+     * either published properly or cleared away, and either way it is written
+     * to Activity rather than fixed in silence.
+     */
+    private suspend fun repairStalePending(now: Long) {
+        val cutoff = now - 86_400_000L
+        var repaired = 0
+        for (row in db.items().released()) {
+            val uriString = row.outputUri ?: continue
+            if ((row.releasedAt ?: now) > cutoff) continue
+            val uri = runCatching { android.net.Uri.parse(uriString) }.getOrNull() ?: continue
+            val pending = runCatching {
+                context.contentResolver.query(
+                    uri, arrayOf(android.provider.MediaStore.MediaColumns.IS_PENDING),
+                    null, null, null
+                )?.use { c -> if (c.moveToFirst()) c.getInt(0) == 1 else false } ?: false
+            }.getOrDefault(false)
+            if (!pending) continue
+            val fixed = runCatching {
+                context.contentResolver.update(
+                    uri,
+                    android.content.ContentValues().apply {
+                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    },
+                    null, null
+                ) > 0
+            }.getOrDefault(false)
+            if (!fixed) {
+                runCatching { context.contentResolver.delete(uri, null, null) }
+                db.items().update(
+                    row.copy(
+                        state = ItemState.NEW.name,
+                        outputUri = null,
+                        releasedAt = null,
+                        updatedAt = now
+                    )
+                )
+            }
+            repaired++
+        }
+        if (repaired > 0) {
+            AppLog.log(context, "maintain", "repaired $repaired stale pending rows")
+            activity.record(
+                ActivityLog.Kind.RECOVERED,
+                detail = context.getString(R.string.activity_pending_repaired),
+                count = repaired
+            )
         }
     }
 

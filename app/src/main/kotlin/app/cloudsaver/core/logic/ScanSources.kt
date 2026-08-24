@@ -59,7 +59,7 @@ object ScanSources {
         bucketName: String?,
         looksLikeOutput: Boolean = false
     ): Reason? = when {
-        Defaults.isOutputPath(relativePath) -> Reason.OUR_OUTPUT
+        Defaults.isAppOwnedPath(relativePath) -> Reason.OUR_OUTPUT
         isHiddenPath(relativePath) -> Reason.HIDDEN
         isLegacyOutputName(bucketName) -> Reason.LEGACY_OUTPUT
         looksLikeOutput -> Reason.LOOKS_LIKE_OUTPUT

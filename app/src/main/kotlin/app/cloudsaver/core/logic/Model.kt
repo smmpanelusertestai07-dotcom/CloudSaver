@@ -1,7 +1,18 @@
 package app.cloudsaver.core.logic
 
-/** Item lifecycle. GONE carries a [GoneReason]; a maintain pass promotes GONE to DONE. */
-enum class ItemState { NEW, STAGED, RELEASED, GONE, DONE, SKIP, FREED, UNKNOWN }
+/**
+ * Item lifecycle. GONE carries a [GoneReason]; a maintain pass promotes GONE to DONE.
+ *
+ * FREED and FREED_KEPT are both "the user reclaimed this original", kept apart
+ * because they leave the phone in different states: FREED_KEPT means a light
+ * copy is still in the gallery, so the file is still there to look at.
+ */
+enum class ItemState {
+    NEW, STAGED, RELEASED, GONE, DONE, SKIP, FREED, FREED_KEPT, UNKNOWN;
+
+    /** True once the user has reclaimed the original, either way. */
+    val isReclaimed: Boolean get() = this == FREED || this == FREED_KEPT
+}
 
 enum class GoneReason { CONFIRMED, APP_DELETED, USER_DELETED }
 
@@ -90,6 +101,16 @@ object Defaults {
 
     // Pictures (never DCIM): keeps clouds with DCIM auto-backup from grabbing originals.
     const val OUTPUT_DIR = "Pictures/CloudSaver"
+
+    /**
+     * Where a "Replace with light copy" file lives.
+     *
+     * Deliberately outside the app's own folder and plainly named: these are
+     * the user's photos now, not CloudSaver's working files. An album called
+     * "CloudSaver" would read as something to delete when the app goes, and
+     * the whole point is that they outlive it.
+     */
+    const val KEPT_DIR = "Pictures/Light copies"
     const val OUTPUT_DIR_PHOTOS = "Pictures/CloudSaver/Photos"
     const val OUTPUT_DIR_VIDEOS = "Pictures/CloudSaver/Videos"
     /**
@@ -154,4 +175,19 @@ object Defaults {
         val path = relativePath.trimEnd('/')
         return path == OUTPUT_DIR || path.startsWith("$OUTPUT_DIR/")
     }
+
+    /** True for the kept light copies album. */
+    fun isKeptPath(relativePath: String?): Boolean {
+        if (relativePath.isNullOrEmpty()) return false
+        val path = relativePath.trimEnd('/')
+        return path == KEPT_DIR || path.startsWith("$KEPT_DIR/")
+    }
+
+    /**
+     * Folders the scanner must never queue: our working folder and the light
+     * copies. Re-optimising either would loop forever, and a light copy is a
+     * finished user file, not a candidate.
+     */
+    fun isAppOwnedPath(relativePath: String?): Boolean =
+        isOutputPath(relativePath) || isKeptPath(relativePath)
 }

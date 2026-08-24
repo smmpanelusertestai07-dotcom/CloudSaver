@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,6 +62,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
     LaunchedEffect(Unit) {
         vm.refreshStorage()
         vm.refreshVolumes()
+        vm.refreshFindSpace()
     }
 
     val scheme = MaterialTheme.colorScheme
@@ -115,6 +117,44 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
+        // Find space: three proof-based ways to free room, above Reclaim
+        // because they are the cheaper answers to the same question.
+        val findSpace by vm.findSpace.collectAsStateWithLifecycle()
+        val keptBytes by vm.keptBytes.collectAsStateWithLifecycle()
+        if (findSpace.duplicateBytes > 0 || findSpace.biggestBytes > 0) {
+            SectionHeader(stringResource(R.string.find_space_title))
+            if (findSpace.duplicateBytes > 0) {
+                FindRow(
+                    title = stringResource(R.string.find_duplicates),
+                    hint = stringResource(R.string.find_duplicates_hint),
+                    value = Formats.bytes(findSpace.duplicateBytes),
+                    onClick = { nav.navigate(Routes.DUPLICATES) }
+                )
+            }
+            if (findSpace.biggestBytes > 0) {
+                FindRow(
+                    title = stringResource(R.string.find_biggest),
+                    hint = stringResource(R.string.find_biggest_hint),
+                    value = Formats.bytes(findSpace.biggestBytes),
+                    onClick = { nav.navigate(Routes.BIGGEST) }
+                )
+            }
+            if (findSpace.reclaimableBytes > 0) {
+                FindRow(
+                    title = stringResource(R.string.find_suggestions),
+                    hint = stringResource(R.string.find_suggestions_hint),
+                    value = Formats.bytes(findSpace.reclaimableBytes),
+                    onClick = { nav.navigate(Routes.FREE_UP) }
+                )
+            }
+            Text(
+                stringResource(R.string.find_space_honesty),
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
         SectionHeader(stringResource(R.string.storage_used_title))
         AppCard {
             // Two different things, each named and each with its path, rather
@@ -131,6 +171,26 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 path = stringResource(R.string.storage_stage_path),
                 bytes = stats.stageBytes,
                 limitBytes = options.maxExtraBytes
+            )
+            // Light copies are the user's files, so they are listed apart and
+            // counted against nothing.
+            if (keptBytes > 0) {
+                Spacer(Modifier.height(14.dp))
+                UsageRow(
+                    label = stringResource(R.string.kept_title),
+                    path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
+                    bytes = keptBytes,
+                    limitBytes = 0
+                )
+                TextButton(onClick = { nav.navigate(Routes.KEPT) }) {
+                    Text(stringResource(R.string.kept_manage))
+                }
+            }
+            Text(
+                stringResource(R.string.storage_folder_lifecycle),
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp)
             )
         }
 
@@ -232,6 +292,20 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
+        // Recently reclaimed sits with the thing it describes, and only once
+        // there is something to describe.
+        val history by vm.reclaimHistoryCount.collectAsStateWithLifecycle()
+        if (history > 0) {
+            SectionHeader(stringResource(R.string.reclaim_history))
+            AppCard(onClick = { nav.navigate(Routes.RECLAIM_HISTORY) }) {
+                Text(
+                    stringResource(R.string.reclaim_history_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant
+                )
+            }
+        }
+
         SectionHeader(stringResource(R.string.storage_temp_title))
         val hasTemp = stats.tempBytes > 0
         AppCard {
@@ -261,6 +335,29 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             ) { Text(stringResource(R.string.storage_clean_temp)) }
         }
         Spacer(Modifier.height(28.dp))
+    }
+}
+
+/** One "Find space" row: a live size, and the list behind it. */
+@Composable
+private fun FindRow(title: String, hint: String, value: String, onClick: () -> Unit) {
+    AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
