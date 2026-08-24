@@ -109,8 +109,55 @@ object Pacing {
         else -> slotsFree
     }
 
-    fun inFlightLimit(cloudHasFreeUpOracle: Boolean): Int =
+    /**
+     * The confidence ladder.
+     *
+     * A fixed in-flight limit is either too cautious forever or too trusting
+     * from the start. One file at a time proves the accounting works on this
+     * phone and this cloud app; once it has been proved often enough there is
+     * nothing left to learn from holding files back, and continuing to do so
+     * just means a ten-year gallery never finishes.
+     *
+     * Each entry is "this many clean confirmations earns this many in flight".
+     * [UNLIMITED_AFTER] confirmations releases freely, with one file in every
+     * [SAMPLE_EVERY] sent alone so per-file proof keeps arriving.
+     */
+    val LADDER: List<Pair<Int, Int>> = listOf(
+        10 to 8,
+        50 to 32
+    )
+
+    const val UNLIMITED_AFTER = 200
+    const val SAMPLE_EVERY = 20
+
+    /**
+     * In-flight limit for a given run of clean confirmations, or null for
+     * "no per-item limit".
+     *
+     * [cleanStreak] is consecutive confirmations with no failure. Any failure
+     * resets it, which drops the limit back down a rung on its own.
+     */
+    fun inFlightLimit(cloudHasFreeUpOracle: Boolean, cleanStreak: Int): Int? {
+        if (cleanStreak >= UNLIMITED_AFTER) return null
+        val earned = LADDER.lastOrNull { (needed, _) -> cleanStreak >= needed }?.second
+        return earned ?: startingLimit(cloudHasFreeUpOracle)
+    }
+
+    /** Where every phone starts, before anything has been confirmed. */
+    fun startingLimit(cloudHasFreeUpOracle: Boolean): Int =
         if (cloudHasFreeUpOracle) IN_FLIGHT_WITH_ORACLE else IN_FLIGHT_WITHOUT_ORACLE
+
+    /**
+     * How often to send one file alone, so per-file proof keeps arriving even
+     * once the limit is high. Doubles in frequency after a failure, because
+     * that is when evidence is worth most.
+     */
+    fun sampleEvery(recentFailure: Boolean): Int =
+        if (recentFailure) SAMPLE_EVERY / 2 else SAMPLE_EVERY
+
+    /** True when this release should go out on its own as a proof sample. */
+    fun isSampleTurn(releasedSinceSample: Int, recentFailure: Boolean): Boolean =
+        releasedSinceSample >= sampleEvery(recentFailure)
 
     /** A copy released this long ago has stopped being usable as paced proof. */
     fun isTimedOut(releasedAt: Long, now: Long): Boolean =
@@ -123,9 +170,23 @@ object Pacing {
     fun slotsFree(
         inFlightReleasedAt: List<Long>,
         now: Long,
-        cloudHasFreeUpOracle: Boolean
+        cloudHasFreeUpOracle: Boolean,
+        cleanStreak: Int = 0
     ): Int {
         val waiting = inFlightReleasedAt.count { !isTimedOut(it, now) }
-        return (inFlightLimit(cloudHasFreeUpOracle) - waiting).coerceAtLeast(0)
+        val limit = inFlightLimit(cloudHasFreeUpOracle, cleanStreak) ?: return Int.MAX_VALUE
+        return (limit - waiting).coerceAtLeast(0)
     }
+
+    /**
+     * Compression is never paced.
+     *
+     * The release queue holds copies back so their uploads can be told apart;
+     * that has nothing to do with how fast files may be optimised. Tying the
+     * two together was the throughput bug: a phone with one file in flight
+     * also optimised one file at a time, so a full gallery would have taken
+     * years. Optimising runs to the space caps and stops there.
+     */
+    fun compressionAllowed(stageBytes: Long, stageCapBytes: Long): Boolean =
+        stageCapBytes <= 0 || stageBytes < stageCapBytes
 }

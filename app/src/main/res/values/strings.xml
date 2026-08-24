@@ -50,7 +50,6 @@
         <item quantity="one">across %1$d optimised file</item>
         <item quantity="other">across %1$d optimised files</item>
     </plurals>
-    <string name="hero_saved_split">Photos %1$s · Videos %2$s</string>
     <string name="budget_title">Today\'s upload allowance</string>
     <string name="budget_used">%1$s of %2$s</string>
     <string name="budget_paced">Files are added a few at a time, so each one can be confirmed on its own.</string>
@@ -65,9 +64,8 @@
     <string name="section_attention">Needs attention</string>
     <string name="section_progress">Backup progress</string>
     <string name="last_run">Last checked %1$s</string>
-    <string name="btn_run_now">Back up now</string>
-    <string name="btn_confirm_uploads">Verify backup</string>
-    <string name="confirm_explainer">Verify backup opens your cloud app so you can run its own \&quot;Free up space\&quot;. Whatever it removes from the CloudSaver folder is proof those files are safely uploaded.</string>
+    <string name="btn_optimise_now">Optimise now</string>
+    <string name="btn_verify_link">Let CloudSaver check your uploads</string>
     <string name="confirm_result_title">Backup verified</string>
     <plurals name="confirm_result_line">
         <item quantity="one">%1$d file confirmed as backed up</item>
@@ -779,4 +777,22 @@
     </plurals>
     <string name="progress_none_yet">Nothing has run yet. The first check happens on its own within about half an hour, or tap Check now.</string>
     <string name="progress_all_clear">Everything found so far has been backed up. New photos and videos are picked up automatically.</string>
+    <string name="problem_snapshot_failed">Could not save the safety copy of your history (%1$s). If you uninstall now, CloudSaver would not be able to restore what it already knows.</string>
+    <string name="activity_setting_changed">%1$s changed to %2$s</string>
+    <string name="activity_problem">Something needs your attention</string>
+    <string name="activity_unknown">Activity recorded by a newer version</string>
+    <string name="hero_projection_estimate">If everything finishes: roughly %1$s saved</string>
+    <plurals name="duplicates_handled">
+        <item quantity="one">%d duplicate handled once</item>
+        <item quantity="other">%d duplicates handled once</item>
+    </plurals>
+    <string name="optimise_now_hint">Starts optimising right away. Your cloud app does the uploading.</string>
+    <string name="optimise_now_hint_scheduled">Don\'t wait for the next automatic run.</string>
+    <string name="optimise_now_hint_override">Runs now even though it would otherwise be waiting.</string>
+    <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
+    <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
+    <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
+    <string name="optimise_working">Working\u2026</string>
+    <string name="verify_link_hint">Turn on usage access and CloudSaver can confirm uploads by itself.</string>
+    <string name="activity_started_by_you">Started by you</string>
 </resources>

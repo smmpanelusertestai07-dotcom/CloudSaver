@@ -351,6 +351,18 @@ interface ItemDao {
     @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE state = 'NEW' AND originalMissing = 0")
     suspend fun pendingBytes(): Long
 
+    /**
+     * Waiting bytes split by media type.
+     *
+     * Photos and videos compress very differently, so a projection that
+     * averages one ratio across the pile is wrong in both directions.
+     */
+    @Query(
+        "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
+            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video"
+    )
+    suspend fun pendingBytesByType(video: Boolean): Long
+
     /** Bytes saved by work done since [fromMs] - what one run achieved. */
     @Query(
         "SELECT COALESCE(SUM(sizeBytes - outputBytes), 0) FROM items " +
@@ -448,6 +460,20 @@ interface ItemDao {
 
     @Query("SELECT state, COUNT(*) AS cnt FROM items GROUP BY state")
     fun stateCountsFlow(): Flow<List<StateCount>>
+
+    /**
+     * Skipped for a reason the user might want to do something about.
+     *
+     * A duplicate is a normal outcome - the file was handled once, under its
+     * twin - not a problem, and counting it as one made a tidy gallery look
+     * broken.
+     */
+    @Query("SELECT COUNT(*) FROM items WHERE state = 'SKIP' AND duplicateOf IS NULL")
+    fun problemSkippedCountFlow(): Flow<Int>
+
+    /** Files whose identical twin was optimised instead. */
+    @Query("SELECT COUNT(*) FROM items WHERE duplicateOf IS NOT NULL")
+    fun duplicatesHandledCountFlow(): Flow<Int>
 
     @Query(
         "SELECT COUNT(*) FROM items " +

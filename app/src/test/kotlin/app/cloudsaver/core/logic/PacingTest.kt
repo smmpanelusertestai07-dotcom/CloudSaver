@@ -1,6 +1,7 @@
 package app.cloudsaver.core.logic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,8 +44,8 @@ class PacingTest {
 
     @Test
     fun `without an oracle exactly one copy may be in flight`() {
-        assertEquals(1, Pacing.inFlightLimit(cloudHasFreeUpOracle = false))
-        assertEquals(4, Pacing.inFlightLimit(cloudHasFreeUpOracle = true))
+        assertEquals(1, Pacing.inFlightLimit(cloudHasFreeUpOracle = false, cleanStreak = 0))
+        assertEquals(4, Pacing.inFlightLimit(cloudHasFreeUpOracle = true, cleanStreak = 0))
     }
 
     @Test
@@ -117,5 +118,61 @@ class PacingTest {
         val budget = Pacing.dailyBudgetWithCatchUp(cap, cap)
         assertEquals(0L, Pacing.allowanceNow(budget, budget))
         assertFalse(Pacing.allowanceNow(budget, budget / 2) == 0L)
+    }
+
+    @Test
+    fun `the ladder climbs as confirmations prove the accounting works`() {
+        // One at a time until the phone has shown it can be accounted for.
+        assertEquals(1, Pacing.inFlightLimit(false, cleanStreak = 0))
+        assertEquals(1, Pacing.inFlightLimit(false, cleanStreak = 9))
+        assertEquals(8, Pacing.inFlightLimit(false, cleanStreak = 10))
+        assertEquals(8, Pacing.inFlightLimit(false, cleanStreak = 49))
+        assertEquals(32, Pacing.inFlightLimit(false, cleanStreak = 50))
+        assertEquals(32, Pacing.inFlightLimit(false, cleanStreak = 199))
+        // Past the top rung there is no per-item limit left to apply.
+        assertNull(Pacing.inFlightLimit(false, cleanStreak = 200))
+        assertNull(Pacing.inFlightLimit(false, cleanStreak = 5_000))
+    }
+
+    @Test
+    fun `a cloud with an oracle starts higher but climbs the same ladder`() {
+        assertEquals(4, Pacing.inFlightLimit(true, cleanStreak = 0))
+        assertEquals(8, Pacing.inFlightLimit(true, cleanStreak = 10))
+        assertNull(Pacing.inFlightLimit(true, cleanStreak = 200))
+    }
+
+    @Test
+    fun `a failure drops the limit back to the bottom`() {
+        // The engine resets the streak on any failure, so the ladder position
+        // is a pure function of it: nothing else needs to remember the drop.
+        assertEquals(32, Pacing.inFlightLimit(false, cleanStreak = 60))
+        assertEquals(1, Pacing.inFlightLimit(false, cleanStreak = 0))
+    }
+
+    @Test
+    fun `samples keep arriving once the limit is high, twice as often after a failure`() {
+        assertEquals(20, Pacing.sampleEvery(recentFailure = false))
+        assertEquals(10, Pacing.sampleEvery(recentFailure = true))
+        assertFalse(Pacing.isSampleTurn(releasedSinceSample = 19, recentFailure = false))
+        assertTrue(Pacing.isSampleTurn(releasedSinceSample = 20, recentFailure = false))
+        assertTrue(Pacing.isSampleTurn(releasedSinceSample = 10, recentFailure = true))
+    }
+
+    @Test
+    fun `slots are unbounded once the ladder is topped out`() {
+        val now = 1_000_000L
+        val many = List(100) { now }
+        assertEquals(Int.MAX_VALUE, Pacing.slotsFree(many, now, false, cleanStreak = 200))
+    }
+
+    @Test
+    fun `compression is never limited by the release queue`() {
+        // The throughput bug this guards: one file in flight also meant one
+        // file optimised at a time, so a full gallery would take years.
+        assertTrue(Pacing.compressionAllowed(stageBytes = 0, stageCapBytes = 1_000))
+        assertTrue(Pacing.compressionAllowed(stageBytes = 999, stageCapBytes = 1_000))
+        assertFalse(Pacing.compressionAllowed(stageBytes = 1_000, stageCapBytes = 1_000))
+        // No cap configured means no limit at all.
+        assertTrue(Pacing.compressionAllowed(stageBytes = 9_999_999, stageCapBytes = 0))
     }
 }

@@ -60,6 +60,7 @@ import app.cloudsaver.ui.theme.BrandMint
 import app.cloudsaver.ui.theme.BrandViolet
 import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
+import app.cloudsaver.ui.theme.OnBrand
 import kotlinx.coroutines.launch
 
 /**
@@ -154,14 +155,18 @@ fun HeroCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(CardShape)
-            .background(Brush.linearGradient(listOf(BrandIndigo, BrandViolet)))
-            .padding(20.dp),
-        content = content
-    )
+    // The banner keeps its colours in both themes, so it hands its own
+    // content colour down rather than letting screens name white themselves.
+    androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides OnBrand) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(Brush.linearGradient(listOf(BrandIndigo, BrandViolet)))
+                .padding(20.dp),
+            content = content
+        )
+    }
 }
 
 /** A number that counts up when it changes. */

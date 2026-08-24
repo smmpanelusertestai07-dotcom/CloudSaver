@@ -94,6 +94,21 @@ object Scheduler {
             .enqueueUniqueWork(W_NOW, ExistingWorkPolicy.KEEP, request)
     }
 
+    /**
+     * True while a compression run is executing, either the periodic one or
+     * one the user started. Home shows progress instead of an action then -
+     * offering "Optimise now" during a run invites a tap that does nothing.
+     */
+    fun runningFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> {
+        val wm = WorkManager.getInstance(context)
+        return kotlinx.coroutines.flow.combine(
+            wm.getWorkInfosForUniqueWorkFlow(W_COMPRESS),
+            wm.getWorkInfosForUniqueWorkFlow(W_NOW)
+        ) { periodic, manual ->
+            (periodic + manual).any { it.state == androidx.work.WorkInfo.State.RUNNING }
+        }
+    }
+
     fun maintainNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<MaintainWorker>().build()
         WorkManager.getInstance(context)

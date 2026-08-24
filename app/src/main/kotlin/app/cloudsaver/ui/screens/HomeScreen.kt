@@ -67,6 +67,22 @@ import app.cloudsaver.ui.components.StatusChip
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PowerPages
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.TrendingUp
+import app.cloudsaver.ui.theme.TabularFigures
+import app.cloudsaver.ui.theme.OnBrand
+import app.cloudsaver.ui.theme.OnBrandFaint
+import app.cloudsaver.ui.theme.OnBrandMuted
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Bolt
+import app.cloudsaver.core.logic.HomeAction
 
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
@@ -84,6 +100,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val canConfirm by vm.cloudHasFreeUp.collectAsStateWithLifecycle()
     val skipReasons by vm.skipReasons.collectAsStateWithLifecycle()
     val statusWaiting by vm.statusWaiting.collectAsStateWithLifecycle()
+    val running by vm.running.collectAsStateWithLifecycle()
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
@@ -186,45 +203,76 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // Hero: the one number that matters, plus what the app is doing.
         Spacer(Modifier.height(12.dp))
         HeroCard {
-            Text(
-                stringResource(R.string.hero_saved_label),
-                style = MaterialTheme.typography.labelLarge,
-                color = Color.White.copy(alpha = 0.85f)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Savings,
+                    contentDescription = null,
+                    tint = OnBrandMuted,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.hero_saved_label),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = OnBrandMuted
+                )
+            }
             AnimatedNumber(
                 value = Formats.bytes(savedBytes),
-                color = Color.White,
-                modifier = Modifier.padding(top = 2.dp)
+                color = OnBrand,
+                modifier = Modifier.padding(top = 4.dp)
             )
             Text(
                 pluralStringResource(R.plurals.hero_saved_sub, processed, processed),
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.9f)
+                color = OnBrandMuted
             )
-            // What finishing the queue would be worth, from the same measured
-            // profile every other estimate uses.
-            if (projection > 0) {
-                Text(
-                    stringResource(R.string.hero_projection, Formats.bytes(projection)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            // A single 4K clip can outweigh a thousand photos, so the two
-            // numbers are worth keeping apart: this is the line that tells
-            // someone whether turning videos on was worth it.
+            // Photos and videos side by side, and only the halves that
+            // actually happened. A card that reads "Videos 0 MB" is telling
+            // someone about a thing that did not occur.
             if (savings.totalBytes > 0) {
-                Text(
-                    stringResource(
-                        R.string.hero_saved_split,
-                        Formats.bytes(savings.photoBytes),
-                        Formats.bytes(savings.videoBytes)
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.padding(top = 2.dp)
-                )
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (savings.photoBytes > 0) {
+                        HeroStat(
+                            Icons.Outlined.PhotoLibrary,
+                            stringResource(R.string.scope_photos),
+                            Formats.bytes(savings.photoBytes),
+                            Modifier.weight(1f)
+                        )
+                    }
+                    if (savings.videoBytes > 0) {
+                        HeroStat(
+                            Icons.Outlined.Movie,
+                            stringResource(R.string.scope_videos),
+                            Formats.bytes(savings.videoBytes),
+                            Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+            // What finishing the queue would be worth. Labelled an estimate
+            // whenever it leans on typical ratios rather than this phone's.
+            if (projection.savedBytes > 0) {
+                Spacer(Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.TrendingUp,
+                        contentDescription = null,
+                        tint = OnBrandMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(
+                            if (projection.isEstimate) R.string.hero_projection_estimate
+                            else R.string.hero_projection,
+                            Formats.bytes(projection.savedBytes)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnBrandMuted
+                    )
+                }
             }
             Spacer(Modifier.height(14.dp))
             androidx.compose.animation.Crossfade(
@@ -235,17 +283,29 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     line,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
-                    color = Color.White
+                    color = OnBrand
                 )
             }
             // Nothing has run yet, so there is no time to state. A line
             // reading "Last checked -" is worse than no line.
             if (options.lastRunAt > 0) {
-                Text(
-                    stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.75f)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        tint = OnBrandFaint,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnBrandFaint
+                    )
+                }
             }
         }
 
@@ -329,12 +389,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     onClick = { explain = R.string.explain_in_folder }
                 )
             }
-            if (counters.confirmed > 0) add { m: Modifier ->
+            // Always shown, even at zero: this is the goal, and a dashboard
+            // that hides the goal until it is met explains nothing.
+            add { m: Modifier ->
                 MetricTile(
                     Formats.count(counters.confirmed),
                     stringResource(R.string.count_confirmed),
                     m,
-                    highlight = true,
+                    highlight = counters.confirmed > 0,
                     onClick = { explain = R.string.explain_backed_up }
                 )
             }
@@ -351,7 +413,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
         MetricGrid(progressTiles)
-        if (progressTiles.isEmpty()) {
+        if (counters.waiting == 0 && counters.inFolder == 0 && counters.confirmed == 0) {
             Text(
                 stringResource(
                     if (options.lastRunAt == 0L) R.string.progress_none_yet
@@ -361,6 +423,39 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
+        }
+        // Duplicates get one quiet line, not a tile and never the Skipped
+        // count: the file was handled once, under its identical twin.
+        if (counters.duplicates > 0) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { nav.navigate(Routes.DUPLICATES) }
+                    .padding(vertical = 8.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.ContentCopy,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    pluralStringResource(
+                        R.plurals.duplicates_handled, counters.duplicates, counters.duplicates
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         if (counters.skipped > 0 && skipReasons.isNotEmpty()) {
             Row(
@@ -429,32 +524,93 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = { vm.runNow() }, modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.btn_run_now))
-            }
-            // The button only does anything on a cloud that removes its own
-            // uploads: elsewhere there is nothing for it to observe, and an
-            // action that always reports "0 confirmed" teaches people the app
-            // is broken.
-            if (canConfirm) {
-                OutlinedButton(
-                    onClick = { vm.startConfirmFlow() },
-                    modifier = Modifier.weight(1f)
-                ) { Text(stringResource(R.string.btn_confirm_uploads)) }
-            }
-        }
-        Text(
-            if (canConfirm) {
-                stringResource(R.string.confirm_explainer)
-            } else {
-                stringResource(R.string.confirm_unavailable)
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp)
+        // The one action on this screen. It is offered only when a tap could
+        // change something, and it never promises an upload - CloudSaver
+        // optimises, the user's cloud app uploads.
+        val action = HomeAction.decide(
+            queued = counters.waiting,
+            running = running,
+            paused = options.pauseAll,
+            thermalThrottled = health.thermalThrottled,
+            batteryPct = health.batteryPct,
+            plugged = health.plugged,
+            freeBytes = health.freeBytes,
+            minFreeBytes = options.minFreeBytes,
+            waitReason = runCatching { RunDecider.Wait.valueOf(options.waitReason) }
+                .getOrDefault(RunDecider.Wait.NONE)
         )
+
+        Spacer(Modifier.height(16.dp))
+        when (action.visibility) {
+            HomeAction.Visibility.WORKING -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        stringResource(R.string.optimise_working),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            HomeAction.Visibility.BUTTON -> {
+                Button(
+                    onClick = { vm.optimiseNow() },
+                    enabled = action.enabled,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Outlined.Bolt,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.btn_optimise_now))
+                }
+                Text(
+                    when (action.blocker) {
+                        HomeAction.Blocker.TOO_HOT ->
+                            stringResource(R.string.optimise_blocked_hot)
+                        HomeAction.Blocker.BATTERY_LOW ->
+                            stringResource(
+                                R.string.optimise_blocked_battery,
+                                HomeAction.BATTERY_FLOOR_PCT
+                            )
+                        HomeAction.Blocker.NOT_ENOUGH_SPACE ->
+                            stringResource(R.string.optimise_blocked_space)
+                        HomeAction.Blocker.NONE -> when (action.note) {
+                            HomeAction.Note.OVERRIDES_WAITING ->
+                                stringResource(R.string.optimise_now_hint_override)
+                            else -> stringResource(R.string.optimise_now_hint)
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
+
+            HomeAction.Visibility.HIDDEN -> Unit
+        }
+
+        // Not a button, and not always present: this exists only where the
+        // app cannot see the uploads for itself. With usage access granted
+        // the check is automatic, and offering it anyway would imply the
+        // automatic part does not work.
+        if (HomeAction.showVerifyLink(!health.usageAccessOff, canConfirm)) {
+            TextButton(onClick = { vm.startConfirmFlow() }) {
+                Text(stringResource(R.string.btn_verify_link))
+            }
+            Text(
+                stringResource(R.string.verify_link_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         AnimatedVisibility(
             visible = confirmResult != null,
@@ -606,5 +762,48 @@ private fun statusLine(options: Options, waiting: Int): String {
         stringResource(R.string.status_idle)
     } else {
         stringResource(R.string.status_fresh)
+    }
+}
+
+/**
+ * One half of the saved-space split inside the hero banner.
+ *
+ * Photos and videos behave nothing alike - a single 4K clip can outweigh a
+ * thousand photos - so the two are worth seeing apart. Each carries its own
+ * icon so the pair reads at a glance rather than as a sentence.
+ */
+@Composable
+private fun HeroStat(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(OnBrand.copy(alpha = 0.14f))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = OnBrandMuted,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = OnBrandMuted
+            )
+        }
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+            color = OnBrand,
+            modifier = Modifier.padding(top = 2.dp)
+        )
     }
 }

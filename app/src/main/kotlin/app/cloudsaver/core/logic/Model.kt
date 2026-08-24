@@ -153,10 +153,21 @@ object Defaults {
      *     dot-directories,
      *  4. a visible file, explained in the FAQ, if nothing hidden works.
      */
-    const val SNAPSHOT_DIR_OUTPUT = "Pictures/CloudSaver/.cloudsaver"
+    /**
+     * Where the automatic snapshot lives.
+     *
+     * Documents and Download only. Android refuses a non-media file under
+     * Pictures - "Primary directory Pictures not allowed ... allowed
+     * directories are [Download, Documents]" - so the old Pictures targets
+     * silently wrote nothing, and the one thing that survives an uninstall
+     * was not being written at all.
+     */
     const val SNAPSHOT_DIR_DOCUMENTS = "Documents/.cloudsaver"
-    const val SNAPSHOT_DIR_DOTFILE = "Pictures/CloudSaver"
-    const val SNAPSHOT_DIR_VISIBLE = "Documents/CloudSaver"
+    const val SNAPSHOT_DIR_DOWNLOAD = "Download/.cloudsaver"
+    /** Older builds wrote here. Read on upgrade, never written again. */
+    const val SNAPSHOT_DIR_LEGACY_OUTPUT = "Pictures/CloudSaver/.cloudsaver"
+    const val SNAPSHOT_DIR_LEGACY_DOTFILE = "Pictures/CloudSaver"
+    const val SNAPSHOT_DIR_LEGACY_VISIBLE = "Documents/CloudSaver"
 
     const val SNAPSHOT_NAME = "state.json"
     const val SNAPSHOT_NAME_DOTFILE = ".cloudsaver.json"
@@ -164,11 +175,12 @@ object Defaults {
 
     /** Snapshot targets in the order they are tried, as (directory, filename). */
     val SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
-        SNAPSHOT_DIR_OUTPUT to SNAPSHOT_NAME,
         SNAPSHOT_DIR_DOCUMENTS to SNAPSHOT_NAME,
-        SNAPSHOT_DIR_DOTFILE to SNAPSHOT_NAME_DOTFILE,
-        SNAPSHOT_DIR_VISIBLE to SNAPSHOT_NAME_VISIBLE
+        SNAPSHOT_DIR_DOWNLOAD to SNAPSHOT_NAME
     )
+
+    /** The app-private third copy, relative to the app's own files dir. */
+    const val SNAPSHOT_PRIVATE_NAME = "state.json"
 
     /**
      * Where older builds wrote the automatic snapshot. Read-only: recovery
@@ -176,7 +188,10 @@ object Defaults {
      * here again and the file is removed once it has been read.
      */
     val LEGACY_SNAPSHOT_TARGETS: List<Pair<String, String>> = listOf(
-        SNAPSHOT_DIR_VISIBLE to SNAPSHOT_NAME
+        SNAPSHOT_DIR_LEGACY_OUTPUT to SNAPSHOT_NAME,
+        SNAPSHOT_DIR_LEGACY_DOTFILE to SNAPSHOT_NAME_DOTFILE,
+        SNAPSHOT_DIR_LEGACY_VISIBLE to SNAPSHOT_NAME,
+        SNAPSHOT_DIR_LEGACY_VISIBLE to SNAPSHOT_NAME_VISIBLE
     )
 
     /** True for a snapshot target Android hides from the gallery and Files. */

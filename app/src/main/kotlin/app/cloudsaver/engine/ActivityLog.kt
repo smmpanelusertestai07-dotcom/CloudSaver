@@ -19,13 +19,16 @@ class ActivityLog(private val context: Context) {
     /** Event kinds. Stored as names so the log survives schema changes. */
     enum class Kind {
         OPTIMISED, RELEASED, BACKED_UP, PAUSED, RESUMED,
-        CLOUD_PROBLEM, SKIPPED, RECLAIMED, SETTINGS_CHANGED, RECOVERED;
+        CLOUD_PROBLEM, SKIPPED, RECLAIMED, SETTINGS_CHANGED, RECOVERED,
+
+        /** Something the app could not do, that the user needs to know. */
+        PROBLEM;
 
         /** The three filters the screen offers, plus All. */
         val group: Group
             get() = when (this) {
                 OPTIMISED, RELEASED, BACKED_UP, RECLAIMED -> Group.BACKUPS
-                PAUSED, CLOUD_PROBLEM, SKIPPED -> Group.PROBLEMS
+                PAUSED, CLOUD_PROBLEM, SKIPPED, PROBLEM -> Group.PROBLEMS
                 RESUMED, SETTINGS_CHANGED, RECOVERED -> Group.CHANGES
             }
     }

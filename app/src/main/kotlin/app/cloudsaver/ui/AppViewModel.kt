@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.ActivityWording
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
 import app.cloudsaver.core.logic.Defaults
@@ -19,6 +20,7 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
@@ -46,6 +48,7 @@ import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
+import app.cloudsaver.work.Gates
 import app.cloudsaver.work.Scheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -104,14 +107,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val waiting: Int = 0,
         val inFolder: Int = 0,
         val confirmed: Int = 0,
-        val skipped: Int = 0
+        /** Problems only: unreadable, too large, encoder refused, and so on. */
+        val skipped: Int = 0,
+        /** Files handled once under an identical twin. Not a problem. */
+        val duplicates: Int = 0
     )
 
     val counters: StateFlow<Counters> = combine(
         db.items().stateCountsFlow(),
         db.items().confirmedCountFlow(),
-        db.items().verifiedCountFlow()
-    ) { states, confirmed, verified ->
+        db.items().verifiedCountFlow(),
+        db.items().problemSkippedCountFlow(),
+        db.items().duplicatesHandledCountFlow()
+    ) { states, confirmed, verified, problems, duplicates ->
         val byState = states.associate { it.state to it.cnt }
         Counters(
             waiting = byState[ItemState.NEW.name] ?: 0,
@@ -120,7 +128,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Both count as backed up on Home; how strong the evidence is
             // belongs in the item's details, not in a headline number.
             confirmed = confirmed + verified,
-            skipped = byState[ItemState.SKIP.name] ?: 0
+            // Real problems only. A duplicate was handled under its twin,
+            // which is the app working, not the app failing.
+            skipped = problems,
+            duplicates = duplicates
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, Counters())
 
@@ -254,6 +265,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
+        // Three taps through the quality presets is one decision, not three
+        // events, and a history that records each of them buries the rest.
+        .map { rows ->
+            ActivityWording.coalesce(
+                rows = rows,
+                isSettingChange = { it.kind == ActivityLog.Kind.SETTINGS_CHANGED.name },
+                detailOf = { it.detail },
+                atMsOf = { it.atMs }
+            )
+        }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Unread dot on Home: anything logged since the screen was last opened. */
@@ -363,7 +384,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * check can be green and the app still be dead, because the phone
          * simply stopped scheduling it - and that failure is invisible.
          */
-        val backgroundWorkStopped: Boolean = false
+        val backgroundWorkStopped: Boolean = false,
+
+        // Everything the Home action needs to decide whether a run the user
+        // asks for could actually go ahead.
+        val thermalThrottled: Boolean = false,
+        val batteryPct: Int = 0,
+        val plugged: Boolean = false,
+        val freeBytes: Long = 0
     )
 
     val health = MutableStateFlow(Health())
@@ -374,11 +402,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val waiting = runCatching { db.items().countByState(ItemState.NEW.name) }
                 .getOrDefault(0)
             val silentFor = System.currentTimeMillis() - o.lastRunAt
+            val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
+            val free = Storage.freeBytes(ctx)
             health.value = Health(
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
-                spaceLow = Storage.freeBytes(ctx) < o.minFreeBytes,
+                spaceLow = free < o.minFreeBytes,
+                thermalThrottled = power.thermalThrottled ||
+                    power.batteryTempTenthsC >= Defaults.BATTERY_MAX_TEMP_TENTHS_C,
+                batteryPct = power.batteryPct,
+                plugged = power.plugged,
+                freeBytes = free,
                 paused = o.pauseAll,
                 backgroundWorkStopped = !o.pauseAll && waiting > 0 &&
                     o.lastRunAt > 0 && silentFor > BACKGROUND_STALL_MS
@@ -542,28 +577,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * What finishing the queue would save, from the measured profile.
+     * What finishing the queue would save.
      *
-     * Zero when the profile has nothing measured yet: an invented projection
-     * would be the app's most visible number and its least defensible one.
+     * Photos and videos are projected separately and added, from this phone's
+     * measured ratios where they exist and typical ratios where they do not.
+     * It used to report zero until something had been measured, which for a
+     * queue of 249 MB of video read as "about 0 MB could be saved" - not
+     * cautious, just wrong. The basis is carried alongside so the screen can
+     * say whether the figure is measured or an estimate.
      */
-    val projectedSavings = MutableStateFlow(0L)
+    val projectedSavings = MutableStateFlow(Projection.Estimate(0L, Projection.Basis.TYPICAL))
 
     fun refreshProjection() {
         viewModelScope.launch(Dispatchers.IO) {
             val p = ProfileBuilder(ctx).current(repo.current())
-            val waiting = db.items().pendingBytes()
-            projectedSavings.value = if (p.photos.ratio > 0 || p.videos.ratio > 0) {
-                val ratio = when {
-                    p.photos.ratio > 0 && p.videos.ratio > 0 ->
-                        (p.photos.ratio + p.videos.ratio) / 2
-                    p.photos.ratio > 0 -> p.photos.ratio
-                    else -> p.videos.ratio
-                }
-                (waiting * (1 - ratio)).toLong()
-            } else {
-                0L
-            }
+            projectedSavings.value = Projection.forQueue(
+                photoBytes = db.items().pendingBytesByType(video = false),
+                videoBytes = db.items().pendingBytesByType(video = true),
+                measuredPhotoRatio = p.photos.ratio,
+                measuredVideoRatio = p.videos.ratio
+            )
         }
     }
 
@@ -784,10 +817,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- actions ------------------------------------------------------------
 
-    fun runNow() {
+    /**
+     * A run the user asked for.
+     *
+     * It skips everything the scheduler was waiting for - charger, screen off,
+     * today's battery budget - because those exist to avoid surprising
+     * someone, and a tap is not a surprise. The safety guards (heat, a nearly
+     * flat battery, free space) still apply; [HomeAction] decides whether the
+     * button was offered at all.
+     */
+    fun optimiseNow() {
         Scheduler.runNow(ctx)
         Scheduler.maintainNow(ctx)
+        viewModelScope.launch(Dispatchers.IO) {
+            activityLog.record(ActivityLog.Kind.OPTIMISED, detail = ctx.getString(R.string.activity_started_by_you))
+        }
     }
+
+    /** True while a compression run is actually executing. */
+    val running: StateFlow<Boolean> = Scheduler.runningFlow(ctx)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun quickMaintain() {
         viewModelScope.launch(Dispatchers.Default) {
@@ -875,21 +924,49 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- option setters -----------------------------------------------------
 
-    fun setScope(v: BackupScope) = setStr(OptionsRepo.K.SCOPE, v.name)
-    fun setOutputMode(v: OutputMode) = setStr(OptionsRepo.K.OUTPUT_MODE, v.name)
+    fun setScope(v: BackupScope) {
+        setStr(OptionsRepo.K.SCOPE, v.name)
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.SCOPE, v.name)
+        )
+    }
+
+    fun setOutputMode(v: OutputMode) {
+        setStr(OptionsRepo.K.OUTPUT_MODE, v.name)
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.LAYOUT, v.name)
+        )
+    }
     fun setCloudSingle(v: String) {
         setStr(OptionsRepo.K.CLOUD_SINGLE, v)
-        noteSettingChange(detail = CloudApps.byId(v).label)
+        noteSettingChange(
+            detail = ActivityWording.encode(
+                ActivityWording.Setting.CLOUD_APP, CloudApps.byId(v).label
+            )
+        )
         refreshCloudCaps()
     }
     fun setCloudPhotos(v: String) = setStr(OptionsRepo.K.CLOUD_PHOTOS, v)
     fun setCloudVideos(v: String) = setStr(OptionsRepo.K.CLOUD_VIDEOS, v)
     fun setPreset(v: Preset) {
         setStr(OptionsRepo.K.PRESET, v.name)
-        noteSettingChange(detail = v.name)
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.QUALITY, v.name)
+        )
     }
-    fun setCodec(v: VideoCodec) = setStr(OptionsRepo.K.CODEC, v.name)
-    fun setTheme(v: ThemeMode) = setStr(OptionsRepo.K.THEME, v.name)
+    fun setCodec(v: VideoCodec) {
+        setStr(OptionsRepo.K.CODEC, v.name)
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.CODEC, v.name)
+        )
+    }
+
+    fun setTheme(v: ThemeMode) {
+        setStr(OptionsRepo.K.THEME, v.name)
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.THEME, v.name)
+        )
+    }
     fun setDynamicColor(v: Boolean) = setBool(OptionsRepo.K.DYNAMIC_COLOR, v)
     fun setDailyCap(v: Int) = setInt(OptionsRepo.K.DAILY_CAP_MB, v)
     fun setMinFree(v: Int) = setInt(OptionsRepo.K.MIN_FREE_MB, v)
@@ -936,6 +1013,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             repo.setString(OptionsRepo.K.SPEED, v.name)
             Scheduler.ensure(ctx, repo.current())
         }
+        noteSettingChange(
+            detail = ActivityWording.encode(ActivityWording.Setting.SPEED, v.name)
+        )
     }
 
     fun setStorageVolume(v: String) = setStr(OptionsRepo.K.STORAGE_VOLUME, v)
@@ -1019,7 +1099,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             cloudDetection.value = cloudDetection.value.copy(
                 chosen = CloudApps.byId(id), needsChoice = false
             )
-            noteSettingChange(detail = CloudApps.byId(id).label)
+            noteSettingChange(
+                detail = ActivityWording.encode(
+                    ActivityWording.Setting.CLOUD_APP, CloudApps.byId(id).label
+                )
+            )
             refreshCloudCaps()
         }
     }

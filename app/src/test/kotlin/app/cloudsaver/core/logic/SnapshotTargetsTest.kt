@@ -13,21 +13,53 @@ import org.junit.Test
 class SnapshotTargetsTest {
 
     @Test
-    fun everyPreferredTargetIsHidden() {
+    fun everyTargetIsHidden() {
         val targets = Defaults.SNAPSHOT_TARGETS
         assertTrue("there must be somewhere to write", targets.isNotEmpty())
-        val hidden = targets.filter { (dir, name) -> Defaults.isHiddenSnapshotTarget(dir, name) }
         val visible = targets.filterNot { (dir, name) ->
             Defaults.isHiddenSnapshotTarget(dir, name)
         }
-        assertTrue("at least one hidden target", hidden.size >= 2)
-        assertEquals("only one visible last resort", 1, visible.size)
+        // There is no visible last resort any more: Documents and Download
+        // both accept a hidden folder, so the app never has to leave a file
+        // where someone browsing Files would find it.
+        assertEquals("no visible target should remain: $visible", 0, visible.size)
+    }
 
-        // Every hidden target is tried before the visible one.
-        val firstVisible = targets.indexOfFirst { (dir, name) ->
-            !Defaults.isHiddenSnapshotTarget(dir, name)
+    @Test
+    fun `snapshots go where Android actually allows them`() {
+        // The bug this guards: MediaStore refuses a non-media file under
+        // Pictures - "Primary directory Pictures not allowed ... allowed
+        // directories are [Download, Documents]" - so every automatic write
+        // failed silently and an uninstall would have lost the history.
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
+            val root = dir.substringBefore('/')
+            assertTrue(
+                "$dir/$name is under $root, which Android rejects for data files",
+                root == "Documents" || root == "Download"
+            )
         }
-        assertEquals("the visible target must be last", targets.size - 1, firstVisible)
+    }
+
+    @Test
+    fun `both shared copies exist, in different roots`() {
+        // One deletion should never be able to take the only copy with it.
+        val roots = Defaults.SNAPSHOT_TARGETS.map { it.first.substringBefore('/') }.toSet()
+        assertEquals("expected Documents and Download", setOf("Documents", "Download"), roots)
+    }
+
+    @Test
+    fun `the old Pictures locations are still read, never written`() {
+        val legacy = Defaults.LEGACY_SNAPSHOT_TARGETS.map { it.first }
+        assertTrue(
+            "an upgrade must still find its old state",
+            legacy.any { it.startsWith("Pictures/") }
+        )
+        for (dir in legacy) {
+            assertFalse(
+                "$dir must not be written to again",
+                Defaults.SNAPSHOT_TARGETS.any { it.first == dir }
+            )
+        }
     }
 
     @Test

@@ -37,6 +37,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.data.db.ActivityRow
+import app.cloudsaver.core.logic.ActivityWording
+import app.cloudsaver.core.logic.BackupScope
+import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.SpeedMode
+import app.cloudsaver.core.logic.ThemeMode
+import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
@@ -203,17 +210,25 @@ private fun ActivityCard(row: ActivityRow, nav: NavHostController, vm: AppViewMo
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    kind?.let { headline(it, row) } ?: row.kind,
+                    // A settings change says what changed and to what, in one
+                    // sentence. Everything else keeps its own headline.
+                    if (kind == ActivityLog.Kind.SETTINGS_CHANGED) {
+                        settingSentence(row.detail)
+                    } else {
+                        kind?.let { headline(it, row) } ?: unknownEventLabel()
+                    },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
-                row.detail?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
+                if (kind != ActivityLog.Kind.SETTINGS_CHANGED) {
+                    row.detail?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
             }
             Text(
@@ -243,4 +258,78 @@ private fun headline(kind: ActivityLog.Kind, row: ActivityRow): String = when (k
     ActivityLog.Kind.SKIPPED -> stringResource(R.string.activity_skipped)
     ActivityLog.Kind.SETTINGS_CHANGED -> stringResource(R.string.activity_settings)
     ActivityLog.Kind.RECOVERED -> stringResource(R.string.activity_recovered)
+    ActivityLog.Kind.PROBLEM -> stringResource(R.string.activity_problem)
+}
+
+/** A stored event this build does not know about: never show its raw name. */
+@Composable
+private fun unknownEventLabel(): String = stringResource(R.string.activity_unknown)
+
+/**
+ * "Quality changed to Storage saver".
+ *
+ * Both halves come from the same strings the settings screen uses, so the
+ * history and the control can never describe the same choice differently.
+ */
+@Composable
+private fun settingSentence(detail: String?): String {
+    val change = ActivityWording.decode(detail)
+        ?: return stringResource(R.string.activity_settings)
+    val name = stringResource(
+        when (change.setting) {
+            ActivityWording.Setting.QUALITY -> R.string.opt_preset
+            ActivityWording.Setting.CLOUD_APP -> R.string.opt_cloud
+            ActivityWording.Setting.SPEED -> R.string.opt_speed
+            ActivityWording.Setting.LAYOUT -> R.string.opt_output
+            ActivityWording.Setting.CODEC -> R.string.opt_codec
+            ActivityWording.Setting.THEME -> R.string.opt_theme
+            ActivityWording.Setting.SCOPE -> R.string.opt_scope
+            ActivityWording.Setting.SPACE -> R.string.opt_group_space
+        }
+    )
+    return stringResource(R.string.activity_setting_changed, name, settingValue(change))
+}
+
+/** The stored value in the same words the control shows. */
+@Composable
+private fun settingValue(change: ActivityWording.Change): String {
+    val res = when (change.setting) {
+        ActivityWording.Setting.QUALITY -> when (change.value) {
+            Preset.STORAGE_SAVER.name -> R.string.preset_storage
+            Preset.BALANCED.name -> R.string.preset_balanced
+            Preset.MAX_SAVER.name -> R.string.preset_max
+            else -> null
+        }
+        ActivityWording.Setting.SPEED -> when (change.value) {
+            SpeedMode.SMART.name -> R.string.speed_smart
+            SpeedMode.CHARGING_ONLY.name -> R.string.speed_charging
+            SpeedMode.FAST.name -> R.string.speed_fast
+            else -> null
+        }
+        ActivityWording.Setting.LAYOUT -> when (change.value) {
+            OutputMode.SINGLE.name -> R.string.output_single
+            OutputMode.SEPARATE.name -> R.string.output_separate
+            else -> null
+        }
+        ActivityWording.Setting.CODEC -> when (change.value) {
+            VideoCodec.H264.name -> R.string.codec_h264
+            VideoCodec.HEVC.name -> R.string.codec_hevc
+            else -> null
+        }
+        ActivityWording.Setting.THEME -> when (change.value) {
+            ThemeMode.SYSTEM.name -> R.string.theme_system
+            ThemeMode.LIGHT.name -> R.string.theme_light
+            ThemeMode.DARK.name -> R.string.theme_dark
+            else -> null
+        }
+        ActivityWording.Setting.SCOPE -> when (change.value) {
+            BackupScope.ALL.name -> R.string.scope_all
+            BackupScope.PHOTOS.name -> R.string.scope_photos
+            BackupScope.VIDEOS.name -> R.string.scope_videos
+            else -> null
+        }
+        // Cloud app and space store a label already fit to read.
+        ActivityWording.Setting.CLOUD_APP, ActivityWording.Setting.SPACE -> null
+    }
+    return res?.let { stringResource(it) } ?: change.value
 }

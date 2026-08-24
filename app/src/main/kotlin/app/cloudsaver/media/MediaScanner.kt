@@ -120,8 +120,20 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         var monthlyPhotoBytes: Long = 0,
         var monthlyVideoBytes: Long = 0,
         var photoCount: Int = 0,
-        var videoCount: Int = 0
-    )
+        var videoCount: Int = 0,
+        /**
+         * False when any collection could not be read.
+         *
+         * A failed query and an empty gallery both produce zeros, and the two
+         * mean opposite things: one is "you have no photos", the other is "we
+         * do not know yet". Showing "0.00 GB" for a phone holding 22 GB - and
+         * then drawing conclusions from it - came from conflating them.
+         */
+        var complete: Boolean = true
+    ) {
+        /** True once there is something real to show. */
+        val measured: Boolean get() = complete && (photoCount > 0 || videoCount > 0)
+    }
 
     /**
      * Sums the gallery without building a list of it.
@@ -143,13 +155,17 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         } catch (e: Exception) {
             setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
-        val projection = arrayOf(
+        // DURATION is asked for only where it exists. Several devices reject
+        // it on the Images collection with "Invalid column duration", and that
+        // one exception used to take every photo on the phone down with it -
+        // the whole cursor was abandoned and the gallery totalled zero.
+        val baseProjection = arrayOf(
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DATE_ADDED,
-            MediaStore.MediaColumns.DURATION,
             MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
             MediaStore.MediaColumns.RELATIVE_PATH
         )
+        val videoProjection = baseProjection + MediaStore.MediaColumns.DURATION
         for (volume in volumes) {
             for (isVideo in listOf(false, true)) {
                 val collection = if (isVideo) {
@@ -157,12 +173,17 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 } else {
                     MediaStore.Images.Media.getContentUri(volume)
                 }
+                val projection = if (isVideo) videoProjection else baseProjection
                 try {
                     context.contentResolver.query(collection, projection, null, null, null)
                         ?.use { c ->
                             val iSize = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                             val iAdded = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-                            val iDur = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DURATION)
+                            val iDur = if (isVideo) {
+                                c.getColumnIndex(MediaStore.MediaColumns.DURATION)
+                            } else {
+                                -1
+                            }
                             val iBucket =
                                 c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
                             val iRel =
@@ -177,7 +198,9 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                                 if (isVideo) {
                                     totals.videoBytes += size
                                     totals.videoCount++
-                                    totals.videoMinutes += c.getLong(iDur) / 60_000.0
+                                    if (iDur >= 0) {
+                                        totals.videoMinutes += c.getLong(iDur) / 60_000.0
+                                    }
                                     if (fresh) totals.monthlyVideoBytes += size
                                 } else {
                                     totals.photoBytes += size
@@ -187,6 +210,8 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                             }
                         }
                 } catch (e: Exception) {
+                    // Partial numbers must never be presented as a total.
+                    totals.complete = false
                     AppLog.log(context, "calc", "totals $volume failed: ${e.message}")
                 }
             }

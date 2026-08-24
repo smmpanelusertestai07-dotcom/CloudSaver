@@ -115,7 +115,7 @@ class StartupRecovery(private val context: Context) {
             "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
             "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
         val args = arrayOf(
-            "${Defaults.SNAPSHOT_DIR_VISIBLE}/",
+            "${Defaults.SNAPSHOT_DIR_LEGACY_VISIBLE}/",
             Defaults.SNAPSHOT_NAME,
             context.packageName
         )

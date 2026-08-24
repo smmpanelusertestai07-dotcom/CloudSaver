@@ -55,6 +55,9 @@ import app.cloudsaver.util.Formats
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import app.cloudsaver.ui.theme.OnBrand
+import app.cloudsaver.ui.theme.OnBrandFaint
+import app.cloudsaver.ui.theme.OnBrandMuted
 
 /**
  * "How much fits in your cloud", inline wherever it is needed.
@@ -228,17 +231,17 @@ fun CalculatorContent(vm: AppViewModel, modifier: Modifier = Modifier) {
                         )
                     },
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.85f)
+                    color = OnBrandMuted
                 )
                 AnimatedNumber(
                     value = stringResource(R.string.calc_hero_value, fmt(estimate.originalsGB)),
-                    color = Color.White,
+                    color = OnBrand,
                     modifier = Modifier.padding(top = 6.dp)
                 )
                 Text(
                     stringResource(R.string.calc_hero_caption, fmt(freeGb ?: 0.0)),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.White.copy(alpha = 0.9f)
+                    color = OnBrandMuted
                 )
             }
 

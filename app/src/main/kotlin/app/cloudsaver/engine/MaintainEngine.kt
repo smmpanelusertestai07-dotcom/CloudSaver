@@ -235,6 +235,7 @@ class MaintainEngine(private val context: Context) {
                         )
                     )
                     releaser.recordDelivered(row, Evidence.CONFIRMED_EXACT.name, now)
+                    noteCleanConfirmation()
                     // Only a cloud that removes its own uploads behaves this
                     // way, so this is also how the app learns what it is
                     // talking to - without ever asking the user.
@@ -371,8 +372,14 @@ class MaintainEngine(private val context: Context) {
      */
     private suspend fun pacedEvidence(o: Options, now: Long) {
         if (!UsageVerifier.hasUsageAccess(context)) return
-        val waiting = db.items().awaitingEvidence()
+        val released = db.items().awaitingEvidence()
             .mapNotNull { row -> row.releasedAt?.let { row to it } }
+        // A copy that sat there for six hours without its bytes appearing is
+        // the accounting failing, not succeeding slowly. The ladder drops.
+        if (released.any { (_, releasedAt) -> Pacing.isTimedOut(releasedAt, now) }) {
+            notePacingFailure("a released copy timed out without confirmation")
+        }
+        val waiting = released
             .filter { (_, releasedAt) -> !Pacing.isTimedOut(releasedAt, now) }
             .map { (row, _) -> row }
         if (waiting.size != 1) return
@@ -390,6 +397,7 @@ class MaintainEngine(private val context: Context) {
             )
         )
         releaser.recordDelivered(row, Evidence.CONFIRMED_PACED.name, now)
+        noteCleanConfirmation()
         AppLog.log(
             context, "verify",
             "${row.displayName}: paced confirm (tx=$tx for $fileBytes)"
@@ -552,6 +560,30 @@ class MaintainEngine(private val context: Context) {
         return true
     }
 
+    /**
+     * One more confirmation with nothing gone wrong: the pacing ladder climbs.
+     */
+    private suspend fun noteCleanConfirmation() {
+        val current = repo.current()
+        repo.setInt(OptionsRepo.K.CLEAN_STREAK, current.cleanConfirmStreak + 1)
+        if (current.recentPacingFailure) {
+            repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, false)
+        }
+    }
+
+    /**
+     * A confirmation did not arrive, or did not match. The streak resets, so
+     * the in-flight limit drops back down and proof samples double in
+     * frequency until the accounting is trusted again.
+     */
+    private suspend fun notePacingFailure(reason: String) {
+        val current = repo.current()
+        if (current.cleanConfirmStreak == 0 && current.recentPacingFailure) return
+        repo.setInt(OptionsRepo.K.CLEAN_STREAK, 0)
+        repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, true)
+        AppLog.log(context, "verify", "pacing confidence reset: $reason")
+    }
+
     // ---- b) paced release + a) anchor self-heal ---------------------------------
 
     /**
@@ -566,7 +598,7 @@ class MaintainEngine(private val context: Context) {
         val caps = watchdog.capsFor(o.cloudSingle)
         val oracle = CloudCapability.hasDisappearanceOracle(caps)
         val inFlight = db.items().awaitingEvidence().mapNotNull { it.releasedAt }
-        val slots = Pacing.slotsFree(inFlight, now, oracle)
+        val slots = Pacing.slotsFree(inFlight, now, oracle, o.cleanConfirmStreak)
         val maxItems = Pacing.releaseSlots(
             slotsFree = slots,
             stagedWaiting = db.items().countByState(ItemState.STAGED.name),

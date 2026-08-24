@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.GoneReason
@@ -90,27 +91,54 @@ class SnapshotStore(
     }
 
     /**
-     * Writes the safety snapshot to every hidden target that accepts it.
+     * Writes the safety snapshot to every target.
      *
-     * The visible last-resort target is only attempted when no hidden one
-     * worked, so a normal device never gets a CloudSaver file it can see.
-     * Returns true when at least one copy was written.
+     * Three copies, deliberately: two shared ones under Documents and
+     * Download that survive an uninstall, and one inside the app's own files
+     * directory that survives nothing but is always writable. Every target is
+     * attempted - a snapshot that exists in one place only is one deletion
+     * away from being no snapshot at all.
+     *
+     * Returns true when at least one shared copy was written. A total failure
+     * of the shared copies is a Problem the user is told about, not a log
+     * line nobody reads: it means an uninstall would lose their history.
      */
     suspend fun writeSafetySnapshot(): Boolean {
         val json = SnapshotCodec.encode(build())
-        var wroteHidden = false
+        val failures = mutableListOf<String>()
+        var wroteShared = false
         for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
-            if (!Defaults.isHiddenSnapshotTarget(dir, name)) continue
-            if (writeTo(json, dir, name)) wroteHidden = true
+            if (writeTo(json, dir, name)) wroteShared = true else failures += "$dir/$name"
         }
-        if (wroteHidden) return true
+        // Always kept, whatever the shared writes did.
+        writePrivate(json)
 
-        AppLog.log(context, "snapshot", "no hidden target accepted; using visible fallback")
-        for ((dir, name) in Defaults.SNAPSHOT_TARGETS) {
-            if (Defaults.isHiddenSnapshotTarget(dir, name)) continue
-            if (writeTo(json, dir, name)) return true
+        if (!wroteShared) {
+            ActivityLog(context).record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.getString(
+                    R.string.problem_snapshot_failed, failures.joinToString(", ")
+                )
+            )
         }
-        return false
+        return wroteShared
+    }
+
+    /** The copy inside the app's own storage. Cheap, and always permitted. */
+    private fun writePrivate(json: String): Boolean = try {
+        java.io.File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+            .writeText(json, Charsets.UTF_8)
+        true
+    } catch (e: Exception) {
+        AppLog.log(context, "snapshot", "private write failed: ${e.message}")
+        false
+    }
+
+    private fun readPrivate(): String? = try {
+        val file = java.io.File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+        if (file.isFile) file.readText(Charsets.UTF_8) else null
+    } catch (e: Exception) {
+        null
     }
 
     /**
@@ -121,17 +149,23 @@ class SnapshotStore(
      */
     suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
         var best: SnapshotCodec.Snapshot? = null
-        val sources = Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS
-        for ((dir, name) in sources) {
-            val json = readFrom(dir, name) ?: continue
+        fun consider(label: String, json: String?) {
+            if (json == null) return
             val snapshot = try {
                 SnapshotCodec.decode(json)
             } catch (e: Exception) {
-                AppLog.log(context, "snapshot", "ignoring $dir/$name: ${e.message}")
-                continue
+                // A corrupted or hand-edited copy is skipped, never trusted:
+                // it could otherwise promote evidence and put an original in
+                // front of the user for deletion.
+                AppLog.log(context, "snapshot", "ignoring $label: ${e.message}")
+                return
             }
-            if (best == null || snapshot.exportedAt > best.exportedAt) best = snapshot
+            if (best == null || snapshot.exportedAt > best!!.exportedAt) best = snapshot
         }
+        for ((dir, name) in Defaults.SNAPSHOT_TARGETS + Defaults.LEGACY_SNAPSHOT_TARGETS) {
+            consider("$dir/$name", readFrom(dir, name))
+        }
+        consider("app storage", readPrivate())
         return best
     }
 

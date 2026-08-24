@@ -11,6 +11,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -142,8 +144,12 @@ private fun MainNav(vm: AppViewModel) {
         contentColor = MaterialTheme.colorScheme.onBackground,
         bottomBar = {
             if (route in setOf(Routes.HOME, Routes.FILES, Routes.STORAGE, Routes.OPTIONS)) {
+                // Opaque, and one step off the page rather than translucent:
+                // a see-through bar let content slide under the selected pill,
+                // which read as a stray shape floating over the screen.
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 0.dp
                 ) {
                     TabItem(nav, route, Routes.HOME, R.drawable.ic_tab_home, R.string.nav_home)
                     TabItem(nav, route, Routes.FILES, R.drawable.ic_tab_files, R.string.nav_files)
@@ -234,6 +240,13 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
                 }
             }
         },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+            indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
         icon = {
             if (badge) {
                 BadgedBox(badge = { Badge() }) {

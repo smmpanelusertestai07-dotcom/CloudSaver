@@ -5,10 +5,22 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
- * CloudSaver palette: indigo primary (the brand), mint secondary (space saved)
+ * CloudSaver palette: indigo primary (the brand), a cyan-blue secondary
  * and amber tertiary (attention). Full Material 3 role set so every component
  * gets correct contrast in both themes without per-widget alpha hacks.
  */
+
+/**
+ * Content colours for the brand gradient.
+ *
+ * The hero banner is the one surface whose colour does not change with the
+ * theme, so its foreground cannot come from the colour scheme. These three
+ * live here rather than as Color.White literals inside screens, so the app
+ * has exactly one file that names a colour.
+ */
+val OnBrand = Color(0xFFFFFFFF)
+val OnBrandMuted = Color(0xE6FFFFFF)
+val OnBrandFaint = Color(0xBFFFFFFF)
 
 // Brand tones used by gradients and the logo.
 val BrandCyan = Color(0xFF56D6F2)
@@ -23,10 +35,13 @@ val LightScheme = lightColorScheme(
     onPrimaryContainer = Color(0xFF120B63),
     inversePrimary = Color(0xFFC1C1FF),
 
-    secondary = Color(0xFF00695A),
+    // The secondary family is the brand's cyan, not a mint green. The
+    // navigation bar's selected indicator is drawn from secondaryContainer,
+    // and a green pill under an indigo header reads as a rendering fault.
+    secondary = Color(0xFF2A5C9A),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFF7BF5DC),
-    onSecondaryContainer = Color(0xFF00201A),
+    secondaryContainer = Color(0xFFD6E3FF),
+    onSecondaryContainer = Color(0xFF0B1B33),
 
     tertiary = Color(0xFF7A5900),
     onTertiary = Color(0xFFFFFFFF),
@@ -66,10 +81,12 @@ val DarkScheme = darkColorScheme(
     onPrimaryContainer = Color(0xFFE2E0FF),
     inversePrimary = Color(0xFF4B4DDB),
 
-    secondary = Color(0xFF5BDBC0),
-    onSecondary = Color(0xFF00382F),
-    secondaryContainer = Color(0xFF005144),
-    onSecondaryContainer = Color(0xFF7BF5DC),
+    // See the light scheme: brand cyan, so the navigation indicator belongs
+    // to the same family as everything above it.
+    secondary = Color(0xFFA9C7FF),
+    onSecondary = Color(0xFF102A4C),
+    secondaryContainer = Color(0xFF2B4468),
+    onSecondaryContainer = Color(0xFFD6E3FF),
 
     tertiary = Color(0xFFEBC248),
     onTertiary = Color(0xFF402D00),

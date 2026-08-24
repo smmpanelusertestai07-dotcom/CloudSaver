@@ -66,6 +66,17 @@ data class Options(
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
     val copiesReattached: Boolean = false,
+    /**
+     * Consecutive per-file confirmations with no failure in between.
+     *
+     * The release pacing ladder climbs on this: proving the accounting works
+     * on this phone is what earns the right to stop holding files back.
+     */
+    val cleanConfirmStreak: Int = 0,
+    /** Files released since the last one sent alone as a proof sample. */
+    val releasedSinceSample: Int = 0,
+    /** A confirmation failed recently, so samples are taken twice as often. */
+    val recentPacingFailure: Boolean = false,
     val cloudDetected: Boolean = false,
     /** Files seen in the upload folder last pass, so a shrink is detectable. */
     val lastOutputCount: Int = 0,
@@ -131,6 +142,9 @@ class OptionsRepo(private val context: Context) {
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
         val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached")
+        val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
+        val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")
+        val RECENT_PACING_FAILURE = booleanPreferencesKey("recentPacingFailure")
         val CLOUD_DETECTED = booleanPreferencesKey("cloudDetected")
         val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
         val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
@@ -191,6 +205,9 @@ class OptionsRepo(private val context: Context) {
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
             copiesReattached = p[K.COPIES_REATTACHED] ?: false,
+            cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,
+            releasedSinceSample = p[K.RELEASED_SINCE_SAMPLE] ?: 0,
+            recentPacingFailure = p[K.RECENT_PACING_FAILURE] ?: false,
             cloudDetected = p[K.CLOUD_DETECTED] ?: false,
             lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
             cloudProblem = p[K.CLOUD_PROBLEM] ?: "",
