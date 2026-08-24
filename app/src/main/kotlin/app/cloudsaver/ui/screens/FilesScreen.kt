@@ -350,7 +350,7 @@ private fun FilesChip(label: String, selected: Boolean, onClick: () -> Unit) {
  * normal - the original may be gone - and falls back to the app mark.
  */
 @Composable
-private fun Thumbnail(row: ItemRow) {
+fun Thumbnail(row: ItemRow) {
     val context = LocalContext.current
     val source = row.outputUri ?: row.contentUri
     val shape = RoundedCornerShape(10.dp)

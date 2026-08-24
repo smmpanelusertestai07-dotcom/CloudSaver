@@ -22,6 +22,7 @@ import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.DuplicateScanner
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.ProfileBuilder
+import app.cloudsaver.engine.ReattachEngine
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.Stager
 import app.cloudsaver.util.AppLog
@@ -114,6 +115,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         try {
             runCatching { scanner.scan() }
                 .onFailure { AppLog.log(app, "work", "scan failed: ${it.message}") }
+
+            // Copies that outlived the database. Runs once, and only after a
+            // scan, because it matches against rows the scan has just created.
+            runCatching { ReattachEngine(app).run() }
+                .onFailure { AppLog.log(app, "work", "re-attach failed: ${it.message}") }
 
             loop@ while (System.currentTimeMillis() < deadline && !isStopped) {
                 val now = System.currentTimeMillis()

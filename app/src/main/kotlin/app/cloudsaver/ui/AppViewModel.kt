@@ -582,15 +582,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // These three back one card each, on screens most launches never reach.
+    // Started lazily so a cold start does not pay for three table scans
+    // nobody asked for, and kept alive briefly across a rotation.
+    private val screenLocal = SharingStarted.WhileSubscribed(5_000)
+
     val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
         .map { it.size }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, screenLocal, 0)
 
     val keptBytes: StateFlow<Long> =
-        db.items().keptBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+        db.items().keptBytesFlow().stateIn(viewModelScope, screenLocal, 0L)
 
     val neverOptimiseCount: StateFlow<Int> = db.items().neverOptimiseCountFlow()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, screenLocal, 0)
 
     fun clearNeverOptimise() {
         viewModelScope.launch(Dispatchers.IO) { db.items().clearNeverOptimise() }

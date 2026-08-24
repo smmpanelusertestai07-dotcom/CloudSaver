@@ -60,6 +60,7 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.HeroCard
 import app.cloudsaver.ui.components.MeterBar
+import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.StatusChip
@@ -79,7 +80,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val tampered by vm.tampered.collectAsStateWithLifecycle()
     val savings by vm.savings.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
-    val unread by vm.activityUnread.collectAsStateWithLifecycle()
     val asIs by vm.asIs.collectAsStateWithLifecycle()
     val canConfirm by vm.cloudHasFreeUp.collectAsStateWithLifecycle()
     val skipReasons by vm.skipReasons.collectAsStateWithLifecycle()
@@ -87,7 +87,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val power by vm.powerRequirements.collectAsStateWithLifecycle()
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
-    val findSpace by vm.findSpace.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -99,7 +98,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         vm.refreshSkipReasons()
         vm.refreshPowerRequirements()
         vm.refreshProjection()
-        if (options.reclaimReminderGb > 0) vm.refreshFindSpace()
     }
 
     val cleanupLauncher = rememberLauncherForActivityResult(
@@ -140,9 +138,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            IconButton(onClick = { nav.navigate(Routes.HELP) }) {
-                Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.nav_help))
             }
         }
 
@@ -243,20 +238,26 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     color = Color.White
                 )
             }
-            Text(
-                stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.75f)
-            )
+            // Nothing has run yet, so there is no time to state. A line
+            // reading "Last checked -" is worse than no line.
+            if (options.lastRunAt > 0) {
+                Text(
+                    stringResource(R.string.last_run, Formats.dateTime(options.lastRunAt)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.75f)
+                )
+            }
         }
 
         // Things that need the user's attention.
-        val anyPower = power.any { !(it.readable && it.satisfied) }
-        val reclaimReady = options.reclaimReminderGb > 0 &&
-            findSpace.reclaimableBytes >= options.reclaimReminderGb * 1_000_000_000L
+        // Only what Android will actually confirm. Auto-launch and background
+        // activity cannot be read on any of these skins, so a chip for them
+        // would nag someone who has already turned them on - and an app that
+        // cries wolf is one you stop reading. They are asked for once during
+        // setup; here, only real evidence speaks: nothing has run for two days.
+        val anyPower = power.any { it.readable && !it.satisfied }
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped ||
-            reclaimReady
+            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped
         AnimatedVisibility(
             visible = anyHealth,
             enter = fadeIn() + expandVertically(),
@@ -275,13 +276,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             nav.navigate(Routes.OPTIONS)
                         }
                     }
-                    // Each of these opens the exact page for this phone's
-                    // skin, not a generic app-info screen the user then has to
-                    // hunt through.
-                    for (requirement in power) {
-                        if (requirement.readable && requirement.satisfied) continue
-                        StatusChip(powerChipLabel(requirement.id)) {
-                            vm.openPowerPage(requirement.id)
+                    if (anyPower) {
+                        StatusChip(stringResource(R.string.chip_battery)) {
+                            vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
                         }
                     }
                     if (health.usageAccessOff) {
@@ -299,20 +296,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             nav.navigate(Routes.STORAGE)
                         }
                     }
-                    // Opt-in only, and a chip rather than a notification: an
-                    // app that pings you to delete your photos is one you
-                    // learn to ignore.
-                    if (options.reclaimReminderGb > 0 &&
-                        findSpace.reclaimableBytes >=
-                        options.reclaimReminderGb * 1_000_000_000L
-                    ) {
-                        StatusChip(
-                            stringResource(
-                                R.string.chip_reclaim,
-                                Formats.bytes(findSpace.reclaimableBytes)
-                            )
-                        ) { nav.navigate(Routes.FREE_UP) }
-                    }
                     // The phone stopped running us. Nothing else on this row
                     // would show it, and the app would just look idle.
                     if (health.backgroundWorkStopped) {
@@ -325,51 +308,66 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         SectionHeader(stringResource(R.string.section_progress))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricTile(
-                Formats.count(counters.waiting),
-                stringResource(R.string.count_waiting),
-                Modifier.weight(1f),
-                onClick = { explain = R.string.explain_waiting }
-            )
-            MetricTile(
-                Formats.count(counters.inFolder),
-                stringResource(R.string.count_in_folder),
-                Modifier.weight(1f),
-                onClick = { explain = R.string.explain_in_folder }
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricTile(
-                Formats.count(counters.confirmed),
-                stringResource(R.string.count_confirmed),
-                Modifier.weight(1f),
-                highlight = true,
-                onClick = { explain = R.string.explain_backed_up }
-            )
-            // A "Skipped: 0" tile is a question with no answer; it appears
-            // only when there is something to explain.
-            if (counters.skipped > 0) {
+        // Only the counts that have something to say, each in an identical
+        // cell. A tile reading "0" is a question with no answer - but a
+        // section with no tiles at all is worse, so the empty case says so
+        // in a sentence below.
+        val progressTiles = buildList<@Composable (Modifier) -> Unit> {
+            if (counters.waiting > 0) add { m: Modifier ->
+                MetricTile(
+                    Formats.count(counters.waiting),
+                    stringResource(R.string.count_waiting),
+                    m,
+                    onClick = { explain = R.string.explain_waiting }
+                )
+            }
+            if (counters.inFolder > 0) add { m: Modifier ->
+                MetricTile(
+                    Formats.count(counters.inFolder),
+                    stringResource(R.string.count_in_folder),
+                    m,
+                    onClick = { explain = R.string.explain_in_folder }
+                )
+            }
+            if (counters.confirmed > 0) add { m: Modifier ->
+                MetricTile(
+                    Formats.count(counters.confirmed),
+                    stringResource(R.string.count_confirmed),
+                    m,
+                    highlight = true,
+                    onClick = { explain = R.string.explain_backed_up }
+                )
+            }
+            if (counters.skipped > 0) add { m: Modifier ->
                 MetricTile(
                     Formats.count(counters.skipped),
                     stringResource(R.string.count_skipped),
-                    Modifier.weight(1f),
+                    m,
                     onClick = {
                         vm.filesState.value = "SKIP"
                         nav.navigate(Routes.FILES)
                     }
                 )
-            } else {
-                Spacer(Modifier.weight(1f))
             }
+        }
+        MetricGrid(progressTiles)
+        if (progressTiles.isEmpty()) {
+            Text(
+                stringResource(
+                    if (options.lastRunAt == 0L) R.string.progress_none_yet
+                    else R.string.progress_all_clear
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
         }
         if (counters.skipped > 0 && skipReasons.isNotEmpty()) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(top = 8.dp),
+                    .padding(top = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 for ((reason, count) in skipReasons) {
@@ -479,41 +477,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 TextButton(onClick = { vm.dismissConfirmResult() }) {
                     Text(stringResource(R.string.ok))
                 }
-            }
-        }
-
-        Spacer(Modifier.height(12.dp))
-        AppCard(onClick = { nav.navigate(Routes.ACTIVITY) }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            stringResource(R.string.nav_activity),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        // A dot rather than a count: the number of log lines is
-                        // not news, the fact that something happened is.
-                        if (unread > 0) {
-                            Box(
-                                Modifier
-                                    .padding(start = 8.dp)
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                        }
-                    }
-                    Text(
-                        stringResource(R.string.activity_entry),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 

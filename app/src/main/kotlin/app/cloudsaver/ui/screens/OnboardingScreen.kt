@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,12 +39,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.OnboardingSteps
+import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
@@ -71,19 +74,24 @@ fun OnboardingScreen(vm: AppViewModel) {
         mutableIntStateOf(options.onboardingStep.coerceIn(0, OnboardingSteps.TOTAL - 1))
     }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Where setup was when it was last left. Remembered once, so the banner
+    // does not vanish the moment they take the next step.
+    val resumedAt = remember { options.onboardingStep }
 
     fun goTo(next: Int) {
         step = next.coerceIn(0, OnboardingSteps.TOTAL - 1)
         vm.setOnboardingStep(step)
     }
 
+    fun go(next: Step) = goTo(OnboardingSteps.indexOf(next))
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { goTo(if (Permissions.hasMediaRead(context)) 2 else 1) }
+    ) { go(if (Permissions.hasMediaRead(context)) Step.ALBUMS else Step.MEDIA) }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { goTo(3) }
+    ) { go(Step.BATTERY) }
 
     val importOkLabel = stringResource(R.string.transfer_import_ok)
     val failedLabel = stringResource(R.string.transfer_failed)
@@ -141,6 +149,22 @@ fun OnboardingScreen(vm: AppViewModel) {
             modifier = Modifier.padding(top = 6.dp)
         )
         Spacer(Modifier.height(12.dp))
+        // Setup was abandoned partway last time. Say so, and say the thing
+        // that actually matters: nothing ran while they were away.
+        if (resumedAt > 0) {
+            AppCard(modifier = Modifier.padding(top = 16.dp), tonal = true) {
+                Text(
+                    stringResource(R.string.onb_resume_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.onb_resume_text),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Text(
             stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
             style = MaterialTheme.typography.labelMedium,
@@ -163,12 +187,12 @@ fun OnboardingScreen(vm: AppViewModel) {
             },
             label = "onboardingStep"
         ) { shown ->
-        when (shown) {
-            0 -> StepCard(
+        when (OnboardingSteps.at(shown)) {
+            Step.WELCOME -> StepCard(
                 title = stringResource(R.string.onb0_title),
                 text = stringResource(R.string.onb0_text),
                 buttonLabel = stringResource(R.string.onb_start),
-                onButton = { goTo(1) }
+                onButton = { go(Step.MEDIA) }
             ) {
                 TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }) {
                     Text(stringResource(R.string.onb0_import))
@@ -179,7 +203,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            1 -> StepCard(
+            Step.MEDIA -> StepCard(
                 title = stringResource(R.string.onb1_title),
                 text = stringResource(R.string.onb1_text),
                 buttonLabel = if (Permissions.hasMediaRead(context)) {
@@ -188,7 +212,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     stringResource(R.string.onb1_grant)
                 },
                 onButton = {
-                    if (Permissions.hasMediaRead(context)) goTo(2)
+                    if (Permissions.hasMediaRead(context)) go(Step.ALBUMS)
                     else permissionLauncher.launch(Permissions.mediaPermissionsToRequest())
                 }
             ) {
@@ -197,7 +221,97 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            2 -> StepCard(
+            Step.ALBUMS -> {
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
+                val buckets by vm.buckets.collectAsStateWithLifecycle()
+                val locked by vm.lockedBuckets.collectAsStateWithLifecycle()
+                val included = buckets.count { it !in options.excludedBuckets }
+                StepCard(
+                    title = stringResource(R.string.onb_albums_title),
+                    text = stringResource(R.string.onb_albums_text),
+                    // No Skip. Everything else here is a permission the app can
+                    // work without; this is the list of someone's photos.
+                    buttonLabel = stringResource(R.string.onb_albums_confirm),
+                    onButton = { go(Step.NOTIFICATIONS) }
+                ) {
+                    if (buckets.isEmpty()) {
+                        Text(
+                            stringResource(R.string.folders_loading),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            pluralStringResource(
+                                R.plurals.onb_albums_selected, included, included
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            enabled = buckets.isNotEmpty(),
+                            onClick = {
+                                vm.setExcludedBuckets(
+                                    if (included == 0) emptySet() else buckets.toSet()
+                                )
+                            }
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (included == 0) R.string.onb_albums_all
+                                    else R.string.onb_albums_none
+                                )
+                            )
+                        }
+                    }
+                    for (bucket in buckets) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = bucket !in options.excludedBuckets,
+                                onCheckedChange = { include ->
+                                    vm.setExcludedBuckets(
+                                        if (include) options.excludedBuckets - bucket
+                                        else options.excludedBuckets + bucket
+                                    )
+                                }
+                            )
+                            Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    // Folders that already hold another app's compressed
+                    // copies. Named so the absence is explained rather than
+                    // looking like the scan missed them.
+                    if (locked.isNotEmpty()) {
+                        Text(
+                            stringResource(R.string.folders_auto_excluded),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+                        for ((bucket, _) in locked) {
+                            Text(
+                                bucket,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.onb_albums_changeable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+            }
+
+            Step.NOTIFICATIONS -> StepCard(
                 title = stringResource(R.string.onb2_title),
                 text = stringResource(R.string.onb2_text),
                 buttonLabel = stringResource(R.string.onb2_grant),
@@ -205,21 +319,21 @@ fun OnboardingScreen(vm: AppViewModel) {
                     if (android.os.Build.VERSION.SDK_INT >= 33 && !Permissions.hasNotifications(context)) {
                         notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                     } else {
-                        goTo(3)
+                        go(Step.BATTERY)
                     }
                 },
-                onSkip = { goTo(3) }
+                onSkip = { go(Step.BATTERY) }
             )
 
-            3 -> {
+            Step.BATTERY -> {
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshPowerRequirements() }
                 val requirements by vm.powerRequirements.collectAsStateWithLifecycle()
                 StepCard(
                     title = stringResource(R.string.onb3_title),
                     text = stringResource(R.string.onb3_text),
                     buttonLabel = stringResource(R.string.onb_done_next),
-                    onButton = { goTo(4) },
-                    onSkip = { goTo(4) }
+                    onButton = { go(Step.USAGE) },
+                    onSkip = { go(Step.USAGE) }
                 ) {
                     // One row per thing this particular phone can break, each
                     // opening the page that holds that switch.
@@ -232,19 +346,19 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            4 -> StepCard(
+            Step.USAGE -> StepCard(
                 title = stringResource(R.string.onb4_title),
                 text = stringResource(R.string.onb4_text),
                 buttonLabel = stringResource(R.string.onb4_grant),
                 onButton = { OemPages.openUsageAccess(context) },
-                onSkip = { goTo(5) }
+                onSkip = { go(Step.CLOUD) }
             ) {
-                Button(onClick = { goTo(5) }, modifier = Modifier.padding(top = 6.dp)) {
+                Button(onClick = { go(Step.CLOUD) }, modifier = Modifier.padding(top = 6.dp)) {
                     Text(stringResource(R.string.onb_done_next))
                 }
             }
 
-            5 -> {
+            Step.CLOUD -> {
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
                 val detection by vm.cloudDetection.collectAsStateWithLifecycle()
                 val link by vm.linkState.collectAsStateWithLifecycle()
@@ -256,7 +370,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     // The primary action is last, after everything the user
                     // has to read and do.
                     buttonLabel = stringResource(R.string.onb_done_next),
-                    onButton = { goTo(6) }
+                    onButton = { go(Step.READY) }
                 ) {
                     Text(
                         stringResource(R.string.onb5_found, chosen.label),
@@ -323,16 +437,52 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            6 -> StepCard(
-                title = stringResource(R.string.onb6_title),
-                text = stringResource(R.string.onb6_text),
-                buttonLabel = if (testRunning) {
-                    stringResource(R.string.onb6_running)
-                } else {
-                    stringResource(R.string.onb6_run)
-                },
-                onButton = { if (!testRunning) vm.startTestRun() }
+            Step.READY -> StepCard(
+                title = stringResource(R.string.onb_ready_title),
+                text = stringResource(R.string.onb_ready_text),
+                // The whole app is idle until this tap. Nothing has been
+                // scheduled, nothing has been copied, nothing has been read
+                // beyond the trial the user asked for.
+                buttonLabel = stringResource(R.string.onb_ready_start),
+                onButton = { vm.finishOnboarding() }
             ) {
+                SummaryLine(
+                    stringResource(R.string.onb_ready_what),
+                    scopeSummary(options.scope, options.excludedBuckets.size)
+                )
+                SummaryLine(
+                    stringResource(R.string.onb_ready_quality),
+                    presetSummary(options.preset)
+                )
+                SummaryLine(
+                    stringResource(R.string.onb_ready_when),
+                    speedSummary(options.speed)
+                )
+                SummaryLine(
+                    stringResource(R.string.onb_ready_cloud),
+                    CloudApps.byId(options.cloudSingle).label
+                )
+                Spacer(Modifier.height(10.dp))
+                // The folder is printed, not described: this exact string is
+                // what has to be picked inside the cloud app.
+                FolderPaths(options.outputMode)
+                CopyPathButton(options.outputMode)
+
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    stringResource(R.string.onb_ready_trial),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    enabled = !testRunning,
+                    onClick = { if (!testRunning) vm.startTestRun() }
+                ) {
+                    Text(
+                        if (testRunning) stringResource(R.string.onb6_running)
+                        else stringResource(R.string.onb6_run)
+                    )
+                }
                 testItems?.let { list ->
                     if (list.isEmpty()) {
                         Text(
@@ -353,10 +503,6 @@ fun OnboardingScreen(vm: AppViewModel) {
                         )
                     }
                 }
-                Button(
-                    onClick = { vm.finishOnboarding() },
-                    modifier = Modifier.padding(top = 8.dp)
-                ) { Text(stringResource(R.string.onb_finish)) }
             }
         }
         }
@@ -436,6 +582,89 @@ fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
         }
     }
 }
+
+/**
+ * Puts the output folder on the clipboard.
+ *
+ * Cloud apps ask you to pick a folder by typing or browsing to it, and
+ * "Pictures/CloudSaver" typed slightly wrong backs up nothing at all while
+ * looking like it worked.
+ */
+@Composable
+fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val paths = OutputPaths.forMode(mode)
+    val copiedLabel = stringResource(R.string.path_copied)
+    OutlinedButton(onClick = {
+        clipboard.setText(androidx.compose.ui.text.AnnotatedString(paths.joinToString("\n")))
+        // Android 13+ shows its own clipboard confirmation; a second toast on
+        // top of it is noise.
+        if (android.os.Build.VERSION.SDK_INT < 33) {
+            android.widget.Toast.makeText(context, copiedLabel, android.widget.Toast.LENGTH_SHORT)
+                .show()
+        }
+    }) {
+        Text(
+            pluralStringResource(R.plurals.copy_path, paths.size, paths.size)
+        )
+    }
+}
+
+/** One "label - value" line in the setup summary. */
+@Composable
+private fun SummaryLine(label: String, value: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
+    }
+}
+
+@Composable
+private fun scopeSummary(scope: app.cloudsaver.core.logic.BackupScope, excluded: Int): String {
+    val what = stringResource(
+        when (scope) {
+            app.cloudsaver.core.logic.BackupScope.ALL -> R.string.scope_all
+            app.cloudsaver.core.logic.BackupScope.PHOTOS -> R.string.scope_photos
+            app.cloudsaver.core.logic.BackupScope.VIDEOS -> R.string.scope_videos
+        }
+    )
+    return if (excluded == 0) what
+    else pluralStringResource(R.plurals.onb_ready_what_minus, excluded, what, excluded)
+}
+
+@Composable
+private fun presetSummary(preset: app.cloudsaver.core.logic.Preset): String = stringResource(
+    when (preset) {
+        app.cloudsaver.core.logic.Preset.STORAGE_SAVER -> R.string.preset_storage
+        app.cloudsaver.core.logic.Preset.BALANCED -> R.string.preset_balanced
+        app.cloudsaver.core.logic.Preset.MAX_SAVER -> R.string.preset_max
+    }
+)
+
+@Composable
+private fun speedSummary(speed: app.cloudsaver.core.logic.SpeedMode): String = stringResource(
+    when (speed) {
+        app.cloudsaver.core.logic.SpeedMode.SMART -> R.string.speed_smart
+        app.cloudsaver.core.logic.SpeedMode.CHARGING_ONLY -> R.string.speed_charging
+        app.cloudsaver.core.logic.SpeedMode.FAST -> R.string.speed_fast
+    }
+)
 
 /** What can honestly be promised with the chosen cloud (J1). */
 @Composable

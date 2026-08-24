@@ -65,6 +65,7 @@ data class Options(
     val safetyPauseWarnedAt: Long = 0,
     val volumeWarnedAt: Long = 0,
     val oldFilesCleaned: Boolean = false,
+    val copiesReattached: Boolean = false,
     val cloudDetected: Boolean = false,
     /** Files seen in the upload folder last pass, so a shrink is detectable. */
     val lastOutputCount: Int = 0,
@@ -129,6 +130,7 @@ class OptionsRepo(private val context: Context) {
         val SAFETY_WARNED_AT = longPreferencesKey("safetyPauseWarnedAt")
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
+        val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached")
         val CLOUD_DETECTED = booleanPreferencesKey("cloudDetected")
         val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
         val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
@@ -151,9 +153,17 @@ class OptionsRepo(private val context: Context) {
             cloudPhotos = p[K.CLOUD_PHOTOS] ?: "ente",
             cloudVideos = p[K.CLOUD_VIDEOS] ?: "ente",
             speed = enumOr(p[K.SPEED], SpeedMode.SMART),
-            dailyCapMb = p[K.DAILY_CAP_MB] ?: Defaults.DAILY_CAP_MB,
-            minFreeMb = p[K.MIN_FREE_MB] ?: Defaults.MIN_FREE_MB,
-            maxExtraMb = p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB,
+            // Snapped, so a limit stored by an older build still lands on one
+            // of the chips instead of leaving the control looking unset.
+            dailyCapMb = Defaults.snapToChoice(
+                p[K.DAILY_CAP_MB] ?: Defaults.DAILY_CAP_MB, Defaults.DAILY_CAP_CHOICES_MB
+            ),
+            minFreeMb = Defaults.snapToChoice(
+                p[K.MIN_FREE_MB] ?: Defaults.MIN_FREE_MB, Defaults.MIN_FREE_CHOICES_MB
+            ),
+            maxExtraMb = Defaults.snapToChoice(
+                p[K.MAX_EXTRA_MB] ?: Defaults.MAX_EXTRA_MB, Defaults.MAX_EXTRA_CHOICES_MB
+            ),
             preset = enumOr(p[K.PRESET], Preset.STORAGE_SAVER),
             codec = enumOr(p[K.CODEC], VideoCodec.H264),
             theme = enumOr(p[K.THEME], ThemeMode.SYSTEM),
@@ -180,6 +190,7 @@ class OptionsRepo(private val context: Context) {
             safetyPauseWarnedAt = p[K.SAFETY_WARNED_AT] ?: 0,
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
+            copiesReattached = p[K.COPIES_REATTACHED] ?: false,
             cloudDetected = p[K.CLOUD_DETECTED] ?: false,
             lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
             cloudProblem = p[K.CLOUD_PROBLEM] ?: "",

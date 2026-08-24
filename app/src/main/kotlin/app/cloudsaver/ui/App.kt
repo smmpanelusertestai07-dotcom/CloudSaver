@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -36,7 +38,6 @@ import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.BiggestFilesScreen
 import app.cloudsaver.ui.screens.DuplicatesScreen
 import app.cloudsaver.ui.screens.KeptCopiesScreen
-import app.cloudsaver.ui.screens.PrepareUninstallScreen
 import app.cloudsaver.ui.screens.ReclaimHistoryScreen
 import app.cloudsaver.ui.screens.ReclaimScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
@@ -46,6 +47,7 @@ import app.cloudsaver.ui.screens.HelpLogsScreen
 import app.cloudsaver.ui.screens.HelpPrivacyScreen
 import app.cloudsaver.ui.screens.HelpQualityScreen
 import app.cloudsaver.ui.screens.HelpScreen
+import app.cloudsaver.core.logic.TabBadges
 import app.cloudsaver.ui.screens.HomeScreen
 import app.cloudsaver.ui.screens.LockedScreen
 import app.cloudsaver.ui.screens.OnboardingScreen
@@ -64,7 +66,6 @@ object Routes {
     const val DUPLICATES = "duplicates"
     const val BIGGEST = "biggest"
     const val KEPT = "kept"
-    const val UNINSTALL = "uninstall"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
     const val HELP_QUALITY = "help_quality"
@@ -101,8 +102,17 @@ private fun MainNav(vm: AppViewModel) {
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: Routes.HOME
     val options by vm.options.collectAsStateWithLifecycle()
+    // Tab dots. Both are claims on attention, so both come from one tested
+    // rule rather than from whatever each screen happens to know.
+    val reclaimable by vm.reclaimableBytes.collectAsStateWithLifecycle()
+    val health by vm.health.collectAsStateWithLifecycle()
     var unlocked by remember { mutableStateOf(false) }
     val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity
+
+    // The Settings dot has to be right on whichever tab the app opens on, so
+    // health is refreshed here rather than only by Home, and again every time
+    // the app comes back to the foreground.
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.refreshHealth() }
 
     // A lock that only ever asks once is not a lock: re-arm it whenever the
     // app leaves the foreground, so returning to it authenticates again.
@@ -134,8 +144,21 @@ private fun MainNav(vm: AppViewModel) {
                 ) {
                     TabItem(nav, route, Routes.HOME, R.drawable.ic_tab_home, R.string.nav_home)
                     TabItem(nav, route, Routes.FILES, R.drawable.ic_tab_files, R.string.nav_files)
-                    TabItem(nav, route, Routes.STORAGE, R.drawable.ic_tab_storage, R.string.nav_storage)
-                    TabItem(nav, route, Routes.OPTIONS, R.drawable.ic_tab_options, R.string.nav_options)
+                    TabItem(
+                        nav, route, Routes.STORAGE, R.drawable.ic_tab_storage,
+                        R.string.nav_storage,
+                        badge = TabBadges.storage(reclaimable)
+                    )
+                    TabItem(
+                        nav, route, Routes.OPTIONS, R.drawable.ic_tab_options,
+                        R.string.nav_options,
+                        badge = TabBadges.settings(
+                            cloudMissing = health.cloudMissing,
+                            usageAccessOff = health.usageAccessOff,
+                            backgroundWorkStopped = health.backgroundWorkStopped,
+                            spaceLow = health.spaceLow
+                        )
+                    )
                 }
             }
         }
@@ -175,7 +198,6 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.DUPLICATES) { DuplicatesScreen(reclaimVm, nav) }
                 composable(Routes.BIGGEST) { BiggestFilesScreen(vm, reclaimVm, nav) }
                 composable(Routes.KEPT) { KeptCopiesScreen(vm, nav) }
-                composable(Routes.UNINSTALL) { PrepareUninstallScreen(vm, nav) }
                 composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }
@@ -195,7 +217,8 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
     current: String,
     route: String,
     iconRes: Int,
-    labelRes: Int
+    labelRes: Int,
+    badge: Boolean = false
 ) {
     NavigationBarItem(
         selected = current == route,
@@ -209,10 +232,19 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
             }
         },
         icon = {
-            Icon(
-                painterResource(iconRes),
-                contentDescription = stringResource(labelRes)
-            )
+            if (badge) {
+                BadgedBox(badge = { Badge() }) {
+                    Icon(
+                        painterResource(iconRes),
+                        contentDescription = stringResource(labelRes)
+                    )
+                }
+            } else {
+                Icon(
+                    painterResource(iconRes),
+                    contentDescription = stringResource(labelRes)
+                )
+            }
         },
         label = { Text(stringResource(labelRes)) }
     )

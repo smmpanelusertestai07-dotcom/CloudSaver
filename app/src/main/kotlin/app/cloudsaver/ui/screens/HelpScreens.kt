@@ -94,7 +94,6 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
         HelpLink(stringResource(R.string.help_privacy)) { nav.navigate(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.navigate(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.navigate(Routes.HELP_ABOUT) }
-        HelpLink(stringResource(R.string.uninstall_title)) { nav.navigate(Routes.UNINSTALL) }
         Text(
             stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.bodySmall,
@@ -155,7 +154,9 @@ private val FAQ = listOf(
     R.string.faq_q23 to R.string.faq_a23,
     R.string.faq_q24 to R.string.faq_a24,
     R.string.faq_q25 to R.string.faq_a25,
-    R.string.faq_q26 to R.string.faq_a26
+    R.string.faq_q26 to R.string.faq_a26,
+    R.string.faq_q27 to R.string.faq_a27,
+    R.string.faq_q28 to R.string.faq_a28
 )
 
 @Composable
@@ -206,6 +207,23 @@ fun HelpFaqScreen(nav: NavHostController) {
                 }
             }
         }
+    }
+}
+
+/** One term and its one-line meaning, stacked rather than in a column pair. */
+@Composable
+private fun TermRow(term: String, meaning: String) {
+    Column(Modifier.padding(top = 10.dp)) {
+        Text(
+            term,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            meaning,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -280,6 +298,31 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
             Text(
                 stringResource(R.string.quality_codec_text),
                 style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        // The words the rest of this page leans on, defined once. A page that
+        // explains quality in terms nobody has been taught explains nothing.
+        AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+            Text(
+                stringResource(R.string.quality_terms_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            TermRow(
+                stringResource(R.string.quality_term_preset),
+                stringResource(R.string.quality_term_preset_v)
+            )
+            TermRow(
+                stringResource(R.string.quality_term_mp),
+                stringResource(R.string.quality_term_mp_v)
+            )
+            TermRow(
+                stringResource(R.string.quality_term_p),
+                stringResource(R.string.quality_term_p_v)
+            )
+            TermRow(
+                stringResource(R.string.quality_term_codec),
+                stringResource(R.string.quality_term_codec_v)
             )
         }
         AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
@@ -405,18 +448,11 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp)
             )
-        }
-        AppCard(modifier = Modifier.padding(top = 10.dp)) {
-            KeyValueRow(stringResource(R.string.about_version), BuildConfig.VERSION_NAME)
-            KeyValueRow(stringResource(R.string.about_package), BuildConfig.APPLICATION_ID)
-            KeyValueRow(
-                stringResource(R.string.about_network),
-                stringResource(R.string.about_network_value)
-            )
             Text(
                 stringResource(R.string.about_partner),
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 10.dp)
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
         // Compatibility belongs on About, where people look for it before
@@ -440,18 +476,6 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                     android.os.Build.VERSION.SDK_INT
                 )
             )
-            Text(
-                stringResource(R.string.about_support_full),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-            Text(
-                stringResource(R.string.about_support_ten),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
             // Say plainly which of the two this phone is.
             Text(
                 stringResource(
@@ -474,48 +498,22 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 },
                 modifier = Modifier.padding(top = 10.dp)
             )
+            Text(
+                stringResource(
+                    if (Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
+                        Platform.Support.FULL
+                    ) {
+                        R.string.about_support_full
+                    } else {
+                        R.string.about_support_ten
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
-        // Build number and hashes matter to about one reader in a thousand,
-        // and reading like a crash report to the rest.
-        var technical by remember { mutableStateOf(false) }
-        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { technical = !technical }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.about_technical),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f)
-                )
-                val arrow by animateFloatAsState(
-                    targetValue = if (technical) 0f else -90f,
-                    label = "technicalArrow"
-                )
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(arrow)
-                )
-            }
-            AnimatedVisibility(
-                visible = technical,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column {
-                    KeyValueRow(
-                        stringResource(R.string.about_build),
-                        BuildConfig.VERSION_CODE.toString()
-                    )
-                    KeyValueRow(
-                        stringResource(R.string.about_cert),
-                        BuildConfig.EXPECTED_CERT_SHA256.ifEmpty {
-                            stringResource(R.string.about_cert_dev)
-                        }
-                    )
-                }
-            }
-        }
         AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {
             Text(
                 stringResource(R.string.help_privacy),

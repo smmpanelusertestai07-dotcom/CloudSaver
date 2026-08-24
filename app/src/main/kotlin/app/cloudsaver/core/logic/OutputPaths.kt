@@ -22,4 +22,19 @@ object OutputPaths {
     /** Folders the other layout uses - still watched until they run empty. */
     fun otherModeFolders(mode: OutputMode): List<String> =
         forMode(if (mode == OutputMode.SINGLE) OutputMode.SEPARATE else OutputMode.SINGLE)
+
+    /**
+     * Which output folder a MediaStore RELATIVE_PATH belongs to, or null if it
+     * is not one of ours. MediaStore hands back a trailing slash and either
+     * layout may be in use, so the check is on the tail of the path.
+     */
+    fun folderFor(relativePath: String): OutFolder? {
+        val cleaned = relativePath.trim('/')
+        return when {
+            cleaned.equals(Defaults.OUTPUT_DIR_PHOTOS, ignoreCase = true) -> OutFolder.PHOTOS
+            cleaned.equals(Defaults.OUTPUT_DIR_VIDEOS, ignoreCase = true) -> OutFolder.VIDEOS
+            cleaned.equals(Defaults.OUTPUT_DIR, ignoreCase = true) -> OutFolder.SINGLE
+            else -> null
+        }
+    }
 }

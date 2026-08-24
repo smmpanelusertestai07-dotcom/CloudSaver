@@ -59,8 +59,16 @@ val MetricTextStyle = TextStyle(
     fontSize = 34.sp,
     lineHeight = 40.sp,
     fontWeight = FontWeight.Bold,
-    letterSpacing = (-1).sp
+    letterSpacing = (-1).sp,
+    // Tabular figures: a counter that ticks 8 -> 9 must not change width.
+    fontFeatureSettings = "tnum"
 )
+
+/**
+ * Merge into any style that prints a size or a count. Proportional digits make
+ * a column of sizes look ragged and make a live number jitter as it updates.
+ */
+val TabularFigures = TextStyle(fontFeatureSettings = "tnum")
 
 @Composable
 fun isDarkTheme(mode: ThemeMode): Boolean = when (mode) {

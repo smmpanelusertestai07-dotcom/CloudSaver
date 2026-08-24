@@ -240,27 +240,37 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             for ((key, rows) in groups) {
                 if (key.isNotEmpty()) {
                     item("h-$key") {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(top = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = rows.all { it.id in selected },
-                                onCheckedChange = { rvm.selectGroup(key) }
-                            )
-                            Text(
-                                pluralStringResource(
-                                    R.plurals.reclaim_group_header,
-                                    rows.size,
-                                    key,
-                                    rows.size,
-                                    Formats.bytes(rows.sumOf { it.row.sizeBytes })
-                                ),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.weight(1f)
-                            )
+                        Column(Modifier.padding(top = 16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = rows.all { it.id in selected },
+                                    onCheckedChange = { rvm.selectGroup(key) }
+                                )
+                                Text(
+                                    pluralStringResource(
+                                        R.plurals.reclaim_group_header,
+                                        rows.size,
+                                        groupTitle(key),
+                                        rows.size,
+                                        Formats.bytes(rows.sumOf { it.row.sizeBytes })
+                                    ),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            // What this group's proof actually is. The old
+                            // build asked the user to enable the weaker kind
+                            // in Settings, which is a question nobody can
+                            // answer; saying what it means is the answer.
+                            groupExplanation(key)?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 12.dp, bottom = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -619,6 +629,23 @@ fun suggestionLabel(kind: Suggestions.Kind): String = when (kind) {
     Suggestions.Kind.CONFIRMED_30_DAYS -> stringResource(R.string.suggest_confirmed)
 }
 
+/** A group key as a person would read it. */
+@Composable
+private fun groupTitle(key: String): String = when (key) {
+    ReclaimViewModel.GROUP_EXACT -> stringResource(R.string.group_exact)
+    ReclaimViewModel.GROUP_BY_SIZE -> stringResource(R.string.group_by_size)
+    "photo" -> stringResource(R.string.scope_photos)
+    "video" -> stringResource(R.string.scope_videos)
+    else -> key
+}
+
+@Composable
+private fun groupExplanation(key: String): String? = when (key) {
+    ReclaimViewModel.GROUP_EXACT -> stringResource(R.string.group_exact_body)
+    ReclaimViewModel.GROUP_BY_SIZE -> stringResource(R.string.group_by_size_body)
+    else -> null
+}
+
 @Composable
 private fun sortLabel(sort: ReclaimViewModel.Sort): String = when (sort) {
     ReclaimViewModel.Sort.LARGEST -> stringResource(R.string.sort_largest)
@@ -628,7 +655,7 @@ private fun sortLabel(sort: ReclaimViewModel.Sort): String = when (sort) {
 
 @Composable
 private fun groupingLabel(grouping: ReclaimViewModel.Grouping): String = when (grouping) {
-    ReclaimViewModel.Grouping.NONE -> stringResource(R.string.group_none)
+    ReclaimViewModel.Grouping.EVIDENCE -> stringResource(R.string.group_evidence)
     ReclaimViewModel.Grouping.ALBUM -> stringResource(R.string.group_album)
     ReclaimViewModel.Grouping.MONTH -> stringResource(R.string.group_month)
     ReclaimViewModel.Grouping.YEAR -> stringResource(R.string.group_year)

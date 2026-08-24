@@ -46,6 +46,10 @@ class ReclaimViewModel(
     private val engine = ReclaimEngine(ctx)
 
     companion object {
+        /** The two kinds of proof, kept visibly apart (v3.0 C1). */
+        const val GROUP_EXACT = "exact"
+        const val GROUP_BY_SIZE = "by_size"
+
         private const val KEY_SELECTED = "reclaim.selected"
         private const val KEY_MODE = "reclaim.mode"
         private const val KEY_TARGET = "reclaim.target"
@@ -54,7 +58,9 @@ class ReclaimViewModel(
     }
 
     enum class Sort { LARGEST, OLDEST, ALBUM }
-    enum class Grouping { NONE, ALBUM, MONTH, YEAR, TYPE }
+    enum class Grouping { EVIDENCE, ALBUM, MONTH, YEAR, TYPE }
+
+
 
     /** One row as the screen needs it: the rules' view plus what to draw. */
     data class Entry(
@@ -81,7 +87,7 @@ class ReclaimViewModel(
     )
     val grouping = MutableStateFlow(
         saved.get<String>(KEY_GROUP)?.let { runCatching { Grouping.valueOf(it) }.getOrNull() }
-            ?: Grouping.NONE
+            ?: Grouping.EVIDENCE
     )
     val suggestion = MutableStateFlow<Suggestions.Kind?>(null)
     val videosOnly = MutableStateFlow(false)
@@ -125,11 +131,15 @@ class ReclaimViewModel(
             val now = System.currentTimeMillis()
             val ledgerByHash = db.ledger().all().associateBy { it.outputSha256 }
             val rows = db.items().reclaimCandidates()
+            // Both grades are offered, always. The old switch asked the user
+            // to configure their own safety, which is a question nobody can
+            // answer; the list simply separates the two and says what each
+            // one means, and nothing in the weaker group starts selected.
             entries.value = rows.mapNotNull { row ->
                 val candidate = row.toCandidate(now, ledgerByHash.containsKey(row.outputSha256))
                 if (!ReclaimRules.isEligible(
-                        candidate, healthy, o.freeUpAllowVerified30,
-                        skipFavourites.value, skipSmall.value
+                        candidate, healthy, allowVerifiedBySize = true,
+                        skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                     )
                 ) {
                     null
@@ -195,7 +205,9 @@ class ReclaimViewModel(
     fun groups(): Map<String, List<Entry>> {
         val list = visible()
         return when (grouping.value) {
-            Grouping.NONE -> mapOf("" to list)
+            Grouping.EVIDENCE -> list.groupBy {
+                if (it.candidate.evidence == Evidence.VERIFIED) GROUP_BY_SIZE else GROUP_EXACT
+            }
             Grouping.ALBUM -> list.groupBy { it.row.bucket ?: "" }
             Grouping.MONTH -> list.groupBy { Formats.monthKey(it.row.captureAt) }
             Grouping.YEAR -> list.groupBy { Formats.yearKey(it.row.captureAt) }
@@ -298,8 +310,8 @@ class ReclaimViewModel(
             val chosen = selectedEntries()
             val dropped = chosen.mapNotNull { entry ->
                 ReclaimRules.refuse(
-                    entry.candidate, healthy, o.freeUpAllowVerified30,
-                    skipFavourites.value, skipSmall.value
+                    entry.candidate, healthy, allowVerifiedBySize = true,
+                    skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                 )?.let { entry.row.displayName to it }
             }
             val keptIds = dropped.map { it.first }.toSet()
@@ -371,10 +383,10 @@ class ReclaimViewModel(
                 // the cloud app is uninstalled underneath it.
                 val o = repo.current()
                 val healthy = cloudHealthy()
-                val stillGood = chosen.filter {
+                    val stillGood = chosen.filter {
                     ReclaimRules.isEligible(
-                        it.candidate, healthy, o.freeUpAllowVerified30,
-                        skipFavourites.value, skipSmall.value
+                        it.candidate, healthy, allowVerifiedBySize = true,
+                        skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                     )
                 }
                 val ready = engine.prepare(stillGood.map { it.row }, mode.value, now)

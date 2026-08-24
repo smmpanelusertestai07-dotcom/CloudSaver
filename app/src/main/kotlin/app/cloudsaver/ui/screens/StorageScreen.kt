@@ -46,7 +46,9 @@ import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.MeterBar
+import app.cloudsaver.ui.components.PathLine
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.util.Formats
 
@@ -165,7 +167,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 bytes = stats.outputBytes,
                 limitBytes = options.maxExtraBytes
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
             UsageRow(
                 label = stringResource(R.string.storage_stage),
                 path = stringResource(R.string.storage_stage_path),
@@ -175,7 +177,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             // Light copies are the user's files, so they are listed apart and
             // counted against nothing.
             if (keptBytes > 0) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(18.dp))
                 UsageRow(
                     label = stringResource(R.string.kept_title),
                     path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
@@ -237,19 +239,22 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     warn = fraction > 0.9f,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                // Free space is the number people came for, so it is the one
+                // set large; used-of-total is the context underneath it.
+                Text(
+                    stringResource(R.string.volume_free_line, Formats.bytes(vol.freeBytes)),
+                    style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+                    modifier = Modifier.padding(top = 10.dp)
+                )
                 Text(
                     stringResource(
                         R.string.volume_used_line,
                         Formats.bytes(used),
                         Formats.bytes(vol.totalBytes)
                     ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                Text(
-                    stringResource(R.string.volume_free_line, Formats.bytes(vol.freeBytes)),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = scheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
                 if (!vol.isPrimary && active) {
                     WarningNote(stringResource(R.string.volume_sd_note))
@@ -269,7 +274,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 AppCard(tonal = true) {
                     AnimatedNumber(
                         value = Formats.bytes(reclaimable),
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.headlineSmall.merge(TabularFigures),
                         color = scheme.onPrimaryContainer
                     )
                     Text(
@@ -353,8 +358,7 @@ private fun FindRow(title: String, hint: String, value: String, onClick: () -> U
             }
             Text(
                 value,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.titleSmall.merge(TabularFigures),
                 color = MaterialTheme.colorScheme.primary
             )
         }
@@ -366,24 +370,24 @@ private fun FindRow(title: String, hint: String, value: String, onClick: () -> U
 private fun UsageRow(label: String, path: String, bytes: Long, limitBytes: Long) {
     val scheme = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(
+            label,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f)
+        )
         Text(
             Formats.bytes(bytes),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
+            style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+            color = scheme.primary
         )
     }
-    Text(
-        path,
-        style = MaterialTheme.typography.bodySmall,
-        fontFamily = FontFamily.Monospace,
-        color = scheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 2.dp)
-    )
+    // Copyable, because this is the string that has to be found inside
+    // another app's folder picker.
+    PathLine(path, modifier = Modifier.padding(top = 2.dp))
     if (limitBytes > 0) {
         MeterBar(
             fraction = (bytes.toFloat() / limitBytes).coerceIn(0f, 1f),
-            modifier = Modifier.padding(top = 6.dp)
+            modifier = Modifier.padding(top = 4.dp)
         )
         Text(
             stringResource(
@@ -391,7 +395,7 @@ private fun UsageRow(label: String, path: String, bytes: Long, limitBytes: Long)
                 Formats.percentOf(bytes, limitBytes),
                 Formats.bytes(limitBytes)
             ),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
             color = scheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp)
         )

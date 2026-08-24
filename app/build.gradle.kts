@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "3.4.0"
+        versionName = "3.5.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -88,6 +88,9 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
+    // Settings rows each carry a leading glyph. R8 keeps only the icons that
+    // are actually referenced, so the shipped dex grows by those alone.
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.documentfile)

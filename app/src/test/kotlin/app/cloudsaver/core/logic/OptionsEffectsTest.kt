@@ -1,6 +1,7 @@
 package app.cloudsaver.core.logic
 
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.util.Formats
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,8 +25,8 @@ class OptionsEffectsTest {
         assertEquals(OutputMode.SINGLE, o.outputMode)
         assertEquals(SpeedMode.SMART, o.speed)
         assertEquals(250, o.dailyCapMb)
-        assertEquals(1536, o.minFreeMb)
-        assertEquals(1536, o.maxExtraMb)
+        assertEquals(1500, o.minFreeMb)
+        assertEquals(1500, o.maxExtraMb)
         assertEquals(Preset.STORAGE_SAVER, o.preset)
         assertEquals(VideoCodec.H264, o.codec)
         assertEquals(ThemeMode.SYSTEM, o.theme)
@@ -45,10 +46,34 @@ class OptionsEffectsTest {
 
     @Test
     fun byteConversions() {
-        val o = Options(dailyCapMb = 250, minFreeMb = 1536, maxExtraMb = 3072)
-        assertEquals(250L * 1024 * 1024, o.dailyCapBytes)
-        assertEquals(1536L * 1024 * 1024, o.minFreeBytes)
-        assertEquals(3072L * 1024 * 1024, o.maxExtraBytes)
+        val o = Options(dailyCapMb = 250, minFreeMb = 1500, maxExtraMb = 3000)
+        assertEquals(250L * Defaults.MB, o.dailyCapBytes)
+        assertEquals(1500L * Defaults.MB, o.minFreeBytes)
+        assertEquals(3000L * Defaults.MB, o.maxExtraBytes)
+    }
+
+    @Test
+    fun `every limit reads back as the number the chip promised`() {
+        // The bug: MB was binary while sizes were printed decimal, so picking
+        // "500 MB" produced a limit the Storage screen called 524 MB.
+        for (mb in listOf(250, 500, 1000, 2000, 1500, 3000, 5000)) {
+            val bytes = Options(dailyCapMb = mb).dailyCapBytes
+            assertEquals(Formats.mbLabel(mb), Formats.bytes(bytes))
+        }
+    }
+
+    @Test
+    fun `a limit stored by an older build still lands on a chip`() {
+        // 1024, 1536, 2048, 3072 and 5120 were the binary-era choices.
+        assertEquals(1000, Defaults.snapToChoice(1024, Defaults.DAILY_CAP_CHOICES_MB))
+        assertEquals(2000, Defaults.snapToChoice(2048, Defaults.DAILY_CAP_CHOICES_MB))
+        assertEquals(1500, Defaults.snapToChoice(1536, Defaults.MIN_FREE_CHOICES_MB))
+        assertEquals(3000, Defaults.snapToChoice(3072, Defaults.MAX_EXTRA_CHOICES_MB))
+        assertEquals(5000, Defaults.snapToChoice(5120, Defaults.MAX_EXTRA_CHOICES_MB))
+        // Unlimited is a sentinel, not a size: it must survive untouched.
+        assertEquals(-1, Defaults.snapToChoice(-1, Defaults.DAILY_CAP_CHOICES_MB))
+        // A value that is already a chip is left exactly as it is.
+        assertEquals(500, Defaults.snapToChoice(500, Defaults.DAILY_CAP_CHOICES_MB))
     }
 
     @Test
@@ -60,9 +85,9 @@ class OptionsEffectsTest {
 
     @Test
     fun choiceListsMatchSpec() {
-        assertEquals(listOf(250, 500, 1024, 2048, -1), Defaults.DAILY_CAP_CHOICES_MB)
-        assertEquals(listOf(1536, 3072, 5120, -1), Defaults.MAX_EXTRA_CHOICES_MB)
-        assertEquals(listOf(1536, 3072, 5120), Defaults.MIN_FREE_CHOICES_MB)
+        assertEquals(listOf(250, 500, 1000, 2000, -1), Defaults.DAILY_CAP_CHOICES_MB)
+        assertEquals(listOf(1500, 3000, 5000, -1), Defaults.MAX_EXTRA_CHOICES_MB)
+        assertEquals(listOf(1500, 3000, 5000), Defaults.MIN_FREE_CHOICES_MB)
         assertEquals(5, Defaults.KEEP_MIN_DAYS)
         assertEquals(10, Defaults.AGED_DAYS)
         assertEquals(40, Defaults.MAX_RUN_MIN)

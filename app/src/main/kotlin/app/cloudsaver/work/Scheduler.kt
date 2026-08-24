@@ -30,6 +30,14 @@ object Scheduler {
     private const val W_MAINTAIN_NOW = "cloudsaver.maintain.now"
 
     fun ensure(context: Context, options: Options) {
+        // Nothing runs until setup has been finished with an explicit tap.
+        // Changing a setting mid-setup used to schedule the periodic work, so
+        // the first backup could start before the person had seen which
+        // folder it would write to.
+        if (!options.onboardingDone) {
+            cancelAll(context)
+            return
+        }
         val wm = WorkManager.getInstance(context)
 
         val constraints = Constraints.Builder()
@@ -70,6 +78,14 @@ object Scheduler {
     }
 
     /** "Run now": user-initiated, so it ignores mode, budget and screen state. */
+    /** Used while setup is unfinished: leave no scheduled work behind. */
+    fun cancelAll(context: Context) {
+        val wm = WorkManager.getInstance(context)
+        wm.cancelUniqueWork(W_COMPRESS)
+        wm.cancelUniqueWork(W_MAINTAIN)
+        wm.cancelUniqueWork(W_TRIGGER)
+    }
+
     fun runNow(context: Context) {
         val request = OneTimeWorkRequestBuilder<CompressWorker>()
             .setInputData(Data.Builder().putBoolean(CompressWorker.KEY_MANUAL, true).build())

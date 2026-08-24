@@ -25,6 +25,10 @@ object Formats {
     fun bytes(v: Long): String {
         if (v <= 0) return "0 MB"
         return when {
+            // An exact gigabyte prints as "5 GB", not "5.00 GB": the two zeros
+            // are noise, and a limit the user picked as "5 GB" should read
+            // back in the words they picked.
+            v >= GB && v % GB == 0L -> "${v / GB} GB"
             v >= GB -> String.format(Locale.US, "%.2f GB", v.toDouble() / GB)
             v >= MB -> String.format(Locale.US, "%.0f MB", v.toDouble() / MB)
             v >= KB -> String.format(Locale.US, "%.0f KB", v.toDouble() / KB)
@@ -63,11 +67,15 @@ object Formats {
     /** Hours as the calculator states them: "3 h 20 min". */
     fun hours(value: Double): String = duration((value * 3_600_000).toLong())
 
-    fun mbLabel(mb: Int): String = when {
-        mb < 0 -> ""
-        mb >= 1024 && mb % 1024 == 0 -> "${mb / 1024} GB"
-        else -> "$mb MB"
-    }
+    /**
+     * A settings chip's label.
+     *
+     * Formatted through [bytes] rather than by its own rule, so a chip and
+     * every later report of the same limit are the same string by
+     * construction. They used to drift: chips counted binary megabytes while
+     * sizes were printed decimal, and "500 MB" came back as "524 MB".
+     */
+    fun mbLabel(mb: Int): String = if (mb < 0) "" else bytes(mb.toLong() * MB)
 
     fun dateTime(ms: Long): String =
         if (ms <= 0) "-"

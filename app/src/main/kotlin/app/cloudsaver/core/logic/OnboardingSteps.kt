@@ -9,7 +9,29 @@ package app.cloudsaver.core.logic
  */
 object OnboardingSteps {
 
-    enum class Step { WELCOME, MEDIA, NOTIFICATIONS, BATTERY, USAGE, CLOUD, TRY_IT }
+    enum class Step {
+        WELCOME,
+
+        /** Read access to photos and videos. Nothing works without it. */
+        MEDIA,
+
+        /**
+         * Which albums are in scope. Not skippable: the alternative is an app
+         * that silently decides to copy someone's screenshots and WhatsApp
+         * folder, and the first they learn of it is the cloud bill.
+         */
+        ALBUMS,
+        NOTIFICATIONS,
+        BATTERY,
+        USAGE,
+        CLOUD,
+
+        /**
+         * The summary. Shows the exact folder that will be written to, offers
+         * a three-file trial, and holds the tap that starts anything at all.
+         */
+        READY
+    }
 
     val ALL: List<Step> = Step.entries.toList()
 
@@ -27,4 +49,12 @@ object OnboardingSteps {
     fun previous(step: Step): Step = at(indexOf(step) - 1)
 
     val isLast: (Step) -> Boolean = { it == ALL.last() }
+
+    /**
+     * Steps that cannot be walked past without doing the thing. Everything
+     * else is a permission the app can live without, so those carry Skip.
+     */
+    val REQUIRED: Set<Step> = setOf(Step.MEDIA, Step.ALBUMS)
+
+    fun isRequired(step: Step): Boolean = step in REQUIRED
 }

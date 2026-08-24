@@ -5,13 +5,38 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.SdCard
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +87,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    val activityUnread by vm.activityUnread.collectAsStateWithLifecycle()
     val recommended by vm.recommended.collectAsStateWithLifecycle()
     val storage by vm.storageStats.collectAsStateWithLifecycle()
     val deviceFree = volumes.firstOrNull {
@@ -75,6 +101,10 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     }
 
     var showFolders by remember { mutableStateOf(false) }
+    // Changing the layout means the cloud app has to be pointed at a different
+    // folder or the backup quietly stops covering new files. Confirmed, not
+    // applied on a stray tap.
+    var pendingLayout by remember { mutableStateOf<OutputMode?>(null) }
     var cloudPickerFor by remember { mutableStateOf<String?>(null) } // "single"|"photos"|"videos"
 
     val exportOkLabel = stringResource(R.string.transfer_export_ok)
@@ -122,7 +152,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
         SectionHeader(stringResource(R.string.opt_group_backup))
         // 1. What to back up
-        OptionCard(stringResource(R.string.opt_scope), stringResource(R.string.opt_scope_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_scope),
+            stringResource(R.string.opt_scope_hint),
+            icon = IconScope,
+            value = scopeLabel(o.scope)
+        ) {
             SegmentedChoice(
                 listOf(
                     BackupScope.ALL.name to stringResource(R.string.scope_all),
@@ -134,7 +169,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // 2. Folders
-        OptionCard(stringResource(R.string.opt_folders), stringResource(R.string.opt_folders_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_folders),
+            stringResource(R.string.opt_folders_hint),
+            icon = IconAlbums
+        ) {
             OutlinedButton(onClick = { vm.loadBuckets(); showFolders = true }) {
                 Text(
                     if (o.excludedBuckets.isEmpty()) stringResource(R.string.folders_all)
@@ -148,21 +187,30 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // 3. Output folders
-        OptionCard(stringResource(R.string.opt_output), stringResource(R.string.opt_output_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_output),
+            stringResource(R.string.opt_output_hint),
+            icon = IconLayout
+        ) {
             SegmentedChoice(
                 listOf(
                     OutputMode.SINGLE.name to stringResource(R.string.output_single),
                     OutputMode.SEPARATE.name to stringResource(R.string.output_separate)
                 ),
                 o.outputMode.name
-            ) { vm.setOutputMode(OutputMode.valueOf(it)) }
+            ) { pendingLayout = OutputMode.valueOf(it) }
             // The user has to pick this exact string inside another app, so it
             // is printed rather than described.
             FolderPaths(o.outputMode)
-            ChoiceNote(stringResource(R.string.output_switch_note))
+            CopyPathButton(o.outputMode)
         }
 
-        OptionCard(stringResource(R.string.opt_cloud), stringResource(R.string.cloud_intended)) {
+        OptionCard(
+            stringResource(R.string.opt_cloud),
+            stringResource(R.string.cloud_intended),
+            icon = IconCloud,
+            value = CloudApps.byId(o.cloudSingle).label
+        ) {
             if (o.outputMode == OutputMode.SINGLE) {
                 CloudButton(
                     stringResource(R.string.cloud_for_all),
@@ -191,7 +239,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
         SectionHeader(stringResource(R.string.opt_group_schedule))
         // 5. Speed
-        OptionCard(stringResource(R.string.opt_speed), stringResource(R.string.opt_speed_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_speed),
+            stringResource(R.string.opt_speed_hint),
+            icon = IconSpeed,
+            value = speedLabel(o.speed)
+        ) {
             SegmentedChoice(
                 listOf(
                     SpeedMode.SMART.name to stringResource(R.string.speed_smart),
@@ -213,7 +266,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // 6. Daily cap
-        OptionCard(stringResource(R.string.opt_daily_cap), stringResource(R.string.opt_daily_cap_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_daily_cap),
+            stringResource(R.string.opt_daily_cap_hint),
+            icon = IconLimit,
+            value = capLabel(o.dailyCapMb)
+        ) {
             SegmentedChoice(
                 Defaults.DAILY_CAP_CHOICES_MB.map { mb ->
                     mb.toString() to if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
@@ -238,7 +296,9 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         // gets its own card, its own sentence, and its own live number.
         OptionCard(
             stringResource(R.string.space_min_free_title),
-            stringResource(R.string.space_min_free_body)
+            stringResource(R.string.space_min_free_body),
+            icon = IconFree,
+            value = Formats.mbLabel(o.minFreeMb)
         ) {
             SegmentedChoice(
                 Defaults.MIN_FREE_CHOICES_MB.map { it.toString() to Formats.mbLabel(it) },
@@ -256,7 +316,9 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
         OptionCard(
             stringResource(R.string.space_max_extra_title),
-            stringResource(R.string.space_max_extra_body)
+            stringResource(R.string.space_max_extra_body),
+            icon = IconOwnSpace,
+            value = capLabel(o.maxExtraMb)
         ) {
             SegmentedChoice(
                 Defaults.MAX_EXTRA_CHOICES_MB.map { mb ->
@@ -281,7 +343,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
         // 7b. Storage location (13.D; shown only when an SD card exists)
         if (volumes.size > 1 || o.storageVolume.isNotEmpty()) {
-            OptionCard(stringResource(R.string.opt_volume), stringResource(R.string.opt_volume_hint)) {
+            OptionCard(
+                    stringResource(R.string.opt_volume),
+                    stringResource(R.string.opt_volume_hint),
+                    icon = IconVolume
+                ) {
                 SegmentedChoice(
                     volumes.map { vol ->
                         val value = if (vol.isPrimary) "" else vol.mediaVolumeName
@@ -336,6 +402,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         OptionCard(
             stringResource(R.string.opt_preset),
             stringResource(R.string.opt_preset_hint),
+            icon = IconQuality,
+            value = presetLabel(o.preset),
             onInfo = { nav.navigate(Routes.HELP_QUALITY) }
         ) {
             SegmentedChoice(
@@ -358,7 +426,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // 9. Codec
-        OptionCard(stringResource(R.string.opt_codec), stringResource(R.string.opt_codec_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_codec),
+            stringResource(R.string.opt_codec_hint),
+            icon = IconCodec,
+            value = o.codec.name
+        ) {
             SegmentedChoice(
                 listOf(
                     VideoCodec.H264.name to stringResource(R.string.codec_h264),
@@ -378,7 +451,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
         SectionHeader(stringResource(R.string.opt_group_appearance))
         // 10. Theme
-        OptionCard(stringResource(R.string.opt_theme), stringResource(R.string.opt_theme_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_theme),
+            stringResource(R.string.opt_theme_hint),
+            icon = IconTheme,
+            value = themeLabel(o.theme)
+        ) {
             SegmentedChoice(
                 listOf(
                     ThemeMode.SYSTEM.name to stringResource(R.string.theme_system),
@@ -398,7 +476,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         if (excludedFiles > 0) {
             OptionCard(
                 stringResource(R.string.never_optimise_title),
-                stringResource(R.string.never_optimise_hint)
+                stringResource(R.string.never_optimise_hint),
+                icon = IconExcluded
             ) {
                 Text(
                     pluralStringResource(
@@ -415,46 +494,36 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
         SectionHeader(stringResource(R.string.opt_group_privacy))
         // 12-16. Switches
-        OptionCard(stringResource(R.string.opt_lock), stringResource(R.string.opt_lock_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_lock),
+            stringResource(R.string.opt_lock_hint),
+            icon = IconLock
+        ) {
             SwitchRow(stringResource(R.string.opt_lock), o.appLock) { vm.setAppLock(it) }
         }
-        OptionCard(stringResource(R.string.opt_warnings), stringResource(R.string.opt_warnings_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_warnings),
+            stringResource(R.string.opt_warnings_hint),
+            icon = IconAlerts
+        ) {
             SwitchRow(stringResource(R.string.opt_warnings), o.warningsNotif) { vm.setWarningsNotif(it) }
         }
-        OptionCard(stringResource(R.string.opt_pause), stringResource(R.string.opt_pause_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_pause),
+            stringResource(R.string.opt_pause_hint),
+            icon = IconPause
+        ) {
             SwitchRow(stringResource(R.string.opt_pause), o.pauseAll) { vm.setPauseAll(it) }
         }
-        // Reclaim is the only thing in the app that can cost a user a file, so
-        // the weaker grade of proof is off unless they turn it on themselves.
-        OptionCard(
-            stringResource(R.string.opt_reclaim_verified),
-            stringResource(R.string.opt_reclaim_verified_hint)
-        ) {
-            SwitchRow(
-                stringResource(R.string.opt_reclaim_verified_short),
-                o.freeUpAllowVerified30
-            ) { vm.setFreeUpVerified30(it) }
-        }
 
-
-        OptionCard(
-            stringResource(R.string.reclaim_reminder_title),
-            stringResource(R.string.reclaim_reminder_hint)
-        ) {
-            SegmentedChoice(
-                listOf(
-                    "0" to stringResource(R.string.reclaim_reminder_off),
-                    "1" to stringResource(R.string.calc_chip_gb, 1),
-                    "5" to stringResource(R.string.calc_chip_gb, 5),
-                    "10" to stringResource(R.string.calc_chip_gb, 10)
-                ),
-                o.reclaimReminderGb.toString()
-            ) { vm.setReclaimReminderGb(it.toInt()) }
-        }
 
         SectionHeader(stringResource(R.string.opt_group_backup_restore))
         // 17. Export / Import
-        OptionCard(stringResource(R.string.opt_transfer), stringResource(R.string.opt_transfer_hint)) {
+        OptionCard(
+            stringResource(R.string.opt_transfer),
+            stringResource(R.string.opt_transfer_hint),
+            icon = IconTransfer
+        ) {
             Row {
                 OutlinedButton(
                     enabled = !transferBusy,
@@ -488,15 +557,24 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        OptionCard(
-            stringResource(R.string.uninstall_title),
-            stringResource(R.string.uninstall_hint)
-        ) {
-            OutlinedButton(
-                onClick = { nav.navigate(Routes.UNINSTALL) },
-                modifier = Modifier.padding(top = 8.dp)
-            ) { Text(stringResource(R.string.uninstall_open)) }
-        }
+
+        SectionHeader(stringResource(R.string.opt_group_help))
+        // 18. Help and Activity. Both used to hang off Home, where they
+        // competed with the one number that screen exists to show. They are
+        // reference material, so they live with the other reference material.
+        NavRow(
+            title = stringResource(R.string.nav_help),
+            hint = stringResource(R.string.help_entry),
+            icon = IconHelp,
+            onClick = { nav.navigate(Routes.HELP) }
+        )
+        NavRow(
+            title = stringResource(R.string.nav_activity),
+            hint = stringResource(R.string.activity_entry),
+            icon = IconActivity,
+            dot = activityUnread > 0,
+            onClick = { nav.navigate(Routes.ACTIVITY) }
+        )
 
         Text(
             stringResource(R.string.options_footer),
@@ -537,6 +615,37 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             onDismiss = { vm.cancelPendingImport() },
             onConfirm = { password ->
                 vm.importState(uri, password, importOkLabel, failedLabel, wrongPasswordLabel)
+            }
+        )
+    }
+
+    pendingLayout?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingLayout = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setOutputMode(target)
+                    pendingLayout = null
+                }) { Text(stringResource(R.string.output_switch_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLayout = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.output_switch_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.output_switch_body))
+                    Spacer(Modifier.height(10.dp))
+                    FolderPaths(target)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.output_switch_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         )
     }
@@ -787,27 +896,127 @@ private fun RecommendationNote(text: String, onApply: () -> Unit) {
     }
 }
 
-private val InfoIcon = androidx.compose.material.icons.Icons.Default.Info
 
+// Material Symbols, one set app-wide. A settings screen without icons is a
+// form; with them it can be scanned.
+// The collapsed row has to say what the setting is currently set to, so the
+// value shown here is the same word the expanded control is showing.
+@Composable
+private fun scopeLabel(scope: BackupScope): String = stringResource(
+    when (scope) {
+        BackupScope.ALL -> R.string.scope_all
+        BackupScope.PHOTOS -> R.string.scope_photos
+        BackupScope.VIDEOS -> R.string.scope_videos
+    }
+)
+
+@Composable
+private fun speedLabel(speed: SpeedMode): String = stringResource(
+    when (speed) {
+        SpeedMode.SMART -> R.string.speed_smart
+        SpeedMode.CHARGING_ONLY -> R.string.speed_charging
+        SpeedMode.FAST -> R.string.speed_fast
+    }
+)
+
+@Composable
+private fun presetLabel(preset: Preset): String = stringResource(
+    when (preset) {
+        Preset.STORAGE_SAVER -> R.string.preset_storage
+        Preset.BALANCED -> R.string.preset_balanced
+        Preset.MAX_SAVER -> R.string.preset_max
+    }
+)
+
+@Composable
+private fun themeLabel(theme: ThemeMode): String = stringResource(
+    when (theme) {
+        ThemeMode.SYSTEM -> R.string.theme_system
+        ThemeMode.LIGHT -> R.string.theme_light
+        ThemeMode.DARK -> R.string.theme_dark
+    }
+)
+
+// Negative means no ceiling, and "Unlimited" is the word the chips use.
+@Composable
+private fun capLabel(mb: Int): String =
+    if (mb < 0) stringResource(R.string.unlimited) else Formats.mbLabel(mb)
+
+private val IconScope = Icons.Outlined.PhotoLibrary
+private val IconAlbums = Icons.Outlined.Folder
+private val IconLayout = Icons.Outlined.CreateNewFolder
+private val IconCloud = Icons.Outlined.CloudUpload
+private val IconSpeed = Icons.Outlined.Bolt
+private val IconLimit = Icons.Outlined.DataUsage
+private val IconFree = Icons.Outlined.PhoneAndroid
+private val IconOwnSpace = Icons.Outlined.Storage
+private val IconVolume = Icons.Outlined.SdCard
+private val IconQuality = Icons.Outlined.Tune
+private val IconCodec = Icons.Outlined.Movie
+private val IconTheme = Icons.Outlined.Palette
+private val IconLock = Icons.Outlined.Lock
+private val IconAlerts = Icons.Outlined.Notifications
+private val IconPause = Icons.Outlined.PauseCircle
+private val IconExcluded = Icons.Outlined.Block
+private val IconTransfer = Icons.Outlined.Backup
+private val IconHelp = Icons.Outlined.HelpOutline
+private val IconActivity = Icons.Outlined.History
+
+private val InfoIcon = Icons.Outlined.Info
+
+/**
+ * One setting: icon, title, what it does, and the value it is set to.
+ *
+ * The icon is not decoration - a column of text rows reads as a form, and a
+ * settings screen people are meant to understand at a glance needs something
+ * to scan by. [value] repeats the current choice in words next to the title,
+ * so the answer is readable without parsing the control below it.
+ */
 @Composable
 private fun OptionCard(
     title: String,
     hint: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    value: String? = null,
     onInfo: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     AppCard(modifier = Modifier.padding(vertical = 5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+            if (icon != null) {
+                androidx.compose.material3.Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(end = 0.dp)
                 )
+                Spacer(Modifier.width(14.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    value?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            modifier = Modifier.padding(start = 12.dp)
+                        )
+                    }
+                }
                 Text(
                     hint,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
             if (onInfo != null) {
@@ -821,6 +1030,61 @@ private fun OptionCard(
             }
         }
         content()
+    }
+}
+
+/**
+ * A settings row that opens another screen instead of holding a control.
+ * Same shape as [OptionCard] so the column keeps one rhythm, with a chevron
+ * where the control would be.
+ */
+@Composable
+private fun NavRow(
+    title: String,
+    hint: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    dot: Boolean = false,
+    onClick: () -> Unit
+) {
+    AppCard(modifier = Modifier.padding(vertical = 5.dp), onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (dot) {
+                        Spacer(Modifier.width(8.dp))
+                        androidx.compose.foundation.layout.Box(
+                            Modifier
+                                .size(8.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            androidx.compose.material3.Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

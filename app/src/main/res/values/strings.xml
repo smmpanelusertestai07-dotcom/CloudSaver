@@ -161,7 +161,6 @@
     <string name="activity_clear_body">This only clears the list. Your files, settings and backup state are untouched.</string>
     <string name="activity_empty_title">Nothing logged yet</string>
     <string name="activity_empty_body">Every optimised file, upload and problem shows up here.</string>
-    <string name="activity_retention">Activity is kept for 30 days.</string>
     <string name="activity_optimised">Optimised %1$s files, saving %2$s</string>
     <string name="activity_released">Added %1$s files to the upload folder</string>
     <string name="activity_backed_up">%1$s files confirmed backed up</string>
@@ -274,7 +273,11 @@
     <string name="reclaim_history_open">See history</string>
     <string name="sort_oldest">Oldest</string>
     <string name="sort_album">Album</string>
-    <string name="group_none">No grouping</string>
+    <string name="group_evidence">By proof</string>
+    <string name="group_exact">Removed by your cloud app</string>
+    <string name="group_exact_body">Your cloud app took these files and deleted them itself. That is the strongest proof there is.</string>
+    <string name="group_by_size">Matched by upload size, 30+ days</string>
+    <string name="group_by_size_body">These matched the amount your cloud app uploaded rather than being seen leaving. They have waited 30 days, and nothing here is selected for you.</string>
     <string name="group_album">By album</string>
     <string name="group_month">By month</string>
     <string name="group_year">By year</string>
@@ -318,16 +321,10 @@
         <item quantity="one">Your largest file uses %2$s - about %3$s could be saved by optimising it.</item>
         <item quantity="other">Your %1$d largest files use %2$s - about %3$s could be saved by optimising them.</item>
     </plurals>
-    <string name="biggest_row">%1$s · %2$s</string>
     <string name="biggest_optimise_first">Optimise this first</string>
     <string name="never_optimise">Never optimise this file</string>
     <string name="never_optimise_title">Files you excluded</string>
     <string name="never_optimise_hint">Files you asked CloudSaver to leave alone. Clearing the list puts them back in the queue.</string>
-    <string name="reclaim_reminder_title">Tell me when I can free space</string>
-    <string name="reclaim_reminder_hint">Adds a chip on Home when this much can be reclaimed. No notification, and never more than once a week.</string>
-    <string name="reclaim_reminder_off">Off</string>
-    <string name="uninstall_open">Open</string>
-    <string name="chip_reclaim">%1$s can be freed</string>
     <plurals name="never_optimise_count">
         <item quantity="one">%1$d file excluded by you</item>
         <item quantity="other">%1$d files excluded by you</item>
@@ -360,18 +357,6 @@
     <string name="kept_remove_body">The cloud still has this file; removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
 
     <!-- prepare for uninstall -->
-    <string name="uninstall_title">Prepare for uninstall</string>
-    <string name="uninstall_hint">What stays on your phone, and what goes</string>
-    <string name="uninstall_stays_title">Stays on your phone</string>
-    <string name="uninstall_kept">Kept light copies</string>
-    <string name="uninstall_waiting">Copies waiting to upload</string>
-    <string name="uninstall_cloud_note">Your cloud is untouched either way. CloudSaver has no internet permission, so it cannot change anything there.</string>
-    <string name="uninstall_goes_title">Goes with the app</string>
-    <string name="uninstall_goes_body">Temporary work files are removed by Android. The app\'s own history survives only in its hidden state file or in a backup you save.</string>
-    <string name="uninstall_save_history">Save my history</string>
-    <string name="uninstall_move_title">Move light copies somewhere else</string>
-    <string name="uninstall_move_body">Copy them into a folder you choose, completely outside any app-created location. Nothing is deleted.</string>
-    <string name="uninstall_move_action">Choose a folder</string>
     <plurals name="uninstall_move_done">
         <item quantity="one">Copied %1$d file.</item>
         <item quantity="other">Copied %1$d files.</item>
@@ -390,6 +375,8 @@
     <string name="opt_group_appearance">Appearance</string>
     <string name="opt_group_privacy">Privacy and safety</string>
     <string name="opt_group_backup_restore">Backup and restore</string>
+    <string name="opt_group_help">Help and info</string>
+    <string name="help_entry">Guides, FAQs, privacy and what version you are on</string>
     <string name="opt_scope">Media type</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
     <string name="scope_all">All</string>
@@ -409,6 +396,9 @@
     <string name="folders_loading">Loading albums…</string>
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>
+    <string name="output_switch_title">Change folder layout?</string>
+    <string name="output_switch_body">New light copies will go to a different folder, so you will need to point your cloud app at it as well.</string>
+    <string name="output_switch_confirm">Change layout</string>
     <string name="output_switch_note">Switching layout never deletes anything. Files already in the old folder stay there and are still uploaded; new files go to the new layout, and CloudSaver keeps watching both until the old one is empty.</string>
     <string name="output_single">Single</string>
     <string name="output_separate">Separate</string>
@@ -482,9 +472,6 @@
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
     <string name="recommend_space">Recommended for this phone: keep %1$s free.</string>
     <string name="recommend_apply">Use recommended</string>
-    <string name="opt_reclaim_verified">Include files confirmed by data size</string>
-    <string name="opt_reclaim_verified_short">Include these too</string>
-    <string name="opt_reclaim_verified_hint">Normally Reclaim only lists files your cloud app itself removed after upload. Turn this on to also include files we matched by the amount your cloud app uploaded, once they are 30 days old. Android still asks you to confirm every deletion.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
     <string name="opt_transfer_hint">Save your settings and file history to a file, protected with a password.</string>
     <string name="backup_password_title">Protect this backup</string>
@@ -563,10 +550,27 @@
     <!-- onboarding -->
     <string name="app_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
     <string name="onb_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
+    <string name="onb_albums_title">Which albums?</string>
+    <string name="onb_albums_text">Only the albums you tick get a light copy. Everything else is left completely alone.</string>
+    <string name="onb_albums_confirm">These are right</string>
+    <string name="onb_albums_all">Select all</string>
+    <string name="onb_albums_none">Clear all</string>
+    <string name="onb_albums_changeable">You can change this any time in Settings.</string>
+    <string name="onb_ready_title">Ready to start</string>
+    <string name="onb_ready_text">Nothing has been copied yet. Here is what will happen when you start.</string>
+    <string name="onb_ready_start">Start backing up</string>
+    <string name="onb_ready_what">Backing up</string>
+    <string name="onb_ready_quality">Quality</string>
+    <string name="onb_ready_when">Runs</string>
+    <string name="onb_ready_cloud">Your cloud app</string>
+    <string name="onb_ready_trial">Want proof first? Try it on three photos — your originals stay untouched.</string>
+    <string name="onb_resume_title">Picking up where you left off</string>
+    <string name="onb_resume_text">Setup was not finished, so nothing has run yet.</string>
+    <string name="copy_path_action">Copy folder path</string>
+    <string name="path_copied">Folder path copied</string>
     <string name="onb_step_counter">Step %1$d of %2$d</string>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
-    <string name="onb_finish">Finish setup</string>
     <string name="onb0_title">Welcome!</string>
     <string name="onb0_text">CloudSaver makes smaller copies of your photos and videos in Pictures/CloudSaver. Point your cloud app at that one folder - your originals stay exactly where they are.</string>
     <string name="onb0_import">Restore from a backup file</string>
@@ -584,8 +588,6 @@
     <string name="onb4_grant">Grant usage access</string>
     <string name="onb5_title">5. Point your cloud app here</string>
     <string name="onb5_open">Open %1$s</string>
-    <string name="onb6_title">6. Try it out</string>
-    <string name="onb6_text">CloudSaver optimises three files so you can see the difference.</string>
     <string name="onb6_run">Optimise 3 files</string>
     <string name="onb6_running">Running…</string>
     <string name="onb6_none">No items found yet. Check the permission.</string>
@@ -625,11 +627,6 @@
     <string name="logs_clear">Clear log</string>
     <string name="logs_empty">The log is empty.</string>
     <string name="about_version_line">Version %1$s</string>
-    <string name="about_version">Version</string>
-    <string name="about_build">Build</string>
-    <string name="about_package">Package</string>
-    <string name="about_network">Network access</string>
-    <string name="about_network_value">None - the permission is not in the app</string>
     <string name="about_requires_title">Works on</string>
     <string name="about_requires">Android</string>
     <string name="about_requires_value">10 to 16 (2019 phones onwards)</string>
@@ -639,9 +636,6 @@
     <string name="about_support_ten">Android 10: everything works except undo. That version has no gallery trash, so a removed original cannot be brought back, and Android asks about each file separately.</string>
     <string name="about_this_phone_full">Your phone gets every feature, including 30-day recovery.</string>
     <string name="about_this_phone_limited">On your phone, removed originals cannot be recovered.</string>
-    <string name="about_technical">Technical details</string>
-    <string name="about_cert">Signing certificate (SHA-256)</string>
-    <string name="about_cert_dev">Development build - not checked</string>
     <string name="about_partner">Made to work with your cloud app. It never uploads anything itself.</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
@@ -651,27 +645,36 @@
     <string name="licenses_text" translatable="false">This app uses open-source libraries:\n\n• AndroidX (Compose, Room, WorkManager, DataStore, ExifInterface, Biometric, Navigation, Lifecycle, Core, AppCompat) - Apache License 2.0\n• AndroidX Media3 (Transformer, Effect, Muxer, Common) - Apache License 2.0\n• Kotlin Standard Library and kotlinx.coroutines - Apache License 2.0\n\nApache License 2.0: http://www.apache.org/licenses/LICENSE-2.0</string>
 
     <!-- quality page -->
+    <string name="quality_terms_title">The words used here</string>
+    <string name="quality_term_preset">Preset</string>
+    <string name="quality_term_preset_v">The size limit you picked. Higher limit, better quality, less space saved.</string>
+    <string name="quality_term_mp">Megapixel (MP)</string>
+    <string name="quality_term_mp_v">How much detail a photo holds. A 12 MP photo has about 12 million dots of colour.</string>
+    <string name="quality_term_p">1080p, 4K</string>
+    <string name="quality_term_p_v">How large a video frame is. 4K is four times the size of 1080p, and roughly four times the file.</string>
+    <string name="quality_term_codec">Codec</string>
+    <string name="quality_term_codec_v">The method used to pack a video into a file. H.264 and HEVC are the two here.</string>
     <string name="quality_explained_title">Quality explained</string>
     <string name="quality_measured_title">On this phone so far</string>
-    <string name="quality_measured_photos">Your photos: %1$s smaller on average (%2$s measured).</string>
-    <string name="quality_measured_videos">Your videos: %1$s smaller on average (%2$s measured).</string>
-    <string name="quality_measured_none">Not enough files processed yet to measure your own averages.</string>
-    <string name="quality_caps">The preset sets a ceiling, not a target: a 48 MP photo comes down to the limit, a 6 MP one is left at 6 MP. Video is the same for resolution.</string>
-    <string name="quality_percent_meaning">The percentages are a visual-quality estimate for the encoder settings used, not a measurement of your own files. What CloudSaver measures on your phone is size, shown above.</string>
+    <string name="quality_measured_photos">Your photos came out %1$s smaller on average (%2$s files).</string>
+    <string name="quality_measured_videos">Your videos came out %1$s smaller on average (%2$s files).</string>
+    <string name="quality_measured_none">Nothing has been optimised yet, so there is nothing measured to show.</string>
+    <string name="quality_caps">A preset is a ceiling, not a target. A 48-megapixel photo is brought down to the limit; a 6-megapixel photo is left exactly as it is. Video works the same way.</string>
+    <string name="quality_percent_meaning">Everything below is a rough guide. The line above is the only real measurement — it comes from your own files.</string>
     <string name="quality_originals_safe">Whatever the setting, your originals are never edited, moved or deleted by this.</string>
-    <string name="quality_intro">Everything happens on the phone. Video bitrate comes from output pixels × fps (H.264: 0.10 bits per pixel per frame, HEVC: 0.065). 1080p30 H.264 ≈ 6 Mbps. Photos are resized to the preset megapixel limit at JPEG quality 80-85.</string>
-    <string name="quality_codec_title">H.264 vs HEVC</string>
-    <string name="quality_codec_text" formatted="false">H.264 plays on every device. HEVC is about 35% smaller at the same quality, but older devices may not support it. H.264 is the default.</string>
-    <string name="quality_table_title">Savings (approx.)</string>
+    <string name="quality_intro">All the work happens on your phone. Photos are made smaller and saved again; videos are re-recorded at a lower quality setting. Nothing is uploaded to do it.</string>
+    <string name="quality_codec_title">H.264 or HEVC?</string>
+    <string name="quality_codec_text" formatted="false">Two ways of packing a video. H.264 plays on everything, including old phones and TVs. HEVC makes files about a third smaller for the same picture, but some older devices cannot play it. If you are unsure, keep H.264.</string>
+    <string name="quality_table_title">What to expect</string>
     <string name="quality_row1_k">1080p video</string>
-    <string name="quality_row1_v" formatted="false">60-75% smaller at ~90-95% quality</string>
-    <string name="quality_row2_k">4K → 1080p</string>
-    <string name="quality_row2_v" formatted="false">75-85% saved</string>
+    <string name="quality_row1_v" formatted="false">60-75% smaller, looks the same</string>
+    <string name="quality_row2_k">4K video saved as 1080p</string>
+    <string name="quality_row2_v" formatted="false">75-85% smaller</string>
     <string name="quality_row3_k">12 MP photo</string>
-    <string name="quality_row3_v" formatted="false">~30% smaller, invisible loss</string>
-    <string name="quality_row4_k">&gt;16 MP photo</string>
-    <string name="quality_row4_v" formatted="false">~75% saved</string>
-    <string name="quality_outro">EXIF, GPS and dates are always copied. Rotation is baked in upright. If a compressed file would be bigger, the original is copied as-is - an item is never lost.</string>
+    <string name="quality_row3_v" formatted="false">About 30% smaller, no visible difference</string>
+    <string name="quality_row4_k">Photo over 16 MP</string>
+    <string name="quality_row4_v" formatted="false">About 75% smaller</string>
+    <string name="quality_outro">Dates, camera details and location are copied across, and photos come out the right way up. If the smaller version would somehow be bigger, the original is copied unchanged - nothing is ever skipped.</string>
 
     <!-- FAQ -->
     <string name="faq_q1">What does CloudSaver do?</string>
@@ -723,10 +726,14 @@
     <string name="faq_q23">Where do reclaimed files go, and can I get them back?</string>
     <string name="faq_a23">By default into your gallery\'s trash, where Android keeps them for 30 days. The Recently reclaimed screen lists every batch with its files and a Restore button for anything still in the trash. If you chose "Delete permanently" instead, the files are gone and the screen says so plainly. CloudSaver can never re-download anything from your cloud, so the trash is the only local safety net.</string>
     <string name="faq_q24">What happens to my files if I uninstall CloudSaver?</string>
-    <string name="faq_a24">Your kept light copies stay in Pictures/Light copies and remain in your gallery, because they are ordinary files in an ordinary album. Copies still waiting stay in Pictures/CloudSaver until your cloud app takes them. Temporary work files are removed by Android along with the app. Your cloud is untouched. The app\'s own history survives only in its hidden state file or in a backup you save - Settings has a "Prepare for uninstall" screen that shows all of this and can move the light copies anywhere you like first.</string>
+    <string name="faq_a24">Your kept light copies stay in Pictures/Light copies and remain in your gallery, because they are ordinary files in an ordinary album. Copies still waiting stay in Pictures/CloudSaver until your cloud app takes them. Temporary work files are removed by Android along with the app. Your cloud is untouched. Only the app\'s own history goes - and even that comes back from a hidden state file, or from a backup you saved under Settings \u203a Backup and restore. Nothing you would miss needs moving first.</string>
     <string name="faq_q25">The CloudSaver album disappeared from my gallery - is something wrong?</string>
     <string name="faq_a25">No. The upload folder is a working folder: once your cloud app has collected the files, it is empty, and galleries hide empty folders. It reappears the next time CloudSaver adds a batch. An empty CloudSaver album is the sign that everything is working, not that something broke.</string>
 
+    <string name="faq_q27">Does CloudSaver start on its own?</string>
+    <string name="faq_a27">Yes, once you have tapped Start backing up at the end of setup - that tap is what switches it on, and nothing runs before it. After that Android wakes it about every half hour to check whether the conditions you chose are met. It also comes back by itself after a restart. It never starts during setup, and it stops completely while Pause is on.</string>
+    <string name="faq_q28">Do I have to open the app for it to work?</string>
+    <string name="faq_a28">No. Everything happens in the background. Opening the app is only to see what happened, change a setting, or reclaim space. If nothing has run for two days while files were waiting, Home says so and points at the phone setting that is blocking it.</string>
     <string name="faq_q26">Which Android versions does CloudSaver work on?</string>
     <string name="faq_a26">Android 10 through Android 16 - every phone from 2019 onwards. On Android 11 and later everything works completely, including the safety net: anything you remove in Reclaim space goes to your gallery\'s trash and can be restored for 30 days. On Android 10 every feature still works, with one difference you should know about: that version of Android has no gallery trash, so a removed original is gone for good and Android asks you to confirm each file separately. CloudSaver says which of the two your phone is, on the About page and on the Reclaim screen itself.</string>
 
@@ -744,4 +751,32 @@
     <string name="warn_safety_text">The cloud app has uploaded nothing for 3 days, so CloudSaver paused deleting copies. Open the cloud app and check.</string>
     <string name="warn_volume_title">SD card missing</string>
     <string name="warn_volume_text">The chosen storage is not available. CloudSaver paused file work. Your state is safe.</string>
+    <plurals name="onb_albums_selected">
+        <item quantity="one">%d album selected</item>
+        <item quantity="other">%d albums selected</item>
+    </plurals>
+    <plurals name="copy_path">
+        <item quantity="one">Copy folder path</item>
+        <item quantity="other">Copy both folder paths</item>
+    </plurals>
+    <string name="biggest_search">Search by name or album</string>
+    <string name="biggest_clear">Clear search</string>
+    <string name="biggest_no_match">Nothing matches \u201c%1$s\u201d.</string>
+    <string name="biggest_no_album">No album</string>
+    <string name="biggest_saving">saves ~%1$s</string>
+    <string name="biggest_detail">%1$s \u00b7 %2$s</string>
+    <string name="biggest_detail_video">%1$s \u00b7 %2$s \u00b7 %3$s</string>
+    <string name="biggest_cannot_open">Cannot open this file. It may have been moved or deleted.</string>
+    <string name="kind_photo">Photo</string>
+    <string name="kind_video">Video</string>
+    <plurals name="onb_ready_what_minus">
+        <item quantity="one">%1$s, minus %2$d album</item>
+        <item quantity="other">%1$s, minus %2$d albums</item>
+    </plurals>
+    <plurals name="activity_retention">
+        <item quantity="one">Kept automatically on this phone for %1$d day, up to %2$s entries. Nothing here is ever sent anywhere.</item>
+        <item quantity="other">Kept automatically on this phone for %1$d days, up to %2$s entries. Nothing here is ever sent anywhere.</item>
+    </plurals>
+    <string name="progress_none_yet">Nothing has run yet. The first check happens on its own within about half an hour, or tap Check now.</string>
+    <string name="progress_all_clear">Everything found so far has been backed up. New photos and videos are picked up automatically.</string>
 </resources>

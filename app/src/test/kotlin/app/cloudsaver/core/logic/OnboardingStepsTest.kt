@@ -1,6 +1,7 @@
 package app.cloudsaver.core.logic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,8 +33,31 @@ class OnboardingStepsTest {
     }
 
     @Test
-    fun `setup starts at welcome and ends at the test run`() {
+    fun `setup starts at welcome and ends at the start button`() {
         assertEquals(OnboardingSteps.Step.WELCOME, OnboardingSteps.ALL.first())
-        assertTrue(OnboardingSteps.isLast(OnboardingSteps.Step.TRY_IT))
+        assertTrue(OnboardingSteps.isLast(OnboardingSteps.Step.READY))
+    }
+
+    @Test
+    fun `albums come straight after the permission that makes them readable`() {
+        // Asking which albums to back up before read access is granted would
+        // show an empty list, which reads as "there are no albums".
+        assertEquals(
+            OnboardingSteps.Step.ALBUMS,
+            OnboardingSteps.next(OnboardingSteps.Step.MEDIA)
+        )
+    }
+
+    @Test
+    fun `only the steps that touch someone's photos are mandatory`() {
+        assertTrue(OnboardingSteps.isRequired(OnboardingSteps.Step.MEDIA))
+        assertTrue(OnboardingSteps.isRequired(OnboardingSteps.Step.ALBUMS))
+        // Everything else is a permission the app can run without, so it must
+        // stay skippable - a setup that cannot be finished is a dead app.
+        assertFalse(OnboardingSteps.isRequired(OnboardingSteps.Step.NOTIFICATIONS))
+        assertFalse(OnboardingSteps.isRequired(OnboardingSteps.Step.BATTERY))
+        assertFalse(OnboardingSteps.isRequired(OnboardingSteps.Step.USAGE))
+        assertFalse(OnboardingSteps.isRequired(OnboardingSteps.Step.CLOUD))
+        assertFalse(OnboardingSteps.isRequired(OnboardingSteps.Step.READY))
     }
 }

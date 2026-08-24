@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -105,6 +106,21 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
             }
         )
 
+        // Nobody switched this on, and nobody has to switch it off. Say how
+        // long it is kept and how many lines, so it is not a mystery log
+        // growing quietly on the phone.
+        Text(
+            pluralStringResource(
+                R.plurals.activity_retention,
+                ActivityLog.RETENTION_DAYS,
+                ActivityLog.RETENTION_DAYS,
+                Formats.count(ActivityLog.RETENTION_ROWS)
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+
         Spacer(Modifier.height(4.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(
@@ -140,14 +156,9 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     item(key = row.id) { ActivityCard(row, nav, vm) }
                 }
-                item(key = "footer") {
-                    Text(
-                        stringResource(R.string.activity_retention),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 16.dp)
-                    )
-                }
+                // The retention line is stated once, at the top; repeating it
+                // at the foot of a 500-row list helps nobody.
+                item(key = "footer") { Spacer(Modifier.height(24.dp)) }
             }
         }
     }

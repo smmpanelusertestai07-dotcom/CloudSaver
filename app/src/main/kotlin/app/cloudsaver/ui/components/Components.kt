@@ -24,11 +24,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -168,17 +171,20 @@ fun AnimatedNumber(
     style: androidx.compose.ui.text.TextStyle = MetricTextStyle,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
-    AnimatedContent(
-        targetState = value,
-        transitionSpec = {
-            (slideInVertically { it / 2 } + fadeIn(tween(220)))
-                .togetherWith(slideOutVertically { -it / 2 } + fadeOut(tween(160)))
-        },
-        label = "number",
+    // Always one Text, always fully opaque, never moved.
+    //
+    // This used to cross-fade two of them: mid-transition the old and new
+    // counts overlapped at partial alpha, which on a tile read as a faded
+    // number smeared behind its own label - and on a slow count it never
+    // settled. Only the digits change now; the text block does not.
+    Text(
+        value,
+        style = style,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
         modifier = modifier
-    ) { shown ->
-        Text(shown, style = style, color = color, maxLines = 1)
-    }
+    )
 }
 
 /** One dashboard metric: big number, small caption. */
@@ -223,10 +229,11 @@ fun MetricTile(
     ) {
         AnimatedNumber(
             value = value,
-            style = MaterialTheme.typography.headlineMedium.copy(
-                // Tabular figures: every digit the same width, so the number
-                // changes without the layout moving.
-                fontFeatureSettings = "tnum"
+            style = MaterialTheme.typography.headlineSmall.copy(
+                // Tabular figures: every digit the same width, so 9 becoming
+                // 10 changes the number without moving the grid.
+                fontFeatureSettings = "tnum",
+                fontWeight = FontWeight.SemiBold
             ),
             color = if (highlight) scheme.onSecondaryContainer else scheme.primary
         )
@@ -235,18 +242,121 @@ fun MetricTile(
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
             maxLines = 2,
+            // A long label must shrink rather than push the number out of
+            // the fixed cell.
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = MaterialTheme.typography.labelMedium.fontSize,
+                stepSize = 0.5.sp
+            ),
             color = if (highlight) {
                 scheme.onSecondaryContainer.copy(alpha = 0.8f)
             } else {
                 scheme.onSurfaceVariant
             },
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier.padding(top = 6.dp)
         )
+    }
+}
+
+/**
+ * The progress grid.
+ *
+ * Every tile is the same cell whatever the row holds: three tiles are three
+ * equal thirds, not two-and-a-stretched-one, and a single remaining tile is
+ * centred at that same width rather than spanning the screen. A grid whose
+ * cells resize as counts appear and disappear reads as a glitch.
+ */
+@Composable
+fun MetricGrid(tiles: List<@Composable (Modifier) -> Unit>) {
+    if (tiles.isEmpty()) return
+    val perRow = if (tiles.size <= 3) tiles.size else 2
+    for (row in tiles.chunked(perRow)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            for (tile in row) tile(Modifier.weight(1f))
+            // Keep the last row's cells the same width as every other row's.
+            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+        }
     }
 }
 
 /** Every progress tile is this tall, whatever it holds. */
 val TileHeight = 104.dp
+
+/**
+ * One settings row: icon, title, one line of what it does, then the control.
+ *
+ * Every row has a leading icon, because a wall of text rows is the thing that
+ * makes a settings screen feel like a form. The label and the control sit on
+ * one line with a real gap between them and the label wraps rather than
+ * sliding under the switch - which is exactly what it used to do at large
+ * font sizes.
+ */
+@Composable
+fun SettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    description: String? = null,
+    value: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    val scheme = MaterialTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    var row = Modifier
+        .fillMaxWidth()
+        .heightIn(min = 56.dp)
+    if (onClick != null) {
+        row = row.clickable(interactionSource = interaction, indication = null, onClick = onClick)
+    }
+    Row(
+        modifier = row.padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = 16.dp, end = 16.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+            description?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+        value?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelLarge,
+                color = scheme.primary,
+                maxLines = 1
+            )
+        }
+        trailing?.invoke()
+    }
+}
+
+/** A group of settings rows: one card, one header above it. */
+@Composable
+fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
+    SectionHeader(title)
+    AppCard(content = content)
+}
 
 /** Tappable status pill (needs attention). */
 @Composable
@@ -497,5 +607,53 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 6.dp)
         )
+    }
+}
+
+/**
+ * A folder path, with a one-tap copy.
+ *
+ * Paths are shown so they can be typed into a cloud app's folder picker, and
+ * a path typed slightly wrong backs up nothing while looking correct. They are
+ * set in the normal text face rather than monospace: a column of monospace
+ * paths on a settings screen reads as a log file.
+ */
+@Composable
+fun PathLine(path: String, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val copied = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.path_copied)
+    val copyLabel = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.copy_path_action)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            path,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            modifier = Modifier.weight(1f)
+        )
+        androidx.compose.material3.IconButton(
+            onClick = {
+                clipboard.setText(androidx.compose.ui.text.AnnotatedString(path))
+                // Android 13 and up shows its own clipboard confirmation.
+                if (android.os.Build.VERSION.SDK_INT < 33) {
+                    val toast = android.widget.Toast.makeText(
+                        context, copied, android.widget.Toast.LENGTH_SHORT
+                    )
+                    toast.show()
+                }
+            },
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                androidx.compose.material.icons.Icons.Outlined.ContentCopy,
+                contentDescription = copyLabel,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }

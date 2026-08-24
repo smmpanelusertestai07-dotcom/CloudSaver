@@ -63,14 +63,32 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 enum class OutFolder { SINGLE, PHOTOS, VIDEOS }
 
 object Defaults {
+    // Every choice below is a round decimal number, because [MB] is decimal
+    // and a chip labelled "2 GB" has to store the number the Storage screen
+    // will later print. 1024 and 1536 were binary leftovers: picking "1 GB"
+    // used to produce a limit the app reported as 1.07 GB.
     const val DAILY_CAP_MB = 250
-    val DAILY_CAP_CHOICES_MB = listOf(250, 500, 1024, 2048, -1) // -1 = unlimited
+    val DAILY_CAP_CHOICES_MB = listOf(250, 500, 1000, 2000, -1) // -1 = unlimited
 
-    const val MAX_EXTRA_MB = 1536
-    val MAX_EXTRA_CHOICES_MB = listOf(1536, 3072, 5120, -1) // -1 = unlimited
+    const val MAX_EXTRA_MB = 1500
+    val MAX_EXTRA_CHOICES_MB = listOf(1500, 3000, 5000, -1) // -1 = unlimited
 
-    const val MIN_FREE_MB = 1536
-    val MIN_FREE_CHOICES_MB = listOf(1536, 3072, 5120)
+    const val MIN_FREE_MB = 1500
+    val MIN_FREE_CHOICES_MB = listOf(1500, 3000, 5000)
+
+    /**
+     * Maps a value stored by an older build onto the chip list it belongs to.
+     *
+     * Upgrading someone whose cap is 1536 must not leave every chip unselected
+     * - a control with nothing highlighted reads as "not configured", and the
+     * obvious fix is to reset it, which silently changes their limit.
+     */
+    fun snapToChoice(storedMb: Int, choices: List<Int>): Int = when {
+        storedMb < 0 -> storedMb
+        storedMb in choices -> storedMb
+        else -> choices.filter { it > 0 }.minByOrNull { kotlin.math.abs(it - storedMb) }
+            ?: storedMb
+    }
 
     const val KEEP_MIN_DAYS = 5
     const val AGED_DAYS = 10
@@ -97,7 +115,16 @@ object Defaults {
 
     const val STAGE_CAP_FACTOR = 2 // stage dir may hold at most 2 x DAILY_CAP
 
-    const val MB = 1024L * 1024L
+    /**
+     * One megabyte, decimal.
+     *
+     * The settings offer "500 MB" and the screen has to read back "500 MB".
+     * With the binary megabyte it did not: 500 x 1048576 formatted as 524 MB,
+     * because sizes are shown in the decimal units cloud plans are sold in.
+     * A limit the user picked and a limit the app reports must be the same
+     * number, so both sides count the same way.
+     */
+    const val MB = 1_000_000L
 
     // Pictures (never DCIM): keeps clouds with DCIM auto-backup from grabbing originals.
     const val OUTPUT_DIR = "Pictures/CloudSaver"
