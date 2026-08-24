@@ -40,6 +40,20 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.RowActions
+import app.cloudsaver.ui.components.typeFilter
+import app.cloudsaver.ui.components.sizeFilter
+import app.cloudsaver.ui.components.selectionSummary
+import app.cloudsaver.ui.components.rememberListSelection
+import app.cloudsaver.ui.components.albumFilter
+import app.cloudsaver.ui.components.WarningCard
+import app.cloudsaver.ui.components.SearchEmptyState
+import app.cloudsaver.ui.components.ListScreenScaffold
+import app.cloudsaver.ui.components.ListOption
+import app.cloudsaver.ui.components.ListFilter
+import app.cloudsaver.ui.components.ListActionBar
+import app.cloudsaver.ui.components.FilteredEmptyState
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.ReclaimViewModel
@@ -88,17 +102,24 @@ private fun Page(
  *
  * That is safe because the proof is local. An identical file stays on the
  * phone, so the content is provably still there whatever any cloud app did or
- * did not do. The screen says exactly that above the button, because a person
- * being asked to delete photographs deserves the actual reason.
+ * did not do. The screen says exactly that above the list, because a person
+ * being asked to delete photographs deserves the actual reason before they
+ * are asked, not after.
  */
 @Composable
 fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostController) {
     val groups by rvm.duplicateGroups.collectAsStateWithLifecycle()
-    val selection by rvm.duplicateSelection.collectAsStateWithLifecycle()
     val removed by rvm.duplicatesRemoved.collectAsStateWithLifecycle()
     val pending by rvm.pendingIntent.collectAsStateWithLifecycle()
+    val loading by rvm.duplicatesLoading.collectAsStateWithLifecycle()
+
     var query by rememberSaveable { mutableStateOf("") }
+    var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
+    var size by rememberSaveable { mutableStateOf(ListFilters.Size.ANY) }
+    var album by rememberSaveable { mutableStateOf<String?>(null) }
     var sort by rememberSaveable { mutableStateOf(DupeSort.SPACE) }
+    var confirming by rememberSaveable { mutableStateOf(false) }
+    val selection = rememberListSelection()
 
     LaunchedEffect(Unit) { rvm.loadDuplicates() }
 
@@ -109,112 +130,203 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
         pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
 
-    Page(nav, stringResource(R.string.find_duplicates)) {
-        if (groups.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.dupes_empty_title),
-                body = stringResource(R.string.dupes_empty_body)
-            )
-            return@Page
-        }
-        val shown = remember(groups, query, sort) {
-            val q = query.trim()
-            val matched = if (q.isEmpty()) {
-                groups
-            } else {
-                groups.filter { g ->
-                    g.all.any { e ->
-                        e.displayName.contains(q, true) || e.album?.contains(q, true) == true
-                    }
-                }
-            }
+    val state = ListFilters.State(type, size, album, query)
+    // Filtering applies to the extras, since those are what a filter is for:
+    // a group survives when any of its extras match, and shows only those.
+    val shown = remember(groups, state, sort) {
+        groups.mapNotNull { g ->
+            val kept = g.extras.filter { ListFilters.matches(it.toCandidate(), state) }
+            if (kept.isEmpty()) null else g to kept
+        }.sortedWith(
             when (sort) {
-                DupeSort.SPACE -> matched.sortedByDescending { it.reclaimableBytes }
-                DupeSort.COPIES -> matched.sortedByDescending { it.extras.size }
-                DupeSort.NAME -> matched.sortedBy { it.keeper.displayName.lowercase() }
-            }
-        }
-        val selectedBytes = shown.flatMap { it.extras }
-            .filter { it.id in selection }
-            .sumOf { it.sizeBytes }
-
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-                item("search") {
-                    ListSearchField(query, { query = it }, Modifier.padding(top = 8.dp))
+                DupeSort.SPACE -> compareByDescending { (_, extras) ->
+                    extras.sumOf { it.sizeBytes }
                 }
-                item("sort") {
-                    ChipRow(
-                        options = listOf(
-                            DupeSort.SPACE to stringResource(R.string.dupes_sort_space),
-                            DupeSort.COPIES to stringResource(R.string.dupes_sort_copies),
-                            DupeSort.NAME to stringResource(R.string.dupes_sort_name)
+                DupeSort.COPIES -> compareByDescending { (_, extras) -> extras.size }
+                DupeSort.OLDEST -> compareBy { (g, _) -> g.keeper.capturedAtMs }
+            }
+        )
+    }
+    val allExtras = shown.flatMap { it.second }
+    val selectedBytes = allExtras.filter { it.id in selection }.sumOf { it.sizeBytes }
+    val albums = remember(groups) {
+        ListFilters.albumCounts(groups.flatMap { it.extras }.map { it.toCandidate() })
+    }
+    val legacy = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R
+
+    ListScreenScaffold(
+        title = stringResource(R.string.find_duplicates),
+        onBack = { nav.popBackStack() },
+        query = query,
+        onQuery = { query = it },
+        filters = listOf(
+            typeFilter(type) { type = it },
+            albumFilter(album, albums) { album = it },
+            sizeFilter(size) { size = it }
+        ),
+        sort = ListFilter(
+            name = stringResource(R.string.filter_sort),
+            valueLabel = null,
+            options = listOf(
+                ListOption(stringResource(R.string.dupes_sort_space), sort == DupeSort.SPACE) {
+                    sort = DupeSort.SPACE
+                },
+                ListOption(stringResource(R.string.dupes_sort_copies), sort == DupeSort.COPIES) {
+                    sort = DupeSort.COPIES
+                },
+                ListOption(stringResource(R.string.dupes_sort_oldest), sort == DupeSort.OLDEST) {
+                    sort = DupeSort.OLDEST
+                }
+            )
+        ),
+        selection = selection,
+        matchingCount = allExtras.size,
+        onSelectAll = { selection.selectAll(allExtras.map { it.id }) },
+        onResetFilters = {
+            type = ListFilters.Type.ALL
+            size = ListFilters.Size.ANY
+            album = null
+        },
+        loading = loading && groups.isEmpty(),
+        isEmpty = shown.isEmpty(),
+        emptyContent = {
+            when {
+                groups.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                groups.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        size = ListFilters.Size.ANY
+                        album = null
+                    }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.dupes_empty_title),
+                    body = stringResource(R.string.dupes_empty_body)
+                )
+            }
+        },
+        intro = {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text(
+                    stringResource(R.string.dupes_intro),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    stringResource(R.string.dupes_intro_second),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                // Always visible, never behind the action. Someone about to
+                // delete photographs should not have to tap to find out that
+                // their cloud is untouched and the files are recoverable.
+                WarningCard(
+                    stringResource(
+                        if (legacy) R.string.dupes_warning_legacy else R.string.dupes_warning
+                    ),
+                    Modifier.padding(top = 10.dp)
+                )
+            }
+        },
+        actionBar = {
+            ListActionBar(
+                summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                actionLabel = stringResource(R.string.dupes_remove_extras),
+                onAction = { confirming = true }
+            )
+        }
+    ) {
+        for ((group, extras) in shown) {
+            item("h-${group.sha256}") {
+                Column(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.dupes_group_header,
+                            extras.size + 1,
+                            extras.size + 1,
+                            Formats.bytes(extras.sumOf { it.sizeBytes })
                         ),
-                        selected = sort,
-                        onSelect = { sort = it },
-                        modifier = Modifier.padding(top = 10.dp)
+                        style = MaterialTheme.typography.labelLarge.merge(TabularFigures),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        stringResource(R.string.dupes_group_proof),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                item("intro") {
-                    AppCard(modifier = Modifier.padding(vertical = 8.dp), tonal = true) {
-                        Text(
-                            stringResource(R.string.dupes_intro),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        TextButton(onClick = { rvm.selectAllDuplicates(selection.isEmpty()) }) {
-                            Text(
-                                stringResource(
-                                    if (selection.isEmpty()) R.string.list_select_all
-                                    else R.string.list_clear_selection
-                                )
-                            )
-                        }
-                    }
-                }
-                for (group in shown) {
-                    item("h-${group.sha256}") {
-                        Text(
-                            stringResource(
-                                R.string.dupes_group_proof,
-                                Formats.bytes(group.keeper.sizeBytes)
-                            ),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
-                        )
-                    }
-                    item("k-${group.sha256}") {
-                        DuplicateEntryRow(
-                            vm = vm,
-                            entry = group.keeper,
-                            isKeeper = true,
-                            selected = null,
-                            onToggle = {},
-                            onKeepInstead = null
-                        )
-                    }
-                    items(group.extras, key = { "e-${it.id}" }) { extra ->
-                        DuplicateEntryRow(
-                            vm = vm,
-                            entry = extra,
-                            isKeeper = false,
-                            selected = extra.id in selection,
-                            onToggle = { rvm.toggleDuplicate(extra.id) },
-                            onKeepInstead = { rvm.keepInstead(group.sha256, extra.id) }
-                        )
-                    }
-                }
-            item("tail") { ListTail(extra = selection.isNotEmpty()) }
+            }
+            item("k-${group.sha256}") {
+                DuplicateEntryRow(
+                    vm = vm,
+                    entry = group.keeper,
+                    isKeeper = true,
+                    selected = null,
+                    onToggle = {},
+                    onKeepInstead = null
+                )
+            }
+            items(extras, key = { "e-${it.id}" }) { extra ->
+                DuplicateEntryRow(
+                    vm = vm,
+                    entry = extra,
+                    isKeeper = false,
+                    selected = extra.id in selection,
+                    onToggle = { selection.toggle(extra.id) },
+                    onKeepInstead = { rvm.keepInstead(group.sha256, extra.id) }
+                )
+            }
         }
-        if (selection.isNotEmpty()) {
-            SelectionBar(
-                countLabel = stringResource(
-                    R.string.list_selected, selection.size, Formats.bytes(selectedBytes)
-                ),
-                actionLabel = stringResource(R.string.dupes_remove_extras),
-                onAction = { rvm.removeDuplicateExtras() },
-                onClear = { rvm.selectAllDuplicates(false) }
-            )
-        }
+    }
+
+    // What is about to happen, before Android's own dialog rather than
+    // instead of it: how many, how much, where they go, and the one sentence
+    // that matters - a copy of every file stays.
+    if (confirming) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text(stringResource(R.string.dupes_confirm_title)) },
+            text = {
+                Column {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.dupes_confirm_body,
+                            selection.size,
+                            selection.size,
+                            Formats.bytes(selectedBytes)
+                        )
+                    )
+                    Text(
+                        stringResource(
+                            if (legacy) R.string.dupes_confirm_where_legacy
+                            else R.string.dupes_confirm_where
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    Text(
+                        stringResource(R.string.dupes_confirm_safe),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirming = false
+                    rvm.removeDuplicateExtras(selection.ids)
+                    selection.clear()
+                }) { Text(stringResource(R.string.dupes_remove_extras)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     removed?.let { count ->
@@ -227,13 +339,25 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             },
             title = { Text(stringResource(R.string.dupes_removed_title)) },
             text = {
-                Text(
-                    pluralStringResource(R.plurals.dupes_removed_body, count, count)
-                )
+                Text(pluralStringResource(R.plurals.dupes_removed_body, count, count))
             }
         )
     }
 }
+
+/** One duplicate entry, as the shared filters need to see it. */
+private fun app.cloudsaver.core.logic.DuplicateRules.Entry.toCandidate() =
+    ListFilters.Candidate(
+        id = id,
+        name = displayName,
+        album = album,
+        sizeBytes = sizeBytes,
+        // Duplicate grouping is byte-identity, which says nothing about kind;
+        // the name extension is what the list has to go on.
+        isVideo = displayName.substringAfterLast('.', "").lowercase() in VIDEO_EXTENSIONS
+    )
+
+private val VIDEO_EXTENSIONS = setOf("mp4", "mov", "3gp", "mkv", "webm", "avi", "m4v")
 
 /**
  * One file inside a duplicate group.
@@ -285,36 +409,34 @@ private fun DuplicateThumb(vm: AppViewModel, entry: app.cloudsaver.core.logic.Du
  * The largest originals, what optimising them would save, and the two things
  * worth doing about them.
  *
- * "Remove" is offered only for files already confirmed backed up, and it is
- * absent rather than greyed out for the rest: a disabled control invites the
- * question "why not?", and the answer - "because we cannot prove your cloud
- * has it" - belongs in the proof line, not in a tooltip nobody opens.
+ * "Remove from phone" is offered only for files already confirmed backed up,
+ * and it is absent rather than greyed out for the rest: a disabled control
+ * invites the question "why not?", and the answer - "because we cannot prove
+ * your cloud has it" - belongs in the proof line, not in a tooltip nobody
+ * opens. Which actions a row gets is decided by the shared rule, so this
+ * screen cannot drift from Files.
  */
 @Composable
 fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostController) {
     val all by rvm.largest.collectAsStateWithLifecycle()
     val profile by vm.profile.collectAsStateWithLifecycle()
+
     var query by rememberSaveable { mutableStateOf("") }
+    var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
+    var sizeBand by rememberSaveable { mutableStateOf(ListFilters.Size.ANY) }
+    var album by rememberSaveable { mutableStateOf<String?>(null) }
     var sort by rememberSaveable { mutableStateOf(BiggestSort.LARGEST) }
+    val selection = rememberListSelection()
+
     LaunchedEffect(Unit) {
         rvm.loadLargest()
         vm.refreshProfile()
     }
 
-    Page(nav, stringResource(R.string.find_biggest)) {
-        if (all.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.biggest_empty_title),
-                body = stringResource(R.string.biggest_empty_body)
-            )
-            return@Page
-        }
-        val rows = remember(all, query, sort, profile) {
-            val q = query.trim()
-            all.filter {
-                q.isEmpty() || it.displayName.contains(q, true) ||
-                    it.bucket?.contains(q, true) == true
-            }.let { list ->
+    val state = ListFilters.State(type, sizeBand, album, query)
+    val rows = remember(all, state, sort, profile) {
+        all.filter { ListFilters.matches(it.toCandidate(), state) }
+            .let { list ->
                 when (sort) {
                     BiggestSort.LARGEST -> list.sortedByDescending { it.sizeBytes }
                     BiggestSort.OLDEST -> list.sortedBy {
@@ -323,74 +445,141 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                     BiggestSort.SAVED -> list.sortedByDescending { savingFor(it, profile) }
                 }
             }
-        }
-        val totalBytes = rows.sumOf { it.sizeBytes }
-        val couldSave = rows.sumOf { savingFor(it, profile) }
-        val rough = profile.photos.ratio <= 0.0 || profile.videos.ratio <= 0.0
+    }
+    val albums = remember(all) { ListFilters.albumCounts(all.map { it.toCandidate() }) }
+    val totalBytes = rows.sumOf { it.sizeBytes }
+    val couldSave = rows.sumOf { savingFor(it, profile) }
+    val rough = profile.photos.ratio <= 0.0 || profile.videos.ratio <= 0.0
 
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            item("search") {
-                ListSearchField(query, { query = it }, Modifier.padding(top = 8.dp))
-            }
-            item("sort") {
-                ChipRow(
-                    options = listOf(
-                        BiggestSort.LARGEST to stringResource(R.string.list_sort_largest),
-                        BiggestSort.OLDEST to stringResource(R.string.list_sort_oldest),
-                        BiggestSort.SAVED to stringResource(R.string.list_sort_saved)
-                    ),
-                    selected = sort,
-                    onSelect = { sort = it },
-                    modifier = Modifier.padding(top = 10.dp)
-                )
-            }
-            item("summary") {
-                AppCard(modifier = Modifier.padding(vertical = 10.dp), tonal = true) {
-                    Text(
-                        stringResource(
-                            if (rough) R.string.biggest_header_rough
-                            else R.string.biggest_header,
-                            rows.size,
-                            Formats.bytes(totalBytes),
-                            Formats.bytes(couldSave)
-                        ),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-            if (rows.isEmpty()) {
-                item("nomatch") {
-                    Text(
-                        stringResource(R.string.biggest_no_match, query),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 24.dp)
-                    )
-                }
-            }
-            items(rows, key = { it.id }) { row ->
-                BiggestRow(
-                    row = row,
-                    saving = savingFor(row, profile),
-                    onOpen = { vm.openInViewer(row) },
-                    onOptimise = { rvm.optimiseFirst(listOf(row.id)) },
-                    onNever = { rvm.setNeverOptimise(row.id, true) },
-                    onRemove = {
-                        // Straight into Reclaim with this one ticked: that is
-                        // where the eligibility gate and trash-first rule are.
-                        rvm.selectOnly(row.id)
-                        nav.goTo(Routes.FREE_UP)
+    val chosen = rows.filter { it.id in selection }
+    val selectedBytes = chosen.sumOf { it.sizeBytes }
+    val removable = chosen.filter { RowActions.Action.REMOVE_FROM_PHONE in
+        RowActions.forItem(it.toActionRow()) }
+
+    ListScreenScaffold(
+        title = stringResource(R.string.find_biggest),
+        onBack = { nav.popBackStack() },
+        query = query,
+        onQuery = { query = it },
+        filters = listOf(
+            typeFilter(type) { type = it },
+            albumFilter(album, albums) { album = it },
+            sizeFilter(sizeBand) { sizeBand = it }
+        ),
+        sort = ListFilter(
+            name = stringResource(R.string.filter_sort),
+            valueLabel = null,
+            options = listOf(
+                ListOption(
+                    stringResource(R.string.list_sort_largest),
+                    sort == BiggestSort.LARGEST
+                ) { sort = BiggestSort.LARGEST },
+                ListOption(
+                    stringResource(R.string.list_sort_oldest),
+                    sort == BiggestSort.OLDEST
+                ) { sort = BiggestSort.OLDEST },
+                ListOption(
+                    stringResource(R.string.list_sort_saving),
+                    sort == BiggestSort.SAVED
+                ) { sort = BiggestSort.SAVED }
+            )
+        ),
+        selection = selection,
+        matchingCount = rows.size,
+        onSelectAll = { selection.selectAll(rows.map { it.id }) },
+        onResetFilters = {
+            type = ListFilters.Type.ALL
+            sizeBand = ListFilters.Size.ANY
+            album = null
+        },
+        loading = false,
+        isEmpty = rows.isEmpty(),
+        emptyContent = {
+            when {
+                all.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                all.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        sizeBand = ListFilters.Size.ANY
+                        album = null
                     }
                 )
+                else -> EmptyState(
+                    title = stringResource(R.string.biggest_empty_title),
+                    body = stringResource(R.string.biggest_empty_body)
+                )
             }
-            item("tail") { ListTail() }
+        },
+        actionBar = {
+            // Removal needs proof for every file chosen. Rather than failing
+            // part way, or quietly doing some of them, the bar says how many
+            // fall short and offers to narrow the selection to the rest.
+            val shortfall = chosen.size - removable.size
+            ListActionBar(
+                summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                actionLabel = stringResource(R.string.list_optimise_these_first),
+                onAction = {
+                    rvm.optimiseFirst(chosen.map { it.id })
+                    selection.clear()
+                },
+                blockedReason = if (shortfall > 0 && removable.isNotEmpty()) {
+                    stringResource(R.string.list_remove_blocked, shortfall, chosen.size)
+                } else {
+                    null
+                },
+                narrowLabel = stringResource(R.string.list_select_backed_up),
+                onNarrow = { selection.replaceWith(removable.map { it.id }) }
+            )
+        }
+    ) {
+        item("summary") {
+            AppCard(modifier = Modifier.padding(vertical = 10.dp), tonal = true) {
+                Text(
+                    stringResource(
+                        if (rough) R.string.biggest_header_plain_rough
+                        else R.string.biggest_header_plain,
+                        rows.size,
+                        Formats.bytes(totalBytes),
+                        Formats.bytes(couldSave)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+        items(rows, key = { it.id }) { row ->
+            BiggestRow(
+                row = row,
+                saving = savingFor(row, profile),
+                selected = if (selection.active) row.id in selection else null,
+                onToggle = { selection.toggle(row.id) },
+                onOpen = { vm.openInViewer(row) },
+                onOptimise = { rvm.optimiseFirst(listOf(row.id)) },
+                onNever = { rvm.setNeverOptimise(row.id, true) },
+                onAllowAgain = { rvm.setNeverOptimise(row.id, false) },
+                onRemove = {
+                    // Straight into Reclaim with this one ticked: that is
+                    // where the eligibility gate and trash-first rule are.
+                    rvm.selectOnly(row.id)
+                    nav.goTo(Routes.FREE_UP)
+                }
+            )
         }
     }
 }
 
+/** A stored row as the shared filters need to see it. */
+private fun app.cloudsaver.data.db.ItemRow.toCandidate() = ListFilters.Candidate(
+    id = id,
+    name = displayName,
+    album = bucket,
+    sizeBytes = sizeBytes,
+    isVideo = isVideo
+)
+
 private enum class BiggestSort { LARGEST, OLDEST, SAVED }
 
-private enum class DupeSort { SPACE, COPIES, NAME }
+private enum class DupeSort { SPACE, COPIES, OLDEST }
 
 /**
  * What optimising this one file would save, through the shared projection so
@@ -409,36 +598,45 @@ private fun savingFor(
 private fun BiggestRow(
     row: app.cloudsaver.data.db.ItemRow,
     saving: Long,
+    selected: Boolean?,
+    onToggle: (Boolean) -> Unit,
     onOpen: () -> Boolean,
     onOptimise: () -> Unit,
     onNever: () -> Unit,
+    onAllowAgain: () -> Unit,
     onRemove: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val couldNotOpen = stringResource(R.string.biggest_cannot_open)
     val openLabel = stringResource(R.string.list_open)
     val optimiseLabel = stringResource(R.string.list_optimise_first)
+    val tryAgainLabel = stringResource(R.string.detail_try_again)
     val neverLabel = stringResource(R.string.list_never)
-    val removeLabel = stringResource(R.string.list_remove)
+    val allowLabel = stringResource(R.string.detail_optimise_again)
+    val removeLabel = stringResource(R.string.detail_remove_from_phone)
     val proofKind = ProofLine.forItem(
         app.cloudsaver.core.logic.Evidence.parse(row.evidence),
         isDuplicateExtra = row.duplicateOf != null
     )
-    val actions = buildList {
-        add(openLabel to {
-            if (!onOpen()) {
-                android.widget.Toast
-                    .makeText(context, couldNotOpen, android.widget.Toast.LENGTH_SHORT)
-                    .also { it.show() }
-            }
-            Unit
-        })
-        if (row.outputBytes == null) add(optimiseLabel to onOptimise)
-        // Offered only where the proof allows it, and absent otherwise rather
-        // than greyed: a disabled control raises a question the row cannot
-        // answer, and the proof line above already gives the reason.
-        if (ProofLine.allowsRemoval(proofKind)) add(removeLabel to onRemove)
-        add(neverLabel to onNever)
+    val open: () -> Unit = {
+        if (!onOpen()) {
+            android.widget.Toast
+                .makeText(context, couldNotOpen, android.widget.Toast.LENGTH_SHORT)
+                .show()
+        }
+    }
+    // The same rule Files obeys, so "never optimise" cannot appear here on a
+    // file that has already been optimised while Files correctly hides it.
+    val actions = RowActions.forItem(row.toActionRow()).mapNotNull { action ->
+        when (action) {
+            RowActions.Action.OPEN -> openLabel to open
+            RowActions.Action.OPTIMISE_FIRST -> optimiseLabel to onOptimise
+            RowActions.Action.TRY_AGAIN -> tryAgainLabel to onOptimise
+            RowActions.Action.NEVER_OPTIMISE -> neverLabel to onNever
+            RowActions.Action.ALLOW_AGAIN -> allowLabel to onAllowAgain
+            RowActions.Action.REMOVE_FROM_PHONE -> removeLabel to onRemove
+            else -> null
+        }
     }
     FileRow(
         name = row.displayName,
@@ -447,19 +645,17 @@ private fun BiggestRow(
         proof = proofLabel(proofKind),
         thumbnail = { Thumbnail(row) },
         actions = actions,
+        selected = selected,
+        onSelectedChange = if (selected != null) onToggle else null,
         trailingNote = if (saving > 0) {
-            stringResource(R.string.biggest_saving, Formats.bytes(saving))
+            stringResource(
+                R.string.biggest_after,
+                Formats.bytes((row.sizeBytes - saving).coerceAtLeast(0L))
+            )
         } else {
             null
         },
-        onClick = {
-            if (!onOpen()) {
-                val toast = android.widget.Toast.makeText(
-                    context, couldNotOpen, android.widget.Toast.LENGTH_SHORT
-                )
-                toast.show()
-            }
-        }
+        onClick = open
     )
 }
 

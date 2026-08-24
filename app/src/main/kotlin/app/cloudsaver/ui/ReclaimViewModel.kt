@@ -561,7 +561,6 @@ class ReclaimViewModel(
                     detail = ctx.getString(R.string.dupes_removed_detail)
                 )
             }
-            duplicateSelection.value = emptySet()
             loadDuplicates()
         }
     }
@@ -612,28 +611,20 @@ class ReclaimViewModel(
     val duplicateGroups = MutableStateFlow<List<DuplicateRules.Group>>(emptyList())
     val largest = MutableStateFlow<List<ItemRow>>(emptyList())
 
+    /**
+     * True while the first scan is running, so the screen can show skeleton
+     * rows instead of an empty state that is about to be wrong.
+     */
+    val duplicatesLoading = MutableStateFlow(false)
+
     fun loadDuplicates() {
         viewModelScope.launch(Dispatchers.IO) {
-            duplicateGroups.value = DuplicateScanner(ctx).groups()
-        }
-    }
-
-    /** Extras the user has ticked, by item id. */
-    val duplicateSelection = MutableStateFlow<Set<Long>>(emptySet())
-
-    fun toggleDuplicate(id: Long) {
-        duplicateSelection.value = duplicateSelection.value.let {
-            if (id in it) it - id else it + id
-        }
-    }
-
-    fun selectAllDuplicates(select: Boolean) {
-        duplicateSelection.value = if (!select) {
-            emptySet()
-        } else {
-            // Keepers are never selectable: the whole reason removing an extra
-            // is safe is that one identical file stays on the phone.
-            duplicateGroups.value.flatMap { g -> g.extras.map { it.id } }.toSet()
+            duplicatesLoading.value = true
+            try {
+                duplicateGroups.value = DuplicateScanner(ctx).groups()
+            } finally {
+                duplicatesLoading.value = false
+            }
         }
     }
 
@@ -651,8 +642,6 @@ class ReclaimViewModel(
             val next = group.all.firstOrNull { it.id == id } ?: return@map group
             group.copy(keeper = next, extras = group.all.filter { it.id != next.id })
         }
-        // A keeper can never stay ticked for removal.
-        duplicateSelection.value = duplicateSelection.value - id
     }
 
     /**
@@ -663,9 +652,8 @@ class ReclaimViewModel(
      * still goes through Android's own dialog, and to the trash rather than
      * straight out, so 30 days of undo apply.
      */
-    fun removeDuplicateExtras() {
+    fun removeDuplicateExtras(chosen: Set<Long>) {
         if (busy.value) return
-        val chosen = duplicateSelection.value
         if (chosen.isEmpty()) return
         busy.value = true
         viewModelScope.launch(Dispatchers.IO) {
@@ -680,10 +668,7 @@ class ReclaimViewModel(
                 val uris = rows.mapNotNull { row ->
                     row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
                 }
-                if (uris.isEmpty()) {
-                    duplicateSelection.value = emptySet()
-                    return@launch
-                }
+                if (uris.isEmpty()) return@launch
                 pendingDuplicateIds = rows.map { it.id }.toSet()
                 pendingTrash = true
                 val request = requestFor(uris, permanent = false)

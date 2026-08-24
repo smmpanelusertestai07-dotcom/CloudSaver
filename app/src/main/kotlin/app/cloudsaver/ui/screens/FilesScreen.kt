@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +48,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.typeFilter
+import app.cloudsaver.ui.components.sizeFilter
+import app.cloudsaver.ui.components.selectionSummary
+import app.cloudsaver.ui.components.rememberListSelection
+import app.cloudsaver.ui.components.albumFilter
+import app.cloudsaver.ui.components.SearchEmptyState
+import app.cloudsaver.ui.components.ListScreenScaffold
+import app.cloudsaver.ui.components.ListOption
+import app.cloudsaver.ui.components.ListFilter
+import app.cloudsaver.ui.components.ListActionBar
+import app.cloudsaver.ui.components.FilteredEmptyState
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.RowActions
@@ -63,154 +78,108 @@ import kotlinx.coroutines.withContext
 fun FilesScreen(vm: AppViewModel) {
     val items by vm.items.collectAsStateWithLifecycle()
     val query by vm.search.collectAsStateWithLifecycle()
-    val filter by vm.filesState.collectAsStateWithLifecycle()
+    val statusFilter by vm.filesState.collectAsStateWithLifecycle()
     val sort by vm.filesSort.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<ItemRow?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp)
-    ) {
-        Spacer(Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.nav_files),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-        OutlinedTextField(
-            value = query,
-            onValueChange = { vm.search.value = it },
-            label = { Text(stringResource(R.string.files_search)) },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-        )
+    var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
+    var sizeBand by rememberSaveable { mutableStateOf(ListFilters.Size.ANY) }
+    var album by rememberSaveable { mutableStateOf<String?>(null) }
+    val selection = rememberListSelection()
 
-        // Filters first, sort second: people look for "the ones that are done"
-        // far more often than they look for "the biggest".
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilesChip(stringResource(R.string.filter_all), filter == null) {
-                vm.filesState.value = null
-            }
-            FilesChip(stringResource(R.string.state_new), filter == ItemState.NEW.name) {
-                vm.filesState.value = ItemState.NEW.name
-            }
-            FilesChip(
-                stringResource(R.string.filter_in_progress),
-                filter == ItemState.RELEASED.name
-            ) { vm.filesState.value = ItemState.RELEASED.name }
-            FilesChip(stringResource(R.string.state_done), filter == ItemState.DONE.name) {
-                vm.filesState.value = ItemState.DONE.name
-            }
-            FilesChip(stringResource(R.string.state_skip), filter == ItemState.SKIP.name) {
-                vm.filesState.value = ItemState.SKIP.name
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilesChip(
-                stringResource(R.string.sort_newest),
-                sort == AppViewModel.FilesSort.NEWEST
-            ) { vm.filesSort.value = AppViewModel.FilesSort.NEWEST }
-            FilesChip(
-                stringResource(R.string.sort_saved),
-                sort == AppViewModel.FilesSort.SAVED
-            ) { vm.filesSort.value = AppViewModel.FilesSort.SAVED }
-            FilesChip(
-                stringResource(R.string.sort_largest),
-                sort == AppViewModel.FilesSort.LARGEST
-            ) { vm.filesSort.value = AppViewModel.FilesSort.LARGEST }
-        }
-        Spacer(Modifier.height(8.dp))
+    // The status filter is applied by the query behind vm.items; the shared
+    // chips narrow what came back. Both are filters, so the empty state has to
+    // treat them the same way.
+    val state = ListFilters.State(type, sizeBand, album, query = "")
+    val rows = remember(items, state) {
+        items.filter { ListFilters.matches(it.toCandidate(), state) }
+    }
+    val albums = remember(items) { ListFilters.albumCounts(items.map { it.toCandidate() }) }
+    val chosen = rows.filter { it.id in selection }
+    val selectedBytes = chosen.sumOf { it.sizeBytes }
+    val anyFilter = statusFilter != null || !state.isDefault
 
-        if (items.isEmpty()) {
-            EmptyState(
-                title = when {
-                    query.isNotEmpty() -> stringResource(R.string.files_no_match_title)
-                    filter != null -> stringResource(R.string.files_no_match_title)
-                    else -> stringResource(R.string.files_empty_title)
-                },
-                body = when {
-                    query.isNotEmpty() -> stringResource(R.string.files_no_match_body)
-                    filter != null -> stringResource(R.string.files_filter_empty)
-                    else -> stringResource(R.string.files_empty)
+    ListScreenScaffold(
+        title = stringResource(R.string.nav_files),
+        onBack = {},
+        showBack = false,
+        query = query,
+        onQuery = { vm.search.value = it },
+        filters = listOf(
+            typeFilter(type) { type = it },
+            statusFilterChip(statusFilter) { vm.filesState.value = it },
+            albumFilter(album, albums) { album = it },
+            sizeFilter(sizeBand) { sizeBand = it }
+        ),
+        sort = ListFilter(
+            name = stringResource(R.string.filter_sort),
+            valueLabel = null,
+            options = listOf(
+                ListOption(
+                    stringResource(R.string.list_sort_newest),
+                    sort == AppViewModel.FilesSort.NEWEST
+                ) { vm.filesSort.value = AppViewModel.FilesSort.NEWEST },
+                ListOption(
+                    stringResource(R.string.list_sort_largest),
+                    sort == AppViewModel.FilesSort.LARGEST
+                ) { vm.filesSort.value = AppViewModel.FilesSort.LARGEST },
+                ListOption(
+                    stringResource(R.string.list_sort_saved),
+                    sort == AppViewModel.FilesSort.SAVED
+                ) { vm.filesSort.value = AppViewModel.FilesSort.SAVED }
+            )
+        ),
+        selection = selection,
+        matchingCount = rows.size,
+        onSelectAll = { selection.selectAll(rows.map { it.id }) },
+        onResetFilters = {
+            type = ListFilters.Type.ALL
+            sizeBand = ListFilters.Size.ANY
+            album = null
+            vm.filesState.value = null
+        },
+        loading = false,
+        isEmpty = rows.isEmpty(),
+        emptyContent = {
+            when {
+                query.isNotBlank() -> SearchEmptyState(
+                    term = query,
+                    onClear = { vm.search.value = "" }
+                )
+                anyFilter -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        sizeBand = ListFilters.Size.ANY
+                        album = null
+                        vm.filesState.value = null
+                    }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.files_empty_title),
+                    body = stringResource(R.string.files_empty)
+                )
+            }
+        },
+        actionBar = {
+            ListActionBar(
+                summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                actionLabel = stringResource(R.string.list_optimise_these_first),
+                onAction = {
+                    vm.optimiseNow(chosen.map { it.id })
+                    selection.clear()
                 }
             )
-        } else {
-            // weight, not fillMaxSize: inside a Column the latter asks for
-            // the parent's whole height, so the list overflowed the screen
-            // and its rows drew on top of the header above it.
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(items, key = { it.id }) { row ->
-                    AppCard(
-                        modifier = Modifier
-                            .padding(vertical = 5.dp)
-                            .animateItem(),
-                        onClick = { detail = row }
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Thumbnail(row)
-                            Column(Modifier.padding(start = 12.dp).weight(1f)) {
-                                Text(
-                                    row.displayName,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    // IMG_20240517_181233.jpg cut at the right
-                                    // loses the date, which is the part that
-                                    // identifies the photo.
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
-                                )
-                                Text(
-                                    // The whole point of the app, per row: what
-                                    // it was, what it is, and how much that saved.
-                                    row.outputBytes?.let { copy ->
-                                        val saved = row.sizeBytes - copy
-                                        if (saved > 0) {
-                                            stringResource(
-                                                R.string.files_size_saving,
-                                                Formats.bytes(row.sizeBytes),
-                                                Formats.bytes(copy),
-                                                Formats.percentOf(saved, row.sizeBytes)
-                                            )
-                                        } else {
-                                            stringResource(
-                                                R.string.files_size_pair,
-                                                Formats.bytes(row.sizeBytes),
-                                                Formats.bytes(copy)
-                                            )
-                                        }
-                                    } ?: stringResource(
-                                        R.string.files_size_waiting,
-                                        Formats.bytes(row.sizeBytes)
-                                    ),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                                StateBadge(
-                                    stateLabel(row),
-                                    badgeTone(row),
-                                    modifier = Modifier.padding(top = 6.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+        }
+    ) {
+        items(rows, key = { it.id }) { row ->
+            FilesRow(
+                row = row,
+                selected = if (selection.active) row.id in selection else null,
+                onToggle = { selection.toggle(row.id) },
+                onOpenDetail = { detail = row },
+                onLongPress = { selection.toggle(row.id) }
+            )
         }
     }
 
@@ -471,3 +440,115 @@ fun ItemRow.toActionRow(): RowActions.Row = RowActions.Row(
     neverOptimise = neverOptimise,
     originalMissing = originalMissing
 )
+
+/** The Status filter, the one chip that belongs to Files alone. */
+@Composable
+private fun statusFilterChip(selected: String?, onSelect: (String?) -> Unit): ListFilter {
+    val options = listOf(
+        null to stringResource(R.string.filter_all),
+        ItemState.NEW.name to stringResource(R.string.state_new),
+        ItemState.RELEASED.name to stringResource(R.string.filter_in_progress),
+        ItemState.DONE.name to stringResource(R.string.state_done),
+        ItemState.SKIP.name to stringResource(R.string.state_skip)
+    )
+    return ListFilter(
+        name = stringResource(R.string.filter_status),
+        valueLabel = options.firstOrNull { it.first == selected }?.second.takeIf { selected != null },
+        options = options.map { (value, label) ->
+            ListOption(label, value == selected) { onSelect(value) }
+        }
+    )
+}
+
+/** A stored row as the shared filters need to see it. */
+private fun ItemRow.toCandidate() = ListFilters.Candidate(
+    id = id,
+    name = displayName,
+    album = bucket,
+    sizeBytes = sizeBytes,
+    isVideo = isVideo
+)
+
+/**
+ * One file on the Files screen.
+ *
+ * Long-press starts a selection and tap toggles once one is running, which is
+ * the gesture every list in the app uses; outside selection a tap opens the
+ * details sheet.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun FilesRow(
+    row: ItemRow,
+    selected: Boolean?,
+    onToggle: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    AppCard(
+        modifier = Modifier
+            .padding(vertical = 5.dp)
+            .combinedClickable(
+                onClick = { if (selected != null) onToggle() else onOpenDetail() },
+                onLongClick = onLongPress
+            )
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selected != null) {
+                androidx.compose.material3.Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onToggle() }
+                )
+                Spacer(Modifier.width(4.dp))
+            }
+            Thumbnail(row)
+            Column(
+                Modifier
+                    .padding(start = 12.dp)
+                    .weight(1f)
+            ) {
+                Text(
+                    row.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    // IMG_20240517_181233.jpg cut at the right loses the date,
+                    // which is the part that identifies the photo.
+                    overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
+                )
+                Text(
+                    // What it was, what it is, and how much that saved - as a
+                    // sentence fragment rather than an arrow-and-numbers formula.
+                    row.outputBytes?.let { copy ->
+                        val saved = row.sizeBytes - copy
+                        if (saved > 0) {
+                            stringResource(
+                                R.string.files_size_saving,
+                                Formats.bytes(row.sizeBytes),
+                                Formats.bytes(copy),
+                                Formats.percentOf(saved, row.sizeBytes)
+                            )
+                        } else {
+                            stringResource(
+                                R.string.files_size_pair,
+                                Formats.bytes(row.sizeBytes),
+                                Formats.bytes(copy)
+                            )
+                        }
+                    } ?: stringResource(
+                        R.string.files_size_waiting,
+                        Formats.bytes(row.sizeBytes)
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                StateBadge(
+                    stateLabel(row),
+                    badgeTone(row),
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+}

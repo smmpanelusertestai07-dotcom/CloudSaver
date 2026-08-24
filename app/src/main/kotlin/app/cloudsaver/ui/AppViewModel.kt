@@ -661,6 +661,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- per-item controls (v2.2 B) -----------------------------------------
 
     /** Bring one file to the front of the queue. */
+    /** The same jump-the-queue action for a whole selection. */
+    fun optimiseNow(ids: List<Long>) {
+        for (id in ids) optimiseNow(id)
+    }
+
     fun optimiseNow(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch

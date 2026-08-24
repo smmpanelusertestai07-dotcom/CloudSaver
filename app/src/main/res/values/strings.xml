@@ -318,7 +318,7 @@
     <string name="find_suggestions">Suggestions</string>
     <string name="find_suggestions_hint">Ready-made ways to free space</string>
     <string name="dupes_empty_title">No duplicates found</string>
-    <string name="dupes_empty_body">CloudSaver compares files byte for byte. Nothing in your gallery is stored twice.</string>
+    <string name="dupes_empty_body">CloudSaver compared your files byte by byte. Nothing is stored twice.</string>
     <string name="biggest_empty_title">Nothing scanned yet</string>
     <string name="biggest_empty_body">Your largest photos and videos appear here after the first scan.</string>
     <string name="never_optimise">Never optimise this file</string>
@@ -658,6 +658,14 @@
     </plurals>
     <string name="biggest_no_match">Nothing matches \u201c%1$s\u201d.</string>
     <string name="biggest_no_album">No album</string>
+    <string name="biggest_header_plain">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</string>
+    <string name="biggest_header_plain_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
+    <string name="biggest_after">about %1$s after optimising</string>
+    <string name="list_optimise_these_first">Optimise these first</string>
+    <string name="list_remove_blocked">%1$d of %2$d are not backed up yet.</string>
+    <string name="list_select_backed_up">Select only the backed-up ones</string>
+    <string name="list_sort_saving">Biggest possible saving</string>
+    <string name="list_sort_newest">Newest</string>
     <string name="biggest_saving">saves ~%1$s</string>
     <string name="biggest_detail">%1$s \u00b7 %2$s</string>
     <string name="biggest_detail_video">%1$s \u00b7 %2$s \u00b7 %3$s</string>
@@ -749,11 +757,28 @@
     <string name="proof_time_only">Waiting for proof \u2014 only its age is known.</string>
     <string name="proof_waiting">Waiting for proof.</string>
     <string name="dupes_removed_detail">Extra copies removed \u2014 an identical file stayed on the phone</string>
-    <string name="dupes_intro">An identical copy stays on your phone, so removing an extra loses nothing \u2014 even if it was never uploaded. Extras go to the gallery trash for 30 days.</string>
-    <string name="dupes_group_proof">Identical files \u00b7 same size (%1$s) and same content fingerprint</string>
-    <string name="dupes_this_one_stays">This one stays on your phone.</string>
+    <string name="dupes_intro">The same file saved more than once on your phone.</string>
+    <string name="dupes_group_proof">Checked byte by byte \u2014 the files are identical.</string>
+    <string name="dupes_this_one_stays">Keeping this one</string>
     <string name="dupes_keep_instead">Keep this one instead</string>
     <string name="dupes_remove_extras">Remove extras</string>
+    <string name="dupes_intro_second">One copy always stays. Only the extra copies are removed.</string>
+    <string name="dupes_warning">This removes files from your phone only. Your cloud is never touched. Removed files go to your gallery\u2019s trash and can be restored for 30 days.</string>
+    <string name="dupes_warning_legacy">This removes files from your phone only. Your cloud is never touched. On this phone, removed files are deleted straight away.</string>
+    <plurals name="dupes_group_header">
+        <item quantity="one">%1$d copy \u00b7 %2$s can be freed</item>
+        <item quantity="other">%1$d copies \u00b7 %2$s can be freed</item>
+    </plurals>
+    <string name="dupes_confirm_title">Remove extra copies?</string>
+    <plurals name="dupes_confirm_body">
+        <item quantity="one">%1$d extra copy, freeing %2$s.</item>
+        <item quantity="other">%1$d extra copies, freeing %2$s.</item>
+    </plurals>
+    <string name="dupes_confirm_where">They go to your gallery\u2019s trash, where you can restore them for 30 days.</string>
+    <string name="dupes_confirm_where_legacy">On this phone they are deleted straight away \u2014 there is no trash to restore them from.</string>
+    <string name="dupes_confirm_safe">A copy of every file stays on your phone.</string>
+    <string name="dupes_extra_label">Extra copy</string>
+    <string name="dupes_sort_oldest">Oldest</string>
     <string name="dupes_removed_title">Extras removed</string>
     <plurals name="dupes_removed_body">
         <item quantity="one">%d extra copy moved to your gallery trash. The original is untouched, and the trash keeps it for 30 days.</item>

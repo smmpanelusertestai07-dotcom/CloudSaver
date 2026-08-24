@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.ui.theme.TabularFigures
 
 /**
@@ -123,6 +125,11 @@ class ListSelection internal constructor(initial: Set<Long>) {
 
     fun selectAll(all: Collection<Long>) {
         ids = ids + all
+    }
+
+    /** Replace the selection outright, for "select only the eligible ones". */
+    fun replaceWith(only: Collection<Long>) {
+        ids = only.toSet()
     }
 
     fun clear() {
@@ -426,6 +433,7 @@ fun SearchEmptyState(term: String, onClear: () -> Unit, modifier: Modifier = Mod
 fun ListScreenScaffold(
     title: String,
     onBack: () -> Unit,
+    showBack: Boolean = true,
     query: String,
     onQuery: (String) -> Unit,
     filters: List<ListFilter>,
@@ -453,14 +461,23 @@ fun ListScreenScaffold(
                 )
             } else {
                 Row(
-                    Modifier.padding(top = 4.dp, start = 4.dp, end = 16.dp),
+                    Modifier.padding(
+                        top = if (showBack) 4.dp else 12.dp,
+                        start = if (showBack) 4.dp else 16.dp,
+                        end = 16.dp
+                    ),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
+                    // A tab has nowhere to go back to, so it gets no arrow.
+                    // An arrow that pops the whole tab stack is worse than
+                    // none: it looks like a way out and behaves like an exit.
+                    if (showBack) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back)
+                            )
+                        }
                     }
                     Text(
                         title,
@@ -511,3 +528,115 @@ fun ListScreenScaffold(
 @Composable
 fun selectionSummary(count: Int, freed: String): String =
     pluralStringResource(R.plurals.list_selection_summary, count, count, freed)
+
+/**
+ * The Type filter, present on every list screen and always first.
+ *
+ * Built here rather than in each screen so the labels, the order and the
+ * "which value counts as default" decision are made once.
+ */
+@Composable
+fun typeFilter(selected: ListFilters.Type, onSelect: (ListFilters.Type) -> Unit): ListFilter {
+    val all = stringResource(R.string.filter_all)
+    val photos = stringResource(R.string.scope_photos)
+    val videos = stringResource(R.string.scope_videos)
+    return ListFilter(
+        name = stringResource(R.string.filter_type),
+        valueLabel = when (selected) {
+            ListFilters.Type.ALL -> null
+            ListFilters.Type.PHOTOS -> photos
+            ListFilters.Type.VIDEOS -> videos
+        },
+        options = listOf(
+            ListOption(all, selected == ListFilters.Type.ALL) { onSelect(ListFilters.Type.ALL) },
+            ListOption(photos, selected == ListFilters.Type.PHOTOS) {
+                onSelect(ListFilters.Type.PHOTOS)
+            },
+            ListOption(videos, selected == ListFilters.Type.VIDEOS) {
+                onSelect(ListFilters.Type.VIDEOS)
+            }
+        )
+    )
+}
+
+/** The Size filter, in the bands people actually use. */
+@Composable
+fun sizeFilter(selected: ListFilters.Size, onSelect: (ListFilters.Size) -> Unit): ListFilter {
+    val labels = listOf(
+        ListFilters.Size.ANY to stringResource(R.string.filter_any),
+        ListFilters.Size.OVER_10MB to stringResource(R.string.filter_over_10mb),
+        ListFilters.Size.OVER_100MB to stringResource(R.string.filter_over_100mb),
+        ListFilters.Size.OVER_1GB to stringResource(R.string.filter_over_1gb)
+    )
+    return ListFilter(
+        name = stringResource(R.string.filter_size),
+        valueLabel = if (selected == ListFilters.Size.ANY) {
+            null
+        } else {
+            labels.first { it.first == selected }.second
+        },
+        options = labels.map { (value, label) ->
+            ListOption(label, value == selected) { onSelect(value) }
+        }
+    )
+}
+
+/**
+ * The Album filter, with a count beside each album.
+ *
+ * The counts are the point: "Camera (1,204)" tells someone whether narrowing
+ * to it will help before they tap, which a bare list of folder names cannot.
+ */
+@Composable
+fun albumFilter(
+    selected: String?,
+    albums: List<Pair<String, Int>>,
+    onSelect: (String?) -> Unit
+): ListFilter {
+    val allLabel = stringResource(R.string.filter_all_albums)
+    return ListFilter(
+        name = stringResource(R.string.filter_album),
+        valueLabel = selected,
+        options = buildList {
+            add(ListOption(allLabel, selected == null) { onSelect(null) })
+            for ((album, count) in albums) {
+                add(
+                    ListOption(
+                        stringResource(R.string.filter_album_count, album, count),
+                        album == selected
+                    ) { onSelect(album) }
+                )
+            }
+        }
+    )
+}
+
+/**
+ * A card that states a consequence before the reader acts on it.
+ *
+ * Warning colours are reserved for exactly this and for problem chips; used
+ * for decoration they stop meaning anything, and then they stop being read.
+ */
+@Composable
+fun WarningCard(text: String, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(14.dp)) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+        }
+    }
+}
