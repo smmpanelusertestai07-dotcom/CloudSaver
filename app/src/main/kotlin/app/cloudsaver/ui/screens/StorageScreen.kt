@@ -51,15 +51,36 @@ import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.util.Formats
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Cached
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
+import androidx.compose.material.icons.outlined.SdCard
 
-/** Where the space goes: what fits in the cloud, what the app holds, what each volume has left. */
+/**
+ * Where the space goes.
+ *
+ * Four groups and nothing else: the phone's own volumes, what CloudSaver is
+ * holding, the ways to find room, and the leftovers worth clearing. Anything
+ * with a zero value is not shown - a row reading "0 MB" is a question with no
+ * answer, and this screen used to be full of them.
+ */
 @Composable
 fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
     val stats by vm.storageStats.collectAsStateWithLifecycle()
-    val reclaimable by vm.reclaimableBytes.collectAsStateWithLifecycle()
     val options by vm.options.collectAsStateWithLifecycle()
     val volumes by vm.volumes.collectAsStateWithLifecycle()
-    var calcOpen by remember { mutableStateOf(false) }
+    val findSpace by vm.findSpace.collectAsStateWithLifecycle()
+    val keptBytes by vm.keptBytes.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         vm.refreshStorage()
@@ -78,150 +99,34 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         Spacer(Modifier.height(12.dp))
         Text(
             stringResource(R.string.nav_storage),
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
 
-        // The calculator lives here, folded away until asked for: it answers a
-        // question about these very numbers, so making it a separate screen
-        // meant leaving the answer to find the question.
-        Spacer(Modifier.height(12.dp))
-        AppCard(onClick = { calcOpen = !calcOpen }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.calc_title),
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        stringResource(R.string.calc_entry_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onSurfaceVariant
-                    )
-                }
-                val arrow by animateFloatAsState(
-                    targetValue = if (calcOpen) 0f else -90f,
-                    label = "calcArrow"
-                )
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = scheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(arrow)
-                )
-            }
-            AnimatedVisibility(
-                visible = calcOpen,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                CalculatorContent(vm, Modifier.padding(top = 12.dp))
-            }
-        }
-
-        // Find space: three proof-based ways to free room, above Reclaim
-        // because they are the cheaper answers to the same question.
-        val findSpace by vm.findSpace.collectAsStateWithLifecycle()
-        val keptBytes by vm.keptBytes.collectAsStateWithLifecycle()
-        if (findSpace.duplicateBytes > 0 || findSpace.biggestBytes > 0) {
-            SectionHeader(stringResource(R.string.find_space_title))
-            if (findSpace.duplicateBytes > 0) {
-                FindRow(
-                    title = stringResource(R.string.find_duplicates),
-                    hint = stringResource(R.string.find_duplicates_hint),
-                    value = Formats.bytes(findSpace.duplicateBytes),
-                    onClick = { nav.navigate(Routes.DUPLICATES) }
-                )
-            }
-            if (findSpace.biggestBytes > 0) {
-                FindRow(
-                    title = stringResource(R.string.find_biggest),
-                    hint = stringResource(R.string.find_biggest_hint),
-                    value = Formats.bytes(findSpace.biggestBytes),
-                    onClick = { nav.navigate(Routes.BIGGEST) }
-                )
-            }
-            if (findSpace.reclaimableBytes > 0) {
-                FindRow(
-                    title = stringResource(R.string.find_suggestions),
-                    hint = stringResource(R.string.find_suggestions_hint),
-                    value = Formats.bytes(findSpace.reclaimableBytes),
-                    onClick = { nav.navigate(Routes.FREE_UP) }
-                )
-            }
-            Text(
-                stringResource(R.string.find_space_honesty),
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
-
-        SectionHeader(stringResource(R.string.storage_used_title))
-        AppCard {
-            // Two different things, each named and each with its path, rather
-            // than two numbers side by side that nobody can tell apart.
-            UsageRow(
-                label = stringResource(R.string.storage_output),
-                path = OutputPaths.joined(options.outputMode),
-                bytes = stats.outputBytes,
-                limitBytes = options.maxExtraBytes
-            )
-            Spacer(Modifier.height(18.dp))
-            UsageRow(
-                label = stringResource(R.string.storage_stage),
-                path = stringResource(R.string.storage_stage_path),
-                bytes = stats.stageBytes,
-                limitBytes = options.maxExtraBytes
-            )
-            // Light copies are the user's files, so they are listed apart and
-            // counted against nothing.
-            if (keptBytes > 0) {
-                Spacer(Modifier.height(18.dp))
-                UsageRow(
-                    label = stringResource(R.string.kept_title),
-                    path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
-                    bytes = keptBytes,
-                    limitBytes = 0
-                )
-                TextButton(onClick = { nav.navigate(Routes.KEPT) }) {
-                    Text(stringResource(R.string.kept_manage))
-                }
-            }
-            Text(
-                stringResource(R.string.storage_folder_lifecycle),
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 10.dp)
-            )
-        }
-
-        SectionHeader(stringResource(R.string.storage_volumes_title))
+        // 1. Your phone.
+        SectionHeader(stringResource(R.string.storage_group_phone))
         AppCard {
             volumes.forEachIndexed { index, vol ->
+                if (index > 0) Spacer(Modifier.height(20.dp))
                 val used = (vol.totalBytes - vol.freeBytes).coerceAtLeast(0)
-                val fraction = if (vol.totalBytes > 0) {
-                    used.toFloat() / vol.totalBytes
-                } else {
-                    0f
-                }
-                val label = if (vol.isPrimary) {
-                    stringResource(R.string.volume_internal)
-                } else {
-                    stringResource(R.string.volume_sd)
-                }
+                val fraction = if (vol.totalBytes > 0) used.toFloat() / vol.totalBytes else 0f
                 val active = (options.storageVolume.isEmpty() && vol.isPrimary) ||
                     options.storageVolume == vol.mediaVolumeName
-                if (index > 0) Spacer(Modifier.height(18.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (vol.isPrimary) Icons.Outlined.PhoneAndroid else Icons.Outlined.SdCard,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
                     Text(
-                        label,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        stringResource(
+                            if (vol.isPrimary) R.string.volume_internal else R.string.volume_sd
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
                     )
                     if (active) {
                         Text(
@@ -231,19 +136,11 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                         )
                     }
                 }
-                // The bar shows what is USED. A bar that fills as space frees
-                // up is the opposite of what every other storage screen does.
+                // The bar fills with what is USED. A bar that fills as space
+                // frees up is the opposite of every other storage screen.
                 MeterBar(
                     fraction = fraction,
-                    // Under 10 % free is where a backup run starts to struggle.
                     warn = fraction > 0.9f,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                // Free space is the number people came for, so it is the one
-                // set large; used-of-total is the context underneath it.
-                Text(
-                    stringResource(R.string.volume_free_line, Formats.bytes(vol.freeBytes)),
-                    style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
                     modifier = Modifier.padding(top = 10.dp)
                 )
                 Text(
@@ -252,9 +149,13 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                         Formats.bytes(used),
                         Formats.bytes(vol.totalBytes)
                     ),
+                    style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+                Text(
+                    stringResource(R.string.volume_free_line, Formats.bytes(vol.freeBytes)),
                     style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
+                    color = scheme.onSurfaceVariant
                 )
                 if (!vol.isPrimary && active) {
                     WarningNote(stringResource(R.string.volume_sd_note))
@@ -262,117 +163,233 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        // Only when there is something to reclaim: an empty card here is an
-        // invitation to a screen that would say "nothing yet".
-        AnimatedVisibility(
-            visible = reclaimable > 0,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Column {
-                SectionHeader(stringResource(R.string.storage_reclaim_title))
-                AppCard(tonal = true) {
-                    AnimatedNumber(
-                        value = Formats.bytes(reclaimable),
-                        style = MaterialTheme.typography.headlineSmall.merge(TabularFigures),
-                        color = scheme.onPrimaryContainer
+        // 2. CloudSaver's own space: two rows, and only when they hold
+        // something.
+        if (stats.outputBytes > 0 || stats.stageBytes > 0 || keptBytes > 0) {
+            SectionHeader(stringResource(R.string.storage_group_own))
+            AppCard {
+                if (stats.outputBytes > 0) {
+                    UsageRow(
+                        icon = Icons.Outlined.CloudUpload,
+                        label = stringResource(R.string.storage_output),
+                        path = OutputPaths.joined(options.outputMode),
+                        bytes = stats.outputBytes
                     )
-                    Text(
-                        stringResource(R.string.storage_reclaim_caption),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = scheme.onPrimaryContainer.copy(alpha = 0.85f),
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                    Text(
-                        stringResource(R.string.storage_reclaim_consent),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = scheme.onPrimaryContainer.copy(alpha = 0.85f),
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                    Button(
-                        onClick = { nav.navigate(Routes.FREE_UP) },
-                        modifier = Modifier.padding(top = 12.dp)
-                    ) { Text(stringResource(R.string.storage_freeup_open)) }
                 }
-            }
-        }
-
-        // Recently reclaimed sits with the thing it describes, and only once
-        // there is something to describe.
-        val history by vm.reclaimHistoryCount.collectAsStateWithLifecycle()
-        if (history > 0) {
-            SectionHeader(stringResource(R.string.reclaim_history))
-            AppCard(onClick = { nav.navigate(Routes.RECLAIM_HISTORY) }) {
+                if (stats.stageBytes > 0) {
+                    if (stats.outputBytes > 0) Spacer(Modifier.height(18.dp))
+                    UsageRow(
+                        icon = Icons.Outlined.Cached,
+                        label = stringResource(R.string.storage_stage),
+                        path = null,
+                        note = stringResource(R.string.storage_stage_path),
+                        bytes = stats.stageBytes
+                    )
+                }
+                // Light copies are the user's own files, counted against
+                // nothing, so they are listed apart.
+                if (keptBytes > 0) {
+                    Spacer(Modifier.height(18.dp))
+                    UsageRow(
+                        icon = Icons.Outlined.PhotoLibrary,
+                        label = stringResource(R.string.kept_title),
+                        path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
+                        bytes = keptBytes,
+                        onManage = { nav.navigate(Routes.KEPT) }
+                    )
+                }
                 Text(
-                    stringResource(R.string.reclaim_history_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant
+                    stringResource(
+                        R.string.storage_limit_line,
+                        Formats.mbLabel(options.maxExtraMb),
+                        Formats.bytes(stats.outputBytes + stats.stageBytes)
+                    ),
+                    style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 14.dp)
                 )
-            }
-        }
-
-        SectionHeader(stringResource(R.string.storage_temp_title))
-        val hasTemp = stats.tempBytes > 0
-        AppCard {
-            Text(
-                stringResource(R.string.storage_temp_text),
-                style = MaterialTheme.typography.bodyMedium,
-                color = scheme.onSurfaceVariant
-            )
-            Text(
-                Formats.bytes(stats.tempBytes),
-                style = MaterialTheme.typography.titleMedium,
-                color = if (hasTemp) scheme.onSurface else scheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-            stats.lastTempFreed?.let {
                 Text(
-                    stringResource(R.string.storage_temp_cleared, Formats.bytes(it)),
+                    stringResource(R.string.storage_folder_empties),
                     style = MaterialTheme.typography.bodySmall,
-                    color = scheme.primary,
+                    color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            OutlinedButton(
-                onClick = { vm.cleanTemp() },
-                enabled = hasTemp,
-                modifier = Modifier.padding(top = 12.dp)
-            ) { Text(stringResource(R.string.storage_clean_temp)) }
         }
+
+        // 3. Find space.
+        if (findSpace.duplicateBytes > 0 || findSpace.biggestBytes > 0 ||
+            findSpace.reclaimableBytes > 0
+        ) {
+            SectionHeader(stringResource(R.string.find_space_title))
+            if (findSpace.duplicateBytes > 0) {
+                FindRow(
+                    icon = Icons.Outlined.ContentCopy,
+                    title = stringResource(R.string.find_duplicates),
+                    hint = stringResource(R.string.find_duplicates_hint),
+                    value = Formats.bytes(findSpace.duplicateBytes),
+                    onClick = { nav.navigate(Routes.DUPLICATES) }
+                )
+            }
+            if (findSpace.biggestBytes > 0) {
+                FindRow(
+                    icon = Icons.Outlined.PhotoSizeSelectLarge,
+                    title = stringResource(R.string.find_biggest),
+                    hint = stringResource(R.string.find_biggest_hint),
+                    value = Formats.bytes(findSpace.biggestBytes),
+                    onClick = { nav.navigate(Routes.BIGGEST) }
+                )
+            }
+            if (findSpace.reclaimableBytes > 0) {
+                FindRow(
+                    icon = Icons.Outlined.DeleteSweep,
+                    title = stringResource(R.string.find_suggestions),
+                    hint = stringResource(R.string.find_suggestions_hint),
+                    value = Formats.bytes(findSpace.reclaimableBytes),
+                    onClick = { nav.navigate(Routes.FREE_UP) }
+                )
+            }
+            FindRow(
+                icon = Icons.Outlined.Calculate,
+                title = stringResource(R.string.calc_title),
+                hint = stringResource(R.string.calc_entry_hint),
+                value = null,
+                onClick = { nav.navigate(Routes.CALCULATOR) }
+            )
+        }
+
+        // Recently reclaimed sits with the thing it describes.
+        val historyCount by vm.reclaimHistoryCount.collectAsStateWithLifecycle()
+        if (historyCount > 0) {
+            FindRow(
+                icon = Icons.Outlined.History,
+                title = stringResource(R.string.reclaim_history),
+                hint = stringResource(R.string.reclaim_history_hint),
+                value = null,
+                onClick = { nav.navigate(Routes.RECLAIM_HISTORY) }
+            )
+        }
+
+        // 4. Clean up.
+        if (stats.tempBytes > 0 || stats.lastTempFreed != null) {
+            SectionHeader(stringResource(R.string.storage_group_cleanup))
+            AppCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.CleaningServices,
+                        contentDescription = null,
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        stringResource(R.string.storage_temp_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        Formats.bytes(stats.tempBytes),
+                        style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+                        color = scheme.primary
+                    )
+                }
+                Text(
+                    stringResource(R.string.storage_temp_text),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                stats.lastTempFreed?.let {
+                    Text(
+                        stringResource(R.string.storage_temp_cleared, Formats.bytes(it)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.primary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                OutlinedButton(
+                    onClick = { vm.cleanTemp() },
+                    enabled = stats.tempBytes > 0,
+                    modifier = Modifier.padding(top = 12.dp)
+                ) { Text(stringResource(R.string.storage_clean_temp)) }
+            }
+        }
+
         Spacer(Modifier.height(28.dp))
     }
 }
 
-/** One "Find space" row: a live size, and the list behind it. */
+/** One "Find space" row: an icon, what it does in a few words, and a size. */
 @Composable
-private fun FindRow(title: String, hint: String, value: String, onClick: () -> Unit) {
+private fun FindRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    hint: String,
+    value: String?,
+    onClick: () -> Unit
+) {
     AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     hint,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                value,
-                style = MaterialTheme.typography.titleSmall.merge(TabularFigures),
-                color = MaterialTheme.colorScheme.primary
+            if (value != null) {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
-/** One line of "what CloudSaver is holding", with the folder it is holding it in. */
+/**
+ * One line of "what CloudSaver is holding".
+ *
+ * A copyable path where the file lives somewhere the user can point a cloud
+ * app at; a plain note where it does not, because "App storage" is not a path
+ * anyone can type.
+ */
 @Composable
-private fun UsageRow(label: String, path: String, bytes: Long, limitBytes: Long) {
+private fun UsageRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    path: String?,
+    bytes: Long,
+    note: String? = null,
+    onManage: (() -> Unit)? = null
+) {
     val scheme = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
         Text(
             label,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )
         Text(
@@ -383,21 +400,18 @@ private fun UsageRow(label: String, path: String, bytes: Long, limitBytes: Long)
     }
     // Copyable, because this is the string that has to be found inside
     // another app's folder picker.
-    PathLine(path, modifier = Modifier.padding(top = 2.dp))
-    if (limitBytes > 0) {
-        MeterBar(
-            fraction = (bytes.toFloat() / limitBytes).coerceIn(0f, 1f),
-            modifier = Modifier.padding(top = 4.dp)
-        )
+    path?.let { PathLine(it, modifier = Modifier.padding(top = 2.dp, start = 32.dp)) }
+    note?.let {
         Text(
-            stringResource(
-                R.string.storage_share_of_limit,
-                Formats.percentOf(bytes, limitBytes),
-                Formats.bytes(limitBytes)
-            ),
-            style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
+            it,
+            style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp)
+            modifier = Modifier.padding(top = 2.dp, start = 32.dp)
         )
+    }
+    onManage?.let {
+        TextButton(onClick = it, modifier = Modifier.padding(start = 24.dp)) {
+            Text(stringResource(R.string.kept_manage))
+        }
     }
 }

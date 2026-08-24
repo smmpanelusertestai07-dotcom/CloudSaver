@@ -42,6 +42,7 @@ import app.cloudsaver.ui.screens.DuplicatesScreen
 import app.cloudsaver.ui.screens.KeptCopiesScreen
 import app.cloudsaver.ui.screens.ReclaimHistoryScreen
 import app.cloudsaver.ui.screens.ReclaimScreen
+import app.cloudsaver.ui.screens.CalculatorScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
 import app.cloudsaver.ui.screens.HelpFaqScreen
 import app.cloudsaver.ui.screens.HelpLicensesScreen
@@ -68,6 +69,7 @@ object Routes {
     const val DUPLICATES = "duplicates"
     const val BIGGEST = "biggest"
     const val KEPT = "kept"
+    const val CALCULATOR = "calculator"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
     const val HELP_QUALITY = "help_quality"
@@ -207,6 +209,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.DUPLICATES) { DuplicatesScreen(reclaimVm, nav) }
                 composable(Routes.BIGGEST) { BiggestFilesScreen(vm, reclaimVm, nav) }
                 composable(Routes.KEPT) { KeptCopiesScreen(vm, nav) }
+                composable(Routes.CALCULATOR) { CalculatorScreen(vm, nav) }
                 composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }

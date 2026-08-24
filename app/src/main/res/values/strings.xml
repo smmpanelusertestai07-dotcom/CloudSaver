@@ -54,7 +54,6 @@
     <string name="budget_used">%1$s of %2$s</string>
     <string name="budget_paced">Files are added a few at a time, so each one can be confirmed on its own.</string>
     <string name="budget_spent">Today\'s allowance is used. More will be added after %1$s.</string>
-    <string name="confirm_unavailable">This cloud app does not remove its own uploads, so there is nothing for CloudSaver to watch. Uploads are confirmed automatically from the data your cloud app sends.</string>
     <plurals name="asis_card_title">
         <item quantity="one">%1$d file kept unchanged</item>
         <item quantity="other">%1$d files kept unchanged</item>
@@ -182,13 +181,9 @@
     <string name="warn_cloud_title">Your cloud app needs attention</string>
 
     <!-- storage -->
-    <string name="storage_used_title">Storage used by CloudSaver</string>
-    <string name="storage_stage">Optimised copies waiting on device</string>
-    <string name="storage_stage_path">App storage (not visible in your gallery)</string>
-    <string name="storage_output">Optimised copies in the upload folder</string>
-    <string name="storage_folder_lifecycle">The upload folder empties itself once your cloud app has taken the files, so your gallery stops showing it as an album. That is normal, not a failure - it comes back with the next batch.</string>
-    <string name="storage_share_of_limit">%1$s of the %2$s CloudSaver may use</string>
-    <string name="storage_volumes_title">Storage volumes</string>
+    <string name="storage_stage">Being prepared</string>
+    <string name="storage_stage_path">Kept inside the app, not shown in your gallery</string>
+    <string name="storage_output">Waiting in your upload folder</string>
     <string name="volume_internal">Internal storage</string>
     <string name="volume_sd">SD card</string>
     <string name="volume_used_line">%1$s used of %2$s</string>
@@ -196,11 +191,7 @@
     <string name="volume_active_mark">(in use)</string>
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
-    <string name="storage_reclaim_title">Space you can reclaim</string>
-    <string name="storage_reclaim_caption">of originals whose copies your cloud has collected, and which are safe to remove</string>
-    <string name="storage_reclaim_consent">Android asks you to confirm each deletion, so nothing is removed without you seeing it.</string>
-    <string name="storage_freeup_open">Reclaim space</string>
-    <string name="storage_temp_title">Temporary work files</string>
+    <string name="storage_temp_title">Leftover work files</string>
     <string name="storage_temp_text">Half-finished files left behind when a run was interrupted. They are not needed and nothing of yours is lost by clearing them.</string>
     <string name="storage_temp_cleared">Cleared %1$s.</string>
     <string name="storage_clean_temp">Clear</string>
@@ -303,7 +294,6 @@
     <string name="find_biggest_hint">Your largest photos and videos</string>
     <string name="find_suggestions">Suggestions</string>
     <string name="find_suggestions_hint">Ready-made ways to free space</string>
-    <string name="find_space_honesty">CloudSaver only groups files it can prove are identical. It does not judge which of two similar photos is better, because that is a guess about your memories, not a fact about your files.</string>
     <string name="dupes_empty_title">No duplicates found</string>
     <string name="dupes_empty_body">CloudSaver compares files byte for byte. Nothing in your gallery is stored twice.</string>
     <string name="dupes_intro">These files are byte-for-byte identical. Removing an extra is safe even before it is uploaded, because a copy stays on your phone.</string>
@@ -497,14 +487,8 @@
     <!-- cloud calculator (13.C) -->
     <string name="calc_title">Cloud calculator</string>
     <string name="calc_entry_hint">See how much fits in your cloud space.</string>
-    <string name="calc_mode_both">Photos + Videos</string>
-    <string name="calc_source_label">Estimate from</string>
-    <string name="calc_source_mine">My files</string>
-    <string name="calc_source_typical">Typical</string>
     <string name="calc_chip_gb">%1$d GB</string>
-    <string name="calc_mix_label">Photos %1$d%% · Videos %2$d%% (storage share)</string>
     <string name="calc_input_label">Free space in your cloud (GB)</string>
-    <string name="calc_prefill_note">Typical value for %1$s - confirm in your cloud app, plans change.</string>
     <string name="calc_enter">Type your cloud free space above to see what fits.</string>
     <string name="calc_hero_value">%1$s GB</string>
     <string name="calc_hero_caption">of your originals fit in %1$s GB of cloud space</string>
@@ -515,23 +499,6 @@
     <string name="calc_needs">Needs %1$s GB more</string>
     <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
     <string name="calc_pace">Last 30 days: %1$s GB added.</string>
-    <string name="calc_badge_typical">Typical estimate (not enough of your files yet)</string>
-    <plurals name="calc_badge_measured">
-        <item quantity="one">Based on %1$d of your files</item>
-        <item quantity="other">Based on %1$d of your files</item>
-    </plurals>
-    <string name="calc_details">Details</string>
-    <string name="calc_word_measured">measured</string>
-    <string name="calc_word_typical">typical</string>
-    <string name="calc_detail_photos">Your photos: %1$s average, %2$s smaller after optimising (%3$s, %4$s files).</string>
-    <string name="calc_detail_videos">Your videos: %1$s MB per minute after optimising, %2$s smaller (%3$s, %4$s files).</string>
-    <string name="calc_detail_asis">Copied as-is: %1$s of photos, %2$s of videos.</string>
-    <string name="calc_detail_accuracy">Estimates have been within about %1$d%% on your files.</string>
-    <string name="calc_detail_whatif_codec">With %1$s instead: about %2$s of video would fit.</string>
-    <string name="calc_estimate_note">All numbers are estimates.</string>
-    <string name="calc_quality_storage" formatted="false">Quality on this preset: video ~90-95%, photo ~97%.</string>
-    <string name="calc_quality_balanced" formatted="false">Quality on this preset: video ~95%, photo ~98%.</string>
-    <string name="calc_quality_max" formatted="false">Quality on this preset: video ~85-90%, photo ~95%.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
     <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → ONLY CloudSaver.</string>
@@ -787,7 +754,6 @@
         <item quantity="other">%d duplicates handled once</item>
     </plurals>
     <string name="optimise_now_hint">Starts optimising right away. Your cloud app does the uploading.</string>
-    <string name="optimise_now_hint_scheduled">Don\'t wait for the next automatic run.</string>
     <string name="optimise_now_hint_override">Runs now even though it would otherwise be waiting.</string>
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
@@ -795,4 +761,17 @@
     <string name="optimise_working">Working\u2026</string>
     <string name="verify_link_hint">Turn on usage access and CloudSaver can confirm uploads by itself.</string>
     <string name="activity_started_by_you">Started by you</string>
+    <string name="storage_group_phone">Your phone</string>
+    <string name="storage_group_own">CloudSaver\'s own space</string>
+    <string name="storage_group_cleanup">Clean up</string>
+    <string name="storage_limit_line">Limit %1$s \u00b7 now using %2$s</string>
+    <string name="storage_folder_empties">This folder empties as your cloud app collects the files.</string>
+    <string name="calc_check_inside">Check this number inside your cloud app.</string>
+    <string name="calc_your_gallery">Your gallery</string>
+    <string name="calc_quality_header">Quality</string>
+    <string name="calc_quality_photos">Photos come out about %1$d%% smaller.</string>
+    <string name="calc_quality_videos">Videos come out about %1$d%% smaller.</string>
+    <string name="calc_quality_limits">Photos stay up to 16 MP, videos up to 1080p.</string>
+    <string name="calc_basis_measured">Measured from %1$s of your photos and %2$s of your videos.</string>
+    <string name="calc_basis_rough">Rough estimate \u2014 it becomes exact after your first 20 photos and 20 videos are optimised.</string>
 </resources>
