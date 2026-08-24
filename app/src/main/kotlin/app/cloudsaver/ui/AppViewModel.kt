@@ -61,6 +61,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -641,6 +642,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val neverOptimiseCount: StateFlow<Int> = db.items().neverOptimiseCountFlow()
         .stateIn(viewModelScope, screenLocal, 0)
+
+    /** One row by id, for screens that hold ids rather than rows. */
+    suspend fun itemById(id: Long): ItemRow? =
+        withContext(Dispatchers.IO) { runCatching { db.items().byId(id) }.getOrNull() }
 
     fun clearNeverOptimise() {
         viewModelScope.launch(Dispatchers.IO) { db.items().clearNeverOptimise() }

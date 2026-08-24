@@ -53,6 +53,8 @@ import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
+import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.ProofLine
 
 /**
  * Reclaim space - the only place in CloudSaver that can remove a user's photo.
@@ -411,13 +413,36 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 )
             },
             text = {
-                Text(
-                    stringResource(
-                        R.string.reclaim_confirm_body,
-                        Formats.count(selected.size),
-                        Formats.bytes(freed)
+                Column {
+                    Text(
+                        stringResource(
+                            R.string.reclaim_confirm_body,
+                            Formats.count(selected.size),
+                            Formats.bytes(freed)
+                        )
                     )
-                )
+                    // What the proof actually is, counted. "Trust us" is not
+                    // an acceptable last screen before deleting photographs.
+                    val tally = ProofLine.tally(
+                        entries.filter { it.row.id in selected }.map {
+                            ProofLine.forItem(
+                                Evidence.parse(it.row.evidence),
+                                isDuplicateExtra = it.row.duplicateOf != null
+                            )
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    for ((kind, count) in tally.entries.sortedBy { it.key.ordinal }) {
+                        Text(
+                            stringResource(
+                                R.string.reclaim_confirm_proof, count, proofLabel(kind)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -480,7 +505,10 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         AlertDialog(
             onDismissRequest = { rvm.dismissResult() },
             confirmButton = {
-                TextButton(onClick = { rvm.dismissResult() }) {
+                TextButton(onClick = {
+                    rvm.dismissResult()
+                    rvm.clearDropped()
+                }) {
                     Text(stringResource(R.string.ok))
                 }
             },
@@ -506,6 +534,22 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    // Anything that stopped qualifying between the tap and the
+                    // action, named. A batch that quietly did less than it
+                    // promised is worse than one that says what it left out.
+                    val dropped = rvm.droppedAtAction
+                    if (dropped.isNotEmpty()) {
+                        Text(
+                            stringResource(
+                                R.string.reclaim_done_dropped,
+                                dropped.size,
+                                dropped.take(3).joinToString(", ")
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                     if (r.skipped.isNotEmpty()) {
@@ -597,6 +641,19 @@ private fun ReclaimRow(
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                // How we know, per file, in the same words every other list
+                // uses. This is the sentence the whole feature rests on.
+                Text(
+                    proofLabel(
+                        ProofLine.forItem(
+                            Evidence.parse(entry.row.evidence),
+                            isDuplicateExtra = entry.row.duplicateOf != null
+                        )
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
             // Seeing the two versions is the only quality test that counts,

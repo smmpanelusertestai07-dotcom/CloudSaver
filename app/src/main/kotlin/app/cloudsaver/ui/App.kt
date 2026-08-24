@@ -206,7 +206,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.OPTIONS) { OptionsScreen(vm, nav) }
                 composable(Routes.FREE_UP) { ReclaimScreen(vm, reclaimVm, nav) }
                 composable(Routes.RECLAIM_HISTORY) { ReclaimHistoryScreen(reclaimVm, nav) }
-                composable(Routes.DUPLICATES) { DuplicatesScreen(reclaimVm, nav) }
+                composable(Routes.DUPLICATES) { DuplicatesScreen(vm, reclaimVm, nav) }
                 composable(Routes.BIGGEST) { BiggestFilesScreen(vm, reclaimVm, nav) }
                 composable(Routes.KEPT) { KeptCopiesScreen(vm, nav) }
                 composable(Routes.CALCULATOR) { CalculatorScreen(vm, nav) }

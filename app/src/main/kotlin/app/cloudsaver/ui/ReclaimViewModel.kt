@@ -27,6 +27,8 @@ import app.cloudsaver.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import app.cloudsaver.R
+import app.cloudsaver.engine.ActivityLog
 
 /**
  * The one screen in the app that can destroy a user's photo.
@@ -245,6 +247,19 @@ class ReclaimViewModel(
         persistSelection()
     }
 
+    /**
+     * Hands one file to Reclaim, ticked and alone.
+     *
+     * Removing an original from anywhere else in the app goes through here
+     * rather than doing its own deletion: Reclaim is where the eligibility
+     * gate, the mode choice and the trash-first rule live, and a second path
+     * that skipped any of them would be the one that eventually loses a photo.
+     */
+    fun selectOnly(id: Long) {
+        selected.value = setOf(id)
+        persistSelection()
+    }
+
     fun selectOnlyVideos() {
         selected.value = visible().filter { it.row.isVideo }.map { it.id }.toSet()
         persistSelection()
@@ -383,12 +398,16 @@ class ReclaimViewModel(
                 // the cloud app is uninstalled underneath it.
                 val o = repo.current()
                 val healthy = cloudHealthy()
-                    val stillGood = chosen.filter {
+                val stillGood = chosen.filter {
                     ReclaimRules.isEligible(
                         it.candidate, healthy, allowVerifiedBySize = true,
                         skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                     )
                 }
+                // Anything that stopped qualifying while the list sat open is
+                // named, not silently dropped: a batch that quietly does less
+                // than it said it would is worse than one that explains.
+                droppedAtAction = (chosen - stillGood.toSet()).map { it.row.displayName }
                 val ready = engine.prepare(stillGood.map { it.row }, mode.value, now)
                 prepared = ready
                 pendingMode = mode.value
@@ -472,6 +491,11 @@ class ReclaimViewModel(
     }
 
     private fun finishLegacy() {
+        if (pendingDuplicateIds.isNotEmpty()) {
+            pendingDuplicateIds = emptySet()
+            finishDuplicateRemoval(legacyDeleted.size)
+            return
+        }
         val ready = prepared ?: return
         prepared = null
         viewModelScope.launch(Dispatchers.IO) {
@@ -502,6 +526,12 @@ class ReclaimViewModel(
             }
             return
         }
+        if (pendingDuplicateIds.isNotEmpty()) {
+            val count = if (granted) pendingDuplicateIds.size else 0
+            pendingDuplicateIds = emptySet()
+            finishDuplicateRemoval(count)
+            return
+        }
         val ready = prepared ?: return
         prepared = null
         viewModelScope.launch(Dispatchers.IO) {
@@ -511,6 +541,28 @@ class ReclaimViewModel(
             )
             clearSelection()
             load()
+        }
+    }
+
+    /**
+     * A duplicate removal has no reclaim batch behind it.
+     *
+     * Nothing was freed on the strength of upload evidence, so there is
+     * nothing for the app to undo: the identical file is still on the phone,
+     * and the extras are in the gallery trash for 30 days.
+     */
+    private fun finishDuplicateRemoval(removed: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (removed > 0) {
+                duplicatesRemoved.value = removed
+                ActivityLog(ctx).record(
+                    ActivityLog.Kind.RECLAIMED,
+                    count = removed,
+                    detail = ctx.getString(R.string.dupes_removed_detail)
+                )
+            }
+            duplicateSelection.value = emptySet()
+            loadDuplicates()
         }
     }
 
@@ -564,6 +616,100 @@ class ReclaimViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             duplicateGroups.value = DuplicateScanner(ctx).groups()
         }
+    }
+
+    /** Extras the user has ticked, by item id. */
+    val duplicateSelection = MutableStateFlow<Set<Long>>(emptySet())
+
+    fun toggleDuplicate(id: Long) {
+        duplicateSelection.value = duplicateSelection.value.let {
+            if (id in it) it - id else it + id
+        }
+    }
+
+    fun selectAllDuplicates(select: Boolean) {
+        duplicateSelection.value = if (!select) {
+            emptySet()
+        } else {
+            // Keepers are never selectable: the whole reason removing an extra
+            // is safe is that one identical file stays on the phone.
+            duplicateGroups.value.flatMap { g -> g.extras.map { it.id } }.toSet()
+        }
+    }
+
+    /**
+     * Makes a different file in the group the one that stays.
+     *
+     * The automatic choice is the oldest capture in the fullest album, which
+     * is right nearly always and wrong when someone has deliberately filed a
+     * copy somewhere. Swapping is local to this screen: the group is rebuilt
+     * around the new keeper and the old keeper becomes a removable extra.
+     */
+    fun keepInstead(sha256: String, id: Long) {
+        duplicateGroups.value = duplicateGroups.value.map { group ->
+            if (group.sha256 != sha256) return@map group
+            val next = group.all.firstOrNull { it.id == id } ?: return@map group
+            group.copy(keeper = next, extras = group.all.filter { it.id != next.id })
+        }
+        // A keeper can never stay ticked for removal.
+        duplicateSelection.value = duplicateSelection.value - id
+    }
+
+    /**
+     * Moves the ticked extras to the gallery trash.
+     *
+     * Safe by definition and not by evidence: an identical file stays on the
+     * phone, so nothing is lost even if the copy never reached any cloud. It
+     * still goes through Android's own dialog, and to the trash rather than
+     * straight out, so 30 days of undo apply.
+     */
+    fun removeDuplicateExtras() {
+        if (busy.value) return
+        val chosen = duplicateSelection.value
+        if (chosen.isEmpty()) return
+        busy.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // Re-read now, not when the list was drawn: a file can be gone
+                // or a group can have changed between the tap and the action.
+                val fresh = DuplicateScanner(ctx).groups()
+                duplicateGroups.value = fresh
+                val stillExtras = fresh.flatMap { g -> g.extras }
+                    .filter { it.id in chosen }
+                val rows = stillExtras.mapNotNull { db.items().byId(it.id) }
+                val uris = rows.mapNotNull { row ->
+                    row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+                }
+                if (uris.isEmpty()) {
+                    duplicateSelection.value = emptySet()
+                    return@launch
+                }
+                pendingDuplicateIds = rows.map { it.id }.toSet()
+                pendingTrash = true
+                val request = requestFor(uris, permanent = false)
+                if (request == null) startLegacy(uris) else pendingIntent.value = request
+            } finally {
+                busy.value = false
+            }
+        }
+    }
+
+    /** Names that stopped qualifying between the tap and the action. */
+    var droppedAtAction: List<String> = emptyList()
+        private set
+
+    fun clearDropped() {
+        droppedAtAction = emptyList()
+    }
+
+    /** Ids awaiting Android's answer for a duplicate removal. */
+    private var pendingDuplicateIds: Set<Long> = emptySet()
+
+    /** How many extras the last removal actually took, for the result line. */
+    val duplicatesRemoved = MutableStateFlow<Int?>(null)
+
+    fun dismissDuplicatesResult() {
+        duplicatesRemoved.value = null
     }
 
     fun loadLargest() {

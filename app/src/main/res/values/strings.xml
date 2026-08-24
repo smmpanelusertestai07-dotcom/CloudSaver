@@ -296,20 +296,8 @@
     <string name="find_suggestions_hint">Ready-made ways to free space</string>
     <string name="dupes_empty_title">No duplicates found</string>
     <string name="dupes_empty_body">CloudSaver compares files byte for byte. Nothing in your gallery is stored twice.</string>
-    <string name="dupes_intro">These files are byte-for-byte identical. Removing an extra is safe even before it is uploaded, because a copy stays on your phone.</string>
-    <plurals name="dupes_group_line">
-        <item quantity="one">%1$d extra copy · %2$s could be freed</item>
-        <item quantity="other">%1$d extra copies · %2$s could be freed</item>
-    </plurals>
-    <string name="dupes_keeper">Keeping the copy in %1$s</string>
-    <string name="dupes_extra">Extra in %1$s · %2$s</string>
     <string name="biggest_empty_title">Nothing scanned yet</string>
     <string name="biggest_empty_body">Your largest photos and videos appear here after the first scan.</string>
-    <plurals name="biggest_summary">
-        <item quantity="one">Your largest file uses %2$s - about %3$s could be saved by optimising it.</item>
-        <item quantity="other">Your %1$d largest files use %2$s - about %3$s could be saved by optimising them.</item>
-    </plurals>
-    <string name="biggest_optimise_first">Optimise this first</string>
     <string name="never_optimise">Never optimise this file</string>
     <string name="never_optimise_title">Files you excluded</string>
     <string name="never_optimise_hint">Files you asked CloudSaver to leave alone. Clearing the list puts them back in the queue.</string>
@@ -724,8 +712,6 @@
         <item quantity="one">Copy folder path</item>
         <item quantity="other">Copy both folder paths</item>
     </plurals>
-    <string name="biggest_search">Search by name or album</string>
-    <string name="biggest_clear">Clear search</string>
     <string name="biggest_no_match">Nothing matches \u201c%1$s\u201d.</string>
     <string name="biggest_no_album">No album</string>
     <string name="biggest_saving">saves ~%1$s</string>
@@ -774,4 +760,37 @@
     <string name="calc_quality_limits">Photos stay up to 16 MP, videos up to 1080p.</string>
     <string name="calc_basis_measured">Measured from %1$s of your photos and %2$s of your videos.</string>
     <string name="calc_basis_rough">Rough estimate \u2014 it becomes exact after your first 20 photos and 20 videos are optimised.</string>
+    <string name="list_search">Search by name or album</string>
+    <string name="list_clear_search">Clear search</string>
+    <string name="list_more_actions">More actions</string>
+    <string name="list_clear_selection">Clear</string>
+    <string name="list_selected">%1$d selected \u00b7 frees %2$s</string>
+    <string name="list_select_all">Select all</string>
+    <string name="list_sort_largest">Largest</string>
+    <string name="list_sort_oldest">Oldest</string>
+    <string name="list_sort_saved">Most saved</string>
+    <string name="list_open">Open</string>
+    <string name="list_optimise_first">Optimise this first</string>
+    <string name="list_never">Never optimise this file</string>
+    <string name="list_remove">Remove</string>
+    <string name="proof_cloud_removed">Your cloud app removed this copy after uploading it.</string>
+    <string name="proof_size_matched">Your cloud app uploaded this much data right after we added it.</string>
+    <string name="proof_identical">Identical file \u2014 same content fingerprint.</string>
+    <string name="proof_time_only">Waiting for proof \u2014 only its age is known.</string>
+    <string name="proof_waiting">Waiting for proof.</string>
+    <string name="dupes_removed_detail">Extra copies removed \u2014 an identical file stayed on the phone</string>
+    <string name="dupes_intro">An identical copy stays on your phone, so removing an extra loses nothing \u2014 even if it was never uploaded. Extras go to the gallery trash for 30 days.</string>
+    <string name="dupes_group_proof">Identical files \u00b7 same size (%1$s) and same content fingerprint</string>
+    <string name="dupes_this_one_stays">This one stays on your phone.</string>
+    <string name="dupes_keep_instead">Keep this one instead</string>
+    <string name="dupes_remove_extras">Remove extras</string>
+    <string name="dupes_removed_title">Extras removed</string>
+    <plurals name="dupes_removed_body">
+        <item quantity="one">%d extra copy moved to your gallery trash. The original is untouched, and the trash keeps it for 30 days.</item>
+        <item quantity="other">%d extra copies moved to your gallery trash. The originals are untouched, and the trash keeps them for 30 days.</item>
+    </plurals>
+    <string name="biggest_header">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</string>
+    <string name="biggest_header_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
+    <string name="reclaim_confirm_proof">%1$d \u00b7 %2$s</string>
+    <string name="reclaim_done_dropped">%1$d no longer qualified and were left alone (%2$s).</string>
 </resources>
