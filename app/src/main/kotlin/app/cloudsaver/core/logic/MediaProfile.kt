@@ -36,7 +36,22 @@ object MediaProfile {
         val errorPercent: Double = 0.0
     ) {
         val meanBytes: Long get() = if (count > 0) totalBytes / count else 0L
-        val shrinkPercent: Int get() = ((1 - ratio) * 100).toInt().coerceIn(0, 100)
+
+        /**
+         * How much smaller this phone's files really came out, or null when
+         * nothing has been encoded yet.
+         *
+         * Nullable on purpose. A ratio of 0.0 means "no measurement", and the
+         * old non-null version turned that into (1 - 0) * 100 = 100, so a
+         * fresh install cheerfully announced "Photos come out about 100%
+         * smaller". A missing measurement has to be missing, not maximal.
+         */
+        val shrinkPercent: Int?
+            get() = if (ratio <= 0.0) {
+                null
+            } else {
+                ((1 - ratio) * 100).toInt().coerceIn(0, 100)
+            }
         /** True once the app should stop claiming a single figure. */
         val needsRange: Boolean get() = errorPercent > RANGE_THRESHOLD_PERCENT
     }

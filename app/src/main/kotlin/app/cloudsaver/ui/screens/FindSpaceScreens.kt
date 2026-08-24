@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.ReclaimViewModel
 import app.cloudsaver.ui.components.AppCard
@@ -378,7 +379,7 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                         // Straight into Reclaim with this one ticked: that is
                         // where the eligibility gate and trash-first rule are.
                         rvm.selectOnly(row.id)
-                        nav.navigate(Routes.FREE_UP)
+                        nav.goTo(Routes.FREE_UP)
                     }
                 )
             }

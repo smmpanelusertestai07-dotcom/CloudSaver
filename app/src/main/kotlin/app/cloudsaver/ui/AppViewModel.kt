@@ -533,7 +533,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 videoBytes = totals.videoBytes,
                 videoMinutes = totals.videoMinutes,
                 monthlyPhotoBytes = totals.monthlyPhotoBytes,
-                monthlyVideoBytes = totals.monthlyVideoBytes
+                monthlyVideoBytes = totals.monthlyVideoBytes,
+                videoCount = totals.videoCount
             )
             val photoSamples = db.items().photoRatioSamples(o.preset.name).map {
                 CapacityMath.Sample(it.sizeBytes, it.outputBytes)
@@ -600,7 +601,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 photoBytes = db.items().pendingBytesByType(video = false),
                 videoBytes = db.items().pendingBytesByType(video = true),
                 measuredPhotoRatio = p.photos.ratio,
-                measuredVideoRatio = p.videos.ratio
+                measuredVideoRatio = p.videos.ratio,
+                photoCount = db.items().pendingCountByType(video = false),
+                videoCount = db.items().pendingCountByType(video = true)
             )
         }
     }

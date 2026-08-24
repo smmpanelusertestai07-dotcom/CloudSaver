@@ -70,6 +70,7 @@ import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.CloudApps
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
@@ -406,7 +407,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             stringResource(R.string.opt_preset_hint),
             icon = IconQuality,
             value = presetLabel(o.preset),
-            onInfo = { nav.navigate(Routes.HELP_QUALITY) }
+            onInfo = { nav.goTo(Routes.HELP_QUALITY) }
         ) {
             SegmentedChoice(
                 listOf(
@@ -569,14 +570,14 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             title = stringResource(R.string.nav_help),
             hint = stringResource(R.string.help_entry),
             icon = IconHelp,
-            onClick = { nav.navigate(Routes.HELP) }
+            onClick = { nav.goTo(Routes.HELP) }
         )
         NavRow(
             title = stringResource(R.string.nav_activity),
             hint = stringResource(R.string.activity_entry),
             icon = IconActivity,
             dot = activityUnread > 0,
-            onClick = { nav.navigate(Routes.ACTIVITY) }
+            onClick = { nav.goTo(Routes.ACTIVITY) }
         )
 
         Text(

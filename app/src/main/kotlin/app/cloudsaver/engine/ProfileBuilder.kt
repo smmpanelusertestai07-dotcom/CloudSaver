@@ -104,10 +104,20 @@ class ProfileBuilder(private val context: Context) {
         return db.items().asIsCount(video).toDouble() / processed
     }
 
-    /** Reads the stored profile into the shape the UI and maths use. */
+    /**
+     * Reads the stored profile into the shape the UI and maths use.
+     *
+     * When nothing has been measured yet there is no stored row, and this
+     * used to return an empty profile - which is how the calculator came to
+     * tell someone with 3 471 files that their gallery was 0.00 GB. How big
+     * the gallery is comes off a MediaStore scan and has nothing to do with
+     * whether the app has encoded anything, so the row is built on demand
+     * instead. The encoding ratios inside it stay unmeasured, which is
+     * correct and is stated as such.
+     */
     suspend fun current(options: Options): MediaProfile.Profile {
         val row = db.profile().get(options.preset.name, options.codec.name)
-            ?: return MediaProfile.Profile()
+            ?: rebuild(options)
         return row.toProfile(db.items().bytesAddedSince(monthAgoSeconds()))
     }
 

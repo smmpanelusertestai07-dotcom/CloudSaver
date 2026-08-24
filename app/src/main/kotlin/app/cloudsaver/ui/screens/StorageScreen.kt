@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.OutputPaths
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AnimatedNumber
@@ -195,7 +196,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                         label = stringResource(R.string.kept_title),
                         path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
                         bytes = keptBytes,
-                        onManage = { nav.navigate(Routes.KEPT) }
+                        onManage = { nav.goTo(Routes.KEPT) }
                     )
                 }
                 Text(
@@ -228,7 +229,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     title = stringResource(R.string.find_duplicates),
                     hint = stringResource(R.string.find_duplicates_hint),
                     value = Formats.bytes(findSpace.duplicateBytes),
-                    onClick = { nav.navigate(Routes.DUPLICATES) }
+                    onClick = { nav.goTo(Routes.DUPLICATES) }
                 )
             }
             if (findSpace.biggestBytes > 0) {
@@ -237,7 +238,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     title = stringResource(R.string.find_biggest),
                     hint = stringResource(R.string.find_biggest_hint),
                     value = Formats.bytes(findSpace.biggestBytes),
-                    onClick = { nav.navigate(Routes.BIGGEST) }
+                    onClick = { nav.goTo(Routes.BIGGEST) }
                 )
             }
             if (findSpace.reclaimableBytes > 0) {
@@ -246,7 +247,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     title = stringResource(R.string.find_suggestions),
                     hint = stringResource(R.string.find_suggestions_hint),
                     value = Formats.bytes(findSpace.reclaimableBytes),
-                    onClick = { nav.navigate(Routes.FREE_UP) }
+                    onClick = { nav.goTo(Routes.FREE_UP) }
                 )
             }
             FindRow(
@@ -254,7 +255,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 title = stringResource(R.string.calc_title),
                 hint = stringResource(R.string.calc_entry_hint),
                 value = null,
-                onClick = { nav.navigate(Routes.CALCULATOR) }
+                onClick = { nav.goTo(Routes.CALCULATOR) }
             )
         }
 
@@ -266,7 +267,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                 title = stringResource(R.string.reclaim_history),
                 hint = stringResource(R.string.reclaim_history_hint),
                 value = null,
-                onClick = { nav.navigate(Routes.RECLAIM_HISTORY) }
+                onClick = { nav.goTo(Routes.RECLAIM_HISTORY) }
             )
         }
 

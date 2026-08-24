@@ -17,8 +17,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.CloudQueue
+import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.FilterChip
@@ -193,9 +195,24 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
 
             // 2. The answer.
             HeroCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.CloudQueue,
+                        contentDescription = null,
+                        tint = OnBrandMuted,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        stringResource(R.string.calc_hero_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = OnBrandMuted
+                    )
+                }
                 AnimatedNumber(
                     value = stringResource(R.string.calc_hero_value, fmt(estimate.originalsGB)),
-                    color = OnBrand
+                    color = OnBrand,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
                 Text(
                     stringResource(R.string.calc_hero_caption, fmt(freeGb ?: 0.0)),
@@ -205,23 +222,40 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             }
 
             Spacer(Modifier.height(12.dp))
+            // Photos got a count and videos only got hours, so the two halves
+            // of the same answer could not be compared. Videos now get a count
+            // too, worked out from how long this phone's own clips are; when
+            // there are no videos to average, the count is absent rather than
+            // invented and hours stand alone.
             MetricGrid(
-                listOf(
-                    { m: Modifier ->
+                buildList {
+                    add { m: Modifier ->
                         MetricTile(
                             Formats.count(estimate.photoCount),
                             stringResource(R.string.calc_tile_photos),
-                            m
+                            m,
+                            icon = Icons.Outlined.PhotoLibrary
                         )
-                    },
-                    { m: Modifier ->
+                    }
+                    if (estimate.videoCount > 0) {
+                        add { m: Modifier ->
+                            MetricTile(
+                                Formats.count(estimate.videoCount),
+                                stringResource(R.string.calc_tile_videos),
+                                m,
+                                icon = Icons.Outlined.Movie
+                            )
+                        }
+                    }
+                    add { m: Modifier ->
                         MetricTile(
                             Formats.hours(estimate.videoHours),
                             stringResource(R.string.calc_tile_video_hours),
-                            m
+                            m,
+                            icon = Icons.Outlined.Schedule
                         )
                     }
-                )
+                }
             )
 
             // 3. Their gallery against that.
@@ -293,12 +327,12 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(10.dp))
+                    // A measured figure or an admission, never a number
+                    // invented from an unmeasured ratio of zero.
                     Text(
-                        stringResource(
-                            R.string.calc_quality_photos,
-                            profile.photos.shrinkPercent,
-                            QualityKept.photoCapMp(options.preset)
-                        ),
+                        profile.photos.shrinkPercent?.let {
+                            stringResource(R.string.calc_quality_photos, it)
+                        } ?: stringResource(R.string.calc_quality_photos_none),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -314,11 +348,9 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        stringResource(
-                            R.string.calc_quality_videos,
-                            profile.videos.shrinkPercent,
-                            QualityKept.videoCapLongSide(options.preset)
-                        ),
+                        profile.videos.shrinkPercent?.let {
+                            stringResource(R.string.calc_quality_videos, it)
+                        } ?: stringResource(R.string.calc_quality_videos_none),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -334,7 +366,11 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        stringResource(R.string.calc_quality_limits),
+                        stringResource(
+                            R.string.calc_quality_limits,
+                            QualityKept.photoCapMp(options.preset),
+                            QualityKept.videoCapLongSide(options.preset)
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant
                     )
@@ -356,6 +392,15 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                 style = MaterialTheme.typography.bodySmall,
                 color = scheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 14.dp)
+            )
+            // Whose gallery these numbers describe. Without it the page reads
+            // as generic advice about clouds rather than an answer about this
+            // phone, which is the only thing it is.
+            Text(
+                stringResource(R.string.calc_source_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
             )
             Spacer(Modifier.height(28.dp))
         }

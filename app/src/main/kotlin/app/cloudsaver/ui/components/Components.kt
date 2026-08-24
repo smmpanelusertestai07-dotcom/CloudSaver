@@ -221,7 +221,8 @@ fun MetricTile(
     label: String,
     modifier: Modifier = Modifier,
     highlight: Boolean = false,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
 ) {
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
@@ -246,6 +247,21 @@ fun MetricTile(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // The icon says what the number counts before the label is read. It
+        // is decorative in the accessibility tree because the tile already
+        // announces itself as "label: value".
+        icon?.let {
+            Icon(
+                it,
+                contentDescription = null,
+                tint = if (highlight) {
+                    scheme.onSecondaryContainer.copy(alpha = 0.8f)
+                } else {
+                    scheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(18.dp).padding(bottom = 2.dp)
+            )
+        }
         AnimatedNumber(
             value = value,
             style = MaterialTheme.typography.headlineSmall.copy(
@@ -312,7 +328,7 @@ fun MetricGrid(tiles: List<@Composable (Modifier) -> Unit>) {
  * generous, because the label shrinks to fit the width but has nowhere to go
  * if the cell is too short for its second line.
  */
-val TileHeight = 112.dp
+val TileHeight = 126.dp
 
 /**
  * One settings row: icon, title, one line of what it does, then the control.

@@ -26,18 +26,36 @@
     <string name="chip_paused">Paused</string>
     <string name="chip_battery">Battery restricted</string>
     <string name="chip_stopped">The system stopped background work</string>
-    <string name="hero_projection">If everything finishes: about %1$s saved</string>
+    <string name="hero_projection">About %1$s saved once the rest is done</string>
+    <plurals name="hero_projection_files">
+        <item quantity="one">%1$d file still to do</item>
+        <item quantity="other">%1$d files still to do</item>
+    </plurals>
+    <string name="hero_projection_split">%1$s and %2$s still to do</string>
+    <plurals name="count_photos">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
+    <plurals name="count_videos">
+        <item quantity="one">%1$d video</item>
+        <item quantity="other">%1$d videos</item>
+    </plurals>
+    <string name="skipped_group_title">Skipped, and why</string>
+    <plurals name="skipped_reason_row">
+        <item quantity="one">%1$d file · %2$s</item>
+        <item quantity="other">%1$d files · %2$s</item>
+    </plurals>
     <string name="chip_auto_launch">Check auto-launch</string>
     <string name="chip_background">Check background activity</string>
     <string name="explain_waiting">Files found in your gallery that have not been optimised yet. CloudSaver works through them in the background.</string>
     <string name="explain_in_folder">Optimised copies that are made and waiting for your cloud app to upload them.</string>
     <string name="explain_backed_up">Copies CloudSaver can show reached your cloud. Only these can ever offer an original for you to remove.</string>
-    <string name="skip_removed_early">Removed from the upload folder before your cloud collected it</string>
-    <string name="skip_unreadable">File could not be read</string>
-    <string name="skip_too_large">Too large to process in the space available</string>
+    <string name="skip_removed_early">Removed before your cloud collected them</string>
+    <string name="skip_unreadable">Could not be read</string>
+    <string name="skip_too_large">Too large for the space available</string>
     <string name="skip_other">Skipped to be safe</string>
-    <string name="skip_user_excluded">You asked CloudSaver to leave this one alone</string>
-    <string name="skip_duplicate">Same file already handled</string>
+    <string name="skip_user_excluded">You chose to skip these</string>
+    <string name="skip_duplicate">Already handled once</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="chip_space">Storage low</string>
@@ -50,10 +68,10 @@
         <item quantity="one">across %1$d optimised file</item>
         <item quantity="other">across %1$d optimised files</item>
     </plurals>
-    <string name="budget_title">Today\'s upload allowance</string>
+    <string name="budget_title">Added for your cloud today</string>
     <string name="budget_used">%1$s of %2$s</string>
-    <string name="budget_paced">Files are added a few at a time, so each one can be confirmed on its own.</string>
-    <string name="budget_spent">Today\'s allowance is used. More will be added after %1$s.</string>
+    <string name="budget_paced">CloudSaver adds a few files at a time so it can tell which ones your cloud picked up.</string>
+    <string name="budget_spent">That is all for today. More files are added after %1$s.</string>
     <plurals name="asis_card_title">
         <item quantity="one">%1$d file kept unchanged</item>
         <item quantity="other">%1$d files kept unchanged</item>
@@ -113,6 +131,11 @@
     <string name="detail_open">Open</string>
     <string name="detail_optimise_now">Optimise now</string>
     <string name="detail_optimise_again">Allow optimising again</string>
+    <string name="detail_optimise_first">Optimise this first</string>
+    <string name="detail_try_again">Try again</string>
+    <string name="detail_remove_from_phone">Remove from phone</string>
+    <string name="never_optimise_undo">Skipped. Manage in Settings \u203a Backup \u203a Skipped files</string>
+    <string name="undo">Undo</string>
     <string name="detail_open_failed">No app on this phone can open this file.</string>
     <string name="detail_state">Status</string>
     <string name="detail_evidence">Verification</string>
@@ -181,7 +204,7 @@
     <string name="warn_cloud_title">Your cloud app needs attention</string>
 
     <!-- storage -->
-    <string name="storage_stage">Being prepared</string>
+    <string name="storage_stage">Working on these now</string>
     <string name="storage_stage_path">Kept inside the app, not shown in your gallery</string>
     <string name="storage_output">Waiting in your upload folder</string>
     <string name="volume_internal">Internal storage</string>
@@ -355,7 +378,7 @@
     <string name="help_entry">Guides, FAQs, privacy and what version you are on</string>
     <string name="opt_scope">Media type</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
-    <string name="scope_all">All</string>
+    <string name="scope_all">Photos and videos</string>
     <string name="scope_photos">Photos</string>
     <string name="scope_videos">Videos</string>
     <string name="opt_folders">Albums</string>
@@ -474,15 +497,17 @@
 
     <!-- cloud calculator (13.C) -->
     <string name="calc_title">Cloud calculator</string>
-    <string name="calc_entry_hint">See how much fits in your cloud space.</string>
+    <string name="calc_entry_hint">See how much of this phone fits in your cloud space.</string>
     <string name="calc_chip_gb">%1$d GB</string>
     <string name="calc_input_label">Free space in your cloud (GB)</string>
-    <string name="calc_enter">Type your cloud free space above to see what fits.</string>
+    <string name="calc_enter">Type your free cloud space above to see what fits.</string>
     <string name="calc_hero_value">%1$s GB</string>
-    <string name="calc_hero_caption">of your originals fit in %1$s GB of cloud space</string>
+    <string name="calc_hero_label">Fits in your cloud</string>
+    <string name="calc_hero_caption">of your own photos and videos would fit in %1$s GB of cloud space</string>
     <string name="calc_tile_photos">Photos</string>
     <string name="calc_tile_video_hours">Hours of video</string>
-    <string name="calc_gallery_line">Your gallery now: %1$s GB → after optimising about %2$s GB.</string>
+    <string name="calc_tile_videos">Videos</string>
+    <string name="calc_gallery_line">Your photos and videos take %1$s GB on this phone right now. Optimised, they would need about %2$s GB in your cloud.</string>
     <string name="calc_spare">Fits, with %1$s GB to spare</string>
     <string name="calc_needs">Needs %1$s GB more</string>
     <string name="calc_months">At your pace, this lasts about %1$s more months.</string>
@@ -649,13 +674,13 @@
     <string name="activity_setting_changed">%1$s changed to %2$s</string>
     <string name="activity_problem">Something needs your attention</string>
     <string name="activity_unknown">Activity recorded by a newer version</string>
-    <string name="hero_projection_estimate">If everything finishes: roughly %1$s saved</string>
+    <string name="hero_projection_estimate">Roughly %1$s saved once the rest is done</string>
     <plurals name="duplicates_handled">
         <item quantity="one">%d duplicate handled once</item>
         <item quantity="other">%d duplicates handled once</item>
     </plurals>
     <string name="optimise_now_hint">Starts optimising right away. Your cloud app does the uploading.</string>
-    <string name="optimise_now_hint_override">Runs now even though it would otherwise be waiting.</string>
+    <string name="optimise_now_hint_override">Starts straight away instead of waiting for charge or Wi-Fi.</string>
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
@@ -666,15 +691,18 @@
     <string name="storage_group_own">CloudSaver\'s own space</string>
     <string name="storage_group_cleanup">Clean up</string>
     <string name="storage_limit_line">Limit %1$s \u00b7 now using %2$s</string>
-    <string name="storage_folder_empties">This folder empties as your cloud app collects the files.</string>
+    <string name="storage_folder_empties">Files leave this folder as soon as your cloud app has uploaded them.</string>
     <string name="calc_check_inside">Check this number inside your cloud app.</string>
-    <string name="calc_your_gallery">Your gallery</string>
-    <string name="calc_quality_header">Quality</string>
-    <string name="calc_quality_photos">Photos: about %1$d%% smaller, up to %2$d MP kept.</string>
-    <string name="calc_quality_videos">Videos: about %1$d%% smaller, up to %2$d px across kept.</string>
-    <string name="calc_quality_limits">Photos stay up to 16 MP, videos up to 1080p.</string>
-    <string name="calc_basis_measured">Measured from %1$s of your photos and %2$s of your videos.</string>
-    <string name="calc_basis_rough">Rough estimate \u2014 it becomes exact after your first 20 photos and 20 videos are optimised.</string>
+    <string name="calc_source_note">Every figure here is worked out from the photos and videos on this phone, not from averages.</string>
+    <string name="calc_your_gallery">Everything on this phone</string>
+    <string name="calc_quality_header">What this does to quality</string>
+    <string name="calc_quality_photos_none">Photos: not measured yet. The first few optimised photos will show the real figure here.</string>
+    <string name="calc_quality_videos_none">Videos: not measured yet. The first few optimised videos will show the real figure here.</string>
+    <string name="calc_quality_photos">Photos on this phone come out about %1$d%% smaller.</string>
+    <string name="calc_quality_videos">Videos on this phone come out about %1$d%% smaller.</string>
+    <string name="calc_quality_limits">Photos stay up to %1$d MP, videos up to %2$d px across.</string>
+    <string name="calc_basis_measured">Measured from %1$s of your own photos and %2$s of your own videos on this phone.</string>
+    <string name="calc_basis_rough">These figures are estimates for now. They become exact once CloudSaver has optimised 20 of your photos and 20 of your videos.</string>
     <string name="list_search">Search by name or album</string>
     <string name="list_clear_search">Clear search</string>
     <string name="list_more_actions">More actions</string>
@@ -684,6 +712,30 @@
     <string name="list_sort_largest">Largest</string>
     <string name="list_sort_oldest">Oldest</string>
     <string name="list_sort_saved">Most saved</string>
+    <string name="list_exit_selection">Stop selecting</string>
+    <string name="list_selected_count">%1$d selected</string>
+    <string name="list_select_all_matching">Select all %1$d matching</string>
+    <string name="list_deselect_all">Deselect all</string>
+    <string name="list_filtered_empty">Nothing matches these filters.</string>
+    <string name="list_reset_filters">Reset filters</string>
+    <string name="list_no_matches_for">No matches for \u201c%1$s\u201d.</string>
+    <string name="list_clear_search_action">Clear search</string>
+    <string name="filter_type">Type</string>
+    <string name="filter_status">Status</string>
+    <string name="filter_album">Album</string>
+    <string name="filter_size">Size</string>
+    <string name="filter_proof">Backed up by</string>
+    <string name="filter_sort">Sort</string>
+    <string name="filter_any">Any</string>
+    <string name="filter_over_10mb">Over 10 MB</string>
+    <string name="filter_over_100mb">Over 100 MB</string>
+    <string name="filter_over_1gb">Over 1 GB</string>
+    <string name="filter_all_albums">All albums</string>
+    <string name="filter_album_count">%1$s (%2$d)</string>
+    <plurals name="list_selection_summary">
+        <item quantity="one">%1$d selected \u00b7 frees %2$s</item>
+        <item quantity="other">%1$d selected \u00b7 frees %2$s</item>
+    </plurals>
     <string name="dupes_sort_space">Most space</string>
     <string name="dupes_sort_copies">Most copies</string>
     <string name="dupes_sort_name">Name</string>
@@ -774,7 +826,7 @@
     <string name="volume_switch_confirm">Change location</string>
     <string name="onb_ready_where">Where CloudSaver keeps its files</string>
     <string name="onb_ready_sd_note">SD cards are slower and can be removed. If it is removed, CloudSaver pauses and nothing is lost.</string>
-    <string name="onb_ready_what_albums">%1$s in %2$d of %3$d albums</string>
+    <string name="onb_ready_what_albums">%1$s, from %2$d of your %3$d albums</string>
     <string name="trial_title">See it on a few photos first</string>
     <plurals name="trial_body">
         <item quantity="one">Optimises %d photo so you can compare before and after. Your original is not touched.</item>

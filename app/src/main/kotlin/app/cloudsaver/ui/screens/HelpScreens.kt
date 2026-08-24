@@ -50,6 +50,7 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.BuildConfig
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Platform
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
@@ -105,12 +106,12 @@ private fun HelpPage(
 @Composable
 fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.nav_help)) {
-        HelpLink(stringResource(R.string.help_faq)) { nav.navigate(Routes.HELP_FAQ) }
-        HelpLink(stringResource(R.string.help_quality)) { nav.navigate(Routes.HELP_QUALITY) }
-        HelpLink(stringResource(R.string.help_logs)) { nav.navigate(Routes.HELP_LOGS) }
-        HelpLink(stringResource(R.string.help_privacy)) { nav.navigate(Routes.HELP_PRIVACY) }
-        HelpLink(stringResource(R.string.help_licenses)) { nav.navigate(Routes.HELP_LICENSES) }
-        HelpLink(stringResource(R.string.help_about)) { nav.navigate(Routes.HELP_ABOUT) }
+        HelpLink(stringResource(R.string.help_faq)) { nav.goTo(Routes.HELP_FAQ) }
+        HelpLink(stringResource(R.string.help_quality)) { nav.goTo(Routes.HELP_QUALITY) }
+        HelpLink(stringResource(R.string.help_logs)) { nav.goTo(Routes.HELP_LOGS) }
+        HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
+        HelpLink(stringResource(R.string.help_licenses)) { nav.goTo(Routes.HELP_LICENSES) }
+        HelpLink(stringResource(R.string.help_about)) { nav.goTo(Routes.HELP_ABOUT) }
         Text(
             stringResource(R.string.about_version_line, BuildConfig.VERSION_NAME),
             style = MaterialTheme.typography.bodySmall,
@@ -721,7 +722,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
         // disagree about what it currently is.
         AppCard(
             modifier = Modifier.padding(top = 10.dp),
-            onClick = { nav.navigate(Routes.HELP_QUALITY) }
+            onClick = { nav.goTo(Routes.HELP_QUALITY) }
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -761,7 +762,7 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
-        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.navigate(Routes.HELP_PRIVACY) }) {
+        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { nav.goTo(Routes.HELP_PRIVACY) }) {
             Text(
                 stringResource(R.string.help_privacy),
                 style = MaterialTheme.typography.titleSmall

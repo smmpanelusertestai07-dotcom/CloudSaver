@@ -29,6 +29,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -80,6 +81,38 @@ object Routes {
 
     /** Screens behind the optional app lock. */
     val LOCKED = setOf(FILES, OPTIONS, FREE_UP, RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT)
+
+    /** The four bottom-bar destinations. */
+    val TABS = setOf(HOME, FILES, STORAGE, OPTIONS)
+}
+
+/**
+ * Go to a screen, switching tabs properly when the target is one.
+ *
+ * Every route in the app goes through here, because the two cases need
+ * different navigation and getting it wrong strands the user. A plain
+ * navigate() to a tab pushes a *second* copy of that tab on top of the stack:
+ * the bottom bar then sees itself as already on that tab and ignores taps,
+ * while Home cannot be reached because the pop target is buried underneath.
+ * That is exactly the trap a chip on Home used to drop people into - into
+ * Files, with the Home tab dead.
+ *
+ * Tabs therefore pop back to the graph's start destination and reuse the
+ * existing entry; everything else is an ordinary push that the back arrow
+ * undoes. popUpTo targets the real start destination rather than a hard-coded
+ * route, so it stays correct if the start ever changes.
+ */
+fun NavHostController.goTo(route: String) {
+    if (route == currentDestination?.route) return
+    if (route in Routes.TABS) {
+        navigate(route) {
+            popUpTo(graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    } else {
+        navigate(route) { launchSingleTop = true }
+    }
 }
 
 @Composable
@@ -133,9 +166,7 @@ private fun MainNav(vm: AppViewModel) {
     androidx.compose.runtime.LaunchedEffect(deepLink) {
         val target = deepLink ?: return@LaunchedEffect
         vm.clearDeepLink()
-        if (target != route) {
-            nav.navigate(target) { launchSingleTop = true }
-        }
+        nav.goTo(target)
     }
 
     Scaffold(
@@ -234,15 +265,7 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
 ) {
     NavigationBarItem(
         selected = current == route,
-        onClick = {
-            if (current != route) {
-                nav.navigate(route) {
-                    popUpTo(Routes.HOME) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            }
-        },
+        onClick = { nav.goTo(route) },
         colors = NavigationBarItemDefaults.colors(
             selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
             selectedTextColor = MaterialTheme.colorScheme.onSurface,

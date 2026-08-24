@@ -53,6 +53,8 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.core.logic.Projection
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AnimatedNumber
@@ -71,7 +73,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.TrendingUp
@@ -289,15 +294,27 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(6.dp))
-                    Text(
-                        stringResource(
-                            if (projection.isEstimate) R.string.hero_projection_estimate
-                            else R.string.hero_projection,
-                            Formats.bytes(projection.savedBytes)
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnBrandMuted
-                    )
+                    Column {
+                        Text(
+                            stringResource(
+                                if (projection.isEstimate) R.string.hero_projection_estimate
+                                else R.string.hero_projection,
+                                Formats.bytes(projection.savedBytes)
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OnBrandMuted
+                        )
+                        // "the rest" is not a quantity. Saying how many files
+                        // it covers - split by kind when both are waiting -
+                        // turns the projection into something checkable.
+                        queueBreakdown(projection)?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OnBrandMuted
+                            )
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -359,7 +376,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 ) {
                     if (health.paused) {
                         StatusChip(stringResource(R.string.chip_paused)) {
-                            nav.navigate(Routes.OPTIONS)
+                            nav.goTo(Routes.OPTIONS)
                         }
                     }
                     if (anyPower) {
@@ -374,12 +391,12 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     if (health.cloudMissing) {
                         StatusChip(stringResource(R.string.chip_cloud)) {
-                            nav.navigate(Routes.OPTIONS)
+                            nav.goTo(Routes.OPTIONS)
                         }
                     }
                     if (health.spaceLow) {
                         StatusChip(stringResource(R.string.chip_space)) {
-                            nav.navigate(Routes.STORAGE)
+                            nav.goTo(Routes.STORAGE)
                         }
                     }
                     // The phone stopped running us. Nothing else on this row
@@ -404,7 +421,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     Formats.count(counters.waiting),
                     stringResource(R.string.count_waiting),
                     m,
-                    onClick = { explain = R.string.explain_waiting }
+                    onClick = { explain = R.string.explain_waiting },
+                    icon = Icons.Outlined.Schedule
                 )
             }
             if (counters.inFolder > 0) add { m: Modifier ->
@@ -412,7 +430,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     Formats.count(counters.inFolder),
                     stringResource(R.string.count_in_folder),
                     m,
-                    onClick = { explain = R.string.explain_in_folder }
+                    onClick = { explain = R.string.explain_in_folder },
+                    icon = Icons.Outlined.CloudUpload
                 )
             }
             // Always shown, even at zero: this is the goal, and a dashboard
@@ -423,7 +442,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     stringResource(R.string.count_confirmed),
                     m,
                     highlight = counters.confirmed > 0,
-                    onClick = { explain = R.string.explain_backed_up }
+                    onClick = { explain = R.string.explain_backed_up },
+                    icon = Icons.Outlined.CloudDone
                 )
             }
             if (counters.skipped > 0) add { m: Modifier ->
@@ -433,8 +453,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     m,
                     onClick = {
                         vm.filesState.value = "SKIP"
-                        nav.navigate(Routes.FILES)
-                    }
+                        nav.goTo(Routes.FILES)
+                    },
+                    icon = Icons.Outlined.RemoveCircleOutline
                 )
             }
         }
@@ -458,7 +479,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable { nav.navigate(Routes.DUPLICATES) }
+                    .clickable { nav.goTo(Routes.DUPLICATES) }
                     .padding(vertical = 8.dp)
             ) {
                 Icon(
@@ -483,27 +504,46 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
             }
         }
+        // Skipped files, one reason per row.
+        //
+        // These were chips in a horizontally scrolling row, so a reason of any
+        // length was sliced off at the screen edge - "1 - You askec" - which
+        // reads as a rendering fault rather than as a sentence the reader is
+        // meant to finish. They are facts, not filters, so they are rows: full
+        // width, wrapping, with the icon that says what they are.
         if (counters.skipped > 0 && skipReasons.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                for ((reason, count) in skipReasons) {
-                    androidx.compose.material3.AssistChip(
-                        onClick = {
+            Spacer(Modifier.height(4.dp))
+            for ((reason, count) in skipReasons) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
                             vm.filesState.value = "SKIP"
-                            nav.navigate(Routes.FILES)
-                        },
-                        label = {
-                            Text(
-                                stringResource(
-                                    R.string.asis_card_line, count, skipReasonLabel(reason)
-                                )
-                            )
+                            nav.goTo(Routes.FILES)
                         }
+                        .padding(vertical = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.RemoveCircleOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        pluralStringResource(
+                            R.plurals.skipped_reason_row, count, count, skipReasonLabel(reason)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -688,7 +728,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         ) {
             AppCard(
                 modifier = Modifier.padding(top = 12.dp),
-                onClick = { nav.navigate(Routes.FILES) }
+                onClick = { nav.goTo(Routes.FILES) }
             ) {
                 Text(
                     pluralStringResource(R.plurals.asis_card_title, asIs.count, asIs.count),
@@ -765,6 +805,29 @@ private fun powerChipLabel(id: String): String = when (id) {
     PowerPages.ID_AUTO_LAUNCH -> stringResource(R.string.chip_auto_launch)
     PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.chip_background)
     else -> stringResource(R.string.chip_battery)
+}
+
+/**
+ * What the queue projection is counting, split by kind when both apply.
+ *
+ * Null when nothing is waiting, so the caller shows the saving alone rather
+ * than "0 files still to do" under a figure of zero.
+ */
+@Composable
+private fun queueBreakdown(projection: Projection.Estimate): String? {
+    val photos = projection.photoCount
+    val videos = projection.videoCount
+    return when {
+        photos > 0 && videos > 0 -> stringResource(
+            R.string.hero_projection_split,
+            pluralStringResource(R.plurals.count_photos, photos, photos),
+            pluralStringResource(R.plurals.count_videos, videos, videos)
+        )
+        projection.fileCount > 0 -> pluralStringResource(
+            R.plurals.hero_projection_files, projection.fileCount, projection.fileCount
+        )
+        else -> null
+    }
 }
 
 /** Plain-English reason a file was skipped. */

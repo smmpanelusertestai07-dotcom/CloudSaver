@@ -25,8 +25,15 @@ object Projection {
     /** How a figure was arrived at, so the screen can label it honestly. */
     enum class Basis { MEASURED, PARTLY_MEASURED, TYPICAL }
 
-    data class Estimate(val savedBytes: Long, val basis: Basis) {
+    data class Estimate(
+        val savedBytes: Long,
+        val basis: Basis,
+        /** How many files the figure covers, so the screen can say so. */
+        val photoCount: Int = 0,
+        val videoCount: Int = 0
+    ) {
         val isEstimate: Boolean get() = basis != Basis.MEASURED
+        val fileCount: Int get() = photoCount + videoCount
     }
 
     /** The surviving fraction for one media type: measured, else typical. */
@@ -57,7 +64,9 @@ object Projection {
         photoBytes: Long,
         videoBytes: Long,
         measuredPhotoRatio: Double,
-        measuredVideoRatio: Double
+        measuredVideoRatio: Double,
+        photoCount: Int = 0,
+        videoCount: Int = 0
     ): Estimate {
         val saved = forItem(photoBytes, isVideo = false, measured = measuredPhotoRatio) +
             forItem(videoBytes, isVideo = true, measured = measuredVideoRatio)
@@ -70,6 +79,6 @@ object Projection {
             photoKnown || videoKnown -> Basis.PARTLY_MEASURED
             else -> Basis.TYPICAL
         }
-        return Estimate(saved, basis)
+        return Estimate(saved, basis, photoCount, videoCount)
     }
 }

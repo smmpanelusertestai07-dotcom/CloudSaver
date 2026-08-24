@@ -180,8 +180,14 @@ object CapacityMath {
         val videoBytes: Long,
         val videoMinutes: Double,
         val monthlyPhotoBytes: Long,
-        val monthlyVideoBytes: Long
-    )
+        val monthlyVideoBytes: Long,
+        /** Needed to turn hours of capacity into a number of clips. */
+        val videoCount: Int = 0
+    ) {
+        /** How long this phone's videos actually are, on average. */
+        val meanVideoMinutes: Double
+            get() = if (videoCount > 0 && videoMinutes > 0) videoMinutes / videoCount else 0.0
+    }
 
     /** Default mix slider position: this phone's actual photo:video byte share. */
     fun defaultMixShare(g: Gallery): Double {
@@ -197,6 +203,12 @@ object CapacityMath {
         val photoCount: Long,
         /** "~H hours of video" capacity for the video share. */
         val videoHours: Double,
+        /**
+         * The same capacity said as a number of clips, using this phone's own
+         * average clip length. Zero when there are no videos to average, in
+         * which case the screen shows hours alone rather than a made-up count.
+         */
+        val videoCount: Long,
         /** Predicted compressed size of the current gallery backlog (GB). */
         val backlogGB: Double,
         val fits: Boolean,
@@ -238,6 +250,12 @@ object CapacityMath {
             0.0
         }
 
+        val videoCount = if (videoHours > 0 && g.meanVideoMinutes > 0) {
+            floor(videoHours * 60.0 / g.meanVideoMinutes).toLong()
+        } else {
+            0L
+        }
+
         val usePhotos = mode != CalcMode.VIDEOS
         val useVideos = mode != CalcMode.PHOTOS
         val backlogBytes =
@@ -262,6 +280,7 @@ object CapacityMath {
             originalsGB = originalsBytes / GB,
             photoCount = photoCount,
             videoHours = videoHours,
+            videoCount = videoCount,
             backlogGB = backlogBytes / GB,
             fits = fits,
             needMoreGB = needMoreGB,

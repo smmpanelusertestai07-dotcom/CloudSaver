@@ -1,6 +1,7 @@
 package app.cloudsaver.core.logic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -88,6 +89,15 @@ class MediaProfileTest {
     fun `shrink percent reads as a saving, not as a ratio`() {
         assertEquals(70, MediaProfile.TypeProfile(ratio = 0.3).shrinkPercent)
         assertEquals(0, MediaProfile.TypeProfile(ratio = 1.0).shrinkPercent)
+    }
+
+    @Test
+    fun `an unmeasured type has no shrink figure at all`() {
+        // A ratio of 0.0 means "nothing measured yet", and the arithmetic
+        // turned that into (1 - 0) * 100, so a fresh install announced
+        // "Photos come out about 100% smaller" on the calculator.
+        assertNull(MediaProfile.TypeProfile().shrinkPercent)
+        assertNull(MediaProfile.TypeProfile(ratio = 0.0, count = 3_471).shrinkPercent)
     }
 
     @Test

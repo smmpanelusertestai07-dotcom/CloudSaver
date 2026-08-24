@@ -45,6 +45,7 @@ import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.engine.ActivityLog
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
@@ -234,7 +235,7 @@ private fun ActivityCard(row: ActivityRow, nav: NavHostController, vm: AppViewMo
         onClick = if (target != null) {
             {
                 vm.filesState.value = target
-                nav.navigate(Routes.FILES)
+                nav.goTo(Routes.FILES)
             }
         } else {
             null

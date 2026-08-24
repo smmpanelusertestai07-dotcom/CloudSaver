@@ -46,6 +46,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.ReclaimViewModel
 import app.cloudsaver.ui.components.AppCard
@@ -515,7 +516,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             dismissButton = {
                 TextButton(onClick = {
                     rvm.dismissResult()
-                    nav.navigate(app.cloudsaver.ui.Routes.RECLAIM_HISTORY)
+                    nav.goTo(app.cloudsaver.ui.Routes.RECLAIM_HISTORY)
                 }) { Text(stringResource(R.string.reclaim_history_open)) }
             },
             title = { Text(stringResource(R.string.reclaim_done_title)) },

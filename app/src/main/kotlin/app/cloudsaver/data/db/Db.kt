@@ -407,6 +407,13 @@ interface ItemDao {
     )
     suspend fun pendingBytesByType(video: Boolean): Long
 
+    /** How many are still to do, so the projection can say what it covers. */
+    @Query(
+        "SELECT COUNT(*) FROM items " +
+            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video"
+    )
+    suspend fun pendingCountByType(video: Boolean): Int
+
     /** Bytes saved by work done since [fromMs] - what one run achieved. */
     @Query(
         "SELECT COALESCE(SUM(sizeBytes - outputBytes), 0) FROM items " +

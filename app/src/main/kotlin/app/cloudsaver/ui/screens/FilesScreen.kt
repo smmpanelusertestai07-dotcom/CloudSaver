@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.RowActions
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
@@ -242,25 +243,38 @@ fun FilesScreen(vm: AppViewModel) {
                 }) { Text(stringResource(R.string.detail_open)) }
             },
             icon = {
+                // Exactly the actions this file's state allows, from the one
+                // rule every list obeys. An already-optimised copy is not
+                // offered "never optimise": the work is done, the option
+                // cannot undo it, and offering it is what made the counters
+                // disagree with no way to tell why.
                 Row {
-                    if (row.state == app.cloudsaver.core.logic.ItemState.NEW.name ||
-                        row.state == app.cloudsaver.core.logic.ItemState.SKIP.name
-                    ) {
-                        TextButton(onClick = {
-                            vm.optimiseNow(row.id)
-                            detail = null
-                        }) { Text(stringResource(R.string.detail_optimise_now)) }
-                    }
-                    TextButton(onClick = {
-                        vm.setNeverOptimise(row.id, !row.neverOptimise)
-                        detail = null
-                    }) {
-                        Text(
-                            stringResource(
-                                if (row.neverOptimise) R.string.detail_optimise_again
-                                else R.string.never_optimise
-                            )
-                        )
+                    for (action in RowActions.forItem(row.toActionRow())) {
+                        when (action) {
+                            RowActions.Action.OPTIMISE_FIRST -> TextButton(onClick = {
+                                vm.optimiseNow(row.id)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_optimise_first)) }
+
+                            RowActions.Action.TRY_AGAIN -> TextButton(onClick = {
+                                vm.optimiseNow(row.id)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_try_again)) }
+
+                            RowActions.Action.NEVER_OPTIMISE -> TextButton(onClick = {
+                                vm.setNeverOptimise(row.id, true)
+                                detail = null
+                            }) { Text(stringResource(R.string.never_optimise)) }
+
+                            RowActions.Action.ALLOW_AGAIN -> TextButton(onClick = {
+                                vm.setNeverOptimise(row.id, false)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_optimise_again)) }
+
+                            // OPEN already has its own button; removal lives
+                            // on Reclaim, which is the single deletion path.
+                            else -> Unit
+                        }
                     }
                 }
             },
@@ -444,3 +458,16 @@ fun evidenceLabel(row: ItemRow): String {
         Evidence.NONE -> stringResource(R.string.evidence_none)
     }
 }
+
+/**
+ * A stored row seen as the action rule needs it.
+ *
+ * One conversion, used by every screen, so no list can accidentally decide
+ * "backed up" differently from the rule that governs deletion.
+ */
+fun ItemRow.toActionRow(): RowActions.Row = RowActions.Row(
+    state = runCatching { ItemState.valueOf(state) }.getOrDefault(ItemState.UNKNOWN),
+    evidence = Evidence.parse(evidence),
+    neverOptimise = neverOptimise,
+    originalMissing = originalMissing
+)
