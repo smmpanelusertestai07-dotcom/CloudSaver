@@ -436,6 +436,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     val crashPending = MutableStateFlow(false)
 
+    /**
+     * Which cloud app holds this item's copy (Z10.1): the app recorded on the
+     * batch the file went out with, never the one selected today.
+     */
+    suspend fun holdingAppLabel(row: ItemRow): String? {
+        val pkg = row.batchId?.let { db.batches().byId(it)?.cloudPackage } ?: return null
+        return CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg
+    }
+
+    /** Z5.2: the double-backup warning was on screen and the user moved on. */
+    fun acknowledgeDoubleBackup() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.DOUBLE_BACKUP_ACK, true)
+        }
+    }
+
     fun dismissCrashNotice() {
         app.cloudsaver.util.CrashLog.clearPending(ctx)
         crashPending.value = false
@@ -1025,13 +1041,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
     fun setCloudSingle(v: String) {
-        setStr(OptionsRepo.K.CLOUD_SINGLE, v)
+        viewModelScope.launch(Dispatchers.IO) {
+            val previous = repo.current().cloudSingle
+            repo.setString(OptionsRepo.K.CLOUD_SINGLE, v)
+            // Z10.1: proof belongs to the app that was selected when a file
+            // was sent, so a switch resets everything learned about the OLD
+            // app - capability, pacing confidence, the watchdog's memory -
+            // and queues the one-time sheet explaining where old files live.
+            if (previous.isNotEmpty() && previous != v) {
+                repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, previous)
+                repo.setInt(OptionsRepo.K.CLEAN_STREAK, 0)
+                repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, false)
+                repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
+                repo.setLong(OptionsRepo.K.LAST_ALERT_AT, 0)
+            }
+        }
         noteSettingChange(
             detail = ActivityWording.encode(
                 ActivityWording.Setting.CLOUD_APP, CloudApps.byId(v).label
             )
         )
         refreshCloudCaps()
+    }
+
+    /** Z10.6: the first-chain card was read, either way. */
+    fun dismissFirstChainNotice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setString(OptionsRepo.K.FIRST_CHAIN_STATE, "DONE")
+        }
+    }
+
+    /** The switch sheet was read; do not show it again. */
+    fun dismissCloudSwitchNotice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, "")
+        }
     }
     fun setCloudPhotos(v: String) = setStr(OptionsRepo.K.CLOUD_PHOTOS, v)
     fun setCloudVideos(v: String) = setStr(OptionsRepo.K.CLOUD_VIDEOS, v)

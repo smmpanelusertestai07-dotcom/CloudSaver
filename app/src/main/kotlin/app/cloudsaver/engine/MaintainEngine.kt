@@ -6,6 +6,7 @@ import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeletePlanner
 import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.FirstChain
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
@@ -56,6 +57,17 @@ class MaintainEngine(private val context: Context) {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
+
+        // Z10.6: the whole chain is proven by the first confirmation and
+        // disproven by 48 hours of silence after the first release. Either
+        // way it becomes exactly one card on Home.
+        step("firstChain") {
+            val confirmed = db.items().confirmedCount()
+            val next = FirstChain.next(o.firstChainState, o.firstReleaseAt, confirmed, now)
+            if (next != o.firstChainState) {
+                repo.setString(OptionsRepo.K.FIRST_CHAIN_STATE, next)
+            }
+        }
 
         // 13.D: selected volume (SD card) gone -> pause file work safely, keep
         // verification/bookkeeping running, never lose state.

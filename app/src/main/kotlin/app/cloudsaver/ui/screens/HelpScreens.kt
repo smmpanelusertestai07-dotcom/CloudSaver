@@ -712,8 +712,34 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     KeyValueRow("Package", BuildConfig.APPLICATION_ID)
                     KeyValueRow("Build", BuildConfig.VERSION_CODE.toString())
+                    // Z10.4: the fingerprint a future APK can be checked
+                    // against before installing over this one. Surfaced from
+                    // the one source the build already carries.
+                    if (BuildConfig.EXPECTED_CERT_SHA256.isNotEmpty()) {
+                        KeyValueRow(
+                            stringResource(R.string.about_cert_label),
+                            BuildConfig.EXPECTED_CERT_SHA256
+                        )
+                    }
                 }
             }
+        }
+
+        // Z10.4: how a sideloaded build updates - the question every user of
+        // an app without a store listing eventually asks, answered before it
+        // is asked.
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_updates_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.about_updates_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
         // The setting a reader is most likely to want from this page, shown as

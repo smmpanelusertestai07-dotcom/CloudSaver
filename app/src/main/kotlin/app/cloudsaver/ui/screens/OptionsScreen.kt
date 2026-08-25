@@ -284,6 +284,14 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 },
                 o.dailyCapMb.toString()
             ) { vm.setDailyCap(it.toInt()) }
+            // Z10.5: what this limit controls, and what it cannot. The upload
+            // itself belongs to the cloud app; only the feed rate is ours.
+            Text(
+                stringResource(R.string.daily_limit_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
             if (recommended.capLooksWrong) {
                 RecommendationNote(

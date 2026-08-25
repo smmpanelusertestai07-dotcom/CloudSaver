@@ -233,3 +233,31 @@ object Defaults {
     fun isAppOwnedPath(relativePath: String?): Boolean =
         isOutputPath(relativePath) || isKeptPath(relativePath)
 }
+
+/**
+ * The first-run proof of the whole chain (Z10.6).
+ *
+ * Setup can be perfect and the chain still dead - the cloud app not watching
+ * the folder, or simply never having run. The one moment that proves
+ * everything is the first confirmation; the one moment that disproves it is
+ * 48 hours of silence after the first copy went out. Both get exactly one
+ * card, and the stalled one names the two likely causes instead of a shrug.
+ */
+object FirstChain {
+
+    const val STALL_MS: Long = 48L * 3_600_000
+
+    /** "": nothing to show. SUCCESS/STALLED: card pending. DONE: dismissed. */
+    fun next(
+        state: String,
+        firstReleaseAt: Long,
+        confirmedCount: Int,
+        now: Long
+    ): String = when {
+        state == "DONE" -> "DONE"
+        confirmedCount > 0 && state != "SUCCESS" && state != "DONE" -> "SUCCESS"
+        state.isEmpty() && firstReleaseAt > 0 &&
+            confirmedCount == 0 && now - firstReleaseAt >= STALL_MS -> "STALLED"
+        else -> state
+    }
+}

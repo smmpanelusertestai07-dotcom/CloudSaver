@@ -532,6 +532,12 @@ interface ItemDao {
     )
     fun confirmedCountFlow(): Flow<Int>
 
+    @Query(
+        "SELECT COUNT(*) FROM items " +
+            "WHERE evidence IN ('CONFIRMED_EXACT', 'CONFIRMED_PACED', 'CONFIRMED')"
+    )
+    suspend fun confirmedCount(): Int
+
     @Query("SELECT COUNT(*) FROM items WHERE evidence = 'VERIFIED'")
     fun verifiedCountFlow(): Flow<Int>
 

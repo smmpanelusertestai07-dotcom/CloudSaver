@@ -66,6 +66,22 @@
     <string name="crash_title">CloudSaver stopped unexpectedly last time</string>
     <string name="crash_body">Nothing was lost. A record of what happened is in the log.</string>
     <string name="crash_share">Share log</string>
+    <string name="double_backup_title">Already backing up your camera folder?</string>
+    <string name="double_backup_body">If your cloud app already backs up your camera folder, turn that off there and keep only the CloudSaver folder. Otherwise your cloud will hold both the original and the optimised copy.</string>
+    <string name="double_backup_show">Show me where</string>
+    <string name="folder_gallery_note">This folder appears as an album in your gallery while files wait to be collected. Most gallery apps can hide an album from their own settings.</string>
+    <string name="about_updates_title">Updates</string>
+    <string name="about_updates_body">CloudSaver updates by installing a newer APK over this one. Your settings, history and files stay, as long as the new file is signed with the same key.</string>
+    <string name="about_cert_label">Signing certificate (SHA-256)</string>
+    <string name="chain_success_title">Your first file reached %1$s</string>
+    <string name="chain_success_body">Everything is working. From here on, backup runs on its own.</string>
+    <string name="chain_stalled_title">Your first file has not been collected yet</string>
+    <string name="chain_stalled_body">Two likely causes: %1$s is not backing up the CloudSaver folder, or it has not run yet. Its checklist shows where to look.</string>
+    <string name="chain_open_checklist">Open the checklist</string>
+    <string name="cloud_switch_title">Files already sent stay where they are</string>
+    <string name="cloud_switch_body">Files already sent to %1$s are stored there, not in %2$s. CloudSaver will not send them again.</string>
+    <string name="detail_holding_app">Stored in</string>
+    <string name="daily_limit_note">This limits how much CloudSaver adds to the upload folder each day, which is what your cloud app then uploads. When and on which network that app uploads is set inside that app.</string>
     <string name="chip_space">Storage low</string>
     <string name="count_waiting">To optimise</string>
     <string name="count_in_folder">In upload folder</string>
@@ -799,7 +815,7 @@
     <string name="faq_a1">It makes a smaller copy of each photo and video in the albums you chose, and puts those copies in one folder on your phone. You point your own cloud app at that folder, so only the small copies get uploaded and your cloud plan lasts much longer. Your originals stay exactly where they are, untouched. Everything happens on the phone: CloudSaver has no internet permission and cannot upload anything itself.</string>
 
     <string name="faq_q2">Where do the optimised copies go, and what do I select in my cloud app?</string>
-    <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button, so you never have to type it.</string>
+    <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button. The folder also appears as an album in your gallery while files wait to be collected \u2014 that is what lets your cloud app see it. Most gallery apps can hide an album from their own settings. CloudSaver never hides it itself, because that would hide it from your cloud app too.</string>
 
     <string name="faq_q3">Are my originals ever touched?</string>
     <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Reclaim space, select files yourself, and confirm Android\'s own deletion dialog. Even then it goes to your gallery trash first, where it stays for 30 days.</string>
@@ -811,7 +827,7 @@
     <string name="faq_a5">Yes. Every copy carries the original\'s shooting date, camera details and GPS location, and the file date is set to match. That is why the copies land in the right place chronologically in your cloud instead of all appearing as today. The file name keeps the original name with a short code added, so a copy can always be matched back to its original.</string>
 
     <string name="faq_q6">How does CloudSaver know a file reached my cloud?</string>
-    <string name="faq_a6">Two ways, both watched automatically. Some cloud apps delete their own copy after uploading it; when one disappears from the folder and CloudSaver did not remove it, that is proof. Otherwise CloudSaver adds copies a few at a time and watches how many bytes your cloud app sends, so a matching amount right after one file goes out is proof for that file. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal.</string>
+    <string name="faq_a6">Two ways, both watched automatically. Some cloud apps delete their own copy after uploading it; when one disappears from the folder and CloudSaver did not remove it, that is proof. Otherwise CloudSaver adds copies a few at a time and watches how many bytes your cloud app sends, so a matching amount right after one file goes out is proof for that file. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal. The daily limit in Settings controls how much CloudSaver adds to the upload folder each day \u2014 which is what your cloud app then uploads. CloudSaver cannot control when that app uploads or which network it uses; set that inside the app itself.</string>
 
     <string name="faq_q7">What if my cloud app makes duplicates?</string>
     <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content rather than by name. Once a file is on that list it is never sent again, even if you clear the app\'s data or reinstall it. If your phone itself holds the same photo twice, Find space shows those groups and optimises the file only once \u2014 the extras are marked as already handled, not treated as problems.</string>

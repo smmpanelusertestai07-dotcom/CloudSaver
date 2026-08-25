@@ -298,6 +298,14 @@ fun FilesScreen(vm: AppViewModel) {
                 Column {
                     KeyValueRow(stringResource(R.string.detail_state), stateLabel(row))
                     KeyValueRow(stringResource(R.string.detail_evidence), evidenceLabel(row))
+                    // Z10.1: the app holding the copy - the one it was sent
+                    // to, which after a switch is not the one selected now.
+                    val holder by androidx.compose.runtime.produceState<String?>(null, row.id) {
+                        value = vm.holdingAppLabel(row)
+                    }
+                    holder?.let {
+                        KeyValueRow(stringResource(R.string.detail_holding_app), it)
+                    }
                     KeyValueRow(stringResource(R.string.detail_original), Formats.bytes(row.sizeBytes))
                     row.outputBytes?.let {
                         KeyValueRow(stringResource(R.string.detail_copy), Formats.bytes(it))

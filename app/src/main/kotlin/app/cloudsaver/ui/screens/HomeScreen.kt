@@ -54,6 +54,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.core.logic.Projection
+import app.cloudsaver.data.CloudApps
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
@@ -191,6 +192,78 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
                 TextButton(onClick = { vm.dismissPlaceholderNotice() }) {
                     Text(stringResource(R.string.dismiss))
+                }
+            }
+        }
+
+        // Z10.1: the cloud app changed. Where the already-sent files live is
+        // the one fact a switch quietly breaks, so it is said once, plainly.
+        if (options.cloudSwitchFrom.isNotEmpty()) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { vm.dismissCloudSwitchNotice() },
+                title = { Text(stringResource(R.string.cloud_switch_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.cloud_switch_body,
+                            CloudApps.byId(options.cloudSwitchFrom).label,
+                            CloudApps.byId(options.cloudSingle).label
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { vm.dismissCloudSwitchNotice() }) {
+                        Text(stringResource(R.string.ok))
+                    }
+                }
+            )
+        }
+
+        // Z10.6: the whole chain, proven or stalled, as one card each - the
+        // first confirmation is the moment setup stops being a hope, and 48
+        // silent hours is the moment it needs naming, with the two causes.
+        if (options.firstChainState == "SUCCESS" || options.firstChainState == "STALLED") {
+            val success = options.firstChainState == "SUCCESS"
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    if (success) {
+                        stringResource(
+                            R.string.chain_success_title,
+                            CloudApps.byId(options.cloudSingle).label
+                        )
+                    } else {
+                        stringResource(R.string.chain_stalled_title)
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (success) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    }
+                )
+                Text(
+                    if (success) {
+                        stringResource(R.string.chain_success_body)
+                    } else {
+                        stringResource(
+                            R.string.chain_stalled_body,
+                            CloudApps.byId(options.cloudSingle).label
+                        )
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Row {
+                    if (!success) {
+                        TextButton(onClick = {
+                            CloudApps.launch(context, options.cloudSingle)
+                        }) { Text(stringResource(R.string.chain_open_checklist)) }
+                    }
+                    TextButton(onClick = { vm.dismissFirstChainNotice() }) {
+                        Text(stringResource(R.string.ok))
+                    }
                 }
             }
         }

@@ -44,6 +44,14 @@ data class Options(
     val warningsNotif: Boolean = true,
     /** A legacy placeholder image was cleaned up; show the notice once. */
     val placeholderRemoved: Boolean = false,
+    /** The double-backup warning was read during setup (Z5.2). */
+    val doubleBackupAck: Boolean = false,
+    /** Old cloud app id after a switch; "" once the sheet was shown (Z10.1). */
+    val cloudSwitchFrom: String = "",
+    /** When the very first copy entered the upload folder (Z10.6). */
+    val firstReleaseAt: Long = 0,
+    /** "": chain unproven. "SUCCESS"/"STALLED": card pending. "DONE": dismissed. */
+    val firstChainState: String = "",
     val showFreeUp: Boolean = false,
     val freeUpAllowVerified30: Boolean = false,
     val reprocessUnknown: Boolean = false,
@@ -128,6 +136,10 @@ class OptionsRepo(private val context: Context) {
         val PAUSE_ALL = booleanPreferencesKey("pauseAll")
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
         val PLACEHOLDER_REMOVED = booleanPreferencesKey("placeholderRemoved")
+        val DOUBLE_BACKUP_ACK = booleanPreferencesKey("doubleBackupAck")
+        val CLOUD_SWITCH_FROM = stringPreferencesKey("cloudSwitchFrom")
+        val FIRST_RELEASE_AT = longPreferencesKey("firstReleaseAt")
+        val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
         val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
         val LAST_CONFIRM_COUNT = intPreferencesKey("lastConfirmCount")
@@ -186,6 +198,10 @@ class OptionsRepo(private val context: Context) {
             appLock = p[K.APP_LOCK] ?: false,
             warningsNotif = p[K.WARNINGS_NOTIF] ?: true,
             placeholderRemoved = p[K.PLACEHOLDER_REMOVED] ?: false,
+            doubleBackupAck = p[K.DOUBLE_BACKUP_ACK] ?: false,
+            cloudSwitchFrom = p[K.CLOUD_SWITCH_FROM] ?: "",
+            firstReleaseAt = p[K.FIRST_RELEASE_AT] ?: 0,
+            firstChainState = p[K.FIRST_CHAIN_STATE] ?: "",
             showFreeUp = p[K.SHOW_FREE_UP] ?: false,
             freeUpAllowVerified30 = p[K.FREE_UP_VERIFIED30] ?: false,
             reprocessUnknown = p[K.REPROCESS_UNKNOWN] ?: false,

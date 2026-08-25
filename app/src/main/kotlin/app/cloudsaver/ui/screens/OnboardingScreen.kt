@@ -28,6 +28,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -416,15 +418,51 @@ fun OnboardingScreen(vm: AppViewModel) {
                     title = stringResource(R.string.onb5_title),
                     text = stringResource(R.string.cloud_intended),
                     // The primary action is last, after everything the user
-                    // has to read and do.
+                    // has to read and do. Continuing past the double-backup
+                    // card is the acknowledgement Z5.2 asks to record - the
+                    // card was on screen, unconditionally, before this button.
                     buttonLabel = stringResource(R.string.onb_done_next),
-                    onButton = { go(Step.READY) }
+                    onButton = {
+                        vm.acknowledgeDoubleBackup()
+                        go(Step.READY)
+                    }
                 ) {
                     Text(
                         stringResource(R.string.onb5_found, chosen.label),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
+                    // Z5.1: the one mistake that silently doubles a cloud
+                    // bill - the cloud app backing up Camera AND the
+                    // CloudSaver folder. Shown always, even when that app's
+                    // own folder list cannot be read.
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                stringResource(R.string.double_backup_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                stringResource(R.string.double_backup_body),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                            if (chosen.packages.isNotEmpty()) {
+                                TextButton(onClick = { CloudApps.launch(context, chosen.id) }) {
+                                    Text(stringResource(R.string.double_backup_show))
+                                }
+                            }
+                        }
+                    }
                     FolderPaths(options.outputMode)
                     chosen.checklistRes?.let { res ->
                         Text(
@@ -657,6 +695,16 @@ fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
             pluralStringResource(R.plurals.copy_path, paths.size)
         )
     }
+    // Z10.2: the folder is visible in the gallery, unavoidably - the cloud
+    // app can only back up a folder MediaStore exposes. Said here, where the
+    // path is, so nobody discovers the album and thinks something leaked.
+    // Never a .nomedia file: it would hide the folder from the cloud app too.
+    Text(
+        stringResource(R.string.folder_gallery_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp)
+    )
 }
 
 /** One "label - value" line in the setup summary. */

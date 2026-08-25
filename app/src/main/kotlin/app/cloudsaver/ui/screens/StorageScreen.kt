@@ -221,6 +221,12 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+                Text(
+                    stringResource(R.string.folder_gallery_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
 

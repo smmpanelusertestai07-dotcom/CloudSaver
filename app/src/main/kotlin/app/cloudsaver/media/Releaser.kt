@@ -108,6 +108,12 @@ class Releaser(private val context: Context, private val db: AppDb) {
             val bytes = batchBytes[folder] ?: 0L
             if (bytes > 0) db.batches().setTotalBytes(id, bytes) else db.batches().deleteById(id)
         }
+        // Z10.6: the 48-hour clock on the whole chain starts with the very
+        // first copy that enters the upload folder.
+        if (released > 0 && options.firstReleaseAt == 0L) {
+            app.cloudsaver.data.prefs.OptionsRepo.get(context)
+                .setLong(app.cloudsaver.data.prefs.OptionsRepo.K.FIRST_RELEASE_AT, now)
+        }
         return released
     }
 
