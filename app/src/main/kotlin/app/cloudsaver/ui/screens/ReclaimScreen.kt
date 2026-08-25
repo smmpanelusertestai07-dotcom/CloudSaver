@@ -347,11 +347,15 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         // that carries the check-your-cloud warning; no batch
                         // is small enough to skip it. Only the copies-only
                         // mode, which touches nothing of the user's own,
-                        // keeps the quick path for ordinary batches.
+                        // keeps the quick path for ordinary batches. On a
+                        // phone with no media trash every original removal is
+                        // permanent whatever the button was called, so the
+                        // sheet opens in its delete-for-good wording there.
                         if (mode != ReclaimRules.Mode.COPIES_ONLY ||
                             rvm.needsSecondConfirmation(permanent = false)
                         ) {
-                            confirmBig = false
+                            confirmBig =
+                                mode != ReclaimRules.Mode.COPIES_ONLY && !rvm.canUndoRemoval
                         } else {
                             rvm.start(permanent = false)
                         }

@@ -24,7 +24,10 @@ nothing here is asserted from memory.
 | 17 | The SD card is offered only when genuinely writable; a failed release falls back safely | Done | `Volumes.probeWritable` + `VolumeRules`; both pickers filter; releaser verifies the landing volume and retries once on internal; VolumeRulesTest |
 | 18 | A crash leaves a readable local trace and a single honest card | Done | `CrashLog` handler + Home card + Share log; CrashLogTest (instrumented) |
 | 19 | Release visibility is verified end to end: a copy counts as released only after the row is re-read as present, finished, non-empty and in the right folder | Done | `ReleaseVerdict` + the re-query in `Releaser.releaseOne`; ReleaseVerdictTest proves RELEASED is unreachable without it; stale-pending repair at 15 minutes; the folder is re-scanned so the album appears at once |
-| 20 | Terminology and estimate labelling are audited by test | Done | PlainEnglishTest bans the retired terms (reclaim, space users, exact duplicates); the calculator carries its Typical-estimate badge inside the result box until the 20+20 gate passes (CC8) |
+| 20 | Terminology and estimate labelling are audited by test | Done | PlainEnglishTest bans the retired terms (reclaim, space users, exact duplicates); the calculator carries its Typical-estimate badge inside the result box until the 20+20 gate passes (CC8); "optimise" is the one verb everywhere, checked by whole-word test (DD4) |
+| 21 | The app lock fails closed, and the status bar is readable in every theme | Done | Lock.kt has no fail-open branch; KeyguardManager is the authority; enabling verifies identity first; a removed screen lock disables the app lock visibly; LockPolicyTest (6 tests). The insets controller follows the painted palette, not the system setting, in CloudSaverTheme |
+| 22 | Reasonable-but-wrong user moves meet a warning at the moment they happen, and nothing is ever touched | Done | Foreign files in the upload folder: counted each pass, Home chip + Activity note, the counting pass has no way to act on them; old-install cleanup can only offer pipeline-named leftovers; the free-up sheet always carries the check-your-cloud warning with an Open button; kept copies explain the double-copy trap; UserMistakeShieldTest holds string + wiring for every warning |
+| 23 | Replace-with-light works after the cloud collected the copy: remade from the original, proved before removal | Done | Pin path resolves stage file, then folder copy (hash-checked), else remakes with the current preset; landed file is read back, hashed and opened before IS_PENDING drops and before the removal request exists; failures leave the batch named; a remade copy's only database write is keptUri; LightCopyTest |
 
 **Not done, and why:**
 
@@ -32,7 +35,7 @@ nothing here is asserted from memory.
   font-scale sweep in row 13, and TalkBack): these need a real phone with a
   real gallery, a real cloud app, an SD card and hardware encoders. Nothing
   in the build environment can run them. Everything automatable about the
-  same claims is covered by the 397 unit tests and the instrumented suite.
+  same claims is covered by the 418 unit tests and the instrumented suite.
 
 **Manual device checklist (CC11.3) — for the human tester:**
 
