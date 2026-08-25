@@ -83,9 +83,6 @@ object Routes {
     const val HELP_LICENSES = "help_licenses"
     const val HELP_ABOUT = "help_about"
 
-    /** Screens behind the optional app lock. */
-    val LOCKED = setOf(FILES, OPTIONS, FREE_UP, FREE_SPACE_HUB, RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT)
-
     /** The four bottom-bar destinations. */
     val TABS = setOf(HOME, FILES, STORAGE, OPTIONS)
 }
@@ -162,7 +159,13 @@ private fun MainNav(vm: AppViewModel) {
     // app leaves the foreground, so returning to it authenticates again.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { unlocked = false }
 
-    val needsLock = options.appLock && !unlocked && route in Routes.LOCKED
+    // The whole app, not a list of screens. Locking only the screens that
+    // hold file lists left Home, Storage, the calculator and every Help page
+    // readable to anyone who tapped a different tab - and the tab bar stayed
+    // live underneath the lock, so changing tabs was all it took. A lock that
+    // covers part of an app is a lock someone walks around; every app that
+    // offers one (messengers, banks, photo vaults) gates the whole surface.
+    val needsLock = options.appLock && !unlocked
 
     // An alert that opens the app should land on the screen it was about.
     // Consumed once, so rotating the phone does not navigate again.
@@ -180,7 +183,9 @@ private fun MainNav(vm: AppViewModel) {
         // and leaving unstyled text black on the dark palette.
         contentColor = MaterialTheme.colorScheme.onBackground,
         bottomBar = {
-            if (route in setOf(Routes.HOME, Routes.FILES, Routes.STORAGE, Routes.OPTIONS)) {
+            if (!needsLock &&
+                route in setOf(Routes.HOME, Routes.FILES, Routes.STORAGE, Routes.OPTIONS)
+            ) {
                 // Opaque, and one step off the page rather than translucent:
                 // a see-through bar let content slide under the selected pill,
                 // which read as a stray shape floating over the screen.

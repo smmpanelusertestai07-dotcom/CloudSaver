@@ -539,7 +539,7 @@
     <string name="transfer_import">Restore</string>
     <string name="transfer_export_ok">Backup saved</string>
     <string name="transfer_import_ok">Settings restored</string>
-    <string name="transfer_failed">Could not read that file.</string>
+    <string name="transfer_failed">That is not a CloudSaver backup file, so nothing was changed. Pick the file you saved from Settings, Backup and restore \u2014 its name ends in .json or .csb.</string>
     <string name="options_footer">Changing settings never deletes anything. Quality and format apply to new files only.</string>
 
     <!-- cloud calculator (13.C) -->
@@ -603,19 +603,19 @@
     <string name="onb0_title">Welcome!</string>
     <string name="onb0_text">CloudSaver makes smaller copies of your photos and videos in Pictures/CloudSaver. Point your cloud app at that one folder - your originals stay exactly where they are.</string>
     <string name="onb0_import">Restore from a backup file</string>
-    <string name="onb1_title">1. Media permission</string>
+    <string name="onb1_title">Photo and video access</string>
     <string name="onb1_text">CloudSaver needs to read your gallery to find photos and videos. Choose \&quot;Allow all\&quot;.</string>
     <string name="onb1_grant">Grant permission</string>
     <string name="onb1_appinfo">Not asking? Open app info</string>
-    <string name="onb2_title">2. Notifications</string>
+    <string name="onb2_title">Notifications</string>
     <string name="onb2_text">A quiet notification shows while CloudSaver is working. It still works if you decline.</string>
     <string name="onb2_grant">Allow</string>
-    <string name="onb3_title">3. Stop the battery killer</string>
+    <string name="onb3_title">Keep it running in the background</string>
     <string name="onb3_text">Turn off battery optimization so the phone does not kill background work. On Xiaomi/Oppo/Vivo also enable auto-start.</string>
-    <string name="onb4_title">4. Usage access (recommended)</string>
+    <string name="onb4_title">Usage access (recommended)</string>
     <string name="onb4_text">Lets CloudSaver see how much the cloud app uploaded - used to verify uploads.</string>
     <string name="onb4_grant">Grant usage access</string>
-    <string name="onb5_title">5. Point your cloud app here</string>
+    <string name="onb5_title">Point your cloud app here</string>
     <string name="onb5_open">Open %1$s</string>
     <string name="onb6_running">Optimising\u2026</string>
 
@@ -880,7 +880,6 @@
     <string name="faq_a14">They hold one small text file each: a list of file names, dates, sizes and short codes \u2014 never photos. It lets a reinstall pick up where you left off, and it is rewritten every day. Deleting them is safe: the app recreates them within a day. Only deleting every copy and then reinstalling loses the history \u2014 your originals and your cloud are unaffected either way. You never have to create this history yourself: it writes itself once a day, and a reinstall reads it back on its own. The Backup and restore buttons in Settings exist only for an extra copy you keep somewhere else, like a computer.</string>
     <string name="about_running_full">Android %1$s \u2014 everything works.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
-    <string name="about_advanced">Advanced</string>
     <string name="about_network_title">Network access</string>
     <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>
 
@@ -916,7 +915,6 @@
         <item quantity="one">Try it on %d photo</item>
         <item quantity="other">Try it on %d photos</item>
     </plurals>
-    <string name="trial_none">No photos are waiting, so there is nothing to try it on yet.</string>
     <string name="trial_done">Trial finished</string>
     <string name="trial_activity">Trial run on a few photos</string>
     <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
@@ -971,4 +969,20 @@
     <string name="deleted_r6_t">CloudSaver itself — uninstalled, or its data cleared</string>
     <string name="deleted_r6_b">Nothing happens to your files: originals stay, copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay, and your cloud is untouched. On reinstall the app reads its daily history back and carries on where it stopped.</string>
     <string name="faq_deleted_link">Something was deleted — what happens now?</string>
+    <!-- setup: restore, trial and album guidance (v11) -->
+    <string name="onb0_import_hint">Only if you saved a CloudSaver backup before, on this phone or an old one. It brings back your settings and the record of what already reached your cloud, so nothing is optimised or sent twice. It never touches your photos. New here? Skip it and tap Get started.</string>
+    <string name="trial_needs_albums">Tick at least one album first \u2014 the trial uses the albums you chose.</string>
+    <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. Nothing is uploaded, and your originals stay untouched.</string>
+    <string name="trial_choose_albums">Choose albums</string>
+    <string name="trial_run">Try it on a few photos</string>
+    <string name="onb_albums_back_to_summary">Save and go back</string>
+
+    <!-- About: requirements and technical facts, stated plainly -->
+    <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>
+    <string name="about_tech_title">Technical details</string>
+    <string name="about_tech_package">Package name</string>
+    <string name="about_tech_build">Build number</string>
+    <string name="about_tech_version">Version</string>
+    <string name="about_permissions_title">What it may access</string>
+    <string name="about_permissions_body">Your photos and videos, to make the smaller copies. Nothing else, and nothing leaves the phone.</string>
 </resources>

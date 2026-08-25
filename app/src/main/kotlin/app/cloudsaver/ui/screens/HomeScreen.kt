@@ -123,6 +123,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
     LaunchedEffect(Unit) {
         vm.refreshHealth()
+        vm.loadBuckets()
         vm.detectLeftoverFiles()
         vm.refreshBudget()
         vm.refreshAsIs()
@@ -722,13 +723,23 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // files have genuinely been optimised the Files screen shows every
         // before-and-after there is, so the trial stops being offered rather
         // than sitting there forever proving something already proven.
-        if (processed == 0 && trialSize > 0) {
+        //
+        // The offer depends on an album being ticked, not on the waiting
+        // count: the run scans first, so a freshly set-up phone with nothing
+        // scanned yet can still try it - and a phone with no album chosen is
+        // told that, here, rather than being shown a button that would do
+        // nothing.
+        if (processed == 0) {
+            val trialAlbums by vm.buckets.collectAsStateWithLifecycle()
             Spacer(Modifier.height(14.dp))
             TrialCard(
                 size = trialSize,
                 running = testRunning,
                 results = testItems,
-                onRun = { vm.startTestRun() }
+                onRun = { vm.startTestRun() },
+                albumsChosen = trialAlbums.isEmpty() ||
+                    trialAlbums.any { it !in options.excludedBuckets },
+                onChooseAlbums = { nav.goTo(Routes.OPTIONS) }
             )
         }
 

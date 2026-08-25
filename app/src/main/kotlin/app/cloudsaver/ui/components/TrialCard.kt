@@ -13,6 +13,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,13 @@ import app.cloudsaver.util.Formats
  *
  * [size] is how many photos are genuinely waiting, capped at the trial size.
  * The button used to promise three whatever was there.
+ *
+ * [albumsChosen] decides which of three things the card says, and the same
+ * rule holds in setup and on Home. During setup nothing has been scanned yet,
+ * so [size] is zero there for a perfectly healthy phone: the card used to read
+ * "no photos are waiting" and hide its own button, which made the trial look
+ * broken exactly where it is most useful. The run scans the chosen albums
+ * itself, so the offer only depends on an album being ticked.
  */
 @Composable
 fun TrialCard(
@@ -44,7 +52,9 @@ fun TrialCard(
     running: Boolean,
     results: List<AppViewModel.TestItem>?,
     onRun: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    albumsChosen: Boolean = true,
+    onChooseAlbums: (() -> Unit)? = null
 ) {
     AppCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -62,16 +72,22 @@ fun TrialCard(
             )
         }
         Text(
-            if (size <= 0) {
-                stringResource(R.string.trial_none)
-            } else {
-                pluralStringResource(R.plurals.trial_body, size, size)
+            when {
+                !albumsChosen -> stringResource(R.string.trial_needs_albums)
+                size > 0 -> pluralStringResource(R.plurals.trial_body, size, size)
+                else -> stringResource(R.string.trial_ready)
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)
         )
-        if (size > 0) {
+        if (!albumsChosen) {
+            onChooseAlbums?.let { choose ->
+                TextButton(onClick = choose, modifier = Modifier.padding(top = 4.dp)) {
+                    Text(stringResource(R.string.trial_choose_albums))
+                }
+            }
+        } else {
             OutlinedButton(
                 enabled = !running,
                 onClick = onRun,
@@ -84,8 +100,10 @@ fun TrialCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.onb6_running))
-                } else {
+                } else if (size > 0) {
                     Text(pluralStringResource(R.plurals.trial_action, size, size))
+                } else {
+                    Text(stringResource(R.string.trial_run))
                 }
             }
         }

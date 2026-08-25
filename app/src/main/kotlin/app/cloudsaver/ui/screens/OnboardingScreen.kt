@@ -90,6 +90,11 @@ fun OnboardingScreen(vm: AppViewModel) {
     // Where setup was when it was last left, for the banner. Frozen at the
     // first tap so it does not follow the user forward.
     var resumedAt by rememberSaveable { mutableIntStateOf(0) }
+    // A detour to the album list from the summary must come back to the
+    // summary. Walking someone from the last step to the third and making
+    // them press through every screen again is not a correction, it is a
+    // punishment for correcting something.
+    var returnToSummary by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(options.onboardingStep, moved) {
         if (moved) return@LaunchedEffect
@@ -229,6 +234,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                 TextButton(onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) }) {
                     Text(stringResource(R.string.onb0_import))
                 }
+                // What it is, before it is tapped: "Restore from a backup
+                // file" on a first-run screen reads like a step everyone is
+                // supposed to take, and picking the wrong file is the only
+                // way this screen can go wrong.
+                Text(
+                    stringResource(R.string.onb0_import_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 transferMessage?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary)
@@ -283,8 +297,18 @@ fun OnboardingScreen(vm: AppViewModel) {
                     text = stringResource(R.string.onb_albums_text),
                     // No Skip. Everything else here is a permission the app can
                     // work without; this is the list of someone's photos.
-                    buttonLabel = stringResource(R.string.onb_albums_confirm),
-                    onButton = { go(Step.NOTIFICATIONS) }
+                    buttonLabel = stringResource(
+                        if (returnToSummary) R.string.onb_albums_back_to_summary
+                        else R.string.onb_albums_confirm
+                    ),
+                    onButton = {
+                        if (returnToSummary) {
+                            returnToSummary = false
+                            go(Step.READY)
+                        } else {
+                            go(Step.NOTIFICATIONS)
+                        }
+                    }
                 ) {
                     if (buckets.isEmpty()) {
                         Text(
@@ -547,7 +571,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // be fixed in one tap.
                 if (allAlbums.isNotEmpty() && includedAlbums == 0) {
                     WarningText(stringResource(R.string.onb_ready_no_albums))
-                    TextButton(onClick = { go(Step.ALBUMS) }) {
+                    TextButton(onClick = { returnToSummary = true; go(Step.ALBUMS) }) {
                         Text(stringResource(R.string.onb_ready_pick_albums))
                     }
                 }
@@ -608,7 +632,12 @@ fun OnboardingScreen(vm: AppViewModel) {
                     size = trialSize,
                     running = testRunning,
                     results = testItems,
-                    onRun = { vm.startTestRun() }
+                    onRun = { vm.startTestRun() },
+                    // Nothing has been scanned during setup, so the waiting
+                    // count is zero on a perfectly normal phone. What the
+                    // trial actually needs is an album to read.
+                    albumsChosen = includedAlbums > 0,
+                    onChooseAlbums = { returnToSummary = true; go(Step.ALBUMS) }
                 )
 
             }

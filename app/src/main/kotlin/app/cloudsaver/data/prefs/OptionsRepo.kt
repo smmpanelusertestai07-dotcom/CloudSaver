@@ -52,6 +52,15 @@ data class Options(
     val firstReleaseAt: Long = 0,
     /** Files in the upload folder that CloudSaver did not create (DD2.1). */
     val foreignFiles: Int = 0,
+    /**
+     * A snapshot restore has already been attempted on this install.
+     *
+     * Restoring is a once-per-install event, not a state to sit in: the old
+     * rule ("whenever the item table is empty") re-ran on every launch until
+     * the first file was optimised, and each run re-imported the snapshot's
+     * settings over choices the user had just made.
+     */
+    val restoreDone: Boolean = false,
     /** The one-time Kept-light-copies explanation was read (DD2.3). */
     val keptCardSeen: Boolean = false,
     /** "": chain unproven. "SUCCESS"/"STALLED": card pending. "DONE": dismissed. */
@@ -144,6 +153,7 @@ class OptionsRepo(private val context: Context) {
         val CLOUD_SWITCH_FROM = stringPreferencesKey("cloudSwitchFrom")
         val FIRST_RELEASE_AT = longPreferencesKey("firstReleaseAt")
         val FOREIGN_FILES = intPreferencesKey("foreignFiles")
+        val RESTORE_DONE = booleanPreferencesKey("restoreDone")
         val KEPT_CARD_SEEN = booleanPreferencesKey("keptCardSeen")
         val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
@@ -208,6 +218,7 @@ class OptionsRepo(private val context: Context) {
             cloudSwitchFrom = p[K.CLOUD_SWITCH_FROM] ?: "",
             firstReleaseAt = p[K.FIRST_RELEASE_AT] ?: 0,
             foreignFiles = p[K.FOREIGN_FILES] ?: 0,
+            restoreDone = p[K.RESTORE_DONE] ?: false,
             keptCardSeen = p[K.KEPT_CARD_SEEN] ?: false,
             firstChainState = p[K.FIRST_CHAIN_STATE] ?: "",
             showFreeUp = p[K.SHOW_FREE_UP] ?: false,

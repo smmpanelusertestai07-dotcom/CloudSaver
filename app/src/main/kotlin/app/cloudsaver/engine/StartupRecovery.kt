@@ -83,20 +83,41 @@ class StartupRecovery(private val context: Context) {
     private suspend fun restoreIfEmpty(): Int {
         val db = AppDb.get(context)
         val repo = OptionsRepo.get(context)
-        if (db.items().all().isNotEmpty()) return 0
+        val o = repo.current()
+        // Once per install, not "whenever the table is empty". The old
+        // condition held true on every launch until the first file was
+        // optimised, and each launch re-imported the snapshot's settings over
+        // whatever the user had just chosen - a ticked album came back
+        // unticked after every restart.
+        if (o.restoreDone) return 0
+        if (db.items().all().isNotEmpty()) {
+            repo.setBool(OptionsRepo.K.RESTORE_DONE, true)
+            return 0
+        }
 
         val store = SnapshotStore(context, db, repo)
         val snapshot = store.readBestSnapshot() ?: return 0
+        // Settings come back only where nothing here has been chosen yet: a
+        // fresh install after a reinstall, which is what restoring is for.
+        // Someone already walking through setup keeps their own answers.
+        val untouched = !o.onboardingDone && o.onboardingStep == 0
         val imported = try {
-            store.merge(snapshot)
+            store.merge(snapshot, importOptions = untouched)
         } catch (e: Exception) {
             AppLog.log(context, "recovery", "restore failed: ${e.message}")
             return 0
         }
+        repo.setBool(OptionsRepo.K.RESTORE_DONE, true)
         if (imported > 0) {
-            // Runtime permissions and special access survive clear-data, so
-            // onboarding only needs to show what is genuinely still missing.
-            repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+            // Clear-data keeps runtime permissions, a reinstall does not. Only
+            // skip setup when the app can actually see the gallery; otherwise
+            // the restored install would land on Home unable to do anything,
+            // with the one screen that asks for access already behind it.
+            if (app.cloudsaver.util.Permissions.mediaAccess(context) ==
+                app.cloudsaver.util.Permissions.MediaAccess.FULL
+            ) {
+                repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
+            }
             AppLog.log(context, "recovery", "restored $imported items from a snapshot")
         }
         return imported

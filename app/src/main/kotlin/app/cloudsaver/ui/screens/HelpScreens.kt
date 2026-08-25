@@ -735,6 +735,15 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             val release = Platform.releaseName(android.os.Build.VERSION.SDK_INT)
             val full = Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
                 Platform.Support.FULL
+            // What the app needs, then what this particular phone gets. The
+            // first is the question someone asks before installing; the
+            // second is the only one the phone in their hand can answer.
+            Text(
+                stringResource(R.string.about_requires_min),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
             Text(
                 stringResource(
                     if (full) R.string.about_running_full else R.string.about_running_ten,
@@ -750,57 +759,64 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
-        // Anything technical lives behind one row, closed by default.
-        var advanced by remember { mutableStateOf(false) }
-        AppCard(modifier = Modifier.padding(top = 10.dp), onClick = { advanced = !advanced }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    stringResource(R.string.about_advanced),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f)
-                )
-                val arrow by animateFloatAsState(
-                    targetValue = if (advanced) 0f else -90f,
-                    label = "advancedArrow"
-                )
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.rotate(arrow)
+        // What it may access, said on the page where someone checks. A
+        // permission list is one of the few things an About page owes a
+        // reader, and it is two sentences here rather than a settings dive.
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_permissions_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.about_permissions_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
+
+        // Plainly, not behind an "Advanced" door. These are the facts someone
+        // needs to check a downloaded file against this install before
+        // replacing it, and hiding them behind a word that means "not for
+        // you" only made them harder to find for the one person who came
+        // looking. Nothing here is a setting; nothing here can be changed.
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_tech_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            KeyValueRow(
+                stringResource(R.string.about_tech_version),
+                BuildConfig.VERSION_NAME
+            )
+            KeyValueRow(
+                stringResource(R.string.about_tech_build),
+                BuildConfig.VERSION_CODE.toString()
+            )
+            KeyValueRow(
+                stringResource(R.string.about_tech_package),
+                BuildConfig.APPLICATION_ID
+            )
+            KeyValueRow(
+                stringResource(R.string.about_network_title),
+                stringResource(R.string.about_network_none)
+            )
+            // Z10.4: the fingerprint a future APK can be checked against
+            // before installing over this one.
+            if (BuildConfig.EXPECTED_CERT_SHA256.isNotEmpty()) {
+                KeyValueRow(
+                    stringResource(R.string.about_cert_label),
+                    BuildConfig.EXPECTED_CERT_SHA256
                 )
             }
-            AnimatedVisibility(
-                visible = advanced,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Column {
-                    // CC2.3: the update answer belongs here, with the other
-                    // technical facts, not above the fold.
-                    Text(
-                        stringResource(R.string.about_updates_body),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    KeyValueRow(
-                        stringResource(R.string.about_network_title),
-                        stringResource(R.string.about_network_none)
-                    )
-                    KeyValueRow("Package", BuildConfig.APPLICATION_ID)
-                    KeyValueRow("Build", BuildConfig.VERSION_CODE.toString())
-                    // Z10.4: the fingerprint a future APK can be checked
-                    // against before installing over this one. Surfaced from
-                    // the one source the build already carries.
-                    if (BuildConfig.EXPECTED_CERT_SHA256.isNotEmpty()) {
-                        KeyValueRow(
-                            stringResource(R.string.about_cert_label),
-                            BuildConfig.EXPECTED_CERT_SHA256
-                        )
-                    }
-                }
-            }
+            Text(
+                stringResource(R.string.about_updates_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp)
+            )
         }
 
         // The setting a reader is most likely to want from this page, shown as

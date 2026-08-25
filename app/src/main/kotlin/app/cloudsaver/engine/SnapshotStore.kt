@@ -299,11 +299,24 @@ class SnapshotStore(
         }
     }
 
-    /** Merges a snapshot: never downgrades existing rows, applies UNKNOWN rules. */
-    suspend fun merge(snapshot: SnapshotCodec.Snapshot): Int =
-        app.cloudsaver.util.Locks.ledger.withLock { mergeLocked(snapshot) }
+    /**
+     * Merges a snapshot: never downgrades existing rows, applies UNKNOWN rules.
+     *
+     * [importOptions] carries the snapshot's settings across too. It is what
+     * the user asks for when they restore a backup by hand, and what an
+     * untouched install wants after a reinstall - but it must be off wherever
+     * this install already holds choices of its own, because importing then
+     * silently overwrites them.
+     */
+    suspend fun merge(
+        snapshot: SnapshotCodec.Snapshot,
+        importOptions: Boolean = true
+    ): Int = app.cloudsaver.util.Locks.ledger.withLock { mergeLocked(snapshot, importOptions) }
 
-    private suspend fun mergeLocked(snapshot: SnapshotCodec.Snapshot): Int {
+    private suspend fun mergeLocked(
+        snapshot: SnapshotCodec.Snapshot,
+        importOptions: Boolean
+    ): Int {
         // BB1.5: a snapshot exported under partial access is a fragment, not
         // an inventory. Merging stays safe because it only ever adds rows or
         // raises evidence - but the fact is logged, and the next scan (which
@@ -384,7 +397,7 @@ class SnapshotStore(
                 )
             )
         }
-        if (snapshot.options.isNotEmpty()) {
+        if (importOptions && snapshot.options.isNotEmpty()) {
             optionsRepo.importMap(snapshot.options)
         }
         AppLog.log(context, "snapshot", "imported $imported items")
