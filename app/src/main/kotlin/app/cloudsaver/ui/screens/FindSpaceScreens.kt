@@ -262,6 +262,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
                     isKeeper = true,
                     selected = null,
                     onToggle = {},
+                    onLongPress = null,
                     onKeepInstead = null
                 )
             }
@@ -270,9 +271,11 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
                     vm = vm,
                     entry = extra,
                     isKeeper = false,
-                    selected = extra.id in selection,
+                    selected = if (selection.active) extra.id in selection else null,
                     onToggle = { selection.toggle(extra.id) },
-                    onKeepInstead = { rvm.keepInstead(group.sha256, extra.id) }
+                    onLongPress = { selection.toggle(extra.id) },
+                    onKeepInstead = { rvm.keepInstead(group.sha256, extra.id) },
+                    onRemoveExtra = { rvm.removeDuplicateExtras(setOf(extra.id)) }
                 )
             }
         }
@@ -372,10 +375,16 @@ private fun DuplicateEntryRow(
     isKeeper: Boolean,
     selected: Boolean?,
     onToggle: (Boolean) -> Unit,
-    onKeepInstead: (() -> Unit)?
+    onLongPress: (() -> Unit)?,
+    onKeepInstead: (() -> Unit)?,
+    onRemoveExtra: (() -> Unit)? = null
 ) {
     val keepInsteadLabel = stringResource(R.string.dupes_keep_instead)
+    val removeExtraLabel = stringResource(R.string.dupes_remove_extra_one)
+    // Y2.5's three actions. "Remove extra" on the row is what lets someone
+    // deal with one duplicate without discovering the selection gesture first.
     val actions = buildList {
+        onRemoveExtra?.let { add(removeExtraLabel to it) }
         onKeepInstead?.let { add(keepInsteadLabel to it) }
     }
     FileRow(
@@ -390,7 +399,13 @@ private fun DuplicateEntryRow(
         thumbnail = { DuplicateThumb(vm, entry) },
         actions = actions,
         selected = selected,
-        onSelectedChange = if (selected != null) onToggle else null
+        onSelectedChange = if (selected != null) onToggle else null,
+        onLongPress = onLongPress,
+        onClick = if (selected != null) {
+            { onToggle(!selected) }
+        } else {
+            null
+        }
     )
 }
 
@@ -551,6 +566,7 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                 saving = savingFor(row, profile),
                 selected = if (selection.active) row.id in selection else null,
                 onToggle = { selection.toggle(row.id) },
+                onLongPress = { selection.toggle(row.id) },
                 onOpen = { vm.openInViewer(row) },
                 onOptimise = { rvm.optimiseFirst(listOf(row.id)) },
                 onNever = { rvm.setNeverOptimise(row.id, true) },
@@ -598,6 +614,7 @@ private fun BiggestRow(
     saving: Long,
     selected: Boolean?,
     onToggle: (Boolean) -> Unit,
+    onLongPress: () -> Unit,
     onOpen: () -> Boolean,
     onOptimise: () -> Unit,
     onNever: () -> Unit,
@@ -645,6 +662,7 @@ private fun BiggestRow(
         actions = actions,
         selected = selected,
         onSelectedChange = if (selected != null) onToggle else null,
+        onLongPress = onLongPress,
         trailingNote = if (saving > 0) {
             stringResource(
                 R.string.biggest_after,
@@ -653,7 +671,7 @@ private fun BiggestRow(
         } else {
             null
         },
-        onClick = open
+        onClick = { if (selected != null) onToggle(!selected) else open() }
     )
 }
 

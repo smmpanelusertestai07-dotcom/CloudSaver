@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -87,6 +88,7 @@ fun ListSearchField(
  * are not full-width buttons inside the row: two of those per row turned a
  * list of files into a wall of controls with the files squeezed between them.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FileRow(
     name: String,
@@ -99,10 +101,24 @@ fun FileRow(
     selected: Boolean? = null,
     onSelectedChange: ((Boolean) -> Unit)? = null,
     trailingNote: String? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    AppCard(modifier = modifier.padding(vertical = 4.dp), onClick = onClick) {
+    // Long-press starts a selection, exactly as it does on Files. Without it
+    // a screen can show a checkbox once a selection exists but offer no way to
+    // create one, which leaves "Select all" and the action bar unreachable.
+    val card = if (onLongPress != null) {
+        modifier
+            .padding(vertical = 4.dp)
+            .combinedClickable(
+                onClick = { onClick?.invoke() },
+                onLongClick = onLongPress
+            )
+    } else {
+        modifier.padding(vertical = 4.dp)
+    }
+    AppCard(modifier = card, onClick = if (onLongPress != null) null else onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (selected != null && onSelectedChange != null) {
                 Checkbox(checked = selected, onCheckedChange = onSelectedChange)

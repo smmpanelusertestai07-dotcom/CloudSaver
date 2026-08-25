@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.selectionSummary
+import app.cloudsaver.ui.components.ListActionBar
 import app.cloudsaver.ui.components.typeFilter
 import app.cloudsaver.ui.components.rememberListSelection
 import app.cloudsaver.ui.components.albumFilter
@@ -101,6 +103,8 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
     }
     val albums = remember(rows) { ListFilters.albumCounts(rows.map { it.toKeptCandidate() }) }
     val removeLabel = stringResource(R.string.kept_remove)
+    val chosen = shown.filter { it.id in selection }
+    var confirmMany by remember { mutableStateOf(false) }
 
     ListScreenScaffold(
         title = stringResource(R.string.kept_title),
@@ -118,6 +122,16 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
         onResetFilters = {
             type = ListFilters.Type.ALL
             album = null
+        },
+        actionBar = {
+            ListActionBar(
+                summary = selectionSummary(
+                    selection.size,
+                    Formats.bytes(chosen.sumOf { it.outputBytes ?: 0L })
+                ),
+                actionLabel = stringResource(R.string.kept_remove),
+                onAction = { confirmMany = true }
+            )
         },
         loading = false,
         isEmpty = shown.isEmpty(),
@@ -164,9 +178,34 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
                 proof = null,
                 thumbnail = { Thumbnail(row) },
                 actions = listOf(removeLabel to { confirm = row }),
-                onClick = { confirm = row }
+                selected = if (selection.active) row.id in selection else null,
+                onSelectedChange = { selection.toggle(row.id) },
+                onLongPress = { selection.toggle(row.id) },
+                onClick = {
+                    if (selection.active) selection.toggle(row.id) else confirm = row
+                }
             )
         }
+    }
+
+    if (confirmMany && chosen.isNotEmpty()) {
+        AlertDialog(
+            onDismissRequest = { confirmMany = false },
+            title = { Text(stringResource(R.string.kept_remove_title)) },
+            text = { Text(stringResource(R.string.kept_remove_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    for (row in chosen) vm.removeKeptCopy(row)
+                    selection.clear()
+                    confirmMany = false
+                }) { Text(stringResource(R.string.kept_remove)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmMany = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     confirm?.let { row ->

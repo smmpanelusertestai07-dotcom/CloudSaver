@@ -745,6 +745,7 @@
     <string name="dupes_this_one_stays">Keeping this one</string>
     <string name="dupes_keep_instead">Keep this one instead</string>
     <string name="dupes_remove_extras">Remove extras</string>
+    <string name="dupes_remove_extra_one">Remove this extra copy</string>
     <string name="dupes_intro_second">One copy always stays. Only the extra copies are removed.</string>
     <string name="dupes_warning">This removes files from your phone only. Your cloud is never touched. Removed files go to your gallery\u2019s trash and can be restored for 30 days.</string>
     <string name="dupes_warning_legacy">This removes files from your phone only. Your cloud is never touched. On this phone, removed files are deleted straight away.</string>
