@@ -92,6 +92,29 @@ fun CloudSaverTheme(
         dark -> DarkScheme
         else -> LightScheme
     }
+    // The status-bar icon colour must follow the palette actually painted,
+    // not the system's dark setting. enableEdgeToEdge()'s default follows the
+    // system, so choosing the light theme on a dark-mode phone (or on OEMs
+    // that resolve the two differently) drew white clock and icons over the
+    // app's own light background - an unreadable status bar, reported from a
+    // device. Driven here, beside the palette decision, the two cannot
+    // disagree in any theme: light, dark, system or wallpaper colours.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            // The view's context can be a ContextThemeWrapper on some OEMs;
+            // unwrap until the Activity appears rather than assuming.
+            var ctx = view.context
+            while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) {
+                ctx = ctx.baseContext
+            }
+            val window = (ctx as? android.app.Activity)?.window ?: return@SideEffect
+            val controller = androidx.core.view.WindowCompat
+                .getInsetsController(window, view)
+            controller.isAppearanceLightStatusBars = !dark
+            controller.isAppearanceLightNavigationBars = !dark
+        }
+    }
     CompositionLocalProvider(LocalIsDarkTheme provides dark) {
         MaterialTheme(
             colorScheme = colorScheme,

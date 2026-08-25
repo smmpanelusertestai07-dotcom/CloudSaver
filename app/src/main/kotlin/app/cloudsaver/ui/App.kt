@@ -208,15 +208,29 @@ private fun MainNav(vm: AppViewModel) {
         }
     ) { padding ->
         if (needsLock) {
+            var lockNote by remember { mutableStateOf<Lock.Outcome?>(null) }
             LockedScreen(
                 modifier = Modifier.padding(padding),
+                outcome = lockNote,
                 onUnlock = {
                     val act = activity ?: return@LockedScreen
                     Lock.authenticate(
                         act,
                         act.getString(R.string.lock_title),
                         act.getString(R.string.lock_subtitle)
-                    ) { ok -> if (ok) unlocked = true }
+                    ) { outcome ->
+                        lockNote = outcome
+                        when (outcome) {
+                            Lock.Outcome.Unlocked -> unlocked = true
+                            // The phone's own lock was removed - Android has
+                            // already wiped biometric enrolment with it, and
+                            // removing it required knowing it. The app lock
+                            // turns itself off visibly instead of becoming a
+                            // door with no key.
+                            Lock.Outcome.NoMethod -> vm.disableLockNoCredential()
+                            else -> Unit
+                        }
+                    }
                 }
             )
         } else {

@@ -455,6 +455,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg
     }
 
+    /**
+     * The phone's screen lock was removed, so nothing can verify anyone: the
+     * app lock turns itself off, visibly. Silent would read as broken, and
+     * staying on would brick the app behind a door with no key.
+     */
+    fun disableLockNoCredential() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!repo.current().appLock) return@launch
+            repo.setBool(OptionsRepo.K.APP_LOCK, false)
+            activityLog.record(
+                ActivityLog.Kind.PROBLEM,
+                detail = ctx.getString(R.string.lock_disabled_no_credential)
+            )
+        }
+    }
+
     /** Z5.2: the double-backup warning was on screen and the user moved on. */
     fun acknowledgeDoubleBackup() {
         viewModelScope.launch(Dispatchers.IO) {

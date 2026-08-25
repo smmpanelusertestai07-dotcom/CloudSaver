@@ -401,6 +401,10 @@
     <!-- lock -->
     <string name="lock_title">CloudSaver is locked</string>
     <string name="lock_subtitle">Unlock with fingerprint or PIN</string>
+    <string name="lock_locked_out">Too many attempts. Android has paused unlocking for a moment.</string>
+    <string name="lock_no_method">This phone has no screen lock, so there is nothing to unlock with.</string>
+    <string name="lock_disabled_no_credential">App lock turned itself off: the phone\u2019s screen lock was removed, so nothing can verify who is unlocking.</string>
+    <string name="lock_enable_needs_credential">Set a screen lock in Android settings first \u2014 the app lock uses it.</string>
     <string name="lock_unlock">Unlock</string>
 
     <!-- options -->
@@ -500,7 +504,7 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_dynamic">Use wallpaper colours instead (Android 12+)</string>
     <string name="opt_lock">App lock</string>
-    <string name="opt_lock_hint">Require fingerprint or PIN for Settings, Files and freeing up space.</string>
+    <string name="opt_lock_hint">Locks Settings, Files, Free up space and Backup export behind your screen lock.</string>
     <string name="opt_warnings">Alerts</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>

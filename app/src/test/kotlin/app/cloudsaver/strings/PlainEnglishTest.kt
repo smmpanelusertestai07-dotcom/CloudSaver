@@ -36,14 +36,16 @@ class PlainEnglishTest {
     )
 
     /**
-     * The biometric sense of "fingerprint" is the actual finger, which is what
-     * the unlock prompt is about and the right word for it. The certificate
-     * label lives behind the Advanced expander and names an actual SHA-256
-     * digest - the one string whose entire point is the technical identifier,
-     * because a plain-English paraphrase could not be checked against
-     * anything. Nothing else may use either word.
+     * Word-scoped exemptions: the biometric sense of "fingerprint" is an
+     * actual finger, and the certificate label names an actual SHA-256
+     * digest. Scoped to the word, not the string, because a whole-string
+     * exemption once hid "Reclaim space" inside the app-lock description
+     * from every other audit here (CC4.5).
      */
-    private val allowed = setOf("lock_subtitle", "opt_lock_hint", "about_cert_label")
+    private val allowed = setOf(
+        "lock_subtitle" to "fingerprint",
+        "about_cert_label" to "sha256"
+    )
 
     private val entry = Regex(
         """<string name="([^"]+)"[^>]*>(.*?)</string>""",
@@ -59,8 +61,10 @@ class PlainEnglishTest {
         val text = stringsFile.readText()
         val singles = entry.findAll(text).map { it.groupValues[1] to it.groupValues[2] }
         val plurals = pluralBlock.findAll(text).map { it.groupValues[1] to it.groupValues[2] }
-        return (singles + plurals).filter { it.first !in allowed }.toList()
+        return (singles + plurals).toList()
     }
+
+    private fun isAllowed(name: String, word: String): Boolean = (name to word) in allowed
 
     @Test
     fun thereAreStringsToAudit() {
@@ -72,7 +76,9 @@ class PlainEnglishTest {
         val offenders = mutableListOf<String>()
         for ((name, body) in userFacingStrings()) {
             for ((word, pattern) in banned) {
-                if (pattern.containsMatchIn(body)) offenders += "$name says \"$word\""
+                if (pattern.containsMatchIn(body) && !isAllowed(name, word)) {
+                    offenders += "$name says \"$word\""
+                }
             }
         }
         assertTrue(

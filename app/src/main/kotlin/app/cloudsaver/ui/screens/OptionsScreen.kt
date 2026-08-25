@@ -503,12 +503,44 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         SectionHeader(stringResource(R.string.opt_group_privacy))
         // Switches sit on the row itself. Wrapping one in a card that repeats
         // its own title read as two settings with the same name.
+        // Enabling the lock proves identity first - turning on a gate you
+        // could not open would only be discovered at the worst moment - and
+        // refuses with the reason when the phone has no screen lock at all.
+        val lockActivity = androidx.activity.compose.LocalActivity.current
+            as? androidx.fragment.app.FragmentActivity
+        var lockEnableFailed by remember { mutableStateOf(false) }
         SwitchCard(
             title = stringResource(R.string.opt_lock),
             hint = stringResource(R.string.opt_lock_hint),
             icon = IconLock,
             checked = o.appLock
-        ) { vm.setAppLock(it) }
+        ) { wanted ->
+            if (!wanted) {
+                vm.setAppLock(false)
+                lockEnableFailed = false
+            } else if (!app.cloudsaver.ui.Lock.canEnable(context)) {
+                lockEnableFailed = true
+            } else {
+                val act = lockActivity
+                if (act == null) {
+                    lockEnableFailed = true
+                } else {
+                    app.cloudsaver.ui.Lock.authenticate(
+                        act,
+                        act.getString(R.string.lock_title),
+                        act.getString(R.string.lock_subtitle)
+                    ) { outcome ->
+                        if (outcome == app.cloudsaver.ui.Lock.Outcome.Unlocked) {
+                            vm.setAppLock(true)
+                            lockEnableFailed = false
+                        }
+                    }
+                }
+            }
+        }
+        if (lockEnableFailed) {
+            WarningText(stringResource(R.string.lock_enable_needs_credential))
+        }
         SwitchCard(
             title = stringResource(R.string.opt_warnings),
             hint = stringResource(R.string.opt_warnings_hint),
