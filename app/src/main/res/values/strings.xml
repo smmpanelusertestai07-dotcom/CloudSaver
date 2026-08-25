@@ -84,6 +84,7 @@
     <string name="chip_space">Storage low</string>
     <string name="problem_release_invisible">%1$s was added to the upload folder but did not become visible to other apps. CloudSaver will try again.</string>
     <string name="chip_volume_missing">SD card missing \u2014 paused safely</string>
+    <string name="chip_foreign">Other files in the upload folder</string>
     <string name="count_waiting">To optimise</string>
     <string name="count_in_folder">In upload folder</string>
     <string name="count_confirmed">Backed up</string>
@@ -837,7 +838,7 @@
     <string name="faq_a1">It makes a smaller copy of each photo and video in the albums you chose, and puts those copies in one folder on your phone. You point your own cloud app at that folder, so only the small copies get uploaded and your cloud plan lasts much longer. Your originals stay exactly where they are, untouched. Everything happens on the phone: CloudSaver has no internet permission and cannot upload anything itself.</string>
 
     <string name="faq_q2">Where do the optimised copies go, and what do I select in my cloud app?</string>
-    <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button. The folder also appears as an album in your gallery while files wait to be collected \u2014 that is what lets your cloud app see it. Most gallery apps can hide an album from their own settings. CloudSaver never hides it itself, because that would hide it from your cloud app too.</string>
+    <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button. The folder also appears as an album in your gallery while files wait to be collected \u2014 that is what lets your cloud app see it. Most gallery apps can hide an album from their own settings. CloudSaver never hides it itself, because that would hide it from your cloud app too. One more thing: anything you put into the folder yourself is left exactly where it is \u2014 CloudSaver never moves, renames or removes a file it did not create \u2014 but your cloud app will upload it at full size, so Home shows a note whenever that happens.</string>
 
     <string name="faq_q3">Are my originals ever touched?</string>
     <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Free up space, select files yourself, and confirm Android\'s own deletion dialog. Even then it goes to your gallery trash first, where it stays for 30 days.</string>
@@ -852,7 +853,7 @@
     <string name="faq_a6">Two ways, both watched automatically. Some cloud apps delete their own copy after uploading it; when one disappears from the folder and CloudSaver did not remove it, that is proof. Otherwise CloudSaver adds copies a few at a time and watches how many bytes your cloud app sends, so a matching amount right after one file goes out is proof for that file. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal. The daily limit in Settings controls how much CloudSaver adds to the upload folder each day \u2014 which is what your cloud app then uploads. CloudSaver cannot control when that app uploads or which network it uses; set that inside the app itself.</string>
 
     <string name="faq_q7">What if my cloud app makes duplicates?</string>
-    <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content rather than by name. Once a file is on that list it is never sent again, even if you clear the app\'s data or reinstall it. If your phone itself holds the same photo twice, Find space shows those groups and optimises the file only once \u2014 the extras are marked as already handled, not treated as problems.</string>
+    <string name="faq_a7">CloudSaver keeps a permanent record of every copy that reached your cloud, matched by content rather than by name. Once a file is on that list it is never sent again, even if you clear the app\'s data or reinstall it. If your phone itself holds the same photo twice, Find space shows those groups and optimises the file only once \u2014 the extras are marked as already handled, not treated as problems. And if your cloud app downloads a copy back to your phone \u2014 into Download or any album \u2014 CloudSaver recognises its own copies by their names and never optimises or re-sends them.</string>
 
     <string name="faq_q8">Someone deleted a file from the CloudSaver folder \u2014 what now?</string>
     <string name="faq_a8">If CloudSaver had already confirmed that file reached your cloud, nothing happens: the disappearance is exactly what an upload looks like, and the original was never at risk. If it had not been confirmed, CloudSaver treats the copy as lost and simply makes it again on the next run. Either way your original is untouched, because the app only ever removes an original after you confirm it yourself.</string>
@@ -864,14 +865,14 @@
     <string name="faq_a10">Your photos are unaffected. Optimised copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay in your gallery, and your cloud is untouched. CloudSaver\'s own history survives in a hidden file under Documents and Download, so reinstalling restores what it already knew and it does not redo work. On a new phone, install CloudSaver and copy that folder across, or use Save backup in Settings first.</string>
 
     <string name="faq_q11">What does freeing up space do, and can I get files back?</string>
-    <string name="faq_a11">It is the one screen that can remove an original, and it only ever removes what you select. It lists files whose copies your cloud has provably collected, shows the proof for each one, and offers three modes \u2014 keep a light copy in your gallery, remove the original entirely, or just clear the copies waiting on your phone. Removed files go to your gallery trash, where Android keeps them for 30 days, and the Recently freed up screen lists every batch with a Restore button.</string>
+    <string name="faq_a11">It is the one screen that can remove an original, and it only ever removes what you select. It lists files whose copies your cloud has provably collected, shows the proof for each one, and offers three modes \u2014 keep a light copy in your gallery, remove the original entirely, or just clear the copies waiting on your phone. Removed files go to your gallery trash, where Android keeps them for 30 days, and the Recently freed up screen lists every batch with a Restore button. If you choose the light-copy mode, the copies live in the Pictures/Light copies album \u2014 keep that album out of your cloud app\'s backup, because every file there already reached your cloud once and backing the album up would store it twice.</string>
 
     <string name="faq_q12">Does anything leave my phone?</string>
     <string name="faq_a12">Nothing, from CloudSaver. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere \u2014 not analytics, not crash reports, not your photos. All the network traffic you will see is your own cloud app uploading the folder, exactly as it would for any other folder. You can check this yourself in Android\'s app info screen, where CloudSaver has no network permission to grant or deny.</string>
     <string name="faq_q13">Why is there an Optimise now button if everything is automatic?</string>
     <string name="faq_a13" formatted="false">The schedule waits for good moments \u2014 charging, screen off, the day\u2019s allowance. The button skips the waiting, never the safety limits: it will not run when the phone is too hot, the battery is under 15%, or free space is below the reserve. The run is listed in Activity as \u201cStarted by you\u201d.</string>
     <string name="faq_q14">What are the .cloudsaver folders in Download and Documents?</string>
-    <string name="faq_a14">They hold one small text file each: a list of file names, dates, sizes and short codes \u2014 never photos. It lets a reinstall pick up where you left off, and it is rewritten every day. Deleting them is safe: the app recreates them within a day. Only deleting every copy and then reinstalling loses the history \u2014 your originals and your cloud are unaffected either way.</string>
+    <string name="faq_a14">They hold one small text file each: a list of file names, dates, sizes and short codes \u2014 never photos. It lets a reinstall pick up where you left off, and it is rewritten every day. Deleting them is safe: the app recreates them within a day. Only deleting every copy and then reinstalling loses the history \u2014 your originals and your cloud are unaffected either way. You never have to create this history yourself: it writes itself once a day, and a reinstall reads it back on its own. The Backup and restore buttons in Settings exist only for an extra copy you keep somewhere else, like a computer.</string>
     <string name="about_running_full">Android %1$s \u2014 everything works.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
     <string name="about_advanced">Advanced</string>
@@ -935,4 +936,17 @@
     <string name="quality_detail_body">How much of the original\'s detail survives. Anything already under the limit keeps all of it \u2014 it is only re-saved, never shrunk.</string>
     <string name="quality_detail_photo">%1$d MP photo</string>
     <string name="quality_detail_kept">%1$d%% kept</string>
+
+    <!-- the user-mistake shield -->
+    <plurals name="foreign_files_note">
+        <item quantity="one">%1$d file CloudSaver did not create is sitting in the upload folder. It stays untouched, but your cloud app will upload it at full size.</item>
+        <item quantity="other">%1$d files CloudSaver did not create are sitting in the upload folder. They stay untouched, but your cloud app will upload them at full size.</item>
+    </plurals>
+    <string name="opt_history_auto">Your file history already saves itself once a day, to Download/.cloudsaver and Documents/.cloudsaver, and a reinstall picks it up on its own. The buttons below are only for an extra copy you keep somewhere else.</string>
+    <string name="reclaim_blindspot">CloudSaver checks from the outside — it can never look inside %1$s. Before you continue, open %1$s and check a few of these files are really there.</string>
+    <string name="reclaim_blindspot_generic">CloudSaver checks from the outside — it can never look inside your cloud app. Before you continue, open it and check a few of these files are really there.</string>
+    <string name="reclaim_open_cloud">Open %1$s</string>
+    <string name="kept_card_title">Light copies stay on this phone</string>
+    <string name="kept_card_body">These live in your gallery like any other photo. CloudSaver never optimises them again, never uploads them, and never removes one on its own. One thing to avoid: do not add the Light copies album to your cloud app\'s backup — every file here already reached your cloud once, and backing the album up would store it twice.</string>
+    <string name="kept_intro_backup">Keep this album out of your cloud app\'s backup — these files are already in your cloud.</string>
 </resources>

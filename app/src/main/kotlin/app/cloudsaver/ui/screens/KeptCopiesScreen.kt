@@ -90,6 +90,7 @@ private fun Page(
 @Composable
 fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
     val rows by vm.keptCopies.collectAsStateWithLifecycle()
+    val options by vm.options.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<ItemRow?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var type by rememberSaveable { mutableStateOf(ListFilters.Type.ALL) }
@@ -152,18 +153,49 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
             }
         },
         intro = {
-            AppCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text(
-                    stringResource(R.string.kept_intro),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    Defaults.KEPT_DIR,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+            Column {
+                // Once, the first time there is anything here to explain:
+                // what these files are, and the one way to accidentally pay
+                // for them twice.
+                if (rows.isNotEmpty() && !options.keptCardSeen) {
+                    AppCard(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        tonal = true
+                    ) {
+                        Text(
+                            stringResource(R.string.kept_card_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            stringResource(R.string.kept_card_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        TextButton(onClick = { vm.acknowledgeKeptCard() }) {
+                            Text(stringResource(R.string.dismiss))
+                        }
+                    }
+                }
+                AppCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(
+                        stringResource(R.string.kept_intro),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        Defaults.KEPT_DIR,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Text(
+                        stringResource(R.string.kept_intro_backup),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
         }
     ) {

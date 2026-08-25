@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -93,6 +96,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
     var understood by remember { mutableStateOf(options.reclaimUnderstood) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) { rvm.load() }
 
@@ -339,7 +343,14 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             ) {
                 Button(
                     onClick = {
-                        if (rvm.needsSecondConfirmation(permanent = false)) {
+                        // Removing an original always goes through the sheet
+                        // that carries the check-your-cloud warning; no batch
+                        // is small enough to skip it. Only the copies-only
+                        // mode, which touches nothing of the user's own,
+                        // keeps the quick path for ordinary batches.
+                        if (mode != ReclaimRules.Mode.COPIES_ONLY ||
+                            rvm.needsSecondConfirmation(permanent = false)
+                        ) {
                             confirmBig = false
                         } else {
                             rvm.start(permanent = false)
@@ -461,6 +472,39 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold
                     )
+                    // The blind spot, said at the moment it matters: every
+                    // proof this app holds was measured from outside the
+                    // cloud app. The one direct check - opening the cloud
+                    // app and looking - only the user can do, so the sheet
+                    // asks for it and hands over the door.
+                    val cloudApp = CloudApps.byId(options.cloudSingle)
+                    val cloudPkg = CloudApps.installedPackage(context, cloudApp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.Top) {
+                        Icon(
+                            Icons.Outlined.WarningAmber,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (cloudPkg != null) {
+                                stringResource(R.string.reclaim_blindspot, cloudApp.label)
+                            } else {
+                                stringResource(R.string.reclaim_blindspot_generic)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    if (cloudPkg != null) {
+                        TextButton(
+                            onClick = { CloudApps.launch(context, options.cloudSingle) }
+                        ) {
+                            Text(stringResource(R.string.reclaim_open_cloud, cloudApp.label))
+                        }
+                    }
                 }
             },
             confirmButton = {

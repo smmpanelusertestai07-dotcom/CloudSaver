@@ -13,6 +13,7 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
+import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.StateMachine
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
@@ -117,6 +118,7 @@ class MaintainEngine(private val context: Context) {
         step("pending") { repairStalePending(now) }
         step("detectGone") { detectGone(o, now, entries, summary) }
         step("promoteGone") { promoteGone(now) }
+        step("foreign") { foreignFiles(o, entries) }
         step("paced") { pacedEvidence(o, now) }
         step("verify") { verifyBatches(o, now) }
         step("age") { ageEvidence(now) }
@@ -390,6 +392,34 @@ class MaintainEngine(private val context: Context) {
     private suspend fun promoteGone(now: Long) {
         for (row in db.items().gone()) {
             db.items().update(row.copy(state = ItemState.DONE.name, updatedAt = now))
+        }
+    }
+
+    /**
+     * Files in the upload folder that CloudSaver did not create.
+     *
+     * Someone drops a screenshot into Pictures/CloudSaver believing that is
+     * how a file gets backed up, or a cloud client mirrors something back
+     * into it. These files are the user's, in a folder the user owns, so the
+     * app never moves, renames or removes them - but silence has a price
+     * too: the cloud app will upload them at full size, which quietly
+     * defeats the folder's whole point. So they are counted, noted once in
+     * Activity when the count grows, and shown as a chip on Home while any
+     * remain. Nothing here holds a reference to the files themselves;
+     * there is deliberately no way for this to act on them.
+     */
+    private suspend fun foreignFiles(o: Options, entries: List<OutputInventory.Entry>) {
+        val count = entries.count { !ScanSources.isPipelineName(it.name) }
+        if (count > o.foreignFiles) {
+            activity.record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.resources.getQuantityString(
+                    R.plurals.foreign_files_note, count, count
+                )
+            )
+        }
+        if (count != o.foreignFiles) {
+            repo.setInt(OptionsRepo.K.FOREIGN_FILES, count)
         }
     }
 

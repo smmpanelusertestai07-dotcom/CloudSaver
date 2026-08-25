@@ -478,6 +478,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun acknowledgeKeptCard() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repo.setBool(OptionsRepo.K.KEPT_CARD_SEEN, true)
+        }
+    }
+
     fun dismissCrashNotice() {
         app.cloudsaver.util.CrashLog.clearPending(ctx)
         crashPending.value = false
@@ -1618,32 +1624,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- old-install cleanup ------------------------------------------------
 
-    val foreignUris = MutableStateFlow<List<Uri>>(emptyList())
+    val leftoverUris = MutableStateFlow<List<Uri>>(emptyList())
 
-    fun detectForeignFiles() {
+    fun detectLeftoverFiles() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()
             if (o.oldFilesCleaned) {
-                foreignUris.value = emptyList()
+                leftoverUris.value = emptyList()
                 return@launch
             }
             val knownFps = db.items().all()
                 .filter { it.state == ItemState.RELEASED.name }
                 .map { it.fingerprint }
                 .toHashSet()
-            val foreign = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
+            val leftovers = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
                 if (entry.ownedByUs) return@filter false
+                // Only a file named the way this pipeline names its output
+                // can be an earlier install's leftover. Anything else in the
+                // folder is the user's own file: this card used to sweep
+                // those up too, and its Remove button would then have offered
+                // the user's own photo for deletion under the label
+                // "leftover". The user's files get a notice, never a button.
                 val fp = Fingerprint.fpFromOutputName(entry.name)
-                fp == null || fp !in knownFps
+                fp != null && fp !in knownFps
             }
-            foreignUris.value = foreign.map { it.uri }
+            leftoverUris.value = leftovers.map { it.uri }
         }
     }
 
-    fun onForeignCleaned() {
+    fun onLeftoversCleaned() {
         viewModelScope.launch {
             repo.setBool(OptionsRepo.K.OLD_FILES_CLEANED, true)
-            foreignUris.value = emptyList()
+            leftoverUris.value = emptyList()
         }
     }
 

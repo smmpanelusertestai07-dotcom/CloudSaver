@@ -101,7 +101,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val processed by vm.processedCount.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
-    val foreignUris by vm.foreignUris.collectAsStateWithLifecycle()
+    val leftoverUris by vm.leftoverUris.collectAsStateWithLifecycle()
     val tampered by vm.tampered.collectAsStateWithLifecycle()
     val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
     val crashPending by vm.crashPending.collectAsStateWithLifecycle()
@@ -123,7 +123,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
     LaunchedEffect(Unit) {
         vm.refreshHealth()
-        vm.detectForeignFiles()
+        vm.detectLeftoverFiles()
         vm.refreshBudget()
         vm.refreshAsIs()
         vm.refreshCloudCaps()
@@ -509,7 +509,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // setup; here, only real evidence speaks: nothing has run for two days.
         val anyPower = power.any { it.readable && !it.satisfied }
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped
+            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped ||
+            options.foreignFiles > 0
         AnimatedVisibility(
             visible = anyHealth,
             enter = fadeIn() + expandVertically(),
@@ -561,6 +562,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     if (health.backgroundWorkStopped) {
                         StatusChip(stringResource(R.string.chip_stopped)) {
                             vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                        }
+                    }
+                    // Something is in the upload folder that CloudSaver did
+                    // not put there. Never touched - the FAQ explains what
+                    // happens to it instead.
+                    if (options.foreignFiles > 0) {
+                        StatusChip(stringResource(R.string.chip_foreign)) {
+                            nav.goTo(Routes.HELP_FAQ)
                         }
                     }
                 }
@@ -931,7 +940,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         AnimatedVisibility(
-            visible = foreignUris.isNotEmpty() && !tampered,
+            visible = leftoverUris.isNotEmpty() && !tampered,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
@@ -942,18 +951,18 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 )
                 Text(
                     pluralStringResource(
-                        R.plurals.old_files_text, foreignUris.size, foreignUris.size
+                        R.plurals.old_files_text, leftoverUris.size, leftoverUris.size
                     ),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Row {
                     TextButton(onClick = {
-                        val sender = vm.requestDelete(foreignUris) { vm.onForeignCleaned() }
+                        val sender = vm.requestDelete(leftoverUris) { vm.onLeftoversCleaned() }
                         sender?.let {
                             cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
                         }
                     }) { Text(stringResource(R.string.old_files_clean)) }
-                    TextButton(onClick = { vm.onForeignCleaned() }) {
+                    TextButton(onClick = { vm.onLeftoversCleaned() }) {
                         Text(stringResource(R.string.old_files_keep))
                     }
                 }

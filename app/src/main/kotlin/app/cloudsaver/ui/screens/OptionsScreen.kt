@@ -579,6 +579,16 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 
         SectionHeader(stringResource(R.string.opt_group_backup_restore))
+        // The history already looks after itself; that has to be the first
+        // thing this section says, because a section named "Backup" reads as
+        // a chore - and someone who never does the chore must not spend a
+        // reinstall believing their record is gone.
+        Text(
+            stringResource(R.string.opt_history_auto),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
         // 17. Export / Import
         OptionCard(
             stringResource(R.string.opt_transfer),

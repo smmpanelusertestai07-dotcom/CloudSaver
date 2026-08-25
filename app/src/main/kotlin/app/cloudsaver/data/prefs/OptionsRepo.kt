@@ -50,6 +50,10 @@ data class Options(
     val cloudSwitchFrom: String = "",
     /** When the very first copy entered the upload folder (Z10.6). */
     val firstReleaseAt: Long = 0,
+    /** Files in the upload folder that CloudSaver did not create (DD2.1). */
+    val foreignFiles: Int = 0,
+    /** The one-time Kept-light-copies explanation was read (DD2.3). */
+    val keptCardSeen: Boolean = false,
     /** "": chain unproven. "SUCCESS"/"STALLED": card pending. "DONE": dismissed. */
     val firstChainState: String = "",
     val showFreeUp: Boolean = false,
@@ -139,6 +143,8 @@ class OptionsRepo(private val context: Context) {
         val DOUBLE_BACKUP_ACK = booleanPreferencesKey("doubleBackupAck")
         val CLOUD_SWITCH_FROM = stringPreferencesKey("cloudSwitchFrom")
         val FIRST_RELEASE_AT = longPreferencesKey("firstReleaseAt")
+        val FOREIGN_FILES = intPreferencesKey("foreignFiles")
+        val KEPT_CARD_SEEN = booleanPreferencesKey("keptCardSeen")
         val FIRST_CHAIN_STATE = stringPreferencesKey("firstChainState")
         val ONBOARDING_STEP = intPreferencesKey("onboardingStep")
         val CONFIRM_STARTED_AT = longPreferencesKey("confirmFlowStartedAt")
@@ -201,6 +207,8 @@ class OptionsRepo(private val context: Context) {
             doubleBackupAck = p[K.DOUBLE_BACKUP_ACK] ?: false,
             cloudSwitchFrom = p[K.CLOUD_SWITCH_FROM] ?: "",
             firstReleaseAt = p[K.FIRST_RELEASE_AT] ?: 0,
+            foreignFiles = p[K.FOREIGN_FILES] ?: 0,
+            keptCardSeen = p[K.KEPT_CARD_SEEN] ?: false,
             firstChainState = p[K.FIRST_CHAIN_STATE] ?: "",
             showFreeUp = p[K.SHOW_FREE_UP] ?: false,
             freeUpAllowVerified30 = p[K.FREE_UP_VERIFIED30] ?: false,
