@@ -293,3 +293,70 @@ after itself.
 - **Signing secrets.** `KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and
   `KEY_PASSWORD` are the repository owner's to add. Until they exist, release
   builds are unsigned and will not install over an earlier version.
+
+---
+
+# 6.0.0 — FINAL PROMPT v8.0
+
+Executed in the order Z9.1 gives: BB1, BB2, BB3 first, then Z1, Z4, Z5,
+Z10.1, Z10.2, Z10.4, Z10.6, then the rest. Full AA6 matrix in
+RELEASE_MATRIX.md, which CI appends to every release's notes.
+
+## Correction of earlier claims (AA6.2)
+
+Earlier sections of this file described partial media access, the SD-card
+question and crash handling only as wording or settings work. **Z2/BB1
+(partial access), Z3.1/BB2 (the writability probe) and Z10.3/BB3 (crash
+visibility) were NOT implemented before this pass.** Before it: partial
+access was treated as usable and produced wrong totals silently; the chosen
+SD volume was handed to MediaStore untested, so on many phones every SD
+release failed with nothing on screen; and a crash left no trace at all.
+All three are now implemented and tested (MediaAccessTest, VolumeRulesTest,
+CrashLogTest).
+
+## What this pass changed, by section
+
+- **BB1** — three-way media access level; scanning refuses inside the
+  scanner; worker, trial and calculator check the level; Home card, Files
+  chip, waiting text instead of totals; setup keeps the user on the
+  permission step under PARTIAL; snapshots record the level.
+- **BB2** — per-volume writability probe (a real pending insert, one byte,
+  finalise, delete), cached with an OS-update reset; both pickers offer only
+  volumes that pass, with the reason when one is absent; the releaser
+  verifies the landing volume and retries once on internal.
+- **BB3** — uncaught-exception handler appends version/device/stack to the
+  app log and hands on to the system; one card next launch; sharing is
+  manual, nothing is ever sent.
+- **Z1** — the Free up space hub over the four sections, volume header with
+  free-before/after, three-line warning card shared by every removal
+  surface, confirmation sheets name the proof and the holding cloud app.
+- **Z4** — output-pattern names recognised per file anywhere, recorded as
+  "came back from your cloud", never queued, never granted proof; cloud
+  apps' Android/media directories excluded; .nomedia enforcement is the
+  platform's own.
+- **Z5** — double-backup card in setup, always shown, acknowledgement
+  recorded.
+- **Z10.1** — switch resets learning; one-time sheet; the holding app named
+  in item details and the removal sheet.
+- **Z10.2** — the gallery-album fact under every folder path and in the FAQ,
+  with the reason there is deliberately no .nomedia.
+- **Z10.4** — About: how sideloaded updates work; signing digest behind
+  Advanced from BuildConfig.EXPECTED_CERT_SHA256.
+- **Z10.5** — what the daily limit does and does not control, beside the
+  control and in the FAQ.
+- **Z10.6** — first-chain success and 48-hour stall cards, pure decision
+  (FirstChainTest), driven from the maintenance pass.
+- **Z3.3/Z3.4** — missing-SD Home chip; ≥4 GB files routed to internal
+  storage with the reason logged.
+- **AA3.3** — release/reclaim/ledger mutexes at the entry points.
+- **AA3.5** — migration 6: indices on isVideo, bucket, sizeBytes, evidence,
+  batchId, proven by MigrationTest against sqlite_master.
+- **FAQ stays at twelve**: the two new answers merged into faq_a2 and
+  faq_a6 rather than growing the list past the earlier fixed count.
+
+## Still not possible from this environment
+
+The manual device passes (Z9.5, AA6.4): real phone, real gallery, real
+cloud app, real SD card, TalkBack, 200% sweep. Recorded in the matrix as
+the one "Not done", with everything automatable about the same claims
+covered by 383 unit tests and the instrumented suite.

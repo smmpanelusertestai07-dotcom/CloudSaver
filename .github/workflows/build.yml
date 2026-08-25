@@ -142,6 +142,11 @@ jobs:
           Signing cert SHA-256: ${CERT_SHA256}
           ${KEYSTORE_NOTE}
           EOF
+          # AA6.1: the verification matrix ships with every release.
+          if [ -f RELEASE_MATRIX.md ]; then
+            echo "" >> RELEASE_NOTES.md
+            cat RELEASE_MATRIX.md >> RELEASE_NOTES.md
+          fi
           echo "Release notes generated."
 
       - name: Job summary

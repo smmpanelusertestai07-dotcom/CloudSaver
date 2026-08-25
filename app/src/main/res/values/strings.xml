@@ -346,11 +346,7 @@
     <string name="warn_trash_30">Removed files go to your gallery\u2019s trash for 30 days.</string>
     <string name="warn_trash_none">Removed files are deleted straight away on this phone.</string>
     <string name="find_duplicates">Exact duplicates</string>
-    <string name="find_duplicates_hint">Same file stored more than once</string>
     <string name="find_biggest">Biggest space users</string>
-    <string name="find_biggest_hint">Your largest photos and videos</string>
-    <string name="find_suggestions">Suggestions</string>
-    <string name="find_suggestions_hint">Ready-made ways to free space</string>
     <string name="dupes_empty_title">No duplicates found</string>
     <string name="dupes_empty_body">CloudSaver compared your files byte by byte. Nothing is stored twice.</string>
     <string name="biggest_empty_title">Nothing scanned yet</string>
@@ -745,7 +741,6 @@
     <string name="list_search">Search by name or album</string>
     <string name="list_clear_search">Clear search</string>
     <string name="list_more_actions">More actions</string>
-    <string name="list_clear_selection">Deselect all</string>
     <string name="list_sort_largest">Largest</string>
     <string name="list_sort_oldest">Oldest</string>
     <string name="list_sort_saved">Most saved</string>
