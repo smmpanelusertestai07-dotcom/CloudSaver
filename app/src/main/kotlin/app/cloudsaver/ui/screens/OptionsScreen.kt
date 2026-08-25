@@ -78,6 +78,7 @@ import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.WarningNote
+import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
 
@@ -1219,16 +1220,6 @@ private fun ChoiceNote(text: String) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 8.dp)
-    )
-}
-
-@Composable
-private fun WarningText(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.error,
-        modifier = Modifier.padding(top = 4.dp)
     )
 }
 

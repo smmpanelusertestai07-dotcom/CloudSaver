@@ -83,6 +83,7 @@
     <string name="detail_holding_app">Stored in</string>
     <string name="daily_limit_note">This limits how much CloudSaver adds to the upload folder each day, which is what your cloud app then uploads. When and on which network that app uploads is set inside that app.</string>
     <string name="chip_space">Storage low</string>
+    <string name="problem_release_invisible">%1$s was added to the upload folder but did not become visible to other apps. CloudSaver will try again.</string>
     <string name="chip_volume_missing">SD card missing \u2014 paused safely</string>
     <string name="count_waiting">To optimise</string>
     <string name="count_in_folder">In upload folder</string>
@@ -95,6 +96,14 @@
     </plurals>
     <string name="budget_title">Added for your cloud today</string>
     <string name="budget_used">%1$s of %2$s</string>
+    <plurals name="pacing_held">
+        <item quantity="one">%1$d file sent to the upload folder \u2014 %2$d more follows as uploads are confirmed.</item>
+        <item quantity="other">%1$d files sent to the upload folder \u2014 %2$d more follow as uploads are confirmed.</item>
+    </plurals>
+    <plurals name="pacing_held_none">
+        <item quantity="one">%1$d file is optimised and waiting for a slot \u2014 it goes out as uploads are confirmed.</item>
+        <item quantity="other">%1$d files are optimised and waiting for a slot \u2014 they go out as uploads are confirmed.</item>
+    </plurals>
     <string name="budget_paced">CloudSaver adds a few files at a time so it can tell which ones your cloud picked up.</string>
     <string name="budget_spent">That is all for today. More files are added after %1$s.</string>
     <plurals name="asis_card_title">
@@ -567,6 +576,8 @@
     <string name="onb_ready_text">Nothing has been copied yet. Here is what will happen when you start.</string>
     <string name="onb_ready_start">Start backing up</string>
     <string name="onb_ready_what">Backing up</string>
+    <string name="onb_ready_no_albums">No albums are selected, so nothing would be backed up.</string>
+    <string name="onb_ready_pick_albums">Choose albums</string>
     <string name="onb_ready_quality">Quality</string>
     <string name="onb_ready_when">Runs</string>
     <string name="onb_ready_cloud">Your cloud app</string>

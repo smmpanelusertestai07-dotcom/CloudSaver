@@ -54,6 +54,8 @@ import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.ui.components.WarningText
+import androidx.compose.foundation.layout.width
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
@@ -539,6 +541,16 @@ fun OnboardingScreen(vm: AppViewModel) {
                     stringResource(R.string.onb_ready_what),
                     scopeSummary(options.scope, includedAlbums, allAlbums.size)
                 )
+                // Every album excluded means "Start backing up" would do
+                // nothing, for ever, with no error - the worst possible
+                // outcome of a setup screen. Say it here, where it can still
+                // be fixed in one tap.
+                if (allAlbums.isNotEmpty() && includedAlbums == 0) {
+                    WarningText(stringResource(R.string.onb_ready_no_albums))
+                    TextButton(onClick = { go(Step.ALBUMS) }) {
+                        Text(stringResource(R.string.onb_ready_pick_albums))
+                    }
+                }
                 SummaryLine(
                     stringResource(R.string.onb_ready_quality),
                     presetSummary(options.preset)
@@ -710,8 +722,15 @@ fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
 /** One "label - value" line in the setup summary. */
 @Composable
 private fun SummaryLine(label: String, value: String) {
+    // Both halves are weighted, and that is the whole point.
+    //
+    // Only the label used to carry a weight, so the value - which is
+    // unbounded - was measured first and took every pixel it wanted. A long
+    // value like "Photos and videos, from 2 of your 5 albums" left the label
+    // about one character wide, and "Backing up" came out down the left edge,
+    // one letter per line. A weighted pair cannot starve either side.
     Row(
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
@@ -720,13 +739,15 @@ private fun SummaryLine(label: String, value: String) {
             label,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(0.8f)
         )
+        Spacer(Modifier.width(12.dp))
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            textAlign = androidx.compose.ui.text.style.TextAlign.End
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.weight(1.2f)
         )
     }
 }

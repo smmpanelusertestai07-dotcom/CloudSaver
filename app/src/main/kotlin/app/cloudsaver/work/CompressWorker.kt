@@ -218,6 +218,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 if (scanner.hashSome() > 0) scanner.markDuplicates()
             }.onFailure { AppLog.log(app, "work", "duplicate scan failed: ${it.message}") }
 
+            // CC1.2: a run - manual or scheduled - chains straight into the
+            // maintenance pass, which is what releases staged copies into the
+            // upload folder. Logged so "did the release step actually run?"
+            // is answerable from the log rather than by reading this file.
+            AppLog.log(app, "work", "chaining release+verify (manual=$manual)")
             runCatching { MaintainEngine(app).run() }
                 .onFailure { AppLog.log(app, "work", "maintain failed: ${it.message}") }
 

@@ -37,6 +37,17 @@ import java.io.File
  */
 class MaintainEngine(private val context: Context) {
 
+    companion object {
+        /**
+         * How long a pending output row may sit before it is repaired.
+         *
+         * Short on purpose: while a row is pending nothing else on the phone
+         * can see the file, so every minute of it is a minute the backup
+         * looks stopped.
+         */
+        const val STALE_PENDING_MS = 15L * 60 * 1000
+    }
+
     private val db = AppDb.get(context)
     private val repo = OptionsRepo.get(context)
     private val inventory = OutputInventory(context)
@@ -115,6 +126,9 @@ class MaintainEngine(private val context: Context) {
         step("cloudHealth") { pauseDeletions = cloudHealth(o, now, entries) }
         if (!o.pauseAll) {
             step("release") { pacedRelease(o, now, summary) }
+            // Again straight after releasing: a row that failed to finalise
+            // in this very pass should not wait an hour to be noticed.
+            step("pendingAfterRelease") { repairStalePending(now) }
         }
         if (!pauseDeletions) {
             step("delete") { lazyDelete(o, now, summary) }
@@ -324,7 +338,11 @@ class MaintainEngine(private val context: Context) {
      * to Activity rather than fixed in silence.
      */
     private suspend fun repairStalePending(now: Long) {
-        val cutoff = now - 86_400_000L
+        // CC1.2: fifteen minutes, not a day. A pending row is invisible to
+        // the gallery and to every cloud app, so a whole day of it reads as
+        // a backup that silently stopped - and Android eventually deletes
+        // stale pending rows itself, which would read as data loss.
+        val cutoff = now - STALE_PENDING_MS
         var repaired = 0
         for (row in db.items().released()) {
             val uriString = row.outputUri ?: continue

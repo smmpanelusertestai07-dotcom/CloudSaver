@@ -719,3 +719,19 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/**
+ * A short warning under the control it belongs to.
+ *
+ * Shared rather than re-declared per screen: an inconsistent warning colour
+ * is how "this matters" quietly stops meaning anything.
+ */
+@Composable
+fun WarningText(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier.padding(top = 4.dp)
+    )
+}

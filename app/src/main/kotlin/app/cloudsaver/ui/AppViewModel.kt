@@ -124,7 +124,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         /** Problems only: unreadable, too large, encoder refused, and so on. */
         val skipped: Int = 0,
         /** Files handled once under an identical twin. Not a problem. */
-        val duplicates: Int = 0
+        val duplicates: Int = 0,
+        /** Compressed and waiting for a pacing slot, not yet in the folder. */
+        val heldBack: Int = 0
     )
 
     val counters: StateFlow<Counters> = combine(
@@ -136,9 +138,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     ) { states, confirmed, verified, problems, duplicates ->
         val byState = states.associate { it.state to it.cnt }
         Counters(
-            waiting = byState[ItemState.NEW.name] ?: 0,
-            inFolder = (byState[ItemState.STAGED.name] ?: 0) +
-                (byState[ItemState.RELEASED.name] ?: 0),
+            // CC1.3: "in the upload folder" means a file the cloud app can
+            // actually see. A STAGED item is compressed and held back by the
+            // pacing limit - it is not in the folder, and counting it there
+            // is what made the tile disagree with the gallery.
+            waiting = (byState[ItemState.NEW.name] ?: 0) +
+                (byState[ItemState.STAGED.name] ?: 0),
+            inFolder = byState[ItemState.RELEASED.name] ?: 0,
+            heldBack = byState[ItemState.STAGED.name] ?: 0,
             // Both count as backed up on Home; how strong the evidence is
             // belongs in the item's details, not in a headline number.
             confirmed = confirmed + verified,

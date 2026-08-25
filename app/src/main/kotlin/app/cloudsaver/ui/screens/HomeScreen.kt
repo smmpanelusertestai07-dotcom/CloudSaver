@@ -463,7 +463,12 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
             Spacer(Modifier.height(14.dp))
             androidx.compose.animation.Crossfade(
-                targetState = statusLine(options, statusWaiting),
+                targetState = statusLine(
+                    options,
+                    statusWaiting,
+                    heldBack = counters.heldBack,
+                    inFolder = counters.inFolder
+                ),
                 label = "statusLine"
             ) { line ->
                 Text(
@@ -999,8 +1004,24 @@ fun skipReasonLabel(reason: String): String = when (reason) {
  * specific condition (13.G), or all done.
  */
 @Composable
-private fun statusLine(options: Options, waiting: Int): String {
+private fun statusLine(
+    options: Options,
+    waiting: Int,
+    heldBack: Int = 0,
+    inFolder: Int = 0
+): String {
     if (options.pauseAll) return stringResource(R.string.status_paused)
+    // CC1.3: files compressed and waiting for a pacing slot are not a
+    // failure and must never read as one. Pacing exists so each file can be
+    // confirmed on its own; the line says that plainly rather than leaving a
+    // queue that looks stuck.
+    if (heldBack > 0) {
+        return if (inFolder > 0) {
+            pluralStringResource(R.plurals.pacing_held, inFolder, inFolder, heldBack)
+        } else {
+            pluralStringResource(R.plurals.pacing_held_none, heldBack, heldBack)
+        }
+    }
     if (waiting > 0) {
         val wait = runCatching { RunDecider.Wait.valueOf(options.waitReason) }
             .getOrDefault(RunDecider.Wait.NONE)

@@ -3,9 +3,12 @@ package app.cloudsaver.media
 import android.content.ContentValues
 import android.content.Context
 import android.provider.MediaStore
+import app.cloudsaver.R
+import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
+import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.ReleasePlanner
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.LedgerRow
@@ -14,6 +17,7 @@ import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.util.Formats
+import app.cloudsaver.core.logic.ReleaseVerdict
 import app.cloudsaver.core.logic.VolumeRules
 import app.cloudsaver.util.AppLog
 import kotlinx.coroutines.sync.withLock
@@ -113,6 +117,13 @@ class Releaser(private val context: Context, private val db: AppDb) {
             val bytes = batchBytes[folder] ?: 0L
             if (bytes > 0) db.batches().setTotalBytes(id, bytes) else db.batches().deleteById(id)
         }
+        // CC1.4: nudge the media scanner so gallery apps and the cloud app
+        // notice the new album now rather than whenever they next look. The
+        // rows are already published; this only shortens the wait.
+        if (released > 0) {
+            notifyGallery(options)
+            AppLog.log(context, "release", "released $released file(s) this pass")
+        }
         // Z10.6: the 48-hour clock on the whole chain starts with the very
         // first copy that enters the upload folder.
         if (released > 0 && options.firstReleaseAt == 0L) {
@@ -120,6 +131,26 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 .setLong(app.cloudsaver.data.prefs.OptionsRepo.K.FIRST_RELEASE_AT, now)
         }
         return@withLock released
+    }
+
+    /**
+     * Ask the system to re-scan the upload folder (CC1.4).
+     *
+     * MediaStore already holds the rows, so this changes no state - it only
+     * prompts the apps that cache their own view of the gallery to refresh,
+     * which is the difference between the album appearing now and appearing
+     * whenever the cloud app next happens to look.
+     */
+    private fun notifyGallery(options: Options) {
+        val paths = OutputPaths.forMode(options.outputMode)
+            .map { "${android.os.Environment.getExternalStorageDirectory()}/$it" }
+        runCatching {
+            android.media.MediaScannerConnection.scanFile(
+                context, paths.toTypedArray(), null, null
+            )
+        }.onFailure {
+            AppLog.log(context, "release", "media scan request failed: ${it.message}")
+        }
     }
 
     /**
@@ -284,14 +315,22 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 null, null
             )
 
-            // MediaStore may have de-duplicated the name; read the real one back,
-            // and align the file date with the original capture date.
+            // CC1.1: read the row back and prove it is really there before
+            // calling it released. The un-pend above is a fire-and-forget
+            // update; when it silently fails the file stays invisible to the
+            // gallery and to every cloud app, and the old code marked the
+            // item RELEASED anyway. Nothing could notice, because nothing
+            // looked again. Now it looks.
             var actualName = outName
+            var verdict: ReleaseVerdict.Failure? = ReleaseVerdict.Failure.MISSING
             try {
                 @Suppress("DEPRECATION")
                 val projection = arrayOf(
                     MediaStore.MediaColumns.DISPLAY_NAME,
-                    MediaStore.MediaColumns.DATA
+                    MediaStore.MediaColumns.DATA,
+                    MediaStore.MediaColumns.SIZE,
+                    MediaStore.MediaColumns.IS_PENDING,
+                    MediaStore.MediaColumns.RELATIVE_PATH
                 )
                 resolver.query(itemUri, projection, null, null, null)?.use { c ->
                     if (c.moveToFirst()) {
@@ -300,10 +339,32 @@ class Releaser(private val context: Context, private val db: AppDb) {
                         if (!data.isNullOrEmpty()) {
                             runCatching { File(data).setLastModified(row.captureAt) }
                         }
+                        verdict = ReleaseVerdict.check(
+                            found = true,
+                            isPending = c.getInt(3) == 1,
+                            sizeBytes = c.getLong(2),
+                            relativePath = c.getString(4),
+                            expectedPath = relPath
+                        )
                     }
                 }
             } catch (e: Exception) {
-                // Name/date polish is best effort.
+                AppLog.log(context, "release", "verify query failed: ${e.message}")
+            }
+            if (!ReleaseVerdict.isVisible(verdict)) {
+                // Nothing half-done survives: the broken row goes, the item
+                // stays STAGED so the next pass tries again, and the reason
+                // reaches Activity rather than only the log.
+                runCatching { resolver.delete(itemUri, null, null) }
+                AppLog.log(
+                    context, "release",
+                    "${row.displayName} did not become visible ($verdict) - keeping it staged"
+                )
+                ActivityLog(context).record(
+                    ActivityLog.Kind.PROBLEM,
+                    detail = context.getString(R.string.problem_release_invisible, actualName)
+                )
+                return@releaseOne false
             }
 
             db.items().update(
