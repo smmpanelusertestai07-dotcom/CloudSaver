@@ -66,5 +66,36 @@ object ScanSources {
         else -> null
     }
 
-    enum class Reason { OUR_OUTPUT, HIDDEN, LEGACY_OUTPUT, LOOKS_LIKE_OUTPUT }
+    enum class Reason { OUR_OUTPUT, HIDDEN, LEGACY_OUTPUT, LOOKS_LIKE_OUTPUT, CLOUD_LOCAL }
+
+    /**
+     * True for a path inside a known cloud app's own media directory (Z4.2).
+     *
+     * Cloud apps keep downloaded and cached copies under Android/media/<their
+     * package>, and MediaStore indexes those like any photo. Scanning them
+     * would optimise the cloud's own downloads - copies of copies. Folders
+     * holding a .nomedia file never reach MediaStore's media collections at
+     * all, so that half of the rule is enforced by the platform itself.
+     */
+    fun isCloudLocalPath(relativePath: String?, cloudPackages: Collection<String>): Boolean {
+        if (relativePath.isNullOrEmpty()) return false
+        val lower = relativePath.lowercase()
+        return cloudPackages.any { pkg ->
+            lower.contains("android/media/${pkg.lowercase()}")
+        }
+    }
+
+    /**
+     * The 16-hex identifier inside an output-pattern name, or null (Z4.1).
+     *
+     * `IMG_0001__a1b2c3d4e5f60718.jpg` carries the original's fingerprint in
+     * its own name, which is what lets a copy that came back from the cloud -
+     * into Download, into another album, anywhere - be recognised with no
+     * stored state at all. Recognised means never optimised again: shrinking
+     * a copy of a copy is the loop this whole object exists to stop.
+     */
+    private val PIPELINE_ID = Regex("""__([0-9a-f]{16})(?:\s\(\d+\))?\.[A-Za-z0-9]+$""")
+
+    fun pipelineIdOf(name: String): String? =
+        PIPELINE_ID.find(name)?.groupValues?.get(1)
 }

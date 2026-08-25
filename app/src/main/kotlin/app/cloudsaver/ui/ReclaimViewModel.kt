@@ -75,6 +75,13 @@ class ReclaimViewModel(
     }
 
     val entries = MutableStateFlow<List<Entry>>(emptyList())
+
+    /**
+     * Which cloud app holds each batch's copies (Z10.1). Proof belongs to the
+     * app that was selected when the file was sent, so the confirmation sheet
+     * names that app - not whichever app is selected today.
+     */
+    val holdingApps = MutableStateFlow<Map<Long, String>>(emptyMap())
     val loading = MutableStateFlow(false)
 
     /** Selection, mode, target and view options all survive a rotation. */
@@ -134,6 +141,11 @@ class ReclaimViewModel(
             val now = System.currentTimeMillis()
             val ledgerByHash = db.ledger().all().associateBy { it.outputSha256 }
             val rows = db.items().reclaimCandidates()
+            holdingApps.value = rows.mapNotNull { it.batchId }.distinct()
+                .mapNotNull { id ->
+                    db.batches().byId(id)?.cloudPackage?.let { pkg -> id to pkg }
+                }
+                .toMap()
             // Both grades are offered, always. The old switch asked the user
             // to configure their own safety, which is a question nobody can
             // answer; the list simply separates the two and says what each

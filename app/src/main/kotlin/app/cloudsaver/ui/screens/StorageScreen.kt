@@ -224,46 +224,25 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        // 3. Find space.
-        if (findSpace.duplicateBytes > 0 || findSpace.biggestBytes > 0 ||
-            findSpace.reclaimableBytes > 0
-        ) {
-            SectionHeader(stringResource(R.string.find_space_title))
-            if (findSpace.duplicateBytes > 0) {
-                FindRow(
-                    icon = Icons.Outlined.ContentCopy,
-                    title = stringResource(R.string.find_duplicates),
-                    hint = stringResource(R.string.find_duplicates_hint),
-                    value = Formats.bytes(findSpace.duplicateBytes),
-                    onClick = { nav.goTo(Routes.DUPLICATES) }
-                )
-            }
-            if (findSpace.biggestBytes > 0) {
-                FindRow(
-                    icon = Icons.Outlined.PhotoSizeSelectLarge,
-                    title = stringResource(R.string.find_biggest),
-                    hint = stringResource(R.string.find_biggest_hint),
-                    value = Formats.bytes(findSpace.biggestBytes),
-                    onClick = { nav.goTo(Routes.BIGGEST) }
-                )
-            }
-            if (findSpace.reclaimableBytes > 0) {
-                FindRow(
-                    icon = Icons.Outlined.DeleteSweep,
-                    title = stringResource(R.string.find_suggestions),
-                    hint = stringResource(R.string.find_suggestions_hint),
-                    value = Formats.bytes(findSpace.reclaimableBytes),
-                    onClick = { nav.goTo(Routes.FREE_UP) }
-                )
-            }
-            FindRow(
-                icon = Icons.Outlined.Calculate,
-                title = stringResource(R.string.calc_title),
-                hint = stringResource(R.string.calc_entry_hint),
-                value = null,
-                onClick = { nav.goTo(Routes.CALCULATOR) }
-            )
-        }
+        // 3. One entry for everything that can make room (Z1.1). The four
+        // sections and their sizes live on the hub; listing them here as well
+        // was the same information twice, one screen apart.
+        SectionHeader(stringResource(R.string.find_space_title))
+        val hubBytes = findSpace.reclaimableBytes + findSpace.duplicateBytes + stats.tempBytes
+        FindRow(
+            icon = Icons.Outlined.DeleteSweep,
+            title = stringResource(R.string.hub_title),
+            hint = stringResource(R.string.hub_entry_hint),
+            value = if (hubBytes > 0) Formats.bytes(hubBytes) else null,
+            onClick = { nav.goTo(Routes.FREE_SPACE_HUB) }
+        )
+        FindRow(
+            icon = Icons.Outlined.Calculate,
+            title = stringResource(R.string.calc_title),
+            hint = stringResource(R.string.calc_entry_hint),
+            value = null,
+            onClick = { nav.goTo(Routes.CALCULATOR) }
+        )
 
         // Recently reclaimed sits with the thing it describes.
         val historyCount by vm.reclaimHistoryCount.collectAsStateWithLifecycle()

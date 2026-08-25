@@ -46,7 +46,7 @@ import app.cloudsaver.ui.components.sizeFilter
 import app.cloudsaver.ui.components.selectionSummary
 import app.cloudsaver.ui.components.rememberListSelection
 import app.cloudsaver.ui.components.albumFilter
-import app.cloudsaver.ui.components.WarningCard
+import app.cloudsaver.ui.components.RemovalWarningCard
 import app.cloudsaver.ui.components.SearchEmptyState
 import app.cloudsaver.ui.components.ListScreenScaffold
 import app.cloudsaver.ui.components.ListOption
@@ -219,12 +219,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
                 // Always visible, never behind the action. Someone about to
                 // delete photographs should not have to tap to find out that
                 // their cloud is untouched and the files are recoverable.
-                WarningCard(
-                    stringResource(
-                        if (legacy) R.string.dupes_warning_legacy else R.string.dupes_warning
-                    ),
-                    Modifier.padding(top = 10.dp)
-                )
+                RemovalWarningCard(Modifier.padding(top = 10.dp))
             }
         },
         actionBar = {

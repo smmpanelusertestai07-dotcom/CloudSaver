@@ -38,6 +38,7 @@ import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
 import app.cloudsaver.ui.screens.FilesScreen
+import app.cloudsaver.ui.screens.FreeSpaceHubScreen
 import app.cloudsaver.ui.screens.BiggestFilesScreen
 import app.cloudsaver.ui.screens.DuplicatesScreen
 import app.cloudsaver.ui.screens.KeptCopiesScreen
@@ -65,6 +66,7 @@ object Routes {
     const val STORAGE = "storage"
     const val OPTIONS = "options"
     const val FREE_UP = "freeup"
+    const val FREE_SPACE_HUB = "free_space_hub"
     const val ACTIVITY = "activity"
     const val RECLAIM_HISTORY = "reclaim_history"
     const val DUPLICATES = "duplicates"
@@ -80,7 +82,7 @@ object Routes {
     const val HELP_ABOUT = "help_about"
 
     /** Screens behind the optional app lock. */
-    val LOCKED = setOf(FILES, OPTIONS, FREE_UP, RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT)
+    val LOCKED = setOf(FILES, OPTIONS, FREE_UP, FREE_SPACE_HUB, RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT)
 
     /** The four bottom-bar destinations. */
     val TABS = setOf(HOME, FILES, STORAGE, OPTIONS)
@@ -235,6 +237,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.FILES) { FilesScreen(vm) }
                 composable(Routes.STORAGE) { StorageScreen(vm, nav) }
                 composable(Routes.OPTIONS) { OptionsScreen(vm, nav) }
+                composable(Routes.FREE_SPACE_HUB) { FreeSpaceHubScreen(vm, nav) }
                 composable(Routes.FREE_UP) { ReclaimScreen(vm, reclaimVm, nav) }
                 composable(Routes.RECLAIM_HISTORY) { ReclaimHistoryScreen(reclaimVm, nav) }
                 composable(Routes.DUPLICATES) { DuplicatesScreen(vm, reclaimVm, nav) }

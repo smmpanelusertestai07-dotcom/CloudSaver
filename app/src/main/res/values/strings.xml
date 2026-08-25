@@ -55,6 +55,7 @@
     <string name="skip_other">Skipped to be safe</string>
     <string name="skip_user_excluded">You chose to skip these</string>
     <string name="skip_duplicate">Already handled once</string>
+    <string name="skip_returned_copy">Already optimised \u2014 came back from your cloud</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
     <string name="partial_title">CloudSaver can only see the photos you picked</string>
@@ -266,6 +267,8 @@
     <string name="reclaim_confirm_title">Move these to the trash?</string>
     <string name="reclaim_confirm_delete_title">Delete these permanently?</string>
     <string name="reclaim_confirm_body">Remove %1$s originals and free %2$s?</string>
+    <string name="reclaim_confirm_keeps">%1$s keeps the optimised copy of every file removed here.</string>
+    <string name="reclaim_confirm_keeps_generic">Your cloud keeps the optimised copy of every file removed here.</string>
     <string name="reclaim_preview_title">What would happen</string>
     <string name="reclaim_preview_count">Files removed</string>
     <string name="reclaim_preview_freed">Space freed</string>
@@ -309,6 +312,22 @@
 
     <!-- find space -->
     <string name="find_space_title">Find space</string>
+    <string name="hub_title">Free up space</string>
+    <string name="hub_entry_hint">Everything that can make room, in one place.</string>
+    <string name="hub_could_free">You could free about %1$s.</string>
+    <string name="hub_nothing">Nothing to free right now. New photos and videos are picked up automatically.</string>
+    <string name="hub_backed_up">Backed-up originals</string>
+    <string name="hub_backed_up_hint">Originals whose optimised copy your cloud already has.</string>
+    <string name="hub_duplicates_hint">The same file saved more than once on this phone.</string>
+    <string name="hub_biggest_hint">Your largest photos and videos.</string>
+    <string name="hub_leftovers">Leftover work files</string>
+    <string name="hub_leftovers_hint">Half-finished files from a run that was stopped.</string>
+    <string name="hub_volume_line">Cleaning %1$s \u00b7 %2$s free now, about %3$s after</string>
+    <string name="hub_clean_now">Clear</string>
+    <string name="warn_phone_only">This removes files from this phone only.</string>
+    <string name="warn_cloud_untouched">Your cloud is never touched. CloudSaver has no internet permission.</string>
+    <string name="warn_trash_30">Removed files go to your gallery\u2019s trash for 30 days.</string>
+    <string name="warn_trash_none">Removed files are deleted straight away on this phone.</string>
     <string name="find_duplicates">Exact duplicates</string>
     <string name="find_duplicates_hint">Same file stored more than once</string>
     <string name="find_biggest">Biggest space users</string>
@@ -756,8 +775,6 @@
     <string name="dupes_remove_extras">Remove extras</string>
     <string name="dupes_remove_extra_one">Remove this extra copy</string>
     <string name="dupes_intro_second">One copy always stays. Only the extra copies are removed.</string>
-    <string name="dupes_warning">This removes files from your phone only. Your cloud is never touched. Removed files go to your gallery\u2019s trash and can be restored for 30 days.</string>
-    <string name="dupes_warning_legacy">This removes files from your phone only. Your cloud is never touched. On this phone, removed files are deleted straight away.</string>
     <plurals name="dupes_group_header">
         <item quantity="one">%1$d copy \u00b7 %2$s can be freed</item>
         <item quantity="other">%1$d copies \u00b7 %2$s can be freed</item>

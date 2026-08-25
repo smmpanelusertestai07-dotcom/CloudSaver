@@ -50,7 +50,9 @@ import app.cloudsaver.ui.components.ListSearchField
 import app.cloudsaver.ui.components.ListOption
 import app.cloudsaver.ui.components.ListFilterRow
 import app.cloudsaver.ui.components.ListFilter
+import app.cloudsaver.ui.components.RemovalWarningCard
 import app.cloudsaver.core.logic.ListFilters
+import app.cloudsaver.data.CloudApps
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.prefs.OptionsRepo
@@ -108,6 +110,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     ) { uri -> uri?.let { rvm.exportSelection(it, exportOk, exportFail) } }
 
     val shared by rvm.listFilter.collectAsStateWithLifecycle()
+    val holdingApps by rvm.holdingApps.collectAsStateWithLifecycle()
     val visible = rvm.visible()
     val groups = rvm.groups()
     val selectedEntries = rvm.selectedEntries()
@@ -145,6 +148,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         }
 
         LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            item("warning") {
+                RemovalWarningCard(Modifier.padding(top = 8.dp))
+            }
             item("modes") {
                 ModePicker(rvm, mode, selectedEntries.map { it.candidate })
             }
@@ -434,6 +440,27 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             modifier = Modifier.padding(top = 2.dp)
                         )
                     }
+                    // Z1.4: what will still exist afterwards, and who holds
+                    // it. Proof belongs to the app the file was sent to, so
+                    // the sheet names that app even if the selection changed.
+                    val holders = entries
+                        .filter { it.row.id in selected }
+                        .mapNotNull { it.row.batchId?.let { id -> holdingApps[id] } }
+                        .distinct()
+                        .map { pkg -> CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (holders.isNotEmpty()) {
+                            stringResource(
+                                R.string.reclaim_confirm_keeps,
+                                holders.joinToString(", ")
+                            )
+                        } else {
+                            stringResource(R.string.reclaim_confirm_keeps_generic)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             },
             confirmButton = {

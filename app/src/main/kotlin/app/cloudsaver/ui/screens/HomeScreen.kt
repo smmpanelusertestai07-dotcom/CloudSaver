@@ -909,6 +909,7 @@ fun skipReasonLabel(reason: String): String = when (reason) {
     "out_of_memory" -> stringResource(R.string.skip_too_large)
     "user_excluded" -> stringResource(R.string.skip_user_excluded)
     "duplicate" -> stringResource(R.string.skip_duplicate)
+    "returned_copy" -> stringResource(R.string.skip_returned_copy)
     else -> stringResource(R.string.skip_other)
 }
 

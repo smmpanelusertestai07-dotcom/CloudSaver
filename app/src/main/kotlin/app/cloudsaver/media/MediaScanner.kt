@@ -48,6 +48,15 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         var newItems = 0
         val now = System.currentTimeMillis()
         for (f in found) {
+            // Z4.1: a file named like the app's own output is a copy that
+            // came back - from the cloud into Download, from a share, from
+            // anywhere. It is recognised by its name, matched to the ledger
+            // by the identifier the name carries, and never optimised again.
+            // A filename match never grants upload proof (ReattachRules).
+            if (ScanSources.isPipelineName(f.displayName)) {
+                if (recordReturnedCopy(f, now)) newItems++
+                continue
+            }
             val fp = Fingerprint.fp16(f.displayName, f.sizeBytes, f.dateModified)
             val existing = db.items().byFingerprint(fp)
             if (existing == null) {
@@ -98,6 +107,43 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             }
         }
         return newItems
+    }
+
+    /**
+     * Records one returned copy so Files can show it, without ever queueing
+     * it (Z4.1, Z4.3).
+     *
+     * Matching an existing backed-up ledger entry proves this is our own
+     * output come back - it is shown as such and never re-released. Matching
+     * nothing means it was probably made by another install or another tool:
+     * it is left exactly where it is and never uploaded, because sending a
+     * file we cannot account for would put an unaccountable copy in the
+     * user's cloud.
+     */
+    private suspend fun recordReturnedCopy(f: Found, now: Long): Boolean {
+        val fp = Fingerprint.fp16(f.displayName, f.sizeBytes, f.dateModified)
+        if (db.items().byFingerprint(fp) != null) return false
+        val row = ItemRow(
+            fingerprint = fp,
+            mediaStoreId = f.mediaStoreId,
+            contentUri = f.uri,
+            displayName = f.displayName,
+            sizeBytes = f.sizeBytes,
+            dateModified = f.dateModified,
+            captureAt = if (f.dateTaken > 0) f.dateTaken else f.dateModified * 1000,
+            dateAdded = f.dateAdded,
+            durationMs = f.durationMs,
+            mimeType = f.mimeType,
+            isVideo = f.isVideo,
+            bucket = f.bucket,
+            state = ItemState.SKIP.name,
+            skipReason = SKIP_RETURNED_COPY,
+            // The name proves a copy was made, never that a cloud collected
+            // it - so no evidence, exactly like the reattach path.
+            evidence = app.cloudsaver.core.logic.Evidence.NONE.name,
+            updatedAt = now
+        )
+        return db.items().insert(row) != -1L
     }
 
     fun queryAll(): List<Found> {
@@ -327,6 +373,9 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
     }
 
     companion object {
+        /** skipReason for a copy that came back from the cloud (Z4.1). */
+        const val SKIP_RETURNED_COPY = "returned_copy"
+
         /**
          * MediaStore _ID is unique per volume, not globally, so presence has to
          * be keyed by both - otherwise a deleted SD-card photo can look present
@@ -355,12 +404,13 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             .groupBy { folderKey(it) }
             .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
             .keys
+        val cloudPackages = app.cloudsaver.data.CloudApps.ALL.flatMap { it.packages }
         return found.filter { f ->
             ScanSources.exclusionReason(
                 relativePath = f.relativePath,
                 bucketName = f.bucket,
                 looksLikeOutput = folderKey(f) in looksLikeOutput
-            ) == null
+            ) == null && !ScanSources.isCloudLocalPath(f.relativePath, cloudPackages)
         }
     }
 

@@ -612,13 +612,17 @@ fun albumFilter(
 }
 
 /**
- * A card that states a consequence before the reader acts on it.
+ * The removal warning, identical wherever files can be removed (Z1.3).
  *
- * Warning colours are reserved for exactly this and for problem chips; used
- * for decoration they stop meaning anything, and then they stop being read.
+ * Exactly three lines, always visible, never behind a tap: what is removed
+ * from, what is never touched and why that is guaranteed, and where removed
+ * files go. It explains; Android's own dialog still authorises. On Android 10
+ * the third line changes because there is no gallery trash to restore from.
  */
 @Composable
-fun WarningCard(text: String, modifier: Modifier = Modifier) {
+fun RemovalWarningCard(modifier: Modifier = Modifier) {
+    val legacy = android.os.Build.VERSION.SDK_INT <
+        app.cloudsaver.core.logic.Platform.TRASH_SDK
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer,
         shape = RoundedCornerShape(16.dp),
@@ -632,11 +636,27 @@ fun WarningCard(text: String, modifier: Modifier = Modifier) {
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onTertiaryContainer
-            )
+            Column {
+                Text(
+                    stringResource(R.string.warn_phone_only),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    stringResource(R.string.warn_cloud_untouched),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                Text(
+                    stringResource(
+                        if (legacy) R.string.warn_trash_none else R.string.warn_trash_30
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
     }
 }
