@@ -12,6 +12,7 @@ import app.cloudsaver.data.db.LedgerRow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -76,6 +77,22 @@ class MigrationTest {
             carried.first().copy(srcPixels = 48_000_000, outPixels = 16_000_000)
         )
         assertEquals(16_000_000L, db.items().all().first().outPixels)
+
+        // v6's indices: proven by asking SQLite, not assumed. Room validates
+        // entity indices at open, but only for entities it knows - a typo in
+        // the migration SQL would surface here first.
+        db.openHelper.readableDatabase.query(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'items'"
+        ).use { c ->
+            val names = mutableSetOf<String>()
+            while (c.moveToNext()) names += c.getString(0)
+            for (expected in listOf(
+                "index_items_isVideo", "index_items_bucket", "index_items_sizeBytes",
+                "index_items_evidence", "index_items_batchId"
+            )) {
+                assertTrue("$expected must exist after migration", expected in names)
+            }
+        }
 
         // v4's columns and tables have to be there too.
         assertEquals(0, db.reclaim().itemsOf(1).size)

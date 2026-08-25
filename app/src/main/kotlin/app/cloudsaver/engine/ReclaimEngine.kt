@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
@@ -144,7 +145,12 @@ class ReclaimEngine(private val context: Context) {
      * Removes only the optimised copies from the upload folder. Originals are
      * never touched here, which is what makes this the zero-risk option.
      */
-    suspend fun removeCopiesOnly(rows: List<ItemRow>, now: Long): Result {
+    suspend fun removeCopiesOnly(rows: List<ItemRow>, now: Long): Result =
+        app.cloudsaver.util.Locks.reclaim.withLock {
+            removeCopiesOnlyLocked(rows, now)
+        }
+
+    private suspend fun removeCopiesOnlyLocked(rows: List<ItemRow>, now: Long): Result {
         val done = mutableListOf<Outcome>()
         val skipped = mutableListOf<Outcome>()
         var freed = 0L
@@ -233,7 +239,20 @@ class ReclaimEngine(private val context: Context) {
      * Records the outcome once Android has reported what the user allowed.
      * [deleted] is the set of uris that actually went.
      */
+    // AA3.3: one deletion finishing at a time - Reclaim, Duplicates and the
+    // legacy per-file path all end here, and their bookkeeping must not
+    // interleave.
     suspend fun finish(
+        prepared: Prepared,
+        deleted: Set<String>,
+        mode: ReclaimRules.Mode,
+        trashed: Boolean,
+        now: Long
+    ): Result = app.cloudsaver.util.Locks.reclaim.withLock {
+        finishLocked(prepared, deleted, mode, trashed, now)
+    }
+
+    private suspend fun finishLocked(
         prepared: Prepared,
         deleted: Set<String>,
         mode: ReclaimRules.Mode,

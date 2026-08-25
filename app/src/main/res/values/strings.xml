@@ -83,6 +83,7 @@
     <string name="detail_holding_app">Stored in</string>
     <string name="daily_limit_note">This limits how much CloudSaver adds to the upload folder each day, which is what your cloud app then uploads. When and on which network that app uploads is set inside that app.</string>
     <string name="chip_space">Storage low</string>
+    <string name="chip_volume_missing">SD card missing \u2014 paused safely</string>
     <string name="count_waiting">To optimise</string>
     <string name="count_in_folder">In upload folder</string>
     <string name="count_confirmed">Backed up</string>

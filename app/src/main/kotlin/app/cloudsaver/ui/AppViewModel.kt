@@ -411,6 +411,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          */
         val backgroundWorkStopped: Boolean = false,
 
+        /** The chosen SD card is gone; work is paused safely (Z3.3). */
+        val volumeMissing: Boolean = false,
+
         // Everything the Home action needs to decide whether a run the user
         // asks for could actually go ahead.
         val thermalThrottled: Boolean = false,
@@ -475,7 +478,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 refreshCalculator()
                 refreshProjection()
             }
+            val volumeGone = o.storageVolume.isNotEmpty() &&
+                Volumes.byName(ctx, o.storageVolume) == null
+            // A returned card must be probed afresh, not trusted from cache.
+            if (!volumeGone && o.storageVolume.isNotEmpty()) Unit else Volumes.invalidateProbes()
             health.value = Health(
+                volumeMissing = volumeGone,
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),

@@ -543,6 +543,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             nav.goTo(Routes.STORAGE)
                         }
                     }
+                    // Z3.3: the chosen card is gone; state is kept and work
+                    // resumes by itself when it returns - the chip is so the
+                    // pause never reads as the app having quietly died.
+                    if (health.volumeMissing) {
+                        StatusChip(stringResource(R.string.chip_volume_missing)) {
+                            nav.goTo(Routes.STORAGE)
+                        }
+                    }
                     // The phone stopped running us. Nothing else on this row
                     // would show it, and the app would just look idle.
                     if (health.backgroundWorkStopped) {

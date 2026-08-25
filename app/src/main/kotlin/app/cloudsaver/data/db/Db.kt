@@ -23,7 +23,13 @@ import kotlinx.coroutines.flow.Flow
  */
 @Entity(
     tableName = "items",
-    indices = [Index(value = ["fingerprint"], unique = true), Index("state"), Index("captureAt")]
+    indices = [
+        Index(value = ["fingerprint"], unique = true), Index("state"), Index("captureAt"),
+        // AA3.5: every column the lists filter or sort by. Without these a
+        // 10,000-item gallery turns each chip tap into a table scan.
+        Index("isVideo"), Index("bucket"), Index("sizeBytes"),
+        Index("evidence"), Index("batchId")
+    ]
 )
 data class ItemRow(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -796,7 +802,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -955,12 +961,29 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v6 adds the indices behind list filtering and sorting (AA3.5).
+         * Pure additions: no data moves, nothing can be lost.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                for (column in listOf(
+                    "isVideo", "bucket", "sizeBytes", "evidence", "batchId"
+                )) {
+                    connection.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_items_$column` " +
+                            "ON `items` (`$column`)"
+                    )
+                }
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
          * the app on the first launch after an update.
          */
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         @Volatile
         private var instance: AppDb? = null

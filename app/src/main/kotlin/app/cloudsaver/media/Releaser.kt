@@ -16,6 +16,8 @@ import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.util.Formats
 import app.cloudsaver.core.logic.VolumeRules
 import app.cloudsaver.util.AppLog
+import kotlinx.coroutines.sync.withLock
+import app.cloudsaver.util.Locks
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -46,19 +48,22 @@ class Releaser(private val context: Context, private val db: AppDb) {
         onlyFolder: OutFolder? = null,
         capBytesOverride: Long? = null,
         maxItems: Int? = null
-    ): Int {
+        // AA3.3: one releaser at a time. The worker and "Optimise now" can
+        // overlap, and two concurrent releases would double-count the batch
+        // against the day's allowance.
+    ): Int = Locks.release.withLock {
         val staged = db.items().staged()
             .filter { row -> row.stagePath?.let { File(it).exists() } == true }
             .filter { onlyFolder == null || it.outputFolder == onlyFolder.name }
             .filter { !alreadyDelivered(it) }
-        if (staged.isEmpty()) return 0
+        if (staged.isEmpty()) return@withLock 0
 
         val capBytes = capBytesOverride ?: options.dailyCapBytes
         val plan = ReleasePlanner.plan(
             staged.map { ReleasePlanner.Staged(it.id, it.outputBytes ?: 0L, it.captureAt) },
             capBytes
         ).let { if (maxItems != null) it.take(maxItems) else it }
-        if (plan.isEmpty()) return 0
+        if (plan.isEmpty()) return@withLock 0
 
         val rowsById = staged.associateBy { it.id }
         val batchIds = HashMap<OutFolder, Long>()
@@ -114,7 +119,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
             app.cloudsaver.data.prefs.OptionsRepo.get(context)
                 .setLong(app.cloudsaver.data.prefs.OptionsRepo.K.FIRST_RELEASE_AT, now)
         }
-        return released
+        return@withLock released
     }
 
     /**
@@ -143,7 +148,14 @@ class Releaser(private val context: Context, private val db: AppDb) {
     }
 
     /** Records a copy as delivered, once and for good. */
-    suspend fun recordDelivered(row: ItemRow, evidence: String, now: Long) {
+    // AA3.3: ledger writes are serialised - a delivery record and a snapshot
+    // merge must never interleave on the same hash.
+    suspend fun recordDelivered(row: ItemRow, evidence: String, now: Long): Unit =
+        Locks.ledger.withLock {
+            recordDeliveredLocked(row, evidence, now)
+        }
+
+    private suspend fun recordDeliveredLocked(row: ItemRow, evidence: String, now: Long) {
         val sha = row.outputSha256 ?: return
         db.ledger().insert(
             LedgerRow(
@@ -176,15 +188,32 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val stagePath = row.stagePath ?: return false
         val stageFile = File(stagePath)
         if (!stageFile.exists()) return false
+        // Z3.4: FAT32 cards top out just under 4 GB per file. Whether this
+        // card is FAT32 cannot be asked, only discovered by failing - so a
+        // file at the limit is routed to internal storage up front, with the
+        // reason in the log, instead of failing the copy halfway through.
+        val effectiveVolume = if (
+            volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY &&
+            !VolumeRules.fitsOnFat32(stageFile.length())
+        ) {
+            AppLog.log(
+                context, "release",
+                "${row.displayName} is ${stageFile.length()} bytes - too large for a " +
+                    "FAT32 card; releasing to internal storage instead"
+            )
+            MediaStore.VOLUME_EXTERNAL_PRIMARY
+        } else {
+            volumeName
+        }
         val folder = row.outputFolder?.let { runCatching { OutFolder.valueOf(it) }.getOrNull() }
             ?: OutFolder.SINGLE
         val relPath = Defaults.outFolderRelPath(folder) + "/"
         val outName = row.outputName ?: stageFile.name
         val resolver = context.contentResolver
         val collection = if (row.isVideo) {
-            MediaStore.Video.Media.getContentUri(volumeName)
+            MediaStore.Video.Media.getContentUri(effectiveVolume)
         } else {
-            MediaStore.Images.Media.getContentUri(volumeName)
+            MediaStore.Images.Media.getContentUri(effectiveVolume)
         }
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, outName)
@@ -193,7 +222,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
             put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)
         }
-        var landedVolume = volumeName
+        var landedVolume = effectiveVolume
         var itemUri = try {
             resolver.insert(collection, values)
         } catch (e: Exception) {
@@ -203,20 +232,20 @@ class Releaser(private val context: Context, private val db: AppDb) {
         // BB2.4: an SD insert that fails - or lands somewhere other than the
         // card - retries once on the primary volume with the reason recorded,
         // instead of leaving the item staged forever.
-        if (itemUri != null && volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+        if (itemUri != null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
             val actual = runCatching { MediaStore.getVolumeName(itemUri!!) }.getOrNull()
-            if (actual != null && !actual.equals(volumeName, ignoreCase = true)) {
+            if (actual != null && !actual.equals(effectiveVolume, ignoreCase = true)) {
                 AppLog.log(
                     context, "release",
-                    "${row.displayName} landed on $actual, not $volumeName; keeping it there"
+                    "${row.displayName} landed on $actual, not $effectiveVolume; keeping it there"
                 )
                 landedVolume = actual
             }
         }
-        if (itemUri == null && volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+        if (itemUri == null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
             AppLog.log(
                 context, "release",
-                "${row.displayName}: $volumeName refused the insert; retrying on internal"
+                "${row.displayName}: $effectiveVolume refused the insert; retrying on internal"
             )
             val primary = if (row.isVideo) {
                 MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)

@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
@@ -284,7 +285,10 @@ class SnapshotStore(
     }
 
     /** Merges a snapshot: never downgrades existing rows, applies UNKNOWN rules. */
-    suspend fun merge(snapshot: SnapshotCodec.Snapshot): Int {
+    suspend fun merge(snapshot: SnapshotCodec.Snapshot): Int =
+        app.cloudsaver.util.Locks.ledger.withLock { mergeLocked(snapshot) }
+
+    private suspend fun mergeLocked(snapshot: SnapshotCodec.Snapshot): Int {
         // BB1.5: a snapshot exported under partial access is a fragment, not
         // an inventory. Merging stays safe because it only ever adds rows or
         // raises evidence - but the fact is logged, and the next scan (which
