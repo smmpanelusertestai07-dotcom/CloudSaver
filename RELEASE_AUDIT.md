@@ -360,3 +360,47 @@ The manual device passes (Z9.5, AA6.4): real phone, real gallery, real
 cloud app, real SD card, TalkBack, 200% sweep. Recorded in the matrix as
 the one "Not done", with everything automatable about the same claims
 covered by 383 unit tests and the instrumented suite.
+
+---
+
+# 6.1.0 — FINAL PROMPT v9.0, the closing pass
+
+CC1 first, as ordered, then CC2–CC10, each gated on tests.
+
+- **The screenshot bug**: SummaryLine weighted only its label, so a long
+  value starved it to one character and "Backing up" rendered vertically.
+  Both halves weighted now. Found beside it: setup offered "Start backing
+  up" with zero albums selected — a backup that would do nothing for ever —
+  and now says so with a one-tap way back to the albums step.
+- **CC1**: the un-pend update was fire-and-forget; a silent failure left the
+  row IS_PENDING=1 (invisible to the gallery and the cloud app) yet marked
+  RELEASED. Releases are now re-read and must be present, finished,
+  non-empty and in the right folder before RELEASED is set; failures delete
+  the broken row, keep the item STAGED, and reach Activity. Stale-pending
+  repair: 24 h → 15 min, run before and after every release pass. The folder
+  is media-scanned after each pass. The "in upload folder" tile counts only
+  visible RELEASED rows; pacing-held files stay under "to optimise" with a
+  line saying they follow as uploads are confirmed. The worker logs that a
+  manual run chains release+verify (CC1.2 — it always did; now provable).
+- **CC2**: About shows nothing technical above the Advanced expander; the
+  Updates text lives inside it, two sentences.
+- **CC3**: the preset chips were already live end to end; added the
+  per-preset appearance line with the pixels-vs-looks note, and the new
+  measured-empty wording.
+- **CC4**: Reclaim → Free up, Biggest/space users → Largest files, Exact
+  duplicates → Duplicate files, everywhere a user reads; locked by test.
+- **CC5**: Open, first, on every duplicate row including the keeper, through
+  the one chooser helper; row resolved off the main thread.
+- **CC6**: mixed selections split into eligible and skipped with the counts
+  said ("Optimise 3 of 5 selected"), hidden at zero; pure rule + tests.
+- **CC7**: the Optimise now line names the exact rule it bypasses (budget,
+  charger, screen, battery); guards unchanged and never bypassed; FAQ 13.
+- **CC8**: the Typical-estimate badge sits inside the calculator's result
+  box with the one-line explanation, switching to Measured after the gate.
+- **CC9**: no snapshot before onboarding completes; a deleted .cloudsaver
+  folder heals the same day (existence checked, not only the day marker);
+  FAQ 14 explains the folders; the Privacy page names them.
+- **CC10**: FAQ count 12 → 14, exactly the two new answers.
+
+397 unit tests, lint clean. Matrix rows 19–20 added, rows 8–9 evidence
+amended, and the CC11.3 manual checklist ships in every release's notes.

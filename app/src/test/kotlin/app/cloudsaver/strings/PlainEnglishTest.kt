@@ -95,6 +95,30 @@ class PlainEnglishTest {
     }
 
     /**
+     * CC4.4: the words the terminology sweep retired.
+     *
+     * "Reclaim" is a developer's word for the operation; the user's word is
+     * "free up". "Biggest space users" described a league table nobody asked
+     * for. "Exact duplicates" put the qualifier before the noun, so the
+     * screen announced a technicality instead of naming the thing. Class
+     * names may keep the old words; strings may not.
+     */
+    @Test
+    fun retiredTermsDoNotComeBack() {
+        val retired = listOf("reclaim", "space users", "exact duplicate")
+        val offenders = mutableListOf<String>()
+        for ((name, body) in userFacingStrings()) {
+            for (word in retired) {
+                if (body.contains(word, ignoreCase = true)) offenders += "$name says \"$word\""
+            }
+        }
+        assertTrue(
+            "these use a retired term: ${offenders.joinToString("; ")}",
+            offenders.isEmpty()
+        )
+    }
+
+    /**
      * Shouting at someone is not emphasis. Any all-caps run of four or more
      * letters is either a proper noun or a mistake, and the proper nouns are
      * listed.

@@ -12,8 +12,8 @@ nothing here is asserted from memory.
 | 5 | Originals are never modified, moved, renamed or deleted by the app itself | Done | The only original-deleting path is `ReclaimEngine`, behind proof + Android's own dialog; RowActionsTest proves removal is never offered without proof |
 | 6 | Temporary copies stay within the configured space limit and are cleaned automatically | Done | `Storage.cleanTemp` each run; `maxExtraMb` gate in the stager; leftover-files card in the Free up space hub |
 | 7 | The daily limit caps what is added to the upload folder each day | Done | `ReleasePlanner.plan` against `dailyCapBytes`; explained beside the control and in the FAQ (Z10.5) |
-| 8 | Upload proof is obtained automatically on every supported cloud app | Done | Disappearance proof + paced byte-matching in `MaintainEngine`/`UsageVerifier`; no routine user action; per-file proof line in the UI |
-| 9 | Nothing is ever uploaded twice by CloudSaver's own behaviour | Done | Ledger by content digest (`alreadyDelivered`); reattach adopts returned copies; returned-name copies are never re-queued (Z4, ReturnedCopyTest) |
+| 8 | Upload proof is obtained automatically on every supported cloud app | Done | Disappearance proof + paced byte-matching in `MaintainEngine`/`UsageVerifier`; a release now counts only after the row is re-read as visible (`ReleaseVerdict`, CC1), so proof is only ever sought for files the cloud app can actually see |
+| 9 | Nothing is ever uploaded twice by CloudSaver's own behaviour | Done | Ledger by content digest (`alreadyDelivered`); reattach adopts returned copies; returned-name copies never re-queued (Z4); a failed release deletes its broken row before retrying, so a retry can never leave two copies (CC1.1, ReleaseVerdictTest) |
 | 10 | Works after reboot, app update, clear data, reinstall and a cloud app change | Done | WorkManager persists; `StartupRecovery` restores from the hidden snapshot; migrations 1..6 with MigrationTest; cloud-switch resets + sheet (Z10.1) |
 | 11 | No internet permission, no account, nothing leaves the phone | Done | INTERNET/ACCESS_NETWORK_STATE stripped with tools:node="remove"; crash sharing is a manual share sheet (BB3.3) |
 | 12 | Every destructive action is manual, proof-checked, reversible where the OS allows, confirmed by Android | Done | Reclaim/Duplicates: proof re-checked at action time, trash-first (API 30+), system dialog always; three-line warning card (Z1.3) |
@@ -23,6 +23,8 @@ nothing here is asserted from memory.
 | 16 | Partial media access is detected and never produces a number | Done | `Permissions.mediaAccess` three-way level; scan refuses inside `MediaScanner.scan`; MediaAccessTest (7 tests) |
 | 17 | The SD card is offered only when genuinely writable; a failed release falls back safely | Done | `Volumes.probeWritable` + `VolumeRules`; both pickers filter; releaser verifies the landing volume and retries once on internal; VolumeRulesTest |
 | 18 | A crash leaves a readable local trace and a single honest card | Done | `CrashLog` handler + Home card + Share log; CrashLogTest (instrumented) |
+| 19 | Release visibility is verified end to end: a copy counts as released only after the row is re-read as present, finished, non-empty and in the right folder | Done | `ReleaseVerdict` + the re-query in `Releaser.releaseOne`; ReleaseVerdictTest proves RELEASED is unreachable without it; stale-pending repair at 15 minutes; the folder is re-scanned so the album appears at once |
+| 20 | Terminology and estimate labelling are audited by test | Done | PlainEnglishTest bans the retired terms (reclaim, space users, exact duplicates); the calculator carries its Typical-estimate badge inside the result box until the 20+20 gate passes (CC8) |
 
 **Not done, and why:**
 
@@ -30,7 +32,22 @@ nothing here is asserted from memory.
   font-scale sweep in row 13, and TalkBack): these need a real phone with a
   real gallery, a real cloud app, an SD card and hardware encoders. Nothing
   in the build environment can run them. Everything automatable about the
-  same claims is covered by the 383 unit tests and the instrumented suite.
+  same claims is covered by the 397 unit tests and the instrumented suite.
+
+**Manual device checklist (CC11.3) — for the human tester:**
+
+1. Tap Optimise now: a visible Pictures/CloudSaver album appears in the
+   gallery, and the cloud app sees it.
+2. About shows nothing technical until Advanced is opened.
+3. In Quality explained, tapping the three preset chips updates the summary,
+   the appearance line and both tables live.
+4. A row on Duplicate files opens in the system chooser (Just once / Always).
+5. A mixed selection on Files reads "Optimise 3 of 5 selected" with the
+   skipped count named.
+6. The calculator badge flips from "Typical estimate" to "Measured from your
+   files" after 20 photos and 20 videos are optimised.
+7. Delete a .cloudsaver folder from Download: it is recreated within a day,
+   with no chip and no alert.
 
 **Refused permanently (Z7.2), by design:**
 similar-photo detection; blur or screenshot quality scoring; automatic

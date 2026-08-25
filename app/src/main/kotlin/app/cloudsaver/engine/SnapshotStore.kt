@@ -107,6 +107,10 @@ class SnapshotStore(
      * line nobody reads: it means an uninstall would lose their history.
      */
     suspend fun writeSafetySnapshot(): Boolean {
+        // CC9.1: a fresh install that never finished setup leaves nothing
+        // behind. Before onboarding completes there is no state worth a file
+        // in the user's Download folder.
+        if (!optionsRepo.current().onboardingDone) return false
         val json = SnapshotCodec.encode(build())
         val failures = mutableListOf<String>()
         var wroteShared = false
@@ -150,6 +154,17 @@ class SnapshotStore(
      * than trusted - it could otherwise promote evidence and put an original
      * in front of the user for deletion.
      */
+    /**
+     * Whether both shared snapshot files are where they should be (CC9.3).
+     *
+     * A user tidying Download can delete one; the next maintenance pass sees
+     * the gap here and rewrites silently - no chip, no alert, because a file
+     * the app can recreate in full is not a problem, only a chore.
+     */
+    fun sharedTargetsPresent(): Boolean = Defaults.SNAPSHOT_TARGETS.all { (dir, name) ->
+        findSnapshot(dir, name) != null
+    }
+
     suspend fun readBestSnapshot(): SnapshotCodec.Snapshot? {
         var best: SnapshotCodec.Snapshot? = null
         fun consider(label: String, json: String?) {
@@ -173,7 +188,7 @@ class SnapshotStore(
     }
 
     /** Locates an app-owned snapshot file, or null. */
-    private fun findSnapshot(relativeDir: String, name: String): Uri? {
+    internal fun findSnapshot(relativeDir: String, name: String): Uri? {
         val resolver = context.contentResolver
         val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +

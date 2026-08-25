@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -206,14 +207,35 @@ fun FilesScreen(vm: AppViewModel) {
             }
         },
         actionBar = {
-            ListActionBar(
-                summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
-                actionLabel = stringResource(R.string.list_optimise_these_first),
-                onAction = {
-                    vm.optimiseNow(chosen.map { it.id })
-                    selection.clear()
-                }
+            // CC6: a mixed selection acts only on what the action can touch,
+            // and says so. Five selected with two already optimised reads
+            // "Optimise 3 of 5" with the skip named - acting on all five
+            // would redo finished work, and acting on three silently reads
+            // as the app losing count. At zero eligible the action is absent.
+            val split = RowActions.splitForOptimise(
+                chosen.map { it.id to it.toActionRow() }
             )
+            if (split.eligible > 0) {
+                ListActionBar(
+                    summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                    actionLabel = if (split.skipped > 0) {
+                        stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
+                    } else {
+                        stringResource(R.string.list_optimise_these_first)
+                    },
+                    note = if (split.skipped > 0) {
+                        pluralStringResource(
+                            R.plurals.bulk_skipped_note, split.skipped, split.skipped
+                        )
+                    } else {
+                        null
+                    },
+                    onAction = {
+                        vm.optimiseNow(split.eligibleIds)
+                        selection.clear()
+                    }
+                )
+            }
         }
     ) {
         items(rows, key = { it.id }) { row ->

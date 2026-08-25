@@ -376,9 +376,31 @@ private fun DuplicateEntryRow(
 ) {
     val keepInsteadLabel = stringResource(R.string.dupes_keep_instead)
     val removeExtraLabel = stringResource(R.string.dupes_remove_extra_one)
-    // Y2.5's three actions. "Remove extra" on the row is what lets someone
-    // deal with one duplicate without discovering the selection gesture first.
+    val openLabel = stringResource(R.string.list_open)
+    val cannotOpen = stringResource(R.string.detail_open_failed)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // The stored row, resolved off the main thread - the same lookup the
+    // thumbnail already does, so opening costs no extra query.
+    val stored by androidx.compose.runtime.produceState<app.cloudsaver.data.db.ItemRow?>(
+        null, entry.id
+    ) { value = vm.itemById(entry.id) }
+    // CC5.1: Open first, on the keeper as well as the extras - deciding which
+    // of two identical-looking rows to remove is exactly when someone needs
+    // to look at the file. It goes through the shared chooser, so Android
+    // offers its own app list with "Just once" and "Always"; the app never
+    // picks or remembers a viewer itself.
     val actions = buildList {
+        add(
+            openLabel to {
+                val ok = stored?.let { vm.openInViewer(it) } ?: false
+                if (!ok) {
+                    android.widget.Toast
+                        .makeText(context, cannotOpen, android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                }
+                Unit
+            }
+        )
         onRemoveExtra?.let { add(removeExtraLabel to it) }
         onKeepInstead?.let { add(keepInsteadLabel to it) }
     }
@@ -524,11 +546,26 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             // part way, or quietly doing some of them, the bar says how many
             // fall short and offers to narrow the selection to the rest.
             val shortfall = chosen.size - removable.size
+            // CC6: only what the action can touch, with the counts said.
+            val split = RowActions.splitForOptimise(
+                chosen.map { it.id to it.toActionRow() }
+            )
             ListActionBar(
                 summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
-                actionLabel = stringResource(R.string.list_optimise_these_first),
+                actionLabel = if (split.skipped > 0 && split.eligible > 0) {
+                    stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
+                } else {
+                    stringResource(R.string.list_optimise_these_first)
+                },
+                note = if (split.skipped > 0 && split.eligible > 0) {
+                    pluralStringResource(
+                        R.plurals.bulk_skipped_note, split.skipped, split.skipped
+                    )
+                } else {
+                    null
+                },
                 onAction = {
-                    rvm.optimiseFirst(chosen.map { it.id })
+                    rvm.optimiseFirst(split.eligibleIds)
                     selection.clear()
                 },
                 blockedReason = if (shortfall > 0 && removable.isNotEmpty()) {

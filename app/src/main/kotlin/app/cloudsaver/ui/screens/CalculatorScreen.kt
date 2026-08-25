@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -234,6 +235,32 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = OnBrandMuted
                 )
+                // CC8: the badge sits inside the result box, not only in the
+                // basis line at the foot. A big number read alone is taken as
+                // fact; the qualifier has to travel with it.
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    color = OnBrand.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        stringResource(
+                            if (estimate.typicalEstimate) R.string.calc_badge_typical
+                            else R.string.calc_badge_measured
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = OnBrand,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                if (estimate.typicalEstimate) {
+                    Text(
+                        stringResource(R.string.calc_badge_typical_line),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnBrandMuted,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))

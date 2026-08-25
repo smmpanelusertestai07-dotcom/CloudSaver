@@ -106,6 +106,52 @@ class RowActionsTest {
     }
 
     @Test
+    fun `a mixed selection splits into eligible and skipped, with the counts`() {
+        // CC6.1: five selected, two already optimised - the bar must offer
+        // "Optimise 3 of 5" and name the two it skips.
+        val rows = listOf(
+            1L to row(ItemState.NEW),
+            2L to row(ItemState.NEW),
+            3L to row(ItemState.SKIP),
+            4L to row(ItemState.RELEASED),
+            5L to row(ItemState.DONE)
+        )
+        val split = RowActions.splitForOptimise(rows)
+        assertEquals(listOf(1L, 2L, 3L), split.eligibleIds)
+        assertEquals(3, split.eligible)
+        assertEquals(2, split.skipped)
+    }
+
+    @Test
+    fun `zero eligible means the action is hidden, and the split says so`() {
+        // CC6.2: hidden, not greyed - a control that can do nothing for this
+        // selection is absent.
+        val rows = listOf(
+            1L to row(ItemState.RELEASED),
+            2L to row(ItemState.DONE)
+        )
+        assertEquals(0, RowActions.splitForOptimise(rows).eligible)
+        // And the generic splitter agrees for any action.
+        assertEquals(
+            0,
+            RowActions.splitFor(RowActions.Action.OPTIMISE_FIRST, rows).eligible
+        )
+    }
+
+    @Test
+    fun `free up counts only proof-carrying items`() {
+        // CC6.3: the same split rule, for removal.
+        val rows = listOf(
+            1L to row(ItemState.DONE, Evidence.CONFIRMED_EXACT),
+            2L to row(ItemState.DONE, Evidence.NONE),
+            3L to row(ItemState.DONE, Evidence.CONFIRMED_PACED)
+        )
+        val split = RowActions.splitFor(RowActions.Action.REMOVE_FROM_PHONE, rows)
+        assertEquals(listOf(1L, 3L), split.eligibleIds)
+        assertEquals(1, split.skipped)
+    }
+
+    @Test
     fun `removable count ignores what has no proof or is already gone`() {
         val rows = listOf(
             row(ItemState.DONE, Evidence.CONFIRMED_EXACT),

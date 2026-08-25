@@ -786,7 +786,10 @@ class MaintainEngine(private val context: Context) {
 
     private suspend fun dailySnapshot(o: Options, now: Long) {
         val today = Formats.dayKey(now)
-        if (o.lastSnapshotDay == today) return
+        // CC9.3: "already written today" only counts while the files still
+        // exist. A deleted .cloudsaver folder heals on the next pass, the
+        // same day, silently.
+        if (o.lastSnapshotDay == today && snapshots.sharedTargetsPresent()) return
         if (snapshots.writeSafetySnapshot()) {
             repo.setString(OptionsRepo.K.LAST_SNAPSHOT_DAY, today)
         }

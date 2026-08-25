@@ -158,7 +158,9 @@ private val FAQ = listOf(
     R.string.faq_q9 to R.string.faq_a9,
     R.string.faq_q10 to R.string.faq_a10,
     R.string.faq_q11 to R.string.faq_a11,
-    R.string.faq_q12 to R.string.faq_a12
+    R.string.faq_q12 to R.string.faq_a12,
+    R.string.faq_q13 to R.string.faq_a13,
+    R.string.faq_q14 to R.string.faq_a14
 )
 
 @Composable
@@ -274,6 +276,28 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp)
+            )
+            // CC3.2: how it looks, per preset - deliberately separate from the
+            // pixel table below, and said to be, because "kept 33% of the
+            // pixels" and "looks 97% the same" are both true at once and the
+            // difference is the entire subject of this screen.
+            Text(
+                stringResource(
+                    when (preset) {
+                        Preset.STORAGE_SAVER -> R.string.quality_looks_storage
+                        Preset.BALANCED -> R.string.quality_looks_balanced
+                        Preset.MAX_SAVER -> R.string.quality_looks_max
+                    }
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            Text(
+                stringResource(R.string.quality_looks_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
             )
             Text(
                 stringResource(R.string.applies_to_new_only),
@@ -706,6 +730,14 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 exit = fadeOut() + shrinkVertically()
             ) {
                 Column {
+                    // CC2.3: the update answer belongs here, with the other
+                    // technical facts, not above the fold.
+                    Text(
+                        stringResource(R.string.about_updates_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     KeyValueRow(
                         stringResource(R.string.about_network_title),
                         stringResource(R.string.about_network_none)
@@ -723,23 +755,6 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                 }
             }
-        }
-
-        // Z10.4: how a sideloaded build updates - the question every user of
-        // an app without a store listing eventually asks, answered before it
-        // is asked.
-        AppCard(modifier = Modifier.padding(top = 10.dp)) {
-            Text(
-                stringResource(R.string.about_updates_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                stringResource(R.string.about_updates_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
 
         // The setting a reader is most likely to want from this page, shown as

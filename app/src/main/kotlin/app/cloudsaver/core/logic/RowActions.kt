@@ -95,6 +95,37 @@ object RowActions {
         }
 
     /**
+     * Splits a mixed selection into what an action can touch and what it
+     * must skip (CC6).
+     *
+     * A bulk "Optimise" over five rows where two are already optimised must
+     * act on three, say "3 of 5", and name why two were left - acting on all
+     * five would re-process finished work, and silently acting on three
+     * reads as the app losing count.
+     */
+    data class Split(val eligibleIds: List<Long>, val skipped: Int) {
+        val eligible: Int get() = eligibleIds.size
+    }
+
+    fun splitFor(action: Action, rows: List<Pair<Long, Row>>): Split {
+        val eligible = rows.filter { (_, row) -> action in forItem(row) }.map { it.first }
+        return Split(eligible, skipped = rows.size - eligible.size)
+    }
+
+    /**
+     * Optimise-eligibility is the union of "queue it first" and "try again":
+     * both end in the same encode, and a bulk bar offering them separately
+     * would make the user classify failures the app can already classify.
+     */
+    fun splitForOptimise(rows: List<Pair<Long, Row>>): Split {
+        val eligible = rows.filter { (_, row) ->
+            val actions = forItem(row)
+            Action.OPTIMISE_FIRST in actions || Action.TRY_AGAIN in actions
+        }.map { it.first }
+        return Split(eligible, skipped = rows.size - eligible.size)
+    }
+
+    /**
      * How many of a selection may actually be removed from the phone.
      *
      * The bottom bar uses this to say "3 of 12 are not backed up yet" instead

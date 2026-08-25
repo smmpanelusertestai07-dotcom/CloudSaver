@@ -822,9 +822,29 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             )
                         HomeAction.Blocker.NOT_ENOUGH_SPACE ->
                             stringResource(R.string.optimise_blocked_space)
+                        // CC7.2: when the button bypasses a scheduling rule,
+                        // say which one. "Even though the schedule is waiting"
+                        // is true of all of them and useful about none.
                         HomeAction.Blocker.NONE -> when (action.note) {
-                            HomeAction.Note.OVERRIDES_WAITING ->
-                                stringResource(R.string.optimise_now_hint_override)
+                            HomeAction.Note.OVERRIDES_WAITING -> {
+                                val wait = runCatching {
+                                    RunDecider.Wait.valueOf(options.waitReason)
+                                }.getOrDefault(RunDecider.Wait.NONE)
+                                stringResource(
+                                    when (wait) {
+                                        RunDecider.Wait.BUDGET_USED, RunDecider.Wait.PHOTO_CAP ->
+                                            R.string.optimise_now_override_budget
+                                        RunDecider.Wait.NOT_CHARGING ->
+                                            R.string.optimise_now_override_charger
+                                        RunDecider.Wait.SCREEN_ON ->
+                                            R.string.optimise_now_override_screen
+                                        RunDecider.Wait.BATTERY_LOW,
+                                        RunDecider.Wait.BATTERY_SAVER ->
+                                            R.string.optimise_now_override_battery
+                                        else -> R.string.optimise_now_hint_override
+                                    }
+                                )
+                            }
                             else -> stringResource(R.string.optimise_now_hint)
                         }
                     },

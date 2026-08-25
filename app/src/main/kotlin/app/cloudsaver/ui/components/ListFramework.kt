@@ -291,7 +291,8 @@ fun ListActionBar(
     modifier: Modifier = Modifier,
     blockedReason: String? = null,
     narrowLabel: String? = null,
-    onNarrow: (() -> Unit)? = null
+    onNarrow: (() -> Unit)? = null,
+    note: String? = null
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -304,6 +305,16 @@ fun ListActionBar(
                     it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
+                )
+            }
+            // A neutral fact about the selection - "2 already optimised,
+            // skipped" - which is the app being precise, not a problem, and
+            // must not wear the error colour.
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
