@@ -10,14 +10,20 @@ import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.Presets
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.ReclaimBatchRow
 import app.cloudsaver.data.db.ReclaimItemRow
+import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.media.PhotoCompressor
+import app.cloudsaver.media.VideoCompressor
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
+import java.io.InputStream
 
 /**
  * Carries out a reclaim batch.
@@ -28,6 +34,12 @@ import java.io.FileInputStream
  * failure this app must never have.
  */
 class ReclaimEngine(private val context: Context) {
+
+    companion object {
+        /** SHA-256 of zero bytes: a hash "match" of two empty files is not proof. */
+        private const val EMPTY_SHA256 =
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
 
     private val db = AppDb.get(context)
     private val activity = ActivityLog(context)
@@ -78,17 +90,112 @@ class ReclaimEngine(private val context: Context) {
     }
 
     /**
-     * Copies the optimised file into the user's own album before the original
-     * is touched.
+     * Puts a verified light copy into the user's own album before the
+     * original is touched, remaking it when nothing usable is left locally.
      *
      * It goes to Pictures/Light copies rather than anywhere under the app's
      * folder: this is the user's photo now, it has to stay in the gallery, and
      * it must not read as something to delete when CloudSaver goes.
+     *
+     * The bytes come from the best source still on the phone - the hidden
+     * stage file, then the copy in the upload folder - each accepted only if
+     * it still hashes to what was recorded. When neither survives (the normal
+     * case once a cloud app has collected and removed the copy), the light
+     * copy is remade from the original with the current quality setting. A
+     * remade copy exists only here: it is never staged, never queued for the
+     * upload folder, never sent anywhere, and the Light copies album is
+     * outside everything the scanner may touch.
+     *
+     * Whatever the source, nothing returns non-null until the landed file has
+     * been read back, hashed against the bytes that were written, and opened
+     * as an image or video. The original's removal is requested only after
+     * this returns - a copy that cannot be proved keeps its original.
      */
-    suspend fun pinLightCopy(row: ItemRow, now: Long): Uri? {
-        val source = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+    suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Uri? {
+        val src = pinSource(row, options) ?: run {
+            AppLog.log(context, "reclaim", "no provable light-copy source for ${row.displayName}")
+            return null
+        }
+        return try {
+            writeVerified(row, src, now)
+        } finally {
+            src.temp?.delete()
+        }
+    }
+
+    /** One provable byte source for a light copy. [temp] is deleted after use. */
+    private class PinSource(
+        val name: String,
+        val sha256: String,
+        val open: () -> InputStream?,
+        val temp: File? = null
+    )
+
+    private suspend fun pinSource(row: ItemRow, options: Options): PinSource? {
+        val resolver = context.contentResolver
+        val recorded = row.outputSha256
+
+        val stage = localCopyFile(row)
+        if (stage != null && recorded != null) {
+            val sha = runCatching {
+                FileInputStream(stage).use { Fingerprint.sha256(it) }
+            }.getOrNull()
+            if (sha == recorded && stage.length() > 0) {
+                val name = row.outputName ?: return null
+                return PinSource(name, sha, { FileInputStream(stage) })
+            }
+        }
+
+        val output = row.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        if (output != null && recorded != null) {
+            val sha = runCatching {
+                resolver.openInputStream(output)?.use { Fingerprint.sha256(it) }
+            }.getOrNull()
+            if (sha == recorded && sha != EMPTY_SHA256) {
+                val name = row.outputName ?: return null
+                return PinSource(name, sha, { resolver.openInputStream(output) })
+            }
+        }
+
+        // Nothing provable is left on the phone; remake from the original.
+        if (row.originalMissing) return null
+        val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             ?: return null
-        val name = row.outputName ?: return null
+        val spec = Presets.spec(options.preset)
+        val tempDir = Storage.tempDir(context, options.storageVolume)
+        val result = try {
+            if (row.isVideo) {
+                VideoCompressor.compress(
+                    context, original, row.displayName, row.mimeType, row.sizeBytes, spec,
+                    options.codec, tempDir
+                )
+            } else {
+                PhotoCompressor.compress(
+                    context, original, row.displayName, row.sizeBytes, spec, tempDir
+                )
+            }
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Throwable) {
+            AppLog.log(context, "reclaim", "remake failed for ${row.displayName}: ${e.message}")
+            return null
+        }
+        if (result.file.length() <= 0) {
+            result.file.delete()
+            return null
+        }
+        val sha = runCatching {
+            FileInputStream(result.file).use { Fingerprint.sha256(it) }
+        }.getOrNull()
+        if (sha == null) {
+            result.file.delete()
+            return null
+        }
+        val name = Fingerprint.outputName(row.displayName, row.fingerprint, result.ext)
+        return PinSource(name, sha, { FileInputStream(result.file) }, temp = result.file)
+    }
+
+    private suspend fun writeVerified(row: ItemRow, src: PinSource, now: Long): Uri? {
         val resolver = context.contentResolver
         val collection = if (row.isVideo) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
@@ -96,8 +203,8 @@ class ReclaimEngine(private val context: Context) {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, row.mimeType)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, src.name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeForName(src.name, row.mimeType))
             put(MediaStore.MediaColumns.RELATIVE_PATH, "${Defaults.KEPT_DIR}/")
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
@@ -108,13 +215,19 @@ class ReclaimEngine(private val context: Context) {
             return null
         }
         return try {
-            resolver.openInputStream(source)?.use { input ->
+            src.open()?.use { input ->
                 resolver.openOutputStream(target)?.use { output ->
                     input.copyTo(output, 128 * 1024)
                 } ?: error("no output stream")
             } ?: error("no input stream")
-            // Publish immediately, then stamp the date: MediaProvider rewrites
-            // metadata during its publish scan and would lose it otherwise.
+            // Read the landed bytes back before anything else believes in
+            // them. A write that "succeeded" into a full disk or a dying SD
+            // card is precisely the case this copy exists to survive.
+            val landed = resolver.openInputStream(target)?.use { Fingerprint.sha256(it) }
+            if (landed != src.sha256 || landed == EMPTY_SHA256) error("landed bytes differ")
+            if (!looksDecodable(target, src.name, row.isVideo)) error("landed file unreadable")
+            // Publish, then stamp the date: MediaProvider rewrites metadata
+            // during its publish scan and would lose it otherwise.
             resolver.update(
                 target,
                 ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
@@ -133,6 +246,53 @@ class ReclaimEngine(private val context: Context) {
             runCatching { resolver.delete(target, null, null) }
             AppLog.log(context, "reclaim", "light copy failed for ${row.displayName}: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * The copy's own type, from the name it will carry. The row's MIME is the
+     * original's: after a HEIC-to-JPEG conversion the two disagree, and a
+     * gallery that trusts the declared type over the extension shows nothing.
+     */
+    private fun mimeForName(name: String, fallback: String): String =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "mp4" -> "video/mp4"
+            else -> fallback
+        }
+
+    /**
+     * Cheap decode probe on the formats this app itself encodes. Anything
+     * else was copied as-is, where the hash already proves the bytes and a
+     * probe would wrongly fail on formats this device cannot decode.
+     */
+    private fun looksDecodable(uri: Uri, name: String, isVideo: Boolean): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return try {
+            when {
+                !isVideo && (ext == "jpg" || ext == "jpeg") -> {
+                    val opts = android.graphics.BitmapFactory.Options()
+                        .apply { inJustDecodeBounds = true }
+                    context.contentResolver.openInputStream(uri)?.use {
+                        android.graphics.BitmapFactory.decodeStream(it, null, opts)
+                    }
+                    opts.outWidth > 0 && opts.outHeight > 0
+                }
+                isVideo && ext == "mp4" -> {
+                    val mmr = android.media.MediaMetadataRetriever()
+                    try {
+                        mmr.setDataSource(context, uri)
+                        mmr.extractMetadata(
+                            android.media.MediaMetadataRetriever.METADATA_KEY_DURATION
+                        ) != null
+                    } finally {
+                        runCatching { mmr.release() }
+                    }
+                }
+                else -> true
+            }
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -199,6 +359,7 @@ class ReclaimEngine(private val context: Context) {
     suspend fun prepare(
         rows: List<ItemRow>,
         mode: ReclaimRules.Mode,
+        options: Options,
         now: Long
     ): Prepared {
         val uris = mutableListOf<Uri>()
@@ -222,9 +383,12 @@ class ReclaimEngine(private val context: Context) {
                 continue
             }
             if (mode == ReclaimRules.Mode.REPLACE_WITH_LIGHT) {
-                val kept = pinLightCopy(row, now)
+                // The verified light copy exists before the removal is even
+                // requested; a row that cannot get one drops out here, named,
+                // and its original is never put in front of Android's dialog.
+                val kept = pinLightCopy(row, options, now)
                 if (kept == null) {
-                    skipped += Outcome(row.fingerprint, row.displayName, false, "keep_failed")
+                    skipped += Outcome(row.fingerprint, row.displayName, false, "light_copy_failed")
                     continue
                 }
                 pinned[row.id] = kept

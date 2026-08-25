@@ -626,6 +626,15 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 4.dp)
                         )
+                        // Named, with the reason - "3 skipped" alone reads as
+                        // an apology; a name and a reason is an answer.
+                        for (s in r.skipped.take(3)) {
+                            Text(
+                                "${s.displayName} - ${skipReasonLabel(s.reason)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -659,6 +668,17 @@ private fun ModePicker(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
                 )
+                if (option == ReclaimRules.Mode.REPLACE_WITH_LIGHT) {
+                    // Most copies have left the phone by the time anyone is
+                    // here (the cloud app collected them), so remaking is the
+                    // normal case, not the exception - worth a line.
+                    Text(
+                        stringResource(R.string.reclaim_mode_replace_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
                 Text(
                     stringResource(R.string.reclaim_mode_saving, Formats.bytes(saving)),
                     style = MaterialTheme.typography.labelLarge,
@@ -782,6 +802,15 @@ private fun groupingLabel(grouping: ReclaimViewModel.Grouping): String = when (g
     ReclaimViewModel.Grouping.MONTH -> stringResource(R.string.group_month)
     ReclaimViewModel.Grouping.YEAR -> stringResource(R.string.group_year)
     ReclaimViewModel.Grouping.TYPE -> stringResource(R.string.group_type)
+}
+
+/** Why an item in a finished batch was left alone, in the user's words. */
+@Composable
+private fun skipReasonLabel(reason: String?): String = when (reason) {
+    "light_copy_failed" -> stringResource(R.string.skip_light_copy_failed)
+    "integrity_failed" -> stringResource(R.string.skip_integrity_failed)
+    "not_confirmed" -> stringResource(R.string.skip_not_confirmed)
+    else -> stringResource(R.string.skip_generic)
 }
 
 @Composable

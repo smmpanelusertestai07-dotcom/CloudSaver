@@ -426,7 +426,7 @@ class ReclaimViewModel(
                 // named, not silently dropped: a batch that quietly does less
                 // than it said it would is worse than one that explains.
                 droppedAtAction = (chosen - stillGood.toSet()).map { it.row.displayName }
-                val ready = engine.prepare(stillGood.map { it.row }, mode.value, now)
+                val ready = engine.prepare(stillGood.map { it.row }, mode.value, o, now)
                 prepared = ready
                 pendingMode = mode.value
                 pendingTrash = !permanent

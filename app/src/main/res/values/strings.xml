@@ -285,6 +285,11 @@
     <string name="reclaim_row_meta">%1$s · confirmed %2$s</string>
     <string name="reclaim_mode_replace">Replace with light copy</string>
     <string name="reclaim_mode_replace_body">The original goes, and the optimised copy stays in your gallery at optimised quality. Saves most of the space.</string>
+    <string name="reclaim_mode_replace_note">If the optimised copy is no longer on this phone, CloudSaver remakes it from the original at the current quality setting and checks it before asking to remove anything. A file whose copy cannot be made and checked is left out, and the original stays.</string>
+    <string name="skip_light_copy_failed">its light copy could not be made and checked, so the original stays</string>
+    <string name="skip_integrity_failed">its copy could not be checked, so the original stays</string>
+    <string name="skip_not_confirmed">not confirmed in Android\'s dialog</string>
+    <string name="skip_generic">left alone — nothing was removed</string>
     <string name="reclaim_mode_full">Free up fully</string>
     <string name="reclaim_mode_full_body">The original goes and nothing is kept on the phone. The file then exists only in your cloud. Saves the most space.</string>
     <string name="reclaim_mode_copies">Remove CloudSaver\'s copies only</string>
