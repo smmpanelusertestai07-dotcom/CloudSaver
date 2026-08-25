@@ -48,6 +48,31 @@ class HelpContentTest {
     }
 
     @Test
+    fun `the deleted page covers six conditions and is reachable from Help and the FAQ`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        val body = text()
+        for (i in 1..6) {
+            assertTrue("condition $i needs a title", body.contains("name=\"deleted_r${i}_t\""))
+            assertTrue("condition $i needs an answer", body.contains("name=\"deleted_r${i}_b\""))
+        }
+        val screens = File("src/main/kotlin/app/cloudsaver/ui/screens/HelpScreens.kt").readText()
+        assertTrue(screens.contains("fun HelpDeletedScreen"))
+        // Linked from the Help list AND from the bottom of the FAQ - the page
+        // exists for a worried moment, and a worried person starts at either.
+        val helpList = screens.substringAfter("fun HelpScreen(")
+            .substringBefore("fun HelpLink")
+        assertTrue("Help must list the page", helpList.contains("HELP_DELETED"))
+        val faq = screens.substringAfter("fun HelpFaqScreen(")
+            .substringBefore("fun HelpQualityScreen")
+        assertTrue("the FAQ must link the page", faq.contains("HELP_DELETED"))
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        assertTrue(
+            "the route must be registered",
+            app.contains("composable(Routes.HELP_DELETED)")
+        )
+    }
+
+    @Test
     fun `no user-visible string shouts a constant`() {
         assumeTrue("strings.xml not found", strings() != null)
         // The bug: Activity printed "STORAGE_SAVER" straight from the enum.

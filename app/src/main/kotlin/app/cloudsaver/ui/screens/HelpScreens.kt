@@ -107,6 +107,7 @@ private fun HelpPage(
 fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.nav_help)) {
         HelpLink(stringResource(R.string.help_faq)) { nav.goTo(Routes.HELP_FAQ) }
+        HelpLink(stringResource(R.string.help_deleted)) { nav.goTo(Routes.HELP_DELETED) }
         HelpLink(stringResource(R.string.help_quality)) { nav.goTo(Routes.HELP_QUALITY) }
         HelpLink(stringResource(R.string.help_logs)) { nav.goTo(Routes.HELP_LOGS) }
         HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
@@ -163,6 +164,47 @@ private val FAQ = listOf(
     R.string.faq_q14 to R.string.faq_a14
 )
 
+/**
+ * Every place a file can disappear from, and what happens next (DD5).
+ *
+ * The FAQ answers these one at a time; this page is the whole map on one
+ * screen, for the moment someone is actually worried. Six conditions, one
+ * card each - a real table would fight large fonts and narrow phones.
+ */
+@Composable
+fun HelpDeletedScreen(nav: NavHostController) {
+    HelpPage(nav, stringResource(R.string.help_deleted)) {
+        Text(
+            stringResource(R.string.help_deleted_intro),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        val rows = listOf(
+            R.string.deleted_r1_t to R.string.deleted_r1_b,
+            R.string.deleted_r2_t to R.string.deleted_r2_b,
+            R.string.deleted_r3_t to R.string.deleted_r3_b,
+            R.string.deleted_r4_t to R.string.deleted_r4_b,
+            R.string.deleted_r5_t to R.string.deleted_r5_b,
+            R.string.deleted_r6_t to R.string.deleted_r6_b
+        )
+        for ((title, body) in rows) {
+            AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+                Text(
+                    stringResource(title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun HelpFaqScreen(nav: NavHostController) {
     var open by remember { mutableIntStateOf(-1) }
@@ -210,6 +252,10 @@ fun HelpFaqScreen(nav: NavHostController) {
                     )
                 }
             }
+        }
+        // The worry behind half these questions, gathered on one page.
+        HelpLink(stringResource(R.string.faq_deleted_link)) {
+            nav.goTo(Routes.HELP_DELETED)
         }
     }
 }

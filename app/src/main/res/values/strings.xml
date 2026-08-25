@@ -110,7 +110,7 @@
         <item quantity="one">%1$d file kept unchanged</item>
         <item quantity="other">%1$d files kept unchanged</item>
     </plurals>
-    <string name="asis_card_body">Compressing these would have damaged something, so the original was copied instead.</string>
+    <string name="asis_card_body">Optimising these would have damaged something, so the original was copied instead.</string>
     <string name="asis_card_line">%1$d · %2$s</string>
     <string name="section_attention">Needs attention</string>
     <string name="section_progress">Backup progress</string>
@@ -182,7 +182,7 @@
     <string name="asis_multi_picture">Multi-picture file - it holds more than one image</string>
     <string name="asis_format">This format is kept as it is</string>
     <string name="asis_already_small">Already small enough</string>
-    <string name="asis_not_smaller">Compressing would not have made it smaller</string>
+    <string name="asis_not_smaller">Optimising would not have made it smaller</string>
     <string name="asis_hdr">HDR video this phone cannot re-encode safely</string>
     <string name="asis_other">Kept as it is to be safe</string>
 
@@ -438,7 +438,7 @@
     <string name="folders_auto_excluded">Excluded automatically</string>
     <string name="folders_reason_ours">CloudSaver\&apos;s own upload folder</string>
     <string name="folders_reason_hidden">Hidden folder</string>
-    <string name="folders_reason_compressed">Old compressed copies (excluded)</string>
+    <string name="folders_reason_compressed">Old optimised copies (excluded)</string>
     <string name="folders_loading">Loading albums…</string>
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>
@@ -452,13 +452,13 @@
     <string name="cloud_for_all">Cloud app</string>
     <string name="cloud_for_photos">For photos</string>
     <string name="cloud_for_videos">For videos</string>
-    <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that have no compression of their own. Clouds like Google Photos and OneDrive already compress for you.</string>
+    <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that store files exactly as sent. Clouds like Google Photos and OneDrive already make photos smaller for you.</string>
     <string name="cloud_recommended">Recommended: end-to-end encrypted, independently audited, removes files after upload, and skips duplicates by content.</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
     <string name="cloud_section_e2ee">Best fit (E2EE)</string>
     <string name="cloud_section_also">Also works</string>
     <string name="opt_speed">Speed</string>
-    <string name="opt_speed_hint">When the app is allowed to compress.</string>
+    <string name="opt_speed_hint">When the app is allowed to optimise.</string>
     <string name="speed_smart">Smart</string>
     <string name="speed_charging">Charging only</string>
     <string name="speed_fast">Fast</string>
@@ -565,7 +565,7 @@
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
     <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → CloudSaver, and nothing else.</string>
-    <string name="cl_mega">In MEGA: Camera uploads folder = CloudSaver · Video quality = Original (else videos get compressed twice) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
+    <string name="cl_mega">In MEGA: Camera uploads folder = CloudSaver · Video quality = Original (else MEGA makes your videos smaller a second time) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
     <string name="cl_filen">In Filen: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
     <string name="cl_proton">In Proton Drive: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
     <string name="cl_nextcloud">In Nextcloud: Auto upload → add the CloudSaver folder, and nothing else.</string>
@@ -693,7 +693,7 @@
     <string name="channel_alerts_desc">Rare - only when something needs you.</string>
     <string name="notif_mute_7_days">Mute for 7 days</string>
     <string name="notif_working_title">CloudSaver is working</string>
-    <string name="notif_working_text">Compressing media…</string>
+    <string name="notif_working_text">Optimising media…</string>
     <string name="warn_aged_title">Deleted without solid proof</string>
     <string name="warn_aged_text">To free space, some old copies with only time-based proof were deleted. Originals are completely safe.</string>
     <string name="warn_safety_title">Uploads look stuck</string>
@@ -864,7 +864,7 @@
     <string name="faq_a8">If CloudSaver had already confirmed that file reached your cloud, nothing happens: the disappearance is exactly what an upload looks like, and the original was never at risk. If it had not been confirmed, CloudSaver treats the copy as lost and simply makes it again on the next run. Either way your original is untouched, because the app only ever removes an original after you confirm it yourself.</string>
 
     <string name="faq_q9">What about HEIC, RAW, GIF and motion photos?</string>
-    <string name="faq_a9">HEIC photos are converted to JPEG and made smaller like any other photo. RAW, GIF and similar formats are copied exactly as they are, because compressing them either loses something that matters or makes the file bigger. Motion photos keep their video part intact. Anything copied unchanged is listed on the Files screen so you can see it happened on purpose \u2014 it is the app refusing to damage something, not a failure.</string>
+    <string name="faq_a9">HEIC photos are converted to JPEG and made smaller like any other photo. RAW, GIF and similar formats are copied exactly as they are, because optimising them either loses something that matters or makes the file bigger. Motion photos keep their video part intact. Anything copied unchanged is listed on the Files screen so you can see it happened on purpose \u2014 it is the app refusing to damage something, not a failure.</string>
 
     <string name="faq_q10">What happens if I uninstall, clear data, or change phones?</string>
     <string name="faq_a10">Your photos are unaffected. Optimised copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay in your gallery, and your cloud is untouched. CloudSaver\'s own history survives in a hidden file under Documents and Download, so reinstalling restores what it already knew and it does not redo work. On a new phone, install CloudSaver and copy that folder across, or use Save backup in Settings first.</string>
@@ -954,4 +954,21 @@
     <string name="kept_card_title">Light copies stay on this phone</string>
     <string name="kept_card_body">These live in your gallery like any other photo. CloudSaver never optimises them again, never uploads them, and never removes one on its own. One thing to avoid: do not add the Light copies album to your cloud app\'s backup — every file here already reached your cloud once, and backing the album up would store it twice.</string>
     <string name="kept_intro_backup">Keep this album out of your cloud app\'s backup — these files are already in your cloud.</string>
+
+    <!-- If something is deleted (Help) -->
+    <string name="help_deleted">If something is deleted</string>
+    <string name="help_deleted_intro">Every place a file can disappear from, and what actually happens next. In every row, your originals are only ever removed by you.</string>
+    <string name="deleted_r1_t">An optimised copy in Pictures/CloudSaver</string>
+    <string name="deleted_r1_b">If it was already confirmed as backed up, nothing happens — a disappearing copy is exactly what an upload looks like. If it was not yet confirmed, CloudSaver remakes the copy from your original and sends it again. If the same copy keeps vanishing before it is collected, the file is set aside and listed under Skipped instead of looping.</string>
+    <string name="deleted_r2_t">An original photo or video in your gallery</string>
+    <string name="deleted_r2_b">CloudSaver never deletes an original by itself, so this only happens by your hand or another app\'s. Anything already in your cloud stays there. If the file had not been optimised yet, there is simply nothing left to optimise, and the app stops counting it.</string>
+    <string name="deleted_r3_t">A kept light copy in Pictures/Light copies</string>
+    <string name="deleted_r3_b">That album belongs to you and CloudSaver never touches it. Removing a light copy only frees phone space — the full file is still in your cloud, and nothing is optimised or sent again.</string>
+    <string name="deleted_r4_t">The .cloudsaver history files in Download or Documents</string>
+    <string name="deleted_r4_b">Recreated within a day, automatically, with no chip and no alert. The history is only lost if every copy is deleted and the app is reinstalled before the next daily save — and even then your photos and your cloud are unaffected.</string>
+    <string name="deleted_r5_t">A file inside your cloud app</string>
+    <string name="deleted_r5_b">CloudSaver cannot see inside your cloud, so it does not notice — and it will not send the file again, because its record says the file was already delivered. Restore it from the cloud app\'s own trash. This is why the free-up screen asks you to open the cloud app and look before removing originals.</string>
+    <string name="deleted_r6_t">CloudSaver itself — uninstalled, or its data cleared</string>
+    <string name="deleted_r6_b">Nothing happens to your files: originals stay, copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay, and your cloud is untouched. On reinstall the app reads its daily history back and carries on where it stopped.</string>
+    <string name="faq_deleted_link">Something was deleted — what happens now?</string>
 </resources>

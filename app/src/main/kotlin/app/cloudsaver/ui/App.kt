@@ -46,6 +46,7 @@ import app.cloudsaver.ui.screens.ReclaimHistoryScreen
 import app.cloudsaver.ui.screens.ReclaimScreen
 import app.cloudsaver.ui.screens.CalculatorScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
+import app.cloudsaver.ui.screens.HelpDeletedScreen
 import app.cloudsaver.ui.screens.HelpFaqScreen
 import app.cloudsaver.ui.screens.HelpLicensesScreen
 import app.cloudsaver.ui.screens.HelpLogsScreen
@@ -75,6 +76,7 @@ object Routes {
     const val CALCULATOR = "calculator"
     const val HELP = "help"
     const val HELP_FAQ = "help_faq"
+    const val HELP_DELETED = "help_deleted"
     const val HELP_QUALITY = "help_quality"
     const val HELP_LOGS = "help_logs"
     const val HELP_PRIVACY = "help_privacy"
@@ -261,6 +263,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.ACTIVITY) { ActivityScreen(vm, nav) }
                 composable(Routes.HELP) { HelpScreen(vm, nav) }
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }
+                composable(Routes.HELP_DELETED) { HelpDeletedScreen(nav) }
                 composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav, vm) }
                 composable(Routes.HELP_LOGS) { HelpLogsScreen(nav) }
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }

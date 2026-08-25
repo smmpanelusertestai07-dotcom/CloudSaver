@@ -125,6 +125,28 @@ class PlainEnglishTest {
     }
 
     /**
+     * DD4: one verb. The app "optimises"; it never "compresses" - two words
+     * for the same act read as two different acts, and the reader starts
+     * looking for the difference. The single place the word may appear is
+     * the H.264/HEVC block of Quality explained, where video compression is
+     * literally the subject (it currently says "packing" and needs no
+     * exemption, but the allowance is the spec's, so it stays).
+     */
+    @Test
+    fun optimiseIsTheOnlyVerb() {
+        val compress = Regex("""\bcompress(es|ed|ing|ion)?\b""", RegexOption.IGNORE_CASE)
+        val offenders = userFacingStrings()
+            .filter { (name, body) ->
+                name != "quality_codec_text" && compress.containsMatchIn(body)
+            }
+            .map { it.first }
+        assertTrue(
+            "these say compress instead of optimise: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    /**
      * Shouting at someone is not emphasis. Any all-caps run of four or more
      * letters is either a proper noun or a mistake, and the proper nouns are
      * listed.
