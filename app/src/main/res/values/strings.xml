@@ -57,6 +57,14 @@
     <string name="skip_duplicate">Already handled once</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
+    <string name="partial_title">CloudSaver can only see the photos you picked</string>
+    <string name="partial_body">To back up your gallery it needs access to all photos. Until then nothing is scanned, and no total is shown.</string>
+    <string name="partial_action">Allow all photos</string>
+    <string name="partial_chip">Only selected photos visible</string>
+    <string name="partial_waiting">Waiting for full photo access</string>
+    <string name="crash_title">CloudSaver stopped unexpectedly last time</string>
+    <string name="crash_body">Nothing was lost. A record of what happened is in the log.</string>
+    <string name="crash_share">Share log</string>
     <string name="chip_space">Storage low</string>
     <string name="count_waiting">To optimise</string>
     <string name="count_in_folder">In upload folder</string>
@@ -200,6 +208,7 @@
     <string name="storage_stage_path">Kept inside the app, not shown in your gallery</string>
     <string name="storage_output">Waiting in your upload folder</string>
     <string name="volume_internal">Internal storage</string>
+    <string name="volume_sd_unwritable">Android does not let apps add gallery files to an SD card on this phone, so the upload folder stays on internal storage.</string>
     <string name="volume_sd">SD card</string>
     <string name="volume_used_line">%1$s used of %2$s</string>
     <string name="volume_free_line">%1$s free</string>

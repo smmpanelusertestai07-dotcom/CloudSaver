@@ -86,6 +86,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val o by vm.options.collectAsStateWithLifecycle()
     val transferMessage by vm.transferMessage.collectAsStateWithLifecycle()
     val volumes by vm.volumes.collectAsStateWithLifecycle()
+    val writableVolumes by vm.writableVolumes.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val activityUnread by vm.activityUnread.collectAsStateWithLifecycle()
@@ -346,15 +347,30 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
         )
 
-        // 7b. Storage location (13.D; shown only when an SD card exists)
+        // 7b. Storage location (13.D; shown only when an SD card exists).
+        // BB2.2: a card that fails the writability probe is absent from the
+        // choices - not greyed - and one line says why. Greyed would invite
+        // "why not?"; absent-with-the-reason answers it.
+        val offerable = volumes.filter {
+            it.isPrimary || it.mediaVolumeName in writableVolumes
+        }
+        val sdBlocked = volumes.size > offerable.size
         if (volumes.size > 1 || o.storageVolume.isNotEmpty()) {
             OptionCard(
                     stringResource(R.string.opt_volume),
                     stringResource(R.string.opt_volume_hint),
                     icon = IconVolume
                 ) {
+                if (sdBlocked) {
+                    Text(
+                        stringResource(R.string.volume_sd_unwritable),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 SegmentedChoice(
-                    volumes.map { vol ->
+                    offerable.map { vol ->
                         val value = if (vol.isPrimary) "" else vol.mediaVolumeName
                         value to if (vol.isPrimary) {
                             stringResource(R.string.volume_internal)

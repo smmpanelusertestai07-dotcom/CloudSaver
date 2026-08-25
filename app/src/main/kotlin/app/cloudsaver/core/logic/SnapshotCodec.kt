@@ -75,7 +75,16 @@ object SnapshotCodec {
         val options: Map<String, String>,
         val items: List<SnapItem>,
         val batches: List<SnapBatch>,
-        val ledger: List<SnapLedger> = emptyList()
+        val ledger: List<SnapLedger> = emptyList(),
+        /**
+         * The media access level the exporting install had (BB1.5). "FULL"
+         * for every snapshot this version writes, because scanning refuses to
+         * run under anything less - but a snapshot from elsewhere may say
+         * "PARTIAL", and an importer must treat that one as a fragment of a
+         * gallery rather than an inventory of it. Older snapshots without
+         * the field decode as "FULL", which is what they were.
+         */
+        val mediaAccess: String = "FULL"
     )
 
     /** Envelope: {"app","schemaVersion","sha256","payload":{...}}. */
@@ -94,6 +103,7 @@ object SnapshotCodec {
         root.put("app", "CloudSaver")
         root.put("version", snapshot.version)
         root.put("exportedAt", snapshot.exportedAt)
+        root.put("mediaAccess", snapshot.mediaAccess)
         val opts = JSONObject()
         for ((k, v) in snapshot.options) opts.put(k, v)
         root.put("options", opts)
@@ -182,6 +192,7 @@ object SnapshotCodec {
     }
 
     private fun decodePayload(root: JSONObject): Snapshot {
+        val mediaAccess = root.optString("mediaAccess", "FULL")
         val optionsObj = root.optJSONObject("options") ?: JSONObject()
         val options = mutableMapOf<String, String>()
         for (key in optionsObj.keys()) options[key] = optionsObj.optString(key, "")
@@ -244,7 +255,8 @@ object SnapshotCodec {
             options = options,
             items = items,
             batches = batches,
-            ledger = ledger
+            ledger = ledger,
+            mediaAccess = mediaAccess
         )
     }
 

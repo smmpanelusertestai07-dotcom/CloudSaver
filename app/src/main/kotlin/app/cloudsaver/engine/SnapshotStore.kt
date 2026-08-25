@@ -80,13 +80,15 @@ class SnapshotStore(
                 confirmedAt = l.confirmedAt
             )
         }
+        val access = app.cloudsaver.util.Permissions.mediaAccess(context).name
         return SnapshotCodec.Snapshot(
             version = SnapshotCodec.VERSION,
             exportedAt = System.currentTimeMillis(),
             options = optionsRepo.exportMap(),
             items = items,
             batches = batches,
-            ledger = ledger
+            ledger = ledger,
+            mediaAccess = access
         )
     }
 
@@ -283,6 +285,17 @@ class SnapshotStore(
 
     /** Merges a snapshot: never downgrades existing rows, applies UNKNOWN rules. */
     suspend fun merge(snapshot: SnapshotCodec.Snapshot): Int {
+        // BB1.5: a snapshot exported under partial access is a fragment, not
+        // an inventory. Merging stays safe because it only ever adds rows or
+        // raises evidence - but the fact is logged, and the next scan (which
+        // only runs under full access) fills in what the fragment lacks.
+        if (snapshot.mediaAccess != "FULL") {
+            AppLog.log(
+                context, "snapshot",
+                "imported snapshot was taken under ${snapshot.mediaAccess} access; " +
+                    "treating as partial and rescanning"
+            )
+        }
         var imported = 0
         val now = System.currentTimeMillis()
         for (raw in snapshot.items) {

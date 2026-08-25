@@ -82,6 +82,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val findSpace by vm.findSpace.collectAsStateWithLifecycle()
     val keptBytes by vm.keptBytes.collectAsStateWithLifecycle()
+    val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         vm.refreshStorage()
@@ -105,6 +106,11 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         )
 
         // 1. Your phone.
+        // BB1.3: totals below come from the last full scan; nothing new
+        // arrives until access is full again, and the screen says so.
+        if (mediaAccess == app.cloudsaver.util.Permissions.MediaAccess.PARTIAL) {
+            WarningNote(stringResource(R.string.partial_waiting))
+        }
         SectionHeader(stringResource(R.string.storage_group_phone))
         AppCard {
             volumes.forEachIndexed { index, vol ->

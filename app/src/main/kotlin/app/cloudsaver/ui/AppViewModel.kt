@@ -421,6 +421,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val health = MutableStateFlow(Health())
 
+    /**
+     * How much of the gallery the app can see, re-read on every ON_START and
+     * permission result. Home, Files, Storage and the calculator all observe
+     * it: under PARTIAL nothing scans and no total is shown as a number,
+     * because the number would describe the user's selection, not their
+     * gallery (BB1).
+     */
+    val mediaAccess = MutableStateFlow(Permissions.MediaAccess.FULL)
+
+    /**
+     * The app died last time (BB3). One card, once; dismissing clears the
+     * flag, and the trace is already in the log for the Share button.
+     */
+    val crashPending = MutableStateFlow(false)
+
+    fun dismissCrashNotice() {
+        app.cloudsaver.util.CrashLog.clearPending(ctx)
+        crashPending.value = false
+    }
+
     fun refreshHealth() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
@@ -429,6 +449,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val silentFor = System.currentTimeMillis() - o.lastRunAt
             val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
             val free = Storage.freeBytes(ctx)
+            val access = Permissions.mediaAccess(ctx)
+            crashPending.value = app.cloudsaver.util.CrashLog.crashPending(ctx)
+            val hadPartial = mediaAccess.value == Permissions.MediaAccess.PARTIAL
+            mediaAccess.value = access
+            // Access became full again: recompute without waiting for the
+            // next scheduled run, so the screens stop saying "waiting".
+            if (hadPartial && access == Permissions.MediaAccess.FULL) {
+                refreshCalculator()
+                refreshProjection()
+            }
             health.value = Health(
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
@@ -516,9 +546,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val volumes = MutableStateFlow<List<Volumes.Vol>>(emptyList())
 
+    /**
+     * Volumes that really accept gallery inserts, by probe (BB2). The
+     * primary always does; an SD card is offered as the storage location
+     * only when its name is in here, and is otherwise absent - not greyed -
+     * with one line saying why.
+     */
+    val writableVolumes = MutableStateFlow<Set<String>>(emptySet())
+
     fun refreshVolumes() {
         viewModelScope.launch(Dispatchers.IO) {
-            volumes.value = Volumes.list(ctx)
+            val found = Volumes.list(ctx)
+            volumes.value = found
+            writableVolumes.value = found
+                .filter { it.isPrimary || Volumes.probeWritable(ctx, it.mediaVolumeName) }
+                .map { it.mediaVolumeName }
+                .toSet()
         }
     }
 
@@ -543,6 +586,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshCalculator() {
         viewModelScope.launch(Dispatchers.IO) {
+            // Under partial access a totals() sweep would count the selection
+            // and present it as the gallery. The screen shows "waiting for
+            // full access" instead of any number (BB1.3).
+            if (Permissions.mediaAccess(ctx) != Permissions.MediaAccess.FULL) {
+                calcGallery.value = null
+                return@launch
+            }
             val o = repo.current()
             // Summed straight off the cursor: the calculator needs five
             // numbers, not a copy of the gallery in memory.
@@ -1273,6 +1323,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startTestRun() {
         if (testRunning.value) return
+        if (mediaAccess.value != Permissions.MediaAccess.FULL) return
         testRunning.value = true
         viewModelScope.launch(Dispatchers.Default) {
             try {

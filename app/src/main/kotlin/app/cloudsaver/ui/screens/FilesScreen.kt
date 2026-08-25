@@ -76,6 +76,8 @@ import app.cloudsaver.ui.components.BadgeTone
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.components.StateBadge
+import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -126,6 +128,9 @@ fun FilesScreen(vm: AppViewModel) {
     val anyFilter = statusFilter != null || !state.isDefault
 
     Box(Modifier.fillMaxSize()) {
+    val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current
+
     ListScreenScaffold(
         title = stringResource(R.string.nav_files),
         onBack = {},
@@ -159,6 +164,19 @@ fun FilesScreen(vm: AppViewModel) {
         selection = selection,
         matchingCount = rows.size,
         onSelectAll = { selection.selectAll(rows.map { it.id }) },
+        intro = if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
+            {
+                // The list below shows only what was scanned under full
+                // access; nothing new arrives until access is full again.
+                androidx.compose.material3.AssistChip(
+                    onClick = { OemPages.openAppInfo(appContext) },
+                    label = { Text(stringResource(R.string.partial_chip)) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        } else {
+            null
+        },
         onResetFilters = {
             type = ListFilters.Type.ALL
             sizeBand = ListFilters.Size.ANY

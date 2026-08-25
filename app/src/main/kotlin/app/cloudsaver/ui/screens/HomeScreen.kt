@@ -54,6 +54,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.core.logic.Projection
+import app.cloudsaver.util.Permissions
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
@@ -101,6 +102,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val foreignUris by vm.foreignUris.collectAsStateWithLifecycle()
     val tampered by vm.tampered.collectAsStateWithLifecycle()
+    val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
+    val crashPending by vm.crashPending.collectAsStateWithLifecycle()
     val savings by vm.savings.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
     val asIs by vm.asIs.collectAsStateWithLifecycle()
@@ -189,6 +192,74 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 TextButton(onClick = { vm.dismissPlaceholderNotice() }) {
                     Text(stringResource(R.string.dismiss))
                 }
+            }
+        }
+
+        // BB3.2: the app died last time. One plain card, once - "nothing was
+        // lost" is true because every state change is committed before it is
+        // reported - with the trace behind the Share button on the logs page.
+        AnimatedVisibility(
+            visible = crashPending,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Text(
+                    stringResource(R.string.crash_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    stringResource(R.string.crash_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Row {
+                    TextButton(onClick = {
+                        vm.dismissCrashNotice()
+                        nav.goTo(Routes.HELP_LOGS)
+                    }) { Text(stringResource(R.string.crash_share)) }
+                    TextButton(onClick = { vm.dismissCrashNotice() }) {
+                        Text(stringResource(R.string.dismiss))
+                    }
+                }
+            }
+        }
+
+        // BB1.3: under partial access the app refuses to scan, so the truth
+        // the rest of this screen usually tells is suspended. The card says
+        // so and offers the one way out.
+        AnimatedVisibility(
+            visible = mediaAccess == Permissions.MediaAccess.PARTIAL,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AppCard(modifier = Modifier.padding(top = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.PhotoLibrary,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        stringResource(R.string.partial_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    stringResource(R.string.partial_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                Button(
+                    onClick = { OemPages.openAppInfo(context) },
+                    modifier = Modifier.padding(top = 10.dp)
+                ) { Text(stringResource(R.string.partial_action)) }
             }
         }
 

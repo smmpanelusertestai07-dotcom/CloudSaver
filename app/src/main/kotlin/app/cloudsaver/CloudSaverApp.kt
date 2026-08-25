@@ -4,6 +4,7 @@ import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
+import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.work.Scheduler
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +18,10 @@ class CloudSaverApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First, before anything that could itself crash: without the
+        // internet permission a crash that writes nothing never happened as
+        // far as anyone can tell (BB3).
+        CrashLog.install(this)
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {

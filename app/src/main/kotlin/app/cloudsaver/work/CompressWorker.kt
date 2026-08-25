@@ -68,7 +68,12 @@ class CompressWorker(context: Context, params: WorkerParameters) :
 
         if (!options.onboardingDone) return Result.success()
         if (options.pauseAll && !manual) return Result.success()
-        if (!Permissions.hasMediaRead(app)) return Result.success()
+        // FULL only: under partial access the gallery MediaStore shows is a
+        // lie, and a run would scan, queue and release against it (BB1.2).
+        if (Permissions.mediaAccess(app) != Permissions.MediaAccess.FULL) {
+            AppLog.log(app, "work", "not starting: media access is not full")
+            return Result.success()
+        }
 
         val db = AppDb.get(app)
         val dayBudget = DayBudget(app)

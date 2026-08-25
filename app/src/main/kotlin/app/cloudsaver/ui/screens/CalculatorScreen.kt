@@ -58,6 +58,7 @@ import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandMuted
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.Permissions
 import app.cloudsaver.core.logic.QualityKept
 
 /**
@@ -73,6 +74,7 @@ import app.cloudsaver.core.logic.QualityKept
 fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
     val gallery by vm.calcGallery.collectAsStateWithLifecycle()
+    val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
     val ratios by vm.calcRatios.collectAsStateWithLifecycle()
     val profile by vm.profile.collectAsStateWithLifecycle()
     val scheme = MaterialTheme.colorScheme
@@ -181,6 +183,19 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             }
 
             Spacer(Modifier.height(12.dp))
+            // BB1.3: under partial access every total would describe the
+            // user's selection, not their gallery. Waiting text, never a number.
+            if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
+                AppCard {
+                    Text(
+                        stringResource(R.string.partial_waiting),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(28.dp))
+                return@Column
+            }
             if (estimate == null) {
                 AppCard {
                     Text(

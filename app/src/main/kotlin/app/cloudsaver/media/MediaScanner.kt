@@ -10,6 +10,7 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Permissions
 
 /**
  * Scans MediaStore images + videos on every external volume (incl. SD card) -
@@ -34,6 +35,15 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
 
     /** Upserts everything into the DB; returns the number of new items. */
     suspend fun scan(): Int {
+        // Under partial access ("Select photos") MediaStore answers every
+        // query as if the handful the user picked were the whole gallery.
+        // Scanning would record that handful as a complete inventory, and
+        // every count and projection downstream would state it as fact. The
+        // refusal lives here, at the bottom, so no caller can forget it.
+        if (Permissions.mediaAccess(context) != Permissions.MediaAccess.FULL) {
+            AppLog.log(context, "scan", "refused: media access is not full")
+            return 0
+        }
         val found = excludeOutputFolders(queryAll())
         var newItems = 0
         val now = System.currentTimeMillis()

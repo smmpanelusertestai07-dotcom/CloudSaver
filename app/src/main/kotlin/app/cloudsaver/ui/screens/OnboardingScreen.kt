@@ -106,7 +106,15 @@ fun OnboardingScreen(vm: AppViewModel) {
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { go(if (Permissions.hasMediaRead(context)) Step.ALBUMS else Step.MEDIA) }
+    ) {
+        go(
+            if (Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL) {
+                Step.ALBUMS
+            } else {
+                Step.MEDIA
+            }
+        )
+    }
 
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -223,21 +231,41 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
-            Step.MEDIA -> StepCard(
-                title = stringResource(R.string.onb1_title),
-                text = stringResource(R.string.onb1_text),
-                buttonLabel = if (Permissions.hasMediaRead(context)) {
-                    stringResource(R.string.onb_done_next)
-                } else {
-                    stringResource(R.string.onb1_grant)
-                },
-                onButton = {
-                    if (Permissions.hasMediaRead(context)) go(Step.ALBUMS)
-                    else permissionLauncher.launch(Permissions.mediaPermissionsToRequest())
-                }
-            ) {
-                TextButton(onClick = { OemPages.openAppInfo(context) }) {
-                    Text(stringResource(R.string.onb1_appinfo))
+            Step.MEDIA -> {
+                val access = Permissions.mediaAccess(context)
+                StepCard(
+                    title = stringResource(R.string.onb1_title),
+                    text = stringResource(R.string.onb1_text),
+                    buttonLabel = when (access) {
+                        Permissions.MediaAccess.FULL -> stringResource(R.string.onb_done_next)
+                        Permissions.MediaAccess.PARTIAL ->
+                            stringResource(R.string.partial_action)
+                        Permissions.MediaAccess.NONE -> stringResource(R.string.onb1_grant)
+                    },
+                    onButton = {
+                        when (access) {
+                            Permissions.MediaAccess.FULL -> go(Step.ALBUMS)
+                            // "Select photos" was chosen. Asking again shows
+                            // the same picker; only the app's settings page
+                            // can raise the level to full.
+                            Permissions.MediaAccess.PARTIAL ->
+                                OemPages.openAppInfo(context)
+                            Permissions.MediaAccess.NONE -> permissionLauncher.launch(
+                                Permissions.mediaPermissionsToRequest()
+                            )
+                        }
+                    }
+                ) {
+                    if (access == Permissions.MediaAccess.PARTIAL) {
+                        Text(
+                            stringResource(R.string.partial_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    TextButton(onClick = { OemPages.openAppInfo(context) }) {
+                        Text(stringResource(R.string.onb1_appinfo))
+                    }
                 }
             }
 
@@ -489,8 +517,12 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // one this question has a single possible answer, and asking
                 // it anyway is a step that teaches nothing.
                 val volumes by vm.volumes.collectAsStateWithLifecycle()
+                val writableVolumes by vm.writableVolumes.collectAsStateWithLifecycle()
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshVolumes() }
-                if (volumes.size > 1) {
+                val offerableVolumes = volumes.filter {
+                    it.isPrimary || it.mediaVolumeName in writableVolumes
+                }
+                if (offerableVolumes.size > 1) {
                     Spacer(Modifier.height(12.dp))
                     Text(
                         stringResource(R.string.onb_ready_where),
@@ -498,7 +530,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                         fontWeight = FontWeight.Medium
                     )
                     SegmentedChoice(
-                        volumes.map { vol ->
+                        offerableVolumes.map { vol ->
                             val value = if (vol.isPrimary) "" else vol.mediaVolumeName
                             value to stringResource(
                                 if (vol.isPrimary) R.string.volume_internal

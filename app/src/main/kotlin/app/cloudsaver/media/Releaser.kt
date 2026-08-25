@@ -14,6 +14,7 @@ import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.util.Formats
+import app.cloudsaver.core.logic.VolumeRules
 import app.cloudsaver.util.AppLog
 import java.io.File
 import java.io.FileInputStream
@@ -62,9 +63,23 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val rowsById = staged.associateBy { it.id }
         val batchIds = HashMap<OutFolder, Long>()
         val batchBytes = HashMap<OutFolder, Long>()
-        val volumeName = app.cloudsaver.util.Volumes
+        // BB2.4: the chosen volume is honoured only while the probe says it
+        // takes inserts; otherwise releases fall back to primary rather than
+        // failing quietly, and the reason is recorded once per run.
+        val chosen = app.cloudsaver.util.Volumes
             .selected(context, options.storageVolume)?.mediaVolumeName
             ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
+        val decision = VolumeRules.releaseVolume(
+            selectedVolume = if (chosen == MediaStore.VOLUME_EXTERNAL_PRIMARY) "" else chosen,
+            selectedWritable = app.cloudsaver.util.Volumes.probeWritable(context, chosen)
+        )
+        val volumeName = decision.volumeName
+        if (decision.fellBack) {
+            AppLog.log(
+                context, "release",
+                "volume $chosen is not writable; releasing to internal storage instead"
+            )
+        }
         var released = 0
         for (id in plan) {
             val row = rowsById[id] ?: continue
@@ -172,12 +187,45 @@ class Releaser(private val context: Context, private val db: AppDb) {
             put(MediaStore.MediaColumns.IS_PENDING, 1)
             put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)
         }
-        val itemUri = try {
-            resolver.insert(collection, values) ?: return false
+        var landedVolume = volumeName
+        var itemUri = try {
+            resolver.insert(collection, values)
         } catch (e: Exception) {
             AppLog.log(context, "release", "insert failed ${row.displayName}: ${e.message}")
-            return false
+            null
         }
+        // BB2.4: an SD insert that fails - or lands somewhere other than the
+        // card - retries once on the primary volume with the reason recorded,
+        // instead of leaving the item staged forever.
+        if (itemUri != null && volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+            val actual = runCatching { MediaStore.getVolumeName(itemUri!!) }.getOrNull()
+            if (actual != null && !actual.equals(volumeName, ignoreCase = true)) {
+                AppLog.log(
+                    context, "release",
+                    "${row.displayName} landed on $actual, not $volumeName; keeping it there"
+                )
+                landedVolume = actual
+            }
+        }
+        if (itemUri == null && volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
+            AppLog.log(
+                context, "release",
+                "${row.displayName}: $volumeName refused the insert; retrying on internal"
+            )
+            val primary = if (row.isVideo) {
+                MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            }
+            itemUri = try {
+                resolver.insert(primary, values)
+            } catch (e: Exception) {
+                AppLog.log(context, "release", "primary retry failed: ${e.message}")
+                null
+            }
+            landedVolume = MediaStore.VOLUME_EXTERNAL_PRIMARY
+        }
+        if (itemUri == null) return false
         return try {
             resolver.openOutputStream(itemUri)?.use { out ->
                 FileInputStream(stageFile).use { it.copyTo(out, 128 * 1024) }
@@ -236,7 +284,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 )
             )
             stageFile.delete()
-            AppLog.log(context, "release", "released $actualName -> $relPath")
+            AppLog.log(context, "release", "released $actualName -> $relPath on $landedVolume")
             true
         } catch (e: Exception) {
             runCatching { resolver.delete(itemUri, null, null) }
