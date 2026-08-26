@@ -2,7 +2,9 @@ package app.cloudsaver
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,17 +14,28 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.UiDevice
+import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.media.MediaScanner
 import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertNotNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
 
 /**
- * Drives the real UI on the device and photographs every screen. The PNGs are
- * written to the app's external files dir so CI can pull them as artifacts -
- * that is how the design gets reviewed after each change.
+ * Walks the real UI on the device and photographs every screen, so the design
+ * can be reviewed from CI artifacts after each change.
+ *
+ * It also asserts. The previous version wrapped every navigation step in
+ * runCatching, which made it a tour rather than a test: two of its screens had
+ * been looking in the wrong place for months - the calculator was expected on
+ * Home when it is reached from Storage, and the largest-files list was
+ * expected on Storage when it is reached from the Free up space hub - and the
+ * suite passed the whole time. Nothing here is allowed to fail quietly now.
  */
 private const val SHOT_DIR = "Pictures/CSTestShots/"
 
@@ -42,6 +55,31 @@ class UiWalkthroughTest {
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val target: Context get() = instrumentation.targetContext
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
+
+    private fun s(id: Int): String = target.getString(id)
+
+    @Before
+    fun seedGallery() {
+        // Several cards only exist once there is something to act on, so the
+        // tour needs a real gallery behind it or it photographs empty states
+        // and proves nothing about the screens that matter.
+        MediaFixtures.cleanUp(target)
+        runBlocking {
+            AppDb.get(target).clearAllTables()
+            for (i in 1..3) {
+                MediaFixtures.insertPhoto(
+                    target, name = "tour_photo_$i.jpg", seed = i, captureMillis = 1_600_000_000_000L
+                )
+            }
+            MediaScanner(target, AppDb.get(target)).scan()
+        }
+    }
+
+    @After
+    fun clearGallery() {
+        MediaFixtures.cleanUp(target)
+        runBlocking { AppDb.get(target).clearAllTables() }
+    }
 
     /**
      * Android 11+ hides /sdcard/Android/data from adb, so screenshots are
@@ -71,6 +109,17 @@ class UiWalkthroughTest {
         }
     }
 
+    /** Scrolls a labelled row into view and taps it. Fails loudly if absent. */
+    private fun ComposeTestRule.openRow(label: String) {
+        onNode(hasText(label, substring = true)).performScrollTo().performClick()
+        waitForIdle()
+    }
+
+    /** Asserts the screen we expect to have landed on is actually showing. */
+    private fun ComposeTestRule.assertOn(label: String) {
+        onNode(hasText(label, substring = true)).assertIsDisplayed()
+    }
+
     private fun setOnboardingDone(done: Boolean) = runBlocking {
         val repo = OptionsRepo.get(target)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, done)
@@ -96,11 +145,12 @@ class UiWalkthroughTest {
         try {
             ActivityScenario.launch(MainActivity::class.java).use {
                 shoot("50-dark-home")
-                compose.onNodeWithText("Storage").performClick()
+                compose.onNodeWithText(s(R.string.nav_storage)).performClick()
+                compose.assertOn(s(R.string.nav_storage))
                 shoot("51-dark-storage")
-                compose.onNodeWithText("Settings").performClick()
+                compose.onNodeWithText(s(R.string.nav_options)).performClick()
                 shoot("52-dark-settings")
-                compose.onNodeWithText("Files").performClick()
+                compose.onNodeWithText(s(R.string.nav_files)).performClick()
                 shoot("53-dark-files")
             }
         } finally {
@@ -128,7 +178,7 @@ class UiWalkthroughTest {
         }
         // The monochrome layer must exist for themed icons on Android 13+.
         val mono = target.getDrawable(R.drawable.ic_launcher_monochrome)
-        org.junit.Assert.assertNotNull(mono)
+        assertNotNull(mono)
     }
 
     @Test
@@ -136,10 +186,13 @@ class UiWalkthroughTest {
         setOnboardingDone(false)
         ActivityScenario.launch(MainActivity::class.java).use {
             shoot("10-onboarding-welcome")
-            compose.onNodeWithText("Get started").performClick()
+            compose.onNodeWithText(s(R.string.onb_start)).performClick()
+            compose.waitForIdle()
             shoot("11-onboarding-permission")
-            // The permission is already granted by the rule, so this advances.
-            compose.onAllNodesWithTextSafe("Done, next")
+            // Media access is already granted by the rule, so the permission
+            // step is satisfied and its continue button must be there.
+            compose.onNodeWithText(s(R.string.onb_done_next)).performClick()
+            compose.waitForIdle()
             shoot("12-onboarding-step")
         }
     }
@@ -150,30 +203,34 @@ class UiWalkthroughTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             shoot("20-home")
 
-            compose.onNodeWithText("Files").performClick()
+            compose.onNodeWithText(s(R.string.nav_files)).performClick()
+            compose.assertOn(s(R.string.nav_files))
             shoot("21-files")
 
-            compose.onNodeWithText("Storage").performClick()
+            compose.onNodeWithText(s(R.string.nav_storage)).performClick()
+            compose.assertOn(s(R.string.nav_storage))
             shoot("22-storage")
 
-            compose.onNodeWithText("Settings").performClick()
+            compose.onNodeWithText(s(R.string.nav_options)).performClick()
             shoot("23-settings-top")
             // Scroll through the long settings list to catch layout problems.
-            runCatching {
-                compose.onNode(hasText("Quality", substring = true)).performScrollTo()
-            }
+            compose.onNode(hasText(s(R.string.opt_group_quality), substring = true))
+                .performScrollTo().assertIsDisplayed()
             shoot("24-settings-quality")
-            runCatching {
-                compose.onNode(hasText("Backup and restore", substring = true)).performScrollTo()
-            }
+            compose.onNode(hasText(s(R.string.opt_group_backup_restore), substring = true))
+                .performScrollTo().assertIsDisplayed()
             shoot("25-settings-backup")
+        }
+    }
 
-            // Cloud calculator, reached from Home.
-            compose.onNodeWithText("Home").performClick()
-            runCatching {
-                compose.onNode(hasText("Cloud calculator", substring = true)).performScrollTo()
-                    .performClick()
-            }
+    /** The calculator is reached from Storage, not from Home. */
+    @Test
+    fun calculatorOpensFromStorage() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText(s(R.string.nav_storage)).performClick()
+            compose.openRow(s(R.string.calc_title))
+            compose.assertOn(s(R.string.calc_title))
             shoot("26-calculator")
         }
     }
@@ -184,36 +241,35 @@ class UiWalkthroughTest {
         ActivityScenario.launch(MainActivity::class.java).use {
             // Activity lives under Settings now, with the other reference
             // material, rather than competing for room on Home.
-            compose.onNodeWithText("Settings").performClick()
-            runCatching {
-                compose.onNode(hasText("Activity", substring = true)).performScrollTo()
-                    .performClick()
-            }
+            compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            compose.openRow(s(R.string.nav_activity))
+            compose.assertOn(s(R.string.nav_activity))
             shoot("27-activity")
         }
     }
 
     @Test
-    fun helpScreenRenders() {
+    fun helpSectionIsReachableFromSettings() {
         setOnboardingDone(true)
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.onNodeWithText("Settings").performClick()
-            runCatching {
-                compose.onNode(hasText("Help and info", substring = true)).performScrollTo()
-            }
+            compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            compose.onNode(hasText(s(R.string.opt_group_help), substring = true))
+                .performScrollTo().assertIsDisplayed()
             shoot("28-settings-help")
         }
     }
 
+    /** The largest-files list is reached through the Free up space hub. */
     @Test
-    fun biggestFilesScreenRenders() {
+    fun largestFilesOpensFromTheFreeUpHub() {
         setOnboardingDone(true)
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.onNodeWithText("Storage").performClick()
-            runCatching {
-                compose.onNode(hasText("Biggest", substring = true)).performScrollTo()
-                    .performClick()
-            }
+            compose.onNodeWithText(s(R.string.nav_storage)).performClick()
+            compose.openRow(s(R.string.hub_title))
+            compose.assertOn(s(R.string.hub_title))
+            shoot("29a-free-space-hub")
+            compose.openRow(s(R.string.find_biggest))
+            compose.assertOn(s(R.string.find_biggest))
             shoot("29-biggest-space-users")
         }
     }
@@ -222,17 +278,9 @@ class UiWalkthroughTest {
     fun encryptedBackupDialogOpens() {
         setOnboardingDone(true)
         ActivityScenario.launch(MainActivity::class.java).use {
-            compose.onNodeWithText("Settings").performClick()
-            runCatching {
-                compose.onNode(hasText("Save backup", substring = true)).performScrollTo()
-                    .performClick()
-            }
+            compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            compose.openRow(s(R.string.transfer_export))
             shoot("30-backup-password-dialog")
         }
     }
-}
-
-/** Best-effort click: the flow must not fail because a label moved. */
-private fun androidx.compose.ui.test.junit4.ComposeTestRule.onAllNodesWithTextSafe(text: String) {
-    runCatching { onNodeWithText(text).performClick() }
 }

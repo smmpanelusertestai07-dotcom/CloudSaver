@@ -164,11 +164,13 @@ class PipelineE2eTest {
 
     @Test
     fun videoIsOptimisedOrSafelyCopied() = runBlockingTest {
+        // Every Android device that can record has an H.264 encoder, and the
+        // emulator carries the software one, so a null here is a real failure
+        // rather than a reason to pass quietly. A test that returns early on
+        // the very condition it exists to exercise proves nothing.
         val uri = MediaFixtures.insertVideo(context, "e2e_clip.mp4")
-        if (uri == null) {
-            // No usable encoder on this image; nothing to assert.
-            return@runBlockingTest
-        }
+        assertNotNull("the device must be able to produce a test clip", uri)
+        uri!!
         val srcSize = sizeOf(uri)
         val db = AppDb.get(context)
         val options = OptionsRepo.get(context).current()
