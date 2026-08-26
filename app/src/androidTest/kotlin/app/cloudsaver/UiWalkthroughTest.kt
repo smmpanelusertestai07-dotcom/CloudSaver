@@ -11,7 +11,9 @@ import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -56,6 +58,8 @@ class UiWalkthroughTest {
     private val device: UiDevice get() = UiDevice.getInstance(instrumentation)
 
     private fun s(id: Int): String = target.getString(id)
+
+    private fun s(id: Int, vararg args: Any): String = target.getString(id, *args)
 
     @Before
     fun seedGallery() {
@@ -106,6 +110,19 @@ class UiWalkthroughTest {
             publish(name, temp.readBytes())
             temp.delete()
         }
+    }
+
+    /**
+     * Taps the row called exactly this, scrolling to it first.
+     *
+     * Needed wherever a substring would match twice: Settings carries a
+     * "Help and info" heading above its "Help" row, and openRow demands a
+     * single match, so asking it for "Help" is an error - and asking a
+     * heading to navigate does nothing at all.
+     */
+    private fun ComposeTestRule.openExactRow(label: String) {
+        onAllNodes(hasText(label)).onFirst().performScrollTo().performClick()
+        waitForIdle()
     }
 
     /** Scrolls a labelled row into view and taps it. Fails loudly if absent. */
@@ -297,6 +314,54 @@ class UiWalkthroughTest {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.openRow(s(R.string.transfer_export))
             shoot("30-backup-password-dialog")
+        }
+    }
+
+    /**
+     * The screens a tap opens, rather than the ones a tab does.
+     *
+     * Every defect this suite has caught by eye was on a screen it happened to
+     * photograph, and the tour only ever photographed top-level screens. A
+     * file's own details, a list with a selection running, and the page people
+     * reach when they are worried are three of the places most worth looking
+     * at, and none of them had a picture.
+     */
+    @Test
+    fun theScreensBehindATapArePhotographedToo() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText(s(R.string.nav_files)).performClick()
+            compose.waitForIdle()
+
+            // A file's own details: sizes, what has been proved about it, and
+            // the actions its current state allows.
+            compose.openRow("tour_photo_1.jpg")
+            compose.assertOn(s(R.string.detail_original))
+            shoot("31-file-detail")
+            compose.onNodeWithText(s(R.string.ok)).performClick()
+            compose.waitForIdle()
+
+            // A selection running, with the bar that says what it will act on.
+            compose.onNode(hasText("tour_photo_1.jpg"))
+                .performScrollTo()
+                .performTouchInput { longClick() }
+            compose.waitForIdle()
+            compose.assertOn(s(R.string.list_selected_count, 1))
+            shoot("32-files-selection")
+        }
+    }
+
+    /** The page someone opens when they think they have lost something. */
+    @Test
+    fun theIfSomethingIsDeletedPageIsPhotographed() {
+        setOnboardingDone(true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.onNodeWithText(s(R.string.nav_options)).performClick()
+            compose.openExactRow(s(R.string.nav_help))
+            compose.assertOn(s(R.string.help_deleted))
+            compose.openExactRow(s(R.string.help_deleted))
+            compose.assertOn(s(R.string.help_deleted))
+            shoot("33-help-if-something-is-deleted")
         }
     }
 }

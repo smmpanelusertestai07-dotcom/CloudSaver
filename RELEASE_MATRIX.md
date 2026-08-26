@@ -34,7 +34,7 @@ source for this release, including the rows that were already marked Done.
 
 - **445 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
-- **90 instrumented tests across 14 classes**, run on real emulators against a
+- **92 instrumented tests across 14 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
