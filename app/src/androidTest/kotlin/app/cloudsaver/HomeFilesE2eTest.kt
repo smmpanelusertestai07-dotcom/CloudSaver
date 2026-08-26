@@ -908,7 +908,9 @@ class HomeFilesE2eTest {
         assertShown(s(R.string.list_selected_count, 2), "the two-row selection bar")
         val twoBytes = row(SMALL).sizeBytes + row(MEDIUM).sizeBytes
         assertShown(
-            plural(R.plurals.list_selection_summary, 2, 2, Formats.bytes(twoBytes)),
+            // Not "frees": this bar optimises, and optimising frees nothing
+            // until the original is removed, which is a separate choice.
+            plural(R.plurals.list_selection_size, 2, 2, Formats.bytes(twoBytes)),
             "the selection summary"
         )
         assertShown(s(R.string.bulk_optimise_of, 1, 2), "the \"1 of 2\" action label")

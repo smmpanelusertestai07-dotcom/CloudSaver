@@ -555,7 +555,12 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                 chosen.map { it.id to it.toActionRow() }
             )
             ListActionBar(
-                summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                // frees = false: the action here optimises. Removing from the
+                // phone is a separate choice, made later through Android's own
+                // dialog.
+                summary = selectionSummary(
+                    selection.size, Formats.bytes(selectedBytes), frees = false
+                ),
                 actionLabel = if (split.skipped > 0 && split.eligible > 0) {
                     stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
                 } else {

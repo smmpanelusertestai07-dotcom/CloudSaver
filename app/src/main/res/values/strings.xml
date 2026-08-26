@@ -817,6 +817,12 @@
         <item quantity="one">%1$d selected \u00b7 frees %2$s</item>
         <item quantity="other">%1$d selected \u00b7 frees %2$s</item>
     </plurals>
+    <!-- Same bar, where the action does not free anything: optimising writes
+         a smaller copy and leaves the original exactly where it is -->
+    <plurals name="list_selection_size">
+        <item quantity="one">%1$d selected \u00b7 %2$s</item>
+        <item quantity="other">%1$d selected \u00b7 %2$s</item>
+    </plurals>
     <string name="dupes_sort_space">Most space</string>
     <string name="dupes_sort_copies">Most copies</string>
     <string name="list_open">Open</string>

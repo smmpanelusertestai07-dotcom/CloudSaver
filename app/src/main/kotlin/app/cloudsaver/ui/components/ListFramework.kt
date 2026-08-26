@@ -551,10 +551,25 @@ fun ListScreenScaffold(
     }
 }
 
-/** Plural-aware "N selected - frees X". */
+/**
+ * Plural-aware "N selected - X", saying "frees X" only where it is true.
+ *
+ * [bytes] is the size of what is selected, which is all any caller has. On a
+ * bar whose action removes those files from the phone that size is what gets
+ * freed. On a bar whose action optimises them it is not: optimising writes a
+ * smaller copy beside the original and frees nothing at all until the user
+ * later chooses to remove the original through Android's own dialog. The Files
+ * bar read "1 selected - frees 597 KB" above a button saying "Optimise these
+ * first", which overstated both the amount and the moment.
+ */
 @Composable
-fun selectionSummary(count: Int, freed: String): String =
-    pluralStringResource(R.plurals.list_selection_summary, count, count, freed)
+fun selectionSummary(count: Int, bytes: String, frees: Boolean = true): String =
+    pluralStringResource(
+        if (frees) R.plurals.list_selection_summary else R.plurals.list_selection_size,
+        count,
+        count,
+        bytes
+    )
 
 /**
  * The Type filter, present on every list screen and always first.

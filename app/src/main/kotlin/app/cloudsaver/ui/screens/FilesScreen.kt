@@ -219,7 +219,12 @@ fun FilesScreen(vm: AppViewModel) {
             )
             if (split.eligible > 0) {
                 ListActionBar(
-                    summary = selectionSummary(selection.size, Formats.bytes(selectedBytes)),
+                    // frees = false: this bar's action optimises. It writes a
+                    // smaller copy and leaves the original where it is, so
+                    // nothing is freed here.
+                    summary = selectionSummary(
+                        selection.size, Formats.bytes(selectedBytes), frees = false
+                    ),
                     actionLabel = if (split.skipped > 0) {
                         stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
                     } else {
