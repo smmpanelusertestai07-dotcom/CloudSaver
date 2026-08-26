@@ -46,49 +46,6 @@ class StateMachineTest {
     }
 
     @Test
-    fun copyMissingAppDeleted() {
-        val d = StateMachine.onReleasedCopyMissing(
-            appDeleted = true, confirmFlowActive = false, evidence = Evidence.VERIFIED
-        )
-        assertEquals(ItemState.GONE, d.state)
-        assertEquals(GoneReason.APP_DELETED, d.reason)
-        assertEquals(Evidence.VERIFIED, d.evidence)
-        assertFalse(d.backToNew)
-    }
-
-    @Test
-    fun copyMissingDuringConfirmFlowIsConfirmed() {
-        val d = StateMachine.onReleasedCopyMissing(
-            appDeleted = false, confirmFlowActive = true, evidence = Evidence.NONE
-        )
-        assertEquals(ItemState.GONE, d.state)
-        assertEquals(GoneReason.CONFIRMED, d.reason)
-        assertEquals(Evidence.CONFIRMED_EXACT, d.evidence)
-        assertFalse(d.backToNew)
-    }
-
-    @Test
-    fun copyMissingWithoutEvidenceSelfHeals() {
-        val d = StateMachine.onReleasedCopyMissing(
-            appDeleted = false, confirmFlowActive = false, evidence = Evidence.NONE
-        )
-        assertEquals(ItemState.NEW, d.state)
-        assertEquals(GoneReason.USER_DELETED, d.reason)
-        assertTrue(d.backToNew)
-    }
-
-    @Test
-    fun copyMissingWithEvidenceKeepsIt() {
-        val d = StateMachine.onReleasedCopyMissing(
-            appDeleted = false, confirmFlowActive = false, evidence = Evidence.VERIFIED
-        )
-        assertEquals(ItemState.GONE, d.state)
-        assertEquals(GoneReason.USER_DELETED, d.reason)
-        assertEquals(Evidence.VERIFIED, d.evidence)
-        assertFalse(d.backToNew)
-    }
-
-    @Test
     fun importMappingEvidenceLessBecomesUnknown() {
         assertEquals(
             ItemState.UNKNOWN to Evidence.NONE,

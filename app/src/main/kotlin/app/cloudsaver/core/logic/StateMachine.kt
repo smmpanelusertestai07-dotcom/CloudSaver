@@ -10,6 +10,16 @@ object StateMachine {
     /** Strongest evidence wins: CONFIRMED > VERIFIED > AGED > NONE. */
     fun strongest(a: Evidence, b: Evidence): Evidence = if (a.ordinal >= b.ordinal) a else b
 
+    /**
+     * Every move the pipeline is allowed to make.
+     *
+     * This table is the written-down specification, not a gate the engines
+     * pass through: nothing calls [isAllowed] at runtime, and each engine
+     * moves its own rows directly. It is here, and tested, so that the
+     * intended shape of the pipeline is stated in one readable place - but a
+     * passing test of it says the specification is self-consistent, not that
+     * the app is incapable of an illegal transition.
+     */
     private val allowed: Map<ItemState, Set<ItemState>> = mapOf(
         ItemState.NEW to setOf(ItemState.STAGED, ItemState.SKIP, ItemState.DONE),
         ItemState.STAGED to setOf(ItemState.RELEASED, ItemState.NEW, ItemState.SKIP, ItemState.DONE),
@@ -24,37 +34,13 @@ object StateMachine {
         ItemState.UNKNOWN to setOf(ItemState.NEW)
     )
 
+    /** Whether a move is one the specification above permits. */
     fun isAllowed(from: ItemState, to: ItemState): Boolean =
         to in (allowed[from] ?: emptySet())
 
-    data class CopyGoneDecision(
-        val state: ItemState,
-        val reason: GoneReason?,
-        val evidence: Evidence,
-        val backToNew: Boolean
-    )
-
-    /**
-     * A RELEASED copy disappeared from the output folder.
-     * - the app itself deleted it        -> GONE(APP_DELETED), evidence kept
-     * - Confirm-uploads flow active      -> GONE(CONFIRMED), evidence = CONFIRMED
-     * - no evidence at all               -> self-heal: back to NEW (re-compress, re-release)
-     * - some evidence (VERIFIED/AGED)    -> GONE(USER_DELETED), evidence kept
-     */
-    fun onReleasedCopyMissing(
-        appDeleted: Boolean,
-        confirmFlowActive: Boolean,
-        evidence: Evidence
-    ): CopyGoneDecision = when {
-        appDeleted ->
-            CopyGoneDecision(ItemState.GONE, GoneReason.APP_DELETED, evidence, backToNew = false)
-        confirmFlowActive ->
-            CopyGoneDecision(ItemState.GONE, GoneReason.CONFIRMED, Evidence.CONFIRMED_EXACT, backToNew = false)
-        evidence == Evidence.NONE ->
-            CopyGoneDecision(ItemState.NEW, GoneReason.USER_DELETED, Evidence.NONE, backToNew = true)
-        else ->
-            CopyGoneDecision(ItemState.GONE, GoneReason.USER_DELETED, evidence, backToNew = false)
-    }
+    // What a vanished released copy means is decided by
+    // EvidenceRules.onCopyMissing, which is what MaintainEngine calls. An
+    // older second version of that decision used to live here, uncalled.
 
     /**
      * Snapshot import mapping (fresh install / clear-data recovery):

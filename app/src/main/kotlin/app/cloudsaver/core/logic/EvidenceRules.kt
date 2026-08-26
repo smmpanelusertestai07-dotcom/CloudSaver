@@ -11,12 +11,6 @@ package app.cloudsaver.core.logic
  */
 object EvidenceRules {
 
-    /** A batch is verified once nine tenths of its bytes have gone out. */
-    const val BATCH_MIN_RATIO = 0.9
-
-    /** The disappearance case needs the same nine tenths for that one file. */
-    const val EXACT_MIN_RATIO = 0.9
-
     /**
      * A paced release is confirmed when traffic lands in this window. The
      * upper bound matters as much as the lower: far more than the file's size
@@ -32,11 +26,15 @@ object EvidenceRules {
     /** A copy that vanished with no traffic is re-sent at most this often. */
     const val MAX_RESENDS = 2
 
-    /** Integer maths; no float rounding surprises at the boundary. */
+    /**
+     * Nine tenths of a batch's bytes, compared in integers: no float rounding
+     * surprise at the boundary, and the threshold written down once instead
+     * of also sitting in a constant that nothing reads.
+     */
     fun batchVerified(txBytes: Long, batchBytes: Long): Boolean =
         batchBytes > 0 && txBytes >= 0 && txBytes * 10 >= batchBytes * 9
 
-    /** The copy is gone from the folder and its bytes were transmitted. */
+    /** The copy is gone from the folder, and the same nine tenths went out. */
     fun confirmedExact(txSinceRelease: Long, fileBytes: Long): Boolean =
         fileBytes > 0 && txSinceRelease * 10 >= fileBytes * 9
 
@@ -70,27 +68,10 @@ object EvidenceRules {
 
     enum class MissingVerdict { PROOF_OF_UPLOAD, RESEND, GIVE_UP, WE_DELETED_IT }
 
-    /**
-     * Whether an original may be offered for reclaim.
-     *
-     * Only the two per-file grades qualify, and they are not equal. Seeing the
-     * copy leave the upload folder while the cloud app was transmitting is an
-     * observation; a byte count that happens to match the file is an
-     * inference, so that one has to settle for a month first. A batch-level
-     * VERIFIED never qualifies here at all: it says a day's worth of bytes
-     * went out, not that this photo did.
-     */
-    fun mayReclaimOriginal(evidence: Evidence, copyAgeDays: Int): Boolean = when (evidence) {
-        Evidence.CONFIRMED_EXACT -> true
-        Evidence.CONFIRMED_PACED -> copyAgeDays >= RECLAIM_MIN_DAYS
-        else -> false
-    }
-
-    /** Whether the app may delete its own copy to reclaim device space. */
-    fun mayDeleteCopy(evidence: Evidence, copyAgeDays: Int): Boolean = when (evidence) {
-        Evidence.CONFIRMED_EXACT, Evidence.CONFIRMED_PACED, Evidence.VERIFIED ->
-            copyAgeDays >= Defaults.KEEP_MIN_DAYS
-        Evidence.AGED -> copyAgeDays >= Defaults.AGED_DAYS
-        Evidence.NONE -> false
-    }
+    // Whether an original may be reclaimed is decided by ReclaimRules.refuse,
+    // and whether one of the app's own copies may go by DeletePlanner. Both
+    // used to have a second version here that nothing called, and the reclaim
+    // one disagreed: it allowed an original the moment proof landed, where the
+    // live rule makes every grade wait thirty days. An uncalled rule with its
+    // own tests reads like the app's guarantee, so it is not kept here.
 }

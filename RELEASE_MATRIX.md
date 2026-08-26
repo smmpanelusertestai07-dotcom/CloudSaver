@@ -14,7 +14,7 @@ source for this release, including the rows that were already marked Done.
 | R06 | The daily release limit is the data cap, stated honestly | Done | `ReleasePlanner.plan` against `dailyCapBytes` with `Pacing.carryForward`; `daily_limit_note` says the app limits only what enters the folder and that the upload timing and network belong to the cloud app |
 | R07 | Upload proof obtained automatically on every cloud app, and degraded honestly where it cannot be | Done | Disappearance proof + paced byte accounting in `MaintainEngine`/`UsageVerifier` (`CONFIRMED_EXACT` > `CONFIRMED_PACED` > `VERIFIED` > `AGED`); adaptive `Pacing` ladder on the clean-confirm streak; `CloudWatchdog` learns per-app behaviour and pauses deletions; first-chain card and 48-hour stalled card; usage-access-off shows the chip and the Verify fallback; EvidenceRulesTest, PacingTest, FirstChainTest |
 | R08 | Nothing is ever uploaded twice by the app's own behaviour | Done | Ledger by output digest, checked before every release (`Releaser.alreadyDelivered`) and surviving reinstall through the snapshot; `Fingerprint.fp16` is name+size+date, so a moved file keeps its identity; returned copies recognised by `ScanSources.pipelineIdOf` anywhere on disk; duplicates optimised once; quality changes apply to new items only |
-| R09 | The Free up space hub: three removal modes, duplicates, largest files, leftover work files, on one list framework, with the warning at the exact spot | Done | `FreeSpaceHubScreen` + `ListFramework` (search, Type/Album/Size/Proof filters, sort, multi-select, "N of M" wording, live totals); `RowActions.splitFor`; `ReclaimRules.Mode` × 3; the confirmation sheet always carries the check-your-cloud warning with an Open button; Recently freed with Restore, which goes back through the same chunked confirmation and marks back only what came out of the trash; RowActionsTest, ListConsistencyTest, UserMistakeShieldTest, ConsentBatchTest |
+| R09 | The Free up space hub: three removal modes, duplicates, largest files, leftover work files, on one list framework, with the warning at the exact spot | Done | `FreeSpaceHubScreen` + `ListFramework` (search, Type/Album/Size/Proof filters, sort, multi-select, "N of M" wording, live totals); `RowActions.forItem` and `splitForOptimise`, which is what the bars actually ask; `ReclaimRules.Mode` × 3; the confirmation sheet always carries the check-your-cloud warning with an Open button; Recently freed with Restore, which goes back through the same chunked confirmation and marks back only what came out of the trash; RowActionsTest, ListConsistencyTest, UserMistakeShieldTest, ConsentBatchTest |
 | R10 | Self-heal: unsent copy remade twice then skipped with a reason, sent copy counts as proof, folder recreated, snapshots rebuilt daily, foreign files flagged and never touched | Done | `EvidenceRules.onCopyMissing` (RESEND → GIVE_UP at two), anchor rule in `pacedRelease`, `dailySnapshot` + `sharedTargetsPresent`, bounded so a very large gallery cannot silently break snapshot writing while every evidenced row is still kept whole, `MaintainEngine.foreignFiles` counts and reports without a single write path to those files; UserMistakeShieldTest asserts the pass stays inert |
 | R11 | SMART scheduling with every wait state explained; Optimise now bypasses the schedule, never the safety limits | Done | `RunDecider.decide` (charge/battery/saver/thermal/screen/budget) as a pure function with RunDeciderTest; Home prints the current `Wait` in plain words with its reset; `optimise_now_override_*` strings name what the button will and will not skip |
 | R12 | Survives reboot, update, clear-data, reinstall, phone change, SD removal, partial access and OS updates | Done | WorkManager `ensure` on every launch; `StartupRecovery` (crash handler → snapshot restore → purge → schedule) with restore now once per install; Room migrations 1..6 with MigrationTest; `Volumes.probeWritable` gates the SD option and the releaser verifies the landing volume; `Permissions.mediaAccess` blocks scanning under partial access and shows waiting text instead of a number; PermanenceTest, MediaAccessTest, VolumeRulesTest |
@@ -36,7 +36,7 @@ source for this release, including the rows that were already marked Done.
   gallery, a real cloud app, an SD card and hardware encoders. Nothing in a
   build environment can run it: the emulator has no cloud app to watch and no
   hardware encoder to fail. Everything automatable about the same claims is
-  covered by the 449 unit tests and the instrumented suite.
+  covered by the 438 unit tests and the instrumented suite.
 
 **The owner's 10-minute device checklist**
 
@@ -89,3 +89,15 @@ Stated without softening, so the app is judged on what it actually is:
   removed by you, through Android's own dialog, into the gallery trash where
   the OS allows it. The app itself never deletes an original, at any point, for
   any reason.
+- **Twenty-two helpers in `core/logic` are never called.** They are pure
+  functions the app does not run - leftovers from earlier versions of screens
+  that now ask a different question, plus four constants that write down an
+  Android version number the code compares against directly. They change
+  nothing at runtime and they are covered by their own tests, which is exactly
+  why they are named here: a passing test proves the helper is self-consistent,
+  not that the app uses it. Four that were worse than useless have been
+  removed rather than listed - a duplicate of the upload-proof maths, and two
+  rules for deleting a photo that contradicted the ones that actually run,
+  allowing an original the moment proof arrived where the live rule makes
+  everything wait thirty days. `RowActions` lost three more whose comments
+  described a bottom bar that asks a different function.

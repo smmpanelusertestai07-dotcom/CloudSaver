@@ -86,17 +86,9 @@ object RowActions {
         }
     }
 
-    /** The actions for one member of a duplicate group. */
-    fun forDuplicate(isKeeper: Boolean): List<Action> =
-        if (isKeeper) {
-            listOf(Action.OPEN)
-        } else {
-            listOf(Action.OPEN, Action.REMOVE_EXTRA, Action.KEEP_THIS_INSTEAD)
-        }
-
     /**
-     * Splits a mixed selection into what an action can touch and what it
-     * must skip (CC6).
+     * A mixed selection split into what an action can touch and what it must
+     * skip.
      *
      * A bulk "Optimise" over five rows where two are already optimised must
      * act on three, say "3 of 5", and name why two were left - acting on all
@@ -105,11 +97,6 @@ object RowActions {
      */
     data class Split(val eligibleIds: List<Long>, val skipped: Int) {
         val eligible: Int get() = eligibleIds.size
-    }
-
-    fun splitFor(action: Action, rows: List<Pair<Long, Row>>): Split {
-        val eligible = rows.filter { (_, row) -> action in forItem(row) }.map { it.first }
-        return Split(eligible, skipped = rows.size - eligible.size)
     }
 
     /**
@@ -125,12 +112,9 @@ object RowActions {
         return Split(eligible, skipped = rows.size - eligible.size)
     }
 
-    /**
-     * How many of a selection may actually be removed from the phone.
-     *
-     * The bottom bar uses this to say "3 of 12 are not backed up yet" instead
-     * of failing halfway through, or worse, quietly removing only some.
-     */
-    fun removableCount(rows: List<Row>): Int =
-        rows.count { !it.originalMissing && it.evidence.isPerFile && !it.state.isReclaimed }
+    // The duplicate rows and the "3 of 12 are not backed up yet" bar used to
+    // have helpers here as well. Neither was ever called - both screens ask
+    // forItem directly - so what the comments claimed the bottom bar did was
+    // not what it did. The behaviour is unchanged; only the second, unused
+    // description of it is gone.
 }

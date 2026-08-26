@@ -94,32 +94,4 @@ class EvidenceRulesTest {
         assertEquals(EvidenceRules.MissingVerdict.PROOF_OF_UPLOAD, verdict)
     }
 
-    // ---- what may be deleted ------------------------------------------------
-
-    @Test
-    fun `only observed proof reclaims an original immediately`() {
-        assertTrue(EvidenceRules.mayReclaimOriginal(Evidence.CONFIRMED_EXACT, copyAgeDays = 0))
-        assertFalse(EvidenceRules.mayReclaimOriginal(Evidence.CONFIRMED_PACED, copyAgeDays = 0))
-        assertTrue(
-            EvidenceRules.mayReclaimOriginal(
-                Evidence.CONFIRMED_PACED, EvidenceRules.RECLAIM_MIN_DAYS
-            )
-        )
-    }
-
-    @Test
-    fun `a batch total never reclaims an original on its own`() {
-        assertFalse(EvidenceRules.mayReclaimOriginal(Evidence.VERIFIED, copyAgeDays = 3650))
-        assertFalse(EvidenceRules.mayReclaimOriginal(Evidence.AGED, copyAgeDays = 3650))
-        assertFalse(EvidenceRules.mayReclaimOriginal(Evidence.NONE, copyAgeDays = 3650))
-    }
-
-    @Test
-    fun `deleting our own copy is a lower bar than deleting an original`() {
-        assertTrue(EvidenceRules.mayDeleteCopy(Evidence.VERIFIED, Defaults.KEEP_MIN_DAYS))
-        assertFalse(EvidenceRules.mayDeleteCopy(Evidence.VERIFIED, Defaults.KEEP_MIN_DAYS - 1))
-        assertTrue(EvidenceRules.mayDeleteCopy(Evidence.AGED, Defaults.AGED_DAYS))
-        assertFalse(EvidenceRules.mayDeleteCopy(Evidence.AGED, Defaults.AGED_DAYS - 1))
-        assertFalse(EvidenceRules.mayDeleteCopy(Evidence.NONE, 10_000))
-    }
 }

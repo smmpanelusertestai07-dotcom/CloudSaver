@@ -97,15 +97,6 @@ class RowActionsTest {
     }
 
     @Test
-    fun `the keeper of a duplicate group cannot be removed`() {
-        assertEquals(listOf(Action.OPEN), RowActions.forDuplicate(isKeeper = true))
-        assertEquals(
-            listOf(Action.OPEN, Action.REMOVE_EXTRA, Action.KEEP_THIS_INSTEAD),
-            RowActions.forDuplicate(isKeeper = false)
-        )
-    }
-
-    @Test
     fun `a mixed selection splits into eligible and skipped, with the counts`() {
         // CC6.1: five selected, two already optimised - the bar must offer
         // "Optimise 3 of 5" and name the two it skips.
@@ -131,28 +122,34 @@ class RowActionsTest {
             2L to row(ItemState.DONE)
         )
         assertEquals(0, RowActions.splitForOptimise(rows).eligible)
-        // And the generic splitter agrees for any action.
-        assertEquals(
-            0,
-            RowActions.splitFor(RowActions.Action.OPTIMISE_FIRST, rows).eligible
-        )
     }
 
+    /**
+     * How the Free up bar decides, written the way the screen writes it: a
+     * row may be removed exactly when forItem offers REMOVE_FROM_PHONE. The
+     * screen asks that question directly, so the test asks it directly too -
+     * a helper that restated the rule and that nothing called would prove
+     * nothing about what the bar actually does.
+     */
+    private fun removable(rows: List<RowActions.Row>): Int =
+        rows.count { Action.REMOVE_FROM_PHONE in RowActions.forItem(it) }
+
     @Test
-    fun `free up counts only proof-carrying items`() {
-        // CC6.3: the same split rule, for removal.
+    fun `free up offers removal only where there is per-file proof`() {
+        // CC6.3: the same rule, for removal.
         val rows = listOf(
-            1L to row(ItemState.DONE, Evidence.CONFIRMED_EXACT),
-            2L to row(ItemState.DONE, Evidence.NONE),
-            3L to row(ItemState.DONE, Evidence.CONFIRMED_PACED)
+            row(ItemState.DONE, Evidence.CONFIRMED_EXACT),
+            row(ItemState.DONE, Evidence.NONE),
+            row(ItemState.DONE, Evidence.CONFIRMED_PACED)
         )
-        val split = RowActions.splitFor(RowActions.Action.REMOVE_FROM_PHONE, rows)
-        assertEquals(listOf(1L, 3L), split.eligibleIds)
-        assertEquals(1, split.skipped)
+        assertEquals(2, removable(rows))
+        assertFalse(
+            Action.REMOVE_FROM_PHONE in RowActions.forItem(row(ItemState.DONE, Evidence.NONE))
+        )
     }
 
     @Test
-    fun `removable count ignores what has no proof or is already gone`() {
+    fun `removal ignores what has no proof, is gone, or is already reclaimed`() {
         val rows = listOf(
             row(ItemState.DONE, Evidence.CONFIRMED_EXACT),
             row(ItemState.DONE, Evidence.CONFIRMED_PACED),
@@ -160,6 +157,6 @@ class RowActionsTest {
             row(ItemState.FREED, Evidence.CONFIRMED_EXACT),
             row(ItemState.DONE, Evidence.CONFIRMED_EXACT, originalMissing = true)
         )
-        assertEquals(2, RowActions.removableCount(rows))
+        assertEquals(2, removable(rows))
     }
 }
