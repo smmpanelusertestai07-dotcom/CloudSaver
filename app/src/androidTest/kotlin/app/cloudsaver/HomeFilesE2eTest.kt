@@ -11,6 +11,9 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -301,8 +304,10 @@ class HomeFilesE2eTest {
         openTab(R.string.nav_files)
         awaitNode(hasText(s(R.string.list_search)), "the Files search field")
         // The rows arrive from a database flow, so the list is waited for
-        // rather than assumed to be there the moment the screen is.
-        awaitNode(hasText(SMALL), "the Files list")
+        // rather than assumed to be there the moment the screen is. It waits
+        // on the first row, not the last: the list is lazy, and the last row
+        // is precisely the one a shorter screen has not composed yet.
+        awaitNode(hasText(LARGE), "the Files list")
     }
 
     private fun openStorage() {
@@ -406,22 +411,49 @@ class HomeFilesE2eTest {
      * when it never arrives, the order that did is what the failure says.
      */
     private fun assertOrder(vararg names: String) {
+        val expected = names.toList()
+        var actual = emptyList<String>()
         try {
             compose.waitUntil(timeoutMillis = UI_TIMEOUT) {
-                val tops = names.map { rowTopOrNull(it) }
-                tops.all { it != null } &&
-                    tops.filterNotNull().zipWithNext().all { (a, b) -> a < b }
+                actual = namesTopToBottom()
+                actual == expected
             }
         } catch (e: ComposeTimeoutException) {
-            val actual = FIXTURES.mapNotNull { name -> rowTopOrNull(name)?.let { name to it } }
-                .sortedBy { it.second }
-                .joinToString(", ") { it.first }
             throw AssertionError(
-                "expected ${names.joinToString(", ")} top to bottom, " +
-                    "but the list reads $actual",
+                "expected ${expected.joinToString(", ")} top to bottom, " +
+                    "but the list reads ${actual.joinToString(", ")}",
                 e
             )
         }
+    }
+
+    /**
+     * The fixture rows in the order the list draws them.
+     *
+     * The list is lazy: rows below the fold are not composed, so they have no
+     * node and no position. Reading all four positions in one go therefore
+     * only works on a screen tall enough to show all four, and reports the
+     * missing ones as though the list were wrong. This scrolls from the top,
+     * collecting what is on screen at each step, until nothing new appears.
+     */
+    private fun namesTopToBottom(): List<String> {
+        val seen = LinkedHashSet<String>()
+        val scrollers = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
+        fun collect() {
+            FIXTURES.mapNotNull { name -> rowTopOrNull(name)?.let { name to it } }
+                .sortedBy { it.second }
+                .forEach { seen += it.first }
+        }
+        collect()
+        if (scrollers.isEmpty()) return seen.toList()
+        repeat(6) {
+            val before = seen.size
+            compose.onAllNodes(hasScrollAction()).onLast().performTouchInput { swipeUp() }
+            compose.waitForIdle()
+            collect()
+            if (seen.size == before) return seen.toList()
+        }
+        return seen.toList()
     }
 
     /**

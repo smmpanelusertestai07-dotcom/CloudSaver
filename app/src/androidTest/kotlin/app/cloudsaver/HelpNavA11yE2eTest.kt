@@ -10,6 +10,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
@@ -85,7 +89,25 @@ class HelpNavA11yE2eTest {
         runBlocking { AppDb.get(target).clearAllTables() }
     }
 
+    /**
+     * Scrolls until the label exists, if it does not already.
+     *
+     * A lazy list composes only what is on screen, so a row further down has
+     * no node at all - performScrollTo cannot reach a node that is not there,
+     * and the failure reads "can't retrieve node at index 0", which sounds
+     * like the row is missing when it is merely below the fold.
+     */
+    private fun ComposeTestRule.bringIntoView(label: String) {
+        val matcher = hasText(label, substring = true)
+        if (onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()) return
+        val scrollers = onAllNodes(hasScrollAction()).fetchSemanticsNodes()
+        if (scrollers.isEmpty()) return
+        onAllNodes(hasScrollAction()).onLast().performScrollToNode(matcher)
+        waitForIdle()
+    }
+
     private fun ComposeTestRule.open(label: String) {
+        bringIntoView(label)
         onAllNodes(hasText(label, substring = true)).onFirst()
             .performScrollTo().performClick()
         waitForIdle()
@@ -97,6 +119,7 @@ class HelpNavA11yE2eTest {
      * page and still in the list behind it, so uniqueness is simply false.
      */
     private fun ComposeTestRule.assertOn(label: String) {
+        bringIntoView(label)
         onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
     }
 
@@ -156,13 +179,13 @@ class HelpNavA11yE2eTest {
             compose.open(s(R.string.hub_title))
             compose.assertOn(s(R.string.hub_title))
             compose.back()
-            compose.assertOn(s(R.string.nav_storage))
+            compose.onNode(NavTabs.matcher(s(R.string.nav_storage))).assertIsSelected()
 
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.open(s(R.string.nav_activity))
             compose.assertOn(s(R.string.nav_activity))
             compose.back()
-            compose.assertOn(s(R.string.nav_options))
+            compose.onNode(NavTabs.matcher(s(R.string.nav_options))).assertIsSelected()
         }
     }
 
