@@ -2,6 +2,9 @@ package app.cloudsaver
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -270,6 +273,32 @@ class OnboardingE2eTest {
      * reads as the app losing a tick it never had. The row is one toggleable
      * carrying the album's name, so it can simply be asked for by name.
      */
+    /**
+     * Waits for the row for [album] to settle on this state, then asserts it.
+     *
+     * A tick travels from the tap through the options store and back out as a
+     * flow before the row can redraw, so reading the row one frame after the
+     * tap is a race. This suite won that race every time until the machine had
+     * two emulators and a compiler on it, and then lost it twice - which reads
+     * as the app dropping a tick it had actually kept. The wait removes the
+     * race; the assertion still produces the node dump when the state is
+     * genuinely wrong.
+     */
+    private fun assertAlbumTick(album: String, on: Boolean) {
+        val want = if (on) ToggleableState.On else ToggleableState.Off
+        val deadline = System.currentTimeMillis() + STORE_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
+            compose.waitForIdle()
+            val state = runCatching {
+                albumTick(album).fetchSemanticsNode()
+                    .config.getOrNull(SemanticsProperties.ToggleableState)
+            }.getOrNull()
+            if (state == want) return
+            Thread.sleep(50)
+        }
+        if (on) albumTick(album).assertIsOn() else albumTick(album).assertIsOff()
+    }
+
     private fun albumTick(album: String) =
         compose.onNode(isToggleable() and hasText(album, substring = true))
 
@@ -465,10 +494,10 @@ class OnboardingE2eTest {
         compose.waitUntil(timeoutMillis = STORE_TIMEOUT) {
             stored().excludedBuckets.containsAll(albums)
         }
-        albumTick(fixtureAlbum).assertIsOff()
+        assertAlbumTick(fixtureAlbum, on = false)
 
         albumTick(fixtureAlbum).performScrollTo().performClick()
-        albumTick(fixtureAlbum).assertIsOn()
+        assertAlbumTick(fixtureAlbum, on = true)
         compose.waitUntil(timeoutMillis = STORE_TIMEOUT) {
             fixtureAlbum !in stored().excludedBuckets
         }
@@ -478,14 +507,14 @@ class OnboardingE2eTest {
 
         awaitStep(Step.ALBUMS)
         val afterAlbums = awaitAlbums()
-        albumTick(fixtureAlbum).assertIsOn()
+        assertAlbumTick(fixtureAlbum, on = true)
         assertFalse(
             "the ticked album came back excluded after recreation",
             fixtureAlbum in stored().excludedBuckets
         )
         // And the albums the user left alone stayed left alone.
         for (album in afterAlbums.filter { it != fixtureAlbum }) {
-            albumTick(album).assertIsOff()
+            assertAlbumTick(album, on = false)
         }
     }
 

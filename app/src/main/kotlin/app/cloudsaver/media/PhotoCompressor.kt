@@ -181,6 +181,19 @@ object PhotoCompressor {
                 // EXIF write failure is not fatal.
             }
 
+            // Measure again, because writing the EXIF changed the file. The
+            // encoder wrote no EXIF segment at all; saveAttributes inserts one
+            // carrying every tag copied off the original, and two of those -
+            // the description and the user comment - have no length limit. So
+            // a copy that passed the check above by a few hundred bytes can be
+            // pushed back over the original here, and this is the last moment
+            // anything looks at it. That is the whole promise of the app: a
+            // copy that is not smaller is not a saving, it is a second file.
+            if (outFile.length() >= srcBytes) {
+                outFile.delete()
+                return copyAsIs(context, uri, displayName, tempDir, "not_smaller")
+            }
+
             return CompressResult(
                 outFile,
                 outFile.length(),
