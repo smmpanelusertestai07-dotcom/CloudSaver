@@ -93,6 +93,10 @@ private const val UI_TIMEOUT = 15_000L
 @RunWith(AndroidJUnit4::class)
 class SettingsE2eTest {
 
+    /** Any failure below leaves a picture of the screen behind it. */
+    @get:Rule
+    val shotOnFailure = ScreenshotOnFailure()
+
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 

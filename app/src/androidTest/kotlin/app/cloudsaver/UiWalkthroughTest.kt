@@ -47,6 +47,10 @@ private const val SHOT_DIR = "Pictures/CSTestShots/"
 @RunWith(AndroidJUnit4::class)
 class UiWalkthroughTest {
 
+    /** Any failure below leaves a picture of the screen behind it. */
+    @get:Rule
+    val shotOnFailure = ScreenshotOnFailure()
+
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 

@@ -113,6 +113,10 @@ private const val DAY = 86_400_000L
 @RunWith(AndroidJUnit4::class)
 class HomeFilesE2eTest {
 
+    /** Any failure below leaves a picture of the screen behind it. */
+    @get:Rule
+    val shotOnFailure = ScreenshotOnFailure()
+
     @get:Rule
     val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 

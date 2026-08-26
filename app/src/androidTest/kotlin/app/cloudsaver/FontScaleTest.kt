@@ -32,6 +32,10 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FontScaleTest {
 
+    /** Any failure below leaves a picture of the screen behind it. */
+    @get:Rule
+    val shotOnFailure = ScreenshotOnFailure()
+
     @get:Rule
     val compose = createComposeRule()
 
