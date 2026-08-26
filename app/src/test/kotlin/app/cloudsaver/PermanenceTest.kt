@@ -91,6 +91,25 @@ class PermanenceTest {
     }
 
     @Test
+    fun `a setting, once chosen, is written even if the screen goes`() {
+        // Every setter is called from a view-model scope, which dies with the
+        // activity. A tick followed immediately by leaving the app could
+        // cancel the write mid-transaction and lose the choice - which is
+        // exactly what losing an album tick looks like from the outside.
+        val repo = File(main, "data/prefs/OptionsRepo.kt").readText()
+        assertTrue(repo.contains("withContext(NonCancellable)"))
+        val setters = Regex("""suspend fun set[A-Za-z]+\([^)]*\)[^{]*\{([^}]*)\}""", RegexOption.DOT_MATCHES_ALL)
+        for (m in setters.findAll(repo)) {
+            val body = m.groupValues[1]
+            assertFalse(
+                "a setter must go through the protected write: ${'$'}body",
+                body.contains("dataStore.edit")
+            )
+        }
+        assertTrue("the import is one transaction too", repo.contains("importMap(map: Map<String, String>) = withContext(NonCancellable)"))
+    }
+
+    @Test
     fun `the launch self-check runs in the order that survives a bad state`() {
         // Inside onCreate, not the import block above it - the imports are
         // alphabetical and say nothing about what runs first.

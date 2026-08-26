@@ -16,9 +16,11 @@ import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 private val Context.dataStore by preferencesDataStore(name = "options")
 
@@ -259,27 +261,42 @@ class OptionsRepo(private val context: Context) {
 
     suspend fun current(): Options = flow.first()
 
+    /**
+     * A choice, once made, is written even if the screen that made it goes.
+     *
+     * Every setter here is called from a view-model scope, which is cancelled
+     * the moment the activity finishes - so ticking an album and immediately
+     * leaving the app could cancel the write mid-transaction and lose the
+     * tick. Losing a decision someone has already made is not an acceptable
+     * outcome of closing an app, and the write itself is milliseconds.
+     */
+    private suspend fun write(
+        edit: suspend (androidx.datastore.preferences.core.MutablePreferences) -> Unit
+    ) = withContext(NonCancellable) {
+        context.dataStore.edit { edit(it) }
+    }
+
     suspend fun setString(key: androidx.datastore.preferences.core.Preferences.Key<String>, value: String) {
-        context.dataStore.edit { it[key] = value }
+        write { it[key] = value }
     }
 
     suspend fun setInt(key: androidx.datastore.preferences.core.Preferences.Key<Int>, value: Int) {
-        context.dataStore.edit { it[key] = value }
+        write { it[key] = value }
     }
 
     suspend fun setLong(key: androidx.datastore.preferences.core.Preferences.Key<Long>, value: Long) {
-        context.dataStore.edit { it[key] = value }
+        write { it[key] = value }
     }
 
     suspend fun setBool(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>, value: Boolean) {
-        context.dataStore.edit { it[key] = value }
+        write { it[key] = value }
     }
 
     suspend fun setStringSet(
         key: androidx.datastore.preferences.core.Preferences.Key<Set<String>>,
         value: Set<String>
     ) {
-        context.dataStore.edit { it[key] = value }
+        write { it[key] = value }
     }
 
     /** Options export for the snapshot (user-visible options only). */
@@ -307,7 +324,7 @@ class OptionsRepo(private val context: Context) {
     }
 
     /** Restores options from a snapshot map (import). Never touches files. */
-    suspend fun importMap(map: Map<String, String>) {
+    suspend fun importMap(map: Map<String, String>) = withContext(NonCancellable) {
         context.dataStore.edit { p ->
             map["scope"]?.let { p[K.SCOPE] = it }
             map["excludedBuckets"]?.let { s ->

@@ -786,9 +786,13 @@ class MaintainEngine(private val context: Context) {
             } catch (e: Exception) {
                 false
             }
+            // Re-read rather than reuse: the row was updated a moment ago.
+            // If it has gone in the meantime there is nothing to write back,
+            // and a background pass must not die of it.
+            val current = db.items().byId(id) ?: continue
             if (ok) {
                 db.items().update(
-                    db.items().byId(id)!!.copy(
+                    current.copy(
                         state = ItemState.DONE.name,
                         goneReason = GoneReason.APP_DELETED.name,
                         outputUri = null,
@@ -797,7 +801,7 @@ class MaintainEngine(private val context: Context) {
                 )
                 summary.deleted++
             } else {
-                db.items().update(db.items().byId(id)!!.copy(appDeletedCopy = false, updatedAt = now))
+                db.items().update(current.copy(appDeletedCopy = false, updatedAt = now))
             }
         }
         if (plan.agedUsed && !o.agedWarned) {

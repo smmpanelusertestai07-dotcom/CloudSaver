@@ -326,16 +326,19 @@ class ReclaimEngine(private val context: Context) {
             val ok = runCatching {
                 context.contentResolver.delete(uri, null, null) > 0
             }.getOrDefault(false)
+            // The row is re-read because it was just updated; if it has gone
+            // there is nothing to write back and nothing to crash over.
+            val current = db.items().byId(row.id)
             if (ok) {
                 freed += row.outputBytes ?: 0L
-                db.items().update(
-                    db.items().byId(row.id)!!.copy(outputUri = null, updatedAt = now)
-                )
+                current?.let {
+                    db.items().update(it.copy(outputUri = null, updatedAt = now))
+                }
                 done += Outcome(row.fingerprint, row.displayName, true)
             } else {
-                db.items().update(
-                    db.items().byId(row.id)!!.copy(appDeletedCopy = false, updatedAt = now)
-                )
+                current?.let {
+                    db.items().update(it.copy(appDeletedCopy = false, updatedAt = now))
+                }
                 skipped += Outcome(row.fingerprint, row.displayName, false, "delete_refused")
             }
         }
@@ -435,9 +438,9 @@ class ReclaimEngine(private val context: Context) {
                 // second file of the same photo sitting in the gallery.
                 prepared.pinned[row.id]?.let { unpinLightCopy(it) }
                 if (prepared.pinned.containsKey(row.id)) {
-                    db.items().update(
-                        db.items().byId(row.id)!!.copy(keptUri = null, updatedAt = now)
-                    )
+                    db.items().byId(row.id)?.let {
+                        db.items().update(it.copy(keptUri = null, updatedAt = now))
+                    }
                 }
                 skipped += Outcome(row.fingerprint, row.displayName, false, "not_confirmed")
                 continue
@@ -448,13 +451,15 @@ class ReclaimEngine(private val context: Context) {
             } else {
                 row.sizeBytes
             }
-            db.items().update(
-                db.items().byId(row.id)!!.copy(
-                    state = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name,
-                    originalMissing = true,
-                    updatedAt = now
+            db.items().byId(row.id)?.let {
+                db.items().update(
+                    it.copy(
+                        state = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name,
+                        originalMissing = true,
+                        updatedAt = now
+                    )
                 )
-            )
+            }
             done += Outcome(row.fingerprint, row.displayName, true)
             recorded += row
         }
