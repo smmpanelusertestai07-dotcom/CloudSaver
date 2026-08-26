@@ -81,6 +81,15 @@ class LockBackupE2eTest {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.waitForIdle()
+            // The options flow starts on defaults and the stored value lands a
+            // frame or two later, so the bar is briefly on screen before the
+            // lock is even known about. Waiting for the state to settle is the
+            // difference between testing the lock and testing that first frame.
+            compose.waitUntil(timeoutMillis = 20_000) {
+                compose.onAllNodes(hasText(s(R.string.lock_title), substring = true))
+                    .fetchSemanticsNodes().isNotEmpty() ||
+                    !runBlocking { repo.current().appLock }
+            }
             // Either the lock screen is up, or the phone had no screen lock
             // and the app disabled the lock rather than trapping the user.
             // Both are correct; a bar full of tabs over a locked app is not.
@@ -232,10 +241,16 @@ class LockBackupE2eTest {
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .performScrollTo().performClick()
             compose.waitForIdle()
-            compose.onNode(hasText(s(R.string.opt_transfer_hint), substring = true))
+            compose.onNode(hasText(s(R.string.backup_password_label), substring = true))
                 .assertIsDisplayed()
-            compose.onNodeWithText(s(R.string.cancel)).performClick()
+            // The save dialog offers Skip - save without a password - rather
+            // than Cancel, and skipping would write a file, which is not what
+            // abandoning means. Backing out is how a person abandons it.
+            androidx.test.uiautomator.UiDevice
+                .getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+                .pressBack()
             compose.waitForIdle()
+            compose.onNodeWithText(s(R.string.backup_password_label)).assertDoesNotExist()
             compose.onNode(hasText(s(R.string.transfer_export), substring = true))
                 .assertIsDisplayed()
         }

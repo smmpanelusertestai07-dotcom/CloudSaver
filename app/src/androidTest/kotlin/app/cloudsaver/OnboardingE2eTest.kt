@@ -419,10 +419,21 @@ class OnboardingE2eTest {
         awaitStep(Step.ALBUMS)
         compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertExists()
 
-        // Back out of the detour: the album card is an ordinary step again.
+        // Back out of the detour. It returns to the summary it started from -
+        // dropping the user on the media step, four cards earlier, was the old
+        // behaviour and read as the app losing its place - but the promise to
+        // come back is cancelled all the same.
         tap(s(R.string.back))
-        awaitStep(Step.MEDIA)
-        advanceFrom(Step.MEDIA)
+        awaitStep(Step.READY)
+
+        // Reaching the album card the ordinary way now: it is a plain step
+        // again, with no promise to return to the summary.
+        var guard = 0
+        while (OnboardingSteps.at(stored().onboardingStep) != Step.ALBUMS) {
+            check(guard++ < OnboardingSteps.TOTAL) { "Back never reached the album step" }
+            tap(s(R.string.back))
+            compose.waitForIdle()
+        }
         awaitStep(Step.ALBUMS)
         compose.onNodeWithText(s(R.string.onb_albums_confirm)).assertExists()
         compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertDoesNotExist()
