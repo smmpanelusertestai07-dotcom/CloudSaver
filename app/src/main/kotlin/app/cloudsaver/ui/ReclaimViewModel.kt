@@ -546,6 +546,10 @@ class ReclaimViewModel(
     private fun finishLegacy() {
         if (pendingDuplicateIds.isNotEmpty()) {
             pendingDuplicateIds = emptySet()
+            dupeChunks.clear()
+            dupeCurrent = emptyList()
+            dupeIdByUri = emptyMap()
+            dupeGranted.clear()
             finishDuplicateRemoval(legacyDeleted.size)
             return
         }
@@ -580,8 +584,14 @@ class ReclaimViewModel(
             return
         }
         if (pendingDuplicateIds.isNotEmpty()) {
-            val count = if (granted) pendingDuplicateIds.size else 0
+            if (granted) dupeGranted += dupeCurrent.mapNotNull { dupeIdByUri[it.toString()] }
+            dupeCurrent = emptyList()
+            if (granted && nextDuplicateChunk()) return
+            dupeChunks.clear()
             pendingDuplicateIds = emptySet()
+            dupeIdByUri = emptyMap()
+            val count = dupeGranted.size
+            dupeGranted.clear()
             finishDuplicateRemoval(count)
             return
         }
@@ -762,8 +772,15 @@ class ReclaimViewModel(
                 if (uris.isEmpty()) return@launch
                 pendingDuplicateIds = rows.map { it.id }.toSet()
                 pendingTrash = true
-                val request = requestFor(uris, permanent = false)
-                if (request == null) startLegacy(uris) else pendingIntent.value = request
+                // A gallery full of copies produces thousands of extras, so
+                // this goes through the same chunked confirmation as every
+                // other removal rather than one dialog nobody can read.
+                dupeIdByUri = rows.mapNotNull { row ->
+                    row.contentUri?.let { it to row.id }
+                }.toMap()
+                dupeChunks = ArrayDeque(ReclaimRules.batches(uris))
+                dupeGranted.clear()
+                if (!nextDuplicateChunk()) startLegacy(uris)
             } finally {
                 busy.value = false
             }
@@ -780,6 +797,21 @@ class ReclaimViewModel(
 
     /** Ids awaiting Android's answer for a duplicate removal. */
     private var pendingDuplicateIds: Set<Long> = emptySet()
+
+    /** The same chunked walk, for the extras: what is left, and what was allowed. */
+    private var dupeChunks: ArrayDeque<List<Uri>> = ArrayDeque()
+    private var dupeCurrent: List<Uri> = emptyList()
+    private var dupeIdByUri: Map<String, Long> = emptyMap()
+    private val dupeGranted = mutableSetOf<Long>()
+
+    /** Shows the next chunk of extras; false when none is left to ask about. */
+    private fun nextDuplicateChunk(): Boolean {
+        val next = dupeChunks.removeFirstOrNull() ?: return false
+        val request = requestFor(next, permanent = false) ?: return false
+        dupeCurrent = next
+        pendingIntent.value = request
+        return true
+    }
 
     /** How many extras the last removal actually took, for the result line. */
     val duplicatesRemoved = MutableStateFlow<Int?>(null)

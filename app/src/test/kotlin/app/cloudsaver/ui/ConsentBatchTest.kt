@@ -21,11 +21,22 @@ class ConsentBatchTest {
     private val ui = File("src/main/kotlin/app/cloudsaver/ui")
     private val main = File("src/main/kotlin/app/cloudsaver")
 
-    /** The system calls that show a removal dialog, wherever they appear. */
-    private val dialogCalls = Regex("""MediaStore\.create(Trash|Delete)Request\(""")
+    /**
+     * Everything that produces a removal dialog: the two system calls, and
+     * the helper that wraps them. The helper counts, because a caller that
+     * hands it the whole selection is the same unbounded request with one
+     * more function in between - which is exactly how the duplicates path
+     * stayed unbounded after the first three were fixed.
+     */
+    private val dialogCalls = Regex(
+        """MediaStore\.create(Trash|Delete)Request\(|(?<!fun )\brequestFor\("""
+    )
 
     /** The functions allowed to make one, each of which receives a chunk. */
-    private val allowed = setOf("requestFor", "nextRestoreChunk", "nextDeleteChunk")
+    private val allowed = setOf(
+        "requestFor", "requestNextConsent", "nextDuplicateChunk",
+        "nextRestoreChunk", "nextDeleteChunk"
+    )
 
     /** Name of the function a given line sits inside. */
     private fun enclosingFun(lines: List<String>, index: Int): String {
@@ -57,18 +68,20 @@ class ConsentBatchTest {
 
     @Test
     fun `each entry point splits its selection before asking for anything`() {
-        // Three flows can be handed an unbounded list by the UI: removing
-        // originals, putting them back, and clearing leftovers or duplicates.
+        // Four flows can be handed an unbounded list by the UI: removing
+        // originals, putting them back, clearing the extra copies, and
+        // clearing leftover work files.
         val entries = listOf(
             Triple("ReclaimViewModel.kt", "beginConsent", "originals"),
             Triple("ReclaimViewModel.kt", "restore", "restore from the trash"),
+            Triple("ReclaimViewModel.kt", "removeDuplicateExtras", "duplicate extras"),
             Triple("AppViewModel.kt", "requestDelete", "leftover files")
         )
         for ((fileName, function, what) in entries) {
             val source = File(ui, fileName).readText()
             val body = source.substringAfter("fun $function(", "")
             assertTrue("$fileName has no $function() any more", body.isNotEmpty())
-            val head = body.take(700)
+            val head = body.take(1400)
             assertTrue(
                 "$what is confirmed without being split first ($function)",
                 head.contains("ReclaimRules.batches(")
@@ -94,6 +107,10 @@ class ConsentBatchTest {
         assertTrue(
             "the delete callback must receive the agreed chunks",
             app.contains("finishDelete(agreed)")
+        )
+        assertTrue(
+            "the duplicate count must be what the user allowed, not what was offered",
+            reclaim.contains("val count = dupeGranted.size")
         )
         assertTrue(
             "a finished flow must not leave a sender to be relaunched",
