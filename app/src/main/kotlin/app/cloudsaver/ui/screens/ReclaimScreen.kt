@@ -120,10 +120,19 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
 
     val shared by rvm.listFilter.collectAsStateWithLifecycle()
     val holdingApps by rvm.holdingApps.collectAsStateWithLifecycle()
-    val visible = rvm.visible()
-    val groups = rvm.groups()
-    val selectedEntries = rvm.selectedEntries()
-    val freed = rvm.savedBytesForMode()
+    // Filtering and sorting the batch is not free, and this ran four times
+    // over on every recomposition - once per call, plus the three that call
+    // visible() again inside themselves. On a four-hundred-file selection
+    // that is four passes for every checkbox tap, on the one screen that has
+    // to feel dependable. Each is now recomputed only when its inputs change.
+    val visible = remember(entries, shared, sort, grouping) { rvm.visible() }
+    val groups = remember(entries, shared, sort, grouping) { rvm.groups() }
+    val selectedEntries = remember(visible, selected) {
+        visible.filter { it.id in selected }
+    }
+    val freed = remember(selectedEntries, mode) {
+        ReclaimRules.savedBytes(selectedEntries.map { it.candidate }, mode)
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(
