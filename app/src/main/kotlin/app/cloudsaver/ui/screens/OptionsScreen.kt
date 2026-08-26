@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -769,6 +770,20 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 ) {
                     if (buckets.isEmpty()) {
                         Text(stringResource(R.string.folders_loading))
+                    }
+                    // The same measured figure the setup step shows: a count
+                    // of albums says nothing about how much gallery it is.
+                    val tickedBytes by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
+                    LaunchedEffect(o.excludedBuckets, buckets) {
+                        vm.refreshSelectedAlbumBytes()
+                    }
+                    tickedBytes?.let { bytes ->
+                        Text(
+                            stringResource(R.string.onb_albums_size, Formats.bytes(bytes)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
                     }
                     for (bucket in buckets) {
                         Row(

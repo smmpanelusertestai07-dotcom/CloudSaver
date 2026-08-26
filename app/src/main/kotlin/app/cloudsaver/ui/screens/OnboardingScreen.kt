@@ -306,6 +306,13 @@ fun OnboardingScreen(vm: AppViewModel) {
                 val buckets by vm.buckets.collectAsStateWithLifecycle()
                 val locked by vm.lockedBuckets.collectAsStateWithLifecycle()
                 val included = buckets.count { it !in options.excludedBuckets }
+                // How much this choice actually involves. Re-measured on every
+                // tick, off the main thread, and simply absent until it has
+                // been measured - a zero would read as an empty gallery.
+                val ticked by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
+                androidx.compose.runtime.LaunchedEffect(options.excludedBuckets, buckets) {
+                    vm.refreshSelectedAlbumBytes()
+                }
                 StepCard(
                     title = stringResource(R.string.onb_albums_title),
                     text = stringResource(R.string.onb_albums_text),
@@ -355,6 +362,13 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 )
                             )
                         }
+                    }
+                    ticked?.let { bytes ->
+                        Text(
+                            stringResource(R.string.onb_albums_size, Formats.bytes(bytes)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     for (bucket in buckets) {
                         Row(

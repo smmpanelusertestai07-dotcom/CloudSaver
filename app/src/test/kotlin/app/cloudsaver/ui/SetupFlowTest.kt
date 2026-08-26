@@ -107,6 +107,28 @@ class SetupFlowTest {
     }
 
     @Test
+    fun `the album choice states how much gallery it involves`() {
+        // "2 albums" could be forty photos or eighteen gigabytes, and the
+        // decision on that screen is exactly how much to hand over.
+        assertTrue(strings.contains("name=\"onb_albums_size\""))
+        val vm = src("ui/AppViewModel.kt")
+        assertTrue(vm.contains("val selectedAlbumBytes"))
+        assertTrue(
+            "an unmeasured size must be absent, never zero",
+            vm.contains("MutableStateFlow<Long?>(null)")
+        )
+        val refresh = vm.substringAfter("fun refreshSelectedAlbumBytes")
+            .substringBefore("fun loadBuckets")
+        assertTrue("it must not guess under partial access", refresh.contains("MediaAccess.FULL"))
+        // Setup and Settings show the same measured figure for the same choice.
+        for (screen in listOf("OnboardingScreen.kt", "OptionsScreen.kt")) {
+            val text = src("ui/screens/$screen")
+            assertTrue("$screen must show it", text.contains("onb_albums_size"))
+            assertTrue("$screen must re-measure on a tick", text.contains("refreshSelectedAlbumBytes"))
+        }
+    }
+
+    @Test
     fun `a snapshot restores once per install, and never over a live choice`() {
         val recovery = src("engine/StartupRecovery.kt")
         assertTrue(recovery.contains("if (o.restoreDone) return 0"))

@@ -700,6 +700,7 @@
     <string name="warn_safety_text">The cloud app has uploaded nothing for 3 days, so CloudSaver paused deleting copies. Open the cloud app and check.</string>
     <string name="warn_volume_title">SD card missing</string>
     <string name="warn_volume_text">The chosen storage is not available. CloudSaver paused file work. Your state is safe.</string>
+    <string name="onb_albums_size">%1$s in the ticked albums</string>
     <plurals name="onb_albums_selected">
         <item quantity="one">%d album selected</item>
         <item quantity="other">%d albums selected</item>

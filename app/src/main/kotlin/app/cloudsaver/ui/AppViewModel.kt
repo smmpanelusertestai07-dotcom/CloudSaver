@@ -1197,6 +1197,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Folders the app refuses to scan, with why - shown greyed out in the picker. */
     val lockedBuckets = MutableStateFlow<List<Pair<String, ScanSources.Reason>>>(emptyList())
 
+    /**
+     * What the ticked albums actually hold, in bytes.
+     *
+     * A count of albums is not a quantity anyone can reason about: "2 albums"
+     * could be forty photos or eighteen gigabytes, and the decision being
+     * made on that screen is exactly how much of the gallery to hand over.
+     * Null until it has really been measured - a zero here would read as an
+     * empty gallery.
+     */
+    val selectedAlbumBytes = MutableStateFlow<Long?>(null)
+
+    fun refreshSelectedAlbumBytes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (Permissions.mediaAccess(ctx) != Permissions.MediaAccess.FULL) {
+                selectedAlbumBytes.value = null
+                return@launch
+            }
+            val o = repo.current()
+            if (buckets.value.isNotEmpty() &&
+                buckets.value.all { it in o.excludedBuckets }
+            ) {
+                // Nothing ticked is a real answer, and a cheap one.
+                selectedAlbumBytes.value = 0L
+                return@launch
+            }
+            val totals = runCatching { MediaScanner(ctx, db).totals(o.excludedBuckets) }
+                .getOrNull() ?: return@launch
+            selectedAlbumBytes.value = totals.photoBytes + totals.videoBytes
+        }
+    }
+
     fun loadBuckets() {
         viewModelScope.launch(Dispatchers.IO) {
             val scanner = MediaScanner(ctx, db)
