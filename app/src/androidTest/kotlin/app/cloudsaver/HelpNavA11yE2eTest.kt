@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -85,12 +86,18 @@ class HelpNavA11yE2eTest {
     }
 
     private fun ComposeTestRule.open(label: String) {
-        onNode(hasText(label, substring = true)).performScrollTo().performClick()
+        onAllNodes(hasText(label, substring = true)).onFirst()
+            .performScrollTo().performClick()
         waitForIdle()
     }
 
+    /**
+     * The label is on screen. Not "exactly one node has it": a tab's name is
+     * in the bar and again on its screen, and a help page's name is on the
+     * page and still in the list behind it, so uniqueness is simply false.
+     */
     private fun ComposeTestRule.assertOn(label: String) {
-        onNode(hasText(label, substring = true)).assertIsDisplayed()
+        onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
     }
 
     private fun ComposeTestRule.back() {

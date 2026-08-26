@@ -3,6 +3,7 @@ package app.cloudsaver.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
@@ -55,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1188,7 +1190,7 @@ private fun SwitchCard(
                 )
             }
             Spacer(Modifier.width(12.dp))
-            Switch(checked = checked, onCheckedChange = onChange)
+            Switch(checked = checked, onCheckedChange = null)
         }
     }
 }
@@ -1254,6 +1256,12 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            // The whole row is the control, not the switch on the end of it.
+            // As two separate nodes a screen reader read out "switch, on" with
+            // nothing to say what it switched, and the label was not something
+            // you could tap. Toggling here merges the label into the one node
+            // that carries the state.
+            .toggleable(value = checked, onValueChange = onChange, role = Role.Switch)
             .padding(top = 4.dp)
     ) {
         // Label first in its own column with a fixed gap: a long label used to
@@ -1265,7 +1273,7 @@ private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Un
                 .padding(end = 16.dp),
             style = MaterialTheme.typography.bodyMedium
         )
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 

@@ -54,7 +54,7 @@ class LockBackupE2eTest {
     private fun backupFile() = File(target.cacheDir, "e2e-backup.csb")
 
     @Before
-    fun setUp() = runBlocking {
+    fun setUp(): Unit = runBlocking {
         AppDb.get(target).clearAllTables()
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
@@ -62,7 +62,7 @@ class LockBackupE2eTest {
     }
 
     @After
-    fun tearDown() = runBlocking {
+    fun tearDown(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, false)
         backupFile().delete()
         AppDb.get(target).clearAllTables()

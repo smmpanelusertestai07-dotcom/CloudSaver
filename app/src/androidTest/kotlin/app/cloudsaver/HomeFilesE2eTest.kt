@@ -574,7 +574,7 @@ class HomeFilesE2eTest {
         compose.onNodeWithText(s(R.string.chip_cloud)).performScrollTo().performClick()
         compose.waitForIdle()
 
-        compose.onNodeWithContentDescription(s(R.string.nav_options)).assertIsSelected()
+        compose.onNode(NavTabs.matcher(s(R.string.nav_options))).assertIsSelected()
     }
 
     // =======================================================================
@@ -874,7 +874,7 @@ class HomeFilesE2eTest {
             "${s(R.string.count_skipped)}: ${Formats.count(1)}"
         ).performScrollTo().performClick()
         compose.waitForIdle()
-        compose.onNodeWithContentDescription(s(R.string.nav_files)).assertIsSelected()
+        compose.onNode(NavTabs.matcher(s(R.string.nav_files))).assertIsSelected()
         assertChipReads(R.string.filter_status, s(R.string.state_skip))
         assertVisibleRows(SMALL)
     }

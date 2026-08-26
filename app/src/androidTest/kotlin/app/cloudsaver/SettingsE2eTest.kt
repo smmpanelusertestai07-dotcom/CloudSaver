@@ -765,9 +765,9 @@ class SettingsE2eTest {
         }
         val tab = s(R.string.nav_options)
         compose.waitUntil(UI_TIMEOUT) {
-            compose.onAllNodesWithContentDescription(tab).fetchSemanticsNodes().isNotEmpty()
+            compose.onAllNodes(NavTabs.matcher(tab)).fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithContentDescription(tab).performClick()
+        compose.onNode(NavTabs.matcher(tab)).performClick()
         awaitNode(hasText(s(R.string.opt_scope_hint)), "the Settings screen never appeared")
     }
 
