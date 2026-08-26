@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "7.0.0"
+        versionName = "8.0.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -62,8 +62,9 @@ android {
     lint {
         abortOnError = true
         checkReleaseBuilds = false
-        // Translations are complete for en / hi / hi-Latn; keep these as warnings so a
-        // single missing key never blocks a release build.
+        // The app ships one language on purpose (13.F), so there is nothing to
+        // translate and nothing to fall out of sync; these stay warnings rather
+        // than gates in case a stray qualifier folder is ever added.
         warning += setOf("MissingTranslation", "ExtraTranslation")
         disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
     }
