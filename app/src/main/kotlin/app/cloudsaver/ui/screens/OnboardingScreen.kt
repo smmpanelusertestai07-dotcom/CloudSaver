@@ -637,7 +637,9 @@ fun OnboardingScreen(vm: AppViewModel) {
                     // count is zero on a perfectly normal phone. What the
                     // trial actually needs is an album to read.
                     albumsChosen = includedAlbums > 0,
-                    onChooseAlbums = { returnToSummary = true; go(Step.ALBUMS) }
+                    onChooseAlbums = { returnToSummary = true; go(Step.ALBUMS) },
+                    accessFull = Permissions.mediaAccess(context) ==
+                        Permissions.MediaAccess.FULL
                 )
 
             }

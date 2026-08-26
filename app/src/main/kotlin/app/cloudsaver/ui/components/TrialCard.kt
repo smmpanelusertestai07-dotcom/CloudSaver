@@ -54,7 +54,8 @@ fun TrialCard(
     onRun: () -> Unit,
     modifier: Modifier = Modifier,
     albumsChosen: Boolean = true,
-    onChooseAlbums: (() -> Unit)? = null
+    onChooseAlbums: (() -> Unit)? = null,
+    accessFull: Boolean = true
 ) {
     AppCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -73,6 +74,10 @@ fun TrialCard(
         }
         Text(
             when {
+                // The run refuses under partial access, so offering the button
+                // there would be a button that does nothing - the one thing a
+                // screen must never do.
+                !accessFull -> stringResource(R.string.trial_needs_access)
                 !albumsChosen -> stringResource(R.string.trial_needs_albums)
                 size > 0 -> pluralStringResource(R.plurals.trial_body, size, size)
                 else -> stringResource(R.string.trial_ready)
@@ -81,7 +86,9 @@ fun TrialCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)
         )
-        if (!albumsChosen) {
+        if (!accessFull) {
+            // Nothing to offer: Home already carries the card that fixes this.
+        } else if (!albumsChosen) {
             onChooseAlbums?.let { choose ->
                 TextButton(onClick = choose, modifier = Modifier.padding(top = 4.dp)) {
                     Text(stringResource(R.string.trial_choose_albums))

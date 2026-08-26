@@ -569,7 +569,9 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                     selection.clear()
                 },
                 blockedReason = if (shortfall > 0 && removable.isNotEmpty()) {
-                    stringResource(R.string.list_remove_blocked, shortfall, chosen.size)
+                    pluralStringResource(
+                        R.plurals.list_remove_blocked, shortfall, shortfall, chosen.size
+                    )
                 } else {
                     null
                 },
@@ -581,9 +583,10 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
         item("summary") {
             AppCard(modifier = Modifier.padding(vertical = 10.dp), tonal = true) {
                 Text(
-                    stringResource(
-                        if (rough) R.string.biggest_header_plain_rough
-                        else R.string.biggest_header_plain,
+                    pluralStringResource(
+                        if (rough) R.plurals.biggest_header_plain_rough
+                        else R.plurals.biggest_header_plain,
+                        rows.size,
                         rows.size,
                         Formats.bytes(totalBytes),
                         Formats.bytes(couldSave)

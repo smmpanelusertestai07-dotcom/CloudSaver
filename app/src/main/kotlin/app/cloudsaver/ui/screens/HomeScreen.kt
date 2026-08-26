@@ -739,7 +739,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 onRun = { vm.startTestRun() },
                 albumsChosen = trialAlbums.isEmpty() ||
                     trialAlbums.any { it !in options.excludedBuckets },
-                onChooseAlbums = { nav.goTo(Routes.OPTIONS) }
+                onChooseAlbums = { nav.goTo(Routes.OPTIONS) },
+                accessFull = mediaAccess == Permissions.MediaAccess.FULL
             )
         }
 

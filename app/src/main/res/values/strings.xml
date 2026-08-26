@@ -709,8 +709,14 @@
         <item quantity="other">Copy both folder paths</item>
     </plurals>
     <string name="biggest_no_album">No album</string>
-    <string name="biggest_header_plain">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</string>
-    <string name="biggest_header_plain_rough">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</string>
+    <plurals name="biggest_header_plain">
+        <item quantity="one">Your largest photo or video takes %2$s. Optimising it would save about %3$s.</item>
+        <item quantity="other">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s.</item>
+    </plurals>
+    <plurals name="biggest_header_plain_rough">
+        <item quantity="one">Your largest photo or video takes %2$s. Optimising it would save about %3$s (rough estimate for now).</item>
+        <item quantity="other">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</item>
+    </plurals>
     <string name="biggest_after">about %1$s after optimising</string>
     <string name="list_optimise_these_first">Optimise these first</string>
     <string name="bulk_optimise_of">Optimise %1$d of %2$d selected</string>
@@ -718,7 +724,10 @@
         <item quantity="one">%1$d already optimised \u2014 skipped</item>
         <item quantity="other">%1$d already optimised \u2014 skipped</item>
     </plurals>
-    <string name="list_remove_blocked">%1$d of %2$d are not backed up yet.</string>
+    <plurals name="list_remove_blocked">
+        <item quantity="one">%1$d of %2$d is not backed up yet.</item>
+        <item quantity="other">%1$d of %2$d are not backed up yet.</item>
+    </plurals>
     <string name="list_select_backed_up">Select only the backed-up ones</string>
     <string name="list_sort_saving">Biggest possible saving</string>
     <string name="list_sort_newest">Newest</string>
@@ -971,6 +980,7 @@
     <string name="faq_deleted_link">Something was deleted — what happens now?</string>
     <!-- setup: restore, trial and album guidance (v11) -->
     <string name="onb0_import_hint">Only if you saved a CloudSaver backup before, on this phone or an old one. It brings back your settings and the record of what already reached your cloud, so nothing is optimised or sent twice. It never touches your photos. New here? Skip it and tap Get started.</string>
+    <string name="trial_needs_access">CloudSaver can only see the photos you picked, so the trial cannot run. Choose "Allow all" in app permissions to use it.</string>
     <string name="trial_needs_albums">Tick at least one album first \u2014 the trial uses the albums you chose.</string>
     <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. Nothing is uploaded, and your originals stay untouched.</string>
     <string name="trial_choose_albums">Choose albums</string>
