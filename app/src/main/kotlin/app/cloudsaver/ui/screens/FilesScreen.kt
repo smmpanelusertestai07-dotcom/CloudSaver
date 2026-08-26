@@ -281,42 +281,6 @@ fun FilesScreen(vm: AppViewModel) {
                     }
                 }) { Text(stringResource(R.string.detail_open)) }
             },
-            icon = {
-                // Exactly the actions this file's state allows, from the one
-                // rule every list obeys. An already-optimised copy is not
-                // offered "never optimise": the work is done, the option
-                // cannot undo it, and offering it is what made the counters
-                // disagree with no way to tell why.
-                Row {
-                    for (action in RowActions.forItem(row.toActionRow())) {
-                        when (action) {
-                            RowActions.Action.OPTIMISE_FIRST -> TextButton(onClick = {
-                                vm.optimiseNow(row.id)
-                                detail = null
-                            }) { Text(stringResource(R.string.detail_optimise_first)) }
-
-                            RowActions.Action.TRY_AGAIN -> TextButton(onClick = {
-                                vm.optimiseNow(row.id)
-                                detail = null
-                            }) { Text(stringResource(R.string.detail_try_again)) }
-
-                            RowActions.Action.NEVER_OPTIMISE -> TextButton(onClick = {
-                                onSkip(row.id)
-                                detail = null
-                            }) { Text(stringResource(R.string.never_optimise)) }
-
-                            RowActions.Action.ALLOW_AGAIN -> TextButton(onClick = {
-                                vm.setNeverOptimise(row.id, false)
-                                detail = null
-                            }) { Text(stringResource(R.string.detail_optimise_again)) }
-
-                            // OPEN already has its own button; removal lives
-                            // on Reclaim, which is the single deletion path.
-                            else -> Unit
-                        }
-                    }
-                }
-            },
             title = { Text(row.displayName, maxLines = 2) },
             text = {
                 Column {
@@ -393,6 +357,50 @@ fun FilesScreen(vm: AppViewModel) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
+                    }
+
+                    // Exactly the actions this file's state allows, from the
+                    // one rule every list obeys. An already-optimised copy is
+                    // not offered "never optimise": the work is done, the
+                    // option cannot undo it, and offering it is what made the
+                    // counters disagree with no way to tell why.
+                    //
+                    // Below the details, not above the name. These used to sit
+                    // in the dialog's icon slot - the small decorative one that
+                    // Material draws above the title - so "Never optimise this
+                    // file", which is permanent, was the first thing on screen
+                    // and the file it applied to was named underneath it. One
+                    // button each to a line, because the labels are sentences.
+                    val actions = RowActions.forItem(row.toActionRow())
+                    if (actions.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    for (action in actions) {
+                        when (action) {
+                            RowActions.Action.OPTIMISE_FIRST -> TextButton(onClick = {
+                                vm.optimiseNow(row.id)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_optimise_first)) }
+
+                            RowActions.Action.TRY_AGAIN -> TextButton(onClick = {
+                                vm.optimiseNow(row.id)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_try_again)) }
+
+                            RowActions.Action.NEVER_OPTIMISE -> TextButton(onClick = {
+                                onSkip(row.id)
+                                detail = null
+                            }) { Text(stringResource(R.string.never_optimise)) }
+
+                            RowActions.Action.ALLOW_AGAIN -> TextButton(onClick = {
+                                vm.setNeverOptimise(row.id, false)
+                                detail = null
+                            }) { Text(stringResource(R.string.detail_optimise_again)) }
+
+                            // OPEN already has its own button; removal lives
+                            // on Reclaim, which is the single deletion path.
+                            else -> Unit
+                        }
                     }
                 }
             }
