@@ -170,7 +170,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         ) {
             SegmentedChoice(
                 listOf(
-                    BackupScope.ALL.name to stringResource(R.string.scope_all),
+                    BackupScope.ALL.name to stringResource(R.string.scope_all_short),
                     BackupScope.PHOTOS.name to stringResource(R.string.scope_photos),
                     BackupScope.VIDEOS.name to stringResource(R.string.scope_videos)
                 ),

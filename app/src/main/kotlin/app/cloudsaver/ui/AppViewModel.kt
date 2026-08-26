@@ -1290,6 +1290,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         repo.setString(OptionsRepo.K.CLOUD_PHOTOS, id)
         repo.setString(OptionsRepo.K.CLOUD_VIDEOS, id)
         repo.setBool(OptionsRepo.K.CLOUD_DETECTED, true)
+        // Detection writes the choice directly, so it can land back on the
+        // very app a pending switch notice is about. That notice would then
+        // read "files sent to X are stored there, not in X", which says
+        // nothing. Landing back where you started is not a switch.
+        if (repo.current().cloudSwitchFrom == id) {
+            repo.setString(OptionsRepo.K.CLOUD_SWITCH_FROM, "")
+        }
     }
 
     /** The user picked from the "Use a different app" list. */

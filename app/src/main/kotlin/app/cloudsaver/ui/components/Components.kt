@@ -503,16 +503,17 @@ fun SegmentedChoice(
                 contentAlignment = Alignment.Center
             ) {
                 // A clipped option is a broken option: "Unlimited" showing as
-                // "Unlimi" tells the user nothing. Shrink the label to fit the
-                // segment rather than cutting it off, so every phone width
-                // shows the whole word.
+                // "Unlimi" tells the user nothing. Shrinking alone was not
+                // enough - "Photos and videos" across a third of the row still
+                // ran out of space at the smallest size allowed and came out
+                // as "Photos and vide" - so a label that will not fit on one
+                // line wraps onto a second instead of losing its end.
                 Text(
                     label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    softWrap = false,
+                    maxLines = 2,
                     autoSize = TextAutoSize.StepBased(
                         minFontSize = 9.sp,
                         maxFontSize = MaterialTheme.typography.labelLarge.fontSize,

@@ -198,18 +198,18 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
         // Z10.1: the cloud app changed. Where the already-sent files live is
         // the one fact a switch quietly breaks, so it is said once, plainly.
-        if (options.cloudSwitchFrom.isNotEmpty()) {
+        // Both names, and only when they are actually two different apps. The
+        // sentence names where files went and where they did not; with one app
+        // in both halves it reads "sent to X are stored there, not in X", which
+        // is worse than saying nothing.
+        val switchedFrom = CloudApps.byId(options.cloudSwitchFrom).label
+        val switchedTo = CloudApps.byId(options.cloudSingle).label
+        if (options.cloudSwitchFrom.isNotEmpty() && switchedFrom != switchedTo) {
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { vm.dismissCloudSwitchNotice() },
                 title = { Text(stringResource(R.string.cloud_switch_title)) },
                 text = {
-                    Text(
-                        stringResource(
-                            R.string.cloud_switch_body,
-                            CloudApps.byId(options.cloudSwitchFrom).label,
-                            CloudApps.byId(options.cloudSingle).label
-                        )
-                    )
+                    Text(stringResource(R.string.cloud_switch_body, switchedFrom, switchedTo))
                 },
                 confirmButton = {
                     TextButton(onClick = { vm.dismissCloudSwitchNotice() }) {

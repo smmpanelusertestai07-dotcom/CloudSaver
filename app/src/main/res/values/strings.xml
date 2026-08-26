@@ -426,6 +426,11 @@
     <string name="opt_scope">Media type</string>
     <string name="opt_scope_hint">Photos, videos, or both.</string>
     <string name="scope_all">Photos and videos</string>
+    <!-- The segmented control gives each option a third of the row. The full
+         phrase does not fit even at the smallest size the label may shrink to,
+         so the chip says the short form; the card's value line above it still
+         spells it out. -->
+    <string name="scope_all_short">Both</string>
     <string name="scope_photos">Photos</string>
     <string name="scope_videos">Videos</string>
     <string name="opt_folders">Albums</string>
