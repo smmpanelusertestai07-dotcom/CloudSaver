@@ -652,7 +652,6 @@
 
     <!-- help -->
     <string name="help_faq">FAQ</string>
-    <string name="help_quality">Quality &amp; Technology</string>
     <string name="help_logs">Logs</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>

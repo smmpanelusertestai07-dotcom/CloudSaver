@@ -182,7 +182,7 @@ class HelpNavA11yE2eTest {
         val pages = listOf(
             R.string.help_faq,
             R.string.help_deleted,
-            R.string.help_quality,
+            R.string.quality_explained_title,
             R.string.help_logs,
             R.string.help_privacy,
             R.string.help_licenses,

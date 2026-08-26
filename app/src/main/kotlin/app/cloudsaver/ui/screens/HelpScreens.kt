@@ -108,7 +108,12 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
     HelpPage(nav, stringResource(R.string.nav_help)) {
         HelpLink(stringResource(R.string.help_faq)) { nav.goTo(Routes.HELP_FAQ) }
         HelpLink(stringResource(R.string.help_deleted)) { nav.goTo(Routes.HELP_DELETED) }
-        HelpLink(stringResource(R.string.help_quality)) { nav.goTo(Routes.HELP_QUALITY) }
+        // The page this opens is titled "Quality explained", and Settings calls
+        // it that too. Only this link ever said "Quality & Technology", so
+        // tapping it landed you somewhere apparently else.
+        HelpLink(stringResource(R.string.quality_explained_title)) {
+            nav.goTo(Routes.HELP_QUALITY)
+        }
         HelpLink(stringResource(R.string.help_logs)) { nav.goTo(Routes.HELP_LOGS) }
         HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.goTo(Routes.HELP_LICENSES) }
