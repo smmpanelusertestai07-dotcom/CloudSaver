@@ -38,11 +38,7 @@ import kotlin.math.abs
 class PipelineE2eTest {
 
     @get:Rule
-    val permissions: GrantPermissionRule = GrantPermissionRule.grant(
-        Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VIDEO,
-        Manifest.permission.ACCESS_MEDIA_LOCATION
-    )
+    val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private val captureAt = 1_600_000_000_000L

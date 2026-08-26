@@ -43,11 +43,7 @@ private const val SHOT_DIR = "Pictures/CSTestShots/"
 class UiWalkthroughTest {
 
     @get:Rule
-    val permissions: GrantPermissionRule = GrantPermissionRule.grant(
-        Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VIDEO,
-        Manifest.permission.POST_NOTIFICATIONS
-    )
+    val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 
     @get:Rule
     val compose = createEmptyComposeRule()

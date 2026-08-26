@@ -206,10 +206,22 @@ jobs:
           if-no-files-found: error
 
   emulator:
-    name: end-to-end on emulator
+    # Every Android this app installs on, from minSdk to targetSdk, not just
+    # the one that happens to be current. The behaviour genuinely differs
+    # across them: 29 has no media trash and no batch delete request, 30
+    # introduces both, 31 adds wallpaper colours, 33 adds the runtime
+    # notification permission. A suite that only ever runs on one level says
+    # nothing about the phones the other rows describe.
+    name: end-to-end on Android ${{ matrix.api }}
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    strategy:
+      # One level failing must not hide the others: the whole point is to
+      # learn which Androids are affected, not just that something is.
+      fail-fast: false
+      matrix:
+        api: [29, 30, 31, 32, 33, 34, 35, 36]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -257,7 +269,7 @@ jobs:
       - name: Run instrumented suite + live install on a real emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: ${{ matrix.api }}
           target: google_apis
           arch: x86_64
           force-avd-creation: false
@@ -276,7 +288,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: emulator-screenshots
+          name: emulator-screenshots-api${{ matrix.api }}
           path: |
             artifacts/screenshots
             artifacts/logcat-crash.txt
@@ -286,7 +298,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: emulator-test-report
+          name: emulator-test-report-api${{ matrix.api }}
           path: |
             app/build/reports/androidTests/**
             app/build/outputs/androidTest-results/**

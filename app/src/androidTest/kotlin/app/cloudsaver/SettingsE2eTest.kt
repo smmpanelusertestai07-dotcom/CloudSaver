@@ -94,11 +94,7 @@ private const val UI_TIMEOUT = 15_000L
 class SettingsE2eTest {
 
     @get:Rule
-    val permissions: GrantPermissionRule = GrantPermissionRule.grant(
-        Manifest.permission.READ_MEDIA_IMAGES,
-        Manifest.permission.READ_MEDIA_VIDEO,
-        Manifest.permission.POST_NOTIFICATIONS
-    )
+    val permissions: GrantPermissionRule = GrantPermissionRule.grant(*TestPermissions.forThisDevice())
 
     /**
      * Empty, because the activity has to be launched *after* the options have
