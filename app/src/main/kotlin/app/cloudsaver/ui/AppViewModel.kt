@@ -1664,10 +1664,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 leftoverUris.value = emptyList()
                 return@launch
             }
-            val knownFps = db.items().all()
-                .filter { it.state == ItemState.RELEASED.name }
-                .map { it.fingerprint }
-                .toHashSet()
+            val knownFps = db.items().releasedFingerprints().toHashSet()
             val leftovers = (OutputInventory(ctx).query() ?: emptyList()).filter { entry ->
                 if (entry.ownedByUs) return@filter false
                 // Only a file named the way this pipeline names its output

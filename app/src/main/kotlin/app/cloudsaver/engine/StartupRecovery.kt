@@ -90,7 +90,9 @@ class StartupRecovery(private val context: Context) {
         // whatever the user had just chosen - a ticked album came back
         // unticked after every restart.
         if (o.restoreDone) return 0
-        if (db.items().all().isNotEmpty()) {
+        // A count, not the table: this runs at every launch, and a large
+        // gallery means twenty thousand rows built only to be discarded.
+        if (db.items().count() > 0) {
             repo.setBool(OptionsRepo.K.RESTORE_DONE, true)
             return 0
         }

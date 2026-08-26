@@ -512,6 +512,10 @@ interface ItemDao {
     @Query("SELECT * FROM items WHERE state = 'GONE'")
     suspend fun gone(): List<ItemRow>
 
+    /** Fingerprints of everything already in the upload folder. */
+    @Query("SELECT fingerprint FROM items WHERE state = 'RELEASED'")
+    suspend fun releasedFingerprints(): List<String>
+
     @Query("SELECT COUNT(*) FROM items WHERE state = :state")
     suspend fun countByState(state: String): Int
 
