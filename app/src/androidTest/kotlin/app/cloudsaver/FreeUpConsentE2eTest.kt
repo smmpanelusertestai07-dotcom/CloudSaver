@@ -559,8 +559,14 @@ class FreeUpConsentE2eTest {
         openHubCard(R.string.hub_backed_up)
         awaitText(R.string.reclaim_mode_full)
         compose.waitForIdle()
-        compose.onNodeWithText(s(R.string.reclaim_mode_full)).assertIsDisplayed()
-        compose.onNodeWithText(s(R.string.reclaim_target_label)).assertIsDisplayed()
+        // Present is not the same as on screen: Reclaim is a scrolling column
+        // and both of these start below the fold on a phone-sized display,
+        // so waiting for them then asserting they are displayed fails on a
+        // screen that is working perfectly.
+        compose.onNodeWithText(s(R.string.reclaim_mode_full))
+            .performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(s(R.string.reclaim_target_label))
+            .performScrollTo().assertIsDisplayed()
     }
 
     /**

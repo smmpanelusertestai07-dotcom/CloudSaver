@@ -283,8 +283,17 @@ class HomeFilesE2eTest {
         return launched
     }
 
+    /**
+     * Taps a bottom-bar tab.
+     *
+     * Not by the icon's content description: NavigationBarItem merges the
+     * icon and the label into one node, and the node that lookup lands on has
+     * no touch bounds of its own - every test in this class failed with
+     * "failed to inject touch input" before its first assertion. The
+     * selectable node carrying the label is the tab.
+     */
     private fun openTab(labelRes: Int) {
-        compose.onNodeWithContentDescription(s(labelRes)).performClick()
+        compose.onNode(NavTabs.matcher(s(labelRes))).performClick()
         compose.waitForIdle()
     }
 
