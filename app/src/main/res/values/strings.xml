@@ -894,7 +894,7 @@
     <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>
 
     <string name="privacy_b1_title">Nothing leaves your phone</string>
-    <string name="privacy_b1">CloudSaver has no internet permission, so it cannot send anything anywhere. There is no account to create and no sign-in. There are no ads and no analytics of any kind.</string>
+    <string name="privacy_b1">CloudSaver has no internet permission, so it cannot send anything anywhere. There is no account to create and no sign-in. There are no ads and no analytics of any kind. It also opts out of Android\u2019s own cloud backup, so the system never copies its records to your Google account either \u2014 a phone-to-phone transfer may still carry them, because that copy goes straight to your other phone.</string>
     <string name="privacy_b2_title">What the app can see</string>
     <string name="privacy_b2">Only the albums you included during setup. Albums you leave out are never read. You can change the list at any time in Settings.</string>
     <string name="privacy_b3_title">What the app stores</string>

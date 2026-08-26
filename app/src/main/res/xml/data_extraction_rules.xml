@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Auto Backup (API 31+): keep DB + settings, drop logs and temp work. -->
+<!--
+  Android 12+ transfer rules. Cloud backup is switched off in the manifest,
+  so the cloud-backup section below can never apply; it stays as a statement
+  of intent in case that attribute is ever changed. Device-to-device transfer
+  is a local copy between the owner's own phones, so it is allowed - minus
+  the logs, which are diagnostics and belong to one device.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude

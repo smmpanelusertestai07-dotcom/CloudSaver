@@ -45,9 +45,17 @@
         <package android:name="com.microsoft.skydrive" />
     </queries>
 
+    <!-- Android's own Auto Backup would copy this app's database and settings
+         to the account holder's Google Drive - without needing the internet
+         permission, because the system does the sending. For an app whose
+         first promise is that nothing leaves the phone, that is the promise
+         broken by a default. Cloud backup is therefore off; a phone-to-phone
+         transfer stays allowed, being a local copy between the owner's own
+         devices, and the app's own .cloudsaver history is what a reinstall
+         reads anyway. -->
     <application
         android:name=".CloudSaverApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
         android:fullBackupContent="@xml/backup_rules"

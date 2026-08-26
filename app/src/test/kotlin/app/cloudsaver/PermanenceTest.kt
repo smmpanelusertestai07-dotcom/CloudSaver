@@ -36,6 +36,15 @@ class PermanenceTest {
                     .contains("tools:node=\"remove\"")
             )
         }
+        // The system can send app data even where the app cannot: Auto Backup
+        // copies the database and settings to the account holder's Drive
+        // without needing the internet permission, because the system does the
+        // sending. An app that promises nothing leaves the phone has to opt
+        // out of that too.
+        assertTrue(
+            "Android's own cloud backup must be off",
+            manifest.contains("android:allowBackup=\"false\"")
+        )
         val banned = Regex("""HttpURLConnection|okhttp3|retrofit2|java\.net\.URL\(|java\.net\.Socket""")
         val offenders = sources()
             .filter { banned.containsMatchIn(it.readText()) }
