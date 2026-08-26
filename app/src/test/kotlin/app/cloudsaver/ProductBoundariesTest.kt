@@ -63,6 +63,25 @@ class ProductBoundariesTest {
     }
 
     @Test
+    fun `clearing leftover work files cannot delete work in progress`() {
+        // The button is in Storage and in the Free up hub, so it can be
+        // pressed while a compression is writing its output. Deleting that
+        // file costs the user the item they asked for.
+        val storage = File(main, "util/Storage.kt").readText()
+        assertTrue(storage.contains("TEMP_ABANDONED_MS"))
+        val clean = storage.substringAfter("fun cleanTemp(").substringBefore("\n    }")
+        assertTrue(
+            "young files must be skipped, not deleted",
+            clean.contains("if (now - f.lastModified() < TEMP_ABANDONED_MS) return@forEach")
+        )
+        // Long enough to be beyond any single run, short enough that a crash
+        // is cleaned up on the same day.
+        val hours = Regex("""TEMP_ABANDONED_MS = (\d+)L \* 60 \* 1000""")
+            .find(storage)!!.groupValues[1].toInt()
+        assertTrue("an abandoned file is one no run could still own", hours >= 60)
+    }
+
+    @Test
     fun `there are exactly two notification channels, and the retired one is removed`() {
         val notifications = File(main, "util/Notifications.kt").readText()
         val created = Regex("""createNotificationChannel\(""").findAll(notifications).count()

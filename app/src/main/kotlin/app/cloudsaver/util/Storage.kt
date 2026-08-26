@@ -67,13 +67,31 @@ object Storage {
             vol.appDir?.let { dirSize(File(File(it, "stage"), "tmp")) } ?: 0L
         }
 
-    /** Deletes leftover temp files on every volume; cheap (one temp at a time). */
-    fun cleanTemp(context: Context): Long {
+    /**
+     * How old a work file must be before it counts as abandoned.
+     *
+     * A run is capped well below this, so anything older than an hour was
+     * left by a crash or a killed process - and anything younger may be the
+     * file a compression is writing into at this very moment. Deleting that
+     * one costs the user the item they asked for: the stager retries it, and
+     * a light copy being remade for a free-up simply drops out of the batch.
+     */
+    private const val TEMP_ABANDONED_MS = 60L * 60 * 1000
+
+    /**
+     * Deletes leftover work files on every volume, skipping anything still
+     * being written. Cheap: there is at most one temp file per run.
+     */
+    fun cleanTemp(
+        context: Context,
+        now: Long = System.currentTimeMillis()
+    ): Long {
         var freed = 0L
         for (vol in Volumes.list(context)) {
             try {
                 val tmp = File(File(vol.appDir ?: continue, "stage"), "tmp")
                 tmp.listFiles()?.forEach { f ->
+                    if (now - f.lastModified() < TEMP_ABANDONED_MS) return@forEach
                     freed += f.length()
                     f.delete()
                 }

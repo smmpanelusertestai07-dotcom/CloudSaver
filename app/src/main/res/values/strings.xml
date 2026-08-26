@@ -243,7 +243,7 @@
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
     <string name="storage_temp_title">Leftover work files</string>
-    <string name="storage_temp_text">Half-finished files left behind when a run was interrupted. They are not needed and nothing of yours is lost by clearing them.</string>
+    <string name="storage_temp_text">Half-finished files left behind when a run was interrupted. They are not needed and nothing of yours is lost by clearing them. A file CloudSaver is writing right now is left alone, so clearing during a run may not free all of it.</string>
     <string name="storage_temp_cleared">Cleared %1$s.</string>
     <string name="storage_clean_temp">Clear</string>
 
