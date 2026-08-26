@@ -245,17 +245,20 @@ class HomeFilesE2eTest {
                 out in 1 until staged.sizeBytes
             )
         }
+        Releaser(context, db).releaseBatch(options, System.currentTimeMillis())
+        // Counted over the fixtures rather than over the whole database. The
+        // gallery on a test device is not only ours - the tour leaves a folder
+        // of screenshots behind for CI to collect, and anything else the image
+        // ships with is there too - so a global count says as much about what
+        // else is on the phone as it does about this test. What is being
+        // asserted is that these four files ended up in these four states.
         assertEquals(
-            "both optimised copies must reach the upload folder",
-            2,
-            Releaser(context, db).releaseBatch(options, System.currentTimeMillis())
-        )
-        assertEquals(
-            "two files must be waiting and two in the upload folder",
+            "the two optimised fixtures must be in the upload folder and the " +
+                "other two still waiting",
             listOf(2, 2),
             listOf(
-                db.items().countByState(ItemState.NEW.name),
-                db.items().countByState(ItemState.RELEASED.name)
+                FIXTURES.count { row(it).state == ItemState.NEW.name },
+                FIXTURES.count { row(it).state == ItemState.RELEASED.name }
             )
         )
     }
