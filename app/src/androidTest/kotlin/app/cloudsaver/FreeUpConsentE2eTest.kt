@@ -9,6 +9,9 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.filters.SdkSuppress
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -37,6 +40,7 @@ import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Storage
 import kotlinx.coroutines.flow.first
@@ -555,18 +559,31 @@ class FreeUpConsentE2eTest {
      * screen's own title, so arrival is asserted on something only the screen
      * has: its three modes.
      */
+    /** Scrolls this screen's list until [matcher] is on it. */
+    private fun scrollListTo(matcher: SemanticsMatcher) {
+        compose.onNodeWithTag(ListTags.ROWS).performScrollToNode(matcher)
+        compose.waitForIdle()
+    }
+
     private fun openBackedUpOriginals() {
         openHubCard(R.string.hub_backed_up)
         awaitText(R.string.reclaim_mode_full)
         compose.waitForIdle()
-        // Present is not the same as on screen: Reclaim is a scrolling column
-        // and both of these start below the fold on a phone-sized display,
-        // so waiting for them then asserting they are displayed fails on a
+        // Present is not the same as on screen: Reclaim is a lazy column and
+        // both of these start below the fold on a phone-sized display, so
+        // waiting for them and then asserting they are displayed fails on a
         // screen that is working perfectly.
-        compose.onNodeWithText(s(R.string.reclaim_mode_full))
-            .performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(s(R.string.reclaim_target_label))
-            .performScrollTo().assertIsDisplayed()
+        //
+        // Scrolled with performScrollToNode on the list rather than
+        // performScrollTo on the row. performScrollTo does not support lazy
+        // lists (issuetracker 178483889): it moves whatever ancestor it finds
+        // by whatever it can reach, which happened to be enough for the first
+        // of these two and not for the second - so "Free a set amount is not
+        // displayed" was true, and said nothing about the app.
+        scrollListTo(hasText(s(R.string.reclaim_mode_full)))
+        compose.onNodeWithText(s(R.string.reclaim_mode_full)).assertIsDisplayed()
+        scrollListTo(hasText(s(R.string.reclaim_target_label)))
+        compose.onNodeWithText(s(R.string.reclaim_target_label)).assertIsDisplayed()
     }
 
     /**

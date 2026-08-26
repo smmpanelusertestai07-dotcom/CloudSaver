@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.typeFilter
 import app.cloudsaver.ui.components.sizeFilter
 import app.cloudsaver.ui.components.albumFilter
@@ -167,7 +169,17 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             return@Column
         }
 
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+        // Tagged so a test can scroll it the way lazy lists have to be
+        // scrolled. performScrollTo does not support them - it reaches
+        // whatever happens to be composed and gives up - which is why an
+        // assertion here read "Free a set amount is not displayed" on a
+        // screen that was drawing it perfectly well, just further down.
+        LazyColumn(
+            Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp)
+                .testTag(ListTags.ROWS)
+        ) {
             item("warning") {
                 RemovalWarningCard(Modifier.padding(top = 8.dp))
             }
