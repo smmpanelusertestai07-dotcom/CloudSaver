@@ -80,6 +80,16 @@ class LockPolicyTest {
     }
 
     @Test
+    fun `the two screens worth hiding are hidden from screenshots`() {
+        // T3: the lock, and the one screen that lists photographs by name
+        // beside a button that removes them.
+        for (screen in listOf("LockedScreen.kt", "ReclaimScreen.kt")) {
+            val text = File("src/main/kotlin/app/cloudsaver/ui/screens/$screen").readText()
+            assertTrue("$screen must set FLAG_SECURE", text.contains("SecureScreen()"))
+        }
+    }
+
+    @Test
     fun `a removed screen lock disables the app lock visibly, never silently`() {
         val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
         assertTrue(

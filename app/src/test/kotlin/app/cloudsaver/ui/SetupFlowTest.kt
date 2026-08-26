@@ -68,6 +68,19 @@ class SetupFlowTest {
         val albums = onb.substringAfter("Step.ALBUMS ->").substringBefore("Step.NOTIFICATIONS ->")
         assertTrue(albums.contains("if (returnToSummary)"))
         assertTrue(albums.contains("go(Step.READY)"))
+        // And the promise dies with the detour. Stepping Back out of the album
+        // list, or reaching it on the ordinary forward path, must cancel it -
+        // otherwise the next confirm would jump a first-time user to the
+        // summary over notifications, battery, usage access and the cloud step.
+        assertTrue(onb.contains("fun leaveDetour()"))
+        assertTrue(
+            "Back must cancel the detour",
+            onb.contains("leaveDetour(); goTo(step - 1)")
+        )
+        assertTrue(
+            "so must arriving from the permission step",
+            onb.contains("leaveDetour(); go(Step.ALBUMS)")
+        )
     }
 
     @Test
@@ -126,6 +139,44 @@ class SetupFlowTest {
         val locked = src("ui/screens/LockedScreen.kt")
         assertTrue("the prompt opens itself", locked.contains("LaunchedEffect(Unit) { onUnlock() }"))
         assertTrue("and the screen is not screenshotable", locked.contains("SecureScreen()"))
+    }
+
+    @Test
+    fun `an alert tapped on a locked phone waits instead of crashing`() {
+        val app = src("ui/App.kt")
+        val effect = app.substringAfter("LaunchedEffect(deepLink").substringBefore("Scaffold(")
+        // While the app is locked there is no NavHost in composition, so the
+        // controller has no graph and navigating into it throws.
+        assertTrue(
+            "the deep link must re-evaluate when the lock opens",
+            app.contains("LaunchedEffect(deepLink, needsLock)")
+        )
+        assertTrue(
+            "and must not navigate while the gate is shut",
+            effect.contains("if (needsLock) return@LaunchedEffect")
+        )
+        val clearAt = effect.indexOf("clearDeepLink")
+        val guardAt = effect.indexOf("if (needsLock)")
+        assertTrue(
+            "the link must not be consumed before it is honoured",
+            guardAt in 0 until clearAt
+        )
+    }
+
+    @Test
+    fun `the gallery is only enumerated where its answer is used`() {
+        val home = src("ui/screens/HomeScreen.kt")
+        val startup = home.substringAfter("LaunchedEffect(Unit) {").substringBefore("}")
+        assertFalse(
+            "reading the album list walks the whole gallery; it must not run " +
+                "on every visit to Home",
+            startup.contains("loadBuckets")
+        )
+        assertTrue(
+            "it belongs with the one card that reads it",
+            home.substringAfter("if (processed == 0) {").substringBefore("TrialCard(")
+                .contains("vm.loadBuckets()")
+        )
     }
 
     @Test

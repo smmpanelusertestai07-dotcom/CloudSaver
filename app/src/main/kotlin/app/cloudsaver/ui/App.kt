@@ -169,9 +169,16 @@ private fun MainNav(vm: AppViewModel) {
 
     // An alert that opens the app should land on the screen it was about.
     // Consumed once, so rotating the phone does not navigate again.
+    //
+    // It waits for the lock. While the app is locked there is no NavHost in
+    // composition, so the controller has no graph and navigating into it
+    // throws - tapping an alert on a locked phone would have crashed the app
+    // instead of asking for a fingerprint. The link is simply held until the
+    // gate opens, and then honoured.
     val deepLink by vm.deepLink.collectAsStateWithLifecycle()
-    androidx.compose.runtime.LaunchedEffect(deepLink) {
+    androidx.compose.runtime.LaunchedEffect(deepLink, needsLock) {
         val target = deepLink ?: return@LaunchedEffect
+        if (needsLock) return@LaunchedEffect
         vm.clearDeepLink()
         nav.goTo(target)
     }

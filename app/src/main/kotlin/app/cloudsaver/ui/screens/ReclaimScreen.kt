@@ -93,6 +93,11 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val sort by rvm.sort.collectAsStateWithLifecycle()
     val grouping by rvm.grouping.collectAsStateWithLifecycle()
 
+    // The only screen that lists someone's photographs by name next to a
+    // button that removes them. It stays out of the recents thumbnail and out
+    // of screenshots, for the same reason the lock screen does.
+    app.cloudsaver.ui.components.SecureScreen()
+
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
     var understood by remember { mutableStateOf(options.reclaimUnderstood) }

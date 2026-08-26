@@ -28,7 +28,7 @@ source for this release, including the rows that were already marked Done.
 | R20 | Exactly two notification channels, and the app works with notifications denied | Done | ProductBoundariesTest pins exactly two `createNotificationChannel` calls, the working channel's silent/no-badge/low-importance settings, the deletion of the retired channel, the 24-hour de-duplication and 7-day mute constants, and the two permission checks plus the SecurityException catch that make a denied permission silence rather than a crash; `clearWorking` in the worker's finally block stops the ongoing icon outliving a run |
 | T1 | One module, MediaStore only, explicit migrations, one helper per job, R8 full mode, APK under 15 MB | Done | No MANAGE_EXTERNAL_STORAGE; one `Formats`, one `Projection`, one list framework, one theme file, one deletion path; `Locks` mutexes at the domain entry points; no `runBlocking` on the main thread; release APK 6.5 MB against the 15 MB gate in CI |
 | T2 | Platform behaviour decided from current documentation, not memory | Done | The version-dependent decisions carry their reason in the source: per-SDK biometric authenticators, trash from API 30, notification permission from 33, FGS types by API, dynamic colour from 31, `IS_PENDING` publish-then-stamp ordering |
-| T3 | Least privilege, exported=false, tamper evidence, FLAG_SECURE, fail-closed lock | Done | Manifest declares only what is used and strips both network permissions; `TamperCheck` compares the signing certificate; `SecureScreen()` on the lock and free-up screens; `Lock.kt` has no fail-open branch and the whole app sits behind it; LockPolicyTest |
+| T3 | Least privilege, exported=false, tamper evidence, FLAG_SECURE, fail-closed lock | Done | Manifest declares only what is used and strips both network permissions; `TamperCheck` compares the signing certificate; `SecureScreen()` on the lock screen and on the free-up screen, pinned by LockPolicyTest; `Lock.kt` has no fail-open branch and the whole app sits behind it; LockPolicyTest |
 
 **Not done, and why**
 
@@ -36,7 +36,7 @@ source for this release, including the rows that were already marked Done.
   gallery, a real cloud app, an SD card and hardware encoders. Nothing in a
   build environment can run it: the emulator has no cloud app to watch and no
   hardware encoder to fail. Everything automatable about the same claims is
-  covered by the 435 unit tests and the instrumented suite.
+  covered by the 438 unit tests and the instrumented suite.
 
 **The owner's 10-minute device checklist**
 

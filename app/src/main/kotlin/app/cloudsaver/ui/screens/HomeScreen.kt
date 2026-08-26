@@ -123,7 +123,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
 
     LaunchedEffect(Unit) {
         vm.refreshHealth()
-        vm.loadBuckets()
         vm.detectLeftoverFiles()
         vm.refreshBudget()
         vm.refreshAsIs()
@@ -730,6 +729,10 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // told that, here, rather than being shown a button that would do
         // nothing.
         if (processed == 0) {
+            // Reading the album list means enumerating the gallery, so it is
+            // done here - once, and only while the trial card can appear -
+            // rather than on every visit to Home.
+            LaunchedEffect(Unit) { vm.loadBuckets() }
             val trialAlbums by vm.buckets.collectAsStateWithLifecycle()
             Spacer(Modifier.height(14.dp))
             TrialCard(

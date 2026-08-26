@@ -113,9 +113,23 @@ fun OnboardingScreen(vm: AppViewModel) {
 
     fun go(next: Step) = goTo(OnboardingSteps.indexOf(next))
 
+    /**
+     * Leaves the correct-the-albums detour without taking it.
+     *
+     * The detour is only a promise to come back to the summary. Stepping away
+     * from the album list any other way - Back, or a fresh walk through the
+     * setup - has to cancel it, or the next visit to that list would end at
+     * the summary and skip notifications, battery, usage access and the cloud
+     * step for someone who had never seen them.
+     */
+    fun leaveDetour() {
+        returnToSummary = false
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
+        leaveDetour()
         go(
             if (Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL) {
                 Step.ALBUMS
@@ -262,7 +276,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     },
                     onButton = {
                         when (access) {
-                            Permissions.MediaAccess.FULL -> go(Step.ALBUMS)
+                            Permissions.MediaAccess.FULL -> { leaveDetour(); go(Step.ALBUMS) }
                             // "Select photos" was chosen. Asking again shows
                             // the same picker; only the app's settings page
                             // can raise the level to full.
@@ -647,7 +661,9 @@ fun OnboardingScreen(vm: AppViewModel) {
         }
 
         if (step > 0) {
-            TextButton(onClick = { goTo(step - 1) }) { Text(stringResource(R.string.back)) }
+            TextButton(onClick = { leaveDetour(); goTo(step - 1) }) {
+                Text(stringResource(R.string.back))
+            }
         }
         Spacer(Modifier.height(24.dp))
     }
