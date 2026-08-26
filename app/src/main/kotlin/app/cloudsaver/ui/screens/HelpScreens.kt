@@ -804,11 +804,22 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 stringResource(R.string.about_network_none)
             )
             // Z10.4: the fingerprint a future APK can be checked against
-            // before installing over this one.
+            // before installing over this one. Sixty-four characters do not
+            // fit a value column - as a row it showed "4565a65bdf6c00..."
+            // and the one number worth printing was the one nobody could
+            // read. It gets its own wrapped monospace block instead.
             if (BuildConfig.EXPECTED_CERT_SHA256.isNotEmpty()) {
-                KeyValueRow(
+                Text(
                     stringResource(R.string.about_cert_label),
-                    BuildConfig.EXPECTED_CERT_SHA256
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+                Text(
+                    BuildConfig.EXPECTED_CERT_SHA256,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
             Text(
