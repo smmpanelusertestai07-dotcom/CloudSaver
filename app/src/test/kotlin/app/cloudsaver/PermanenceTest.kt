@@ -71,6 +71,25 @@ class PermanenceTest {
     }
 
     @Test
+    fun `the daily snapshot cannot grow without bound, and never drops proof`() {
+        val store = File(main, "engine/SnapshotStore.kt").readText()
+        assertTrue(store.contains("MAX_REBUILDABLE_ITEMS"))
+        val build = store.substringAfter("suspend fun build()").substringBefore("val batches")
+        // The split is the whole safety argument: a row with evidence or a
+        // delivered copy is irreplaceable - losing it could let a file reach
+        // the cloud twice - so only queue state is ever trimmed.
+        assertTrue(
+            build.contains("it.outputSha256 != null || Evidence.parse(it.evidence) != Evidence.NONE")
+        )
+        assertTrue("evidenced rows are always written", build.contains("critical + rebuildable"))
+        assertTrue("and the trim is recorded", build.contains("trimmed"))
+        // The ledger itself is never capped: it is what stops a second upload.
+        val ledger = store.substringAfter("val ledger = db.ledger().all()")
+            .substringBefore("val access")
+        assertFalse("the ledger must be written whole", ledger.contains("take("))
+    }
+
+    @Test
     fun `the database is migrated, never dropped`() {
         val db = File(main, "data/db/Db.kt").readText()
         assertFalse(

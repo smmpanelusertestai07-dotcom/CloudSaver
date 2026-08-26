@@ -40,8 +40,45 @@ class SnapshotStore(
     private val optionsRepo: OptionsRepo
 ) {
 
+    companion object {
+        /**
+         * How many rebuildable item rows a snapshot carries.
+         *
+         * The whole snapshot is encoded as one JSON document held in memory,
+         * so an unbounded gallery means an unbounded allocation in a
+         * background worker - and the failure is silent, because the daily
+         * pass catches it and simply writes nothing. A phone that grows to
+         * fifty thousand photos would quietly stop having a snapshot at all,
+         * which is only discovered on the reinstall that needed it.
+         *
+         * Nothing safety-critical is ever dropped: rows that carry evidence
+         * or a delivered copy are always written, whatever the count, because
+         * losing one of those could let a file be sent to the cloud twice.
+         * The rest are queue state, and a scan rebuilds them.
+         */
+        const val MAX_REBUILDABLE_ITEMS = 5_000
+    }
+
     suspend fun build(): SnapshotCodec.Snapshot {
-        val items = db.items().all().map { row ->
+        val rows = db.items().all()
+        // Anything the cloud has already seen, or that holds a copy, is
+        // irreplaceable knowledge; everything else can be scanned again.
+        val (critical, rebuildable) = rows.partition {
+            it.outputSha256 != null || Evidence.parse(it.evidence) != Evidence.NONE
+        }
+        val kept = if (rebuildable.size <= MAX_REBUILDABLE_ITEMS) {
+            rows
+        } else {
+            AppLog.log(
+                context, "snapshot",
+                "trimmed ${rebuildable.size - MAX_REBUILDABLE_ITEMS} rebuildable rows; " +
+                    "every evidenced row is kept"
+            )
+            critical + rebuildable
+                .sortedByDescending { it.updatedAt }
+                .take(MAX_REBUILDABLE_ITEMS)
+        }
+        val items = kept.map { row ->
             SnapshotCodec.SnapItem(
                 fingerprint = row.fingerprint,
                 displayName = row.displayName,
