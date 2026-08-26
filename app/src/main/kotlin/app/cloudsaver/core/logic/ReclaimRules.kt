@@ -20,7 +20,16 @@ object ReclaimRules {
     const val LARGE_BATCH_BYTES = 20L * 1_000_000_000
     const val LARGE_BATCH_SHARE = 0.5
 
-    /** MediaStore refuses a request with more URIs than this. */
+    /**
+     * How many files go into one system confirmation.
+     *
+     * Android documents no maximum for a trash or delete request, so this is
+     * not a platform limit and is not described as one. It is the app's own:
+     * every URI travels into a PendingIntent through a binder transaction
+     * with a size ceiling, and a dialog listing several thousand files is not
+     * a confirmation anybody can actually read. Batches of this size keep
+     * both within reach.
+     */
     const val MAX_URIS_PER_REQUEST = 500
 
     /**
@@ -159,7 +168,7 @@ object ReclaimRules {
         return selected.size.toDouble() / eligibleCount >= LARGE_BATCH_SHARE
     }
 
-    /** MediaStore refuses oversized requests, so the batch is split. */
-    fun batches(uris: List<String>, size: Int = MAX_URIS_PER_REQUEST): List<List<String>> =
+    /** Splits a selection into the chunks that are confirmed one at a time. */
+    fun <T> batches(uris: List<T>, size: Int = MAX_URIS_PER_REQUEST): List<List<T>> =
         if (uris.isEmpty()) emptyList() else uris.chunked(size.coerceAtLeast(1))
 }

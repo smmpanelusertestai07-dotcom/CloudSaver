@@ -234,7 +234,7 @@ class ReclaimRulesTest {
     // ---- batching ------------------------------------------------------------
 
     @Test
-    fun `requests are split at the limit MediaStore enforces`() {
+    fun `requests are split into chunks a person can read`() {
         val uris = (1..1201).map { "uri-$it" }
         val batches = ReclaimRules.batches(uris)
         assertEquals(3, batches.size)
@@ -245,6 +245,6 @@ class ReclaimRulesTest {
 
     @Test
     fun `nothing to send is no request at all`() {
-        assertTrue(ReclaimRules.batches(emptyList()).isEmpty())
+        assertTrue(ReclaimRules.batches(emptyList<String>()).isEmpty())
     }
 }

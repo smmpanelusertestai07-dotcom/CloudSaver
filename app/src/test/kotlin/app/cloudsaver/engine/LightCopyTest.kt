@@ -94,12 +94,14 @@ class LightCopyTest {
             "the failed row must leave the batch",
             prepare.substring(failAt, addAt).contains("continue")
         )
-        // In the view model: prepare() runs before the system request exists.
+        // In the view model: prepare() runs before any consent is asked for.
         val vm = File("src/main/kotlin/app/cloudsaver/ui/ReclaimViewModel.kt").readText()
         val start = vm.substringAfter("fun start(permanent")
-        assertTrue(
-            start.indexOf("engine.prepare") < start.indexOf("requestFor(ready.uris")
-        )
+        val preparedAt = start.indexOf("engine.prepare")
+        val askedAt = start.indexOf("beginConsent(ready.uris")
+        assertTrue("start() no longer prepares the batch", preparedAt >= 0)
+        assertTrue("start() no longer asks for consent", askedAt >= 0)
+        assertTrue("consent is asked for before the copies are proved", preparedAt < askedAt)
     }
 
     @Test

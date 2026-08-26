@@ -21,6 +21,7 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
@@ -1561,24 +1562,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // API 30+: one system batch dialog (MediaStore.createDeleteRequest).
     // API 29: sequential RecoverableSecurityException flow, one consent per file.
 
-    /** Emits when the API-29 flow needs the UI to launch a consent dialog. */
-    val legacyDeleteIntent = MutableStateFlow<IntentSender?>(null)
+    /**
+     * Emits when a flow already under way needs the UI to launch another
+     * consent dialog: the next file on Android 10, or the next chunk of a
+     * large selection on 11 and up. The first dialog of a batch comes back
+     * from [requestDelete] instead, so this stays null until one is needed.
+     */
+    val deleteIntent = MutableStateFlow<IntentSender?>(null)
 
     private var deleteOnDone: ((List<Uri>) -> Unit)? = null
     private var systemDialogUris: List<Uri> = emptyList()
+    /**
+     * Whatever is left of a large selection, and what has been agreed so far.
+     *
+     * The batch dialog is asked for one chunk at a time: every URI travels
+     * into a PendingIntent through a size-limited binder transaction, and a
+     * confirmation listing thousands of files is not one anybody can read.
+     */
+    private var deleteChunks: ArrayDeque<List<Uri>> = ArrayDeque()
+    private val deleteAgreed = mutableListOf<Uri>()
     private val legacyQueue = ArrayDeque<Uri>()
     private val legacySucceeded = mutableListOf<Uri>()
 
     /**
      * Starts a delete of [uris]. Returns an IntentSender the UI must launch
      * (API 30+ batch dialog), or null when the API-29 sequential flow drives
-     * itself via [legacyDeleteIntent]. [onDone] receives the deleted uris.
+     * itself via [deleteIntent]. [onDone] receives the deleted uris.
      */
     fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {
         deleteOnDone = onDone
+        // Nothing to ask about still owes the caller its answer, or the card
+        // that started this waits for a callback that never arrives.
+        if (uris.isEmpty()) {
+            finishDelete(emptyList())
+            return null
+        }
         return if (Build.VERSION.SDK_INT >= 30) {
-            systemDialogUris = uris
-            MediaStore.createDeleteRequest(ctx.contentResolver, uris).intentSender
+            deleteChunks = ArrayDeque(ReclaimRules.batches(uris))
+            deleteAgreed.clear()
+            nextDeleteChunk()
         } else {
             systemDialogUris = emptyList()
             legacyQueue.clear()
@@ -1589,15 +1611,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The next chunk's dialog, or null when there is nothing left to ask. */
+    private fun nextDeleteChunk(): IntentSender? {
+        // Both callers gate on this already; repeating it here is what makes
+        // the guard true by reading rather than by tracing the callers.
+        if (Build.VERSION.SDK_INT < 30) return null
+        val next = deleteChunks.removeFirstOrNull() ?: return null
+        systemDialogUris = next
+        return MediaStore.createDeleteRequest(ctx.contentResolver, next).intentSender
+    }
+
     /** UI reports the outcome of whichever consent dialog was shown. */
     fun onDeleteDialogResult(ok: Boolean) {
+        // Cleared first, always. A sender left sitting in the flow is
+        // relaunched the next time this screen is opened, and the user gets a
+        // delete dialog they never asked for.
+        deleteIntent.value = null
         if (Build.VERSION.SDK_INT >= 30) {
             val uris = systemDialogUris
             systemDialogUris = emptyList()
-            finishDelete(if (ok) uris else emptyList())
+            if (ok) deleteAgreed += uris
+            // Keep asking while the user keeps agreeing; a refusal ends it
+            // with whatever was already allowed.
+            if (ok && deleteChunks.isNotEmpty()) {
+                deleteIntent.value = nextDeleteChunk()
+                return
+            }
+            deleteChunks.clear()
+            val agreed = deleteAgreed.toList()
+            deleteAgreed.clear()
+            finishDelete(agreed)
             return
         }
-        legacyDeleteIntent.value = null
         if (legacyQueue.isNotEmpty()) {
             val uri = legacyQueue.removeFirst()
             if (ok) {
@@ -1628,7 +1673,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     val sender = (se as? android.app.RecoverableSecurityException)
                         ?.userAction?.actionIntent?.intentSender
                     if (sender != null) {
-                        legacyDeleteIntent.value = sender
+                        deleteIntent.value = sender
                         return@launch
                     }
                     legacyQueue.removeFirst()

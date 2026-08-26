@@ -125,6 +125,21 @@ class ReclaimViewModel(
     private var pendingMode: ReclaimRules.Mode = ReclaimRules.Mode.REPLACE_WITH_LIGHT
     private var pendingTrash = true
 
+    /**
+     * A large selection is confirmed in chunks, one system dialog each.
+     *
+     * The whole selection used to go into a single request. Nothing in the
+     * platform documents a maximum, but every URI rides into a PendingIntent
+     * through a size-limited binder transaction, and a dialog listing a
+     * thousand files is not something anyone can read before agreeing to it.
+     * What the user actually approves is recorded chunk by chunk, so the
+     * result reflects the taps rather than assuming the whole batch went.
+     */
+    private var consentChunks: ArrayDeque<List<Uri>> = ArrayDeque()
+    private var consentCurrent: List<Uri> = emptyList()
+    private val consentConfirmed = mutableSetOf<String>()
+    private var consentPermanent = false
+
     data class DryRun(
         val count: Int,
         val freedBytes: Long,
@@ -434,17 +449,37 @@ class ReclaimViewModel(
                     lastResult.value = engine.finish(ready, emptySet(), mode.value, !permanent, now)
                     return@launch
                 }
-                val request = requestFor(ready.uris, permanent)
-                if (request == null) {
+                if (!beginConsent(ready.uris, permanent)) {
                     pendingTrash = false
                     startLegacy(ready.uris)
-                } else {
-                    pendingIntent.value = request
                 }
             } finally {
                 busy.value = false
             }
         }
+    }
+
+    /**
+     * Starts the walk through the confirmations for a selection.
+     *
+     * False when this phone has no batch dialog at all, which is the Android
+     * 10 case: there the caller falls back to one consent per file.
+     */
+    private fun beginConsent(uris: List<Uri>, permanent: Boolean): Boolean {
+        consentChunks = ArrayDeque(ReclaimRules.batches(uris))
+        consentCurrent = emptyList()
+        consentConfirmed.clear()
+        consentPermanent = permanent
+        return requestNextConsent()
+    }
+
+    /** Shows the next chunk's dialog; false when none is left to ask about. */
+    private fun requestNextConsent(): Boolean {
+        val next = consentChunks.removeFirstOrNull() ?: return false
+        val request = requestFor(next, consentPermanent) ?: return false
+        consentCurrent = next
+        pendingIntent.value = request
+        return true
     }
 
     /**
@@ -551,9 +586,17 @@ class ReclaimViewModel(
             return
         }
         val ready = prepared ?: return
+        if (granted) consentConfirmed += consentCurrent.map { it.toString() }
+        consentCurrent = emptyList()
+        // More of the selection still to confirm: ask for the next chunk
+        // before anything is written down. A refusal ends the batch there,
+        // with whatever was already agreed to.
+        if (granted && requestNextConsent()) return
+        consentChunks.clear()
         prepared = null
+        val deleted = consentConfirmed.toSet()
+        consentConfirmed.clear()
         viewModelScope.launch(Dispatchers.IO) {
-            val deleted = if (granted) ready.rows.mapNotNull { it.contentUri }.toSet() else emptySet()
             lastResult.value = engine.finish(
                 ready, deleted, pendingMode, pendingTrash, System.currentTimeMillis()
             )
@@ -601,6 +644,11 @@ class ReclaimViewModel(
 
     private var restoring: List<ReclaimItemRow> = emptyList()
 
+    /** Chunks of a batch still waiting to be untrashed, and what came back. */
+    private var restoreChunks: ArrayDeque<List<Uri>> = ArrayDeque()
+    private var restoreCurrent: List<Uri> = emptyList()
+    private val restoreGranted = mutableSetOf<String>()
+
     /** Untrash, with the system dialog: the files are the gallery's, not ours. */
     fun restore(items: List<ReclaimItemRow>) {
         val uris = items.mapNotNull { row -> row.contentUri?.let { Uri.parse(it) } }
@@ -608,18 +656,43 @@ class ReclaimViewModel(
         // batches were permanent and the history says so.
         if (uris.isEmpty() || Build.VERSION.SDK_INT < 30) return
         restoring = items
-        pendingIntent.value =
-            MediaStore.createTrashRequest(ctx.contentResolver, uris, false).intentSender
+        // A restored batch is as large as the batch that created it, so it
+        // goes back through the same chunked confirmation as the removal did.
+        restoreChunks = ArrayDeque(ReclaimRules.batches(uris))
+        restoreGranted.clear()
+        pendingIntent.value = nextRestoreChunk()
+    }
+
+    private fun nextRestoreChunk(): IntentSender? {
+        // Android 10 has no trash to put anything back into, and restore()
+        // has already turned back on that phone. Stated again here so the
+        // guard holds wherever this is called from.
+        if (Build.VERSION.SDK_INT < 30) return null
+        val next = restoreChunks.removeFirstOrNull() ?: return null
+        restoreCurrent = next
+        return MediaStore.createTrashRequest(ctx.contentResolver, next, false).intentSender
     }
 
     fun onRestoreResult(granted: Boolean) {
         pendingIntent.value = null
+        if (granted) restoreGranted += restoreCurrent.map { it.toString() }
+        restoreCurrent = emptyList()
+        if (granted && restoreChunks.isNotEmpty()) {
+            pendingIntent.value = nextRestoreChunk()
+            return
+        }
+        restoreChunks.clear()
         val items = restoring
         restoring = emptyList()
-        if (!granted || items.isEmpty()) return
+        // Only the chunks the user actually allowed came back out of the
+        // trash. Marking the rest as restored would put a lie in the history
+        // for files that are still sitting in the gallery's bin.
+        val back = items.filter { it.contentUri in restoreGranted }
+        restoreGranted.clear()
+        if (back.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            for (item in items) engine.onRestored(item)
-            historyItems.value = db.reclaim().itemsOf(items.first().batchId)
+            for (item in back) engine.onRestored(item)
+            historyItems.value = db.reclaim().itemsOf(back.first().batchId)
             load()
         }
     }

@@ -137,9 +137,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     ) { result ->
         vm.onDeleteDialogResult(result.resultCode == android.app.Activity.RESULT_OK)
     }
-    val legacyIntent by vm.legacyDeleteIntent.collectAsStateWithLifecycle()
-    LaunchedEffect(legacyIntent) {
-        legacyIntent?.let {
+    val nextDeleteDialog by vm.deleteIntent.collectAsStateWithLifecycle()
+    LaunchedEffect(nextDeleteDialog) {
+        nextDeleteDialog?.let {
             cleanupLauncher.launch(IntentSenderRequest.Builder(it).build())
         }
     }
