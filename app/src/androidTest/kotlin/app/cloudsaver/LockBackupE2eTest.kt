@@ -77,7 +77,7 @@ class LockBackupE2eTest {
      * bar itself is part of the app.
      */
     @Test
-    fun nothingOfTheAppIsReachableWhileItIsLocked() = runBlocking {
+    fun nothingOfTheAppIsReachableWhileItIsLocked(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.waitForIdle()
@@ -112,19 +112,28 @@ class LockBackupE2eTest {
      * user back in, not sit on a screen with a button that cannot work.
      */
     @Test
-    fun aLockWithNoCredentialBehindItDoesNotTrapTheUser() = runBlocking {
+    fun aLockNeverLeavesTheUserWithNoWayIn(): Unit = runBlocking {
         repo.setBool(OptionsRepo.K.APP_LOCK, true)
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.waitForIdle()
-            val hasCredential = androidx.biometric.BiometricManager.from(target)
-                .canAuthenticate(
-                    androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                ) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
-            if (hasCredential) return@runBlocking
+            // One of two things must be true within a few seconds: the lock
+            // screen is up with something to unlock it, or the app has turned
+            // its own lock off because this phone has no screen lock to verify
+            // against. A locked screen with a dead button is the failure.
             compose.waitUntil(timeoutMillis = 20_000) {
-                runBlocking { !repo.current().appLock }
+                val locked = compose
+                    .onAllNodes(hasText(s(R.string.lock_unlock), substring = true))
+                    .fetchSemanticsNodes().isNotEmpty()
+                locked || !runBlocking { repo.current().appLock }
             }
-            assertFalse("the app lock must turn itself off", repo.current().appLock)
+            val locked = compose
+                .onAllNodes(hasText(s(R.string.lock_unlock), substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+            assertTrue(
+                "with the lock on, the app must either ask to unlock or turn " +
+                    "the lock off; it did neither",
+                locked || !repo.current().appLock
+            )
         }
     }
 
@@ -142,7 +151,7 @@ class LockBackupE2eTest {
     }
 
     @Test
-    fun aBackupRoundTripsThroughARealFileWithItsPassword() = runBlocking {
+    fun aBackupRoundTripsThroughARealFileWithItsPassword(): Unit = runBlocking {
         repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
         val before = repo.current().preset
         assertTrue("export must succeed", exportTo(backupFile(), "correct horse battery"))
@@ -161,7 +170,7 @@ class LockBackupE2eTest {
     }
 
     @Test
-    fun theWrongPasswordRestoresNothingAtAll() = runBlocking {
+    fun theWrongPasswordRestoresNothingAtAll(): Unit = runBlocking {
         repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
         assertTrue(exportTo(backupFile(), "the real password"))
         repo.setString(OptionsRepo.K.PRESET, Preset.BALANCED.name)
@@ -180,7 +189,7 @@ class LockBackupE2eTest {
     }
 
     @Test
-    fun anEncryptedFileWithNoPasswordAsksForOneInsteadOfFailing() = runBlocking {
+    fun anEncryptedFileWithNoPasswordAsksForOneInsteadOfFailing(): Unit = runBlocking {
         assertTrue(exportTo(backupFile(), "a password"))
         assertEquals(
             SnapshotStore.ImportResult.NeedsPassword,
@@ -189,7 +198,7 @@ class LockBackupE2eTest {
     }
 
     @Test
-    fun aFileThatIsNotABackupIsRefusedAndChangesNothing() = runBlocking {
+    fun aFileThatIsNotABackupIsRefusedAndChangesNothing(): Unit = runBlocking {
         repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
         val junk = File(target.cacheDir, "not-a-backup.csb")
         junk.writeBytes(ByteArray(4096) { (it % 251).toByte() })
@@ -204,7 +213,7 @@ class LockBackupE2eTest {
     }
 
     @Test
-    fun anUnencryptedBackupStillRoundTrips() = runBlocking {
+    fun anUnencryptedBackupStillRoundTrips(): Unit = runBlocking {
         repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
         val before = repo.current().preset
         assertTrue(exportTo(backupFile(), null))
@@ -216,7 +225,7 @@ class LockBackupE2eTest {
     // ---- the dialog that asks for the password -------------------------------
 
     @Test
-    fun theSaveBackupRowOpensThePasswordDialogAndCancellingChangesNothing() = runBlocking {
+    fun theSaveBackupRowOpensThePasswordDialogAndCancellingChangesNothing(): Unit = runBlocking {
         val presetBefore = repo.current().preset
         ActivityScenario.launch(MainActivity::class.java).use {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()

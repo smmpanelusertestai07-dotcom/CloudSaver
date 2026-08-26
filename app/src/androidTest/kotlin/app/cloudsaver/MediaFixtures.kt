@@ -93,7 +93,34 @@ object MediaFixtures {
         }
         context.contentResolver.openOutputStream(uri)!!.use { it.write(bytes) }
         publishWithDate(context, uri, captureMillis)
+        awaitIndexed(context, uri, name)
         return uri
+    }
+
+    /**
+     * Waits until MediaStore reports a real size for a just-published file.
+     *
+     * The scanner skips any row whose SIZE is zero, and on Android 10
+     * MediaProvider does not always have the size ready the instant IS_PENDING
+     * is cleared. A fixture that is written but not yet measured is therefore
+     * invisible to the app, and every test that needed it failed with
+     * "the list never appeared" - which says nothing about what went wrong.
+     * Waiting here makes the fixture ready before it is used, on every
+     * Android, and says so plainly if it never becomes ready.
+     */
+    fun awaitIndexed(context: Context, uri: Uri, name: String, timeoutMs: Long = 10_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val size = context.contentResolver.query(
+                uri, arrayOf(MediaStore.MediaColumns.SIZE), null, null, null
+            )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
+            if (size > 0) return
+            Thread.sleep(100)
+        }
+        throw AssertionError(
+            "MediaStore never reported a size for the fixture $name, so the app " +
+                "could not have seen it either"
+        )
     }
 
     /**
@@ -128,6 +155,7 @@ object MediaFixtures {
         }
         publishWithDate(context, uri, captureMillis)
         temp.delete()
+        awaitIndexed(context, uri, name)
         return uri
     }
 

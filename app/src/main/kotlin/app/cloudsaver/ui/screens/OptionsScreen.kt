@@ -1165,8 +1165,13 @@ private fun SwitchCard(
     onChange: (Boolean) -> Unit
 ) {
     AppCard(
-        modifier = Modifier.padding(vertical = 5.dp),
-        onClick = { onChange(!checked) }
+        // Toggleable, not clickable: the whole card is a switch, so it is
+        // announced with its title and its state rather than as a button
+        // that happens to have a switch drawn on the end of it. The Switch
+        // inside takes onCheckedChange = null and is decoration.
+        modifier = Modifier
+            .padding(vertical = 5.dp)
+            .toggleable(value = checked, onValueChange = onChange, role = Role.Switch)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             androidx.compose.material3.Icon(
