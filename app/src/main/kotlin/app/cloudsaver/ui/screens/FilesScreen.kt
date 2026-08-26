@@ -124,8 +124,10 @@ fun FilesScreen(vm: AppViewModel) {
         items.filter { ListFilters.matches(it.toCandidate(), state) }
     }
     val albums = remember(items) { ListFilters.albumCounts(items.map { it.toCandidate() }) }
-    val chosen = rows.filter { it.id in selection }
-    val selectedBytes = chosen.sumOf { it.sizeBytes }
+    // Recomputed on a change, not on every frame: this list holds the whole
+    // gallery, and the sum used to run again on each tick of a selection.
+    val chosen = remember(rows, selection.ids) { rows.filter { it.id in selection } }
+    val selectedBytes = remember(chosen) { chosen.sumOf { it.sizeBytes } }
     val anyFilter = statusFilter != null || !state.isDefault
 
     Box(Modifier.fillMaxSize()) {

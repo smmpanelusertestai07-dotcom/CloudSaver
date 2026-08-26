@@ -146,7 +146,9 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
         )
     }
     val allExtras = shown.flatMap { it.second }
-    val selectedBytes = allExtras.filter { it.id in selection }.sumOf { it.sizeBytes }
+    val selectedBytes = remember(allExtras, selection.ids) {
+        allExtras.filter { it.id in selection }.sumOf { it.sizeBytes }
+    }
     val albums = remember(groups) {
         ListFilters.albumCounts(groups.flatMap { it.extras }.map { it.toCandidate() })
     }
@@ -477,8 +479,10 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             }
     }
     val albums = remember(all) { ListFilters.albumCounts(all.map { it.toCandidate() }) }
-    val totalBytes = rows.sumOf { it.sizeBytes }
-    val couldSave = rows.sumOf { savingFor(it, profile) }
+    // Both sums walk every row on this screen; they change only when the rows
+    // or the measured profile do, not on every recomposition.
+    val totalBytes = remember(rows) { rows.sumOf { it.sizeBytes } }
+    val couldSave = remember(rows, profile) { rows.sumOf { savingFor(it, profile) } }
     val rough = profile.photos.ratio <= 0.0 || profile.videos.ratio <= 0.0
 
     val chosen = rows.filter { it.id in selection }
