@@ -30,13 +30,33 @@ source for this release, including the rows that were already marked Done.
 | T2 | Platform behaviour decided from current documentation, not memory | Done | The version-dependent decisions carry their reason in the source: per-SDK biometric authenticators, trash from API 30, notification permission from 33, FGS types by API, dynamic colour from 31, `IS_PENDING` publish-then-stamp ordering |
 | T3 | Least privilege, exported=false, tamper evidence, FLAG_SECURE, fail-closed lock | Done | Manifest declares only what is used and strips both network permissions; `TamperCheck` compares the signing certificate; `SecureScreen()` on the lock screen and on the free-up screen, pinned by LockPolicyTest; `Lock.kt` has no fail-open branch and the whole app sits behind it; LockPolicyTest |
 
+**How it is tested**
+
+- **440 unit tests** on the JVM, covering the pure rules and auditing the
+  source for claims the code does not keep.
+- **82 instrumented tests across 12 classes**, run on real emulators against a
+  real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
+  genuine H.264 clip through MediaCodec on the device itself, so the pipeline
+  is exercised on real files rather than on mocks. They walk setup step by
+  step, change every setting and check it survives a restart, filter and sort
+  and multi-select the real lists, drive Android's own trash and delete
+  confirmation through UiAutomator, round-trip the encrypted backup file, and
+  open all twenty routes by tapping and leave each one with the Back gesture.
+- **Eight Android versions, every release the app installs on**: the emulator
+  job is a matrix over API 29 through 36, so a claim proved here is a claim
+  about all of them and not only about the newest. 29 has no media trash and
+  no batch delete request; those tests report as not applicable there rather
+  than pretending to have run.
+- **The release APK itself** is installed on each of those emulators and
+  walked through its tabs, so a missing R8 keep rule fails the build instead
+  of failing on a phone.
+
 **Not done, and why**
 
 - **The owner's own device pass.** Ten minutes on a real phone with a real
   gallery, a real cloud app, an SD card and hardware encoders. Nothing in a
   build environment can run it: the emulator has no cloud app to watch and no
-  hardware encoder to fail. Everything automatable about the same claims is
-  covered by the 438 unit tests and the instrumented suite.
+  hardware encoder to fail.
 
 **The owner's 10-minute device checklist**
 
