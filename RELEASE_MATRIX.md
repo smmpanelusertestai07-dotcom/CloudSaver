@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **440 unit tests** on the JVM, covering the pure rules and auditing the
+- **445 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **90 instrumented tests across 14 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
