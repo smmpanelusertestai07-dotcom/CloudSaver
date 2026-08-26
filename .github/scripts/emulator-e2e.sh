@@ -65,6 +65,30 @@ if ! adb shell pidof "$PKG" > /dev/null 2>&1; then
 fi
 adb exec-out screencap -p > "$OUT/screenshots/40-release-apk-launched.png"
 
+# Walk the four tabs in the RELEASE build. The instrumented suite runs
+# against the debug APK, so until now nothing ever opened a second screen
+# with R8 applied - and a missing keep rule shows up as a crash on the
+# screen that needs the stripped class, not at launch. Taps are placed by
+# fraction of the screen, so they follow whatever size the AVD reports.
+SIZE=$(adb shell wm size | tr -d '\r' | awk -F': *' '{print $2}' | tail -1)
+W=${SIZE%x*}
+H=${SIZE#*x}
+if [ -n "$W" ] && [ -n "$H" ]; then
+  TAB_Y=$(( H * 96 / 100 ))
+  i=1
+  for FRAC in 12 37 62 87; do
+    adb shell input tap $(( W * FRAC / 100 )) "$TAB_Y" || true
+    sleep 3
+    adb exec-out screencap -p > "$OUT/screenshots/4${i}-release-tab-${FRAC}.png" || true
+    if ! adb shell pidof "$PKG" > /dev/null 2>&1; then
+      echo "::error::The released APK died while opening a tab (x=${FRAC}%)"
+      adb logcat -d -b crash | tail -80
+      exit 1
+    fi
+    i=$(( i + 1 ))
+  done
+fi
+
 if adb logcat -d -b crash | grep -q "$PKG"; then
   echo "::error::Crash reported for $PKG"
   adb logcat -d -b crash | tail -120
