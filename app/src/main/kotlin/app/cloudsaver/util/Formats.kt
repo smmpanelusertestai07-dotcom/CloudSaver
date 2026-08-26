@@ -21,7 +21,7 @@ object Formats {
     const val MB = 1_000_000L
     const val GB = 1_000_000_000L
 
-    /** Sizes: MB with no decimals below 1 GB, GB with two above it. */
+    /** Sizes: KB, MB (one decimal under ten), GB with two decimals. */
     fun bytes(v: Long): String {
         if (v <= 0) return "0 MB"
         return when {
@@ -30,7 +30,13 @@ object Formats {
             // back in the words they picked.
             v >= GB && v % GB == 0L -> "${v / GB} GB"
             v >= GB -> String.format(Locale.US, "%.2f GB", v.toDouble() / GB)
-            v >= MB -> String.format(Locale.US, "%.0f MB", v.toDouble() / MB)
+            v >= 10 * MB -> String.format(Locale.US, "%.0f MB", v.toDouble() / MB)
+            // Below ten megabytes, whole megabytes cannot tell a photo from
+            // its own optimised copy: 5.4 MB and 4.8 MB both printed as
+            // "5 MB", so a row read "5 MB -> 5 MB (410 KB smaller)" - the
+            // same number twice, followed by a claim that it changed. One
+            // decimal keeps before and after apart at the sizes photos are.
+            v >= MB -> String.format(Locale.US, "%.1f MB", v.toDouble() / MB)
             v >= KB -> String.format(Locale.US, "%.0f KB", v.toDouble() / KB)
             else -> "$v B"
         }

@@ -65,6 +65,16 @@ private const val UI_TIMEOUT = 20_000L
 /** How long a database side effect of a tap is given to land. */
 private const val DB_TIMEOUT = 10_000L
 
+/**
+ * How long to wait between polls of the semantics tree.
+ *
+ * Reading it synchronises with the main thread, so a loop that spins on it
+ * competes with the very device it is measuring - which on a software-emulated
+ * Android is the difference between a test that waits and a test that times
+ * out because nothing else could get a turn.
+ */
+private const val POLL_PAUSE = 50L
+
 // Four fixtures with deliberately different sizes and dates, so "newest" and
 // "largest" cannot accidentally be the same order and prove nothing.
 private const val SMALL = "hf_one_small.jpg"
@@ -391,6 +401,32 @@ class HomeFilesE2eTest {
         compose.onNode(matcher).assertIsDisplayed()
     }
 
+    /**
+     * The line starting with [lead] does not state the same size twice.
+     *
+     * "Cleaning Internal storage - 5.85 GB free now, about 5.85 GB after" is
+     * what the hub printed whenever the saving was too small to move the
+     * figure: a promise about a number, with the number unchanged. A sentence
+     * that says a thing and then says it again has told the reader nothing,
+     * and reads as the app being broken rather than as rounding.
+     */
+    private fun assertNoFigureIsStatedTwice(lead: String) {
+        awaitNode(hasText(lead, substring = true), "the line about $lead")
+        val line = compose.onAllNodes(hasText(lead, substring = true))
+            .fetchSemanticsNodes()
+            .firstNotNullOfOrNull { node ->
+                node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }
+            }
+            ?: throw AssertionError("the line about $lead has no text")
+        val figures = Regex("""\d[\d.]*\s?(?:B|KB|MB|GB)\b""").findAll(line)
+            .map { it.value }.toList()
+        assertEquals(
+            "\"$line\" states the same size twice, so it promises nothing",
+            figures.distinct().size,
+            figures.size
+        )
+    }
+
     private fun assertAbsent(text: String, why: String) {
         compose.waitForIdle()
         val found = compose.onAllNodesWithText(text).fetchSemanticsNodes().size
@@ -427,6 +463,7 @@ class HomeFilesE2eTest {
         val deadline = System.currentTimeMillis() + UI_TIMEOUT
         while (System.currentTimeMillis() < deadline) {
             compose.waitForIdle()
+            Thread.sleep(POLL_PAUSE)
             actual = expected.sortedBy { indexInList(it) }
             if (actual == expected && expected.none { indexInList(it) < 0 }) return
         }
@@ -449,6 +486,7 @@ class HomeFilesE2eTest {
         val deadline = System.currentTimeMillis() + UI_TIMEOUT
         while (System.currentTimeMillis() < deadline) {
             compose.waitForIdle()
+            Thread.sleep(POLL_PAUSE)
             actual = FIXTURES.filter { indexInList(it) >= 0 }.toSet()
             if (actual == expected) return
         }
@@ -478,14 +516,26 @@ class HomeFilesE2eTest {
             .singleOrNull() ?: return -1
         val indexForKey = node.config.getOrNull(SemanticsProperties.IndexForKey)
             ?: throw AssertionError("the list is not keyed, so it cannot be asked what it holds")
-        return indexForKey(row(name).id)
+        return indexForKey(idOf(name))
     }
+
+    /**
+     * The database id the list keys this file by.
+     *
+     * Remembered because it is asked for inside polling loops and never
+     * changes within a test: JUnit builds a fresh instance for each one and
+     * the database is cleared around it, so there is nothing stale to carry.
+     */
+    private val rowIds = mutableMapOf<String, Long>()
+
+    private fun idOf(name: String): Long = rowIds.getOrPut(name) { row(name).id }
 
     /** Waits until the list holds this row, whether or not it is on screen. */
     private fun awaitRowInList(name: String, what: String) {
         val deadline = System.currentTimeMillis() + UI_TIMEOUT
         while (System.currentTimeMillis() < deadline) {
             compose.waitForIdle()
+            Thread.sleep(POLL_PAUSE)
             if (indexInList(name) >= 0) return
         }
         throw AssertionError("$what never appeared")
@@ -1019,6 +1069,8 @@ class HomeFilesE2eTest {
         assertScrolledInto(s(R.string.hub_title), "the free up space row")
         compose.onNodeWithText(s(R.string.hub_title)).performScrollTo().performClick()
         compose.waitForIdle()
+
+        assertNoFigureIsStatedTwice(s(R.string.volume_internal))
 
         // The largest-files section carries what those files weigh together.
         val totalBytes = FIXTURES.sumOf { row(it).sizeBytes }

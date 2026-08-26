@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
@@ -160,8 +162,19 @@ fun FileRow(
                 trailingNote?.let {
                     Text(
                         it,
+                        // Bounded on purpose. This column carries no weight, so
+                        // it measures at whatever its longest line wants and the
+                        // name's weight(1f) is left with the remainder - which a
+                        // long note takes down to nothing. "about 459 KB after
+                        // optimising" is long enough to have emptied the name off
+                        // every row of Largest files, a screen whose whole job is
+                        // telling you which file is which. The name comes first.
+                        modifier = Modifier.widthIn(max = 120.dp),
                         style = MaterialTheme.typography.labelSmall.merge(TabularFigures),
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        textAlign = TextAlign.End,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

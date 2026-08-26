@@ -107,10 +107,23 @@ class HelpNavA11yE2eTest {
         waitForIdle()
     }
 
+    /**
+     * Taps the thing called [label], preferring the one actually called that.
+     *
+     * Substring matching alone chose whatever came first in the tree, and on
+     * Settings that is a section heading. "Help and info" is a heading, not a
+     * control; tapping it navigates nowhere - and because it contains "Help",
+     * every check that followed agreed we had arrived. The row that does
+     * navigate is titled exactly "Help", so an exact match is tried first and
+     * substring is left for the labels that genuinely need it.
+     */
     private fun ComposeTestRule.open(label: String) {
         bringIntoView(label)
-        onAllNodes(hasText(label, substring = true)).onFirst()
-            .performScrollTo().performClick()
+        val exact = hasText(label)
+        val target =
+            if (onAllNodes(exact).fetchSemanticsNodes().isNotEmpty()) onAllNodes(exact).onFirst()
+            else onAllNodes(hasText(label, substring = true)).onFirst()
+        target.performScrollTo().performClick()
         waitForIdle()
     }
 
@@ -127,27 +140,24 @@ class HelpNavA11yE2eTest {
     /**
      * We are on the Help list itself, not merely somewhere the word appears.
      *
-     * Exact text, not a substring: Settings carries a "Help and info" row, so
-     * "contains Help" is true on that screen too, and a Back that landed one
-     * screen too far still read as success here. The real failure then
-     * surfaced later, as a help page that would not open.
+     * Neither "Help" nor "Help and info" settles it - Settings carries both,
+     * as a heading and as the row that opens this screen - so a Back that
+     * landed one screen too far used to read as success, and the real failure
+     * surfaced pages later. The version line is on the Help list and on no
+     * other screen that this test can reach from it.
      */
     private fun ComposeTestRule.assertOnTheHelpList() {
-        val title = hasText(s(R.string.nav_help))
-        waitUntil(timeoutMillis = 10_000) {
-            onAllNodes(title).fetchSemanticsNodes().isNotEmpty()
-        }
-        onAllNodes(title).onFirst().assertIsDisplayed()
+        assertOn(target.getString(R.string.about_version_line, BuildConfig.VERSION_NAME))
     }
 
     /**
      * We opened a help page, rather than merely still being able to see its
      * name on the list.
      *
-     * Every page's title is also the link that opens it, so assertOn(page)
-     * alone is true before the tap as well as after it - a tap that failed to
-     * navigate passed here and only broke on the next page in the loop. What
-     * settles it is that the list's own title is gone.
+     * Every page's title is also the link that opens it, so assertOn(page) is
+     * true before the tap as well as after it: a tap that failed to navigate
+     * passed here and the next page in the loop took the blame. The list's own
+     * title being gone is what says we left it.
      */
     private fun ComposeTestRule.assertOnHelpPage(label: String) {
         assertOn(label)
@@ -161,7 +171,8 @@ class HelpNavA11yE2eTest {
 
     private fun openHelp() {
         compose.onNodeWithText(s(R.string.nav_options)).performClick()
-        compose.open(s(R.string.opt_group_help))
+        // The Help row, not the "Help and info" heading sitting above it.
+        compose.open(s(R.string.nav_help))
         compose.assertOnTheHelpList()
     }
 

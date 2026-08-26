@@ -99,16 +99,22 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                 else vol.mediaVolumeName == options.storageVolume
             } ?: volumes.firstOrNull { it.isPrimary }
             if (volume != null) {
+                val where = stringResource(
+                    if (volume.isPrimary) R.string.volume_internal else R.string.volume_sd
+                )
+                val freeNow = Formats.bytes(volume.freeBytes)
+                val freeAfter = Formats.bytes(volume.freeBytes + total)
                 Text(
-                    stringResource(
-                        R.string.hub_volume_line,
-                        stringResource(
-                            if (volume.isPrimary) R.string.volume_internal
-                            else R.string.volume_sd
-                        ),
-                        Formats.bytes(volume.freeBytes),
-                        Formats.bytes(volume.freeBytes + total)
-                    ),
+                    // "5.85 GB free now, about 5.85 GB after" is what this
+                    // printed whenever the saving was too small to move the
+                    // figure - a sentence that names the same number twice and
+                    // promises nothing. When the second half would not differ
+                    // from the first, it is left off rather than printed.
+                    if (freeAfter == freeNow) {
+                        stringResource(R.string.hub_volume_line_only, where, freeNow)
+                    } else {
+                        stringResource(R.string.hub_volume_line, where, freeNow, freeAfter)
+                    },
                     style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
                     color = scheme.onSurfaceVariant
                 )

@@ -34,7 +34,7 @@ source for this release, including the rows that were already marked Done.
 
 - **440 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
-- **82 instrumented tests across 12 classes**, run on real emulators against a
+- **90 instrumented tests across 14 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -42,6 +42,16 @@ source for this release, including the rows that were already marked Done.
   and multi-select the real lists, drive Android's own trash and delete
   confirmation through UiAutomator, round-trip the encrypted backup file, and
   open all twenty routes by tapping and leave each one with the Back gesture.
+- **What a list holds is asked of the list, not read off the screen.** A
+  LazyColumn composes only the rows that fit, so a row below the fold has no
+  node, no text and no position. Membership and order come from the list's own
+  IndexForKey, taps scroll to their row first, and lazy content is brought back
+  into view before anything asserts on it - which is what stopped a four-row
+  list reading as three rows on any phone shorter than the last one.
+- **A locally booted emulator, not only CI.** The suite runs on an Android 10
+  image under software emulation (no KVM) as well as on the CI matrix, so a
+  failure can be reproduced, screenshotted and re-run in minutes instead of
+  once per push.
 - **Eight Android versions, every release the app installs on**: the emulator
   job is a matrix over API 29 through 36, so a claim proved here is a claim
   about all of them and not only about the newest. 29 has no media trash and
@@ -50,6 +60,23 @@ source for this release, including the rows that were already marked Done.
 - **The release APK itself** is installed on each of those emulators and
   walked through its tabs, so a missing R8 keep rule fails the build instead
   of failing on a phone.
+
+**What tests still cannot see**
+
+- **Whether a screen reads correctly.** Five defects this cycle were found by
+  opening the emulator screenshots, and none by the tests that had just walked
+  the same screens: Largest files listing files with no names on them, "5.85 GB
+  free now, about 5.85 GB after", options broken mid-word into "Unlimit" over
+  "ed", a photo and its own smaller copy both printing as "5 MB", and Home
+  stating "Everything is backed up" above a tile reading eleven still to do.
+  A test asserts what it was told to look for; a screenshot shows what is
+  there. Four of the five now have a test - `FileRowTest`,
+  `SegmentedChoiceTest`, `FormatsTest`, and a check on the Free up space line
+  that no size is stated twice. The fifth cannot honestly have one: it
+  lasted the eight hundred milliseconds before the first count arrived, and a
+  test that tries to catch that window is a test that fails at random. It was
+  fixed by making "not counted yet" a state the code can hold, rather than
+  spelling it zero.
 
 **Not done, and why**
 

@@ -276,7 +276,9 @@ fun MetricTile(
             label,
             style = MaterialTheme.typography.labelMedium,
             textAlign = TextAlign.Center,
-            maxLines = 2,
+            // One line for a single word, which has nowhere to wrap and would
+            // otherwise be broken in half; two for a label that can wrap.
+            maxLines = if (label.trim().contains(' ')) 2 else 1,
             // A long label must shrink rather than push the number out of
             // the fixed cell.
             autoSize = TextAutoSize.StepBased(
@@ -508,12 +510,19 @@ fun SegmentedChoice(
                 // ran out of space at the smallest size allowed and came out
                 // as "Photos and vide" - so a label that will not fit on one
                 // line wraps onto a second instead of losing its end.
+                //
+                // Only where there is a space to wrap at, though. Given two
+                // lines to fill, the shrinking stops as soon as the text fits
+                // across both, and a single long word simply breaks in half:
+                // four options across a phone turned "Unlimited" into
+                // "Unlimit" above "ed". A one-word label gets one line and has
+                // to shrink until it really fits.
                 Text(
                     label,
                     style = MaterialTheme.typography.labelLarge,
                     color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
-                    maxLines = 2,
+                    maxLines = if (label.trim().contains(' ')) 2 else 1,
                     autoSize = TextAutoSize.StepBased(
                         minFontSize = 9.sp,
                         maxFontSize = MaterialTheme.typography.labelLarge.fontSize,

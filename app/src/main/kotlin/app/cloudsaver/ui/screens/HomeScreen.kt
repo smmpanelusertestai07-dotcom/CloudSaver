@@ -1050,7 +1050,7 @@ fun skipReasonLabel(reason: String): String = when (reason) {
 @Composable
 private fun statusLine(
     options: Options,
-    waiting: Int,
+    waiting: Int?,
     heldBack: Int = 0,
     inFolder: Int = 0
 ): String {
@@ -1066,6 +1066,11 @@ private fun statusLine(
             pluralStringResource(R.plurals.pacing_held_none, heldBack, heldBack)
         }
     }
+    // Nothing counted yet - said after the counts that are known, so real
+    // news is never suppressed by a figure that has not landed. Saying
+    // nothing for a moment is honest; what this replaced said "Everything is
+    // backed up" before it had any idea, on every single launch.
+    if (waiting == null) return ""
     if (waiting > 0) {
         val wait = runCatching { RunDecider.Wait.valueOf(options.waitReason) }
             .getOrDefault(RunDecider.Wait.NONE)

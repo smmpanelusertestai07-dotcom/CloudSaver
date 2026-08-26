@@ -166,10 +166,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * per 800 ms is fast enough to feel live and slow enough to read.
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
-    val statusWaiting: StateFlow<Int> = counters
+    val statusWaiting: StateFlow<Int?> = counters
         .map { it.waiting }
         .debounce(STATUS_DEBOUNCE_MS)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        // Null until a count actually arrives. This used to start at zero,
+        // which does not mean "not known yet" - it means "nothing is
+        // waiting" - so for the first eight hundred milliseconds of every
+        // launch Home stated "Everything is backed up" directly above a tile
+        // already reading eleven files still to do.
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val savedBytes: StateFlow<Long> =
         db.items().savedBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)

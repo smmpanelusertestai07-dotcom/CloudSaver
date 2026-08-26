@@ -354,6 +354,8 @@
     <string name="hub_leftovers">Leftover work files</string>
     <string name="hub_leftovers_hint">Half-finished files from a run that was stopped.</string>
     <string name="hub_volume_line">Cleaning %1$s \u00b7 %2$s free now, about %3$s after</string>
+    <!-- Same line, for when what can be freed does not change the figure -->
+    <string name="hub_volume_line_only">Cleaning %1$s \u00b7 %2$s free now</string>
     <string name="hub_clean_now">Clear</string>
     <string name="warn_phone_only">This removes files from this phone only.</string>
     <string name="warn_cloud_untouched">Your cloud is never touched. CloudSaver has no internet permission.</string>
