@@ -4,6 +4,9 @@ import android.Manifest
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.isSelected
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -111,9 +114,26 @@ class UiWalkthroughTest {
         waitForIdle()
     }
 
-    /** Asserts the screen we expect to have landed on is actually showing. */
+    /**
+     * Asserts the label we expect to have landed on is on screen.
+     *
+     * onFirst matters: a tab's own name is drawn in the bar as well as on the
+     * screen it opens, so "at most one node" is simply false for every tab in
+     * the app. What is being asserted is that the label is present and
+     * displayed, not that it is unique.
+     */
     private fun ComposeTestRule.assertOn(label: String) {
-        onNode(hasText(label, substring = true)).assertIsDisplayed()
+        onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
+    }
+
+    /**
+     * Asserts a bottom-bar tab is the selected one.
+     *
+     * This is what "we navigated" actually means; finding the tab's text
+     * proves only that the bar is drawn, which it always is.
+     */
+    private fun ComposeTestRule.assertTabSelected(label: String) {
+        onNode(hasText(label) and isSelectable() and isSelected()).assertExists()
     }
 
     private fun setOnboardingDone(done: Boolean) = runBlocking {
@@ -142,7 +162,7 @@ class UiWalkthroughTest {
             ActivityScenario.launch(MainActivity::class.java).use {
                 shoot("50-dark-home")
                 compose.onNodeWithText(s(R.string.nav_storage)).performClick()
-                compose.assertOn(s(R.string.nav_storage))
+                compose.assertTabSelected(s(R.string.nav_storage))
                 shoot("51-dark-storage")
                 compose.onNodeWithText(s(R.string.nav_options)).performClick()
                 shoot("52-dark-settings")
@@ -200,11 +220,11 @@ class UiWalkthroughTest {
             shoot("20-home")
 
             compose.onNodeWithText(s(R.string.nav_files)).performClick()
-            compose.assertOn(s(R.string.nav_files))
+            compose.assertTabSelected(s(R.string.nav_files))
             shoot("21-files")
 
             compose.onNodeWithText(s(R.string.nav_storage)).performClick()
-            compose.assertOn(s(R.string.nav_storage))
+            compose.assertTabSelected(s(R.string.nav_storage))
             shoot("22-storage")
 
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
