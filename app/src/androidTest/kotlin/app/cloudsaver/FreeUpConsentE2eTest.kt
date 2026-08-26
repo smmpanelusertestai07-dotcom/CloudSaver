@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
+import androidx.test.filters.SdkSuppress
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -168,7 +169,10 @@ class FreeUpConsentE2eTest {
      * and must write nothing down as freed.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun refusingTheSystemDialogKeepsEveryOriginalAndRecordsNothing() {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(3, "refuse")
@@ -217,7 +221,10 @@ class FreeUpConsentE2eTest {
      * existence - and records every one of them.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun acceptingTheSystemDialogRemovesAndRecordsExactlyThoseFiles() {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(3, "accept")
@@ -283,7 +290,10 @@ class FreeUpConsentE2eTest {
      * single "allow" would take all 501 files and the counts below would say so.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun aBatchOverTheRequestLimitIsConfirmedInMoreThanOneDialog() {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val chunk = ReclaimRules.MAX_URIS_PER_REQUEST
@@ -353,7 +363,10 @@ class FreeUpConsentE2eTest {
      * allows back actually comes back - and the history says so.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun restoreFromHistoryPutsBackOnlyWhatTheUserAllows() {
         assumeTrue("no media trash before API 30", Build.VERSION.SDK_INT >= 30)
         val seeds = seedBackedUpOriginals(2, "restore")
@@ -438,7 +451,10 @@ class FreeUpConsentE2eTest {
      * refusal there still means nothing happens.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun removingADuplicateExtraGoesThroughTheSystemDialog() {
         assumeTrue("no batch consent dialog before API 30", Build.VERSION.SDK_INT >= 30)
         val (keeper, extra) = seedIdenticalPair()
@@ -485,7 +501,10 @@ class FreeUpConsentE2eTest {
      * near the gallery.
      */
     @Test
-    @RequiresApi(Build.VERSION_CODES.R)
+    // Below API 30 there is no trash and no batch request, so this is
+    // skipped rather than failed: @SdkSuppress reports it honestly as
+    // not applicable, where @RequiresApi would only silence the warning.
+    @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
     fun clearingLeftoverWorkFilesNeedsNoConsentAndTouchesNoMedia() {
         assumeTrue("the rest of this suite is API 30+, so this stays with it", Build.VERSION.SDK_INT >= 30)
         val untouched = MediaFixtures.insertPhoto(

@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -96,6 +97,11 @@ fun OnboardingScreen(vm: AppViewModel) {
     // punishment for correcting something.
     var returnToSummary by rememberSaveable { mutableStateOf(false) }
 
+    // Whether the gallery is fully readable, from the flow the view model
+    // refreshes on resume rather than from a one-shot read that can only ever
+    // be right at the moment the card is first drawn.
+    val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
+
     LaunchedEffect(options.onboardingStep, moved) {
         if (moved) return@LaunchedEffect
         val stored = options.onboardingStep.coerceIn(0, OnboardingSteps.TOTAL - 1)
@@ -125,6 +131,30 @@ fun OnboardingScreen(vm: AppViewModel) {
     fun leaveDetour() {
         returnToSummary = false
     }
+
+    /**
+     * What Back means during setup, for the gesture and the button alike.
+     *
+     * Backing out of the album detour returns to the summary it started
+     * from. Anyone who reached the album list the ordinary way has no such
+     * promise to keep and steps back one card, so a first-timer still cannot
+     * use Back to skip the four steps the detour jumps over.
+     */
+    fun backOneStep() {
+        if (returnToSummary && step == OnboardingSteps.indexOf(Step.ALBUMS)) {
+            returnToSummary = false
+            go(Step.READY)
+            return
+        }
+        leaveDetour()
+        goTo(step - 1)
+    }
+
+    // Without this the system Back gesture finishes the activity from every
+    // card, so someone on step seven who swipes back is thrown out of the app
+    // and has to start it again. On the first card there is nothing behind
+    // setup, so leaving is the right answer and the default is left alone.
+    BackHandler(enabled = step > 0) { backOneStep() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -264,7 +294,8 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             Step.MEDIA -> {
-                val access = Permissions.mediaAccess(context)
+                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshHealth() }
+                val access = mediaAccess
                 StepCard(
                     title = stringResource(R.string.onb1_title),
                     text = stringResource(R.string.onb1_text),
@@ -450,14 +481,23 @@ fun OnboardingScreen(vm: AppViewModel) {
                 }
             }
 
+            // The only step whose primary action leaves the app instead of
+            // moving on, because usage access can only be granted on the
+            // system page. It used to carry three controls - the grant, a
+            // "Skip", and a second filled button that did exactly what Skip
+            // did - so two buttons of equal weight sat side by side and
+            // neither was obviously the way forward. One filled button for
+            // the thing to do, one text button for carrying on afterwards.
             Step.USAGE -> StepCard(
                 title = stringResource(R.string.onb4_title),
                 text = stringResource(R.string.onb4_text),
                 buttonLabel = stringResource(R.string.onb4_grant),
-                onButton = { OemPages.openUsageAccess(context) },
-                onSkip = { go(Step.CLOUD) }
+                onButton = { OemPages.openUsageAccess(context) }
             ) {
-                Button(onClick = { go(Step.CLOUD) }, modifier = Modifier.padding(top = 6.dp)) {
+                TextButton(
+                    onClick = { go(Step.CLOUD) },
+                    modifier = Modifier.padding(top = 6.dp)
+                ) {
                     Text(stringResource(R.string.onb_done_next))
                 }
             }
@@ -665,9 +705,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                     // count is zero on a perfectly normal phone. What the
                     // trial actually needs is an album to read.
                     albumsChosen = includedAlbums > 0,
-                    onChooseAlbums = { returnToSummary = true; go(Step.ALBUMS) },
-                    accessFull = Permissions.mediaAccess(context) ==
-                        Permissions.MediaAccess.FULL
+                    // The warning above already offers this when no album is
+                    // ticked, next to the sentence explaining why. Two
+                    // identical buttons in one card is one too many.
+                    onChooseAlbums = if (includedAlbums == 0 && allAlbums.isNotEmpty()) {
+                        null
+                    } else {
+                        { returnToSummary = true; go(Step.ALBUMS) }
+                    },
+                    accessFull = mediaAccess == Permissions.MediaAccess.FULL
                 )
 
             }
@@ -675,7 +721,7 @@ fun OnboardingScreen(vm: AppViewModel) {
         }
 
         if (step > 0) {
-            TextButton(onClick = { leaveDetour(); goTo(step - 1) }) {
+            TextButton(onClick = { backOneStep() }) {
                 Text(stringResource(R.string.back))
             }
         }

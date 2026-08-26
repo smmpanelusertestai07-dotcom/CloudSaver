@@ -1,5 +1,6 @@
 package app.cloudsaver.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -73,14 +74,49 @@ class SetupFlowTest {
         // otherwise the next confirm would jump a first-time user to the
         // summary over notifications, battery, usage access and the cloud step.
         assertTrue(onb.contains("fun leaveDetour()"))
+        // One rule decides what Back means, and both the gesture and the
+        // button go through it. Before this existed the gesture went nowhere
+        // near the step machinery and simply closed the app.
+        assertTrue("Back must have a handler at all", onb.contains("BackHandler(enabled = step > 0)"))
+        assertTrue("the gesture and the button must agree", onb.contains("BackHandler(enabled = step > 0) { backOneStep() }"))
+        assertTrue("the Back button must use it too", onb.contains("TextButton(onClick = { backOneStep() })"))
+        val back = onb.substringAfter("fun backOneStep()").substringBefore("BackHandler")
+        assertTrue("Back must cancel the detour", back.contains("leaveDetour()"))
+        assertTrue("and otherwise step back one card", back.contains("goTo(step - 1)"))
+        // Backing out of the detour returns to the summary it started from
+        // rather than to the card before the album list, which is four steps
+        // earlier and reads as the app losing its place.
         assertTrue(
-            "Back must cancel the detour",
-            onb.contains("leaveDetour(); goTo(step - 1)")
+            "backing out of the detour must return to the summary",
+            back.contains("if (returnToSummary && step == OnboardingSteps.indexOf(Step.ALBUMS))") &&
+                back.contains("go(Step.READY)")
         )
         assertTrue(
             "so must arriving from the permission step",
             onb.contains("leaveDetour(); go(Step.ALBUMS)")
         )
+    }
+
+    @Test
+    fun `no card offers the same action twice`() {
+        // The summary used to render two identical "Choose albums" buttons a
+        // few dp apart whenever no album was ticked - one beside the warning
+        // that explains why, one inside the trial card - and the usage step
+        // carried two filled buttons that both simply moved on.
+        val onb = src("ui/screens/OnboardingScreen.kt")
+        val ready = onb.substringAfter("Step.READY ->")
+        assertTrue(
+            "the trial card must not repeat the warning's Choose albums button",
+            ready.contains("onChooseAlbums = if (includedAlbums == 0 && allAlbums.isNotEmpty())")
+        )
+        val usage = onb.substringAfter("Step.USAGE ->").substringBefore("Step.CLOUD ->")
+        assertEquals(
+            "the usage step may have exactly one filled button",
+            0,
+            Regex("""\bButton\(onClick""").findAll(usage).count()
+        )
+        assertTrue("and a text button to carry on", usage.contains("TextButton("))
+        assertFalse("Skip and Continue must not both mean the same thing", usage.contains("onSkip"))
     }
 
     @Test
