@@ -790,15 +790,21 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     for (bucket in buckets) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = bucket !in o.excludedBuckets,
+                                    onValueChange = { include ->
+                                        val next = if (include) o.excludedBuckets - bucket
+                                        else o.excludedBuckets + bucket
+                                        vm.setExcludedBuckets(next)
+                                    },
+                                    role = Role.Checkbox
+                                )
                         ) {
                             Checkbox(
                                 checked = bucket !in o.excludedBuckets,
-                                onCheckedChange = { include ->
-                                    val next = if (include) o.excludedBuckets - bucket
-                                    else o.excludedBuckets + bucket
-                                    vm.setExcludedBuckets(next)
-                                }
+                                onCheckedChange = null
                             )
                             Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
                         }

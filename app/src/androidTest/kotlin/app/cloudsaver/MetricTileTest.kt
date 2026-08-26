@@ -8,13 +8,16 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.theme.CloudSaverTheme
-import org.junit.Assert.assertEquals
+import kotlin.math.abs
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -99,8 +102,8 @@ class MetricTileTest {
         val long = compose.onNodeWithContentDescription("Checked: 99,999")
             .assertIsDisplayed()
             .getUnclippedBoundsInRoot()
-        assertEquals(short.right - short.left, long.right - long.left)
-        assertEquals(short.bottom - short.top, long.bottom - long.top)
+        assertSameToThePixel(short.right - short.left, long.right - long.left)
+        assertSameToThePixel(short.bottom - short.top, long.bottom - long.top)
     }
 
     @Test
@@ -127,5 +130,24 @@ class MetricTileTest {
         for ((value, label) in tiles) {
             compose.onNodeWithContentDescription("$label: $value").assertIsDisplayed()
         }
+    }
+
+    /**
+     * Equal, allowing the one pixel that weighted layout cannot split.
+     *
+     * Two `weight(1f)` cells share an odd number of pixels by giving one of
+     * them the remainder: at 420 dpi a 280 dp row is 735 px, so the cells come
+     * out 368 px and 367 px - a real, unavoidable 0.38 dp difference that says
+     * nothing about the tile. Anything wider than a pixel is the bug this test
+     * is looking for.
+     */
+    private fun assertSameToThePixel(a: Dp, b: Dp) {
+        val density = InstrumentationRegistry.getInstrumentation()
+            .targetContext.resources.displayMetrics.density
+        val apart = abs(a.value - b.value) * density
+        assertTrue(
+            "the two cells are $a and $b, ${"%.2f".format(apart)} px apart",
+            apart <= 1.01f
+        )
     }
 }

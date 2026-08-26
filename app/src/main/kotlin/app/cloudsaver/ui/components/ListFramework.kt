@@ -54,6 +54,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -62,6 +63,20 @@ import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.ui.theme.TabularFigures
+
+/**
+ * Handles the instrumented tests use to address parts of the framework.
+ *
+ * A test that reached for the list by "whatever scrolls on this screen" was
+ * one horizontal filter row away from measuring the wrong thing, and rows
+ * below the fold are never composed, so the only trustworthy statement about
+ * what a list holds comes from the list itself rather than from what happens
+ * to be on screen. Tagging the container is what makes that statement
+ * reachable.
+ */
+object ListTags {
+    const val ROWS = "list:rows"
+}
 
 /**
  * The one list framework, used by every screen that shows files.
@@ -514,6 +529,7 @@ fun ListScreenScaffold(
                     Modifier
                         .weight(1f)
                         .padding(horizontal = 16.dp)
+                        .testTag(ListTags.ROWS)
                 ) {
                     content()
                     item("tail") { ListTail(extra = selection.active) }

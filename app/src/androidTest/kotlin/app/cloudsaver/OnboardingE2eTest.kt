@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -259,9 +260,18 @@ class OnboardingE2eTest {
         return albums
     }
 
-    /** The tick box on the row for [album]. */
-    private fun albumTick(albums: List<String>, album: String) =
-        compose.onAllNodes(isToggleable())[albums.indexOf(album)]
+    /**
+     * The tick box on the row for [album], found by the album it belongs to.
+     *
+     * It used to be "the nth toggleable on screen, where n is this album's
+     * place in the list the database returned". That holds only while the two
+     * orders agree and nothing else on the step can be toggled - and when it
+     * stops holding, the failure is an assertion about the wrong row, which
+     * reads as the app losing a tick it never had. The row is one toggleable
+     * carrying the album's name, so it can simply be asked for by name.
+     */
+    private fun albumTick(album: String) =
+        compose.onNode(isToggleable() and hasText(album, substring = true))
 
     // ---- the steps themselves ----------------------------------------------
 
@@ -455,10 +465,10 @@ class OnboardingE2eTest {
         compose.waitUntil(timeoutMillis = STORE_TIMEOUT) {
             stored().excludedBuckets.containsAll(albums)
         }
-        albumTick(albums, fixtureAlbum).assertIsOff()
+        albumTick(fixtureAlbum).assertIsOff()
 
-        albumTick(albums, fixtureAlbum).performScrollTo().performClick()
-        albumTick(albums, fixtureAlbum).assertIsOn()
+        albumTick(fixtureAlbum).performScrollTo().performClick()
+        albumTick(fixtureAlbum).assertIsOn()
         compose.waitUntil(timeoutMillis = STORE_TIMEOUT) {
             fixtureAlbum !in stored().excludedBuckets
         }
@@ -468,14 +478,14 @@ class OnboardingE2eTest {
 
         awaitStep(Step.ALBUMS)
         val afterAlbums = awaitAlbums()
-        albumTick(afterAlbums, fixtureAlbum).assertIsOn()
+        albumTick(fixtureAlbum).assertIsOn()
         assertFalse(
             "the ticked album came back excluded after recreation",
             fixtureAlbum in stored().excludedBuckets
         )
         // And the albums the user left alone stayed left alone.
         for (album in afterAlbums.filter { it != fixtureAlbum }) {
-            albumTick(afterAlbums, album).assertIsOff()
+            albumTick(album).assertIsOff()
         }
     }
 

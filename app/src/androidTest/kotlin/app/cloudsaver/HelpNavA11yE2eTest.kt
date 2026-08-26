@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -123,6 +124,36 @@ class HelpNavA11yE2eTest {
         onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
     }
 
+    /**
+     * We are on the Help list itself, not merely somewhere the word appears.
+     *
+     * Exact text, not a substring: Settings carries a "Help and info" row, so
+     * "contains Help" is true on that screen too, and a Back that landed one
+     * screen too far still read as success here. The real failure then
+     * surfaced later, as a help page that would not open.
+     */
+    private fun ComposeTestRule.assertOnTheHelpList() {
+        val title = hasText(s(R.string.nav_help))
+        waitUntil(timeoutMillis = 10_000) {
+            onAllNodes(title).fetchSemanticsNodes().isNotEmpty()
+        }
+        onAllNodes(title).onFirst().assertIsDisplayed()
+    }
+
+    /**
+     * We opened a help page, rather than merely still being able to see its
+     * name on the list.
+     *
+     * Every page's title is also the link that opens it, so assertOn(page)
+     * alone is true before the tap as well as after it - a tap that failed to
+     * navigate passed here and only broke on the next page in the loop. What
+     * settles it is that the list's own title is gone.
+     */
+    private fun ComposeTestRule.assertOnHelpPage(label: String) {
+        assertOn(label)
+        onAllNodes(hasText(s(R.string.nav_help))).assertCountEquals(0)
+    }
+
     private fun ComposeTestRule.back() {
         device.pressBack()
         waitForIdle()
@@ -131,7 +162,7 @@ class HelpNavA11yE2eTest {
     private fun openHelp() {
         compose.onNodeWithText(s(R.string.nav_options)).performClick()
         compose.open(s(R.string.opt_group_help))
-        compose.assertOn(s(R.string.nav_help))
+        compose.assertOnTheHelpList()
     }
 
     /** Every page behind the Help list, opened and left the way a user would. */
@@ -150,9 +181,9 @@ class HelpNavA11yE2eTest {
             openHelp()
             for (page in pages) {
                 compose.open(s(page))
-                compose.assertOn(s(page))
+                compose.assertOnHelpPage(s(page))
                 compose.back()
-                compose.assertOn(s(R.string.nav_help))
+                compose.assertOnTheHelpList()
             }
             // And Back out of Help itself returns to Settings, not out of the app.
             compose.back()

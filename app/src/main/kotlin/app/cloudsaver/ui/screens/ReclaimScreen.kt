@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -260,10 +262,17 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 if (key.isNotEmpty()) {
                     item("h-$key") {
                         Column(Modifier.padding(top = 16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.toggleable(
+                                    value = rows.all { it.id in selected },
+                                    onValueChange = { rvm.selectGroup(key) },
+                                    role = Role.Checkbox
+                                )
+                            ) {
                                 Checkbox(
                                     checked = rows.all { it.id in selected },
-                                    onCheckedChange = { rvm.selectGroup(key) }
+                                    onCheckedChange = null
                                 )
                                 Text(
                                     pluralStringResource(
@@ -310,14 +319,18 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         // decision: this many gigabytes, for this action.
         AppCard(modifier = Modifier.padding(12.dp)) {
             if (!understood) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = false,
-                        onCheckedChange = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.toggleable(
+                        value = false,
+                        onValueChange = {
                             understood = true
                             vm.setReclaimUnderstood(true)
-                        }
+                        },
+                        role = Role.Checkbox
                     )
+                ) {
+                    Checkbox(checked = false, onCheckedChange = null)
                     Text(
                         stringResource(R.string.reclaim_understand),
                         style = MaterialTheme.typography.bodySmall,

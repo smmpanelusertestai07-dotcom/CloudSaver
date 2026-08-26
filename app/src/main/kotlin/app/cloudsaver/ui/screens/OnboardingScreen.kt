@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -402,18 +404,28 @@ fun OnboardingScreen(vm: AppViewModel) {
                         )
                     }
                     for (bucket in buckets) {
+                        // The whole row is the tick box, not just the box:
+                        // otherwise the tap target is a few millimetres wide
+                        // and a screen reader reads "checkbox, not ticked"
+                        // with no idea which folder it belongs to.
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = bucket !in options.excludedBuckets,
+                                    onValueChange = { include ->
+                                        vm.setExcludedBuckets(
+                                            if (include) options.excludedBuckets - bucket
+                                            else options.excludedBuckets + bucket
+                                        )
+                                    },
+                                    role = Role.Checkbox
+                                )
                         ) {
                             Checkbox(
                                 checked = bucket !in options.excludedBuckets,
-                                onCheckedChange = { include ->
-                                    vm.setExcludedBuckets(
-                                        if (include) options.excludedBuckets - bucket
-                                        else options.excludedBuckets + bucket
-                                    )
-                                }
+                                onCheckedChange = null
                             )
                             Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
                         }

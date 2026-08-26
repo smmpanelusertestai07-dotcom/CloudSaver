@@ -29,6 +29,27 @@ tests_failed=0
 ./gradlew connectedDebugAndroidTest --no-daemon || tests_failed=1
 echo "::endgroup::"
 
+# Gradle prints only "There was N failure(s)" - the names live in the XML
+# report, which used to mean downloading an artifact to learn what broke.
+# Print them here so a red leg is diagnosable from the log alone.
+if [ "$tests_failed" -ne 0 ]; then
+  echo "::group::Which tests failed"
+  python3 - <<'REPORT' || true
+import glob, xml.etree.ElementTree as ET
+for path in sorted(glob.glob(
+        "app/build/outputs/androidTest-results/connected/**/*.xml",
+        recursive=True)):
+    for case in ET.parse(path).getroot().iter("testcase"):
+        for bad in list(case.findall("failure")) + list(case.findall("error")):
+            head = (bad.text or "").strip().splitlines()
+            print("FAILED {}.{}".format(
+                case.get("classname"), case.get("name")))
+            for line in head[:6]:
+                print("       " + line)
+REPORT
+  echo "::endgroup::"
+fi
+
 echo "::group::Collect screenshots and logs"
 # The suite publishes PNGs through MediaStore because adb cannot read
 # /sdcard/Android/data on Android 11+.

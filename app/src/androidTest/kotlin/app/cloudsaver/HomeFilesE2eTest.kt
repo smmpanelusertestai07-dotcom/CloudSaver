@@ -8,24 +8,24 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,6 +40,7 @@ import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
+import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Volumes
@@ -304,10 +305,10 @@ class HomeFilesE2eTest {
         openTab(R.string.nav_files)
         awaitNode(hasText(s(R.string.list_search)), "the Files search field")
         // The rows arrive from a database flow, so the list is waited for
-        // rather than assumed to be there the moment the screen is. It waits
-        // on the first row, not the last: the list is lazy, and the last row
-        // is precisely the one a shorter screen has not composed yet.
-        awaitNode(hasText(LARGE), "the Files list")
+        // rather than assumed to be there the moment the screen is - and it is
+        // the list that is asked, not the screen. Waiting on a row being drawn
+        // means waiting on it fitting, which on a shorter phone it never does.
+        awaitRowInList(LARGE, "the Files list")
     }
 
     private fun openStorage() {
@@ -345,8 +346,26 @@ class HomeFilesE2eTest {
 
     /** Scrolls a node into view inside a scrolling screen and asserts it is there. */
     private fun assertScrolledInto(text: String, what: String) {
+        bringListContentIntoView(hasText(text))
         awaitNode(hasText(text), "$what (\"$text\")")
         compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * If this screen has one of the framework's lists, scrolls it to this
+     * content; if it has not, there is nothing to scroll and nothing to do.
+     *
+     * Rows are lazy, and so is anything the screen puts inside the list - the
+     * "biggest files" summary is the list's own first item, so it scrolls away
+     * with the rows and stops existing. Whatever asserts on such content has to
+     * bring it back first rather than assume the list is still where it was.
+     * A miss is left to the assertion that follows, which knows what it wanted
+     * and can say so.
+     */
+    private fun bringListContentIntoView(matcher: SemanticsMatcher) {
+        if (compose.onAllNodesWithTag(ListTags.ROWS).fetchSemanticsNodes().isEmpty()) return
+        runCatching { compose.onNodeWithTag(ListTags.ROWS).performScrollToNode(matcher) }
+        compose.waitForIdle()
     }
 
     /**
@@ -357,6 +376,7 @@ class HomeFilesE2eTest {
      * test runs - the stable half is asserted rather than the whole line.
      */
     private fun assertShownContaining(text: String, what: String) {
+        bringListContentIntoView(hasText(text, substring = true))
         awaitNode(hasText(text, substring = true), "$what (containing \"$text\")")
         compose.onAllNodes(hasText(text, substring = true))[0]
             .performScrollTo()
@@ -366,6 +386,7 @@ class HomeFilesE2eTest {
     /** One list row carries both its own name and this text. */
     private fun assertRowSays(name: String, text: String, what: String) {
         val matcher = hasText(name) and hasText(text)
+        bringListContentIntoView(matcher)
         awaitNode(matcher, "$what on $name (\"$text\")")
         compose.onNode(matcher).assertIsDisplayed()
     }
@@ -380,7 +401,7 @@ class HomeFilesE2eTest {
     private fun assertTile(labelRes: Int, value: String) {
         val description = "${s(labelRes)}: $value"
         awaitNode(SemanticsMatcher.expectValue(
-            androidx.compose.ui.semantics.SemanticsProperties.ContentDescription,
+            SemanticsProperties.ContentDescription,
             listOf(description)
         ), "the \"$description\" tile")
         compose.onNodeWithContentDescription(description).performScrollTo().assertIsDisplayed()
@@ -393,16 +414,6 @@ class HomeFilesE2eTest {
             .assertCountEquals(0)
     }
 
-    private fun rowTop(name: String): Dp =
-        compose.onNodeWithText(name).getUnclippedBoundsInRoot().top
-
-    private fun rowTopOrNull(name: String): Dp? =
-        if (compose.onAllNodesWithText(name).fetchSemanticsNodes().size == 1) {
-            rowTop(name)
-        } else {
-            null
-        }
-
     /**
      * The named rows appear top to bottom in exactly this order.
      *
@@ -413,47 +424,16 @@ class HomeFilesE2eTest {
     private fun assertOrder(vararg names: String) {
         val expected = names.toList()
         var actual = emptyList<String>()
-        try {
-            compose.waitUntil(timeoutMillis = UI_TIMEOUT) {
-                actual = namesTopToBottom()
-                actual == expected
-            }
-        } catch (e: ComposeTimeoutException) {
-            throw AssertionError(
-                "expected ${expected.joinToString(", ")} top to bottom, " +
-                    "but the list reads ${actual.joinToString(", ")}",
-                e
-            )
-        }
-    }
-
-    /**
-     * The fixture rows in the order the list draws them.
-     *
-     * The list is lazy: rows below the fold are not composed, so they have no
-     * node and no position. Reading all four positions in one go therefore
-     * only works on a screen tall enough to show all four, and reports the
-     * missing ones as though the list were wrong. This scrolls from the top,
-     * collecting what is on screen at each step, until nothing new appears.
-     */
-    private fun namesTopToBottom(): List<String> {
-        val seen = LinkedHashSet<String>()
-        val scrollers = compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes()
-        fun collect() {
-            FIXTURES.mapNotNull { name -> rowTopOrNull(name)?.let { name to it } }
-                .sortedBy { it.second }
-                .forEach { seen += it.first }
-        }
-        collect()
-        if (scrollers.isEmpty()) return seen.toList()
-        repeat(6) {
-            val before = seen.size
-            compose.onAllNodes(hasScrollAction()).onLast().performTouchInput { swipeUp() }
+        val deadline = System.currentTimeMillis() + UI_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
             compose.waitForIdle()
-            collect()
-            if (seen.size == before) return seen.toList()
+            actual = expected.sortedBy { indexInList(it) }
+            if (actual == expected && expected.none { indexInList(it) < 0 }) return
         }
-        return seen.toList()
+        throw AssertionError(
+            "expected ${expected.joinToString(", ")} top to bottom, " +
+                "but the list reads ${actual.joinToString(", ")}"
+        )
     }
 
     /**
@@ -464,19 +444,78 @@ class HomeFilesE2eTest {
      * what it actually found when it never does.
      */
     private fun assertVisibleRows(vararg names: String) {
-        fun present(name: String) =
-            compose.onAllNodesWithText(name).fetchSemanticsNodes().size
-        try {
-            compose.waitUntil(timeoutMillis = UI_TIMEOUT) {
-                FIXTURES.all { present(it) == if (it in names) 1 else 0 }
-            }
-        } catch (e: ComposeTimeoutException) {
-            throw AssertionError(
-                "expected exactly ${names.toList()} in the list, " +
-                    "found ${FIXTURES.filter { present(it) > 0 }}",
-                e
-            )
+        val expected = names.toSet()
+        var actual = emptySet<String>()
+        val deadline = System.currentTimeMillis() + UI_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
+            compose.waitForIdle()
+            actual = FIXTURES.filter { indexInList(it) >= 0 }.toSet()
+            if (actual == expected) return
         }
+        throw AssertionError(
+            "expected exactly ${names.toList()} in the list, found ${actual.toList()}"
+        )
+    }
+
+    /**
+     * Where the list puts this file, or -1 when it is not in the list at all.
+     *
+     * Asking the list rather than the screen is the whole point. A LazyColumn
+     * composes only what fits, so a row below the fold has no node, no text and
+     * no position - reading positions off the screen therefore reported a
+     * four-row list as three rows on any device an inch shorter than the last
+     * one, and scrolling to collect them could step straight over a row.
+     *
+     * Because the rows are keyed by their database id, the list can answer
+     * directly: IndexForKey is the same semantics property performScrollToKey
+     * is built on, it returns -1 for a key the list does not hold, and it needs
+     * nothing to be on screen.
+     */
+    private fun indexInList(name: String): Int {
+        // A list with nothing in it is replaced by its empty state, so there is
+        // no container to ask. That is "no rows", not a broken test.
+        val node = compose.onAllNodesWithTag(ListTags.ROWS).fetchSemanticsNodes()
+            .singleOrNull() ?: return -1
+        val indexForKey = node.config.getOrNull(SemanticsProperties.IndexForKey)
+            ?: throw AssertionError("the list is not keyed, so it cannot be asked what it holds")
+        return indexForKey(row(name).id)
+    }
+
+    /** Waits until the list holds this row, whether or not it is on screen. */
+    private fun awaitRowInList(name: String, what: String) {
+        val deadline = System.currentTimeMillis() + UI_TIMEOUT
+        while (System.currentTimeMillis() < deadline) {
+            compose.waitForIdle()
+            if (indexInList(name) >= 0) return
+        }
+        throw AssertionError("$what never appeared")
+    }
+
+    /**
+     * Taps a row, having first scrolled the list to it.
+     *
+     * Tapping a node the list has scrolled past reaches Compose as "Failed to
+     * inject touch input": the node exists in the tree but its centre is off
+     * screen, so there is nowhere to put the finger. Scrolling first is what
+     * every one of these taps was missing.
+     */
+    private fun tapRow(name: String) {
+        scrollToRow(name)
+        compose.onNodeWithText(name).performClick()
+        compose.waitForIdle()
+    }
+
+    /** Long-presses a row, having first scrolled the list to it. */
+    private fun longPressRow(name: String) {
+        scrollToRow(name)
+        compose.onNodeWithText(name).performTouchInput { longClick() }
+        compose.waitForIdle()
+    }
+
+    /** Brings a row on screen, and fails loudly when the list does not hold it. */
+    private fun scrollToRow(name: String) {
+        compose.onNodeWithTag(ListTags.ROWS).performScrollToNode(hasText(name))
+        compose.waitForIdle()
     }
 
     // ---- filter and sort sheets -------------------------------------------
@@ -736,7 +775,6 @@ class HomeFilesE2eTest {
 
         compose.onNodeWithText(s(R.string.list_reset_filters)).performClick()
         compose.waitForIdle()
-        awaitNode(hasText(SMALL), "the list after resetting the filters")
         assertVisibleRows(SMALL, MEDIUM, LARGE, CLIP)
     }
 
@@ -793,7 +831,8 @@ class HomeFilesE2eTest {
         assertOrder(bySaving[0], bySaving[1])
         assertTrue(
             "an optimised file must sort above one that saved nothing",
-            rowTop(bySaving[1]) < rowTop(SMALL) && rowTop(bySaving[1]) < rowTop(CLIP)
+            indexInList(bySaving[1]) < indexInList(SMALL) &&
+                indexInList(bySaving[1]) < indexInList(CLIP)
         )
 
         chooseFilter(R.string.filter_sort, s(R.string.list_sort_newest))
@@ -806,7 +845,7 @@ class HomeFilesE2eTest {
         openFiles()
 
         // Long-press starts a selection, exactly as every list in the app does.
-        compose.onNodeWithText(SMALL).performTouchInput { longClick() }
+        longPressRow(SMALL)
         assertShown(s(R.string.list_selected_count, 1), "the selection bar")
         assertShown(
             s(R.string.list_select_all_matching, FIXTURES.size),
@@ -815,7 +854,7 @@ class HomeFilesE2eTest {
 
         // Add one already-optimised row: the bar must now say it will act on
         // one of the two, and name the one it is leaving alone.
-        compose.onNodeWithText(MEDIUM).performClick()
+        tapRow(MEDIUM)
         assertShown(s(R.string.list_selected_count, 2), "the two-row selection bar")
         val twoBytes = row(SMALL).sizeBytes + row(MEDIUM).sizeBytes
         assertShown(
@@ -857,7 +896,7 @@ class HomeFilesE2eTest {
         openFiles()
 
         // A queued file can be brought forward, or skipped for good.
-        compose.onNodeWithText(SMALL).performClick()
+        tapRow(SMALL)
         assertShown(s(R.string.detail_evidence), "the verification row")
         assertShown(s(R.string.detail_original), "the original-size row")
         compose.onAllNodesWithText(s(R.string.detail_optimise_first)).assertCountEquals(1)
@@ -867,7 +906,7 @@ class HomeFilesE2eTest {
 
         // An optimised copy is offered neither: the work is done, and the
         // option could not undo it. It gains the two size rows instead.
-        compose.onNodeWithText(MEDIUM).performClick()
+        tapRow(MEDIUM)
         assertShown(s(R.string.detail_copy), "the copy-size row")
         assertShown(s(R.string.detail_saved), "the saved row")
         assertAbsent(
@@ -891,7 +930,7 @@ class HomeFilesE2eTest {
         launchHome()
         openFiles()
 
-        compose.onNodeWithText(SMALL).performClick()
+        tapRow(SMALL)
         assertShown(s(R.string.never_optimise), "the skip action")
         compose.onNodeWithText(s(R.string.never_optimise)).performClick()
 
