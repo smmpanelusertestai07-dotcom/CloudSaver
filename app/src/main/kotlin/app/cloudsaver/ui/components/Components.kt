@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -72,7 +73,17 @@ import kotlinx.coroutines.launch
  * Everything animates with the same spring so the app feels like one piece.
  */
 
-private val CardShape = RoundedCornerShape(24.dp)
+/**
+ * The one card outline in the app.
+ *
+ * No longer private to this file. A row that adds its own press gesture has to
+ * clip itself to this shape before it adds one, or the ripple is painted as a
+ * square that overhangs the rounded corner - visible on every tap of a file
+ * row, and the sort of thing that makes an app look unfinished without anyone
+ * being able to say why. The shape has to be reachable from the files those
+ * rows live in, rather than copied there as a second 24 dp that can drift.
+ */
+internal val CardShape = RoundedCornerShape(24.dp)
 
 /**
  * The text size at which two things stop being able to share one line.
@@ -250,6 +261,14 @@ fun MetricTile(
 ) {
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
+    // The floor grows with the text, because what has to fit inside a tile is
+    // text - the same reasoning, and the same 200% cap, as the width floor the
+    // grid below uses to decide how many tiles share a row. A bare 126 dp
+    // stops meaning anything at a large font: the number and its label both
+    // grow past it, the tile grows with them, and every tile in the row ends
+    // up at whatever height its own label happened to need, which is the
+    // ragged grid the floor exists to prevent.
+    val floor = TileHeight * LocalDensity.current.fontScale.coerceIn(1f, 2f)
     var box = modifier
         // A minimum, not a fixed height. The reason the height was pinned -
         // a count going 9 to 10 must not make the grid jump - is already
@@ -258,7 +277,7 @@ fun MetricTile(
         // of "In upload folder" need more than the 126 dp box and the clip on
         // the next line sliced the second one away. The label is the half
         // that says what the number counts.
-        .heightIn(min = TileHeight)
+        .heightIn(min = floor)
         .clip(RoundedCornerShape(20.dp))
         .background(if (highlight) scheme.secondaryContainer else scheme.surfaceContainer)
         .border(
@@ -295,12 +314,7 @@ fun MetricTile(
         }
         AnimatedNumber(
             value = value,
-            style = MaterialTheme.typography.headlineSmall.copy(
-                // Tabular figures: every digit the same width, so 9 becoming
-                // 10 changes the number without moving the grid.
-                fontFeatureSettings = "tnum",
-                fontWeight = FontWeight.SemiBold
-            ),
+            style = tileFigureStyle(),
             color = if (highlight) scheme.onSecondaryContainer else scheme.primary
         )
         Text(
@@ -326,6 +340,39 @@ fun MetricTile(
             modifier = Modifier.padding(top = 6.dp)
         )
     }
+}
+
+/**
+ * The size of the count inside a progress tile.
+ *
+ * The number is drawn on one line by design - it must not reflow as it counts
+ * up - which leaves it the one piece of the tile with nowhere to go when the
+ * reader turns their font up. Two tiles across a 320 dp phone give each about
+ * 150 dp, and at the largest accessibility size a five-figure count needs more
+ * than that: it came out as "99,9..." on the very tile whose whole job is to
+ * say how many. A shortened number says nothing at all.
+ *
+ * So the figure still grows with the reader's setting, just not past the point
+ * where it stops fitting in its own cell - the same trade, and the same 140%
+ * threshold, as the one big figure in the hero banner on Home. The label under
+ * it wraps and scales in full, as everything else on the tile does.
+ */
+@Composable
+private fun tileFigureStyle(): androidx.compose.ui.text.TextStyle {
+    val base = MaterialTheme.typography.headlineSmall.copy(
+        // Tabular figures: every digit the same width, so 9 becoming 10
+        // changes the number without moving the grid.
+        fontFeatureSettings = "tnum",
+        fontWeight = FontWeight.SemiBold
+    )
+    val cap = 1.4f
+    val scale = LocalDensity.current.fontScale
+    if (scale <= cap) return base
+    val factor = cap / scale
+    return base.copy(
+        fontSize = base.fontSize * factor,
+        lineHeight = base.lineHeight * factor
+    )
 }
 
 /**
@@ -398,13 +445,18 @@ private val TileMinWidth = 72.dp
 private val TileGap = 10.dp
 
 /**
- * The height every progress tile starts at, and never goes below.
+ * The height every progress tile starts at, and never goes below, at an
+ * ordinary text size.
  *
  * A floor rather than a fixed size. It is generous enough for a big number
  * and two lines of label at ordinary font sizes, so the grid is even in the
  * normal case; when a label genuinely needs more - a long one at a large font
  * scale - the tile grows and takes its row with it, rather than clipping the
  * line that says what the number counts.
+ *
+ * The tile scales this by the reader's font setting, capped at 200%, so the
+ * floor keeps meaning the same thing - "room for a number and two lines of
+ * label" - at every text size rather than only at the default one.
  */
 val TileHeight = 126.dp
 
@@ -515,11 +567,24 @@ fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     AppCard(content = content)
 }
 
+/**
+ * How wide a status pill's words may get before the end of them is shortened.
+ *
+ * A cliff edge rather than a target, and it grows with the text size so it
+ * holds roughly the same number of characters however large the reader's font
+ * is - the same rule the filter chips on the list screens follow. Inside a
+ * row that wraps, the words simply wrap and this never comes into play; it is
+ * here for the row that does not, where an unbounded label is one long chip
+ * that pushes every other chip off the side of the phone.
+ */
+private val StatusChipLabelMax = 200.dp
+
 /** Tappable status pill (needs attention). */
 @Composable
 fun StatusChip(text: String, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
+    val labelMax = StatusChipLabelMax * LocalDensity.current.fontScale.coerceIn(1f, 2f)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -538,7 +603,16 @@ fun StatusChip(text: String, onClick: () -> Unit) {
             text = text,
             style = MaterialTheme.typography.labelMedium,
             color = scheme.onTertiaryContainer,
-            modifier = Modifier.padding(start = 8.dp)
+            // Two lines and then an ellipsis. These chips say what is wrong -
+            // "Cloud app not set up", "Battery restricted" - and with no limit
+            // at all a long one in another language ran down the card as a
+            // column of single words; with a limit and no overflow it would be
+            // cut mid-letter instead, which is worse than saying less.
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .widthIn(max = labelMax)
         )
     }
 }
@@ -856,26 +930,45 @@ fun BrandMark(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) 
 
 @Composable
 fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 40.dp, horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        BrandMark(size = 64.dp)
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            color = LocalContentColor.current,
-            modifier = Modifier.padding(top = 16.dp)
-        )
-        Text(
-            body,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 6.dp)
-        )
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        // A share of the room rather than a flat 40 dp above and below.
+        //
+        // Forty was chosen against a phone held upright with plenty of screen
+        // left over. Sideways, or on a small phone at a large font, the same
+        // eighty dp of nothing is most of what the empty state has to work
+        // with, and it pushes the sentence explaining what to do next below
+        // the fold of a screen that has nothing else on it at all.
+        //
+        // Where the height is known this takes a proportion of it, so the
+        // breathing space stays in proportion to the screen it is drawn on.
+        // Every caller today puts this inside something that scrolls, which
+        // measures its children with no height limit at all, so there is
+        // nothing to take a share of - those fall back to the app's ordinary
+        // gap between groups, which is what this space is: a gap, not a
+        // feature.
+        val pad = (if (constraints.hasBoundedHeight) maxHeight * 0.08f else Dimens.GroupGap)
+            .coerceIn(Dimens.CardGap, Dimens.GroupGap)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = pad, horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            BrandMark(size = 64.dp)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                color = LocalContentColor.current,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
     }
 }
 

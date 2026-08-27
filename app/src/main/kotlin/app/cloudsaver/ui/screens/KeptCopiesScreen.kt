@@ -4,9 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -14,11 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -30,8 +24,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -57,29 +51,6 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.Formats
-
-@Composable
-private fun Page(
-    nav: NavHostController,
-    title: String,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
-) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.padding(top = 8.dp, start = 4.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { nav.popBackStack() }) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.back)
-                )
-            }
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        }
-        content()
-    }
-}
 
 /**
  * The light copies the user chose to keep.
@@ -254,7 +225,20 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
                 // a large font its lower half simply sits past the edge, and
                 // the buttons are pushed off with it.
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(stringResource(R.string.kept_remove_body))
+                    // This is the sheet that removes a whole selection, and it
+                    // was handed the one-file wording verbatim: someone about
+                    // to remove forty light copies read "this file" and "the
+                    // light copy", in the singular, on the last screen before
+                    // it happened. It reads as a warning about one thing, and
+                    // the whole point of it is to say what is being given up.
+                    // Same promise, same limits, worded for the number of
+                    // files actually going.
+                    Text(
+                        pluralStringResource(
+                            R.plurals.kept_remove_body_many,
+                            chosen.size
+                        )
+                    )
                 }
             },
             confirmButton = {

@@ -399,6 +399,14 @@
     <string name="kept_remove">Remove the light copy</string>
     <string name="kept_remove_title">Remove this light copy?</string>
     <string name="kept_remove_body">Your cloud still has this file. Removing the light copy only frees phone space. It will not be optimised or uploaded again.</string>
+    <!-- The same warning for a whole selection. The singular line above was
+         shown word for word when several files were being removed at once,
+         so the sheet said "this file" and "the light copy" over a batch of
+         forty. Same promise, same limits, counted properly. -->
+    <plurals name="kept_remove_body_many">
+        <item quantity="one">Your cloud still has this file. Removing the light copy only frees phone space. It will not be optimised or uploaded again.</item>
+        <item quantity="other">Your cloud still has these files. Removing the light copies only frees phone space. They will not be optimised or uploaded again.</item>
+    </plurals>
 
     <!-- prepare for uninstall -->
     <plurals name="uninstall_move_done">

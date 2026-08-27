@@ -3,7 +3,6 @@ package app.cloudsaver.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -222,12 +221,22 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(top = 14.dp)
                 )
-                Row(
+                // These five chips used to sit in a row that scrolled
+                // sideways, and a sideways scroll inside a vertical list is a
+                // gesture nobody goes looking for: there is no edge, no arrow
+                // and no half-cut chip to say anything more exists. At a large
+                // font on a narrow phone that put "Everything eligible" and
+                // "Clear" off the right-hand side with nothing on screen
+                // hinting at them, so the two chips that undo a mistaken
+                // selection were the two that could not be found. Wrapping
+                // puts the overflow on the next line instead, at every width
+                // and font size, exactly as the health chips on Home do.
+                FlowRow(
                     Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
                         .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     for (gb in listOf(1L, 5L, 10L)) {
                         AssistChip(
@@ -552,17 +561,33 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 // on a small screen at a large font its lower half - the
                 // warning and what will happen - was simply off the display.
                 Column(Modifier.verticalScroll(rememberScrollState())) {
+                    // Every number in this sheet is counted from the rows the
+                    // batch will actually touch, and only those.
+                    //
+                    // The batch acts on the selection narrowed by whatever
+                    // filters the list is showing - that is what start() takes
+                    // - but this sheet counted every tick ever made, filtered
+                    // or not. So someone who ticked twelve files and then
+                    // narrowed to a single album was shown "12 files, 3.4 GB",
+                    // agreed to it, and had five removed. The gap ran through
+                    // the whole sheet: the count, the proof tally under it and
+                    // the list of cloud apps that keep the copies were all
+                    // drawn from files that were never going anywhere. A
+                    // consent screen that overstates what it is about to do is
+                    // worse than no consent screen, because the person has now
+                    // been told a number and believes it. The space figure was
+                    // already counted the right way; the rest now matches it.
                     Text(
                         stringResource(
                             R.string.reclaim_confirm_body,
-                            Formats.count(selected.size),
+                            Formats.count(selectedEntries.size),
                             Formats.bytes(freed)
                         )
                     )
                     // What the proof actually is, counted. "Trust us" is not
                     // an acceptable last screen before deleting photographs.
                     val tally = ProofLine.tally(
-                        entries.filter { it.row.id in selected }.map {
+                        selectedEntries.map {
                             ProofLine.forItem(
                                 Evidence.parse(it.row.evidence),
                                 isDuplicateExtra = it.row.duplicateOf != null
@@ -583,8 +608,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     // Z1.4: what will still exist afterwards, and who holds
                     // it. Proof belongs to the app the file was sent to, so
                     // the sheet names that app even if the selection changed.
-                    val holders = entries
-                        .filter { it.row.id in selected }
+                    val holders = selectedEntries
                         .mapNotNull { it.row.batchId?.let { id -> holdingApps[id] } }
                         .distinct()
                         .map { pkg -> CloudApps.ALL.firstOrNull { pkg in it.packages }?.label ?: pkg }
