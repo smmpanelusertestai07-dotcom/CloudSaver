@@ -201,26 +201,32 @@ fun FilesScreen(vm: AppViewModel) {
                     // large font that is well under what it needs, and unscrolled its
                     // lower half - including the button that clears the search - sat
                     // past the bottom edge of the screen.
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        when {
-                            query.isNotBlank() -> SearchEmptyState(
-                                term = query,
-                                onClear = { vm.search.value = "" }
-                            )
-                            anyFilter -> FilteredEmptyState(
-                                onReset = {
-                                    type = ListFilters.Type.ALL
-                                    sizeBand = ListFilters.Size.ANY
-                                    album = null
-                                    vm.filesState.value = null
-                                }
-                            )
-                            else -> EmptyState(
-                                title = stringResource(R.string.files_empty_title),
-                                body = stringResource(R.string.files_empty)
-                            )
-                        }
+                    // The scroll belongs to the scaffold's empty branch, which is the
+                    // only place that knows how much height the title, the search box
+                    // and the chips above have already taken. A second one here is
+                    // measured by the first with no ceiling at all, and a scrolling
+                    // container asked how tall it would like to be throws rather than
+                    // answers - which is what crashed Files and Free up space the
+                    // moment a filter or a search left nothing to show.
+                    when {
+                        query.isNotBlank() -> SearchEmptyState(
+                            term = query,
+                            onClear = { vm.search.value = "" }
+                        )
+                        anyFilter -> FilteredEmptyState(
+                            onReset = {
+                                type = ListFilters.Type.ALL
+                                sizeBand = ListFilters.Size.ANY
+                                album = null
+                                vm.filesState.value = null
+                            }
+                        )
+                        else -> EmptyState(
+                            title = stringResource(R.string.files_empty_title),
+                            body = stringResource(R.string.files_empty)
+                        )
                     }
+                
                 },
                 actionBar = {
                     // CC6: a mixed selection acts only on what the action can touch,

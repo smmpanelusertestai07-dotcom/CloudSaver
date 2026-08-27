@@ -118,22 +118,28 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
             // phone on its side at a large font. It scrolls in its own right
             // so the offer under the message - clear the search, reset the
             // filters - is reachable rather than past the bottom edge.
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                when {
-                    rows.isNotEmpty() && query.isNotBlank() ->
-                        SearchEmptyState(term = query, onClear = { query = "" })
-                    rows.isNotEmpty() -> FilteredEmptyState(
-                        onReset = {
-                            type = ListFilters.Type.ALL
-                            album = null
-                        }
-                    )
-                    else -> EmptyState(
-                        title = stringResource(R.string.kept_empty_title),
-                        body = stringResource(R.string.kept_empty_body)
-                    )
-                }
+            // The scroll belongs to the scaffold's empty branch, which is the
+            // only place that knows how much height the title, the search box
+            // and the chips above have already taken. A second one here is
+            // measured by the first with no ceiling at all, and a scrolling
+            // container asked how tall it would like to be throws rather than
+            // answers - which is what crashed Files and Free up space the
+            // moment a filter or a search left nothing to show.
+            when {
+                rows.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                rows.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        album = null
+                    }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.kept_empty_title),
+                    body = stringResource(R.string.kept_empty_body)
+                )
             }
+        
         },
         intro = {
             // This is drawn above the search box and outside the list, so

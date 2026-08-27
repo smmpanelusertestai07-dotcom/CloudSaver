@@ -211,23 +211,29 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             // sideways at a large font that is a couple of hundred dp, which
             // is less than this state needs, so it scrolls rather than being
             // cut off at the bottom of the glass.
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                when {
-                    groups.isNotEmpty() && query.isNotBlank() ->
-                        SearchEmptyState(term = query, onClear = { query = "" })
-                    groups.isNotEmpty() -> FilteredEmptyState(
-                        onReset = {
-                            type = ListFilters.Type.ALL
-                            size = ListFilters.Size.ANY
-                            album = null
-                        }
-                    )
-                    else -> EmptyState(
-                        title = stringResource(R.string.dupes_empty_title),
-                        body = stringResource(R.string.dupes_empty_body)
-                    )
-                }
+            // The scroll belongs to the scaffold's empty branch, which is the
+            // only place that knows how much height the title, the search box
+            // and the chips above have already taken. A second one here is
+            // measured by the first with no ceiling at all, and a scrolling
+            // container asked how tall it would like to be throws rather than
+            // answers - which is what crashed Files and Free up space the
+            // moment a filter or a search left nothing to show.
+            when {
+                groups.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                groups.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        size = ListFilters.Size.ANY
+                        album = null
+                    }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.dupes_empty_title),
+                    body = stringResource(R.string.dupes_empty_body)
+                )
             }
+        
         },
         actionBar = {
             ListActionBar(
@@ -598,23 +604,29 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             // at a large font there is not enough height left below the
             // filters to draw this state, and without a scroll its lower half
             // is simply past the bottom edge.
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                when {
-                    all.isNotEmpty() && query.isNotBlank() ->
-                        SearchEmptyState(term = query, onClear = { query = "" })
-                    all.isNotEmpty() -> FilteredEmptyState(
-                        onReset = {
-                            type = ListFilters.Type.ALL
-                            sizeBand = ListFilters.Size.ANY
-                            album = null
-                        }
-                    )
-                    else -> EmptyState(
-                        title = stringResource(R.string.biggest_empty_title),
-                        body = stringResource(R.string.biggest_empty_body)
-                    )
-                }
+            // The scroll belongs to the scaffold's empty branch, which is the
+            // only place that knows how much height the title, the search box
+            // and the chips above have already taken. A second one here is
+            // measured by the first with no ceiling at all, and a scrolling
+            // container asked how tall it would like to be throws rather than
+            // answers - which is what crashed Files and Free up space the
+            // moment a filter or a search left nothing to show.
+            when {
+                all.isNotEmpty() && query.isNotBlank() ->
+                    SearchEmptyState(term = query, onClear = { query = "" })
+                all.isNotEmpty() -> FilteredEmptyState(
+                    onReset = {
+                        type = ListFilters.Type.ALL
+                        sizeBand = ListFilters.Size.ANY
+                        album = null
+                    }
+                )
+                else -> EmptyState(
+                    title = stringResource(R.string.biggest_empty_title),
+                    body = stringResource(R.string.biggest_empty_body)
+                )
             }
+        
         },
         actionBar = {
             // Removal needs proof for every file chosen. Rather than failing

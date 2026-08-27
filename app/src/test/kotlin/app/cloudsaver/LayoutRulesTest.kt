@@ -248,16 +248,25 @@ class LayoutRulesTest {
     fun everyScreenCanBeScrolledToItsEnd() {
         val scrollers = listOf("verticalScroll", "LazyColumn", "LazyVerticalGrid", "LazyRow")
         val offenders = mutableListOf<String>()
-        for ((path, raw) in sources()) {
-            if (!path.startsWith("ui/screens/")) continue
+        // The page frames anywhere in the app: a composable whose own body
+        // scrolls, so anything handing its content to one is scrollable. They
+        // are collected across every file rather than per screen, because the
+        // frame that matters most - ListScreenScaffold, which five screens
+        // hand their rows to - lives in components rather than beside them.
+        // Collected per file, those five screens only counted as scrollable
+        // while they happened to hold a scroll of their own somewhere, which
+        // is how a screen could lose its last one and this rule stay quiet.
+        val frames = mutableSetOf<String>()
+        for ((_, raw) in sources()) {
             val text = code(raw)
-            // The page frames in this file: a composable whose own body
-            // scrolls, so anything handing its content to it is scrollable.
-            val frames = mutableSetOf<String>()
             Regex("\\bfun\\s+([A-Z][A-Za-z0-9_]*)\\s*\\(").findAll(text).forEach { m ->
                 val body = bodyOf(text, m.range.last)
                 if (scrollers.any { body.contains(it) }) frames += m.groupValues[1]
             }
+        }
+        for ((path, raw) in sources()) {
+            if (!path.startsWith("ui/screens/")) continue
+            val text = code(raw)
             Regex("\\bfun\\s+([A-Za-z0-9_]*Screen)\\s*\\(").findAll(text).forEach { m ->
                 val name = m.groupValues[1]
                 val body = bodyOf(text, m.range.last)
@@ -580,6 +589,46 @@ class LayoutRulesTest {
         assertTrue(
             "a sheet measures its content with no maximum height, so a list " +
                 "inside one has to be told where to stop: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- two people solving the same problem ---------------------------------
+
+    /**
+     * The empty state a screen hands to the list framework must not scroll.
+     *
+     * The framework's own empty branch already scrolls, because it is the only
+     * place that knows how much height the title, the search box and the chips
+     * above it have taken. A screen that adds a second scroll inside that one
+     * is measured by it with no ceiling at all, and a scrolling container asked
+     * how tall it would like to be throws rather than answers.
+     *
+     * This is what a shared framework is for, and it is worth a rule because
+     * nothing about either half looks wrong on its own: both were written to
+     * fix the same real complaint - that on a phone held sideways at a large
+     * font, the lower half of the empty state sat past the bottom edge - and
+     * each was right until the other existed. Files and Free up space crashed
+     * on every Android version the moment a filter or a search left nothing
+     * to show.
+     */
+    @Test
+    fun anEmptyStateHandedToTheFrameworkDoesNotScrollItself() {
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            if (!path.startsWith("ui/screens/")) continue
+            val text = code(raw)
+            Regex("emptyContent = \\{").findAll(text).forEach { m ->
+                val body = blockAt(text, m.range.last)
+                if (body.contains("verticalScroll(")) {
+                    offenders += "$path:${lineOf(text, m.range.first)}"
+                }
+            }
+        }
+        assertTrue(
+            "the framework's empty branch is what scrolls; a second scroll " +
+                "inside it is measured with no maximum height and throws: " +
+                "$offenders",
             offenders.isEmpty()
         )
     }
