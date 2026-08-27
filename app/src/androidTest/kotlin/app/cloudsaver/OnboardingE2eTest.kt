@@ -191,6 +191,36 @@ class OnboardingE2eTest {
         )
     }
 
+    /**
+     * Presses the card's own Back until [target] is the card on screen.
+     *
+     * Reads where setup is off the screen rather than out of the store. The
+     * store is written asynchronously, so it lags the card by a frame or two;
+     * a loop that consults it presses Back again while the previous press is
+     * still settling, walks straight past the step it wanted and out of the
+     * app altogether - which is how this arrived as "the album card never
+     * appeared" against a screenshot of the launcher.
+     *
+     * Each press then waits for the card to actually change before the next
+     * one, so the walk cannot outrun the screen it is walking.
+     */
+    private fun backUntil(target: Step) {
+        var guard = 0
+        while (visibleStep() != target) {
+            check(guard++ < OnboardingSteps.TOTAL) {
+                "Back never reached $target - it is showing ${visibleStep()}"
+            }
+            val before = visibleStep()
+            tap(s(R.string.back))
+            compose.waitUntil(timeoutMillis = STEP_TIMEOUT) { visibleStep() != before }
+        }
+    }
+
+    /** Which card is on screen, by the position counter each one prints. */
+    private fun visibleStep(): Step? = OnboardingSteps.ALL.firstOrNull { step ->
+        compose.onAllNodesWithText(counterOf(step)).fetchSemanticsNodes().isNotEmpty()
+    }
+
     private fun tap(label: String) {
         compose.onNodeWithText(label).performScrollTo().performClick()
         compose.waitForIdle()
@@ -471,12 +501,7 @@ class OnboardingE2eTest {
 
         // Reaching the album card the ordinary way now: it is a plain step
         // again, with no promise to return to the summary.
-        var guard = 0
-        while (OnboardingSteps.at(stored().onboardingStep) != Step.ALBUMS) {
-            check(guard++ < OnboardingSteps.TOTAL) { "Back never reached the album step" }
-            tap(s(R.string.back))
-            compose.waitForIdle()
-        }
+        backUntil(Step.ALBUMS)
         awaitStep(Step.ALBUMS)
         compose.onNodeWithText(s(R.string.onb_albums_confirm)).assertExists()
         compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertDoesNotExist()
