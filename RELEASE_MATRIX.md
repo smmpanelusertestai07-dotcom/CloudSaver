@@ -54,14 +54,20 @@ source for this release, including the rows that were already marked Done.
   screenshotted and re-run in minutes. Every test failure photographs the
   screen it failed on, which is what identified the most recent one as a
   system ANR dialog covering the app rather than anything the app had done.
-- **What is NOT verified for this release, stated plainly.** The CI job is a
-  matrix over API 29 through 36, and it is not running: GitHub reports
-  `startup_failure` with no jobs and no logs on a workflow file that has not
-  changed and is valid, which points at the account's Actions allowance rather
-  than at the project. Until it runs again, **API 31 to 36 are unverified for
-  this release.** API 29 and 30 are covered by the local emulators above. 29
-  has no media trash and no batch delete request; those tests report as not
-  applicable there rather than pretending to have run.
+- **Eight Android versions, every release the app installs on**: the CI job is
+  a matrix over API 29 through 36, and it runs on every push. 29 has no media
+  trash and no batch delete request; those tests report as not applicable there
+  rather than pretending to have run.
+- **What the matrix caught that a single emulator could not.** Six tests failed
+  on every CI run while passing locally, all for one reason: they asked the
+  screen about a list that only draws what fits. Whether a given row is below
+  the fold depends on the height of the image the job happens to use, so a wait
+  on that row's text passes on one emulator and can only time out on another.
+  Membership now comes from the list's own IndexForKey, and scrolling goes
+  through the list with performScrollToNode - performScrollTo does not support
+  lazy lists at all (issuetracker 178483889) and fails outright on one. None of
+  the six was a fault in the app; every one was a test that assumed the screen
+  it happened to run on.
 - **One device at a time.** Two software emulators running instrumentation on
   four cores starve SystemUI past its own watchdog, and the ANR dialog that
   follows takes focus from every test after it - reporting as the app failing
