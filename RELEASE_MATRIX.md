@@ -18,7 +18,7 @@ source for this release, including the rows that were already marked Done.
 | R10 | Self-heal: unsent copy remade twice then skipped with a reason, sent copy counts as proof, folder recreated, snapshots rebuilt daily, foreign files flagged and never touched | Done | `EvidenceRules.onCopyMissing` (RESEND → GIVE_UP at two), anchor rule in `pacedRelease`, `dailySnapshot` + `sharedTargetsPresent`, bounded so a very large gallery cannot silently break snapshot writing while every evidenced row is still kept whole, `MaintainEngine.foreignFiles` counts and reports without a single write path to those files; UserMistakeShieldTest asserts the pass stays inert |
 | R11 | SMART scheduling with every wait state explained; Optimise now bypasses the schedule, never the safety limits | Done | `RunDecider.decide` (charge/battery/saver/thermal/screen/budget) as a pure function with RunDeciderTest; Home prints the current `Wait` in plain words with its reset; `optimise_now_override_*` strings name what the button will and will not skip |
 | R12 | Survives reboot, update, clear-data, reinstall, phone change, SD removal, partial access and OS updates | Done | WorkManager `ensure` on every launch; `StartupRecovery` (crash handler → snapshot restore → purge → schedule) with restore now once per install; Room migrations 1..6 with MigrationTest; `Volumes.probeWritable` gates the SD option and the releaser verifies the landing volume; `Permissions.mediaAccess` blocks scanning under partial access and shows waiting text instead of a number; PermanenceTest, MediaAccessTest, VolumeRulesTest |
-| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 31 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme |
+| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 31 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme; and the app now fits the phone it is on rather than the phone it was written on - every screen walked at 320 dp and at 200% text, in landscape, behind a notch and in a mirrored language: chips and button pairs wrap instead of running off the edge, text that shares a row carries a weight so it shrinks rather than pushing its neighbour out, the tile grid takes its column count from the width it actually has, the headline figure stops growing where it would stop fitting, the list header travels with the list instead of taking the screen in landscape, and nothing holding words is pinned to a height; LayoutRulesTest holds all thirteen rules |
 | R14 | Help: FAQ, "If something is deleted", Quality explained with live preset compare, Privacy, About, Activity, Logs, crash card | Done | `HelpScreens.kt` — 14 FAQ answers, the six-condition deleted map, the live preset comparison, six privacy blocks, About with the requirement line, permissions statement and technical facts; `ActivityScreen` (30 days, plain sentences); `HelpLogsScreen`; HelpContentTest |
 | R15 | The manual set is exactly: albums, cloud app, Optimise now, Pause, the Free up actions, per-item actions, Save/Restore | Done | Nothing else in the app starts, stops or removes anything: the scheduler, the scanner, the stager, the releaser, evidence, snapshots and cleanup all run themselves; `RowActions` decides per-item offers from state; the trial is the one extra tap and it only optimises three photos locally |
 | R16 | Permanently refused features are absent | Done | ProductBoundariesTest scans every source file with comments stripped for similar-photo detection, blur or quality scoring, automatic deletion, cloud recommendations or prices, and re-optimise-everything, and holds the worker set to jobs that do work rather than remind; the only mention of any refused feature in the codebase is the comment explaining the refusal |
@@ -32,9 +32,24 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **445 unit tests** on the JVM, covering the pure rules and auditing the
+- **476 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
-- **97 instrumented tests across 15 classes**, run on real emulators against a
+- **Thirteen layout rules read off the source text**, in
+  `LayoutRulesTest`. Every one of them is here because it broke
+  something real on a phone that was not the phone it was written on: a
+  line limit with nothing to say when it is reached, a dialog whose
+  buttons are past the bottom edge, a fixed height around words, a
+  screen that cannot be scrolled to its end, left and right written
+  where start and end were meant, text cut instead of shortened, a
+  layout decided from the size of the window rather than the space the
+  thing has, a system bar height written down as a number, a figure that
+  grows with the font until it no longer fits, a field with no room for
+  the keyboard, and a lazy list given no ceiling - which is not a
+  cosmetic fault but a crash as the screen opens, and which eight
+  emulator jobs across eight Android versions all reported at once while
+  every unit test stayed green. Each is a property of the source, so it
+  costs a second on every build rather than an emulator matrix.
+- **100 instrumented tests across 20 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -48,12 +63,10 @@ source for this release, including the rows that were already marked Done.
   IndexForKey, taps scroll to their row first, and lazy content is brought back
   into view before anything asserts on it - which is what stopped a four-row
   list reading as three rows on any phone shorter than the last one.
-- **Locally booted emulators, because CI is currently down.** The suite runs
-  on Android 10 (API 29) and Android 11 (API 30) images under software
-  emulation, with no KVM available, so a failure can be reproduced,
-  screenshotted and re-run in minutes. Every test failure photographs the
-  screen it failed on, which is what identified the most recent one as a
-  system ANR dialog covering the app rather than anything the app had done.
+- **Every test failure photographs the screen it failed on.** That is what
+  identified one as a system ANR dialog covering the app rather than anything
+  the app had done, and what turned the lazy-list crash from eight red jobs
+  into one line of source.
 - **Eight Android versions, every release the app installs on**: the CI job is
   a matrix over API 29 through 36, and it runs on every push. 29 has no media
   trash and no batch delete request; those tests report as not applicable there
