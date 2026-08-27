@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -163,6 +164,14 @@ class ListSelection internal constructor(initial: Set<Long>) {
     }
 }
 
+/**
+ * How much of the screen a filter sheet's own list may take before it
+ * scrolls inside itself rather than growing. Matches the album list in
+ * setup and the folder list in settings, so the three lists that live
+ * inside something scrollable all stop in the same place.
+ */
+private val FilterSheetMaxHeight = 360.dp
+
 @Composable
 fun rememberListSelection(): ListSelection =
     rememberSaveable(saver = ListSelection.Saver) { ListSelection(emptySet()) }
@@ -246,8 +255,20 @@ fun ListFilterRow(
             // Scrollable: this sheet lists every album on the phone, and a
             // gallery with a dozen folders already runs past the bottom of a
             // small screen before the font is enlarged at all.
+            //
+            // The ceiling is not decoration. A bottom sheet measures what it
+            // holds with no maximum height at all - it is asking how tall the
+            // content wants to be so it can size itself - and a scrolling
+            // container asked that question does not shrink, it throws:
+            // "Vertically scrollable component was measured with an infinity
+            // maximum height constraints". Every filter chip on every list
+            // opened this sheet, so every one of them crashed the screen it
+            // was on. The sheet itself never grows past the screen, so the
+            // ceiling only ever decides where this list stops and the sheet's
+            // own drag takes over.
             Column(
                 Modifier
+                    .heightIn(max = FilterSheetMaxHeight)
                     .padding(horizontal = 8.dp, vertical = 4.dp)
                     .verticalScroll(rememberScrollState())
             ) {

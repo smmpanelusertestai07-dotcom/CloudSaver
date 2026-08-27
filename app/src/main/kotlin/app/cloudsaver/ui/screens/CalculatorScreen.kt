@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import android.os.Build
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -124,7 +125,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             // landscape phone with the keyboard up has around two hundred dp
             // of height left. Without this the field being typed into sits
             // underneath the keyboard and the answer sits under that.
-            .imePadding()
+            .keyboardPadding()
             // The title scrolls with everything else rather than being pinned
             // above it. Pinned, it kept its full height out of a viewport a
             // keyboard had already cut to a strip - at the largest font the
@@ -572,3 +573,21 @@ private fun calcHeroFigureStyle(): androidx.compose.ui.text.TextStyle {
         lineHeight = MetricTextStyle.lineHeight * factor
     )
 }
+
+/**
+ * Room for the keyboard, made exactly once.
+ *
+ * The keyboard is a window inset from Android 11 (API 30); that is the
+ * version that added the type, and it is what `imePadding` reads. Below it
+ * there is no such inset to read, and the room is made the old way instead -
+ * the manifest asks for `adjustResize` and the system shrinks the whole
+ * window before this screen is measured at all.
+ *
+ * Adding padding on top of that shrink takes the keyboard's height out of the
+ * page twice. On Android 10 that left a strip so short the answer card was cut
+ * between its label and its figure: the words "Fits about" were on screen and
+ * the number they introduce was not - which is how the emulator suite found
+ * it, on API 29 alone, while every later version passed.
+ */
+private fun Modifier.keyboardPadding(): Modifier =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) imePadding() else this

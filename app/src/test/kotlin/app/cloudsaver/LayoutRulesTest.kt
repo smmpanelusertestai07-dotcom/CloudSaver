@@ -548,4 +548,39 @@ class LayoutRulesTest {
             offenders.isEmpty()
         )
     }
+
+    // ---- a sheet asks how tall its contents want to be -----------------------
+
+    /**
+     * Nothing that scrolls may sit unbounded inside a bottom sheet.
+     *
+     * A sheet sizes itself to what it holds, so it measures its content with no
+     * maximum height - and a scrolling container asked how tall it would like to
+     * be throws rather than answers. Every filter chip on every list opened the
+     * one sheet in this app, so a scrolling column added inside it crashed Files,
+     * Free up space, Kept copies and Activity alike, on all eight Android
+     * versions at once.
+     *
+     * The ceiling is what turns the question into one the list can answer.
+     */
+    @Test
+    fun nothingInsideASheetScrollsWithoutACeiling() {
+        val bounded = listOf("heightIn(", "weight(", "fillMaxHeight", "requiredHeight")
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            val text = code(raw)
+            Regex("\\bModalBottomSheet\\(").findAll(text).forEach { m ->
+                val body = blockAt(text, m.range.last)
+                val scrolls = body.contains("verticalScroll(") || body.contains("LazyColumn(")
+                if (scrolls && bounded.none { body.contains(it) }) {
+                    offenders += "$path:${lineOf(text, m.range.first)}"
+                }
+            }
+        }
+        assertTrue(
+            "a sheet measures its content with no maximum height, so a list " +
+                "inside one has to be told where to stop: $offenders",
+            offenders.isEmpty()
+        )
+    }
 }
