@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -119,6 +120,14 @@ fun FileRow(
     val card = if (onLongPress != null) {
         modifier
             .padding(vertical = 4.dp)
+            // Clipped to the card's own outline before the gesture is added,
+            // not after. The press ripple is drawn by whatever added the
+            // gesture, so applied first it painted a square of colour that
+            // overhung all four rounded corners - on every tap of every file,
+            // on the screen people spend the most time on. AppCard clips
+            // itself, but that happens further down the chain and so cannot
+            // reach a ripple that was already put above it.
+            .clip(CardShape)
             .combinedClickable(
                 onClick = { onClick?.invoke() },
                 onLongClick = onLongPress

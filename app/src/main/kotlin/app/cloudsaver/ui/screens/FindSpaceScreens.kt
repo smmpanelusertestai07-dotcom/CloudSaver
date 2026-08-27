@@ -3,7 +3,6 @@ package app.cloudsaver.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,13 +14,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,11 +65,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import app.cloudsaver.ui.components.FileRow
-import app.cloudsaver.ui.components.ListSearchField
-import app.cloudsaver.ui.components.ListTail
 import app.cloudsaver.core.logic.ProofLine
 import app.cloudsaver.core.logic.Projection
 import app.cloudsaver.ui.Routes
+import kotlinx.coroutines.delay
 
 /** A page header with a back arrow, shared by the Find space screens. */
 @Composable
@@ -498,9 +493,29 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
     var sort by rememberSaveable { mutableStateOf(BiggestSort.LARGEST) }
     val selection = rememberListSelection()
 
+    // This screen used to hand the scaffold loading = false no matter what,
+    // which meant that for the whole of the database read it drew the "No big
+    // files" state - the app telling someone whose gallery is full of 4K video
+    // that they have nothing large, and then quietly replacing that with a
+    // list of their largest files a moment later. Contradicting the person's
+    // own phone is about the worst first impression a screen can make.
+    //
+    // The view model has no signal to borrow: loadLargest() starts a coroutine
+    // of its own, replaces rvm.largest whenever the read comes back, and
+    // returns immediately with nothing to wait on. So the wait is bounded
+    // here instead. While nothing has arrived and the settle window has not
+    // passed, the scaffold shows its skeleton rows; the instant rows arrive
+    // the list is no longer empty and the flag stops mattering, and a gallery
+    // that really has no files reaches its empty state a moment later. On a
+    // second visit rvm.largest is already populated, so there are no skeletons
+    // at all.
+    var settled by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         rvm.loadLargest()
         vm.refreshProfile()
+        delay(LARGEST_SETTLE_MS)
+        settled = true
     }
 
     val state = ListFilters.State(type, sizeBand, album, query)
@@ -576,7 +591,7 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             sizeBand = ListFilters.Size.ANY
             album = null
         },
-        loading = false,
+        loading = !settled && all.isEmpty(),
         isEmpty = rows.isEmpty(),
         emptyContent = {
             // Scrollable for the same reason the list is: sideways on a phone
@@ -700,6 +715,17 @@ private fun app.cloudsaver.data.db.ItemRow.toCandidate() = ListFilters.Candidate
 )
 
 private enum class BiggestSort { LARGEST, OLDEST, SAVED }
+
+/**
+ * How long Biggest files waits before it believes a gallery is really empty.
+ *
+ * Reading the fifty largest rows out of the local database takes a few
+ * milliseconds, so in practice the rows are there long before this elapses and
+ * nobody sees the skeletons for more than a blink. It exists only so that a
+ * phone with genuinely nothing stored does not sit on skeleton rows forever
+ * waiting for a list that is never coming.
+ */
+private const val LARGEST_SETTLE_MS = 1_200L
 
 private enum class DupeSort { SPACE, COPIES, OLDEST }
 

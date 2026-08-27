@@ -574,26 +574,26 @@ fun ListScreenScaffold(
 
             intro?.invoke()
 
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                ListSearchField(query, onQuery, Modifier.padding(top = 4.dp))
-                if (filters.isNotEmpty() || sort != null) {
-                    ListFilterRow(filters, sort, Modifier.padding(top = 10.dp))
-                }
-            }
-
             when {
-                // Both of these sit under a header, a search box and a row of
-                // chips that have already taken most of a short screen. Left
-                // to their natural height they simply ran off the bottom in
-                // landscape, or at a large text size, with nothing to scroll -
-                // and an empty state that cannot be read to the end is a
-                // screen that looks broken rather than empty. They get the
-                // height that is left and scroll inside it.
+                // The search box and the chips travel with whatever is under
+                // them rather than sitting above it. They used to be pinned,
+                // and pinned they are between 150 and 200 dp of a screen that
+                // in landscape at the largest text size has barely 300 to
+                // give: the list they belong to was left as a sliver two rows
+                // deep, and the empty state under them ran off the bottom
+                // edge with nothing to scroll - a screen that looks broken
+                // rather than empty. Nothing is lost by letting them move,
+                // because a search box is wanted at the moment a search
+                // starts, which is the moment the list is at the top anyway.
                 loading -> Column(
                     Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    ListHeader(
+                        query, onQuery, filters, sort,
+                        Modifier.padding(horizontal = 16.dp)
+                    )
                     ListSkeleton(modifier = Modifier.padding(16.dp))
                 }
                 isEmpty -> Column(
@@ -601,6 +601,10 @@ fun ListScreenScaffold(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    ListHeader(
+                        query, onQuery, filters, sort,
+                        Modifier.padding(horizontal = 16.dp)
+                    )
                     emptyContent()
                 }
                 else -> LazyColumn(
@@ -609,6 +613,14 @@ fun ListScreenScaffold(
                         .padding(horizontal = 16.dp)
                         .testTag(ListTags.ROWS)
                 ) {
+                    // The list's own first row, exactly as Reclaim already
+                    // carries its search and its chips. Keyed, so the chip
+                    // row's sideways scroll position survives being scrolled
+                    // off the top and back on again; and it is one item ahead
+                    // of the rows rather than part of them, so anything that
+                    // asks the list where a file is still gets an answer, and
+                    // still gets them in the same order.
+                    item("header") { ListHeader(query, onQuery, filters, sort) }
                     content()
                     item("tail") { ListTail(extra = selection.active) }
                 }
@@ -625,6 +637,33 @@ fun ListScreenScaffold(
             ) {
                 actionBar?.invoke()
             }
+        }
+    }
+}
+
+/**
+ * The search box and the filter chips, drawn as one piece.
+ *
+ * One definition rather than two, because they are drawn in two places - as
+ * the first row of the list when there are rows, and at the top of the
+ * scrolling area when there are none. The second is not an afterthought: a
+ * filter that matches nothing empties the list, and if the chips lived only
+ * inside the list they would vanish at exactly the moment someone needs them
+ * to undo the filter that emptied it. Same for the search box and a term that
+ * matched nothing.
+ */
+@Composable
+private fun ListHeader(
+    query: String,
+    onQuery: (String) -> Unit,
+    filters: List<ListFilter>,
+    sort: ListFilter?,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier) {
+        ListSearchField(query, onQuery, Modifier.padding(top = 4.dp))
+        if (filters.isNotEmpty() || sort != null) {
+            ListFilterRow(filters, sort, Modifier.padding(top = 10.dp))
         }
     }
 }

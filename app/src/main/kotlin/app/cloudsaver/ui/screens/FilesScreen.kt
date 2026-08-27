@@ -5,28 +5,22 @@ import android.net.Uri
 import android.util.Size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -132,139 +126,153 @@ fun FilesScreen(vm: AppViewModel) {
     val selectedBytes = remember(chosen) { chosen.sumOf { it.sizeBytes } }
     val anyFilter = statusFilter != null || !state.isDefault
 
-    Box(Modifier.fillMaxSize()) {
     val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
 
-    ListScreenScaffold(
-        title = stringResource(R.string.nav_files),
-        onBack = {},
-        showBack = false,
-        query = query,
-        onQuery = { vm.search.value = it },
-        filters = listOf(
-            typeFilter(type) { type = it },
-            statusFilterChip(statusFilter) { vm.filesState.value = it },
-            albumFilter(album, albums) { album = it },
-            sizeFilter(sizeBand) { sizeBand = it }
-        ),
-        sort = ListFilter(
-            name = stringResource(R.string.filter_sort),
-            valueLabel = null,
-            options = listOf(
-                ListOption(
-                    stringResource(R.string.list_sort_newest),
-                    sort == AppViewModel.FilesSort.NEWEST
-                ) { vm.filesSort.value = AppViewModel.FilesSort.NEWEST },
-                ListOption(
-                    stringResource(R.string.list_sort_largest),
-                    sort == AppViewModel.FilesSort.LARGEST
-                ) { vm.filesSort.value = AppViewModel.FilesSort.LARGEST },
-                ListOption(
-                    stringResource(R.string.list_sort_saved),
-                    sort == AppViewModel.FilesSort.SAVED
-                ) { vm.filesSort.value = AppViewModel.FilesSort.SAVED }
-            )
-        ),
-        selection = selection,
-        matchingCount = rows.size,
-        onSelectAll = { selection.selectAll(rows.map { it.id }) },
-        intro = if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
-            {
-                // The list below shows only what was scanned under full
-                // access; nothing new arrives until access is full again.
-                androidx.compose.material3.AssistChip(
-                    onClick = { OemPages.openAppInfo(appContext) },
-                    label = { Text(stringResource(R.string.partial_chip)) },
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-        } else {
-            null
-        },
-        onResetFilters = {
-            type = ListFilters.Type.ALL
-            sizeBand = ListFilters.Size.ANY
-            album = null
-            vm.filesState.value = null
-        },
-        loading = false,
-        isEmpty = rows.isEmpty(),
-        emptyContent = {
-            // The empty state gets whatever height is left below the title,
-            // the search box and the filter row. Sideways on a phone at a
-            // large font that is well under what it needs, and unscrolled its
-            // lower half - including the button that clears the search - sat
-            // past the bottom edge of the screen.
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                when {
-                    query.isNotBlank() -> SearchEmptyState(
-                        term = query,
-                        onClear = { vm.search.value = "" }
+    // Stacked, not overlaid. The scaffold draws its own selection action bar
+    // pinned to the bottom of the screen, and the undo snackbar used to be
+    // aligned to the bottom of the very same box - so the two landed on the
+    // same strip of glass. Skip a file, long-press another to start a
+    // selection, and "Never optimise this file - Undo" and the optimise bar
+    // were drawn on top of one another: whichever won, the other's buttons
+    // were unreachable, and the one being covered was the one with ten
+    // seconds to live. Giving the snackbar its own row under the scaffold
+    // means the bar can only ever sit above it. The row costs nothing while
+    // there is no snackbar, because an empty SnackbarHost has no height.
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) {
+            ListScreenScaffold(
+                title = stringResource(R.string.nav_files),
+                onBack = {},
+                showBack = false,
+                query = query,
+                onQuery = { vm.search.value = it },
+                filters = listOf(
+                    typeFilter(type) { type = it },
+                    statusFilterChip(statusFilter) { vm.filesState.value = it },
+                    albumFilter(album, albums) { album = it },
+                    sizeFilter(sizeBand) { sizeBand = it }
+                ),
+                sort = ListFilter(
+                    name = stringResource(R.string.filter_sort),
+                    valueLabel = null,
+                    options = listOf(
+                        ListOption(
+                            stringResource(R.string.list_sort_newest),
+                            sort == AppViewModel.FilesSort.NEWEST
+                        ) { vm.filesSort.value = AppViewModel.FilesSort.NEWEST },
+                        ListOption(
+                            stringResource(R.string.list_sort_largest),
+                            sort == AppViewModel.FilesSort.LARGEST
+                        ) { vm.filesSort.value = AppViewModel.FilesSort.LARGEST },
+                        ListOption(
+                            stringResource(R.string.list_sort_saved),
+                            sort == AppViewModel.FilesSort.SAVED
+                        ) { vm.filesSort.value = AppViewModel.FilesSort.SAVED }
                     )
-                    anyFilter -> FilteredEmptyState(
-                        onReset = {
-                            type = ListFilters.Type.ALL
-                            sizeBand = ListFilters.Size.ANY
-                            album = null
-                            vm.filesState.value = null
+                ),
+                selection = selection,
+                matchingCount = rows.size,
+                onSelectAll = { selection.selectAll(rows.map { it.id }) },
+                intro = if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
+                    {
+                        // The list below shows only what was scanned under full
+                        // access; nothing new arrives until access is full again.
+                        androidx.compose.material3.AssistChip(
+                            onClick = { OemPages.openAppInfo(appContext) },
+                            label = { Text(stringResource(R.string.partial_chip)) },
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
+                } else {
+                    null
+                },
+                onResetFilters = {
+                    type = ListFilters.Type.ALL
+                    sizeBand = ListFilters.Size.ANY
+                    album = null
+                    vm.filesState.value = null
+                },
+                loading = false,
+                isEmpty = rows.isEmpty(),
+                emptyContent = {
+                    // The empty state gets whatever height is left below the title,
+                    // the search box and the filter row. Sideways on a phone at a
+                    // large font that is well under what it needs, and unscrolled its
+                    // lower half - including the button that clears the search - sat
+                    // past the bottom edge of the screen.
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        when {
+                            query.isNotBlank() -> SearchEmptyState(
+                                term = query,
+                                onClear = { vm.search.value = "" }
+                            )
+                            anyFilter -> FilteredEmptyState(
+                                onReset = {
+                                    type = ListFilters.Type.ALL
+                                    sizeBand = ListFilters.Size.ANY
+                                    album = null
+                                    vm.filesState.value = null
+                                }
+                            )
+                            else -> EmptyState(
+                                title = stringResource(R.string.files_empty_title),
+                                body = stringResource(R.string.files_empty)
+                            )
                         }
+                    }
+                },
+                actionBar = {
+                    // CC6: a mixed selection acts only on what the action can touch,
+                    // and says so. Five selected with two already optimised reads
+                    // "Optimise 3 of 5" with the skip named - acting on all five
+                    // would redo finished work, and acting on three silently reads
+                    // as the app losing count. At zero eligible the action is absent.
+                    val split = RowActions.splitForOptimise(
+                        chosen.map { it.id to it.toActionRow() }
                     )
-                    else -> EmptyState(
-                        title = stringResource(R.string.files_empty_title),
-                        body = stringResource(R.string.files_empty)
+                    if (split.eligible > 0) {
+                        ListActionBar(
+                            // frees = false: this bar's action optimises. It writes a
+                            // smaller copy and leaves the original where it is, so
+                            // nothing is freed here.
+                            summary = selectionSummary(
+                                selection.size, Formats.bytes(selectedBytes), frees = false
+                            ),
+                            actionLabel = if (split.skipped > 0) {
+                                stringResource(
+                                    R.string.bulk_optimise_of, split.eligible, chosen.size
+                                )
+                            } else {
+                                stringResource(R.string.list_optimise_these_first)
+                            },
+                            note = if (split.skipped > 0) {
+                                pluralStringResource(
+                                    R.plurals.bulk_skipped_note, split.skipped, split.skipped
+                                )
+                            } else {
+                                null
+                            },
+                            onAction = {
+                                vm.optimiseNow(split.eligibleIds)
+                                selection.clear()
+                            }
+                        )
+                    }
+                }
+            ) {
+                items(rows, key = { it.id }) { row ->
+                    FilesRow(
+                        row = row,
+                        selected = if (selection.active) row.id in selection else null,
+                        onToggle = { selection.toggle(row.id) },
+                        onOpenDetail = { detail = row },
+                        onLongPress = { selection.toggle(row.id) }
                     )
                 }
             }
-        },
-        actionBar = {
-            // CC6: a mixed selection acts only on what the action can touch,
-            // and says so. Five selected with two already optimised reads
-            // "Optimise 3 of 5" with the skip named - acting on all five
-            // would redo finished work, and acting on three silently reads
-            // as the app losing count. At zero eligible the action is absent.
-            val split = RowActions.splitForOptimise(
-                chosen.map { it.id to it.toActionRow() }
-            )
-            if (split.eligible > 0) {
-                ListActionBar(
-                    // frees = false: this bar's action optimises. It writes a
-                    // smaller copy and leaves the original where it is, so
-                    // nothing is freed here.
-                    summary = selectionSummary(
-                        selection.size, Formats.bytes(selectedBytes), frees = false
-                    ),
-                    actionLabel = if (split.skipped > 0) {
-                        stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
-                    } else {
-                        stringResource(R.string.list_optimise_these_first)
-                    },
-                    note = if (split.skipped > 0) {
-                        pluralStringResource(
-                            R.plurals.bulk_skipped_note, split.skipped, split.skipped
-                        )
-                    } else {
-                        null
-                    },
-                    onAction = {
-                        vm.optimiseNow(split.eligibleIds)
-                        selection.clear()
-                    }
-                )
-            }
         }
-    ) {
-        items(rows, key = { it.id }) { row ->
-            FilesRow(
-                row = row,
-                selected = if (selection.active) row.id in selection else null,
-                onToggle = { selection.toggle(row.id) },
-                onOpenDetail = { detail = row },
-                onLongPress = { selection.toggle(row.id) }
-            )
-        }
-    }
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+        SnackbarHost(snackbar)
     }
 
     openError?.let { message ->
@@ -438,11 +446,6 @@ fun FilesScreen(vm: AppViewModel) {
             }
         )
     }
-}
-
-@Composable
-private fun FilesChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
 
 /**
