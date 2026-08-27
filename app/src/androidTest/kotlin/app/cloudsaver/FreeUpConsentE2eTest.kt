@@ -668,11 +668,35 @@ class FreeUpConsentE2eTest {
         )
         assertNotNull(
             "Android's own consent dialog never showed a \"$what\" button " +
-                "(looked for $resId, then for $label)",
+                "(looked for $resId, then for $label).\n" + whatIsOnScreen(),
             byLabel
         )
         return byLabel!!
     }
+
+    /**
+     * Everything clickable that is actually on the screen, named.
+     *
+     * "The button was not found" is true of a missing button, a renamed one and
+     * a screen showing something else entirely - and those want three different
+     * fixes. This ran for an hour against a system ANR dialog sitting over the
+     * app, which the message called a missing deny button. Listing what IS
+     * there answers, in the failure itself, which of the three it was.
+     */
+    private fun whatIsOnScreen(): String = runCatching {
+        val focus = device.currentPackageName ?: "?"
+        val nodes = device.findObjects(By.clickable(true))
+            .take(20)
+            .joinToString("\n") { node ->
+                val id = runCatching { node.resourceName }.getOrNull() ?: "-"
+                val text = runCatching { node.text }.getOrNull()
+                    ?: runCatching { node.contentDescription }.getOrNull()
+                    ?: ""
+                "    $id  \"$text\""
+            }
+        "  the foreground package is $focus, and what is clickable on it:\n" +
+            (nodes.ifBlank { "    (nothing at all - the screen is not this app's)" })
+    }.getOrElse { "  (the screen could not be read: ${it.javaClass.simpleName})" }
 
     private fun awaitSystemConsentGone() {
         assertTrue(

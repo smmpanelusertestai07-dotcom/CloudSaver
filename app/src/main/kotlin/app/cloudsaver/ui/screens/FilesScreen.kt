@@ -266,7 +266,13 @@ fun FilesScreen(vm: AppViewModel) {
             confirmButton = {
                 TextButton(onClick = { openError = null }) { Text(stringResource(R.string.ok)) }
             },
-            text = { Text(message) }
+            text = {
+                // The message comes from whatever refused to open the file,
+                // so its length is not this app's to predict.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(message)
+                }
+            }
         )
     }
 

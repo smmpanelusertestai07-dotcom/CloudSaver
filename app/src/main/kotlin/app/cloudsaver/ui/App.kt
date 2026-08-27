@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -340,6 +341,18 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
                 )
             }
         },
-        label = { Text(stringResource(labelRes)) }
+        label = {
+            // Material fixes the bar at 80 dp. A label that wraps to a second
+            // line is not made room for, it is cut off half way down the
+            // letters - so it truncates instead, which at least reads as a
+            // word. The four labels fit on every phone at every font size the
+            // system offers; this is the floor under that, not a substitute
+            // for keeping them short.
+            Text(
+                stringResource(labelRes),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     )
 }

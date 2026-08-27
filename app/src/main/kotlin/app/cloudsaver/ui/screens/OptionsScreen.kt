@@ -742,7 +742,10 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             },
             title = { Text(stringResource(R.string.output_switch_title)) },
             text = {
-                Column {
+                // Two full folder paths and two paragraphs. Folder paths wrap
+                // rather than truncate - a half-shown path looks right and is
+                // not - so this is the body most able to outgrow its dialog.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(stringResource(R.string.output_switch_body))
                     Spacer(Modifier.height(10.dp))
                     FolderPaths(target)

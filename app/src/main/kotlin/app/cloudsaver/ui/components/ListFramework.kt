@@ -55,6 +55,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
@@ -285,15 +286,30 @@ fun SelectionTopBar(
             stringResource(R.string.list_selected_count, selectedCount),
             style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        // The button carries no weight of its own, so it measures at whatever
+        // its label wants and the count is left with the remainder - which on
+        // a narrow phone at a large font is not enough to say how many are
+        // selected. Half the row each, and neither can starve the other.
+        val buttonShare = Modifier.weight(1f, fill = false)
         if (selectedCount < matchingCount) {
-            TextButton(onClick = onSelectAll) {
-                Text(stringResource(R.string.list_select_all_matching, matchingCount))
+            TextButton(onClick = onSelectAll, modifier = buttonShare) {
+                Text(
+                    stringResource(R.string.list_select_all_matching, matchingCount),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         } else {
-            TextButton(onClick = onDeselectAll) {
-                Text(stringResource(R.string.list_deselect_all))
+            TextButton(onClick = onDeselectAll, modifier = buttonShare) {
+                Text(
+                    stringResource(R.string.list_deselect_all),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }
@@ -344,12 +360,22 @@ fun ListActionBar(
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
+                    // Two lines, because this sentence says how many files and
+                    // how much space - and half of it is no use. The button
+                    // beside it is capped at half the row for the same reason.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
+                val actionShare = Modifier.weight(1f, fill = false)
                 if (blockedReason != null && narrowLabel != null && onNarrow != null) {
-                    TextButton(onClick = onNarrow) { Text(narrowLabel) }
+                    TextButton(onClick = onNarrow, modifier = actionShare) {
+                        Text(narrowLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 } else {
-                    Button(onClick = onAction) { Text(actionLabel) }
+                    Button(onClick = onAction, modifier = actionShare) {
+                        Text(actionLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
