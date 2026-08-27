@@ -3,7 +3,9 @@ package app.cloudsaver.ui.components
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -49,7 +51,11 @@ fun PasswordDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
+                // Scrollable, because a dialog's text slot is not. On a
+                // 320x568 screen at font scale 2.0 the bottom of this content
+                // sits past the edge with no way to reach it, and the buttons
+                // are pushed off with it.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(body, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = password,

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
@@ -216,7 +217,14 @@ fun ListFilterRow(
     open?.let { filter ->
         val state = rememberModalBottomSheetState()
         ModalBottomSheet(onDismissRequest = { open = null }, sheetState = state) {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            // Scrollable: this sheet lists every album on the phone, and a
+            // gallery with a dozen folders already runs past the bottom of a
+            // small screen before the font is enlarged at all.
+            Column(
+                Modifier
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     filter.name,
                     style = MaterialTheme.typography.titleMedium,

@@ -49,6 +49,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
@@ -427,7 +428,12 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 checked = bucket !in options.excludedBuckets,
                                 onCheckedChange = null
                             )
-                            Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
+                            Text(
+                                bucket,
+                                maxLines = 1,
+                                overflow = TextOverflow.MiddleEllipsis,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                     // Folders that already hold another app's compressed
@@ -445,7 +451,8 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 bucket,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1
+                                maxLines = 1,
+                                overflow = TextOverflow.MiddleEllipsis
                             )
                         }
                     }

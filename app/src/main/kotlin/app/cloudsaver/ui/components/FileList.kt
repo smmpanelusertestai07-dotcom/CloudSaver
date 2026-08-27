@@ -149,12 +149,26 @@ fun FileRow(
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        // No line limit. This is the sentence the whole
+                        // evidence feature rests on - "Your cloud app uploaded
+                        // this much data right after we added the file" - and
+                        // two lines cut it mid-word with no ellipsis on any
+                        // phone. The row has no fixed height, so it wraps and
+                        // the card grows, which is what Reclaim already does
+                        // with the same text.
                     )
                 }
             }
-            Column(horizontalAlignment = Alignment.End) {
+            // A share of the row, not a fixed 120 dp. Bounding the note in dp
+            // stopped it emptying the name off the row, but dp does not grow
+            // with the font: at a large scale "about 459 KB after optimising"
+            // was cut back to "about 459 KB af..." and lost the words that say
+            // what the number means. A weight lets both sides scale together.
+            Column(
+                modifier = Modifier.weight(0.45f, fill = false),
+                horizontalAlignment = Alignment.End
+            ) {
                 Text(
                     size,
                     style = MaterialTheme.typography.titleMedium.merge(TabularFigures)
@@ -162,18 +176,10 @@ fun FileRow(
                 trailingNote?.let {
                     Text(
                         it,
-                        // Bounded on purpose. This column carries no weight, so
-                        // it measures at whatever its longest line wants and the
-                        // name's weight(1f) is left with the remainder - which a
-                        // long note takes down to nothing. "about 459 KB after
-                        // optimising" is long enough to have emptied the name off
-                        // every row of Largest files, a screen whose whole job is
-                        // telling you which file is which. The name comes first.
-                        modifier = Modifier.widthIn(max = 120.dp),
                         style = MaterialTheme.typography.labelSmall.merge(TabularFigures),
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.End,
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

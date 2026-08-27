@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +54,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.cloudsaver.ui.theme.BrandIndigo
@@ -202,6 +204,10 @@ fun AnimatedNumber(
         color = color,
         maxLines = 1,
         softWrap = false,
+        // Without this the default is TextOverflow.Clip, so a number too wide
+        // for its cell simply lost its end - and half a number is worse than
+        // an obviously shortened one.
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
     )
 }
@@ -227,7 +233,14 @@ fun MetricTile(
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
     var box = modifier
-        .height(TileHeight)
+        // A minimum, not a fixed height. The reason the height was pinned -
+        // a count going 9 to 10 must not make the grid jump - is already
+        // handled by the tabular figures on the number below, and pinning it
+        // meant the label was cut off instead: at a large font the two lines
+        // of "In upload folder" need more than the 126 dp box and the clip on
+        // the next line sliced the second one away. The label is the half
+        // that says what the number counts.
+        .heightIn(min = TileHeight)
         .clip(RoundedCornerShape(20.dp))
         .background(if (highlight) scheme.secondaryContainer else scheme.surfaceContainer)
         .border(
@@ -279,6 +292,7 @@ fun MetricTile(
             // One line for a single word, which has nowhere to wrap and would
             // otherwise be broken in half; two for a label that can wrap.
             maxLines = if (label.trim().contains(' ')) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
             // A long label must shrink rather than push the number out of
             // the fixed cell.
             autoSize = TextAutoSize.StepBased(
@@ -312,23 +326,29 @@ fun MetricGrid(tiles: List<@Composable (Modifier) -> Unit>) {
         Row(
             Modifier
                 .fillMaxWidth()
+                // IntrinsicSize.Min so a tile that had to grow for its label
+                // lifts the others with it. Without this the tiles are all
+                // still the same width but no longer the same height, which
+                // is the ragged grid the fixed height was there to prevent.
+                .height(IntrinsicSize.Min)
                 .padding(bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            for (tile in row) tile(Modifier.weight(1f))
+            for (tile in row) tile(Modifier.weight(1f).fillMaxHeight())
             // Keep the last row's cells the same width as every other row's.
             repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }
 
-/** Every progress tile is this tall, whatever it holds. */
 /**
- * Tall enough for a big number and two lines of label.
+ * The height every progress tile starts at, and never goes below.
  *
- * Fixed, so a count going from 9 to 10 cannot make the grid jump - and
- * generous, because the label shrinks to fit the width but has nowhere to go
- * if the cell is too short for its second line.
+ * A floor rather than a fixed size. It is generous enough for a big number
+ * and two lines of label at ordinary font sizes, so the grid is even in the
+ * normal case; when a label genuinely needs more - a long one at a large font
+ * scale - the tile grows and takes its row with it, rather than clipping the
+ * line that says what the number counts.
  */
 val TileHeight = 126.dp
 
@@ -373,7 +393,12 @@ fun SettingRow(
                 .weight(1f)
                 .padding(start = 16.dp, end = 16.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+            Text(
+            title,
+            style = MaterialTheme.typography.bodyLarge,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
             description?.let {
                 Text(
                     it,
@@ -388,7 +413,8 @@ fun SettingRow(
                 it,
                 style = MaterialTheme.typography.labelLarge,
                 color = scheme.primary,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
         trailing?.invoke()
@@ -523,6 +549,7 @@ fun SegmentedChoice(
                     color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     maxLines = if (label.trim().contains(' ')) 2 else 1,
+                    overflow = TextOverflow.Ellipsis,
                     autoSize = TextAutoSize.StepBased(
                         minFontSize = 9.sp,
                         maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
@@ -591,6 +618,7 @@ fun StateBadge(text: String, tone: BadgeTone, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.labelSmall,
         color = foreground,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
         modifier = modifier
             .clip(CircleShape)
             .background(background)
@@ -713,7 +741,11 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
             path,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
+            // No line limit on purpose. This path is here to be read and typed
+            // into a cloud app's folder picker, and a path cut short still
+            // looks like a path - so the user adds it, and the half that was
+            // never shown is never backed up. Nothing bounds this row's
+            // height, so it simply wraps.
             modifier = Modifier.weight(1f)
         )
         androidx.compose.material3.IconButton(

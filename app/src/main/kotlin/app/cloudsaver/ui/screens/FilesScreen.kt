@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -286,9 +288,21 @@ fun FilesScreen(vm: AppViewModel) {
                     }
                 }) { Text(stringResource(R.string.detail_open)) }
             },
-            title = { Text(row.displayName, maxLines = 2) },
+            title = {
+                Text(
+                    row.displayName,
+                    maxLines = 2,
+                    // The middle, so the extension survives: which file this
+                    // dialog is about is the one thing it must not lose.
+                    overflow = TextOverflow.MiddleEllipsis
+                )
+            },
             text = {
-                Column {
+                // Scrollable, because a dialog's text slot is not. This one
+                // holds up to a dozen detail rows and the file's actions, and
+                // on a small screen at a large font the actions - the reason
+                // most people open it - were below the bottom of the display.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     KeyValueRow(stringResource(R.string.detail_state), stateLabel(row))
                     KeyValueRow(stringResource(R.string.detail_evidence), evidenceLabel(row))
                     // Z10.1: the app holding the copy - the one it was sent

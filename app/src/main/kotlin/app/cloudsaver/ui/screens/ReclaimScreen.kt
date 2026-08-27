@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.WarningAmber
@@ -465,7 +466,11 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 )
             },
             text = {
-                Column {
+                // Scrollable, because a dialog's text slot is not. This is the
+                // last thing shown before originals are removed for good, and
+                // on a small screen at a large font its lower half - the
+                // warning and what will happen - was simply off the display.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         stringResource(
                             R.string.reclaim_confirm_body,

@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -87,7 +89,11 @@ fun CompareSheet(
             )
         },
         text = {
-            Column {
+                // Scrollable, because a dialog's text slot is not. On a
+                // 320x568 screen at font scale 2.0 the bottom of this content
+                // sits past the edge with no way to reach it, and the buttons
+                // are pushed off with it.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 val both = original != null && optimised != null
                 if (both) {
                     Box(

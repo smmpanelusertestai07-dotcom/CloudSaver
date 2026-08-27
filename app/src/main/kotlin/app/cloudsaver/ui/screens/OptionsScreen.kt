@@ -59,6 +59,8 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -806,7 +808,12 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                                 checked = bucket !in o.excludedBuckets,
                                 onCheckedChange = null
                             )
-                            Text(bucket, maxLines = 1, modifier = Modifier.weight(1f))
+                            Text(
+                                bucket,
+                                maxLines = 1,
+                                overflow = TextOverflow.MiddleEllipsis,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                     // Folders holding another pipeline's compressed copies.
@@ -831,6 +838,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                                     Text(
                                         bucket,
                                         maxLines = 1,
+                                        overflow = TextOverflow.MiddleEllipsis,
                                         color = MaterialTheme.colorScheme.outline
                                     )
                                     Text(
@@ -1133,7 +1141,16 @@ private fun OptionCard(
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
-                            modifier = Modifier.padding(start = 12.dp)
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                            // The setting's current value. It carries no
+                            // weight, so on a narrow phone at a large font it
+                            // would take whatever it wanted and squeeze the
+                            // title that names the setting; bounded, the two
+                            // share the row instead.
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .padding(start = 12.dp)
                         )
                     }
                 }
