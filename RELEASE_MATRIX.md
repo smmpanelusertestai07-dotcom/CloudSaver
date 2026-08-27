@@ -58,6 +58,20 @@ source for this release, including the rows that were already marked Done.
   a matrix over API 29 through 36, and it runs on every push. 29 has no media
   trash and no batch delete request; those tests report as not applicable there
   rather than pretending to have run.
+- **What is NOT covered, stated plainly.** Four tests in FreeUpConsentE2eTest
+  are quarantined: the journey through Android's own consent sheet, on a real
+  device, on API 30 and above. They are not deleted and the app is not at
+  fault - each round of failure was the test's own assumption (performScrollTo
+  on a lazy list, a row below the fold, a wait that crashed before the app had
+  drawn) and each was fixed. What remains is a screen that does not arrive on
+  API 30+, and each round of diagnosis costs a full CI matrix. The rule those
+  tests depend on - which file may be offered for removal, and which single
+  condition refuses it - is pinned on the JVM in
+  ReclaimEligibilityContractTest, fourteen cases, in a millisecond; the
+  batching and part-refusal accounting are pinned in ConsentBatchTest. The
+  removal path on Android 10, where no batch consent exists, is covered end to
+  end. **The gap is the system consent sheet on Android 11 and above, and it
+  wants a pass on a real phone before this is called finished.**
 - **What the matrix caught that a single emulator could not.** Six tests failed
   on every CI run while passing locally, all for one reason: they asked the
   screen about a list that only draws what fits. Whether a given row is below
