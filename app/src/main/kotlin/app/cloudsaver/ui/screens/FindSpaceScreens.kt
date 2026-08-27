@@ -33,6 +33,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import app.cloudsaver.ui.components.ListTags
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -781,7 +783,15 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
             )
             return@Page
         }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+        // Tagged like every other list in the app, so a test can scroll it with
+        // performScrollToNode. performScrollTo does not support lazy lists
+        // (issuetracker 178483889) and fails outright on one.
+        LazyColumn(
+            Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp)
+                .testTag(ListTags.ROWS)
+        ) {
             items(batches, key = { it.id }) { batch ->
                 AppCard(
                     modifier = Modifier.padding(vertical = 5.dp),

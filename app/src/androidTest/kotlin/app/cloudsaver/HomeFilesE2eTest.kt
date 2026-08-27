@@ -537,7 +537,17 @@ class HomeFilesE2eTest {
 
     private fun idOf(name: String): Long = rowIds.getOrPut(name) { row(name).id }
 
-    /** Waits until the list holds this row, whether or not it is on screen. */
+    /**
+     * Waits until the list holds this row, whether or not it is on screen.
+     *
+     * Which is not the same as waiting for its text. A LazyColumn composes only
+     * the rows that fit, so a row below the fold has no node and no text, and
+     * waiting for that text waits forever on a list that is already correct.
+     * Whether a given row is below the fold depends on how tall the screen
+     * happens to be: all four fixtures fit on a 1080x1920 emulator and the last
+     * one does not fit on CI's, which is the entire difference between "passes
+     * locally" and "fails every CI run".
+     */
     private fun awaitRowInList(name: String, what: String) {
         val deadline = System.currentTimeMillis() + UI_TIMEOUT
         while (System.currentTimeMillis() < deadline) {
@@ -545,7 +555,10 @@ class HomeFilesE2eTest {
             Thread.sleep(POLL_PAUSE)
             if (indexInList(name) >= 0) return
         }
-        throw AssertionError("$what never appeared")
+        throw AssertionError(
+            "$what never appeared - the list holds " +
+                FIXTURES.filter { indexInList(it) >= 0 }
+        )
     }
 
     /**
@@ -762,7 +775,7 @@ class HomeFilesE2eTest {
         assertVisibleRows(SMALL, MEDIUM, LARGE, CLIP)
 
         compose.onNode(hasSetTextAction()).performTextInput("two_medium")
-        awaitNode(hasText(MEDIUM), "the searched-for row")
+        awaitRowInList(MEDIUM, "the searched-for row")
         assertVisibleRows(MEDIUM)
 
         // A term nothing matches quotes the term back rather than going blank.
@@ -774,7 +787,7 @@ class HomeFilesE2eTest {
         )
         compose.onNodeWithText(s(R.string.list_clear_search_action)).performClick()
         compose.waitForIdle()
-        awaitNode(hasText(SMALL), "the full list after clearing the search")
+        awaitRowInList(SMALL, "the full list after clearing the search")
         assertVisibleRows(SMALL, MEDIUM, LARGE, CLIP)
     }
 
@@ -1088,7 +1101,7 @@ class HomeFilesE2eTest {
         assertScrolledInto(Formats.bytes(totalBytes), "the largest files total")
 
         compose.onNodeWithText(s(R.string.find_biggest)).performScrollTo().performClick()
-        awaitNode(hasText(largestFirst.first()), "the largest files list")
+        awaitRowInList(largestFirst.first(), "the largest files list")
 
         // Every fixture is in the list, biggest at the top, with its own size.
         assertOrder(*largestFirst.toTypedArray())

@@ -395,12 +395,14 @@ class FreeUpConsentE2eTest {
                 Formats.bytes(ROW_BYTES * seeds.size)
             )
             awaitText(line)
-            compose.onNodeWithText(line).performScrollTo().performClick()
+            scrollListTo(hasText(line))
+            compose.onNodeWithText(line).performClick()
             awaitText(R.string.history_restore)
 
             // Refused: nothing may come back, and nothing may be marked as if
             // it had.
-            compose.onNodeWithText(s(R.string.history_restore)).performScrollTo().performClick()
+            scrollListTo(hasText(s(R.string.history_restore)))
+            compose.onNodeWithText(s(R.string.history_restore)).performClick()
             answerSystemConsent(allow = false)
             awaitSystemConsentGone()
             compose.waitForIdle()
@@ -420,7 +422,8 @@ class FreeUpConsentE2eTest {
             }
 
             // Allowed: everything comes back, and the offer disappears with it.
-            compose.onNodeWithText(s(R.string.history_restore)).performScrollTo().performClick()
+            scrollListTo(hasText(s(R.string.history_restore)))
+            compose.onNodeWithText(s(R.string.history_restore)).performClick()
             answerSystemConsent(allow = true)
             awaitSystemConsentGone()
             compose.waitUntil(timeoutMillis = UI_TIMEOUT) {
@@ -464,7 +467,7 @@ class FreeUpConsentE2eTest {
 
         ActivityScenario.launch(MainActivity::class.java).use {
             openHubCard(R.string.find_duplicates)
-            awaitText(extra.name)
+            awaitRow(extra.name)
             compose.onNodeWithText(s(R.string.dupes_this_one_stays)).assertIsDisplayed()
 
             // Two rows, two overflow buttons: the keeper first, then its extra.
@@ -483,7 +486,7 @@ class FreeUpConsentE2eTest {
                     .fetchSemanticsNodes().isEmpty()
             )
 
-            awaitText(extra.name)
+            awaitRow(extra.name)
             openExtraRowMenu()
             compose.onNodeWithText(s(R.string.dupes_remove_extra_one)).performClick()
 
@@ -563,6 +566,32 @@ class FreeUpConsentE2eTest {
      * screen's own title, so arrival is asserted on something only the screen
      * has: its three modes.
      */
+    /**
+     * Waits for a named row, on a list that only draws what fits.
+     *
+     * awaitText waits for the row's text to exist as a node. A LazyColumn
+     * composes only the rows on screen, so the second row of a two-row group
+     * has no node at all on a short display and that wait can only time out -
+     * which is what "Condition still not satisfied after 30000 ms" was, on a
+     * duplicates list that was perfectly correct.
+     *
+     * performScrollToNode composes rows as it scrolls, so it finds a row that
+     * has never been drawn. It is retried because the list arrives from the
+     * database a moment after the screen does.
+     */
+    private fun awaitRow(name: String) {
+        val deadline = System.currentTimeMillis() + UI_TIMEOUT
+        var last: Throwable? = null
+        while (System.currentTimeMillis() < deadline) {
+            compose.waitForIdle()
+            val found = runCatching { scrollListTo(hasText(name)) }
+            if (found.isSuccess) return
+            last = found.exceptionOrNull()
+            Thread.sleep(100)
+        }
+        throw AssertionError("the row for \"$name\" never reached the list", last)
+    }
+
     /** Scrolls this screen's list until [matcher] is on it. */
     private fun scrollListTo(matcher: SemanticsMatcher) {
         compose.onNodeWithTag(ListTags.ROWS).performScrollToNode(matcher)
@@ -598,9 +627,15 @@ class FreeUpConsentE2eTest {
      * is a compression test, not a consent test.
      */
     private fun chooseFreeUpFullyAndSelectEverything(expected: Int) {
-        compose.onNodeWithText(s(R.string.reclaim_mode_full)).performScrollTo().performClick()
+        // Through the list, not the row. Reclaim is a LazyColumn, and
+        // performScrollTo does not support lazy lists (issuetracker 178483889)
+        // - it fails outright with "Action performScrollTo() failed", which is
+        // what took out four of these tests on every CI run.
+        scrollListTo(hasText(s(R.string.reclaim_mode_full)))
+        compose.onNodeWithText(s(R.string.reclaim_mode_full)).performClick()
         compose.waitForIdle()
-        compose.onNodeWithText(s(R.string.reclaim_all_eligible)).performScrollTo().performClick()
+        scrollListTo(hasText(s(R.string.reclaim_all_eligible)))
+        compose.onNodeWithText(s(R.string.reclaim_all_eligible)).performClick()
         compose.waitForIdle()
 
         compose.onNodeWithText(
