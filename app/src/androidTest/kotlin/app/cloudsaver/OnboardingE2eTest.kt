@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import android.os.Build
 import android.Manifest
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -396,16 +397,29 @@ class OnboardingE2eTest {
 
         device.pressBack()
         device.waitForIdle()
+        // What "leaves the app" means depends on the Android. Up to 11, Back
+        // on a task's root activity finishes it - the activity dies. From 12
+        // (API 31) the system keeps the root launcher activity and moves the
+        // whole task to the back instead, so a relaunch is instant - the
+        // activity is stopped, not destroyed, and no code in the app decides
+        // any of this. Both are the user leaving; neither is a trap. Holding
+        // this test to DESTROYED on every version was holding Android 12's
+        // documented behaviour against the app.
+        val settled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            setOf(Lifecycle.State.CREATED, Lifecycle.State.DESTROYED)
+        } else {
+            setOf(Lifecycle.State.DESTROYED)
+        }
         val deadline = System.currentTimeMillis() + STEP_TIMEOUT
         while (System.currentTimeMillis() < deadline &&
-            launched.state != Lifecycle.State.DESTROYED
+            launched.state !in settled
         ) {
             device.waitForIdle()
         }
-        assertEquals(
-            "Back on the first setup card must leave the app, not trap the user",
-            Lifecycle.State.DESTROYED,
-            launched.state
+        assertTrue(
+            "Back on the first setup card must leave the app, not trap the " +
+                "user - the activity was still ${launched.state}",
+            launched.state in settled
         )
         // Nothing was decided, so nothing was recorded.
         assertFalse(stored().onboardingDone)

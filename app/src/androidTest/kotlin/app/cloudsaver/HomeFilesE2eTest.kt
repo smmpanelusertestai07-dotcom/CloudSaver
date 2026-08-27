@@ -1123,6 +1123,15 @@ class HomeFilesE2eTest {
     @Test
     fun calculatorTurnsAPlanSizeIntoNumbersThatMatchThisGallery() {
         launchHome()
+        // MediaStore indexes the seeded files a beat after they are written,
+        // and on a loaded emulator that beat once stretched far enough for
+        // the gallery to read as 0.00 GB. The screen and this test's expected
+        // figures both ask MediaScanner for the same totals, so wait until
+        // the store is answering with the gallery the fixtures actually
+        // wrote before either side does its arithmetic.
+        awaitDb("MediaStore sees the seeded gallery") {
+            galleryTotals().let { it.photoBytes > 0 && it.videoBytes > 0 }
+        }
         openStorage()
         assertScrolledInto(s(R.string.calc_title), "the calculator row")
         compose.onNodeWithText(s(R.string.calc_title)).performScrollTo().performClick()
