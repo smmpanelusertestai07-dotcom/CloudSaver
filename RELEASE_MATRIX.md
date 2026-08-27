@@ -68,7 +68,17 @@ source for this release, including the rows that were already marked Done.
   the app had done, and what turned the lazy-list crash from eight red jobs
   into one line of source.
 - **Eight Android versions, every release the app installs on**: the CI job is
-  a matrix over API 29 through 36, and it runs on every push. 29 has no media
+  a matrix over API 29 through 36, and it runs on every push.
+- **The same suite runs on a machine with no KVM at all**, through
+  `scripts/local-e2e.sh`: it boots an ATD image - Google's stripped
+  Automated Test Device, which stays booted under pure software emulation
+  where the full image starves its own watchdog - installs from inside the
+  guest because streaming at a loaded emulator hangs, and runs the whole
+  suite or one class (`--class`) with every screenshot and log kept under
+  artifacts/local/. Interpreted execution is slow enough that a heavy UI
+  class can fail on a wait it passes everywhere else; a test that fails
+  there and passes alone is the host, not the app, and the KVM-backed
+  matrix above is the verdict that counts. 29 has no media
   trash and no batch delete request; those tests report as not applicable there
   rather than pretending to have run.
 - **What is NOT covered, stated plainly.** Four tests in FreeUpConsentE2eTest

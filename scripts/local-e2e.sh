@@ -2,9 +2,17 @@
 #
 # The whole instrumented suite on a locally booted emulator, one command:
 #
-#   scripts/local-e2e.sh            # boot (or reuse) the AVD, run everything
-#   scripts/local-e2e.sh --fresh    # wipe the AVD first: a first-boot run
-#   scripts/local-e2e.sh --keep     # leave the emulator running afterwards
+#   scripts/local-e2e.sh                     # boot (or reuse) the AVD, run all
+#   scripts/local-e2e.sh --class SomeE2eTest # just one class - the fast loop
+#   scripts/local-e2e.sh --fresh             # wipe the AVD first
+#   scripts/local-e2e.sh --keep              # leave the emulator running after
+#
+# Honesty about what this can and cannot prove: without KVM every guest
+# instruction is interpreted, and when the host is also busy the UI thread
+# falls seconds behind - the heavier UI classes can then fail on waits that
+# pass everywhere else, and on the next round a different one fails the same
+# way. A test that fails here and passes alone (--class) is the host, not the
+# app; the eight KVM-backed emulators in CI are the verdict that counts.
 #
 # Built for a machine with no KVM. A normal system image under pure software
 # emulation starves system_server past its own watchdog - the package manager
@@ -30,12 +38,14 @@ PKG=app.cloudsaver
 SHOTS=/sdcard/Pictures/CSTestShots
 OUT=artifacts/local
 ADB="$SDK/platform-tools/adb"
-FRESH=0; KEEP=0
-for a in "$@"; do
-  case "$a" in
+FRESH=0; KEEP=0; ONLY=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --fresh) FRESH=1 ;;
     --keep) KEEP=1 ;;
+    --class) shift; ONLY="app.cloudsaver.$1" ;;
   esac
+  shift
 done
 
 mkdir -p "$OUT/screenshots"
@@ -104,7 +114,10 @@ echo "device is up"
 }
 
 echo "running the instrumented suite (this is the slow part)..."
-"$ADB" shell am instrument -w \
+FILTER=""
+[ -n "$ONLY" ] && FILTER="-e class $ONLY"
+# shellcheck disable=SC2086
+"$ADB" shell am instrument -w $FILTER \
   app.cloudsaver.test/androidx.test.runner.AndroidJUnitRunner \
   2>&1 | tee "$OUT/instrument.txt"
 
