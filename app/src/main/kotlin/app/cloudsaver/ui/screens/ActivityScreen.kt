@@ -29,6 +29,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.cloudsaver.ui.components.ListTags
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -182,7 +184,10 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                 body = stringResource(R.string.activity_empty_body)
             )
         } else {
-            LazyColumn(Modifier.weight(1f)) {
+            // Tagged like every other list in the app: performScrollTo does
+            // not work on a lazy list at all (issuetracker 178483889), so
+            // anything driving this one has to scroll through the list itself.
+            LazyColumn(Modifier.weight(1f).testTag(ListTags.ROWS)) {
                 var lastDay = ""
                 for (row in rows) {
                     val day = Formats.date(row.atMs)
