@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -48,6 +49,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.cloudsaver.ui.theme.BrandIndigo
 import app.cloudsaver.ui.theme.BrandViolet
+import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.ui.theme.LocalIsDarkTheme
 import app.cloudsaver.ui.theme.MetricTextStyle
 import app.cloudsaver.ui.theme.OnBrand
@@ -70,6 +73,21 @@ import kotlinx.coroutines.launch
  */
 
 private val CardShape = RoundedCornerShape(24.dp)
+
+/**
+ * The text size at which two things stop being able to share one line.
+ *
+ * Above it a row of [words][control] is drawn as the words with the control
+ * underneath them, because at 150% and up on a narrow phone the two halves
+ * each get a few words' width and both become unreadable - the label worst of
+ * all, since it is the half that says what the control does. Below it nothing
+ * changes at all, so an ordinary phone at an ordinary text size is drawn the
+ * way it has always been drawn.
+ *
+ * It is shared rather than judged per component: rows that stack at different
+ * moments make one screen look like two.
+ */
+internal const val StackedTextScale = 1.5f
 
 /** Shrinks slightly while pressed - cheap, universal touch feedback. */
 @Composable

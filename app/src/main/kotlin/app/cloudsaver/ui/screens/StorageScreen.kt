@@ -1,12 +1,5 @@
 package app.cloudsaver.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -27,15 +18,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -44,11 +32,11 @@ import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
-import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PathLine
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.util.Formats
@@ -59,12 +47,10 @@ import androidx.compose.material.icons.outlined.Cached
 import androidx.compose.material.icons.outlined.Calculate
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.PhotoSizeSelectLarge
 import androidx.compose.material.icons.outlined.SdCard
 
 /**
@@ -96,7 +82,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Dimens.Screen)
     ) {
         Spacer(Modifier.height(12.dp))
         Text(
@@ -136,10 +122,20 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                         modifier = Modifier.weight(1f)
                     )
                     if (active) {
+                        // A gap of its own and a limit on its height, so a
+                        // translation longer than "(in use)" wraps beside the
+                        // volume's name instead of running into it. No weight:
+                        // the mark belongs against the end of the row, and a
+                        // share of the width would leave it floating in the
+                        // middle whenever it is as short as it is in English.
                         Text(
                             stringResource(R.string.volume_active_mark),
                             style = MaterialTheme.typography.labelSmall,
-                            color = scheme.primary
+                            color = scheme.primary,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 8.dp)
                         )
                     }
                 }
@@ -279,11 +275,29 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f)
                     )
-                    Text(
-                        Formats.bytes(stats.tempBytes),
-                        style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
-                        color = scheme.primary
-                    )
+                    // Only when there is something to name. This card also
+                    // appears after a clear, to say what the clear freed, and
+                    // it printed "0 B" beside the title while doing so - which
+                    // is the "a row reading 0 MB is a question with no answer"
+                    // this screen is built to avoid, on the screen itself.
+                    //
+                    // Bounded for the same reason as every other size in the
+                    // app: "1,023.45 MB" at the largest font is most of a
+                    // small phone's width, and unbounded it left the title
+                    // beside it with nothing.
+                    if (stats.tempBytes > 0) {
+                        Text(
+                            Formats.bytes(stats.tempBytes),
+                            style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+                            color = scheme.primary,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(0.45f, fill = false)
+                                .padding(start = 8.dp)
+                        )
+                    }
                 }
                 Text(
                     stringResource(R.string.storage_temp_text),
@@ -303,7 +317,13 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     onClick = { vm.cleanTemp() },
                     enabled = stats.tempBytes > 0,
                     modifier = Modifier.padding(top = 12.dp)
-                ) { Text(stringResource(R.string.storage_clean_temp)) }
+                ) {
+                    Text(
+                        stringResource(R.string.storage_clean_temp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
@@ -338,17 +358,27 @@ private fun FindRow(
                 )
             }
             if (value != null) {
+                // The size takes a share of the row, not whatever it wants.
+                // A size and a chevron with no bound between them take the
+                // whole width at the largest font, and the row's name and the
+                // line under it were what was left with nothing.
                 Text(
                     value,
                     style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 8.dp)
+                    textAlign = TextAlign.End,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(0.45f, fill = false)
+                        .padding(start = 8.dp)
                 )
             }
             Icon(
                 Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
             )
         }
     }
@@ -384,10 +414,18 @@ private fun UsageRow(
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f)
         )
+        // Bounded like every other size in the app, so the name of the thing
+        // being measured keeps at least half the row at any font size.
         Text(
             Formats.bytes(bytes),
             style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
-            color = scheme.primary
+            color = scheme.primary,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(0.45f, fill = false)
+                .padding(start = 8.dp)
         )
     }
     // Copyable, because this is the string that has to be found inside
@@ -403,7 +441,11 @@ private fun UsageRow(
     }
     onManage?.let {
         TextButton(onClick = it, modifier = Modifier.padding(start = 24.dp)) {
-            Text(stringResource(R.string.kept_manage))
+            Text(
+                stringResource(R.string.kept_manage),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

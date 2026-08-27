@@ -1,13 +1,15 @@
 package app.cloudsaver.ui.screens
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PhotoLibrary
@@ -38,9 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +58,8 @@ import app.cloudsaver.ui.components.HeroCard
 import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.ui.theme.MetricTextStyle
 import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandMuted
 import app.cloudsaver.ui.theme.TabularFigures
@@ -71,6 +76,7 @@ import app.cloudsaver.core.logic.QualityKept
  * and whether the ratios are measured is a fact, not a preference. Both are
  * gone. What is left is one thing to type and the answer.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
@@ -111,9 +117,23 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            // This is the one screen in the app with a keyboard on it, and a
+            // landscape phone with the keyboard up has around two hundred dp
+            // of height left. Without this the field being typed into sits
+            // underneath the keyboard and the answer sits under that.
+            .imePadding()
+            // The title scrolls with everything else rather than being pinned
+            // above it. Pinned, it kept its full height out of a viewport a
+            // keyboard had already cut to a strip - at the largest font the
+            // header alone is taller than what was left, so the page below it
+            // had nowhere to draw at all.
+            .verticalScroll(rememberScrollState())
+    ) {
         Row(
-            Modifier.padding(top = 8.dp, start = 4.dp, end = 16.dp),
+            Modifier.padding(top = 8.dp, start = 4.dp, end = Dimens.Screen),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { nav.popBackStack() }) {
@@ -122,18 +142,19 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     contentDescription = stringResource(R.string.back)
                 )
             }
+            // A share of the row rather than whatever the title wants. Beside
+            // the arrow at the largest font "Cloud calculator" is wider than a
+            // small phone, and with nothing holding it the end of the title
+            // was drawn past the edge of the screen. A weight lets it wrap.
             Text(
                 stringResource(R.string.calc_title),
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
             )
         }
 
-        Column(
-            Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
+        Column(Modifier.padding(horizontal = Dimens.Screen)) {
             // 1. The one thing the app cannot know.
             AppCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -160,18 +181,31 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 )
-                Row(
-                    Modifier
+                // The six common plan sizes, flowing rather than scrolling
+                // sideways. As a horizontal scroller the last three were off
+                // the edge behind a gesture nobody makes on a form, and at the
+                // largest font on a 320 dp phone only two were ever in view.
+                // Flowed, every preset is visible at any width: the group gets
+                // taller instead of running off the end.
+                val presets = remember { listOf(5, 10, 20, 50, 100, 200) }
+                FlowRow(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
                         .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    for (gb in listOf(5, 10, 20, 50, 100, 200)) {
+                    for (gb in presets) {
                         FilterChip(
                             selected = freeText == gb.toString(),
                             onClick = { freeText = gb.toString() },
-                            label = { Text(stringResource(R.string.calc_chip_gb, gb)) }
+                            label = {
+                                Text(
+                                    stringResource(R.string.calc_chip_gb, gb),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         )
                     }
                 }
@@ -227,6 +261,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                 }
                 AnimatedNumber(
                     value = stringResource(R.string.calc_hero_value, fmt(estimate.originalsGB)),
+                    style = calcHeroFigureStyle(),
                     color = OnBrand,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -457,3 +492,26 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
  * vanish. Plans are sold in GB, so the calculator counts in GB.
  */
 private fun fmt(v: Double): String = String.format(java.util.Locale.US, "%.2f", v)
+
+/**
+ * The answer's own type size, held to a width a small phone actually has.
+ *
+ * The figure is one line that never wraps, so at the largest accessibility
+ * font "1,234.56 GB" is wider than a 320 dp screen and the end of it - the
+ * unit, and the digits just before it - is the half that gets cut. Past 1.4x
+ * the figure stops growing with the setting: it is already by far the biggest
+ * thing on the page, and a number shown whole is worth more than a number
+ * shown large. Everything else on the screen keeps scaling normally, so the
+ * accessibility setting still does what it was turned on to do.
+ */
+@Composable
+private fun calcHeroFigureStyle(): androidx.compose.ui.text.TextStyle {
+    val cap = 1.4f
+    val scale = LocalDensity.current.fontScale
+    if (scale <= cap) return MetricTextStyle
+    val factor = cap / scale
+    return MetricTextStyle.copy(
+        fontSize = MetricTextStyle.fontSize * factor,
+        lineHeight = MetricTextStyle.lineHeight * factor
+    )
+}
