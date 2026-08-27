@@ -950,7 +950,13 @@
     <string name="volume_switch_confirm">Change location</string>
     <string name="onb_ready_where">Where CloudSaver keeps its files</string>
     <string name="onb_ready_sd_note">SD cards are slower and can be removed. If it is removed, CloudSaver pauses and nothing is lost.</string>
-    <string name="onb_ready_what_albums">%1$s, from %2$d of your %3$d albums</string>
+    <!-- A phone can have exactly one album, and "of your 1 albums" is
+         the sort of sentence that makes a person wonder what else the
+         app has not thought about. -->
+    <plurals name="onb_ready_what_albums">
+        <item quantity="one">%1$s, from %2$d of your %3$d album</item>
+        <item quantity="other">%1$s, from %2$d of your %3$d albums</item>
+    </plurals>
     <string name="trial_title">See it on a few photos first</string>
     <plurals name="trial_body">
         <item quantity="one">Optimises %d photo so you can compare before and after. Your original is not touched.</item>
@@ -979,7 +985,10 @@
     <string name="detail_kept_value">%1$d%% of the original pixels</string>
     <string name="detail_kept_all">All of them — this file was already under the limit</string>
     <string name="quality_kept_overall">Detail kept: %1$d%% on average</string>
-    <string name="quality_kept_overall_sub">Measured across %1$d optimised files on this phone.</string>
+    <plurals name="quality_kept_overall_sub">
+        <item quantity="one">Measured across %1$d optimised file on this phone.</item>
+        <item quantity="other">Measured across %1$d optimised files on this phone.</item>
+    </plurals>
     <string name="quality_detail_title">Detail kept</string>
     <string name="quality_detail_body">How much of the original\'s detail survives. Anything already under the limit keeps all of it \u2014 it is only re-saved, never shrunk.</string>
     <string name="quality_detail_photo">%1$d MP photo</string>

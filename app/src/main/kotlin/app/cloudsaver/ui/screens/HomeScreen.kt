@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -135,7 +136,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     // shrinking away at that point and was reading the live value: its last
     // frames announced a result of zero files, which is the one number that
     // would mean the check had found nothing.
-    var lastConfirm by remember { mutableStateOf(0) }
+    var lastConfirm by remember { mutableIntStateOf(0) }
     LaunchedEffect(confirmResult) { confirmResult?.let { lastConfirm = it } }
 
     LaunchedEffect(Unit) {

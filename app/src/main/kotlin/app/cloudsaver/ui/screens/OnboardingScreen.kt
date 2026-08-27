@@ -1057,7 +1057,7 @@ private fun scopeSummary(
     return if (total <= 0 || included >= total) {
         what
     } else {
-        stringResource(R.string.onb_ready_what_albums, what, included, total)
+        pluralStringResource(R.plurals.onb_ready_what_albums, total, what, included, total)
     }
 }
 

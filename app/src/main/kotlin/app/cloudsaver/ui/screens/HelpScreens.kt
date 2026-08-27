@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -550,7 +551,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    stringResource(R.string.quality_kept_overall_sub, k.files),
+                    pluralStringResource(R.plurals.quality_kept_overall_sub, k.files, k.files),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)

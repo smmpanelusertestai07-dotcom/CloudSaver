@@ -414,7 +414,7 @@ fun ListActionBar(
  * so the screen does not jump when the rows arrive.
  */
 @Composable
-fun ListSkeleton(rows: Int = 6, modifier: Modifier = Modifier) {
+fun ListSkeleton(modifier: Modifier = Modifier, rows: Int = 6) {
     val transition = rememberInfiniteTransition(label = "skeleton")
     val alpha by transition.animateFloat(
         initialValue = 0.35f,
