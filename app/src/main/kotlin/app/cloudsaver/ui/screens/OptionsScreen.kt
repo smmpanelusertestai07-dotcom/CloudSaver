@@ -711,7 +711,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             },
             title = { Text(stringResource(R.string.volume_switch_title)) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(stringResource(R.string.volume_switch_body))
                     if (target.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))

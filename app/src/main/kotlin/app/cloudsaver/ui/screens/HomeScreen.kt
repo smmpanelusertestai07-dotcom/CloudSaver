@@ -209,7 +209,12 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 onDismissRequest = { vm.dismissCloudSwitchNotice() },
                 title = { Text(stringResource(R.string.cloud_switch_title)) },
                 text = {
-                    Text(stringResource(R.string.cloud_switch_body, switchedFrom, switchedTo))
+                    // A dialog's text slot does not scroll. On a small screen at a
+                    // large font its lower half simply sits past the edge, and the
+                    // buttons are pushed off with it.
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(stringResource(R.string.cloud_switch_body, switchedFrom, switchedTo))
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = { vm.dismissCloudSwitchNotice() }) {
@@ -994,7 +999,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             confirmButton = {
                 TextButton(onClick = { explain = null }) { Text(stringResource(R.string.ok)) }
             },
-            text = { Text(stringResource(res)) }
+            text = {
+                // A dialog's text slot does not scroll. On a small screen at
+                // a large font its lower half simply sits past the edge, and
+                // the buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(stringResource(res))
+                }
+            }
         )
     }
 }

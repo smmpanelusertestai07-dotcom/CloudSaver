@@ -63,6 +63,8 @@ import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import app.cloudsaver.ui.components.FileRow
 import app.cloudsaver.ui.components.ListSearchField
 import app.cloudsaver.ui.components.ListTail
@@ -286,7 +288,10 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             onDismissRequest = { confirming = false },
             title = { Text(stringResource(R.string.dupes_confirm_title)) },
             text = {
-                Column {
+                // A dialog's text slot does not scroll. On a small screen at
+                // a large font its lower half simply sits past the edge, and
+                // the buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         pluralStringResource(
                             R.plurals.dupes_confirm_body,
@@ -337,7 +342,12 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             },
             title = { Text(stringResource(R.string.dupes_removed_title)) },
             text = {
-                Text(pluralStringResource(R.plurals.dupes_removed_body, count, count))
+                // A dialog's text slot does not scroll. On a small screen at a
+                // large font its lower half simply sits past the edge, and the
+                // buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(pluralStringResource(R.plurals.dupes_removed_body, count, count))
+                }
             }
         )
     }

@@ -579,7 +579,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             },
             title = { Text(stringResource(R.string.reclaim_preview_title)) },
             text = {
-                Column {
+                // Up to eight refused files are named here, so this slot is
+                // the one most able to outgrow the screen it is drawn on.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     KeyValueRow(
                         stringResource(R.string.reclaim_preview_count),
                         Formats.count(run.count)
@@ -631,7 +633,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             },
             title = { Text(stringResource(R.string.reclaim_done_title)) },
             text = {
-                Column {
+                // What was freed, what was left behind and why - all of it
+                // has to stay reachable, at any font size.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
                         stringResource(
                             R.string.reclaim_done_body,

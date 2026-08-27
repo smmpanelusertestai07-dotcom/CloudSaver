@@ -4,7 +4,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -34,6 +37,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
@@ -224,7 +228,11 @@ private fun MainNav(vm: AppViewModel) {
         if (needsLock) {
             var lockNote by remember { mutableStateOf<Lock.Outcome?>(null) }
             LockedScreen(
-                modifier = Modifier.padding(padding),
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .wrapContentWidth()
+                    .widthIn(max = Dimens.ContentMaxWidth),
                 outcome = lockNote,
                 onUnlock = {
                     val act = activity ?: return@LockedScreen
@@ -251,7 +259,19 @@ private fun MainNav(vm: AppViewModel) {
             NavHost(
                 navController = nav,
                 startDestination = Routes.HOME,
-                modifier = Modifier.padding(padding),
+                // One rule for every screen, applied once: the content never
+                // spans more than a comfortable reading width, and is centred
+                // in whatever is left. On a phone - portrait or landscape,
+                // 320 dp or 480 - nothing changes at all, because nothing is
+                // that wide. On a tablet, a foldable opened out, or a phone
+                // turned sideways it stops a line of text running the full
+                // width of the glass, which is unreadable and is the one way
+                // the same app looks like a different app on a bigger screen.
+                modifier = Modifier
+                    .padding(padding)
+                    .fillMaxSize()
+                    .wrapContentWidth()
+                    .widthIn(max = Dimens.ContentMaxWidth),
                 enterTransition = {
                     fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 12 }
                 },

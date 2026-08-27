@@ -36,4 +36,22 @@ object Dimens {
     /** Corner radii: cards, and the smaller controls inside them. */
     val CardCorner = 20.dp
     val ControlCorner = 12.dp
+
+    /**
+     * The widest the content of any screen is allowed to get.
+     *
+     * Every phone is narrower than this, in either orientation, so on a phone
+     * it does nothing whatsoever - which is the point: the app is not one
+     * layout on a small screen and a different one on a large screen. It only
+     * takes effect where a screen is wide enough that a single column of text
+     * would run the full width of the glass, on a tablet or a foldable opened
+     * flat, where a line that long is genuinely hard to read. There the
+     * content simply centres itself and keeps the proportions it has
+     * everywhere else.
+     *
+     * 600 dp is where Android's own breakpoints put the boundary between a
+     * phone-shaped layout and a larger one, so it is the width at which this
+     * app stops being asked to fill the screen.
+     */
+    val ContentMaxWidth = 600.dp
 }

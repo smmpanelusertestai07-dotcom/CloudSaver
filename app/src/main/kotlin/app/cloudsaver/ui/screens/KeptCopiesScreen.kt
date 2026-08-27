@@ -224,7 +224,14 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
         AlertDialog(
             onDismissRequest = { confirmMany = false },
             title = { Text(stringResource(R.string.kept_remove_title)) },
-            text = { Text(stringResource(R.string.kept_remove_body)) },
+            text = {
+                // A dialog's text slot does not scroll. On a small screen at
+                // a large font its lower half simply sits past the edge, and
+                // the buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(stringResource(R.string.kept_remove_body))
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     for (row in chosen) vm.removeKeptCopy(row)
@@ -244,7 +251,14 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
         AlertDialog(
             onDismissRequest = { confirm = null },
             title = { Text(stringResource(R.string.kept_remove_title)) },
-            text = { Text(stringResource(R.string.kept_remove_body)) },
+            text = {
+                // A dialog's text slot does not scroll. On a small screen at
+                // a large font its lower half simply sits past the edge, and
+                // the buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(stringResource(R.string.kept_remove_body))
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     vm.removeKeptCopy(row)

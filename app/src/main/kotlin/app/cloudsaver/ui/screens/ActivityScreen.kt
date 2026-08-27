@@ -54,6 +54,8 @@ import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CloudDone
@@ -208,7 +210,14 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             title = { Text(stringResource(R.string.activity_clear_title)) },
-            text = { Text(stringResource(R.string.activity_clear_body)) },
+            text = {
+                // A dialog's text slot does not scroll. On a small screen at a
+                // large font its lower half simply sits past the edge, and the
+                // buttons are pushed off with it.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(stringResource(R.string.activity_clear_body))
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     vm.clearActivity()
