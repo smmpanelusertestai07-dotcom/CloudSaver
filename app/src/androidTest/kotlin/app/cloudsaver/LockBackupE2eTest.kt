@@ -106,9 +106,23 @@ class LockBackupE2eTest {
                 )
                 return@runBlocking
             }
-            for (tab in listOf(
+            // The bar leaves through a transition, and Compose transitions do
+            // not honour the system's animations-off switch - so for a few
+            // frames after the lock title appears, the outgoing bar is still
+            // in the tree. A frame of exit animation is not reachability;
+            // what must be true is that the bar is gone once the lock has
+            // settled, which is the same settling this test already waits
+            // for above. On a slow emulator the old immediate count sampled
+            // exactly that frame.
+            val tabs = listOf(
                 R.string.nav_home, R.string.nav_files, R.string.nav_storage, R.string.nav_options
-            )) {
+            )
+            compose.waitUntil(timeoutMillis = 20_000) {
+                tabs.all {
+                    compose.onAllNodes(hasText(s(it))).fetchSemanticsNodes().isEmpty()
+                }
+            }
+            for (tab in tabs) {
                 assertEquals(
                     "the ${s(tab)} tab must not be on screen while locked",
                     0,
