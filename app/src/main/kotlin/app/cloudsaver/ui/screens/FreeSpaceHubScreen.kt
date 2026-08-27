@@ -29,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -37,6 +39,7 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.goTo
+import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
 
@@ -75,7 +78,7 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
             .verticalScroll(rememberScrollState())
     ) {
         Row(
-            Modifier.padding(top = 8.dp, start = 4.dp, end = 16.dp),
+            Modifier.padding(top = 8.dp, start = 4.dp, end = Dimens.Screen),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { nav.popBackStack() }) {
@@ -84,14 +87,19 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                     contentDescription = stringResource(R.string.back)
                 )
             }
+            // A share of the row rather than whatever the title wants: beside
+            // the arrow at the largest font it is wider than a small phone,
+            // and with nothing to hold it the end of the title was drawn past
+            // the edge of the screen. A weight lets it wrap instead.
             Text(
                 stringResource(R.string.hub_title),
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
             )
         }
 
-        Column(Modifier.padding(horizontal = 16.dp)) {
+        Column(Modifier.padding(horizontal = Dimens.Screen)) {
             // Z1.5: which volume, free now, and free after - so "free up
             // space" is a promise with a number, not a mood.
             val volume = volumes.firstOrNull { vol ->
@@ -182,16 +190,32 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                                 color = scheme.onSurfaceVariant
                             )
                         }
+                        // The size takes a share of the row, not whatever it
+                        // wants. "1,023.45 MB" at the largest font is most of
+                        // a small phone's width, and with no bound on it the
+                        // name and the line under it were squeezed to nothing.
                         Text(
                             Formats.bytes(stats.tempBytes),
                             style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
-                            color = scheme.primary
+                            color = scheme.primary,
+                            textAlign = TextAlign.End,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .weight(0.45f, fill = false)
+                                .padding(start = 8.dp)
                         )
                     }
                     OutlinedButton(
                         onClick = { vm.cleanTemp() },
                         modifier = Modifier.padding(top = 10.dp)
-                    ) { Text(stringResource(R.string.hub_clean_now)) }
+                    ) {
+                        Text(
+                            stringResource(R.string.hub_clean_now),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -230,15 +254,25 @@ private fun HubCard(
                     color = scheme.onSurfaceVariant
                 )
             }
+            // Bounded for the same reason as the name beside it: a size and a
+            // chevron with no limit between them take the whole row at a large
+            // font, and the section's name is what is left with nothing.
             Text(
                 value,
                 style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
-                color = scheme.primary
+                color = scheme.primary,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(0.45f, fill = false)
+                    .padding(start = 8.dp)
             )
             Icon(
                 Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
-                tint = scheme.onSurfaceVariant
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
             )
         }
     }

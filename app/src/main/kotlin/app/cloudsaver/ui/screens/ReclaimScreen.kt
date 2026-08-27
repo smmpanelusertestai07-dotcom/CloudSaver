@@ -180,10 +180,20 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
         }
 
         if (entries.isEmpty() && !loading) {
-            EmptyState(
-                title = stringResource(R.string.freeup_empty_title),
-                body = stringResource(R.string.freeup_empty)
-            )
+            // Nothing to remove is still a screen, and it is the one state
+            // here that draws no list at all. Sideways on a phone at a large
+            // font the mark, the heading and the sentence under it are taller
+            // than the display, so this state scrolls like every other.
+            Column(
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                EmptyState(
+                    title = stringResource(R.string.freeup_empty_title),
+                    body = stringResource(R.string.freeup_empty)
+                )
+            }
             return@Column
         }
 
@@ -347,147 +357,164 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
 
         // The running total sits with the button, because that pair is the
         // decision: this many gigabytes, for this action.
-        AppCard(modifier = Modifier.padding(12.dp)) {
-            if (!understood) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.toggleable(
-                        value = false,
-                        onValueChange = {
-                            justUnderstood = true
-                            vm.setReclaimUnderstood(true)
-                        },
-                        role = Role.Checkbox
-                    )
-                ) {
-                    Checkbox(checked = false, onCheckedChange = null)
-                    Text(
-                        stringResource(R.string.reclaim_understand),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-            Text(
-                stringResource(R.string.reclaim_will_free, Formats.bytes(freed)),
-                // Tabular: this total changes with every tick of a checkbox.
-                style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                // Counted the same way as the total above it and the batch
-                // itself: only rows the current filters still show can be
-                // acted on. Counting every tick ever made printed "40 of 5
-                // selected" the moment a filter narrowed the list, and
-                // promised thirty-five files that were never going anywhere.
-                pluralStringResource(
-                    R.plurals.reclaim_selected,
-                    selectedEntries.size,
-                    selectedEntries.size,
-                    visible.size
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            // Two buttons side by side is two buttons wide, and "Preview
-            // result" beside "Export list" at the largest accessibility font
-            // is wider than a 320 dp phone: the second one simply left the
-            // screen. Wrapping puts the overflow on the next line instead,
-            // at every width and font size, and keeps the order.
-            FlowRow(
-                Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        //
+        // The pair is also measured before the list is given anything, so
+        // on a short screen - a phone turned sideways, or a small one at
+        // the largest font - the tick, the total, the four buttons and the
+        // two explanations took the whole display, left the list with none
+        // of it, and pushed the last button off the bottom edge. Measuring
+        // the space first caps this at half of what is left and lets it
+        // scroll inside that: the list keeps the rest, and every button
+        // stays reachable however short the screen is.
+        BoxWithConstraints {
+            Column(
+                Modifier
+                    .heightIn(max = maxHeight / 2)
+                    .verticalScroll(rememberScrollState())
             ) {
-                OutlinedButton(
-                    onClick = { rvm.previewResult() },
-                    enabled = selected.isNotEmpty()
-                ) {
-                    Text(
-                        stringResource(R.string.reclaim_preview),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                OutlinedButton(
-                    onClick = { exportLauncher.launch("cloudsaver-reclaim.csv") },
-                    enabled = selected.isNotEmpty()
-                ) {
-                    Text(
-                        stringResource(R.string.reclaim_export),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            FlowRow(
-                Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = {
-                        // Removing an original always goes through the sheet
-                        // that carries the check-your-cloud warning; no batch
-                        // is small enough to skip it. Only the copies-only
-                        // mode, which touches nothing of the user's own,
-                        // keeps the quick path for ordinary batches. On a
-                        // phone with no media trash every original removal is
-                        // permanent whatever the button was called, so the
-                        // sheet opens in its delete-for-good wording there.
-                        if (mode != ReclaimRules.Mode.COPIES_ONLY ||
-                            rvm.needsSecondConfirmation(permanent = false)
+                AppCard(modifier = Modifier.padding(12.dp)) {
+                    if (!understood) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.toggleable(
+                                value = false,
+                                onValueChange = {
+                                    justUnderstood = true
+                                    vm.setReclaimUnderstood(true)
+                                },
+                                role = Role.Checkbox
+                            )
                         ) {
-                            confirmBig =
-                                mode != ReclaimRules.Mode.COPIES_ONLY && !rvm.canUndoRemoval
-                        } else {
-                            rvm.start(permanent = false)
+                            Checkbox(checked = false, onCheckedChange = null)
+                            Text(
+                                stringResource(R.string.reclaim_understand),
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-                    },
-                    enabled = selected.isNotEmpty() && understood
-                ) {
-                    // On a phone with no trash this button deletes for good,
-                    // so it says so rather than promising a recovery that
-                    // does not exist.
-                    Text(
-                        stringResource(
-                            if (rvm.canUndoRemoval || mode == ReclaimRules.Mode.COPIES_ONLY) {
-                                R.string.reclaim_trash
-                            } else {
-                                R.string.reclaim_delete
-                            }
-                        ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
-                    TextButton(
-                        onClick = { confirmBig = true },
-                        enabled = selected.isNotEmpty() && understood
-                    ) {
-                        Text(
-                            stringResource(R.string.reclaim_delete),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
-                }
-            }
-            if (mode != ReclaimRules.Mode.COPIES_ONLY) {
-                Text(
-                    stringResource(R.string.reclaim_why_android_asks),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                if (!rvm.canUndoRemoval) {
                     Text(
-                        stringResource(R.string.reclaim_no_trash_here),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(top = 6.dp)
+                        stringResource(R.string.reclaim_will_free, Formats.bytes(freed)),
+                        // Tabular: this total changes with every tick of a checkbox.
+                        style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
+                        fontWeight = FontWeight.SemiBold
                     )
+                    Text(
+                        // Counted the same way as the total above it and the batch
+                        // itself: only rows the current filters still show can be
+                        // acted on. Counting every tick ever made printed "40 of 5
+                        // selected" the moment a filter narrowed the list, and
+                        // promised thirty-five files that were never going anywhere.
+                        pluralStringResource(
+                            R.plurals.reclaim_selected,
+                            selectedEntries.size,
+                            selectedEntries.size,
+                            visible.size
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // Two buttons side by side is two buttons wide, and "Preview
+                    // result" beside "Export list" at the largest accessibility font
+                    // is wider than a 320 dp phone: the second one simply left the
+                    // screen. Wrapping puts the overflow on the next line instead,
+                    // at every width and font size, and keeps the order.
+                    FlowRow(
+                        Modifier.padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { rvm.previewResult() },
+                            enabled = selected.isNotEmpty()
+                        ) {
+                            Text(
+                                stringResource(R.string.reclaim_preview),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { exportLauncher.launch("cloudsaver-reclaim.csv") },
+                            enabled = selected.isNotEmpty()
+                        ) {
+                            Text(
+                                stringResource(R.string.reclaim_export),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    FlowRow(
+                        Modifier.padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                // Removing an original always goes through the sheet
+                                // that carries the check-your-cloud warning; no batch
+                                // is small enough to skip it. Only the copies-only
+                                // mode, which touches nothing of the user's own,
+                                // keeps the quick path for ordinary batches. On a
+                                // phone with no media trash every original removal is
+                                // permanent whatever the button was called, so the
+                                // sheet opens in its delete-for-good wording there.
+                                if (mode != ReclaimRules.Mode.COPIES_ONLY ||
+                                    rvm.needsSecondConfirmation(permanent = false)
+                                ) {
+                                    confirmBig =
+                                        mode != ReclaimRules.Mode.COPIES_ONLY && !rvm.canUndoRemoval
+                                } else {
+                                    rvm.start(permanent = false)
+                                }
+                            },
+                            enabled = selected.isNotEmpty() && understood
+                        ) {
+                            // On a phone with no trash this button deletes for good,
+                            // so it says so rather than promising a recovery that
+                            // does not exist.
+                            Text(
+                                stringResource(
+                                    if (rvm.canUndoRemoval || mode == ReclaimRules.Mode.COPIES_ONLY) {
+                                        R.string.reclaim_trash
+                                    } else {
+                                        R.string.reclaim_delete
+                                    }
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
+                            TextButton(
+                                onClick = { confirmBig = true },
+                                enabled = selected.isNotEmpty() && understood
+                            ) {
+                                Text(
+                                    stringResource(R.string.reclaim_delete),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    if (mode != ReclaimRules.Mode.COPIES_ONLY) {
+                        Text(
+                            stringResource(R.string.reclaim_why_android_asks),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                        if (!rvm.canUndoRemoval) {
+                            Text(
+                                stringResource(R.string.reclaim_no_trash_here),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -602,7 +629,14 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         TextButton(
                             onClick = { CloudApps.launch(context, options.cloudSingle) }
                         ) {
-                            Text(stringResource(R.string.reclaim_open_cloud, cloudApp.label))
+                            // The label carries an app name someone else
+                            // chose, so it is as long as it is - two lines
+                            // rather than a cut through the middle of it.
+                            Text(
+                                stringResource(R.string.reclaim_open_cloud, cloudApp.label),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -844,9 +878,19 @@ private fun ReclaimRow(
                 )
             }
             // Seeing the two versions is the only quality test that counts,
-            // and it belongs one tap from the checkbox.
-            TextButton(onClick = onCompare) {
-                Text(stringResource(R.string.reclaim_compare))
+            // and it belongs one tap from the checkbox. It takes a share of
+            // the row rather than whatever its label happens to want: at the
+            // largest font on a narrow phone an unbounded button swallowed
+            // the width and left the file name with nothing to be drawn in.
+            TextButton(
+                onClick = onCompare,
+                modifier = Modifier.weight(0.45f, fill = false)
+            ) {
+                Text(
+                    stringResource(R.string.reclaim_compare),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

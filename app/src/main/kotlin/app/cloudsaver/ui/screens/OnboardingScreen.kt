@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -452,6 +453,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                // A Checkbox handed onCheckedChange = null is
+                                // not the thing being tapped, so Material does
+                                // not give it the interactive minimum it gives
+                                // a live one: the row came out around 28 dp
+                                // tall, and the whole row is what takes the
+                                // tap. A floor, not a fixed height - a long
+                                // album name at a large font still grows the
+                                // row rather than being cut by it.
+                                .heightIn(min = Dimens.TouchTarget)
                                 .toggleable(
                                     value = bucket !in options.excludedBuckets,
                                     onValueChange = { include ->
