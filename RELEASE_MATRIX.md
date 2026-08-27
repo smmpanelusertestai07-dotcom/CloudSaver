@@ -48,15 +48,25 @@ source for this release, including the rows that were already marked Done.
   IndexForKey, taps scroll to their row first, and lazy content is brought back
   into view before anything asserts on it - which is what stopped a four-row
   list reading as three rows on any phone shorter than the last one.
-- **A locally booted emulator, not only CI.** The suite runs on an Android 10
-  image under software emulation (no KVM) as well as on the CI matrix, so a
-  failure can be reproduced, screenshotted and re-run in minutes instead of
-  once per push.
-- **Eight Android versions, every release the app installs on**: the emulator
-  job is a matrix over API 29 through 36, so a claim proved here is a claim
-  about all of them and not only about the newest. 29 has no media trash and
-  no batch delete request; those tests report as not applicable there rather
-  than pretending to have run.
+- **Locally booted emulators, because CI is currently down.** The suite runs
+  on Android 10 (API 29) and Android 11 (API 30) images under software
+  emulation, with no KVM available, so a failure can be reproduced,
+  screenshotted and re-run in minutes. Every test failure photographs the
+  screen it failed on, which is what identified the most recent one as a
+  system ANR dialog covering the app rather than anything the app had done.
+- **What is NOT verified for this release, stated plainly.** The CI job is a
+  matrix over API 29 through 36, and it is not running: GitHub reports
+  `startup_failure` with no jobs and no logs on a workflow file that has not
+  changed and is valid, which points at the account's Actions allowance rather
+  than at the project. Until it runs again, **API 31 to 36 are unverified for
+  this release.** API 29 and 30 are covered by the local emulators above. 29
+  has no media trash and no batch delete request; those tests report as not
+  applicable there rather than pretending to have run.
+- **One device at a time.** Two software emulators running instrumentation on
+  four cores starve SystemUI past its own watchdog, and the ANR dialog that
+  follows takes focus from every test after it - reporting as the app failing
+  when nothing is wrong with it. Runs are serial for that reason, and a
+  watchdog dismisses any dialog that still appears.
 - **The release APK itself** is installed on each of those emulators and
   walked through its tabs, so a missing R8 keep rule fails the build instead
   of failing on a phone.
