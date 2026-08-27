@@ -9,15 +9,17 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -92,7 +94,13 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Bolt
 import app.cloudsaver.core.logic.HomeAction
 import app.cloudsaver.ui.components.TrialCard
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.ui.theme.MetricTextStyle
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
@@ -121,6 +129,15 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val detailKept by vm.detailKept.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    // The confirmed count, held for as long as its card is on screen.
+    //
+    // The count is cleared the instant OK is tapped, but the card is still
+    // shrinking away at that point and was reading the live value: its last
+    // frames announced a result of zero files, which is the one number that
+    // would mean the check had found nothing.
+    var lastConfirm by remember { mutableStateOf(0) }
+    LaunchedEffect(confirmResult) { confirmResult?.let { lastConfirm = it } }
+
     LaunchedEffect(Unit) {
         vm.refreshHealth()
         vm.detectLeftoverFiles()
@@ -148,7 +165,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = Dimens.Screen)
     ) {
         Spacer(Modifier.height(8.dp))
 
@@ -260,7 +277,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-                Row {
+                // Two buttons on one line is two buttons on one line only
+                // while they both fit. On a 320 dp phone at the largest font
+                // size they do not, and the second one was pushed past the
+                // card's edge - so they wrap onto a second line instead.
+                FlowRow {
                     if (!success) {
                         TextButton(onClick = {
                             CloudApps.launch(context, options.cloudSingle)
@@ -293,7 +314,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-                Row {
+                FlowRow {
                     TextButton(onClick = {
                         vm.dismissCrashNotice()
                         nav.goTo(Routes.HELP_LOGS)
@@ -325,7 +346,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(R.string.partial_title),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
                     )
                 }
                 Text(
@@ -379,6 +401,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
             AnimatedNumber(
                 value = Formats.bytes(savedBytes),
+                style = heroFigureStyle(),
                 color = OnBrand,
                 modifier = Modifier.padding(top = 4.dp)
             )
@@ -476,12 +499,17 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 ),
                 label = "statusLine"
             ) { line ->
-                Text(
-                    line,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = OnBrand
-                )
+                // Nothing counted yet, so the line has nothing to say. An
+                // empty Text still takes a line of height inside the banner,
+                // which reads as a gap someone forgot to fill.
+                if (line.isNotEmpty()) {
+                    Text(
+                        line,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = OnBrand
+                    )
+                }
             }
             // Nothing has run yet, so there is no time to state. A line
             // reading "Last checked -" is worse than no line.
@@ -513,9 +541,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // cries wolf is one you stop reading. They are asked for once during
         // setup; here, only real evidence speaks: nothing has run for two days.
         val anyPower = power.any { it.readable && !it.satisfied }
+        // Every chip below has to be named here too. A missing storage card
+        // was not, so a phone whose only problem was the removed card drew no
+        // section at all and its chip - the one thing that says the pause is
+        // temporary rather than the app having died - could never appear.
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.spaceLow || health.backgroundWorkStopped ||
-            options.foreignFiles > 0
+            health.cloudMissing || health.spaceLow || health.volumeMissing ||
+            health.backgroundWorkStopped || options.foreignFiles > 0
         AnimatedVisibility(
             visible = anyHealth,
             enter = fadeIn() + expandVertically(),
@@ -523,11 +555,18 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         ) {
             Column {
                 SectionHeader(stringResource(R.string.section_attention))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Wrapping, not a scrolling strip.
+                //
+                // These chips are the only notice that something needs doing,
+                // and in a horizontally scrolling row everything past the
+                // first two sat off the edge with nothing on screen to say it
+                // was there. At a large font on a narrow phone that is most of
+                // them - and a warning nobody scrolls to is a warning nobody
+                // gets. Wrapping puts every chip on screen at any width.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (health.paused) {
                         StatusChip(stringResource(R.string.chip_paused)) {
@@ -649,7 +688,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                    // A row that can be tapped has to be big enough to tap.
+                    // A single line of small text and 8 dp of padding is
+                    // about 34 dp, well under the target.
+                    .heightIn(min = Dimens.TouchTarget)
+                    .clip(RoundedCornerShape(Dimens.ControlCorner))
                     .clickable { nav.goTo(Routes.DUPLICATES) }
                     .padding(vertical = 8.dp)
             ) {
@@ -689,7 +732,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .heightIn(min = Dimens.TouchTarget)
+                        .clip(RoundedCornerShape(Dimens.ControlCorner))
                         .clickable {
                             vm.filesState.value = "SKIP"
                             nav.goTo(Routes.FILES)
@@ -758,11 +802,20 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         if (!budget.unlimited && budget.totalBytes > 0) {
             Spacer(Modifier.height(14.dp))
             AppCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Title at one end, the used-of-total figure at the other -
+                // until they cannot share a line, and then the figure drops
+                // underneath rather than squeezing the title into a column of
+                // single words. A Row could not do this: the figure carries no
+                // weight, so it was measured first and took whatever it liked
+                // out of the width the title was supposed to have.
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
                     Text(
                         stringResource(R.string.budget_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f)
+                        style = MaterialTheme.typography.titleSmall
                     )
                     Text(
                         stringResource(
@@ -821,7 +874,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     Text(
                         stringResource(R.string.optimise_working),
                         style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -838,7 +892,17 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.btn_optimise_now))
+                    // The button is full width, so the label has the rest of
+                    // the row to use and wraps into it. Without the weight it
+                    // is measured against the whole button and pushes the bolt
+                    // off the leading edge at the largest font size.
+                    Text(
+                        stringResource(R.string.btn_optimise_now),
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
                 }
                 Text(
                     when (action.blocker) {
@@ -914,8 +978,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 Text(
                     pluralStringResource(
                         R.plurals.confirm_result_line,
-                        confirmResult ?: 0,
-                        confirmResult ?: 0
+                        lastConfirm,
+                        lastConfirm
                     ),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -975,7 +1039,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     ),
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Row {
+                FlowRow {
                     TextButton(onClick = {
                         val sender = vm.requestDelete(leftoverUris) { vm.onLeftoversCleaned() }
                         sender?.let {
@@ -1009,6 +1073,31 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         )
     }
+}
+
+/**
+ * The size of the one big figure in the hero banner.
+ *
+ * It is the largest text in the app and the only piece with nowhere to go: it
+ * is drawn on a single line by design, so that a count ticking upward never
+ * reflows the card. At the largest accessibility font size that line needs
+ * more width than a 320 dp phone has, and the figure the whole card exists
+ * for came out as "1.2..." - a shortened number says nothing at all.
+ *
+ * So it still grows with the reader's font setting, just not past the point
+ * where it stops fitting on the narrowest phone. Every other line on this
+ * screen wraps, and scales in full.
+ */
+@Composable
+private fun heroFigureStyle(): androidx.compose.ui.text.TextStyle {
+    val cap = 1.4f
+    val scale = LocalDensity.current.fontScale
+    if (scale <= cap) return MetricTextStyle
+    val factor = cap / scale
+    return MetricTextStyle.copy(
+        fontSize = MetricTextStyle.fontSize * factor,
+        lineHeight = MetricTextStyle.lineHeight * factor
+    )
 }
 
 /** The label for a background-work chip, by requirement. */
@@ -1134,16 +1223,24 @@ private fun HeroStat(
                 modifier = Modifier.size(14.dp)
             )
             Spacer(Modifier.width(6.dp))
+            // Half a hero card is a narrow place for a word. The weight lets
+            // the label wrap inside it instead of stretching the row past the
+            // half it was given.
             Text(
                 label,
                 style = MaterialTheme.typography.labelSmall,
-                color = OnBrandMuted
+                color = OnBrandMuted,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
             )
         }
         Text(
             value,
             style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
             color = OnBrand,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 2.dp)
         )
     }

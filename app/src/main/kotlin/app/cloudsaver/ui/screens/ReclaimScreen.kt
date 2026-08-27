@@ -5,12 +5,16 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +51,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -84,6 +90,7 @@ import app.cloudsaver.core.logic.ProofLine
  * days, and the numbers for all three modes are on screen before any of them
  * is picked.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostController) {
     val entries by rvm.entries.collectAsStateWithLifecycle()
@@ -105,7 +112,13 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
 
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
-    var understood by remember { mutableStateOf(options.reclaimUnderstood) }
+    // The saved answer arrives a moment after the screen is first drawn, and
+    // a plain remember of its value kept the very first one - "not yet" - for
+    // the life of the screen, so someone who had already ticked this box was
+    // asked to tick it again every time they came back. The tick is held
+    // separately and either source counts.
+    var justUnderstood by rememberSaveable { mutableStateOf(false) }
+    val understood = justUnderstood || options.reclaimUnderstood
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(Unit) { rvm.load() }
@@ -130,8 +143,12 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     // visible() again inside themselves. On a four-hundred-file selection
     // that is four passes for every checkbox tap, on the one screen that has
     // to feel dependable. Each is now recomputed only when its inputs change.
-    val visible = remember(entries, shared, sort, grouping) { rvm.visible() }
-    val groups = remember(entries, shared, sort, grouping) { rvm.groups() }
+    // The proof choice is one of the inputs to both, and leaving it out of the
+    // keys meant picking a proof filter changed the chip and nothing else: the
+    // list kept the rows it already had until something else happened to
+    // change. Every input the two functions read is listed here.
+    val visible = remember(entries, shared, suggestion, sort, grouping) { rvm.visible() }
+    val groups = remember(entries, shared, suggestion, sort, grouping) { rvm.groups() }
     val selectedEntries = remember(visible, selected) {
         visible.filter { it.id in selected }
     }
@@ -337,7 +354,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     modifier = Modifier.toggleable(
                         value = false,
                         onValueChange = {
-                            understood = true
+                            justUnderstood = true
                             vm.setReclaimUnderstood(true)
                         },
                         role = Role.Checkbox
@@ -358,28 +375,55 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                 fontWeight = FontWeight.SemiBold
             )
             Text(
+                // Counted the same way as the total above it and the batch
+                // itself: only rows the current filters still show can be
+                // acted on. Counting every tick ever made printed "40 of 5
+                // selected" the moment a filter narrowed the list, and
+                // promised thirty-five files that were never going anywhere.
                 pluralStringResource(
-                    R.plurals.reclaim_selected, selected.size, selected.size, visible.size
+                    R.plurals.reclaim_selected,
+                    selectedEntries.size,
+                    selectedEntries.size,
+                    visible.size
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
+            // Two buttons side by side is two buttons wide, and "Preview
+            // result" beside "Export list" at the largest accessibility font
+            // is wider than a 320 dp phone: the second one simply left the
+            // screen. Wrapping puts the overflow on the next line instead,
+            // at every width and font size, and keeps the order.
+            FlowRow(
                 Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
                     onClick = { rvm.previewResult() },
                     enabled = selected.isNotEmpty()
-                ) { Text(stringResource(R.string.reclaim_preview)) }
+                ) {
+                    Text(
+                        stringResource(R.string.reclaim_preview),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 OutlinedButton(
                     onClick = { exportLauncher.launch("cloudsaver-reclaim.csv") },
                     enabled = selected.isNotEmpty()
-                ) { Text(stringResource(R.string.reclaim_export)) }
+                ) {
+                    Text(
+                        stringResource(R.string.reclaim_export),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
-            Row(
+            FlowRow(
                 Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = {
@@ -412,14 +456,22 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             } else {
                                 R.string.reclaim_delete
                             }
-                        )
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
                     TextButton(
                         onClick = { confirmBig = true },
                         enabled = selected.isNotEmpty() && understood
-                    ) { Text(stringResource(R.string.reclaim_delete)) }
+                    ) {
+                        Text(
+                            stringResource(R.string.reclaim_delete),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             if (mode != ReclaimRules.Mode.COPIES_ONLY) {

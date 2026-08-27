@@ -2,16 +2,24 @@ package app.cloudsaver.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -62,7 +70,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
@@ -87,6 +94,7 @@ import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val o by vm.options.collectAsStateWithLifecycle()
@@ -151,6 +159,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     Column(
         Modifier
             .fillMaxSize()
+            // The Scaffold above hands down the status and navigation bar
+            // insets, but not the cutout: a notch only takes a slice out of
+            // the top in portrait, where the status bar has already covered
+            // it, and takes a slice out of one side in landscape, where
+            // nothing has. Sixteen dp of screen padding is not enough to
+            // clear a 44 dp camera hole, so the sides are asked for
+            // separately - and only the sides, or every notched phone would
+            // gain a second status bar's worth of empty space at the top.
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
     ) {
@@ -217,11 +234,23 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             CopyPathButton(o.outputMode)
         }
 
+        // Which cloud apps this setting is actually feeding right now. In
+        // separate-folder mode there can be two of them, and the card used to
+        // name the single-folder choice regardless - so someone sending photos
+        // to one app and videos to another was told, on the row and in the
+        // set-up checklist underneath, about an app they were not using at all.
+        val cloudsInUse = if (o.outputMode == OutputMode.SINGLE) {
+            listOf(o.cloudSingle)
+        } else {
+            listOf(o.cloudPhotos, o.cloudVideos).distinct()
+        }
         OptionCard(
             stringResource(R.string.opt_cloud),
             stringResource(R.string.cloud_intended),
             icon = IconCloud,
-            value = CloudApps.byId(o.cloudSingle).label
+            // One app can be named on the row; two cannot, and half an answer
+            // is worse than none, so the buttons below carry it instead.
+            value = if (cloudsInUse.size == 1) CloudApps.byId(cloudsInUse[0]).label else null
         ) {
             if (o.outputMode == OutputMode.SINGLE) {
                 CloudButton(
@@ -238,13 +267,15 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     o.cloudVideos
                 ) { cloudPickerFor = "videos" }
             }
-            CloudApps.byId(o.cloudSingle).checklistRes?.let { res ->
-                Text(
-                    stringResource(res),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+            for (cloudId in cloudsInUse) {
+                CloudApps.byId(cloudId).checklistRes?.let { res ->
+                    Text(
+                        stringResource(res),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
             }
         }
 
@@ -600,19 +631,34 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             stringResource(R.string.opt_transfer_hint),
             icon = IconTransfer
         ) {
-            Row {
+            // Two buttons side by side is the arrangement that breaks first:
+            // on a 320 dp phone at the largest accessibility font there is not
+            // room for both, and a plain Row would push the second one off the
+            // edge of the card. Flowing, the second simply drops underneath.
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 OutlinedButton(
                     enabled = !transferBusy,
                     onClick = { askExportPassword = true }
                 ) {
-                    Text(stringResource(R.string.transfer_export))
+                    Text(
+                        stringResource(R.string.transfer_export),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Spacer(Modifier.padding(horizontal = 6.dp))
                 OutlinedButton(
                     enabled = !transferBusy,
                     onClick = { importLauncher.launch(arrayOf("*/*")) }
                 ) {
-                    Text(stringResource(R.string.transfer_import))
+                    Text(
+                        stringResource(R.string.transfer_import),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             if (transferBusy) {
@@ -932,6 +978,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CloudPickRow(
     app: app.cloudsaver.data.CloudApp,
@@ -939,18 +986,30 @@ private fun CloudPickRow(
     onPick: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val installed = app.packages.isNotEmpty() &&
-        CloudApps.installedPackage(context, app) != null
+    // Asking the package manager whether an app is installed is a call out to
+    // another process. Unremembered it ran again for every row on every frame
+    // of the picker's scroll, which is a dozen binder round trips per frame
+    // for an answer that cannot change while the dialog is open.
+    val installed = remember(app.id, context) {
+        app.packages.isNotEmpty() && CloudApps.installedPackage(context, app) != null
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {
         RadioButton(selected = app.id == current, onClick = { onPick(app.id) })
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The tag has no weight and the name is arbitrarily long, so in a
+            // Row the name took the whole line and "Recommended" was measured
+            // into nothing - the one word the section exists to say. Flowing,
+            // the tag moves under the name instead of disappearing.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(app.label, style = MaterialTheme.typography.bodyLarge)
                 if (app.recommended) {
-                    RecommendedTag(Modifier.padding(start = 8.dp))
+                    RecommendedTag()
                 }
             }
             if (installed) {
@@ -1108,6 +1167,7 @@ private val InfoIcon = Icons.Outlined.Info
  * to scan by. [value] repeats the current choice in words next to the title,
  * so the answer is readable without parsing the control below it.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OptionCard(
     title: String,
@@ -1124,36 +1184,40 @@ private fun OptionCard(
                     icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .padding(end = 0.dp)
+                    modifier = Modifier.size(24.dp)
                 )
                 Spacer(Modifier.width(14.dp))
             }
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // The setting's name and the setting's value share one line
+                // for as long as both fit, and the value drops onto a line of
+                // its own the moment they do not.
+                //
+                // Splitting the line by weight instead - which is what this
+                // was - divides it in half whether or not half is enough. On a
+                // 320 dp phone at the largest accessibility font that left the
+                // title a word wide down the left edge and cut "Photos and
+                // videos" to "Photos a...", so neither half could be read.
+                // Flowing, each is shown in full; one of them just moves down
+                // a line to get there.
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
                         title,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
+                        fontWeight = FontWeight.SemiBold
                     )
                     value?.let {
                         Text(
                             it,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                             textAlign = TextAlign.End,
-                            // The setting's current value. It carries no
-                            // weight, so on a narrow phone at a large font it
-                            // would take whatever it wanted and squeeze the
-                            // title that names the setting; bounded, the two
-                            // share the row instead.
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .padding(start = 12.dp)
+                            modifier = Modifier.padding(start = 12.dp)
                         )
                     }
                 }
@@ -1253,7 +1317,13 @@ private fun NavRow(
                     Text(
                         title,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        // Weighted so the title yields to the unread dot
+                        // rather than the other way round. Unweighted it was
+                        // measured first and took the whole line at a large
+                        // font, leaving the dot nothing - and a badge that is
+                        // not drawn is the same as no unread mark at all.
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     if (dot) {
                         Spacer(Modifier.width(8.dp))
@@ -1322,7 +1392,23 @@ private fun ChoiceNote(text: String) {
 @Composable
 private fun CloudButton(label: String, cloudId: String, onClick: () -> Unit) {
     val app = CloudApps.byId(cloudId)
-    OutlinedButton(onClick = onClick, modifier = Modifier.padding(top = 4.dp)) {
-        Text("$label: ${app.label}")
+    // Full width, because the cloud app's own name is arbitrary text and the
+    // label in front of it is a whole phrase: left to size itself the button
+    // grew with them and ran past the edge of the card on a narrow phone. Full
+    // width, the words wrap inside a button that is already as wide as it can
+    // get. The two halves are joined by a resource rather than in code, so the
+    // punctuation between them is translatable like everything else.
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier
+            .padding(top = 4.dp)
+            .fillMaxWidth()
+    ) {
+        Text(
+            stringResource(R.string.cloud_button_label, label, app.label),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
