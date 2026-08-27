@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -51,12 +53,15 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.OnboardingSteps
@@ -64,9 +69,11 @@ import app.cloudsaver.core.logic.OnboardingSteps.Step
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
+import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
@@ -74,6 +81,17 @@ import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.ui.components.TrialCard
+
+/**
+ * The most of the setup card the album list may take before it scrolls itself.
+ *
+ * The list is a lazy one, and a lazy list inside a page that already scrolls
+ * has to be told how tall it may be - without a ceiling it has nothing to
+ * measure against and will not draw at all. This is roughly the height of six
+ * rows at an ordinary text size, so the choice above it, the running count and
+ * the button below all stay on screen while the albums scroll between them.
+ */
+private val AlbumListMaxHeight = 320.dp
 
 /**
  * One-time setup.
@@ -96,8 +114,9 @@ fun OnboardingScreen(vm: AppViewModel) {
     // then on.
     var step by rememberSaveable { mutableIntStateOf(0) }
     var moved by rememberSaveable { mutableStateOf(false) }
-    // Where setup was when it was last left, for the banner. Frozen at the
-    // first tap so it does not follow the user forward.
+    // Where setup was when it was last left, for the banner. Zero means there
+    // is nothing to say, and the first tap forward puts it back to zero - see
+    // goTo below, which is where the sentence stops being true.
     var resumedAt by rememberSaveable { mutableIntStateOf(0) }
     // A detour to the album list from the summary must come back to the
     // summary. Walking someone from the last step to the third and making
@@ -121,6 +140,16 @@ fun OnboardingScreen(vm: AppViewModel) {
 
     fun goTo(next: Int) {
         moved = true
+        // "Picking up where you left off" is about one card - the one setup
+        // was abandoned on. It was switched on by the stored step and then
+        // never switched off, so someone who came back to the battery card
+        // and tapped forward carried that sentence with them through
+        // notifications, usage access, the cloud step and the summary: a
+        // banner announcing a return that had already happened, sitting above
+        // every remaining screen of the run and pushing the actual step down
+        // the page. The first tap is the moment it stops being true, so that
+        // is where it is cleared.
+        resumedAt = 0
         step = next.coerceIn(0, OnboardingSteps.TOTAL - 1)
         vm.setOnboardingStep(step)
     }
@@ -366,6 +395,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             Step.ALBUMS -> {
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
                 val buckets by vm.buckets.collectAsStateWithLifecycle()
+                val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
                 val locked by vm.lockedBuckets.collectAsStateWithLifecycle()
                 val included = buckets.count { it !in options.excludedBuckets }
                 // How much this choice actually involves. Re-measured on every
@@ -393,12 +423,24 @@ fun OnboardingScreen(vm: AppViewModel) {
                         }
                     }
                 ) {
+                    // Empty has two meanings and they are not the same
+                    // sentence. Until the scan has answered, this is a wait.
+                    // Once it has answered with nothing, the phone genuinely
+                    // has no photos on it - and saying "Loading albums..."
+                    // then is a wait that never ends.
                     if (buckets.isEmpty()) {
-                        Text(
-                            stringResource(R.string.folders_loading),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (bucketsLoaded) {
+                            EmptyState(
+                                title = stringResource(R.string.folders_none_title),
+                                body = stringResource(R.string.folders_none_body)
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.folders_loading),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     // The running count and the select-all control cannot
                     // share a line on a narrow phone at a large font: the
@@ -443,45 +485,67 @@ fun OnboardingScreen(vm: AppViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    for (bucket in buckets) {
-                        // The whole row is the tick box, not just the box:
-                        // otherwise the tap target is a few millimetres wide
-                        // and a screen reader reads "checkbox, not ticked"
-                        // with no idea which folder it belongs to.
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                // A Checkbox handed onCheckedChange = null is
-                                // not the thing being tapped, so Material does
-                                // not give it the interactive minimum it gives
-                                // a live one: the row came out around 28 dp
-                                // tall, and the whole row is what takes the
-                                // tap. A floor, not a fixed height - a long
-                                // album name at a large font still grows the
-                                // row rather than being cut by it.
-                                .heightIn(min = Dimens.TouchTarget)
-                                .toggleable(
-                                    value = bucket !in options.excludedBuckets,
-                                    onValueChange = { include ->
-                                        vm.setExcludedBuckets(
-                                            if (include) options.excludedBuckets - bucket
-                                            else options.excludedBuckets + bucket
-                                        )
-                                    },
-                                    role = Role.Checkbox
+                    // A gallery of several hundred albums is an ordinary
+                    // gallery, and a plain loop built a tickable row for every
+                    // one of them before this card could be drawn - a wait, on
+                    // the one screen where the app is asking to be trusted
+                    // with someone's photos. A lazy list builds the handful of
+                    // rows that are actually on screen.
+                    //
+                    // The height is capped rather than left to grow. This card
+                    // is inside the setup screen's own vertical scroll, and a
+                    // lazy list given no ceiling there has no height to measure
+                    // itself against and refuses to measure at all. Capped, it
+                    // scrolls its own rows and hands the drag back to the page
+                    // once it reaches either end, so the two never fight over
+                    // the same gesture.
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = AlbumListMaxHeight)
+                            .testTag(ListTags.ROWS)
+                    ) {
+                        items(buckets) { bucket ->
+                            // The whole row is the tick box, not just the box:
+                            // otherwise the tap target is a few millimetres
+                            // wide and a screen reader reads "checkbox, not
+                            // ticked" with no idea which folder it belongs to.
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // A Checkbox handed onCheckedChange = null
+                                    // is not the thing being tapped, so
+                                    // Material does not give it the interactive
+                                    // minimum it gives a live one: the row came
+                                    // out around 28 dp tall, and the whole row
+                                    // is what takes the tap. A floor, not a
+                                    // fixed height - a long album name at a
+                                    // large font still grows the row rather
+                                    // than being cut by it.
+                                    .heightIn(min = Dimens.TouchTarget)
+                                    .toggleable(
+                                        value = bucket !in options.excludedBuckets,
+                                        onValueChange = { include ->
+                                            vm.setExcludedBuckets(
+                                                if (include) options.excludedBuckets - bucket
+                                                else options.excludedBuckets + bucket
+                                            )
+                                        },
+                                        role = Role.Checkbox
+                                    )
+                            ) {
+                                Checkbox(
+                                    checked = bucket !in options.excludedBuckets,
+                                    onCheckedChange = null
                                 )
-                        ) {
-                            Checkbox(
-                                checked = bucket !in options.excludedBuckets,
-                                onCheckedChange = null
-                            )
-                            Text(
-                                bucket,
-                                maxLines = 1,
-                                overflow = TextOverflow.MiddleEllipsis,
-                                modifier = Modifier.weight(1f)
-                            )
+                                Text(
+                                    bucket,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.MiddleEllipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                         }
                     }
                     // Folders that already hold another app's compressed
@@ -1078,7 +1142,22 @@ private fun CloudPickRowSimple(
     onPick: (String) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val installed = remember(app.id) { CloudApps.isAppInstalled(context, app.id) }
+    // Whether this cloud app is on the phone, asked again every time the app
+    // comes back to the foreground.
+    //
+    // Asked once and remembered for the life of the row, the answer went stale
+    // in the one situation this picker creates: the list says an app is not
+    // installed, the reader leaves to install it, comes back to a picker that
+    // was never closed - and the row still says nothing, because the question
+    // was only ever asked before they left. The package manager is asked once
+    // per row per return to the app, which is nothing, and never on a frame of
+    // scrolling.
+    var installed by remember(app.id) {
+        mutableStateOf(CloudApps.isAppInstalled(context, app.id))
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        installed = CloudApps.isAppInstalled(context, app.id)
+    }
     TextButton(
         onClick = { onPick(app.id) },
         modifier = Modifier.fillMaxWidth()

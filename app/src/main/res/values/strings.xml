@@ -208,6 +208,11 @@
     <string name="activity_clear_body">This only clears the list. Your files, settings and backup state are untouched.</string>
     <string name="activity_empty_title">Nothing logged yet</string>
     <string name="activity_empty_body">Every optimised file, upload and problem shows up here.</string>
+    <!-- Shown when the history has entries but the chosen group has none of
+         them. Saying "Nothing logged yet" here told the reader their whole
+         history was empty when it was not. -->
+    <string name="activity_empty_group_title">Nothing in this group</string>
+    <string name="activity_empty_group_body">Your history is not empty. Choose All to see everything CloudSaver has done.</string>
     <string name="activity_optimised">Optimised %1$s files, saving %2$s</string>
     <string name="activity_released">Added %1$s files to the upload folder</string>
     <string name="activity_backed_up">%1$s files confirmed backed up</string>
@@ -455,6 +460,11 @@
     <string name="folders_reason_hidden">Hidden folder</string>
     <string name="folders_reason_compressed">Old optimised copies (excluded)</string>
     <string name="folders_loading">Loading albums…</string>
+    <!-- Shown once the gallery really has been read and there was
+         nothing in it. Distinct from folders_loading, which is a wait:
+         a phone with no photos on it was left waiting forever. -->
+    <string name="folders_none_title">No albums yet</string>
+    <string name="folders_none_body">There are no photos or videos on this phone for CloudSaver to look through. Take a photo, or wait for your gallery to fill up, and your albums will appear here.</string>
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>
     <string name="output_switch_title">Change folder layout?</string>
@@ -781,6 +791,9 @@
     <string name="verify_link_hint">Turn on usage access and CloudSaver can confirm uploads by itself.</string>
     <string name="activity_started_by_you">Started by you</string>
     <string name="storage_group_phone">Your phone</string>
+    <!-- Held for the moment between the screen opening and the phone's own
+         storage being read, so the card is never an empty box. -->
+    <string name="storage_volumes_reading">Reading your phone\u2019s storage\u2026</string>
     <string name="storage_group_own">CloudSaver\'s own space</string>
     <string name="storage_group_cleanup">Clean up</string>
     <string name="storage_limit_line">Limit %1$s \u00b7 now using %2$s</string>

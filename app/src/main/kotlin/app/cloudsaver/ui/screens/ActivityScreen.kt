@@ -2,17 +2,14 @@ package app.cloudsaver.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
@@ -212,10 +209,25 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
 
             if (rows.isEmpty()) {
                 item(key = "empty") {
-                    EmptyState(
-                        title = stringResource(R.string.activity_empty_title),
-                        body = stringResource(R.string.activity_empty_body)
-                    )
+                    // An empty list means two completely different things here
+                    // and only one of them was ever said. With a group chosen,
+                    // nothing to show means that group has nothing in it - but
+                    // the screen still announced "Nothing logged yet", so
+                    // tapping Problems on a phone that has never had a problem
+                    // told the reader their entire history had gone. The
+                    // original message now appears only when the list really
+                    // is everything the app has recorded.
+                    if (filter == null) {
+                        EmptyState(
+                            title = stringResource(R.string.activity_empty_title),
+                            body = stringResource(R.string.activity_empty_body)
+                        )
+                    } else {
+                        EmptyState(
+                            title = stringResource(R.string.activity_empty_group_title),
+                            body = stringResource(R.string.activity_empty_group_body)
+                        )
+                    }
                 }
             } else {
                 var lastDay = ""

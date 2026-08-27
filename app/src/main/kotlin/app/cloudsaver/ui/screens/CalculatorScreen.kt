@@ -157,7 +157,13 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
         Column(Modifier.padding(horizontal = Dimens.Screen)) {
             // 1. The one thing the app cannot know.
             AppCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // The icon marks the start of the label, so it belongs beside
+                // the label's first line. "Free space in your cloud (GB)" takes
+                // two or three lines at the largest font, and centred against
+                // them the cloud icon was drawn level with the middle of the
+                // phrase - close enough to the field below to look like it had
+                // come adrift from the heading it belongs to.
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Outlined.CloudQueue,
                         contentDescription = null,
@@ -171,9 +177,21 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                         fontWeight = FontWeight.SemiBold
                     )
                 }
+                // Only a number can ever be in here.
+                //
+                // Decimal is a keyboard hint and nothing more: it asks the
+                // system for a numeric pad, it does not stop anything else
+                // arriving. A physical keyboard, a pasted line, a keyboard
+                // that shows letters anyway - all of them put text in this
+                // field that toDoubleOrNull cannot read, and the whole page
+                // below then collapsed to "Enter your free space" with no
+                // explanation, as though the app had simply lost interest in
+                // what had just been typed. Filtering as it is typed means
+                // the unusable character never lands: what appears in the
+                // field is always something the calculator can answer.
                 OutlinedTextField(
                     value = freeText,
-                    onValueChange = { freeText = it },
+                    onValueChange = { freeText = numericOnly(it) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(14.dp),
@@ -371,7 +389,11 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             if (monthlyGb > 0 && estimate.fits && estimate.monthsLeft >= 0) {
                 Spacer(Modifier.height(4.dp))
                 AppCard {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Top-aligned: the pace sentence carries a figure inside
+                    // it and wraps to two lines on a narrow phone, and the
+                    // speedometer then sat between the two rather than at the
+                    // start of the sentence it introduces.
+                    Row(verticalAlignment = Alignment.Top) {
                         Icon(
                             Icons.Outlined.Speed,
                             contentDescription = null,
@@ -396,7 +418,14 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             // 5. Quality, always visible - it is the reason the numbers work.
             SectionHeader(stringResource(R.string.calc_quality_header))
             AppCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // All three rows in this card are top-aligned rather than
+                // centred. Every one of them is a whole sentence beside an
+                // 18 dp icon - the unmeasured wording is two sentences - so at
+                // any font size above the smallest they run to several lines,
+                // and a centred icon floated in the middle of the paragraph
+                // with white space above and below it. Level with the first
+                // line, the icon reads as what it is: the mark for that line.
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Outlined.PhotoLibrary,
                         contentDescription = null,
@@ -414,7 +443,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                 }
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier.padding(top = 6.dp)
                 ) {
                     Icon(
@@ -432,7 +461,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                 }
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier.padding(top = 6.dp)
                 ) {
                     Icon(
@@ -492,6 +521,34 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
  * vanish. Plans are sold in GB, so the calculator counts in GB.
  */
 private fun fmt(v: Double): String = String.format(java.util.Locale.US, "%.2f", v)
+
+/**
+ * What is allowed to survive being typed into the free-space field.
+ *
+ * Digits, and one decimal separator - either the dot or the comma, because
+ * both are written on real keyboards and the reader further up accepts
+ * either. Everything else is dropped as it arrives rather than being shown
+ * and then quietly ignored, so the field can never hold a value the answer
+ * below it cannot be worked out from.
+ *
+ * Only the plain ASCII digits count. Char.isDigit is true of the digits of
+ * every script Unicode knows, and a number written in those would look
+ * perfectly typed here and still come back as nothing from toDoubleOrNull.
+ */
+private fun numericOnly(raw: String): String {
+    val out = StringBuilder()
+    var separatorTaken = false
+    for (ch in raw) {
+        when {
+            ch in '0'..'9' -> out.append(ch)
+            (ch == '.' || ch == ',') && !separatorTaken -> {
+                separatorTaken = true
+                out.append(ch)
+            }
+        }
+    }
+    return out.toString()
+}
 
 /**
  * The answer's own type size, held to a width a small phone actually has.

@@ -335,7 +335,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             exit = fadeOut() + shrinkVertically()
         ) {
             AppCard(modifier = Modifier.padding(top = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // The icon belongs beside the first line of the heading, not
+                // beside the middle of it. "CloudSaver can only see the photos
+                // you picked" is three lines at the largest font, and centred
+                // against three lines the icon ends up opposite the second one,
+                // with blank space above and below it. That reads as something
+                // having slipped out of place rather than as the marker for
+                // this warning, so the row is top-aligned instead.
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Outlined.PhotoLibrary,
                         contentDescription = null,
@@ -439,7 +446,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             // rather than a reassuring adjective.
             detailKept?.let { k ->
                 Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Top-aligned for the same reason as the warning above: this
+                // sentence wraps onto two or three lines at a large font, and
+                // a 16 dp icon centred against them sits opposite a gap rather
+                // than opposite the words it introduces.
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Outlined.HighQuality,
                         contentDescription = null,
@@ -458,7 +469,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             // whenever it leans on typical ratios rather than this phone's.
             if (projection.savedBytes > 0) {
                 Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Two stacked sentences beside one small icon, so this is the
+                // worst of the centred rows: at a large font the block is four
+                // or five lines tall and the icon was drawn halfway down it,
+                // level with nothing in particular.
+                Row(verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Outlined.TrendingUp,
                         contentDescription = null,
@@ -514,8 +529,11 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             // Nothing has run yet, so there is no time to state. A line
             // reading "Last checked -" is worse than no line.
             if (options.lastRunAt > 0) {
+                // A date and a time together are long enough to wrap on a
+                // narrow phone at a large font, and the clock icon then sat
+                // between the two lines instead of against the first.
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier.padding(top = 2.dp)
                 ) {
                     Icon(
@@ -1098,15 +1116,6 @@ private fun heroFigureStyle(): androidx.compose.ui.text.TextStyle {
         fontSize = MetricTextStyle.fontSize * factor,
         lineHeight = MetricTextStyle.lineHeight * factor
     )
-}
-
-/** The label for a background-work chip, by requirement. */
-@Composable
-private fun powerChipLabel(id: String): String = when (id) {
-    PowerPages.ID_BATTERY_UNRESTRICTED -> stringResource(R.string.chip_battery)
-    PowerPages.ID_AUTO_LAUNCH -> stringResource(R.string.chip_auto_launch)
-    PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.chip_background)
-    else -> stringResource(R.string.chip_battery)
 }
 
 /**

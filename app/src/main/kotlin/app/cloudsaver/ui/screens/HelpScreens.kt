@@ -35,13 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -79,7 +79,9 @@ import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.outlined.Tune
 import app.cloudsaver.ui.components.SegmentedChoice
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 private fun HelpPage(
@@ -349,7 +351,14 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
             Text(
                 stringResource(
                     R.string.quality_current_headroom,
-                    String.format(java.util.Locale.US, "%.0f", QualityKept.screenHeadroom(preset))
+                    // Every number the app prints goes through Formats, and
+                    // this one did not. It was rounded by a hand-written
+                    // String.format pinned to American formatting, so on a
+                    // phone set to a language that writes numbers differently
+                    // this single figure disagreed with every other number on
+                    // the screen. Formats rounds it the same way and writes it
+                    // the way the phone writes numbers.
+                    Formats.count(QualityKept.screenHeadroom(preset).roundToInt())
                 ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -602,13 +611,33 @@ private fun QualityBlock(
 @Composable
 fun HelpLogsScreen(nav: NavHostController) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var text by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    // The tail of the log, already cut into blocks of lines.
+    //
+    // It used to be one string of up to forty thousand characters handed to a
+    // single Text, and one Text is one paragraph layout over the whole forty
+    // kilobytes - measured again every time the screen is measured, which is
+    // opening the page, turning the phone and every change of font size. On
+    // the old phones this app is written for that is a visible stall with
+    // nothing on screen yet. A log is lines, so it is split into blocks of a
+    // hundred lines and each block is laid out on its own. Nothing is left
+    // out and nothing is shortened: the blocks are the same characters in the
+    // same order, drawn one under the other, so the page reads exactly as it
+    // did before.
+    var blocks by remember { mutableStateOf(emptyList<String>()) }
     val shareTitle = stringResource(R.string.logs_share)
-    // Up to forty thousand characters off the disk. LaunchedEffect runs on the
-    // main thread, so read it on the IO dispatcher: on a slow phone this was a
-    // file read blocking the frame that was meant to draw the screen.
+    // Reading the file and splitting it are both work, and LaunchedEffect runs
+    // on the main thread, so both happen on the IO dispatcher: on a slow phone
+    // this was blocking the frame that was meant to draw the screen.
     LaunchedEffect(Unit) {
-        text = withContext(Dispatchers.IO) { AppLog.readTail(context) }
+        blocks = withContext(Dispatchers.IO) {
+            val tail = AppLog.readTail(context)
+            if (tail.isEmpty()) {
+                emptyList<String>()
+            } else {
+                tail.lineSequence().chunked(100).map { it.joinToString("\n") }.toList()
+            }
+        }
     }
     HelpPage(nav, stringResource(R.string.help_logs)) {
         // Two buttons side by side is two buttons wide, and at the largest
@@ -640,8 +669,14 @@ fun HelpLogsScreen(nav: NavHostController) {
                 Text(shareTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
             OutlinedButton(onClick = {
-                AppLog.clear(context)
-                text = ""
+                // Deleting the two log files is disk work, and it was being
+                // done on the main thread the instant the button was pressed -
+                // a dropped frame at best, and on a phone with a slow or busy
+                // filesystem a button that visibly sticks under the finger.
+                // What is on screen clears straight away; the files go on the
+                // IO dispatcher.
+                blocks = emptyList<String>()
+                scope.launch { withContext(Dispatchers.IO) { AppLog.clear(context) } }
             }) {
                 Text(
                     stringResource(R.string.logs_clear),
@@ -651,12 +686,22 @@ fun HelpLogsScreen(nav: NavHostController) {
             }
         }
         AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
-            Text(
-                if (text.isEmpty()) stringResource(R.string.logs_empty) else text,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = if (text.isEmpty()) null else FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (blocks.isEmpty()) {
+                Text(
+                    stringResource(R.string.logs_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                for (block in blocks) {
+                    Text(
+                        block,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

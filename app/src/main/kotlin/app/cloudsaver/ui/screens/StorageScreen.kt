@@ -99,6 +99,21 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         }
         SectionHeader(stringResource(R.string.storage_group_phone))
         AppCard {
+            // The volume list is read on a background thread, so on the frame
+            // this screen first draws it is still empty - and the card was
+            // drawn around it anyway, as a bordered box with nothing at all
+            // inside. An empty box is not a fact about anybody's phone: it
+            // reads as a screen that has failed to load, which is the one thing
+            // this screen exists never to do. Until the read comes back the
+            // card says what it is doing, and the moment it does the real
+            // volumes take that line's place.
+            if (volumes.isEmpty()) {
+                Text(
+                    stringResource(R.string.storage_volumes_reading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant
+                )
+            }
             volumes.forEachIndexed { index, vol ->
                 if (index > 0) Spacer(Modifier.height(20.dp))
                 val used = (vol.totalBytes - vol.freeBytes).coerceAtLeast(0)
@@ -342,11 +357,19 @@ private fun FindRow(
 ) {
     AppCard(modifier = Modifier.padding(vertical = 4.dp), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // The icon alone is pinned to the top. The name and the line under
+            // it are always two lines and often five at a large font, and an
+            // icon centred against that block sat opposite the middle of the
+            // sentence rather than opposite the name it belongs to. Only the
+            // icon moves: the size and the chevron mark the row as a whole and
+            // stay centred on it, as they do in every other list in the app.
             Icon(
                 icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier
+                    .align(Alignment.Top)
+                    .size(20.dp)
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -402,11 +425,17 @@ private fun UsageRow(
 ) {
     val scheme = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        // Top-aligned for the same reason as the rows above: "Waiting in your
+        // upload folder" runs to three lines at the largest font, and the icon
+        // was drawn level with the middle of it. The size keeps its own centred
+        // alignment, because it is read against the label as a pair.
         Icon(
             icon,
             contentDescription = null,
             tint = scheme.onSurfaceVariant,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier
+                .align(Alignment.Top)
+                .size(20.dp)
         )
         Spacer(Modifier.width(12.dp))
         Text(

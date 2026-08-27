@@ -18,8 +18,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -63,6 +66,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
@@ -85,14 +90,29 @@ import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
+import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.AppCard
+import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.components.StackedTextScale
 import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
+
+/**
+ * The most of the Folders dialog the album list may take before it scrolls.
+ *
+ * The list is a lazy one, and a lazy list has to be told how tall it may be
+ * before it can measure itself - left open-ended it draws nothing at all. This
+ * is about the height a dialog gets on an ordinary phone, so on that phone the
+ * ceiling never comes into it: it is the dialog's own edges that stop the list,
+ * exactly as they did before, and on a very tall screen the buttons underneath
+ * stay in view instead of being pushed down by a gallery's worth of albums.
+ */
+private val FolderListMaxHeight = 360.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -808,7 +828,17 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
     if (showFolders) {
         val buckets by vm.buckets.collectAsStateWithLifecycle()
+        val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
         val lockedBuckets by vm.lockedBuckets.collectAsStateWithLifecycle()
+        // The same measured figure the setup step shows: a count of albums says
+        // nothing about how much gallery it is. It is measured out here rather
+        // than inside the list below, because an effect that lives in a row of
+        // a lazy list is cancelled the moment that row is scrolled off the
+        // screen - and this is the effect that keeps the figure honest.
+        val tickedBytes by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
+        LaunchedEffect(o.excludedBuckets, buckets) {
+            vm.refreshSelectedAlbumBytes()
+        }
         AlertDialog(
             onDismissRequest = { showFolders = false },
             confirmButton = {
@@ -816,29 +846,53 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             },
             title = { Text(stringResource(R.string.opt_folders)) },
             text = {
-                Column(
-                    Modifier
-                        .verticalScroll(rememberScrollState())
+                // The whole body of this dialog is one lazy list, and the list
+                // itself is what scrolls it. There is no verticalScroll Column
+                // wrapped around it on purpose: a scrolling column holding a
+                // scrolling list is two scrollers in the same direction
+                // arguing over one drag.
+                //
+                // Lazy, because a plain loop built a tickable row for every
+                // album in the gallery before the dialog could open, and a
+                // gallery of several hundred albums is an ordinary gallery -
+                // this owner's is one. The ceiling below is what lets it
+                // measure itself at all; a lazy list with no height to work
+                // against does not draw.
+                LazyColumn(
+                    modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = FolderListMaxHeight)
+                        .testTag(ListTags.ROWS)
                 ) {
-                    if (buckets.isEmpty()) {
-                        Text(stringResource(R.string.folders_loading))
+                    item(key = "head") {
+                        Column(Modifier.fillMaxWidth()) {
+                            // Empty has two meanings. Until the scan has
+                            // answered, this is a wait; once it has answered
+                            // with nothing, the phone has no photos on it and
+                            // "Loading albums..." is a wait that never ends.
+                            if (buckets.isEmpty()) {
+                                if (bucketsLoaded) {
+                                    EmptyState(
+                                        title = stringResource(R.string.folders_none_title),
+                                        body = stringResource(R.string.folders_none_body)
+                                    )
+                                } else {
+                                    Text(stringResource(R.string.folders_loading))
+                                }
+                            }
+                            tickedBytes?.let { bytes ->
+                                Text(
+                                    stringResource(
+                                        R.string.onb_albums_size, Formats.bytes(bytes)
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                        }
                     }
-                    // The same measured figure the setup step shows: a count
-                    // of albums says nothing about how much gallery it is.
-                    val tickedBytes by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
-                    LaunchedEffect(o.excludedBuckets, buckets) {
-                        vm.refreshSelectedAlbumBytes()
-                    }
-                    tickedBytes?.let { bytes ->
-                        Text(
-                            stringResource(R.string.onb_albums_size, Formats.bytes(bytes)),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                    }
-                    for (bucket in buckets) {
+                    items(buckets) { bucket ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -867,42 +921,53 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     // Folders holding another pipeline's compressed copies.
                     // Shown so the absence is explained, but never selectable:
-                    // re-compressing copies of copies helps nobody.
+                    // re-compressing copies of copies helps nobody. There are
+                    // only ever a handful of these, so they stay together in
+                    // one entry rather than being spread over the list.
                     if (lockedBuckets.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            stringResource(R.string.folders_auto_excluded),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        for ((bucket, reason) in lockedBuckets) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 6.dp)
-                            ) {
-                                Checkbox(checked = false, enabled = false, onCheckedChange = null)
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        bucket,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.MiddleEllipsis,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
-                                    Text(
-                                        stringResource(
-                                            when (reason) {
-                                                ScanSources.Reason.OUR_OUTPUT ->
-                                                    R.string.folders_reason_ours
-                                                ScanSources.Reason.HIDDEN ->
-                                                    R.string.folders_reason_hidden
-                                                else -> R.string.folders_reason_compressed
-                                            }
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
+                        item(key = "locked") {
+                            Column(Modifier.fillMaxWidth()) {
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    stringResource(R.string.folders_auto_excluded),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                for ((bucket, reason) in lockedBuckets) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                    ) {
+                                        Checkbox(
+                                            checked = false,
+                                            enabled = false,
+                                            onCheckedChange = null
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                bucket,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.MiddleEllipsis,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                            Text(
+                                                stringResource(
+                                                    when (reason) {
+                                                        ScanSources.Reason.OUR_OUTPUT ->
+                                                            R.string.folders_reason_ours
+                                                        ScanSources.Reason.HIDDEN ->
+                                                            R.string.folders_reason_hidden
+                                                        else ->
+                                                            R.string.folders_reason_compressed
+                                                    }
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1254,6 +1319,18 @@ private fun SwitchCard(
     checked: Boolean,
     onChange: (Boolean) -> Unit
 ) {
+    // Once the text is large enough, the switch goes under the words instead
+    // of beside them - the same threshold, and the same arrangement, that
+    // SettingRow uses, so a screen of settings still reads as one screen.
+    //
+    // A Switch is a fixed 52 dp whatever the reader's text size, and the icon
+    // and its gap take another 38. On a 320 dp phone at 200% that leaves the
+    // words about 150 dp: "Require unlock to open CloudSaver" came out as five
+    // short lines beside a switch pinned at the top of them, which reads as a
+    // control belonging to whichever line it happens to sit next to. Stacked,
+    // the title has the whole card and the switch sits under it on the end of
+    // the row, where it belongs to all of it.
+    val stacked = LocalDensity.current.fontScale >= StackedTextScale
     AppCard(
         // Toggleable, not clickable: the whole card is a switch, so it is
         // announced with its title and its state rather than as a button
@@ -1283,9 +1360,22 @@ private fun SwitchCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
                 )
+                if (stacked) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Switch(checked = checked, onCheckedChange = null)
+                    }
+                }
             }
-            Spacer(Modifier.width(12.dp))
-            Switch(checked = checked, onCheckedChange = null)
+            if (!stacked) {
+                Spacer(Modifier.width(12.dp))
+                Switch(checked = checked, onCheckedChange = null)
+            }
         }
     }
 }

@@ -1207,6 +1207,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val buckets = MutableStateFlow<List<String>>(emptyList())
 
+    /**
+     * Whether the album list has actually been read yet.
+     *
+     * Without it an empty list has two meanings and the screen has to guess.
+     * It guessed "still reading", so a phone with no photos on it at all sat
+     * on "Loading albums..." for as long as anyone was willing to wait for a
+     * list that was never going to arrive. The two states are different
+     * sentences, so they need different facts behind them.
+     */
+    val bucketsLoaded = MutableStateFlow(false)
+
     /** Folders the app refuses to scan, with why - shown greyed out in the picker. */
     val lockedBuckets = MutableStateFlow<List<Pair<String, ScanSources.Reason>>>(emptyList())
 
@@ -1248,6 +1259,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             lockedBuckets.value = runCatching {
                 scanner.excludedBucketReasons().toList().sortedBy { it.first }
             }.getOrDefault(emptyList())
+            // Last, and set even when the scan came back with nothing: an
+            // empty answer is still an answer, and it is the one the screen
+            // needs in order to stop saying it is still looking.
+            bucketsLoaded.value = true
         }
     }
 
