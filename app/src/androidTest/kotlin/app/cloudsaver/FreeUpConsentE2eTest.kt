@@ -17,6 +17,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
@@ -181,6 +182,7 @@ class FreeUpConsentE2eTest {
         val seeds = seedBackedUpOriginals(3, "refuse")
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
             tapMoveToTrashAndContinue()
@@ -234,6 +236,7 @@ class FreeUpConsentE2eTest {
         val expectedFreed = ROW_BYTES * seeds.size
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
             tapMoveToTrashAndContinue()
@@ -303,6 +306,7 @@ class FreeUpConsentE2eTest {
         val seeds = seedBackedUpOriginals(chunk + 1, "chunk")
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
             tapMoveToTrashAndContinue()
@@ -375,6 +379,7 @@ class FreeUpConsentE2eTest {
         val seeds = seedBackedUpOriginals(2, "restore")
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openBackedUpOriginals()
             chooseFreeUpFullyAndSelectEverything(seeds.size)
             tapMoveToTrashAndContinue()
@@ -466,6 +471,7 @@ class FreeUpConsentE2eTest {
         val (keeper, extra) = seedIdenticalPair()
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openHubCard(R.string.find_duplicates)
             awaitRow(extra.name)
             // Existence, not visibility: reaching the extra row scrolls the
@@ -531,6 +537,7 @@ class FreeUpConsentE2eTest {
         )
 
         ActivityScenario.launch(MainActivity::class.java).use {
+            awaitAppOnScreen()
             openHub()
             awaitText(R.string.hub_leftovers)
             // "Clear" is also the Storage screen's own temp-files button, so
@@ -771,11 +778,42 @@ class FreeUpConsentE2eTest {
 
     // ---- waiting -------------------------------------------------------------
 
+    /**
+     * How many nodes match, counting "the app has not drawn anything yet" as
+     * none rather than as a crash.
+     *
+     * fetchSemanticsNodes throws IllegalStateException - "No compose
+     * hierarchies found in the app" - when there is no composition at all, and
+     * a waitUntil built on it does not retry past that: the exception goes
+     * straight through the wait and fails the test.
+     *
+     * There is always such a window here. This class drives the activity
+     * itself with ActivityScenario rather than through the rule, and the app
+     * deliberately draws nothing at all until the stored options arrive - one
+     * frame of its own background rather than a flash of the welcome card at
+     * someone who set the app up months ago. So every wait that ran before
+     * that first emission died instead of waiting, which is why five of these
+     * tests reported a missing consent dialog on every Android from 11 up: the
+     * app was not on the screen yet, and nothing was waiting for it to be.
+     */
+    private fun countMatching(matcher: SemanticsMatcher): Int =
+        runCatching { compose.onAllNodes(matcher).fetchSemanticsNodes().size }
+            .getOrDefault(0)
+
+    /** Waits for the app to have drawn anything at all. */
+    private fun awaitAppOnScreen() {
+        compose.waitUntil(timeoutMillis = UI_TIMEOUT) {
+            runCatching { compose.onAllNodes(isRoot()).fetchSemanticsNodes().isNotEmpty() }
+                .getOrDefault(false)
+        }
+    }
+
+
     private fun awaitText(id: Int, timeoutMs: Long = UI_TIMEOUT) = awaitText(s(id), timeoutMs)
 
     private fun awaitText(text: String, timeoutMs: Long = UI_TIMEOUT) {
         compose.waitUntil(timeoutMillis = timeoutMs) {
-            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+            countMatching(hasText(text)) > 0
         }
     }
 
@@ -785,7 +823,7 @@ class FreeUpConsentE2eTest {
      */
     private fun awaitExactlyOne(id: Int, timeoutMs: Long = UI_TIMEOUT) {
         compose.waitUntil(timeoutMillis = timeoutMs) {
-            compose.onAllNodesWithText(s(id)).fetchSemanticsNodes().size == 1
+            countMatching(hasText(s(id))) == 1
         }
     }
 
