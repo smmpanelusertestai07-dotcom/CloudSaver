@@ -12,6 +12,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -190,7 +191,8 @@ private val ChipLabelMax = 220.dp
 fun ListFilterRow(
     filters: List<ListFilter>,
     sort: ListFilter?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scroll: ScrollState = rememberScrollState()
 ) {
     var open by remember { mutableStateOf<ListFilter?>(null) }
     // A chip says "Album: Camera", and an album is named by whoever made it -
@@ -202,7 +204,7 @@ fun ListFilterRow(
     Row(
         modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         for (filter in filters) {
@@ -595,6 +597,18 @@ fun ListScreenScaffold(
 
             intro?.invoke()
 
+            // One sideways position for the chips, held above the branch that
+            // draws them.
+            //
+            // The three branches below are three different subtrees, so each
+            // built its own ListHeader and each header its own scroll state.
+            // Setting a filter that empties the list moves between them, and
+            // the chip row jumped back to its first chip as it went - taking
+            // the chip the filter was just set on off the right-hand edge,
+            // where it could not be seen and had to be found again by hand.
+            // Held here, the row stays exactly where it was left.
+            val filterScroll = rememberScrollState()
+
             when {
                 // The search box and the chips travel with whatever is under
                 // them rather than sitting above it. They used to be pinned,
@@ -612,7 +626,7 @@ fun ListScreenScaffold(
                         .verticalScroll(rememberScrollState())
                 ) {
                     ListHeader(
-                        query, onQuery, filters, sort,
+                        query, onQuery, filters, sort, filterScroll,
                         Modifier.padding(horizontal = 16.dp)
                     )
                     ListSkeleton(modifier = Modifier.padding(16.dp))
@@ -623,7 +637,7 @@ fun ListScreenScaffold(
                         .verticalScroll(rememberScrollState())
                 ) {
                     ListHeader(
-                        query, onQuery, filters, sort,
+                        query, onQuery, filters, sort, filterScroll,
                         Modifier.padding(horizontal = 16.dp)
                     )
                     emptyContent()
@@ -641,7 +655,9 @@ fun ListScreenScaffold(
                     // of the rows rather than part of them, so anything that
                     // asks the list where a file is still gets an answer, and
                     // still gets them in the same order.
-                    item("header") { ListHeader(query, onQuery, filters, sort) }
+                    item("header") {
+                        ListHeader(query, onQuery, filters, sort, filterScroll)
+                    }
                     content()
                     item("tail") { ListTail(extra = selection.active) }
                 }
@@ -679,12 +695,13 @@ private fun ListHeader(
     onQuery: (String) -> Unit,
     filters: List<ListFilter>,
     sort: ListFilter?,
+    filterScroll: ScrollState,
     modifier: Modifier = Modifier
 ) {
     Column(modifier) {
         ListSearchField(query, onQuery, Modifier.padding(top = 4.dp))
         if (filters.isNotEmpty() || sort != null) {
-            ListFilterRow(filters, sort, Modifier.padding(top = 10.dp))
+            ListFilterRow(filters, sort, Modifier.padding(top = 10.dp), filterScroll)
         }
     }
 }
