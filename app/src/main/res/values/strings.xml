@@ -44,8 +44,6 @@
         <item quantity="one">%1$d file · %2$s</item>
         <item quantity="other">%1$d files · %2$s</item>
     </plurals>
-    <string name="chip_auto_launch">Check auto-launch</string>
-    <string name="chip_background">Check background activity</string>
     <string name="explain_waiting">Files found in your gallery that have not been optimised yet. CloudSaver works through them in the background.</string>
     <string name="explain_in_folder">Optimised copies that are made and waiting for your cloud app to upload them.</string>
     <string name="explain_backed_up">Copies CloudSaver can show reached your cloud. Only these can ever offer an original for you to remove.</string>
