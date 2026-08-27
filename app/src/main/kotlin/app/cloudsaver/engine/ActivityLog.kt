@@ -3,6 +3,7 @@ package app.cloudsaver.engine
 import android.content.Context
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
+import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Formats
 
 /**
@@ -41,6 +42,18 @@ class ActivityLog(private val context: Context) {
         const val RETENTION_ROWS = 500
     }
 
+    /**
+     * Writes one line, and never lets a failed line end a run.
+     *
+     * This used to be a runCatching, which does exactly the wrong thing here:
+     * CancellationException is an Exception in Kotlin, so stopping a run - the
+     * user hitting Pause, WorkManager taking the worker away, the phone being
+     * picked up - was caught and dropped right here. The coroutine then
+     * carried on as though nothing had happened, grinding through the rest of
+     * the pass it had just been told to abandon. MaintainEngine.step() rethrows
+     * cancellation for the same reason; this now agrees with it. Anything
+     * else really is only a log line, so it is recorded and stepped over.
+     */
     suspend fun record(
         kind: Kind,
         detail: String? = null,
@@ -49,7 +62,7 @@ class ActivityLog(private val context: Context) {
         filterState: String? = null,
         atMs: Long = System.currentTimeMillis()
     ) {
-        runCatching {
+        try {
             db.activity().insert(
                 ActivityRow(
                     atMs = atMs,
@@ -61,10 +74,19 @@ class ActivityLog(private val context: Context) {
                 )
             )
             prune(atMs)
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (e: Throwable) {
+            AppLog.log(context, "activity", "${kind.name} not recorded: ${e.message}")
         }
     }
 
-    /** Only worth a line when something actually happened. */
+    /**
+     * Only worth a line when something actually happened.
+     *
+     * Everything it does happens inside [record], so cancellation travels out
+     * of here too - there is deliberately no second catch to swallow it.
+     */
     suspend fun recordIfAny(kind: Kind, count: Int, bytes: Long = 0, detail: String? = null) {
         if (count > 0) record(kind, detail = detail, count = count, bytes = bytes)
     }

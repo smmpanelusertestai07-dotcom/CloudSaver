@@ -31,6 +31,7 @@ import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.db.Search
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
@@ -373,7 +374,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val searchResults: StateFlow<List<ItemRow>> = search
         .debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }
         .distinctUntilChanged()
-        .flatMapLatest { q -> db.items().searchFlow(q, 500) }
+        // Escaped on the way in, because the box takes a name and the query
+        // takes a pattern: a '%' or a '_' typed into it is a wildcard to SQL,
+        // and one percent sign used to return the entire library.
+        .flatMapLatest { q -> db.items().searchFlow(Search.escapeLike(q), 500) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /**
@@ -1096,7 +1100,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 repo.setInt(OptionsRepo.K.CLEAN_STREAK, 0)
                 repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, false)
                 repo.setString(OptionsRepo.K.CLOUD_PROBLEM, "")
-                repo.setLong(OptionsRepo.K.LAST_ALERT_AT, 0)
+                // The whole 24 h alert record goes with it: every entry in it
+                // was about the app that has just been replaced, and a
+                // problem with the new one should be able to say so today.
+                repo.setString(OptionsRepo.K.LAST_ALERTS, "")
             }
         }
         noteSettingChange(

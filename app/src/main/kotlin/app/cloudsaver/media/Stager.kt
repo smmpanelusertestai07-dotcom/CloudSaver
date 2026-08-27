@@ -29,8 +29,20 @@ class Stager(private val context: Context, private val db: AppDb) {
      * [predictedBytes] is what the profile expected this file to come out at.
      * Storing it next to the real result is what lets the app tell the user
      * how wrong its estimates have been, instead of implying they are exact.
+     *
+     * [runRemainingMs] is how long the caller's own run has left. A video
+     * encode used to be allowed to take as long as it liked - three attempts,
+     * twenty minutes each - which is how a run came back an hour after the
+     * deadline it had set itself. Passing the remaining time down means the
+     * deadline actually governs. A caller with no deadline of its own leaves
+     * it alone and gets the ordinary budget.
      */
-    suspend fun stageOne(row: ItemRow, options: Options, predictedBytes: Long = 0): Boolean {
+    suspend fun stageOne(
+        row: ItemRow,
+        options: Options,
+        predictedBytes: Long = 0,
+        runRemainingMs: Long = Long.MAX_VALUE
+    ): Boolean {
         val uriString = row.contentUri
         if (uriString == null) {
             skip(row, "no_uri")
@@ -54,7 +66,8 @@ class Stager(private val context: Context, private val db: AppDb) {
             if (row.isVideo) {
                 VideoCompressor.compress(
                     context, uri, row.displayName, row.mimeType, row.sizeBytes, spec,
-                    options.codec, tempDir
+                    options.codec, tempDir,
+                    maxTotalMs = VideoCompressor.budgetFor(runRemainingMs)
                 )
             } else {
                 PhotoCompressor.compress(context, uri, row.displayName, row.sizeBytes, spec, tempDir)

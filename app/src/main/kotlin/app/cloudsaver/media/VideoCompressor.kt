@@ -68,6 +68,43 @@ object VideoCompressor {
 
     private val COPY_OK_CONTAINERS = setOf("video/mp4", "video/quicktime", "video/3gpp")
 
+    /**
+     * The whole ladder's time budget, for a caller with no deadline of its own.
+     *
+     * This used to be the budget for one attempt, and there are three attempts,
+     * so a stubborn video could hold the worker for an hour - twenty minutes of
+     * VBR, twenty of CBR, twenty on the software encoder. CompressWorker's own
+     * run deadline is forty minutes and the foreground-service allowance the
+     * system grants is smaller again, so both expired underneath it: the run
+     * came back long after it was supposed to have finished, having encoded one
+     * file, and the next run was refused because the allowance was spent. It is
+     * the budget for the whole call now, so the number here is the truth.
+     */
+    const val DEFAULT_TOTAL_MS = 20 * 60_000L
+
+    /**
+     * The least the ladder is ever given, however little of a run is left.
+     *
+     * A video handed thirty seconds cannot finish anything, and the fallback
+     * for "nothing finished" is copying it across untouched - which is then
+     * what is backed up, permanently, because a copied item is done. Better to
+     * overrun a nearly-finished run by a few minutes than to quietly ship the
+     * full-size file.
+     */
+    const val MIN_TOTAL_MS = 5 * 60_000L
+
+    /** Below this there is no point starting another attempt at all. */
+    private const val MIN_ATTEMPT_MS = 60_000L
+
+    /**
+     * The ladder's budget for a caller with [remainingMs] left on its deadline.
+     *
+     * Never more than one video's fair share of a run, and never so little that
+     * the attempt is hopeless - see [MIN_TOTAL_MS].
+     */
+    fun budgetFor(remainingMs: Long): Long =
+        maxOf(MIN_TOTAL_MS, minOf(DEFAULT_TOTAL_MS, remainingMs))
+
     suspend fun compress(
         context: Context,
         uri: Uri,
@@ -77,8 +114,11 @@ object VideoCompressor {
         spec: PresetSpec,
         codec: VideoCodec,
         tempDir: File,
-        maxAttemptMs: Long = 20 * 60_000L
+        maxTotalMs: Long = DEFAULT_TOTAL_MS
     ): CompressResult {
+        // Started before the probe, because probing a damaged file can itself
+        // take a while and the caller was promised a bound on the whole call.
+        val budgetEndsAt = System.currentTimeMillis() + maxTotalMs
         val probe = probe(context, uri)
             ?: return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, "probe_failed")
 
@@ -117,10 +157,20 @@ object VideoCompressor {
             else -> "_tonemap"
         }
 
+        var outOfTime = false
         for (attempt in ATTEMPTS) {
+            // Each rung gets what is left of the budget, not a fresh twenty
+            // minutes of its own, so three attempts can never cost three times
+            // the number the caller asked for.
+            val leftMs = budgetEndsAt - System.currentTimeMillis()
+            if (leftMs < MIN_ATTEMPT_MS) {
+                AppLog.log(context, "video", "out of time before ${attempt.label}; copying as-is")
+                outOfTime = true
+                break
+            }
             val outFile = File(tempDir, "video_${System.nanoTime()}_${attempt.label}.mp4")
             val export = try {
-                runTransform(context, uri, outFile, outW, outH, targetBps, codecMime, attempt, hdrMode, maxAttemptMs)
+                runTransform(context, uri, outFile, outW, outH, targetBps, codecMime, attempt, hdrMode, leftMs)
             } catch (ce: CancellationException) {
                 outFile.delete()
                 throw ce
@@ -150,7 +200,11 @@ object VideoCompressor {
             }
             outFile.delete()
         }
-        val failReason = if (hdr == MediaTraits.Hdr.NONE) "encoder_rejected" else "hdr_not_supported"
+        val failReason = when {
+            outOfTime -> "out_of_time"
+            hdr == MediaTraits.Hdr.NONE -> "encoder_rejected"
+            else -> "hdr_not_supported"
+        }
         return PhotoCompressor.copyAsIs(context, uri, displayName, tempDir, failReason)
     }
 
@@ -165,7 +219,7 @@ object VideoCompressor {
         codecMime: String,
         attempt: Attempt,
         hdrMode: Int,
-        maxAttemptMs: Long
+        attemptMs: Long
     ): ExportResult? = withContext(Dispatchers.Default) {
         // Background priority: encoding must never make the phone feel slow.
         val thread = HandlerThread("cloudsaver-transform", Process.THREAD_PRIORITY_BACKGROUND)
@@ -240,7 +294,7 @@ object VideoCompressor {
         }
 
         try {
-            withTimeout(maxAttemptMs) { done.await() }
+            withTimeout(attemptMs) { done.await() }
         } catch (e: TimeoutCancellationException) {
             handler.post { runCatching { transformerRef.get()?.cancel() } }
             null

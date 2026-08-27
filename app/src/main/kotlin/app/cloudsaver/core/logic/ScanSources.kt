@@ -1,5 +1,7 @@
 package app.cloudsaver.core.logic
 
+import app.cloudsaver.data.CloudApps
+
 /**
  * Decides which gallery folders the scanner and the album picker may touch.
  *
@@ -9,8 +11,9 @@ package app.cloudsaver.core.logic
  * picked up files such as `_ente_keep.jpg`, which a cloud app keeps to stop a
  * folder disappearing.
  *
- * A folder is refused when it is ours, hidden, named like a known pipeline's
- * output, or when its contents simply look like pipeline output.
+ * A folder is refused when it is ours, hidden, a cloud app's own media
+ * directory, named like a known pipeline's output, or when its contents
+ * simply look like pipeline output.
  */
 object ScanSources {
 
@@ -53,14 +56,27 @@ object ScanSources {
      * The reason a folder is off limits, or null when it may be scanned.
      * Everything the scanner and the picker refuse goes through here, so the
      * two can never disagree about what is eligible.
+     *
+     * A cloud app's own media folder is decided here as well, and it did not
+     * use to be. The scanner asked [isCloudLocalPath] on its own, one step
+     * after this function, so those folders were skipped but came back with
+     * no reason attached - the album list showed them as ordinary folders the
+     * user could tick, and ticking one did nothing at all. Now the reason
+     * exists in the one place both the scanner and the picker read, so the
+     * list can say which folders are off limits and why.
+     *
+     * [cloudPackages] defaults to the apps this app knows about, so a caller
+     * cannot forget to pass them and quietly lose the reason again.
      */
     fun exclusionReason(
         relativePath: String?,
         bucketName: String?,
-        looksLikeOutput: Boolean = false
+        looksLikeOutput: Boolean = false,
+        cloudPackages: Collection<String> = CloudApps.ALL_PACKAGES
     ): Reason? = when {
         Defaults.isAppOwnedPath(relativePath) -> Reason.OUR_OUTPUT
         isHiddenPath(relativePath) -> Reason.HIDDEN
+        isCloudLocalPath(relativePath, cloudPackages) -> Reason.CLOUD_LOCAL
         isLegacyOutputName(bucketName) -> Reason.LEGACY_OUTPUT
         looksLikeOutput -> Reason.LOOKS_LIKE_OUTPUT
         else -> null

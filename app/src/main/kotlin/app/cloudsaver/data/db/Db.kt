@@ -266,6 +266,32 @@ data class PredictionSample(
     val predictedBytes: Long
 )
 
+/**
+ * What has to happen to typed text before it becomes part of a SQL pattern.
+ *
+ * Everything the user types goes into the search box as ordinary characters,
+ * but two of them are instructions to SQL LIKE: '%' stands for any run of
+ * characters and '_' for any single one. A person searching for the file they
+ * literally named "50%_holiday.jpg" was handed their whole library instead,
+ * and a search for "IMG_2024" quietly matched "IMGx2024" too. Escaping them
+ * here, and naming the same escape character in the query's ESCAPE clause,
+ * makes the search mean what was typed.
+ */
+object Search {
+
+    /** The character the queries name in their ESCAPE clause. */
+    const val LIKE_ESCAPE = "\\"
+
+    /**
+     * The backslash goes first: escaping it after the wildcards would escape
+     * the backslashes this function had just added, and undo its own work.
+     */
+    fun escapeLike(q: String): String = q
+        .replace(LIKE_ESCAPE, LIKE_ESCAPE + LIKE_ESCAPE)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+}
+
 @Dao
 interface ItemDao {
 
@@ -560,8 +586,20 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM items WHERE outputBytes IS NOT NULL")
     fun processedCountFlow(): Flow<Int>
 
+    /**
+     * Files whose name contains what was typed.
+     *
+     * The ESCAPE clause is what makes that sentence true. In SQL LIKE, '%'
+     * means "anything" and '_' means "any one character", so typing a percent
+     * sign into the search box used to match every file on the phone, and
+     * typing an underscore - which half the screenshots and camera exports
+     * have in their names - matched names that had nothing in common with it.
+     * The caller escapes those two characters (and the escape character
+     * itself) with [Search.escapeLike], and this clause tells SQLite to read
+     * them as the literal characters the user pressed.
+     */
     @Query(
-        "SELECT * FROM items WHERE displayName LIKE '%' || :q || '%' " +
+        "SELECT * FROM items WHERE displayName LIKE '%' || :q || '%' ESCAPE '\\' " +
             "ORDER BY captureAt DESC LIMIT :limit"
     )
     fun searchFlow(q: String, limit: Int): Flow<List<ItemRow>>
@@ -610,10 +648,22 @@ interface ItemDao {
      * The headline on the Storage screen, which must agree with what Reclaim
      * space actually lists - otherwise the entry point to that screen stays
      * hidden while there are files behind it.
+     *
+     * It has to agree in the other direction too, and it did not. This sum
+     * asked for less than [reclaimCandidates] does: it missed the copy's hash
+     * (no hash, no proof the copy in the cloud is the one we made), the
+     * original's uri (nothing to hand the system a delete request for) and
+     * the three states a file has to be in before its original may go. Every
+     * row that failed one of those was counted here and then refused on the
+     * Free up screen, so "you could free 12 GB" led to a list that offered
+     * four. A number this app prints is a number it can deliver, so the two
+     * queries now ask the same questions.
      */
     @Query(
         "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
-            "WHERE originalMissing = 0 AND state != 'FREED' AND (" +
+            "WHERE originalMissing = 0 AND contentUri IS NOT NULL " +
+            "AND outputSha256 IS NOT NULL " +
+            "AND state IN ('RELEASED', 'GONE', 'DONE') AND (" +
             "evidence IN ('CONFIRMED_EXACT', 'CONFIRMED') " +
             "OR (evidence = 'CONFIRMED_PACED' AND releasedAt IS NOT NULL " +
             "AND releasedAt <= :settledBefore) " +

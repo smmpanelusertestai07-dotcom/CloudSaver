@@ -85,6 +85,12 @@ object CloudApps {
 
     val SELECTABLE: List<CloudApp> = ALL.filter { it.supported }
 
+    /**
+     * Every package name above, for the rules that only need to recognise a
+     * cloud app's own folders rather than talk about the app itself.
+     */
+    val ALL_PACKAGES: List<String> = ALL.flatMap { it.packages }
+
     fun byId(id: String): CloudApp = ALL.firstOrNull { it.id == id } ?: ALL[0]
 
     fun isInstalled(context: Context, pkg: String): Boolean = try {

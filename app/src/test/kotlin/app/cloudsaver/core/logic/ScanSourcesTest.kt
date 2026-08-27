@@ -53,6 +53,39 @@ class ScanSourcesTest {
         )
     }
 
+    /**
+     * The scanner already skipped these - it asked isCloudLocalPath by itself
+     * - but the picker was told nothing, so a cloud app's own download folder
+     * sat in the album list looking tickable and ignored every tick. The
+     * reason has to come out of the same function the picker reads.
+     */
+    @Test
+    fun aCloudAppsOwnMediaFolderIsExcludedWithItsReason() {
+        assertEquals(
+            ScanSources.Reason.CLOUD_LOCAL,
+            ScanSources.exclusionReason("Android/media/io.ente.photos/Downloads/", "Downloads")
+        )
+        assertEquals(
+            "case must not matter - paths come back in either",
+            ScanSources.Reason.CLOUD_LOCAL,
+            ScanSources.exclusionReason("android/media/MEGA.privacy.android.app/x/", "x")
+        )
+        // Another app's media directory holds somebody's real photos.
+        assertNull(
+            ScanSources.exclusionReason(
+                "Android/media/com.whatsapp/WhatsApp Images/", "WhatsApp Images"
+            )
+        )
+        // And a caller may still name the packages itself.
+        assertNull(
+            ScanSources.exclusionReason(
+                relativePath = "Android/media/io.ente.photos/Downloads/",
+                bucketName = "Downloads",
+                cloudPackages = emptyList()
+            )
+        )
+    }
+
     @Test
     fun ordinaryGalleryFoldersAreScanned() {
         assertNull(ScanSources.exclusionReason("DCIM/Camera/", "Camera"))

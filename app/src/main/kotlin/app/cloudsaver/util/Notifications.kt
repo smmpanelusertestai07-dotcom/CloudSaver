@@ -110,6 +110,34 @@ object Notifications {
     }
 
     /**
+     * When each kind of alert was last posted, read back from the stored
+     * record. A line that has been damaged, or written by a build that stored
+     * something else, is dropped rather than trusted.
+     */
+    fun lastAlertTimes(encoded: String): Map<String, Long> {
+        if (encoded.isEmpty()) return emptyMap()
+        val out = HashMap<String, Long>()
+        for (line in encoded.split('\n')) {
+            val at = line.substringBefore(' ', "").toLongOrNull() ?: continue
+            val key = line.substringAfter(' ', "")
+            if (key.isNotEmpty()) out[key] = at
+        }
+        return out
+    }
+
+    /**
+     * The record on its way back to storage, with everything older than a day
+     * left out: a day-old entry can no longer hold an alert back, and keeping
+     * it would let the record grow for as long as the app is installed.
+     */
+    fun encodeAlertTimes(times: Map<String, Long>, now: Long): String = times.entries
+        .filter { now - it.value < DEDUP_MS }
+        .joinToString("\n") { "${it.value} ${it.key}" }
+
+    /** A key as it is stored: one line, so the record stays readable back. */
+    private fun alertKey(key: String): String = key.replace('\n', ' ')
+
+    /**
      * Posts an alert, unless the user has muted alerts or this same alert was
      * already posted today.
      *
@@ -117,6 +145,13 @@ object Notifications {
      * cloud that is still not uploading tomorrow gets one reminder rather than
      * one an hour. [options] is passed in because reading DataStore here would
      * mean blocking a worker thread on it.
+     *
+     * The record is kept per kind of alert. One key and one time could only
+     * ever remember the last alert posted, so on a day with two different
+     * problems each one wiped the other's record and both were free to post
+     * again immediately - the user got the same two warnings over and over
+     * while the code plainly said once a day. Each kind now carries its own
+     * time, and a quiet day removes itself from the record.
      */
     suspend fun alert(
         context: Context,
@@ -130,14 +165,19 @@ object Notifications {
     ) {
         if (!options.warningsNotif) return
         if (now < options.alertsMutedUntil) return
-        if (options.lastAlertKey == dedupKey && now - options.lastAlertAt < DEDUP_MS) return
+        val key = alertKey(dedupKey)
+        val posted = lastAlertTimes(options.lastAlerts)
+        val lastAt = posted[key]
+        if (lastAt != null && now - lastAt < DEDUP_MS) return
         // Recording the attempt before knowing it can be shown would spend the
         // day's one slot on a notification nobody saw, so the permission check
         // comes first.
         if (!canPost(context)) return
         val repo = OptionsRepo.get(context)
-        repo.setString(OptionsRepo.K.LAST_ALERT_KEY, dedupKey)
-        repo.setLong(OptionsRepo.K.LAST_ALERT_AT, now)
+        repo.setString(
+            OptionsRepo.K.LAST_ALERTS,
+            encodeAlertTimes(posted + (key to now), now)
+        )
         post(context, id, title, text, route)
     }
 

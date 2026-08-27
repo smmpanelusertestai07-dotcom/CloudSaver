@@ -482,6 +482,18 @@ class MaintainEngine(private val context: Context) {
         val pending = db.batches().unverified()
             .filter { it.totalBytes > 0 && it.cloudPackage != null }
             .sortedBy { it.releasedAt }
+        if (pending.isEmpty()) return
+        // Every released row, once, indexed by the batch it belongs to.
+        //
+        // This read used to sit inside the loop below, so a pass with ten
+        // unverified batches read the whole released set ten times and threw
+        // nine tenths of each read away filtering it in Kotlin. On a phone
+        // that has been running for a while that set is every original ever
+        // sent, and the pass is on the worker's clock - time spent re-reading
+        // it is time not spent encoding. Each batch is settled exactly once
+        // here and a row belongs to one batch, so nothing this loop writes can
+        // make an entry of this map stale.
+        val releasedByBatch = db.items().released().groupBy { it.batchId }
         for ((pkg, batches) in pending.groupBy { it.cloudPackage!! }) {
             val uid = CloudApps.uidOf(context, pkg) ?: continue
             val since = batches.first().releasedAt
@@ -491,7 +503,7 @@ class MaintainEngine(private val context: Context) {
                 required += batch.totalBytes
                 if (!EvidenceRules.batchVerified(tx, required)) break
                 db.batches().markVerified(batch.id, now)
-                for (row in db.items().released().filter { it.batchId == batch.id }) {
+                for (row in releasedByBatch[batch.id].orEmpty()) {
                     if (evidenceOf(row).ordinal >= Evidence.VERIFIED.ordinal) continue
                     db.items().update(
                         row.copy(evidence = Evidence.VERIFIED.name, updatedAt = now)

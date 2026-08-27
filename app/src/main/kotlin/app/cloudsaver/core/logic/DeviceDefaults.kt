@@ -13,8 +13,15 @@ object DeviceDefaults {
 
     /** Keep the larger of 1.5 GB and a twentieth of the phone free. */
     fun reserveMb(totalBytes: Long): Int {
-        val fivePercent = (totalBytes / 20 / Defaults.MB).toInt()
-        return maxOf(1536, fivePercent)
+        // Kept in Long until the comparison is over, for the same reason
+        // ownLimitMb below is: a volume that cannot be measured answers with
+        // Long.MAX_VALUE rather than stopping the pipeline, and a twentieth
+        // of that is far past what an Int can hold. The old .toInt() wrapped
+        // it round to a negative number, the floor then won, and the phone
+        // reporting the most storage was handed the smallest reserve - the
+        // opposite of what this function is for.
+        val fivePercent = (totalBytes / 20 / Defaults.MB).coerceIn(0L, Int.MAX_VALUE.toLong())
+        return maxOf(1536L, fivePercent).toInt()
     }
 
     /**

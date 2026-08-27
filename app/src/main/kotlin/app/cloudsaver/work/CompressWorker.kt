@@ -172,7 +172,14 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     val itemStart = System.currentTimeMillis()
                     val ratio = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
                     val predicted = if (ratio > 0) (row.sizeBytes * ratio).toLong() else 0L
-                    val ok = stager.stageOne(row, live, predicted)
+                    // What is left of this run's deadline is handed to the
+                    // encoder, so a single stubborn video can no longer sit
+                    // there for three twenty-minute attempts while the
+                    // deadline and the foreground-service allowance both run
+                    // out underneath it.
+                    val ok = stager.stageOne(
+                        row, live, predicted, runRemainingMs = deadline - itemStart
+                    )
                     val took = System.currentTimeMillis() - itemStart
                     if (ok) {
                         processed++

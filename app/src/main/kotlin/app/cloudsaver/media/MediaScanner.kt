@@ -199,6 +199,14 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
      * of objects on a full phone, for a screen the user opens for ten seconds.
      * This walks the same cursor and adds up as it goes.
      *
+     * The claim used to be false the moment it was made: the very first thing
+     * this did was ask excludedBucketReasons() which albums to skip, and that
+     * built the whole gallery as [Found] objects to answer. So opening the
+     * calculator still allocated everything the comment promised it would not,
+     * and on a 22 GB phone that is what made the screen sit there. The album
+     * decision now comes from [folderTallies], which keeps a few counters per
+     * folder and nothing per photo.
+     *
      * [excludedBuckets] is the user's album exclusion set, applied here so the
      * estimate matches what will actually be backed up.
      */
@@ -435,22 +443,100 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         }
     }
 
-    /** Folders the picker must show as excluded, with the reason. */
+    /**
+     * Folders the picker must show as excluded, with the reason.
+     *
+     * This asks a question about a few dozen folders, and it used to answer it
+     * by building the entire gallery - a [Found] object per photo and per
+     * video, every one of them with five strings hanging off it - and then
+     * throwing all of it away. Everything the rules actually need is a count
+     * per folder, so that is all that is kept now. It matters because
+     * [totals], which runs whenever the calculator is opened, waits on this.
+     */
     fun excludedBucketReasons(): Map<String, ScanSources.Reason> {
-        val found = queryAll()
-        val looksLikeOutput = found
-            .groupBy { folderKey(it) }
-            .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
-            .keys
         val out = HashMap<String, ScanSources.Reason>()
-        for (f in found) {
-            val bucket = f.bucket ?: continue
+        for (folder in folderTallies().values) {
+            val bucket = folder.bucket ?: continue
             val reason = ScanSources.exclusionReason(
-                relativePath = f.relativePath,
+                relativePath = folder.relativePath,
                 bucketName = bucket,
-                looksLikeOutput = folderKey(f) in looksLikeOutput
+                looksLikeOutput = folder.looksLikeOutput
             ) ?: continue
             out[bucket] = reason
+        }
+        return out
+    }
+
+    /**
+     * What the folder rules need to know about one folder, and nothing else.
+     *
+     * The "looks like another pipeline's output" rule is a share of the
+     * folder's file names, so it needs every name in the folder counted - but
+     * not one of them kept. Two counters do that. The rule itself is still
+     * ScanSources': its own two published constants are what is compared here,
+     * so the numbers can never drift apart.
+     */
+    private class FolderTally(val bucket: String?, val relativePath: String?) {
+        var files = 0
+        var pipelineNames = 0
+
+        val looksLikeOutput: Boolean
+            get() = files >= ScanSources.HEURISTIC_MIN_FILES &&
+                pipelineNames.toDouble() / files >= ScanSources.HEURISTIC_THRESHOLD
+    }
+
+    /**
+     * One cheap walk of every collection, tallied by folder.
+     *
+     * Three columns and a size, in the same order the full scan sees them, so
+     * the same rows are skipped for the same reasons and the picker cannot
+     * start disagreeing with the scanner about what is eligible.
+     */
+    private fun folderTallies(): Map<String, FolderTally> {
+        val out = LinkedHashMap<String, FolderTally>()
+        val volumes = try {
+            MediaStore.getExternalVolumeNames(context)
+        } catch (e: Exception) {
+            setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        }
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH
+        )
+        for (volume in volumes) {
+            for (collection in listOf(
+                MediaStore.Images.Media.getContentUri(volume),
+                MediaStore.Video.Media.getContentUri(volume)
+            )) {
+                try {
+                    context.contentResolver.query(collection, projection, null, null, null)
+                        ?.use { c ->
+                            val iName =
+                                c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                            val iSize = c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                            val iBucket =
+                                c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
+                            val iRel =
+                                c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                            while (c.moveToNext()) {
+                                val rel = c.getString(iRel)
+                                if (Defaults.isAppOwnedPath(rel)) continue
+                                val name = c.getString(iName) ?: continue
+                                if (c.getLong(iSize) <= 0) continue
+                                val bucket = c.getString(iBucket)
+                                val tally = out.getOrPut(rel ?: bucket ?: "") {
+                                    FolderTally(bucket, rel)
+                                }
+                                tally.files++
+                                if (ScanSources.isPipelineName(name)) tally.pipelineNames++
+                            }
+                        }
+                } catch (e: Exception) {
+                    AppLog.log(context, "scan", "folder tally $volume failed: ${e.message}")
+                }
+            }
         }
         return out
     }

@@ -16,7 +16,9 @@ object Permissions {
      * photos" - MediaStore answers every query as if the handful the user
      * picked were the whole library, and the app used to believe it: counts,
      * the calculator and the queue all reported a gallery of nine photos as
-     * fact. Anything that scans, counts or projects must ask for this level;
+     * fact. A grant for photos but not videos - which Android 13 and later
+     * ask for separately - hides just as much and counts as PARTIAL too.
+     * Anything that scans, counts or projects must ask for this level;
      * [hasMediaRead] stays only for "can we read anything at all".
      */
     enum class MediaAccess { FULL, PARTIAL, NONE }
@@ -39,7 +41,19 @@ object Permissions {
         legacyReadGranted: Boolean
     ): MediaAccess = when {
         sdk >= 33 -> when {
-            imagesGranted || videoGranted -> MediaAccess.FULL
+            // Both halves of the gallery, or it is not a full view of it.
+            // Android 13 split the old single read permission into photos and
+            // videos, and the system asks for them one after the other, so
+            // "photos yes, videos no" is one tap away - and a phone that had
+            // only granted videos used to read as FULL. MediaStore then
+            // answered every query as if the missing half were not there: the
+            // photos the user can see in their own gallery were absent from
+            // the count, from the calculator's total and from the queue, with
+            // nothing on screen admitting it. That is exactly the lie this
+            // three-way level exists to prevent, so half a grant is PARTIAL
+            // and the screens say so instead of quietly showing half a phone.
+            imagesGranted && videoGranted -> MediaAccess.FULL
+            imagesGranted || videoGranted -> MediaAccess.PARTIAL
             sdk >= 34 && userSelectedGranted -> MediaAccess.PARTIAL
             else -> MediaAccess.NONE
         }

@@ -107,9 +107,17 @@ data class Options(
     val cloudProblem: String = "",
     /** Alerts are silenced until this instant ("Mute for 7 days"). */
     val alertsMutedUntil: Long = 0,
-    /** Which alert was posted last, and when - the 24 h de-duplication pair. */
-    val lastAlertKey: String = "",
-    val lastAlertAt: Long = 0,
+    /**
+     * When each kind of alert was last posted - the 24 h de-duplication
+     * record, one line per kind, as written by Notifications.
+     *
+     * It used to be a single key-and-time pair, which could only remember the
+     * most recent alert. Two problems on the same day overwrote each other's
+     * record, and each was then free to post again straight away: a phone
+     * with a full cloud and a paused safety check could buzz twice an hour
+     * all day, which is exactly what the once-a-day rule exists to stop.
+     */
+    val lastAlerts: String = "",
     /** Newest Activity row the user has actually looked at. */
     val activitySeenAt: Long = 0,
     /** Days carried over when a day's upload allowance went unused. */
@@ -179,8 +187,7 @@ class OptionsRepo(private val context: Context) {
         val LAST_OUTPUT_COUNT = intPreferencesKey("lastOutputCount")
         val CLOUD_PROBLEM = stringPreferencesKey("cloudProblem")
         val ALERTS_MUTED_UNTIL = longPreferencesKey("alertsMutedUntil")
-        val LAST_ALERT_KEY = stringPreferencesKey("lastAlertKey")
-        val LAST_ALERT_AT = longPreferencesKey("lastAlertAt")
+        val LAST_ALERTS = stringPreferencesKey("lastAlerts")
         val ACTIVITY_SEEN_AT = longPreferencesKey("activitySeenAt")
         val CATCH_UP_BYTES = longPreferencesKey("catchUpBytes")
         val CATCH_UP_DAY = stringPreferencesKey("catchUpDay")
@@ -249,8 +256,7 @@ class OptionsRepo(private val context: Context) {
             lastOutputCount = p[K.LAST_OUTPUT_COUNT] ?: 0,
             cloudProblem = p[K.CLOUD_PROBLEM] ?: "",
             alertsMutedUntil = p[K.ALERTS_MUTED_UNTIL] ?: 0,
-            lastAlertKey = p[K.LAST_ALERT_KEY] ?: "",
-            lastAlertAt = p[K.LAST_ALERT_AT] ?: 0,
+            lastAlerts = p[K.LAST_ALERTS] ?: "",
             activitySeenAt = p[K.ACTIVITY_SEEN_AT] ?: 0,
             catchUpBytes = p[K.CATCH_UP_BYTES] ?: 0,
             catchUpDay = p[K.CATCH_UP_DAY] ?: "",

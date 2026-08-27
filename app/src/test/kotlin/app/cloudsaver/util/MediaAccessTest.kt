@@ -35,9 +35,14 @@ class MediaAccessTest {
     }
 
     @Test
-    fun `api 33 has full media permissions but no partial grant`() {
-        assertEquals(MediaAccess.FULL, level(sdk = 33, images = true))
-        assertEquals(MediaAccess.FULL, level(sdk = 33, video = true))
+    fun `api 33 wants both halves of the gallery before it says full`() {
+        assertEquals(MediaAccess.FULL, level(sdk = 33, images = true, video = true))
+        // Android 13 asks for photos and videos separately, so a phone can
+        // easily end up with one of the two. Half a gallery is not a full
+        // view of it: the missing half is invisible to every query, and
+        // calling that FULL is how the counts came to leave videos out.
+        assertEquals(MediaAccess.PARTIAL, level(sdk = 33, images = true))
+        assertEquals(MediaAccess.PARTIAL, level(sdk = 33, video = true))
         assertEquals(MediaAccess.NONE, level(sdk = 33))
         // READ_MEDIA_VISUAL_USER_SELECTED is API 34; on 33 it means nothing.
         assertEquals(MediaAccess.NONE, level(sdk = 33, selected = true))
@@ -47,12 +52,19 @@ class MediaAccessTest {
 
     @Test
     fun `api 34 distinguishes full from the user-selected handful`() {
-        assertEquals(MediaAccess.FULL, level(sdk = 34, images = true))
+        assertEquals(MediaAccess.FULL, level(sdk = 34, images = true, video = true))
         assertEquals(MediaAccess.PARTIAL, level(sdk = 34, selected = true))
+        // Photos without videos hides as much of the phone as the handful
+        // does, so it reads the same way.
+        assertEquals(MediaAccess.PARTIAL, level(sdk = 34, images = true))
+        assertEquals(MediaAccess.PARTIAL, level(sdk = 34, video = true))
         assertEquals(MediaAccess.NONE, level(sdk = 34))
         // Full always wins when both are granted, which Android does report
         // during the "keep access" flow.
-        assertEquals(MediaAccess.FULL, level(sdk = 34, images = true, selected = true))
+        assertEquals(
+            MediaAccess.FULL,
+            level(sdk = 34, images = true, video = true, selected = true)
+        )
     }
 
     // ---- the callers that must ask for the level, verified in source -------
