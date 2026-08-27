@@ -26,15 +26,23 @@ object OemPages {
         ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity")
     )
 
-    /** Opens the OEM auto-start/background page if one exists on this device. */
+    /**
+     * Opens the OEM auto-start/background page if one exists on this device.
+     *
+     * The start is simply attempted rather than resolved first. From Android
+     * 11 on, package visibility hides every one of these security-centre
+     * packages from `resolveActivity`, which answered null on the very phones
+     * that have the page - so the whole table was dead and every user was sent
+     * to app info instead. Launching an explicit component is not filtered the
+     * same way, and a phone without the page throws, which is the same answer
+     * the check used to give.
+     */
     fun openAutoStart(context: Context): Boolean {
         for (component in AUTO_START_COMPONENTS) {
             try {
                 val intent = Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (context.packageManager.resolveActivity(intent, 0) != null) {
-                    context.startActivity(intent)
-                    return true
-                }
+                context.startActivity(intent)
+                return true
             } catch (e: Exception) {
                 // try next
             }

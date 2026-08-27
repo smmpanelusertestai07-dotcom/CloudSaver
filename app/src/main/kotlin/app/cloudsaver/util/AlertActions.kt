@@ -27,9 +27,19 @@ class AlertActions : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                OptionsRepo.get(app).setLong(OptionsRepo.K.ALERTS_MUTED_UNTIL, until)
-                runCatching { NotificationManagerCompat.from(app).cancelAll() }
-                AppLog.log(app, "alerts", "muted for 7 days")
+                // Nothing thrown here may escape: this coroutine has no parent
+                // to hand a failure to, so an unwritable DataStore would take
+                // the whole process down from a notification button. A write
+                // that did not happen leaves the alert exactly as it was,
+                // which is the honest outcome - so the log only claims the
+                // mute once the value is actually stored.
+                val muted = runCatching {
+                    OptionsRepo.get(app).setLong(OptionsRepo.K.ALERTS_MUTED_UNTIL, until)
+                }.isSuccess
+                if (muted) {
+                    runCatching { NotificationManagerCompat.from(app).cancelAll() }
+                    AppLog.log(app, "alerts", "muted for 7 days")
+                }
             } finally {
                 pending.finish()
             }

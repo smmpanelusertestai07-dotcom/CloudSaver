@@ -280,18 +280,27 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         isVideo: Boolean,
         out: MutableList<Found>
     ) {
-        val projection = arrayOf(
+        // DURATION is asked for on the video collection only, for the same
+        // reason totals() learned above: several devices answer "Invalid
+        // column duration" on Images, and that one exception was caught a
+        // level up in queryAll() - which meant every photo on the phone
+        // silently disappeared from the scan, so nothing was ever queued.
+        val baseProjection = arrayOf(
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.DATE_MODIFIED,
             MediaStore.MediaColumns.DATE_TAKEN,
             MediaStore.MediaColumns.DATE_ADDED,
-            MediaStore.MediaColumns.DURATION,
             MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.BUCKET_DISPLAY_NAME,
             MediaStore.MediaColumns.RELATIVE_PATH
         )
+        val projection = if (isVideo) {
+            baseProjection + MediaStore.MediaColumns.DURATION
+        } else {
+            baseProjection
+        }
         context.contentResolver.query(collection, projection, null, null, null)?.use { c ->
             val iId = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             val iName = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
@@ -299,7 +308,9 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             val iMod = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
             val iTaken = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_TAKEN)
             val iAdded = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-            val iDur = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DURATION)
+            // -1 for a photo, and for any device that does not carry the
+            // column at all; a still simply has no duration to report.
+            val iDur = c.getColumnIndex(MediaStore.MediaColumns.DURATION)
             val iMime = c.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
             val iBucket = c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME)
             val iRel = c.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
@@ -322,7 +333,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                     dateModified = c.getLong(iMod),
                     dateTaken = c.getLong(iTaken),
                     dateAdded = c.getLong(iAdded),
-                    durationMs = c.getLong(iDur),
+                    durationMs = if (iDur >= 0) c.getLong(iDur) else 0L,
                     mimeType = c.getString(iMime) ?: if (isVideo) "video/*" else "image/*",
                     bucket = c.getString(iBucket),
                     relativePath = rel,
@@ -389,7 +400,17 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 ?.let { runCatching { android.net.Uri.parse(it).pathSegments.firstOrNull() }
                     .getOrNull() }
                 ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
-            return presenceKey(volume, mediaStoreId)
+            // A row written against the catch-all "external" volume - what an
+            // older build stored, and what a hand-built uri still says - can
+            // never match a presence key, because getExternalVolumeNames()
+            // deliberately leaves that name out. Its originals would all read
+            // as deleted. It has only ever meant internal storage.
+            val resolved = if (volume.equals(MediaStore.VOLUME_EXTERNAL, ignoreCase = true)) {
+                MediaStore.VOLUME_EXTERNAL_PRIMARY
+            } else {
+                volume
+            }
+            return presenceKey(resolved, mediaStoreId)
         }
     }
 

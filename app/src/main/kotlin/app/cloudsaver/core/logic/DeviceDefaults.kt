@@ -23,8 +23,16 @@ object DeviceDefaults {
      * jam against its own limit.
      */
     fun ownLimitMb(freeBytes: Long, dailyCapMb: Int): Int {
-        val tenthOfFree = (freeBytes / 10 / Defaults.MB).toInt()
         val ceiling = 5 * 1024
+        // Clamped while it is still a Long. Free space is not always a real
+        // measurement: an unreadable volume answers with Long.MAX_VALUE so the
+        // pipeline is never stopped by a figure it could not take, and a
+        // tenth of that overflowed Int and came back negative - which quietly
+        // recommended the two-day floor on exactly the phones the ceiling was
+        // meant for.
+        val tenthOfFree = (freeBytes / 10 / Defaults.MB)
+            .coerceIn(0L, ceiling.toLong())
+            .toInt()
         val floor = if (dailyCapMb > 0) dailyCapMb * 2 else 1536
         return minOf(ceiling, tenthOfFree).coerceAtLeast(floor)
     }

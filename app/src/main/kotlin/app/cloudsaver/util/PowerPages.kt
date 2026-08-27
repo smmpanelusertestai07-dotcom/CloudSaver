@@ -155,15 +155,21 @@ object PowerPages {
         else -> OemPages.openAppInfo(context)
     }
 
+    /**
+     * Tries each component in turn, without asking whether it resolves first.
+     *
+     * Package visibility hides these skin packages from `resolveActivity` on
+     * Android 11 and up, so the check said "no such page" on every phone that
+     * actually had one and the user was always dropped in app info. A start
+     * that cannot happen throws, and the throw is the answer.
+     */
     private fun start(context: Context, components: List<ComponentName>): Boolean {
         for (component in components) {
             try {
                 val intent = Intent().setComponent(component)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (context.packageManager.resolveActivity(intent, 0) != null) {
-                    context.startActivity(intent)
-                    return true
-                }
+                context.startActivity(intent)
+                return true
             } catch (e: Exception) {
                 // Try the next component; skins rename these between versions.
             }

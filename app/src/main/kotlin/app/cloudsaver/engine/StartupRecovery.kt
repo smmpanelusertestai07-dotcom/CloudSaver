@@ -47,6 +47,14 @@ class StartupRecovery(private val context: Context) {
      */
     private suspend fun purgeOutputFolderItems(): Int {
         val db = AppDb.get(context)
+        // Nothing queued means nothing this pass could purge. Ask that first:
+        // the folder-reason scan below walks the whole gallery, tens of
+        // thousands of rows on a full phone, and it ran at every single
+        // launch even when the queue was empty - which is the normal state
+        // once the backlog is through.
+        val queued = db.items().countByState(ItemState.NEW.name) +
+            db.items().countByState(ItemState.STAGED.name)
+        if (queued == 0) return 0
         val scanner = MediaScanner(context, db)
         val excluded = runCatching { scanner.excludedBucketReasons() }.getOrNull() ?: return 0
         if (excluded.isEmpty()) return 0

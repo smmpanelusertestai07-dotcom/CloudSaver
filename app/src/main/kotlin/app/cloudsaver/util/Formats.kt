@@ -127,7 +127,10 @@ object Formats {
         return (b.toEpochDay() - a.toEpochDay()).toInt()
     }
 
-    /** "2026-08" and "2026", for grouping a long list by when things happened. */
+    /**
+     * The headings a long list is grouped under - "August 2026" and "2026",
+     * written the way the phone's own locale writes them.
+     */
     fun monthKey(ms: Long): String =
         SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date(ms))
 

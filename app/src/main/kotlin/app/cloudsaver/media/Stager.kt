@@ -40,9 +40,15 @@ class Stager(private val context: Context, private val db: AppDb) {
         val spec = Presets.spec(options.preset)
         val tempDir = Storage.tempDir(context, options.storageVolume)
         // Compression must never make the phone feel slow, even with the
-        // screen on while charging.
+        // screen on while charging. The thread doing it belongs to a shared
+        // coroutine pool, though, so the priority has to be handed back
+        // afterwards: left lowered, that thread would quietly demote whatever
+        // ran on it next - including the database read a screen is waiting
+        // on - for the rest of the process's life.
+        val tid = android.os.Process.myTid()
+        val priorPriority = runCatching { android.os.Process.getThreadPriority(tid) }.getOrNull()
         runCatching {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            android.os.Process.setThreadPriority(tid, android.os.Process.THREAD_PRIORITY_BACKGROUND)
         }
         val result = try {
             if (row.isVideo) {
@@ -66,6 +72,8 @@ class Stager(private val context: Context, private val db: AppDb) {
             // the item reaches SKIP after the usual three tries.
             fail(row, "out_of_memory")
             return false
+        } finally {
+            priorPriority?.let { runCatching { android.os.Process.setThreadPriority(tid, it) } }
         }
 
         var stageFile: File? = null

@@ -29,6 +29,8 @@ import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.Storage
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 
 /**
@@ -233,21 +235,33 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     .onFailure { AppLog.log(app, "work", "profile failed: ${it.message}") }
             }
         } finally {
-            val endAt = System.currentTimeMillis()
-            runCatching {
-                dayBudget.addVideoEncode(endAt, videoMsOnBattery)
-                dayBudget.addPhotos(endAt, photosOnBattery)
+            // WorkManager stopping the run cancels this coroutine, and every
+            // suspend call below would then throw at its first suspension
+            // point instead of doing its job. That is the one case where the
+            // cleanup matters most: the foreground session would go
+            // unrecorded, so the next run would believe it still had its
+            // whole daily allowance and would be refused by the system; the
+            // "working" icon would stay in the status bar for good; and FAST
+            // would never re-arm its one-shot content trigger, so new photos
+            // would stop being noticed until the next half-hourly wake. The
+            // cleanup therefore runs to the end whatever ended the run.
+            withContext(NonCancellable) {
+                val endAt = System.currentTimeMillis()
+                runCatching {
+                    dayBudget.addVideoEncode(endAt, videoMsOnBattery)
+                    dayBudget.addPhotos(endAt, photosOnBattery)
+                }
+                if (foreground) {
+                    val updated = FgsBudget.prune(sessions + (startAt to endAt), endAt)
+                    repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(updated))
+                }
+                repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
+                repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
+                // Never leave a "working" icon in the status bar once the run
+                // is over, whatever ended it.
+                Notifications.clearWorking(app)
+                reschedule(app, repo)
             }
-            if (foreground) {
-                val updated = FgsBudget.prune(sessions + (startAt to endAt), endAt)
-                repo.setString(OptionsRepo.K.FGS_SESSIONS, FgsBudget.encode(updated))
-            }
-            repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
-            repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
-            // Never leave a "working" icon in the status bar once the run is
-            // over, whatever ended it.
-            Notifications.clearWorking(app)
-            reschedule(app, repo)
         }
         return Result.success()
     }

@@ -247,9 +247,18 @@ object PhotoCompressor {
     ): CompressResult {
         val ext = displayName.substringAfterLast('.', "bin").lowercase().ifEmpty { "bin" }
         val outFile = File(tempDir, "asis_${System.nanoTime()}.$ext")
-        context.contentResolver.openInputStream(uri).use { input ->
-            requireNotNull(input) { "open failed" }
-            FileOutputStream(outFile).use { output -> input.copyTo(output, 64 * 1024) }
+        try {
+            context.contentResolver.openInputStream(uri).use { input ->
+                requireNotNull(input) { "open failed" }
+                FileOutputStream(outFile).use { output -> input.copyTo(output, 64 * 1024) }
+            }
+        } catch (t: Throwable) {
+            // A copy that stopped halfway is not a copy. The fragment would
+            // otherwise sit in the work folder counting against the staging
+            // limit until some later run swept it - and the disk being full
+            // is precisely how this fails in the first place.
+            outFile.delete()
+            throw t
         }
         return CompressResult(outFile, outFile.length(), asIs = true, reason = reason, ext = ext)
     }
