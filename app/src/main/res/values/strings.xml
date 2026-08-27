@@ -459,6 +459,8 @@
     <string name="cloud_for_all">Cloud app</string>
     <string name="cloud_for_photos">For photos</string>
     <string name="cloud_for_videos">For videos</string>
+    <!-- What the button on the Cloud app setting reads: which files, then which app. -->
+    <string name="cloud_button_label">%1$s: %2$s</string>
     <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that store files exactly as sent. Clouds like Google Photos and OneDrive already make photos smaller for you.</string>
     <string name="cloud_recommended">Recommended: end-to-end encrypted, independently audited, removes files after upload, and skips duplicates by content.</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
