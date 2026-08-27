@@ -44,7 +44,6 @@ import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Volumes
-import app.cloudsaver.work.Scheduler
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -143,7 +142,7 @@ class HomeFilesE2eTest {
 
     @Before
     fun setUp() {
-        Scheduler.cancelAll(context)
+        TestPipeline.stopAndWait(context)
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
         CrashLog.clearPending(context)
@@ -160,7 +159,7 @@ class HomeFilesE2eTest {
         scenario = null
         // Tapping "Optimise now" enqueues real work; leaving it running would
         // have it compress during whatever test comes next.
-        Scheduler.cancelAll(context)
+        TestPipeline.stopAndWait(context)
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
         runBlocking { db.clearAllTables() }
@@ -258,7 +257,8 @@ class HomeFilesE2eTest {
         // asserted is that these four files ended up in these four states.
         assertEquals(
             "the two optimised fixtures must be in the upload folder and the " +
-                "other two still waiting",
+                "other two still waiting, but the four are: " +
+                FIXTURES.joinToString { "$it=${row(it).state}" },
             listOf(2, 2),
             listOf(
                 FIXTURES.count { row(it).state == ItemState.NEW.name },

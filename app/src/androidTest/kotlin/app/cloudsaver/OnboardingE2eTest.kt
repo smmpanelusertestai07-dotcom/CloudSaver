@@ -32,7 +32,6 @@ import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.util.Permissions
-import app.cloudsaver.work.Scheduler
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -105,7 +104,7 @@ class OnboardingE2eTest {
         scenario = null
         // Finishing setup schedules real background work; leaving it running
         // would have it scan and stage during whatever test runs next.
-        Scheduler.cancelAll(context)
+        TestPipeline.stopAndWait(context)
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
         runBlocking {
