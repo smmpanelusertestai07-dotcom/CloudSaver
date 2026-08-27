@@ -504,4 +504,48 @@ class LayoutRulesTest {
             offenders.isEmpty()
         )
     }
+
+    // ---- a list that measures against nothing at all ------------------------
+
+    /**
+     * A LazyColumn has to be told how tall it may be.
+     *
+     * Given no ceiling - a Column that scrolls, a parent measured with an
+     * unbounded height - it refuses outright: "Vertically scrollable component
+     * was measured with an infinity maximum height constraints". Not a
+     * cosmetic fault, a crash on open, and one that eight emulator jobs across
+     * eight Android versions all reported at once while every unit test on the
+     * JVM stayed green.
+     *
+     * There are only two honest ceilings. Inside a Column that fills the
+     * screen, weight(1f) hands the list what is left after its siblings. Inside
+     * something that scrolls - a card in setup, the body of a dialog - only a
+     * heightIn(max = ...) can say how much of that scroll the list may take.
+     * fillMaxHeight and fillMaxSize count too, and only where the parent is
+     * itself bounded.
+     */
+    @Test
+    fun everyLazyListIsToldHowTallItMayBe() {
+        val bounded = listOf("weight(", "heightIn(", "fillMaxHeight", "fillMaxSize")
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            if (!path.startsWith("ui/")) continue
+            val text = code(raw)
+            Regex("\\bLazyColumn\\(").findAll(text).forEach { m ->
+                val body = blockAt(text, m.range.last)
+                // Only the modifier matters, and it is written before the
+                // trailing lambda; the rows themselves may say anything.
+                val head = body.substringBefore("{ ").take(400)
+                if (bounded.none { head.contains(it) }) {
+                    offenders += "$path:${lineOf(text, m.range.first)}"
+                }
+            }
+        }
+        assertTrue(
+            "a LazyColumn with no ceiling throws the moment it is measured " +
+                "inside anything that scrolls - weight(1f) where it fills " +
+                "what is left, heightIn(max = ) where it does not: $offenders",
+            offenders.isEmpty()
+        )
+    }
 }
