@@ -29,6 +29,17 @@ object Scheduler {
     private const val W_NOW = "cloudsaver.now"
     private const val W_MAINTAIN_NOW = "cloudsaver.maintain.now"
 
+    /**
+     * Every unique work name this object enqueues under.
+     *
+     * Kept as one list so that cancelling "all" of them cannot drift out of
+     * step with the set that exists, which is exactly what happened: two names
+     * were added over time and the cancel was never widened to match.
+     */
+    private val ALL_WORK = listOf(
+        W_COMPRESS, W_MAINTAIN, W_TRIGGER, W_NOW, W_MAINTAIN_NOW
+    )
+
     fun ensure(context: Context, options: Options) {
         // Nothing runs until setup has been finished with an explicit tap.
         // Changing a setting mid-setup used to schedule the periodic work, so
@@ -77,13 +88,19 @@ object Scheduler {
             .enqueueUniqueWork(W_TRIGGER, ExistingWorkPolicy.REPLACE, request)
     }
 
-    /** "Run now": user-initiated, so it ignores mode, budget and screen state. */
-    /** Used while setup is unfinished: leave no scheduled work behind. */
+    /**
+     * Leaves no work behind - all five names, not the three it used to cancel.
+     *
+     * "Optimise now" and "Maintain now" enqueue under their own unique names,
+     * and neither was in this list. So a run the user started by tapping kept
+     * going after setup was reset or the app was told to stop, which is the
+     * one run a person is most likely to be watching. It also let one
+     * instrumented test's tap finish compressing inside the next test, which
+     * is how it was noticed.
+     */
     fun cancelAll(context: Context) {
         val wm = WorkManager.getInstance(context)
-        wm.cancelUniqueWork(W_COMPRESS)
-        wm.cancelUniqueWork(W_MAINTAIN)
-        wm.cancelUniqueWork(W_TRIGGER)
+        for (name in ALL_WORK) wm.cancelUniqueWork(name)
     }
 
     fun runNow(context: Context) {
