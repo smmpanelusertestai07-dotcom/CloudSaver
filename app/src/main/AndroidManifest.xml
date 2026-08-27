@@ -66,9 +66,16 @@
         android:taskAffinity=""
         android:theme="@style/Theme.CloudSaver">
 
+        <!-- singleTop is what makes MainActivity.onNewIntent actually run. An
+             alert carries the screen it wants opened in an extra, and with the
+             default launch mode Android is free to hand that intent to a second
+             copy of the activity instead of the one already on screen - the
+             extra then arrives in a fresh onCreate, or is dropped entirely, and
+             the alert opens whatever was last shown. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

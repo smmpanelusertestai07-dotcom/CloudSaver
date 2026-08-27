@@ -2,5 +2,17 @@
 <resources>
     <style name="Theme.CloudSaver" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowNoTitle">true</item>
+        <!--
+            Turned sideways, a phone with a notch puts it on the left or the
+            right edge. Left at Android's default, the window is pushed clear
+            of it and the phone shows a black band down one side of every
+            screen - on Android 10 to 14, that is. Android 15 changed the
+            default for an edge-to-edge app and stopped doing it, which is why
+            this only ever looked wrong on the older phones. Saying shortEdges
+            makes every Android version behave the same: the app fills the
+            display, and App.kt already pads its content past the notch on
+            both sides (and consumes those insets, so nothing pads twice).
+        -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

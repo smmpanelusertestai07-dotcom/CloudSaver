@@ -164,7 +164,7 @@
     <string name="detail_optimise_first">Optimise this first</string>
     <string name="detail_try_again">Try again</string>
     <string name="detail_remove_from_phone">Remove from phone</string>
-    <string name="never_optimise_undo">Skipped. Manage in Settings \u203a Backup \u203a Skipped files</string>
+    <string name="never_optimise_undo">Skipped. Manage it in Settings \u203a Files you excluded</string>
     <string name="undo">Undo</string>
     <string name="detail_open_failed">No app on this phone can open this file.</string>
     <string name="detail_state">Status</string>
@@ -573,7 +573,7 @@
     <string name="calc_pace">Last 30 days: %1$s GB added.</string>
 
     <!-- cloud checklists (13.B; max 5 short lines each) -->
-    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · "Backup only new photos" OFF · Backed up folders → CloudSaver, and nothing else.</string>
+    <string name="cl_ente">In Ente: Backup over mobile data ON · Backup videos ON · \"Backup only new photos\" OFF · Backed up folders → CloudSaver, and nothing else.</string>
     <string name="cl_mega">In MEGA: Camera uploads folder = CloudSaver · Video quality = Original (else MEGA makes your videos smaller a second time) · Note: MEGA has no duplicate check, so a self-healed copy may upload twice.</string>
     <string name="cl_filen">In Filen: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
     <string name="cl_proton">In Proton Drive: turn on auto-upload for the CloudSaver folder and no other. Works only if your app version lets you pick a custom backup folder - check in the app.</string>
@@ -995,7 +995,7 @@
     <string name="faq_deleted_link">Something was deleted — what happens now?</string>
     <!-- setup: restore, trial and album guidance (v11) -->
     <string name="onb0_import_hint">Only if you saved a CloudSaver backup before, on this phone or an old one. It brings back your settings and the record of what already reached your cloud, so nothing is optimised or sent twice. It never touches your photos. New here? Skip it and tap Get started.</string>
-    <string name="trial_needs_access">CloudSaver can only see the photos you picked, so the trial cannot run. Choose "Allow all" in app permissions to use it.</string>
+    <string name="trial_needs_access">CloudSaver can only see the photos you picked, so the trial cannot run. Choose \"Allow all\" in app permissions to use it.</string>
     <string name="trial_needs_albums">Tick at least one album first \u2014 the trial uses the albums you chose.</string>
     <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. Nothing is uploaded, and your originals stay untouched.</string>
     <string name="trial_choose_albums">Choose albums</string>
