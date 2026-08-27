@@ -91,8 +91,17 @@ echo "device is up"
 # ---- build, install, run ---------------------------------------------------
 ./gradlew --no-daemon --max-workers=2 :app:assembleDebug :app:assembleDebugAndroidTest
 
-"$ADB" install -r -t app/build/outputs/apk/debug/app-debug.apk
-"$ADB" install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+# Streamed installs (adb install) hang against a loaded software-emulated
+# guest; a push followed by pm install runs entirely inside the device and
+# does not. Failure here is fatal - an uninstalled runner otherwise turns
+# into a confusing INSTRUMENTATION_FAILED five lines later.
+"$ADB" push app/build/outputs/apk/debug/app-debug.apk /data/local/tmp/app.apk
+"$ADB" shell pm install -r -t /data/local/tmp/app.apk | grep -q Success
+"$ADB" push app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk /data/local/tmp/test.apk
+"$ADB" shell pm install -r -t /data/local/tmp/test.apk | grep -q Success
+"$ADB" shell pm list instrumentation | grep -q app.cloudsaver.test || {
+  echo "the test runner is not installed" >&2; exit 1
+}
 
 echo "running the instrumented suite (this is the slow part)..."
 "$ADB" shell am instrument -w \
