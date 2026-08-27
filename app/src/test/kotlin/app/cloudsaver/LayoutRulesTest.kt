@@ -45,6 +45,36 @@ class LayoutRulesTest {
 
     private fun lineOf(text: String, index: Int) = text.take(index).count { it == '\n' } + 1
 
+    /**
+     * The same file with every comment blanked out.
+     *
+     * This matters more here than it would anywhere else. The comments in
+     * this app are long, and they are mostly about the very mistakes the
+     * rules below forbid - the word "TextOverflow.Clip" appears in the
+     * comment explaining why nothing uses it, and a comment on setup says
+     * that a 28 dp spacer used to stand in for the status bar. A rule read
+     * over the prose would fail on its own explanation. Line breaks inside a
+     * block comment are kept so the line numbers in a failure still point at
+     * the right line of the real file.
+     */
+    private fun code(text: String): String =
+        Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL)
+            .replace(text) { m -> "\n".repeat(m.value.count { it == '\n' }) }
+            .split("\n")
+            .joinToString("\n") { it.substringBefore("//") }
+
+    /**
+     * The block body of a function whose opening bracket is at [paren]:
+     * skip the parameter list, skip any return type, take what is between
+     * the braces after it.
+     */
+    private fun bodyOf(text: String, paren: Int): String {
+        val params = blockAt(text, paren)
+        val brace = text.indexOf('{', paren + params.length)
+        if (brace < 0) return ""
+        return blockAt(text, brace, '{', '}')
+    }
+
     // ---- text that is cut instead of wrapped ---------------------------------
 
     /**
@@ -193,6 +223,285 @@ class LayoutRulesTest {
             "setup is drawn outside the Scaffold, so nothing applies the " +
                 "system bar insets for it unless it does so itself",
             onboarding.contains("safeDrawingPadding()")
+        )
+    }
+
+    // ---- screens with content past the bottom edge ---------------------------
+
+    /**
+     * Every screen can be scrolled to its end.
+     *
+     * A screen that only draws is fine on the phone it was drawn on and
+     * nowhere else. Turn that phone sideways and the height halves; turn the
+     * font up to 200% and every line of it doubles. Whatever was at the
+     * bottom - and on this app that is usually the button the screen exists
+     * for - is then simply past the edge of the glass with no way to reach
+     * it, which reads as an app that has frozen rather than an app that is
+     * too small. It was true of the lock screen, of setup and of the
+     * calculator at once.
+     *
+     * A screen counts as scrollable when it scrolls itself, or when it hands
+     * its content to a page frame in the same file that does - which is how
+     * the eight Help screens and the Find space screens are written.
+     */
+    @Test
+    fun everyScreenCanBeScrolledToItsEnd() {
+        val scrollers = listOf("verticalScroll", "LazyColumn", "LazyVerticalGrid", "LazyRow")
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            if (!path.startsWith("ui/screens/")) continue
+            val text = code(raw)
+            // The page frames in this file: a composable whose own body
+            // scrolls, so anything handing its content to it is scrollable.
+            val frames = mutableSetOf<String>()
+            Regex("\\bfun\\s+([A-Z][A-Za-z0-9_]*)\\s*\\(").findAll(text).forEach { m ->
+                val body = bodyOf(text, m.range.last)
+                if (scrollers.any { body.contains(it) }) frames += m.groupValues[1]
+            }
+            Regex("\\bfun\\s+([A-Za-z0-9_]*Screen)\\s*\\(").findAll(text).forEach { m ->
+                val name = m.groupValues[1]
+                val body = bodyOf(text, m.range.last)
+                val scrollsItself = scrollers.any { body.contains(it) }
+                val usesAFrame = frames.any { frame ->
+                    frame != name && Regex("\\b" + frame + "\\s*\\(").containsMatchIn(body)
+                }
+                if (!scrollsItself && !usesAFrame) {
+                    offenders += "$path:${lineOf(text, m.range.first)}  $name"
+                }
+            }
+        }
+        assertTrue(
+            "a screen with no scroll container has its lower half past the " +
+                "bottom edge the moment the phone is turned sideways or the " +
+                "font is turned up, and nothing can reach it: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- layouts that assume the reading direction ---------------------------
+
+    /**
+     * Nothing is positioned from the left of the screen.
+     *
+     * Compose has two of almost everything here: start/end, which follow the
+     * language, and left/right, which do not. The second set is for the rare
+     * case where a thing genuinely has to stay on one physical side - a
+     * timeline, a ruler - and this app has none of those. Every use of it is
+     * therefore a layout that comes out mirrored-but-not-quite in Arabic or
+     * Hebrew: the text flips, one padding does not, and the result is a
+     * screen with a gap on the wrong side and content jammed against the
+     * edge.
+     *
+     * The back arrow is the same rule in icon form. Icons.Filled.ArrowBack
+     * points left whatever the language; Icons.AutoMirrored.Filled.ArrowBack
+     * turns round with it, and an arrow that points the wrong way is an arrow
+     * people do not press.
+     */
+    @Test
+    fun nothingIsPositionedFromTheLeftOfTheScreen() {
+        val banned = listOf(
+            "Modifier.absolutePadding" to Regex("absolutePadding"),
+            "Alignment.Absolute*" to Regex("Alignment\\.Absolute"),
+            "Arrangement.Absolute" to Regex("Arrangement\\.Absolute"),
+            "TextAlign.Left/Right" to Regex("TextAlign\\.(Left|Right)\\b"),
+            "padding(left/right =" to Regex("padding\\(\\s*(left|right)\\s*="),
+            "an arrow that does not turn round" to Regex(
+                "Icons\\.(?!AutoMirrored)[A-Za-z.]*" +
+                    "(ArrowBack|ArrowForward|KeyboardArrowLeft|KeyboardArrowRight)"
+            )
+        )
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            val text = code(raw)
+            for ((name, pattern) in banned) {
+                pattern.findAll(text).forEach { m ->
+                    offenders += "$path:${lineOf(text, m.range.first)}  $name"
+                }
+            }
+        }
+        assertTrue(
+            "left and right do not follow the language, so a layout built " +
+                "from them comes out half-mirrored in Arabic and Hebrew - " +
+                "start and end, and AutoMirrored icons: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- text that is shortened without saying so ----------------------------
+
+    /**
+     * When text has to be shortened, it says so.
+     *
+     * TextOverflow.Clip cuts mid-letter and leaves nothing behind to say a
+     * cut happened, so a folder name and a truncated folder name look
+     * equally final - which on the screen that shows where the backup writes
+     * is the difference between reassurance and a wrong answer. The line
+     * limit rule above forces an overflow to be named; this one forces the
+     * named one not to be Clip.
+     *
+     * softWrap = false is the same cut by another route: it refuses the
+     * second line rather than the last letter. It is right for exactly one
+     * thing in this app - a formatted number, which is a single token that
+     * must not break across lines - and that use is paired with maxLines = 1
+     * and an ellipsis so an over-wide figure is visibly shortened. Anywhere
+     * near a sentence it is a sentence with its end missing.
+     */
+    @Test
+    fun textThatDoesNotFitIsShortenedVisibly() {
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            val text = code(raw)
+            Regex("TextOverflow\\.Clip").findAll(text).forEach { m ->
+                offenders += "$path:${lineOf(text, m.range.first)}  TextOverflow.Clip"
+            }
+            val lines = text.split("\n")
+            lines.forEachIndexed { i, line ->
+                if (!Regex("softWrap\\s*=\\s*false").containsMatchIn(line)) return@forEachIndexed
+                val window = lines.subList(
+                    maxOf(0, i - 6),
+                    minOf(lines.size, i + 7)
+                ).joinToString("\n")
+                if (!window.contains("maxLines = 1") || !window.contains("overflow")) {
+                    offenders += "$path:${i + 1}  softWrap = false on wrapping text"
+                }
+            }
+        }
+        assertTrue(
+            "text cut with no ellipsis reads as text that ended - Clip, and " +
+                "softWrap = false on anything but a single short token: " +
+                offenders,
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- guessing the shape of the window ------------------------------------
+
+    /**
+     * Nothing decides a layout from LocalConfiguration.
+     *
+     * screenWidthDp is the size of the window the app was given, which on a
+     * phone is the screen and almost nowhere else: in split screen, in a
+     * freeform window, on the second half of a foldable, it is a different
+     * number from the space the thing being laid out actually has. It is also
+     * rounded to whole dp and, historically, has not always excluded the
+     * system bars.
+     *
+     * BoxWithConstraints answers the same question about the one box that is
+     * asking, which is the question every caller here meant. The metric grid
+     * and the segmented control both choose their column count that way, and
+     * both are right in a half-width window because of it.
+     */
+    @Test
+    fun noScreenDecidesItsLayoutFromTheWindowSize() {
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            val text = code(raw)
+            Regex("screenWidthDp|screenHeightDp").findAll(text).forEach { m ->
+                offenders += "$path:${lineOf(text, m.range.first)}  ${m.value}"
+            }
+        }
+        assertTrue(
+            "the window is not the box: in split screen or on a foldable " +
+                "screenWidthDp is a different number from the width the " +
+                "layout has - BoxWithConstraints instead: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    /**
+     * No screen writes down how tall a system bar is.
+     *
+     * The status bar is 24 dp until it is 48 on a phone with a punch-hole,
+     * and the navigation bar is 48 dp until the phone is using gestures and
+     * it is 16, or the phone is sideways and it is on the end instead of the
+     * bottom. A number typed in for either is right on one device. Setup had
+     * a 28 dp spacer standing in for the status bar and it was wrong the
+     * moment anyone turned the phone; the insets know the real figure.
+     */
+    @Test
+    fun noScreenWritesDownTheHeightOfASystemBar() {
+        val named = Regex("(?i)(status|navigation|system)\\s?bar")
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            code(raw).split("\n").forEachIndexed { i, line ->
+                if (!named.containsMatchIn(line)) return@forEachIndexed
+                if (!Regex("\\d+\\.dp").containsMatchIn(line)) return@forEachIndexed
+                offenders += "$path:${i + 1}  ${line.trim().take(60)}"
+            }
+        }
+        assertTrue(
+            "a system bar is a different height on every phone and in every " +
+                "orientation - the insets know it, a number typed here does " +
+                "not: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- figures that grow with the reader's font ----------------------------
+
+    /**
+     * Every size multiplied by the font scale is bounded first.
+     *
+     * The pattern the app uses is a minimum width or height that grows with
+     * the text inside it, because what has to fit in a metric tile is words.
+     * Multiplying by the raw scale is what makes that a bug: Android's own
+     * slider stops at 200%, but the value is not capped there and an OEM
+     * accessibility setting can hand over more. A tile floor multiplied by an
+     * uncapped scale becomes wider than the phone, the row then fits one
+     * column, and the grid the number lives in disappears down the screen.
+     * coerceIn(1f, 2f) says "grow with the reader, up to the point Android
+     * itself stops asking".
+     */
+    @Test
+    fun everySizeThatGrowsWithTheFontIsBounded() {
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            code(raw).split("\n").forEachIndexed { i, line ->
+                if (!line.contains("fontScale")) return@forEachIndexed
+                // Only a multiplication turns the scale into a size. Reading
+                // it to compare against a threshold is how the stacked-text
+                // switch works and is fine.
+                if (!line.contains("*")) return@forEachIndexed
+                if (line.contains("coerce")) return@forEachIndexed
+                offenders += "$path:${i + 1}  ${line.trim().take(60)}"
+            }
+        }
+        assertTrue(
+            "an uncapped font scale multiplied into a width makes a floor " +
+                "wider than the phone - coerceIn(1f, 2f) first: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    // ---- the keyboard covering the field being typed into --------------------
+
+    /**
+     * A screen with something to type into makes room for the keyboard.
+     *
+     * The keyboard is drawn over the app, not beside it. A field in the lower
+     * half of a screen is therefore underneath it the moment it opens, and
+     * the person typing cannot see what they are typing - which on the
+     * calculator, where the whole screen is one number being entered and one
+     * answer, is the entire screen. imePadding lifts the content by exactly
+     * the height the keyboard took.
+     *
+     * Scoped to screens on purpose: a field inside a dialog is lifted by the
+     * dialog's own window, and a search box that lives at the top of a list
+     * is never under the keyboard to begin with.
+     */
+    @Test
+    fun everyScreenWithAFieldMakesRoomForTheKeyboard() {
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            if (!path.startsWith("ui/screens/")) continue
+            val text = code(raw)
+            if (!text.contains("TextField(")) continue
+            if (!text.contains("imePadding()")) offenders += path
+        }
+        assertTrue(
+            "the keyboard is drawn over the app, so without imePadding the " +
+                "field being typed into is underneath it: $offenders",
+            offenders.isEmpty()
         )
     }
 }
