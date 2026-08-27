@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
@@ -43,6 +46,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,6 +78,8 @@ import app.cloudsaver.core.logic.QualityKept
 import androidx.compose.material.icons.outlined.Straighten
 import androidx.compose.material.icons.outlined.Tune
 import app.cloudsaver.ui.components.SegmentedChoice
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 private fun HelpPage(
@@ -95,7 +101,17 @@ private fun HelpPage(
                     contentDescription = stringResource(R.string.back)
                 )
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            // A share of the row rather than whatever the title asks for.
+            // Beside the back arrow at the largest accessibility font a title
+            // like "Quality explained" is wider than a 320 dp phone, and with
+            // nothing holding it the end of it was simply drawn past the edge
+            // of the screen. A weight lets it wrap onto a second line instead.
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
         }
         Spacer(Modifier.height(8.dp))
         content()
@@ -138,15 +154,20 @@ private fun HelpLink(label: String, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // The label takes the room that is left and wraps; without a
+            // weight a long one - or any one at 200% text - pushed the chevron
+            // off the end of the card and out of the screen.
             Text(
                 label,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
             )
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }
@@ -212,7 +233,10 @@ fun HelpDeletedScreen(nav: NavHostController) {
 
 @Composable
 fun HelpFaqScreen(nav: NavHostController) {
-    var open by remember { mutableIntStateOf(-1) }
+    // Saveable, not just remembered: turning the phone while an answer is
+    // open rebuilds the screen, and the answer someone was halfway
+    // through reading closed itself every time.
+    var open by rememberSaveable { mutableIntStateOf(-1) }
     HelpPage(nav, stringResource(R.string.help_faq)) {
         FAQ.forEachIndexed { index, (q, a) ->
             val expanded = open == index
@@ -295,10 +319,13 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
+                // The heading takes the room left beside the icon and
+                // wraps; unheld it ran past the card at a large text size.
                 Text(
                     stringResource(R.string.quality_current_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
             SegmentedChoice(
@@ -374,10 +401,13 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
+                // The heading takes the room left beside the icon and
+                // wraps; unheld it ran past the card at a large text size.
                 Text(
                     stringResource(R.string.quality_detail_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
             Text(
@@ -415,10 +445,13 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
+                // The heading takes the room left beside the icon and
+                // wraps; unheld it ran past the card at a large text size.
                 Text(
                     stringResource(R.string.quality_table_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
             KeyValueRow(
@@ -456,10 +489,13 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
+                // The heading takes the room left beside the icon and
+                // wraps; unheld it ran past the card at a large text size.
                 Text(
                     stringResource(R.string.quality_measured_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
             if (!measured.hasAny) {
@@ -544,10 +580,13 @@ private fun QualityBlock(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(10.dp))
+            // The heading gets the rest of the row, so it wraps under itself
+            // rather than running past the card at a large text size.
             Text(
                 title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
             )
         }
         Text(
@@ -559,14 +598,27 @@ private fun QualityBlock(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HelpLogsScreen(nav: NavHostController) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var text by remember { mutableStateOf("") }
     val shareTitle = stringResource(R.string.logs_share)
-    LaunchedEffect(Unit) { text = AppLog.readTail(context) }
+    // Up to forty thousand characters off the disk. LaunchedEffect runs on the
+    // main thread, so read it on the IO dispatcher: on a slow phone this was a
+    // file read blocking the frame that was meant to draw the screen.
+    LaunchedEffect(Unit) {
+        text = withContext(Dispatchers.IO) { AppLog.readTail(context) }
+    }
     HelpPage(nav, stringResource(R.string.help_logs)) {
-        Row {
+        // Two buttons side by side is two buttons wide, and at the largest
+        // accessibility font on a 320 dp phone the second one left the screen.
+        // Wrapping puts it on the next line instead, at every width and font
+        // size, and keeps the order.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             OutlinedButton(onClick = {
                 try {
                     val file = AppLog.file(context)
@@ -584,12 +636,19 @@ fun HelpLogsScreen(nav: NavHostController) {
                 } catch (e: Exception) {
                     // sharing is optional
                 }
-            }) { Text(shareTitle) }
-            Spacer(Modifier.padding(horizontal = 4.dp))
+            }) {
+                Text(shareTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             OutlinedButton(onClick = {
                 AppLog.clear(context)
                 text = ""
-            }) { Text(stringResource(R.string.logs_clear)) }
+            }) {
+                Text(
+                    stringResource(R.string.logs_clear),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
             Text(
@@ -656,10 +715,13 @@ private fun PrivacyBlock(
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(10.dp))
+            // The heading gets the rest of the row, so it wraps under itself
+            // rather than running past the card at a large text size.
             Text(
                 title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
             )
         }
         Text(
@@ -697,7 +759,15 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
         AppCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BrandMark(size = 52.dp)
-                Column(Modifier.padding(start = 12.dp)) {
+                // The mark keeps its size; the words beside it take what is
+                // left. Without a weight the version line was measured at the
+                // width it wanted and, at a large text size on a narrow phone,
+                // that width was past the edge of the card.
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp)
+                ) {
                     Text(
                         stringResource(R.string.app_name),
                         style = MaterialTheme.typography.titleLarge,
@@ -851,10 +921,13 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(10.dp))
+                // The heading takes the room left beside the icon and
+                // wraps; unheld it ran past the card at a large text size.
                 Text(
                     stringResource(R.string.about_quality_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
                 )
             }
             Text(

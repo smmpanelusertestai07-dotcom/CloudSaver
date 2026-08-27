@@ -7,12 +7,16 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -35,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.cloudsaver.core.logic.QualityKept
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
 import app.cloudsaver.data.db.ItemRow
@@ -94,9 +99,15 @@ fun CompareSheet(
                 // sits past the edge with no way to reach it, and the buttons
                 // are pushed off with it.
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                val both = original != null && optimised != null
-                if (both) {
-                    Box(
+                // Read once into locals rather than through the delegates a
+                // second time: a null check on a state property proves nothing
+                // about the read after it, and the two !! that followed were
+                // the only thing standing between a thumbnail arriving late
+                // and a crash on the screen that is meant to reassure people.
+                val before = original
+                val after = optimised
+                if (before != null && after != null) {
+                    BoxWithConstraints(
                         Modifier
                             .fillMaxWidth()
                             .aspectRatio(1f)
@@ -106,23 +117,33 @@ fun CompareSheet(
                         // Optimised underneath, original clipped over it: the
                         // slider is a wipe across one image, not two pictures
                         // side by side at different scales.
+                        val frame = maxWidth
                         Image(
-                            bitmap = optimised!!.asImageBitmap(),
+                            bitmap = after.asImageBitmap(),
                             contentDescription = stringResource(R.string.compare_optimised),
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
                         Box(
                             Modifier
-                                .fillMaxWidth(split)
-                                .fillMaxSize()
+                                .fillMaxHeight()
+                                .width(frame * split)
                                 .clipToBounds()
                         ) {
+                            // The original is laid out at the full width of the
+                            // frame and then clipped by the box around it. Left
+                            // to fill the narrow box it was cropped to that
+                            // box's shape instead, so the half being compared
+                            // was a different part of the picture at a
+                            // different scale - which is exactly the comparison
+                            // this sheet exists to avoid.
                             Image(
-                                bitmap = original!!.asImageBitmap(),
+                                bitmap = before.asImageBitmap(),
                                 contentDescription = stringResource(R.string.compare_original),
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier
+                                    .requiredWidth(frame)
+                                    .fillMaxHeight()
                             )
                         }
                     }
@@ -132,15 +153,23 @@ fun CompareSheet(
                             .padding(top = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        // Half the row each, so a long translation of either
+                        // word wraps under itself instead of pushing the other
+                        // one off the end of the dialog.
                         Text(
                             stringResource(R.string.compare_original),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
                         )
                         Text(
                             stringResource(R.string.compare_optimised),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp)
                         )
                     }
                     Slider(value = split, onValueChange = { split = it })

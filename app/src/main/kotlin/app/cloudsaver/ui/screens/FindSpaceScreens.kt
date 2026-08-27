@@ -38,6 +38,7 @@ import app.cloudsaver.ui.components.ListTags
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -83,7 +84,9 @@ private fun Page(
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.padding(top = 8.dp, start = 4.dp, end = 16.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp, start = 4.dp, end = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = { nav.popBackStack() }) {
@@ -92,7 +95,18 @@ private fun Page(
                     contentDescription = stringResource(R.string.back)
                 )
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            // The title takes whatever the arrow leaves rather than its own
+            // natural width. A heading this size at a 200% font scale is
+            // wider than a 320 dp phone on its own, and with no share of the
+            // row it simply ran off the end of the screen.
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
         }
         content()
     }
@@ -149,7 +163,10 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             }
         )
     }
-    val allExtras = shown.flatMap { it.second }
+    // Flattened once per change of the grouped list, not once per frame: a
+    // gallery with a few thousand duplicates walked every group again on
+    // every recomposition, including on each tick of a selection.
+    val allExtras = remember(shown) { shown.flatMap { it.second } }
     val selectedBytes = remember(allExtras, selection.ids) {
         allExtras.filter { it.id in selection }.sumOf { it.sizeBytes }
     }
@@ -194,38 +211,27 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
         loading = loading && groups.isEmpty(),
         isEmpty = shown.isEmpty(),
         emptyContent = {
-            when {
-                groups.isNotEmpty() && query.isNotBlank() ->
-                    SearchEmptyState(term = query, onClear = { query = "" })
-                groups.isNotEmpty() -> FilteredEmptyState(
-                    onReset = {
-                        type = ListFilters.Type.ALL
-                        size = ListFilters.Size.ANY
-                        album = null
-                    }
-                )
-                else -> EmptyState(
-                    title = stringResource(R.string.dupes_empty_title),
-                    body = stringResource(R.string.dupes_empty_body)
-                )
-            }
-        },
-        intro = {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text(
-                    stringResource(R.string.dupes_intro),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    stringResource(R.string.dupes_intro_second),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-                // Always visible, never behind the action. Someone about to
-                // delete photographs should not have to tap to find out that
-                // their cloud is untouched and the files are recoverable.
-                RemovalWarningCard(Modifier.padding(top = 10.dp))
+            // The empty state is drawn in whatever height the header, the
+            // search box and the filter row leave behind. On a phone held
+            // sideways at a large font that is a couple of hundred dp, which
+            // is less than this state needs, so it scrolls rather than being
+            // cut off at the bottom of the glass.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    groups.isNotEmpty() && query.isNotBlank() ->
+                        SearchEmptyState(term = query, onClear = { query = "" })
+                    groups.isNotEmpty() -> FilteredEmptyState(
+                        onReset = {
+                            type = ListFilters.Type.ALL
+                            size = ListFilters.Size.ANY
+                            album = null
+                        }
+                    )
+                    else -> EmptyState(
+                        title = stringResource(R.string.dupes_empty_title),
+                        body = stringResource(R.string.dupes_empty_body)
+                    )
+                }
             }
         },
         actionBar = {
@@ -236,6 +242,29 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
             )
         }
     ) {
+        item("intro") {
+            // The first thing in the list rather than a band pinned above it.
+            // Two paragraphs and the three-line removal warning are most of a
+            // landscape phone at a large font, and above the list they left
+            // the rows no height to be drawn in at all. Inside it they are
+            // still the first thing read, and they can be scrolled past.
+            Column(Modifier.padding(top = 4.dp)) {
+                Text(
+                    stringResource(R.string.dupes_intro),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    stringResource(R.string.dupes_intro_second),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+                // Never behind the action. Someone about to delete
+                // photographs should not have to tap to find out that their
+                // cloud is untouched and the files are recoverable.
+                RemovalWarningCard(Modifier.padding(top = 10.dp))
+            }
+        }
         for ((group, extras) in shown) {
             item("h-${group.sha256}") {
                 Column(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
@@ -393,8 +422,11 @@ private fun DuplicateEntryRow(
     val openLabel = stringResource(R.string.list_open)
     val cannotOpen = stringResource(R.string.detail_open_failed)
     val context = androidx.compose.ui.platform.LocalContext.current
-    // The stored row, resolved off the main thread - the same lookup the
-    // thumbnail already does, so opening costs no extra query.
+    // The stored row, resolved off the main thread once and handed to the
+    // thumbnail as well. It used to be looked up twice per row - here for the
+    // Open action and again inside the thumbnail - which on a screen full of
+    // duplicates is two database reads for every row on screen, exactly what
+    // the comment claimed it was avoiding.
     val stored by androidx.compose.runtime.produceState<app.cloudsaver.data.db.ItemRow?>(
         null, entry.id
     ) { value = vm.itemById(entry.id) }
@@ -427,7 +459,10 @@ private fun DuplicateEntryRow(
         } else {
             stringResource(R.string.proof_identical)
         },
-        thumbnail = { DuplicateThumb(vm, entry) },
+        thumbnail = {
+            stored?.let { Thumbnail(it) }
+                ?: androidx.compose.foundation.layout.Box(Modifier.size(52.dp))
+        },
         actions = actions,
         selected = selected,
         onSelectedChange = if (selected != null) onToggle else null,
@@ -438,15 +473,6 @@ private fun DuplicateEntryRow(
             null
         }
     )
-}
-
-/** Reuses the Files thumbnail by looking the row up once. */
-@Composable
-private fun DuplicateThumb(vm: AppViewModel, entry: app.cloudsaver.core.logic.DuplicateRules.Entry) {
-    val row by androidx.compose.runtime.produceState<app.cloudsaver.data.db.ItemRow?>(null, entry.id) {
-        value = vm.itemById(entry.id)
-    }
-    row?.let { Thumbnail(it) } ?: androidx.compose.foundation.layout.Box(Modifier.size(52.dp))
 }
 
 /**
@@ -483,8 +509,13 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             .let { list ->
                 when (sort) {
                     BiggestSort.LARGEST -> list.sortedByDescending { it.sizeBytes }
+                    // dateModified comes from MediaStore in seconds while
+                    // captureAt is milliseconds, so the fallback has to be
+                    // converted: compared as-is it is a thousand times
+                    // smaller and sorts every such file to the very top of
+                    // "oldest first" regardless of its date.
                     BiggestSort.OLDEST -> list.sortedBy {
-                        if (it.captureAt > 0) it.captureAt else it.dateModified
+                        if (it.captureAt > 0) it.captureAt else it.dateModified * 1000L
                     }
                     BiggestSort.SAVED -> list.sortedByDescending { savingFor(it, profile) }
                 }
@@ -497,10 +528,17 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
     val couldSave = remember(rows, profile) { rows.sumOf { savingFor(it, profile) } }
     val rough = profile.photos.ratio <= 0.0 || profile.videos.ratio <= 0.0
 
-    val chosen = rows.filter { it.id in selection }
-    val selectedBytes = chosen.sumOf { it.sizeBytes }
-    val removable = chosen.filter { RowActions.Action.REMOVE_FROM_PHONE in
-        RowActions.forItem(it.toActionRow()) }
+    // All three walk every row on the screen, and all three used to do it on
+    // every recomposition - which on a selection of fifty files meant three
+    // full passes per tick of a checkbox. They change only when the rows or
+    // the selection do.
+    val chosen = remember(rows, selection.ids) { rows.filter { it.id in selection } }
+    val selectedBytes = remember(chosen) { chosen.sumOf { it.sizeBytes } }
+    val removable = remember(chosen) {
+        chosen.filter {
+            RowActions.Action.REMOVE_FROM_PHONE in RowActions.forItem(it.toActionRow())
+        }
+    }
 
     ListScreenScaffold(
         title = stringResource(R.string.find_biggest),
@@ -541,20 +579,26 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
         loading = false,
         isEmpty = rows.isEmpty(),
         emptyContent = {
-            when {
-                all.isNotEmpty() && query.isNotBlank() ->
-                    SearchEmptyState(term = query, onClear = { query = "" })
-                all.isNotEmpty() -> FilteredEmptyState(
-                    onReset = {
-                        type = ListFilters.Type.ALL
-                        sizeBand = ListFilters.Size.ANY
-                        album = null
-                    }
-                )
-                else -> EmptyState(
-                    title = stringResource(R.string.biggest_empty_title),
-                    body = stringResource(R.string.biggest_empty_body)
-                )
+            // Scrollable for the same reason the list is: sideways on a phone
+            // at a large font there is not enough height left below the
+            // filters to draw this state, and without a scroll its lower half
+            // is simply past the bottom edge.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    all.isNotEmpty() && query.isNotBlank() ->
+                        SearchEmptyState(term = query, onClear = { query = "" })
+                    all.isNotEmpty() -> FilteredEmptyState(
+                        onReset = {
+                            type = ListFilters.Type.ALL
+                            sizeBand = ListFilters.Size.ANY
+                            album = null
+                        }
+                    )
+                    else -> EmptyState(
+                        title = stringResource(R.string.biggest_empty_title),
+                        body = stringResource(R.string.biggest_empty_body)
+                    )
+                }
             }
         },
         actionBar = {
@@ -566,39 +610,47 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
             val split = RowActions.splitForOptimise(
                 chosen.map { it.id to it.toActionRow() }
             )
-            ListActionBar(
-                // frees = false: the action here optimises. Removing from the
-                // phone is a separate choice, made later through Android's own
-                // dialog.
-                summary = selectionSummary(
-                    selection.size, Formats.bytes(selectedBytes), frees = false
-                ),
-                actionLabel = if (split.skipped > 0 && split.eligible > 0) {
-                    stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
-                } else {
-                    stringResource(R.string.list_optimise_these_first)
-                },
-                note = if (split.skipped > 0 && split.eligible > 0) {
-                    pluralStringResource(
-                        R.plurals.bulk_skipped_note, split.skipped, split.skipped
-                    )
-                } else {
-                    null
-                },
-                onAction = {
-                    rvm.optimiseFirst(split.eligibleIds)
-                    selection.clear()
-                },
-                blockedReason = if (shortfall > 0 && removable.isNotEmpty()) {
-                    pluralStringResource(
-                        R.plurals.list_remove_blocked, shortfall, shortfall, chosen.size
-                    )
-                } else {
-                    null
-                },
-                narrowLabel = stringResource(R.string.list_select_backed_up),
-                onNarrow = { selection.replaceWith(removable.map { it.id }) }
-            )
+            val blocked = shortfall > 0 && removable.isNotEmpty()
+            // With nothing left to optimise and nothing to narrow to, the bar
+            // is absent rather than showing a button that runs an optimise
+            // over an empty list - it cleared the selection and did nothing
+            // else, which reads as the app quietly losing the job. Files
+            // already hides its bar at zero eligible; this one did not.
+            if (split.eligible > 0 || blocked) {
+                ListActionBar(
+                    // frees = false: the action here optimises. Removing from
+                    // the phone is a separate choice, made later through
+                    // Android's own dialog.
+                    summary = selectionSummary(
+                        selection.size, Formats.bytes(selectedBytes), frees = false
+                    ),
+                    actionLabel = if (split.skipped > 0 && split.eligible > 0) {
+                        stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)
+                    } else {
+                        stringResource(R.string.list_optimise_these_first)
+                    },
+                    note = if (split.skipped > 0 && split.eligible > 0) {
+                        pluralStringResource(
+                            R.plurals.bulk_skipped_note, split.skipped, split.skipped
+                        )
+                    } else {
+                        null
+                    },
+                    onAction = {
+                        rvm.optimiseFirst(split.eligibleIds)
+                        selection.clear()
+                    },
+                    blockedReason = if (blocked) {
+                        pluralStringResource(
+                            R.plurals.list_remove_blocked, shortfall, shortfall, chosen.size
+                        )
+                    } else {
+                        null
+                    },
+                    narrowLabel = stringResource(R.string.list_select_backed_up),
+                    onNarrow = { selection.replaceWith(removable.map { it.id }) }
+                )
+            }
         }
     ) {
         item("summary") {
@@ -747,7 +799,11 @@ fun proofLabel(kind: ProofLine.Kind): String = stringResource(
 @Composable
 private fun detailLine(row: app.cloudsaver.data.db.ItemRow): String {
     val kind = stringResource(if (row.isVideo) R.string.kind_video else R.string.kind_photo)
-    val taken = Formats.date(if (row.captureAt > 0) row.captureAt else row.dateModified)
+    // Seconds from MediaStore, milliseconds everywhere else in the app: the
+    // fallback printed a date in January 1970 rather than the file's own.
+    val taken = Formats.date(
+        if (row.captureAt > 0) row.captureAt else row.dateModified * 1000L
+    )
     val album = row.bucket ?: stringResource(R.string.biggest_no_album)
     return if (row.isVideo && row.durationMs > 0) {
         stringResource(
@@ -777,10 +833,20 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
 
     Page(nav, stringResource(R.string.reclaim_history)) {
         if (batches.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.history_empty_title),
-                body = stringResource(R.string.history_empty_body)
-            )
+            // Nothing here scrolled before. The mark, the heading and the
+            // body with their padding are taller than a phone held sideways
+            // at a large font, so the last line sat off the bottom of the
+            // screen with no way to reach it.
+            Column(
+                Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                EmptyState(
+                    title = stringResource(R.string.history_empty_title),
+                    body = stringResource(R.string.history_empty_body)
+                )
+            }
             return@Page
         }
         // Tagged like every other list in the app, so a test can scroll it with
@@ -829,7 +895,12 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                         },
                         modifier = Modifier.padding(top = 4.dp)
                     )
-                    val shown = items.filter { it.batchId == batch.id }
+                    // Every visible card filtered the whole loaded batch list
+                    // again on every recomposition; it changes only when the
+                    // loaded items do.
+                    val shown = remember(items, batch.id) {
+                        items.filter { it.batchId == batch.id }
+                    }
                     for (item in shown) {
                         KeyValueRow(
                             item.displayName,
@@ -841,10 +912,22 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                         if (restorable.isEmpty()) {
                             // Nothing left to offer; everything here came back.
                         } else if (android.os.Build.VERSION.SDK_INT >= 30) {
+                            // Full width, so the label has the whole card to
+                            // sit in: at a 200% font scale a button sized to
+                            // its own text is wider than a 320 dp phone and
+                            // the words ran past the edge of the card.
                             OutlinedButton(
                                 onClick = { rvm.restore(restorable) },
-                                modifier = Modifier.padding(top = 8.dp)
-                            ) { Text(stringResource(R.string.history_restore)) }
+                                modifier = Modifier
+                                    .padding(top = 8.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Text(
+                                    stringResource(R.string.history_restore),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         } else {
                             // Android cannot report trash state for files the
                             // app no longer owns, so it says where to look

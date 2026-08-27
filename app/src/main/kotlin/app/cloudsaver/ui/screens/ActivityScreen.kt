@@ -117,7 +117,14 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
             // as buttons they sat above the list competing with it.
             var menuOpen by remember { mutableStateOf(false) }
             androidx.compose.foundation.layout.Box {
-                IconButton(onClick = { menuOpen = true }, enabled = rows.isNotEmpty()) {
+                // Export and Clear act on the whole log, not on what the filter
+                // is showing. Keying the menu to the visible rows alone meant
+                // that picking "Problems" on a phone with no problems logged
+                // put Clear out of reach for the rest of the history too.
+                IconButton(
+                    onClick = { menuOpen = true },
+                    enabled = rows.isNotEmpty() || filter != null
+                ) {
                     Icon(
                         Icons.Outlined.MoreVert,
                         contentDescription = stringResource(R.string.list_more_actions)
@@ -145,49 +152,72 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        SegmentedChoice(
-            options = listOf(
-                "ALL" to stringResource(R.string.activity_filter_all),
-                ActivityLog.Group.BACKUPS.name to stringResource(R.string.activity_filter_backups),
-                ActivityLog.Group.PROBLEMS.name to stringResource(R.string.activity_filter_problems),
-                ActivityLog.Group.CHANGES.name to stringResource(R.string.activity_filter_changes)
-            ),
-            selected = filter?.name ?: "ALL",
-            onSelect = { value ->
-                vm.activityFilter.value = if (value == "ALL") {
-                    null
-                } else {
-                    ActivityLog.Group.valueOf(value)
-                }
+        // One scrolling surface under the title, rather than three fixed bands
+        // stacked on top of each other.
+        //
+        // The filter and the retention note used to be pinned above the list.
+        // Turned sideways at the largest accessibility text they are most of a
+        // phone's height on their own, and the list they belong to was left a
+        // sliver at the bottom - and when there was nothing to list, the empty
+        // state itself had no way to scroll and its lower half sat past the
+        // edge. As items of the list they take the room they need at any size
+        // and scroll out of the way once the history is long.
+        //
+        // Tagged like every other list in the app: performScrollTo does not
+        // work on a lazy list at all (issuetracker 178483889), so anything
+        // driving this one has to scroll through the list itself.
+        LazyColumn(
+            Modifier
+                .weight(1f)
+                .testTag(ListTags.ROWS)
+        ) {
+            item(key = "filter") {
+                SegmentedChoice(
+                    options = listOf(
+                        "ALL" to stringResource(R.string.activity_filter_all),
+                        ActivityLog.Group.BACKUPS.name to
+                            stringResource(R.string.activity_filter_backups),
+                        ActivityLog.Group.PROBLEMS.name to
+                            stringResource(R.string.activity_filter_problems),
+                        ActivityLog.Group.CHANGES.name to
+                            stringResource(R.string.activity_filter_changes)
+                    ),
+                    selected = filter?.name ?: "ALL",
+                    onSelect = { value ->
+                        vm.activityFilter.value = if (value == "ALL") {
+                            null
+                        } else {
+                            ActivityLog.Group.valueOf(value)
+                        }
+                    }
+                )
             }
-        )
 
-        // Nobody switched this on, and nobody has to switch it off. Say how
-        // long it is kept and how many lines, so it is not a mystery log
-        // growing quietly on the phone.
-        Text(
-            pluralStringResource(
-                R.plurals.activity_retention,
-                ActivityLog.RETENTION_DAYS,
-                ActivityLog.RETENTION_DAYS,
-                Formats.count(ActivityLog.RETENTION_ROWS)
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+            // Nobody switched this on, and nobody has to switch it off. Say how
+            // long it is kept and how many lines, so it is not a mystery log
+            // growing quietly on the phone.
+            item(key = "retention") {
+                Text(
+                    pluralStringResource(
+                        R.plurals.activity_retention,
+                        ActivityLog.RETENTION_DAYS,
+                        ActivityLog.RETENTION_DAYS,
+                        Formats.count(ActivityLog.RETENTION_ROWS)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
 
-
-        if (rows.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.activity_empty_title),
-                body = stringResource(R.string.activity_empty_body)
-            )
-        } else {
-            // Tagged like every other list in the app: performScrollTo does
-            // not work on a lazy list at all (issuetracker 178483889), so
-            // anything driving this one has to scroll through the list itself.
-            LazyColumn(Modifier.weight(1f).testTag(ListTags.ROWS)) {
+            if (rows.isEmpty()) {
+                item(key = "empty") {
+                    EmptyState(
+                        title = stringResource(R.string.activity_empty_title),
+                        body = stringResource(R.string.activity_empty_body)
+                    )
+                }
+            } else {
                 var lastDay = ""
                 for (row in rows) {
                     val day = Formats.date(row.atMs)
@@ -204,10 +234,10 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     item(key = row.id) { ActivityCard(row, nav, vm) }
                 }
-                // The retention line is stated once, at the top; repeating it
-                // at the foot of a 500-row list helps nobody.
-                item(key = "footer") { Spacer(Modifier.height(24.dp)) }
             }
+            // The retention line is stated once, at the top; repeating it
+            // at the foot of a 500-row list helps nobody.
+            item(key = "footer") { Spacer(Modifier.height(24.dp)) }
         }
     }
 

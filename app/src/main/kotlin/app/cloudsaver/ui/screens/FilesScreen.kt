@@ -191,23 +191,30 @@ fun FilesScreen(vm: AppViewModel) {
         loading = false,
         isEmpty = rows.isEmpty(),
         emptyContent = {
-            when {
-                query.isNotBlank() -> SearchEmptyState(
-                    term = query,
-                    onClear = { vm.search.value = "" }
-                )
-                anyFilter -> FilteredEmptyState(
-                    onReset = {
-                        type = ListFilters.Type.ALL
-                        sizeBand = ListFilters.Size.ANY
-                        album = null
-                        vm.filesState.value = null
-                    }
-                )
-                else -> EmptyState(
-                    title = stringResource(R.string.files_empty_title),
-                    body = stringResource(R.string.files_empty)
-                )
+            // The empty state gets whatever height is left below the title,
+            // the search box and the filter row. Sideways on a phone at a
+            // large font that is well under what it needs, and unscrolled its
+            // lower half - including the button that clears the search - sat
+            // past the bottom edge of the screen.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    query.isNotBlank() -> SearchEmptyState(
+                        term = query,
+                        onClear = { vm.search.value = "" }
+                    )
+                    anyFilter -> FilteredEmptyState(
+                        onReset = {
+                            type = ListFilters.Type.ALL
+                            sizeBand = ListFilters.Size.ANY
+                            album = null
+                            vm.filesState.value = null
+                        }
+                    )
+                    else -> EmptyState(
+                        title = stringResource(R.string.files_empty_title),
+                        body = stringResource(R.string.files_empty)
+                    )
+                }
             }
         },
         actionBar = {
