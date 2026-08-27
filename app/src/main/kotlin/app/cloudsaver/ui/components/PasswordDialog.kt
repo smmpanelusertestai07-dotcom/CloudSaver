@@ -111,6 +111,22 @@ fun PasswordDialog(
                         modifier = Modifier.padding(top = 8.dp)
                     )
                 }
+                // The same reason, on the restore side of the dialog.
+                //
+                // The length hint above lives inside the confirm branch, so
+                // typing seven characters when reopening a backup greyed the
+                // OK button out and said nothing at all - a dead button with
+                // no explanation, which is the one thing a screen must never
+                // be. It cannot be a wrong password either: nothing shorter
+                // than this was ever accepted when the file was made.
+                if (!confirmMode && tooShort && password.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.backup_password_short),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
                 errorText?.let {
                     Text(
                         it,

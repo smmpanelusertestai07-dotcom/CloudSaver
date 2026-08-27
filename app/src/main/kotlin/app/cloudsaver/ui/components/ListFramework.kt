@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
@@ -165,6 +167,9 @@ class ListSelection internal constructor(initial: Set<Long>) {
 fun rememberListSelection(): ListSelection =
     rememberSaveable(saver = ListSelection.Saver) { ListSelection(emptySet()) }
 
+/** How wide one chip's label may get before the end of it is shortened. */
+private val ChipLabelMax = 220.dp
+
 /**
  * The filter and sort chips, on one line that scrolls rather than wraps.
  *
@@ -179,6 +184,12 @@ fun ListFilterRow(
     modifier: Modifier = Modifier
 ) {
     var open by remember { mutableStateOf<ListFilter?>(null) }
+    // A chip says "Album: Camera", and an album is named by whoever made it -
+    // there is no length a folder name cannot be. Unbounded, one chip stretched
+    // the scrolling row far enough that the chips after it were several swipes
+    // away. The cap grows with the text size so it holds roughly the same
+    // number of characters at any of them.
+    val chipMax = ChipLabelMax * LocalDensity.current.fontScale.coerceIn(1f, 2f)
     Row(
         modifier
             .fillMaxWidth()
@@ -189,7 +200,14 @@ fun ListFilterRow(
             FilterChip(
                 selected = filter.isActive,
                 onClick = { open = filter },
-                label = { Text(filter.chipLabel) },
+                label = {
+                    Text(
+                        filter.chipLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = chipMax)
+                    )
+                },
                 leadingIcon = {
                     Icon(
                         Icons.Outlined.FilterList,
@@ -203,7 +221,14 @@ fun ListFilterRow(
             FilterChip(
                 selected = false,
                 onClick = { open = it },
-                label = { Text(it.chipLabel) },
+                label = {
+                    Text(
+                        it.chipLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = chipMax)
+                    )
+                },
                 leadingIcon = {
                     Icon(
                         Icons.Outlined.Sort,
@@ -557,8 +582,27 @@ fun ListScreenScaffold(
             }
 
             when {
-                loading -> ListSkeleton(modifier = Modifier.padding(16.dp))
-                isEmpty -> emptyContent()
+                // Both of these sit under a header, a search box and a row of
+                // chips that have already taken most of a short screen. Left
+                // to their natural height they simply ran off the bottom in
+                // landscape, or at a large text size, with nothing to scroll -
+                // and an empty state that cannot be read to the end is a
+                // screen that looks broken rather than empty. They get the
+                // height that is left and scroll inside it.
+                loading -> Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ListSkeleton(modifier = Modifier.padding(16.dp))
+                }
+                isEmpty -> Column(
+                    Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    emptyContent()
+                }
                 else -> LazyColumn(
                     Modifier
                         .weight(1f)
@@ -712,7 +756,10 @@ fun RemovalWarningCard(modifier: Modifier = Modifier) {
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(12.dp))
-            Column {
+            // A share of the row rather than whatever three sentences want:
+            // without it the column measures at its own idea of a width and
+            // the icon beside it is what gets pushed off a narrow screen.
+            Column(Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.warn_phone_only),
                     style = MaterialTheme.typography.bodyMedium,

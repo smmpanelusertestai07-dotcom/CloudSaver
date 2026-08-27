@@ -77,8 +77,8 @@ private val CardShape = RoundedCornerShape(24.dp)
 /**
  * The text size at which two things stop being able to share one line.
  *
- * Above it a row of [words][control] is drawn as the words with the control
- * underneath them, because at 150% and up on a narrow phone the two halves
+ * Above it a row of words beside a control is drawn as the words with the
+ * control underneath, because at 150% and up on a narrow phone the two halves
  * each get a few words' width and both become unreadable - the label worst of
  * all, since it is the half that says what the control does. Below it nothing
  * changes at all, so an ordinary phone at an ordinary text size is drawn the

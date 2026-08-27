@@ -107,6 +107,12 @@ fun FileRow(
     onLongPress: (() -> Unit)? = null
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    // Where the size and the saving note go. Beside the name normally; under
+    // it once the text is large enough that the two columns would each be a
+    // few characters wide. A checkbox, a thumbnail and an overflow button all
+    // hold their dp size whatever the text does, so at 200% on a 320 dp phone
+    // there is barely a third of the row left for the two of them to share.
+    val stacked = LocalDensity.current.fontScale >= StackedTextScale
     // Long-press starts a selection, exactly as it does on Files. Without it
     // a screen can show a checkbox once a selection exists but offer no way to
     // create one, which leaves "Select all" and the action bar unreachable.
@@ -159,30 +165,29 @@ fun FileRow(
                         // with the same text.
                     )
                 }
+                if (stacked) {
+                    FileRowValue(
+                        size = size,
+                        trailingNote = trailingNote,
+                        alignEnd = false,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    )
+                }
             }
             // A share of the row, not a fixed 120 dp. Bounding the note in dp
             // stopped it emptying the name off the row, but dp does not grow
             // with the font: at a large scale "about 459 KB after optimising"
             // was cut back to "about 459 KB af..." and lost the words that say
             // what the number means. A weight lets both sides scale together.
-            Column(
-                modifier = Modifier.weight(0.45f, fill = false),
-                horizontalAlignment = Alignment.End
-            ) {
-                Text(
-                    size,
-                    style = MaterialTheme.typography.titleMedium.merge(TabularFigures)
+            if (!stacked) {
+                FileRowValue(
+                    size = size,
+                    trailingNote = trailingNote,
+                    alignEnd = true,
+                    modifier = Modifier.weight(0.45f, fill = false)
                 )
-                trailingNote?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelSmall.merge(TabularFigures),
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.End,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
             if (actions.isNotEmpty()) {
                 Box {
@@ -209,8 +214,51 @@ fun FileRow(
     }
 }
 
-/** Filler so a pinned bottom bar never covers the last row. */
+/**
+ * What a file weighs, and what it would weigh afterwards.
+ *
+ * One definition for both places the row can put it - to the right of the
+ * name, or underneath it - so the two cannot drift into saying the same thing
+ * two different ways.
+ */
+@Composable
+private fun FileRowValue(
+    size: String,
+    trailingNote: String?,
+    alignEnd: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
+    ) {
+        Text(
+            size,
+            style = MaterialTheme.typography.titleMedium.merge(TabularFigures)
+        )
+        trailingNote?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall.merge(TabularFigures),
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * Filler so a pinned bottom bar never covers the last row.
+ *
+ * The bar it is making room for is a sentence and a button, so it grows with
+ * the text size while a fixed 96 dp does not: at 200% the bar was taller than
+ * the gap left for it and sat over the last file in the list - the one row a
+ * person scrolled all that way to reach.
+ */
 @Composable
 fun ListTail(extra: Boolean = false) {
-    Spacer(Modifier.height(if (extra) 96.dp else 24.dp))
+    val scale = LocalDensity.current.fontScale.coerceIn(1f, 2f)
+    Spacer(Modifier.height(if (extra) 96.dp * scale else 24.dp))
 }

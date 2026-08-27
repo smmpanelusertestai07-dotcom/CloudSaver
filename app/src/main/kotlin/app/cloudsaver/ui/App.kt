@@ -4,9 +4,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -18,12 +23,15 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -195,9 +203,10 @@ private fun MainNav(vm: AppViewModel) {
         // and leaving unstyled text black on the dark palette.
         contentColor = MaterialTheme.colorScheme.onBackground,
         bottomBar = {
-            if (!needsLock &&
-                route in setOf(Routes.HOME, Routes.FILES, Routes.STORAGE, Routes.OPTIONS)
-            ) {
+            // The same four routes the bar navigates between, named once:
+            // a second copy of the list here is a bar that shows on a screen
+            // it cannot navigate to, the day one of them changes.
+            if (!needsLock && route in Routes.TABS) {
                 // Opaque, and one step off the page rather than translucent:
                 // a see-through bar let content slide under the selected pill,
                 // which read as a stray shape floating over the screen.
@@ -226,11 +235,21 @@ private fun MainNav(vm: AppViewModel) {
             }
         }
     ) { padding ->
+        // The Scaffold's own insets are the system bars, and a notch is not
+        // one of them. Turned sideways, a phone with a cutout puts it on the
+        // left or the right edge and the first characters of every line went
+        // under it. This adds the two sides the system bars do not cover, and
+        // consumes them - so a screen that already pads for its own cutout
+        // does not end up padding for it twice.
+        val cutoutSides = Modifier.windowInsetsPadding(
+            WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)
+        )
         if (needsLock) {
             var lockNote by remember { mutableStateOf<Lock.Outcome?>(null) }
             LockedScreen(
                 modifier = Modifier
                     .padding(padding)
+                    .then(cutoutSides)
                     .fillMaxSize()
                     .wrapContentWidth()
                     .widthIn(max = Dimens.ContentMaxWidth),
@@ -270,6 +289,7 @@ private fun MainNav(vm: AppViewModel) {
                 // the same app looks like a different app on a bigger screen.
                 modifier = Modifier
                     .padding(padding)
+                    .then(cutoutSides)
                     .fillMaxSize()
                     .wrapContentWidth()
                     .widthIn(max = Dimens.ContentMaxWidth),
@@ -348,11 +368,31 @@ private fun androidx.compose.foundation.layout.RowScope.TabItem(
             // word. The four labels fit on every phone at every font size the
             // system offers; this is the floor under that, not a substitute
             // for keeping them short.
-            Text(
-                stringResource(labelRes),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            //
+            // The bar's height is the one thing on screen that does not grow
+            // with the text setting, so past a point the label cannot grow
+            // either: at 200% "Storage" was a row of letter tops with their
+            // bottoms sliced off. The label follows the setting up to a third
+            // again and then stops, which keeps every tab named - a nav bar
+            // of four unlabelled icons is a worse answer for the person who
+            // turned the text up in the first place. Nothing else in the app
+            // is capped; this is a fixed box that Material owns.
+            val density = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(
+                    density = density.density,
+                    fontScale = density.fontScale.coerceAtMost(NavLabelMaxScale)
+                )
+            ) {
+                Text(
+                    stringResource(labelRes),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     )
 }
+
+/** How far a bottom-bar label may follow the system text size. */
+private const val NavLabelMaxScale = 1.3f
