@@ -12,8 +12,11 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,7 +30,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -48,7 +50,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -66,7 +67,6 @@ import app.cloudsaver.ui.components.WarningText
 import androidx.compose.foundation.layout.width
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
-import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.components.PasswordDialog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.OemPages
@@ -83,6 +83,7 @@ import app.cloudsaver.ui.components.TrialCard
  * the two can no longer disagree the way "Step 6 of 7" once sat above a card
  * headed "5.".
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
@@ -229,16 +230,28 @@ fun OnboardingScreen(vm: AppViewModel) {
             .wrapContentWidth()
             .widthIn(max = Dimens.ContentMaxWidth)
             .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .padding(Dimens.Screen)
     ) {
-        Spacer(Modifier.height(28.dp))
+        // No spacer here any more. The 28 dp that used to sit at the top was
+        // standing in for the status bar before safeDrawingPadding was
+        // applied above, and with the real inset in place it was simply 28 dp
+        // of nothing - which on a phone turned sideways, where the whole card
+        // has 480 dp of height to live in, is a line of text's worth of the
+        // screen spent on a gap that no longer holds anything back.
         Row(verticalAlignment = Alignment.CenterVertically) {
             BrandMark(size = 44.dp)
             Text(
                 stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 12.dp)
+                // The name is set in the largest style the app owns, so at
+                // the biggest accessibility font on a 320 dp phone it needs
+                // most of the line. Weighted, it wraps inside what is left
+                // beside the mark instead of measuring itself first and
+                // pushing the row wider than the screen.
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp)
             )
         }
         Text(
@@ -387,14 +400,23 @@ fun OnboardingScreen(vm: AppViewModel) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The running count and the select-all control cannot
+                    // share a line on a narrow phone at a large font: the
+                    // button carries no weight, so in a plain Row it was
+                    // measured first and left "12 albums selected" a word
+                    // wide down the left edge. Flowing, the button drops
+                    // underneath the count and both are readable in full.
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         Text(
                             pluralStringResource(
                                 R.plurals.onb_albums_selected, included, included
                             ),
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
+                            fontWeight = FontWeight.Medium
                         )
                         TextButton(
                             enabled = buckets.isNotEmpty(),
@@ -408,7 +430,9 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 stringResource(
                                     if (included == 0) R.string.onb_albums_all
                                     else R.string.onb_albums_none
-                                )
+                                ),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -540,7 +564,10 @@ fun OnboardingScreen(vm: AppViewModel) {
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
                 val detection by vm.cloudDetection.collectAsStateWithLifecycle()
                 val link by vm.linkState.collectAsStateWithLifecycle()
-                var picking by remember { mutableStateOf(false) }
+                // Saveable, not remembered: turning the phone sideways
+                // while the cloud picker is open used to close it and drop
+                // the choice half-made.
+                var picking by rememberSaveable { mutableStateOf(false) }
                 val chosen = detection.chosen
                 StepCard(
                     title = stringResource(R.string.onb5_title),
@@ -566,7 +593,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     // own folder list cannot be read.
                     Surface(
                         color = MaterialTheme.colorScheme.tertiaryContainer,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(Dimens.ControlCorner),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 10.dp)
@@ -613,17 +640,46 @@ fun OnboardingScreen(vm: AppViewModel) {
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
-                    if (chosen.packages.isNotEmpty()) {
-                        OutlinedButton(onClick = {
-                            CloudApps.launch(context, chosen.id)
-                            vm.clearLinkState()
-                        }) { Text(stringResource(R.string.onb5_open, chosen.label)) }
-                    }
-                    OutlinedButton(onClick = { vm.verifyCloudLink() }) {
-                        Text(stringResource(R.string.onb5_check))
-                    }
-                    OutlinedButton(onClick = { picking = true }) {
-                        Text(stringResource(R.string.cloud_use_different))
+                    // Three buttons that used to be three Column children
+                    // with nothing between them, so they touched. Flowing
+                    // them puts a gap between the three and lets them share a
+                    // line where there is room for it, while on a narrow
+                    // phone at a large font each still gets a line of its
+                    // own. "Open %s" carries a cloud app's name, which is as
+                    // long as that company chose to make it.
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (chosen.packages.isNotEmpty()) {
+                            OutlinedButton(onClick = {
+                                CloudApps.launch(context, chosen.id)
+                                vm.clearLinkState()
+                            }) {
+                                Text(
+                                    stringResource(R.string.onb5_open, chosen.label),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        OutlinedButton(onClick = { vm.verifyCloudLink() }) {
+                            Text(
+                                stringResource(R.string.onb5_check),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        OutlinedButton(onClick = { picking = true }) {
+                            Text(
+                                stringResource(R.string.cloud_use_different),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     // Never "set up correctly" on faith: only what was checked.
                     link?.let { state ->
@@ -771,6 +827,7 @@ fun OnboardingScreen(vm: AppViewModel) {
  * claiming a problem. Telling someone a setting is off when it is on is how
  * an app teaches people to ignore it.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
     val label = when (requirement.id) {
@@ -784,13 +841,19 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
         requirement.readable -> stringResource(R.string.power_blocked)
         else -> stringResource(R.string.power_check)
     }
-    Row(
+    // "Battery: no restrictions" and a button beside it is more than a
+    // 320 dp phone at the largest accessibility font can fit on one line, and
+    // the button carries no weight - a plain Row measured it first and left
+    // the setting's name a single word wide. Flowing, the button drops under
+    // the name it belongs to rather than squeezing it.
+    FlowRow(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.padding(end = 12.dp)) {
             Text(label, style = MaterialTheme.typography.bodyMedium)
             Text(
                 state,
@@ -803,7 +866,13 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
             )
         }
         if (!(requirement.readable && requirement.satisfied)) {
-            OutlinedButton(onClick = onOpen) { Text(stringResource(R.string.power_open)) }
+            OutlinedButton(onClick = onOpen) {
+                Text(
+                    stringResource(R.string.power_open),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1045,6 +1114,7 @@ private fun StepDots(current: Int, total: Int) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StepCard(
     title: String,
@@ -1059,11 +1129,27 @@ private fun StepCard(
         Spacer(Modifier.height(6.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(10.dp))
-        Row {
-            Button(onClick = onButton) { Text(buttonLabel) }
+        // The action and its Skip are the pair that breaks first: "Grant
+        // usage access" and "Skip" cannot share a line on a 320 dp phone at
+        // the largest accessibility font, and a plain Row pushed Skip past
+        // the edge of the card, where the one way past the step was
+        // unreachable. Flowing, Skip drops underneath instead.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(onClick = onButton) {
+                Text(buttonLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
             if (onSkip != null) {
-                Spacer(Modifier.padding(horizontal = 4.dp))
-                TextButton(onClick = onSkip) { Text(stringResource(R.string.skip)) }
+                TextButton(onClick = onSkip) {
+                    Text(
+                        stringResource(R.string.skip),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
         extra()
