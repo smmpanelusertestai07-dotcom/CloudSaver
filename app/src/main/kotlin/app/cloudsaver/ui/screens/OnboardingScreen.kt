@@ -43,6 +43,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -213,6 +217,17 @@ fun OnboardingScreen(vm: AppViewModel) {
     Column(
         Modifier
             .fillMaxSize()
+            // Setup is drawn outside the Scaffold, so nothing was applying the
+            // system bar insets for it and nothing was capping its width. On a
+            // phone held upright neither showed: a 28 dp spacer happened to
+            // clear the status bar and no phone is wider than the cap. Turned
+            // sideways, the last control on the card sat underneath the
+            // navigation buttons; on a tablet setup ran the full width of the
+            // glass while every screen after it stopped at a column. The first
+            // screen anyone sees was the one screen not following the rules.
+            .safeDrawingPadding()
+            .wrapContentWidth()
+            .widthIn(max = Dimens.ContentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(20.dp)
     ) {
