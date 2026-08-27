@@ -335,29 +335,67 @@ fun MetricTile(
  * equal thirds, not two-and-a-stretched-one, and a single remaining tile is
  * centred at that same width rather than spanning the screen. A grid whose
  * cells resize as counts appear and disappear reads as a glitch.
+ *
+ * How many cells fit on a row is measured rather than assumed. Two columns is
+ * the shape this was drawn as and is still exactly what comes out on any
+ * ordinary phone at an ordinary text size. But a tile carries a five-figure
+ * number and a two-word label, and both of those grow with the text size while
+ * the glass does not: at 200% on a 320 dp phone two columns leave a tile too
+ * little to print its number in, and the number is the whole point of the
+ * tile. So the row gives up a column and the grid grows downwards, which is
+ * the one direction it is free to grow in.
  */
 @Composable
 fun MetricGrid(tiles: List<@Composable (Modifier) -> Unit>) {
     if (tiles.isEmpty()) return
-    val perRow = if (tiles.size <= 3) tiles.size else 2
-    for (row in tiles.chunked(perRow)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                // IntrinsicSize.Min so a tile that had to grow for its label
-                // lifts the others with it. Without this the tiles are all
-                // still the same width but no longer the same height, which
-                // is the ragged grid the fixed height was there to prevent.
-                .height(IntrinsicSize.Min)
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            for (tile in row) tile(Modifier.weight(1f).fillMaxHeight())
-            // Keep the last row's cells the same width as every other row's.
-            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // The floor grows with the text, because what has to fit inside a tile
+        // is text. Capped at 200%, which is as far as Android's own setting
+        // goes, so an OEM slider beyond it cannot drive this to one column of
+        // nothing.
+        val floor = TileMinWidth * LocalDensity.current.fontScale.coerceIn(1f, 2f)
+        val fits = if (constraints.hasBoundedWidth) {
+            ((maxWidth + TileGap) / (floor + TileGap)).toInt()
+        } else {
+            tiles.size
+        }
+        // Never wider than the grid was drawn, never narrower than one column.
+        val perRow = minOf(if (tiles.size <= 3) tiles.size else 2, fits).coerceAtLeast(1)
+        Column(Modifier.fillMaxWidth()) {
+            for (row in tiles.chunked(perRow)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        // IntrinsicSize.Min so a tile that had to grow for its
+                        // label lifts the others with it. Without this the
+                        // tiles are all still the same width but no longer the
+                        // same height, which is the ragged grid the fixed
+                        // height was there to prevent.
+                        .height(IntrinsicSize.Min)
+                        .padding(bottom = TileGap),
+                    horizontalArrangement = Arrangement.spacedBy(TileGap)
+                ) {
+                    for (tile in row) tile(Modifier.weight(1f).fillMaxHeight())
+                    // Keep the last row's cells the same width as every other
+                    // row's.
+                    repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
     }
 }
+
+/**
+ * The narrowest a progress tile may be drawn before its row drops a column,
+ * and the gap between two of them.
+ *
+ * Deliberately low: it is a cliff edge, not a target. Every layout that works
+ * today is left exactly as it is - three tiles across a 320 dp phone still
+ * measure about 77 dp each and stay on one row - and the reflow only happens
+ * where the tiles genuinely cannot hold their own contents.
+ */
+private val TileMinWidth = 72.dp
+private val TileGap = 10.dp
 
 /**
  * The height every progress tile starts at, and never goes below.
@@ -377,7 +415,8 @@ val TileHeight = 126.dp
  * makes a settings screen feel like a form. The label and the control sit on
  * one line with a real gap between them and the label wraps rather than
  * sliding under the switch - which is exactly what it used to do at large
- * font sizes.
+ * font sizes. Past the point where they cannot share a line at all, the
+ * control moves underneath and both get the width they need.
  */
 @Composable
 fun SettingRow(
@@ -392,10 +431,16 @@ fun SettingRow(
     val interaction = remember { MutableInteractionSource() }
     var row = Modifier
         .fillMaxWidth()
-        .heightIn(min = 56.dp)
+        .heightIn(min = Dimens.RowMin)
     if (onClick != null) {
         row = row.clickable(interactionSource = interaction, indication = null, onClick = onClick)
     }
+    // Once the text is large enough, the control moves under the words rather
+    // than beside them. A switch is a fixed 52 dp whatever the text size, so at
+    // 200% on a narrow phone it was taking a third of the row from a title that
+    // by then needed all of it.
+    val stacked = LocalDensity.current.fontScale >= StackedTextScale &&
+        (value != null || trailing != null)
     Row(
         modifier = row.padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -409,14 +454,14 @@ fun SettingRow(
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = 16.dp, end = 16.dp)
+                .padding(start = 16.dp, end = if (stacked) 0.dp else 16.dp)
         ) {
             Text(
-            title,
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
             description?.let {
                 Text(
                     it,
@@ -425,18 +470,42 @@ fun SettingRow(
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
+            if (stacked) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    value?.let { SettingValue(it, Modifier.weight(1f, fill = false)) }
+                    trailing?.invoke()
+                }
+            }
         }
-        value?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.labelLarge,
-                color = scheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        if (!stacked) {
+            // A share of the row rather than whatever the value wants. Left
+            // unbounded, a folder name or an album name measured first and the
+            // title was left with the remainder, which is how a settings row
+            // ends up saying nothing about what it changes.
+            value?.let { SettingValue(it, Modifier.weight(1f, fill = false)) }
+            trailing?.invoke()
         }
-        trailing?.invoke()
     }
+}
+
+/** The current setting, in the row's own accent, wherever the row puts it. */
+@Composable
+private fun SettingValue(value: String, modifier: Modifier = Modifier) {
+    Text(
+        value,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        textAlign = TextAlign.End,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
 }
 
 /** A group of settings rows: one card, one header above it. */
@@ -486,6 +555,30 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun KeyValueRow(key: String, value: String) {
+    // At a large text size the two columns leave each other about three words
+    // of width, and the values here are file names, album names and dates -
+    // none of which survive being squeezed into a third of a narrow phone. Past
+    // that point the value goes under its label with the whole row to itself.
+    if (LocalDensity.current.fontScale >= StackedTextScale) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Text(
+                key,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        return
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -511,73 +604,151 @@ fun KeyValueRow(key: String, value: String) {
     }
 }
 
-/** Segmented selector with an animated, filled selection. */
+/**
+ * Segmented selector with an animated, filled selection.
+ *
+ * The options share the width equally, and how many of them share one line is
+ * measured rather than fixed. On any phone at an ordinary text size that is
+ * still all of them, exactly as before. Where they genuinely cannot fit -
+ * five choices on a 320 dp screen, or three of them at 200% text - the
+ * selector takes a second line rather than shrinking every label towards
+ * illegible: the whole job of this control is to say what the choices are.
+ * Every segment stays the same size as every other, on whichever line it
+ * lands, so the group still reads as one control.
+ */
 @Composable
 fun SegmentedChoice(
     options: List<Pair<String, String>>, // value to label
     selected: String,
     onSelect: (String) -> Unit
 ) {
+    if (options.isEmpty()) return
     val scheme = MaterialTheme.colorScheme
-    Row(
+    BoxWithConstraints(
         Modifier
             .fillMaxWidth()
             .padding(top = 10.dp)
-            .clip(CircleShape)
-            .background(scheme.surfaceContainerHighest)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        for ((value, label) in options) {
-            val active = value == selected
-            val alpha by animateFloatAsState(
-                targetValue = if (active) 1f else 0f,
-                animationSpec = tween(200),
-                label = "segment"
-            )
-            val interaction = remember { MutableInteractionSource() }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(CircleShape)
-                    .background(scheme.primary.copy(alpha = alpha))
-                    .clickable(
-                        interactionSource = interaction,
-                        indication = null
-                    ) { onSelect(value) }
-                    .padding(vertical = 10.dp, horizontal = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // A clipped option is a broken option: "Unlimited" showing as
-                // "Unlimi" tells the user nothing. Shrinking alone was not
-                // enough - "Photos and videos" across a third of the row still
-                // ran out of space at the smallest size allowed and came out
-                // as "Photos and vide" - so a label that will not fit on one
-                // line wraps onto a second instead of losing its end.
-                //
-                // Only where there is a space to wrap at, though. Given two
-                // lines to fill, the shrinking stops as soon as the text fits
-                // across both, and a single long word simply breaks in half:
-                // four options across a phone turned "Unlimited" into
-                // "Unlimit" above "ed". A one-word label gets one line and has
-                // to shrink until it really fits.
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    maxLines = if (label.trim().contains(' ')) 2 else 1,
-                    overflow = TextOverflow.Ellipsis,
-                    autoSize = TextAutoSize.StepBased(
-                        minFontSize = 9.sp,
-                        maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
-                        stepSize = 0.5.sp
-                    )
-                )
+        // What one option needs, which grows with the text inside it. Capped
+        // at 200%, the largest size Android's own setting offers.
+        val floor = SegmentMinWidth * LocalDensity.current.fontScale.coerceIn(1f, 2f)
+        val inner = maxWidth - SegmentGap * 2
+        val fits = if (constraints.hasBoundedWidth) {
+            ((inner + SegmentGap) / (floor + SegmentGap)).toInt()
+        } else {
+            options.size
+        }
+        val perLine = minOf(options.size, fits).coerceAtLeast(1)
+        // Even lines rather than a full one and a remainder: five options over
+        // two lines are three and two, not four and a lonely one.
+        val lines = (options.size + perLine - 1) / perLine
+        val across = (options.size + lines - 1) / lines
+        Column(
+            Modifier
+                .fillMaxWidth()
+                // A circle is the right outline for one line of pills and the
+                // wrong one for two, where it bows the sides in around them.
+                .clip(if (lines > 1) RoundedCornerShape(Dimens.CardCorner) else CircleShape)
+                .background(scheme.surfaceContainerHighest)
+                .padding(SegmentGap),
+            verticalArrangement = Arrangement.spacedBy(SegmentGap)
+        ) {
+            for (line in options.chunked(across)) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        // One line's segments are as tall as its tallest label,
+                        // so a wrapped label lifts its neighbours with it
+                        // instead of leaving gaps in the strip.
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(SegmentGap)
+                ) {
+                    for ((value, label) in line) {
+                        Segment(
+                            label = label,
+                            active = value == selected,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            onClick = { onSelect(value) }
+                        )
+                    }
+                    // Keeps the last line's segments the width of every other
+                    // line's, rather than stretching two across the whole row.
+                    repeat(across - line.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
 }
+
+/** One option in a [SegmentedChoice]. */
+@Composable
+private fun Segment(
+    label: String,
+    active: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val alpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0f,
+        animationSpec = tween(200),
+        label = "segment"
+    )
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            // A segment is a button, and a button smaller than a finger is a
+            // button people miss.
+            .heightIn(min = Dimens.TouchTarget)
+            .clip(CircleShape)
+            .background(scheme.primary.copy(alpha = alpha))
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 10.dp, horizontal = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // A clipped option is a broken option: "Unlimited" showing as
+        // "Unlimi" tells the user nothing. Shrinking alone was not
+        // enough - "Photos and videos" across a third of the row still
+        // ran out of space at the smallest size allowed and came out
+        // as "Photos and vide" - so a label that will not fit on one
+        // line wraps onto a second instead of losing its end.
+        //
+        // Only where there is a space to wrap at, though. Given two
+        // lines to fill, the shrinking stops as soon as the text fits
+        // across both, and a single long word simply breaks in half:
+        // four options across a phone turned "Unlimited" into
+        // "Unlimit" above "ed". A one-word label gets one line and has
+        // to shrink until it really fits.
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (active) scheme.onPrimary else scheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = if (label.trim().contains(' ')) 2 else 1,
+            overflow = TextOverflow.Ellipsis,
+            autoSize = TextAutoSize.StepBased(
+                minFontSize = 9.sp,
+                maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                stepSize = 0.5.sp
+            )
+        )
+    }
+}
+
+/**
+ * The narrowest one option may be drawn before the selector takes a second
+ * line, and the gap between two of them.
+ *
+ * Low on purpose, like the tile floor above it: four options across a 320 dp
+ * phone still measure 75 dp each and stay on one line, so nothing that works
+ * today moves. It is only the genuinely impossible case that reflows.
+ */
+private val SegmentMinWidth = 64.dp
+private val SegmentGap = 4.dp
 
 /**
  * Rounded capacity bar that animates to its new value. [fraction] is how full
@@ -768,7 +939,10 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
         )
         androidx.compose.material3.IconButton(
             onClick = { copyPath(path) },
-            modifier = Modifier.size(32.dp)
+            // A finger, not an icon: at 32 dp this was the smallest tap target
+            // in the app, on the one control that has to work first time -
+            // a path typed out by hand instead is a path typed slightly wrong.
+            modifier = Modifier.size(Dimens.TouchTarget)
         ) {
             Icon(
                 androidx.compose.material.icons.Icons.Outlined.ContentCopy,
