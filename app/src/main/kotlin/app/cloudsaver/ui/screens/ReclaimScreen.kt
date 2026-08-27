@@ -476,7 +476,9 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                             // does not exist.
                             Text(
                                 stringResource(
-                                    if (rvm.canUndoRemoval || mode == ReclaimRules.Mode.COPIES_ONLY) {
+                                    if (rvm.canUndoRemoval ||
+                                        mode == ReclaimRules.Mode.COPIES_ONLY
+                                    ) {
                                         R.string.reclaim_trash
                                     } else {
                                         R.string.reclaim_delete

@@ -65,7 +65,6 @@ import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.WarningText
-import androidx.compose.foundation.layout.width
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.PasswordDialog
@@ -940,34 +939,37 @@ fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
 }
 
 /** One "label - value" line in the setup summary. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SummaryLine(label: String, value: String) {
-    // Both halves are weighted, and that is the whole point.
+    // Neither half is weighted any more, because a weighted pair divides the
+    // line whether or not either share is enough.
     //
-    // Only the label used to carry a weight, so the value - which is
-    // unbounded - was measured first and took every pixel it wanted. A long
-    // value like "Photos and videos, from 2 of your 5 albums" left the label
-    // about one character wide, and "Backing up" came out down the left edge,
-    // one letter per line. A weighted pair cannot starve either side.
-    Row(
-        verticalAlignment = Alignment.Top,
+    // The value is unbounded - "Photos and videos, from 2 of your 5 albums"
+    // beside "What's backed up" - and at the largest accessibility font on a
+    // 320 dp phone a fixed 0.8-to-1.2 split left the label a single word wide
+    // down the left edge while the value was still wrapping to four lines
+    // next to it. Flowing, they share a line whenever a line will hold them,
+    // which is every ordinary phone at an ordinary font, and where it will
+    // not the value moves underneath its own label and both are read in full.
+    FlowRow(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp)
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
             label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(0.8f)
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(Modifier.width(12.dp))
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            modifier = Modifier.weight(1.2f)
+            modifier = Modifier.padding(start = 12.dp)
         )
     }
 }

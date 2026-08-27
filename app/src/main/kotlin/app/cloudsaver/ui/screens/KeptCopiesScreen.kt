@@ -2,11 +2,13 @@ package app.cloudsaver.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -104,7 +106,10 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
     }
     val albums = remember(rows) { ListFilters.albumCounts(rows.map { it.toKeptCandidate() }) }
     val removeLabel = stringResource(R.string.kept_remove)
-    val chosen = shown.filter { it.id in selection }
+    // Walked the whole list on every recomposition - every keystroke in the
+    // search box, every tick of a checkbox - to answer a question that only
+    // changes when the rows or the selection do.
+    val chosen = remember(shown, selection.ids) { shown.filter { it.id in selection } }
     var confirmMany by remember { mutableStateOf(false) }
 
     ListScreenScaffold(
@@ -137,64 +142,84 @@ fun KeptCopiesScreen(vm: AppViewModel, nav: NavHostController) {
         loading = false,
         isEmpty = shown.isEmpty(),
         emptyContent = {
-            when {
-                rows.isNotEmpty() && query.isNotBlank() ->
-                    SearchEmptyState(term = query, onClear = { query = "" })
-                rows.isNotEmpty() -> FilteredEmptyState(
-                    onReset = {
-                        type = ListFilters.Type.ALL
-                        album = null
-                    }
-                )
-                else -> EmptyState(
-                    title = stringResource(R.string.kept_empty_title),
-                    body = stringResource(R.string.kept_empty_body)
-                )
+            // An empty list is the one state with no list to scroll, and the
+            // mark, the heading and the sentence under it are taller than a
+            // phone on its side at a large font. It scrolls in its own right
+            // so the offer under the message - clear the search, reset the
+            // filters - is reachable rather than past the bottom edge.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                when {
+                    rows.isNotEmpty() && query.isNotBlank() ->
+                        SearchEmptyState(term = query, onClear = { query = "" })
+                    rows.isNotEmpty() -> FilteredEmptyState(
+                        onReset = {
+                            type = ListFilters.Type.ALL
+                            album = null
+                        }
+                    )
+                    else -> EmptyState(
+                        title = stringResource(R.string.kept_empty_title),
+                        body = stringResource(R.string.kept_empty_body)
+                    )
+                }
             }
         },
         intro = {
-            Column {
-                // Once, the first time there is anything here to explain:
-                // what these files are, and the one way to accidentally pay
-                // for them twice.
-                if (rows.isNotEmpty() && !options.keptCardSeen) {
-                    AppCard(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        tonal = true
-                    ) {
-                        Text(
-                            stringResource(R.string.kept_card_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            stringResource(R.string.kept_card_body),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(top = 6.dp)
-                        )
-                        TextButton(onClick = { vm.acknowledgeKeptCard() }) {
-                            Text(stringResource(R.string.dismiss))
+            // This is drawn above the search box and outside the list, so
+            // whatever height it asks for, the rows get what is left. Two
+            // cards of explanation at the largest accessibility font are
+            // taller than a phone lying on its side, which left the list with
+            // no room at all and the files unreachable. Measuring the space
+            // first keeps the explanation to half of it and lets it scroll
+            // inside that, so the explanation and the files both survive.
+            BoxWithConstraints {
+                Column(
+                    Modifier
+                        .heightIn(max = maxHeight / 2)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // Once, the first time there is anything here to explain:
+                    // what these files are, and the one way to accidentally pay
+                    // for them twice.
+                    if (rows.isNotEmpty() && !options.keptCardSeen) {
+                        AppCard(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            tonal = true
+                        ) {
+                            Text(
+                                stringResource(R.string.kept_card_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                stringResource(R.string.kept_card_body),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                            TextButton(onClick = { vm.acknowledgeKeptCard() }) {
+                                Text(stringResource(R.string.dismiss))
+                            }
                         }
                     }
-                }
-                AppCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(
-                        stringResource(R.string.kept_intro),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        Defaults.KEPT_DIR,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    Text(
-                        stringResource(R.string.kept_intro_backup),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
+                    AppCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            stringResource(R.string.kept_intro),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            Defaults.KEPT_DIR,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        Text(
+                            stringResource(R.string.kept_intro_backup),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
                 }
             }
         }
