@@ -1142,8 +1142,15 @@ class HomeFilesE2eTest {
         assertScrolledInto(s(R.string.calc_input_label), "the calculator's input label")
         assertScrolledInto(s(R.string.calc_enter), "the prompt to type a plan size")
 
-        // A plan size the app cannot know, typed in.
+        // A plan size the app cannot know, typed in. Typing focuses the field
+        // and the keyboard rises over the bottom of this screen; its entrance
+        // animates the window insets, and imePadding moves the whole page as
+        // they change - so a node scrolled into view can be somewhere else by
+        // the time it is asserted on. This test is about the arithmetic, not
+        // the keyboard, so the keyboard is put away before anything is read.
         compose.onNode(hasSetTextAction()).performTextInput("50")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
         awaitNode(hasText(s(R.string.calc_hero_label)), "the calculator's answer")
 
         val expected = expectedEstimate(50.0)
@@ -1181,6 +1188,8 @@ class HomeFilesE2eTest {
         // A bigger plan must fit strictly more of the same gallery.
         compose.onNode(hasSetTextAction()).performTextClearance()
         compose.onNode(hasSetTextAction()).performTextInput("100")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
         val bigger = expectedEstimate(100.0)
         assertTrue(
             "doubling the plan must fit more originals",
