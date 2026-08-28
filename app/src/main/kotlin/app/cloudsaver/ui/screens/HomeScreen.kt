@@ -108,6 +108,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val counters by vm.counters.collectAsStateWithLifecycle()
     val savedBytes by vm.savedBytes.collectAsStateWithLifecycle()
     val processed by vm.processedCount.collectAsStateWithLifecycle()
+    val noAlbumsTicked by vm.noAlbumsTicked.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val leftoverUris by vm.leftoverUris.collectAsStateWithLifecycle()
@@ -511,7 +512,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     options,
                     statusWaiting,
                     heldBack = counters.heldBack,
-                    inFolder = counters.inFolder
+                    inFolder = counters.inFolder,
+                    noAlbumsTicked = noAlbumsTicked,
+                    processed = processed
                 ),
                 label = "statusLine"
             ) { line ->
@@ -565,7 +568,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // section at all and its chip - the one thing that says the pause is
         // temporary rather than the app having died - could never appear.
         val anyHealth = health.paused || anyPower || health.usageAccessOff ||
-            health.cloudMissing || health.spaceLow || health.volumeMissing ||
+            health.cloudMissing || health.cloudNone || health.spaceLow || health.volumeMissing ||
             health.backgroundWorkStopped || options.foreignFiles > 0
         AnimatedVisibility(
             visible = anyHealth,
@@ -604,6 +607,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     if (health.cloudMissing) {
                         StatusChip(stringResource(R.string.chip_cloud)) {
+                            nav.goTo(Routes.OPTIONS)
+                        }
+                    }
+                    // Nothing on the phone can collect the copies. The work
+                    // still runs; this is the one fact that makes the folder
+                    // filling up make sense.
+                    if (health.cloudNone) {
+                        StatusChip(stringResource(R.string.chip_cloud_none)) {
                             nav.goTo(Routes.OPTIONS)
                         }
                     }
@@ -1163,9 +1174,17 @@ private fun statusLine(
     options: Options,
     waiting: Int?,
     heldBack: Int = 0,
-    inFolder: Int = 0
+    inFolder: Int = 0,
+    noAlbumsTicked: Boolean = false,
+    processed: Int = 0
 ): String {
     if (options.pauseAll) return stringResource(R.string.status_paused)
+    // Nothing ticked is why the queue is empty, and it is the only thing
+    // worth saying while it is true. Without this the queue read as zero and
+    // the line below announced that everything was backed up on a phone
+    // where not one photo had ever been offered to the app - the worst kind
+    // of wrong, because it is reassuring.
+    if (noAlbumsTicked) return stringResource(R.string.status_no_albums)
     // CC1.3: files compressed and waiting for a pacing slot are not a
     // failure and must never read as one. Pacing exists so each file can be
     // confirmed on its own; the line says that plainly rather than leaving a
@@ -1198,7 +1217,10 @@ private fun statusLine(
         }
         return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }
-    return if (options.lastRunAt > 0) {
+    // "Everything is backed up" is a claim about work that happened. A run
+    // that found nothing to do has not backed anything up, so an empty queue
+    // with an empty history says so plainly instead.
+    return if (options.lastRunAt > 0 && processed > 0) {
         stringResource(R.string.status_idle)
     } else {
         stringResource(R.string.status_fresh)

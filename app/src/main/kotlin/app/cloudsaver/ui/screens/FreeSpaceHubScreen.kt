@@ -60,6 +60,7 @@ import app.cloudsaver.util.Formats
 @Composable
 fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
     val findSpace by vm.findSpace.collectAsStateWithLifecycle()
+    val checked by vm.findSpaceChecked.collectAsStateWithLifecycle()
     val counters by vm.counters.collectAsStateWithLifecycle()
     val stats by vm.storageStats.collectAsStateWithLifecycle()
     val volumes by vm.volumes.collectAsStateWithLifecycle()
@@ -130,10 +131,15 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                 )
             }
             Text(
-                if (total > 0) {
-                    stringResource(R.string.hub_could_free, Formats.bytes(total))
-                } else {
-                    stringResource(R.string.hub_nothing)
+                // Three states, not two: a figure, "nothing", and the honest
+                // gap between them while the scan is still hashing files.
+                // Saying "nothing to free up yet" during that gap was a wrong
+                // answer that corrected itself a few seconds later, which is
+                // worse than no answer at all.
+                when {
+                    total > 0 -> stringResource(R.string.hub_could_free, Formats.bytes(total))
+                    !checked -> stringResource(R.string.hub_checking)
+                    else -> stringResource(R.string.hub_nothing)
                 },
                 style = MaterialTheme.typography.titleMedium.merge(TabularFigures),
                 fontWeight = FontWeight.SemiBold,
@@ -144,7 +150,7 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
             // or optimised and waiting for the cloud app to collect them -
             // with real counts, and only the lines that have a count. A
             // sentence about nothing, twice, is the old screen.
-            if (total == 0L) {
+            if (total == 0L && checked) {
                 Text(
                     stringResource(R.string.hub_journey),
                     style = MaterialTheme.typography.bodyMedium,

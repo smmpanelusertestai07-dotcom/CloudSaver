@@ -142,6 +142,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .distinctUntilChanged()
         .flatMapLatest { db.items().newInScopeCountFlow(it) }
 
+    /**
+     * True when the app has photos on file and not one of them is in an
+     * album the user ticked.
+     *
+     * This is the difference between "the queue is empty because everything
+     * is done" and "the queue is empty because nothing was ever offered",
+     * and Home said the first of those in both cases.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val noAlbumsTicked: StateFlow<Boolean> = options
+        .map { it.excludedBuckets }
+        .distinctUntilChanged()
+        .flatMapLatest { excluded ->
+            combine(
+                db.items().inScopeItemCountFlow(excluded),
+                db.items().bucketedItemCountFlow()
+            ) { inScope, known -> known > 0 && inScope == 0 }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val counters: StateFlow<Counters> = combine(
         combine(newInScope, db.items().stateCountsFlow()) { n, s -> n to s },
         db.items().confirmedCountFlow(),
@@ -438,6 +458,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val batteryRestricted: Boolean = false,
         val usageAccessOff: Boolean = false,
         val cloudMissing: Boolean = false,
+        /**
+         * No cloud app of any kind is installed. The pipeline still runs -
+         * copies are made on schedule - but nothing will ever collect them,
+         * so this is worth saying rather than leaving the folder to fill.
+         */
+        val cloudNone: Boolean = false,
         val spaceLow: Boolean = false,
         val paused: Boolean = false,
         /**
@@ -549,6 +575,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
+                cloudNone = !CloudApps.anyInstalled(ctx),
                 spaceLow = free < o.minFreeBytes,
                 thermalThrottled = power.thermalThrottled ||
                     power.batteryTempTenthsC >= Defaults.BATTERY_MAX_TEMP_TENTHS_C,
@@ -778,11 +805,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val findSpace = MutableStateFlow(FindSpace())
 
+    /**
+     * False until the first scan has actually answered.
+     *
+     * The scan hashes files and takes seconds on a full phone, and until it
+     * returned the hub read its zeroes as an answer and said there was
+     * nothing to free up - then filled with rows a moment later. A number
+     * that has not been worked out yet is not the number zero.
+     */
+    val findSpaceChecked = MutableStateFlow(false)
+
     fun refreshFindSpace() {
         viewModelScope.launch(Dispatchers.IO) {
             val groups = runCatching { DuplicateScanner(ctx).groups() }.getOrDefault(emptyList())
             val largest = runCatching { db.items().largest(50) }.getOrDefault(emptyList())
             val candidates = runCatching { db.items().reclaimCandidates() }.getOrDefault(emptyList())
+            findSpaceChecked.value = true
             findSpace.value = FindSpace(
                 duplicateBytes = groups.sumOf { it.reclaimableBytes },
                 duplicateGroups = groups.size,

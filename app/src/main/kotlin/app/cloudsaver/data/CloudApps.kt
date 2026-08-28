@@ -111,6 +111,33 @@ object CloudApps {
         return app.id == "other" || installedPackage(context, app) != null
     }
 
+    /**
+     * Whether any cloud app this picker knows is actually on the phone.
+     *
+     * Distinct from [isAppInstalled], which answers yes for "Other app" -
+     * the entry that exists precisely because the app cannot name every
+     * cloud. That yes is right for "did the chosen app disappear"; it is the
+     * wrong answer to "is there anything here to upload the folder", and the
+     * two were being asked with one question.
+     */
+    fun anyInstalled(context: Context): Boolean =
+        SELECTABLE.any { it.packages.isNotEmpty() && installedPackage(context, it) != null }
+
+    /**
+     * The app's own launcher icon, taken from the phone rather than shipped.
+     *
+     * A bundled logo is out of date the day the other app rebrands, adds
+     * weight to an APK that is size-gated, and is somebody else's trademark
+     * travelling inside a sideloaded file. Reading the installed app's icon
+     * has none of those problems, is always the current one, and answers
+     * "have I got this app?" by simply being there - null means not
+     * installed, and the row falls back to a neutral glyph.
+     */
+    fun iconFor(context: Context, app: CloudApp): android.graphics.drawable.Drawable? {
+        val pkg = installedPackage(context, app) ?: return null
+        return runCatching { context.packageManager.getApplicationIcon(pkg) }.getOrNull()
+    }
+
     /** First installed supported app; Ente stays the default when nothing is found. */
     fun detectDefault(context: Context): CloudApp =
         SELECTABLE.firstOrNull { it.packages.isNotEmpty() && installedPackage(context, it) != null }

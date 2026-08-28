@@ -44,7 +44,7 @@ class HelpContentTest {
         // Grew by exactly the two answers this release owes the owner: where
         // the recommended figures come from, and what "keep it in the same
         // album" does. Nothing else.
-        assertEquals("the FAQ must hold sixteen questions", (1..16).toList(), questions)
+        assertEquals("the FAQ must hold eighteen questions", (1..18).toList(), questions)
         assertEquals("every question needs its answer", questions, answers)
     }
 

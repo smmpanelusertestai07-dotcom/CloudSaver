@@ -192,7 +192,9 @@ private val FAQ = listOf(
     R.string.faq_q13 to R.string.faq_a13,
     R.string.faq_q14 to R.string.faq_a14,
     R.string.faq_q15 to R.string.faq_a15,
-    R.string.faq_q16 to R.string.faq_a16
+    R.string.faq_q16 to R.string.faq_a16,
+    R.string.faq_q17 to R.string.faq_a17,
+    R.string.faq_q18 to R.string.faq_a18
 )
 
 /**

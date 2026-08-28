@@ -52,7 +52,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CloudQueue
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.wrapContentWidth
 import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
@@ -589,11 +595,37 @@ fun OnboardingScreen(vm: AppViewModel) {
                         go(Step.READY)
                     }
                 ) {
-                    Text(
-                        stringResource(R.string.onb5_found, chosen.label),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
+                    if (detection.installed.isEmpty()) {
+                        // Setup is not blocked - the app is still worth
+                        // running without a cloud app, it just cannot finish
+                        // the journey - so this explains rather than stops.
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = RoundedCornerShape(Dimens.ControlCorner),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(
+                                    stringResource(R.string.cloud_none_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    stringResource(R.string.cloud_none_body),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            stringResource(R.string.onb5_found, chosen.label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                     // Z5.1: the one mistake that silently doubles a cloud
                     // bill - the cloud app backing up Camera AND the
                     // CloudSaver folder. Shown always, even when that app's
@@ -752,10 +784,26 @@ fun OnboardingScreen(vm: AppViewModel) {
                     stringResource(R.string.onb_ready_when),
                     speedSummary(options.speed)
                 )
+                val anyCloud = remember { CloudApps.anyInstalled(context) }
                 SummaryLine(
                     stringResource(R.string.onb_ready_cloud),
-                    CloudApps.byId(options.cloudSingle).label
+                    if (anyCloud) {
+                        CloudApps.byId(options.cloudSingle).label
+                    } else {
+                        stringResource(R.string.onb_ready_cloud_none)
+                    }
                 )
+                // The summary is the last thing read before the app starts
+                // working, so the one condition that changes what "working"
+                // will achieve belongs on it.
+                if (!anyCloud) {
+                    Text(
+                        stringResource(R.string.cloud_none_body),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
                 // Only where there is a card to choose. On a phone without
                 // one this question has a single possible answer, and asking
                 // it anyway is a step that teaches nothing.
@@ -1133,6 +1181,33 @@ private fun CloudPickRowSimple(
         onClick = { onPick(app.id) },
         modifier = Modifier.fillMaxWidth()
     ) {
+        // The app's own icon where the app is on the phone, a neutral glyph
+        // where it is not - so "installed" is legible before the words are
+        // read, and no third-party logo is ever shipped inside this APK.
+        val icon = remember(app.id, installed) {
+            if (installed) CloudApps.iconFor(context, app) else null
+        }
+        if (icon != null) {
+            androidx.compose.foundation.Image(
+                bitmap = remember(icon) {
+                    icon.toBitmap(96, 96).asImageBitmap()
+                },
+                contentDescription = null,
+                modifier = Modifier
+                    .size(28.dp)
+                    .padding(end = 4.dp)
+            )
+        } else {
+            Icon(
+                Icons.Outlined.CloudQueue,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(28.dp)
+                    .padding(end = 4.dp)
+            )
+        }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.fillMaxWidth()) {
             Text(
                 if (app.id == current) {

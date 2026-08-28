@@ -366,6 +366,24 @@ interface ItemDao {
     suspend fun newInScopeCount(excludedBuckets: Collection<String>): Int
 
     /**
+     * Everything the app knows about that sits in a ticked album, and
+     * everything it knows about that sits in any album at all.
+     *
+     * The pair answers one question cheaply, off the table that is already
+     * populated: is the queue empty because the work is done, or because not
+     * one album is ticked? Asking MediaStore would mean walking the whole
+     * gallery every time Home opened.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE bucket IS NOT NULL " +
+            "AND bucket NOT IN (:excludedBuckets)"
+    )
+    fun inScopeItemCountFlow(excludedBuckets: Collection<String>): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM items WHERE bucket IS NOT NULL")
+    fun bucketedItemCountFlow(): Flow<Int>
+
+    /**
      * Detail kept across every file the app really encoded, and how many that
      * is.
      *

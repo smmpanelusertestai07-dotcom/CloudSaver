@@ -84,6 +84,7 @@ fun FilesScreen(vm: AppViewModel) {
     val items by vm.items.collectAsStateWithLifecycle()
     val query by vm.search.collectAsStateWithLifecycle()
     val statusFilter by vm.filesState.collectAsStateWithLifecycle()
+    val noAlbumsTicked by vm.noAlbumsTicked.collectAsStateWithLifecycle()
     val sort by vm.filesSort.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<ItemRow?>(null) }
     var openError by remember { mutableStateOf<String?>(null) }
@@ -220,6 +221,15 @@ fun FilesScreen(vm: AppViewModel) {
                                 album = null
                                 vm.filesState.value = null
                             }
+                        )
+                        // An empty list has two very different causes, and
+                        // for a while both looked the same: nothing left to
+                        // do, or no album ever handed over. The second is a
+                        // setting, not a state, so it says so and offers the
+                        // way to change it.
+                        noAlbumsTicked -> EmptyState(
+                            title = stringResource(R.string.files_no_albums_title),
+                            body = stringResource(R.string.files_no_albums_body)
                         )
                         else -> EmptyState(
                             title = stringResource(R.string.files_empty_title),
