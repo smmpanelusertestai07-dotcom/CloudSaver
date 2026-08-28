@@ -317,30 +317,53 @@ interface ItemDao {
     @androidx.room.Delete
     suspend fun delete(row: ItemRow)
 
-    @Query(
-        "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
-            "ORDER BY captureAt DESC LIMIT :limit"
-    )
-    suspend fun newestNew(limit: Int): List<ItemRow>
-
     /**
      * The newest photos still waiting, for the three-file trial.
      *
      * Photos only. A trial exists to give quick proof, and encoding one 4K
      * clip on a phone can take minutes - long enough that "try it" reads as
      * broken rather than as careful.
+     *
+     * Ticked albums only. The trial card promises "from the albums you
+     * chose", and the scan inventories the whole phone regardless of the
+     * choice - so without this clause the trial optimised three photos from
+     * albums the user had just declined to hand over. Every question about
+     * work the pipeline WILL do carries this same clause; the inventory
+     * itself stays whole-phone on purpose, for returned-copy and duplicate
+     * detection.
      */
     @Query(
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
-            "AND isVideo = 0 ORDER BY captureAt DESC LIMIT :limit"
+            "AND isVideo = 0 " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "ORDER BY captureAt DESC LIMIT :limit"
     )
-    suspend fun newestNewPhotos(limit: Int): List<ItemRow>
+    suspend fun newestNewPhotos(limit: Int, excludedBuckets: Collection<String>): List<ItemRow>
 
     @Query(
         "SELECT COUNT(*) FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
-            "AND isVideo = 0"
+            "AND isVideo = 0 " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets))"
     )
-    fun waitingPhotoCountFlow(): Flow<Int>
+    fun waitingPhotoCountFlow(excludedBuckets: Collection<String>): Flow<Int>
+
+    /**
+     * How much is genuinely queued: NEW, present, and in a ticked album.
+     * This is the number Home's "waiting" tile, the hub's "next" line and
+     * the stopped-work warning all quote - a promise about future runs, so
+     * it must count only what a run may actually touch.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets))"
+    )
+    fun newInScopeCountFlow(excludedBuckets: Collection<String>): Flow<Int>
+
+    @Query(
+        "SELECT COUNT(*) FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets))"
+    )
+    suspend fun newInScopeCount(excludedBuckets: Collection<String>): Int
 
     /**
      * Detail kept across every file the app really encoded, and how many that
@@ -424,27 +447,28 @@ interface ItemDao {
     )
     suspend fun asIsReasons(video: Boolean): List<StateCount>
 
-    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM items WHERE state = 'NEW' AND originalMissing = 0")
-    suspend fun pendingBytes(): Long
-
     /**
-     * Waiting bytes split by media type.
+     * Waiting bytes split by media type, ticked albums only.
      *
      * Photos and videos compress very differently, so a projection that
-     * averages one ratio across the pile is wrong in both directions.
+     * averages one ratio across the pile is wrong in both directions. And a
+     * projection over albums the user excluded promises savings no run will
+     * ever deliver, so the scope clause applies here too.
      */
     @Query(
         "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
-            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video"
+            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets))"
     )
-    suspend fun pendingBytesByType(video: Boolean): Long
+    suspend fun pendingBytesByType(video: Boolean, excludedBuckets: Collection<String>): Long
 
     /** How many are still to do, so the projection can say what it covers. */
     @Query(
         "SELECT COUNT(*) FROM items " +
-            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video"
+            "WHERE state = 'NEW' AND originalMissing = 0 AND isVideo = :video " +
+            "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets))"
     )
-    suspend fun pendingCountByType(video: Boolean): Int
+    suspend fun pendingCountByType(video: Boolean, excludedBuckets: Collection<String>): Int
 
     /** Bytes saved by work done since [fromMs] - what one run achieved. */
     @Query(

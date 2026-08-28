@@ -1,9 +1,13 @@
 package app.cloudsaver.ui.components
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Size
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,7 +41,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -92,6 +99,18 @@ fun AlbumGrid(
         header?.let {
             item(key = "header", span = { GridItemSpan(maxLineSpan) }) { it() }
         }
+        if (albums.isNotEmpty()) {
+            // Long-press is invisible until someone says it exists. One quiet
+            // line above the tiles, in every picker, is how it exists.
+            item(key = "peek-hint", span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    stringResource(R.string.album_peek_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+        }
         items(albums, key = { it.name }) { album ->
             AlbumTile(
                 album = album,
@@ -105,6 +124,7 @@ fun AlbumGrid(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AlbumTile(
     album: MediaScanner.Album,
@@ -112,11 +132,25 @@ private fun AlbumTile(
     onToggle: (Boolean) -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     Column(
         Modifier
             .heightIn(min = Dimens.TouchTarget)
             .clip(RoundedCornerShape(14.dp))
-            .toggleable(value = checked, onValueChange = onToggle, role = Role.Checkbox)
+            // A tap ticks, exactly as before. A long press opens the cover in
+            // whatever this phone views photos with - the peek the gallery
+            // grid promises without leaving the choice it is here to make.
+            // The semantics stay a checkbox with a state: a screen reader
+            // still hears "Camera, checkbox, ticked", and the tests still
+            // find a toggleable carrying the album's name.
+            .combinedClickable(
+                role = Role.Checkbox,
+                onClick = { onToggle(!checked) },
+                onLongClick = album.coverUri?.let { uri -> { peekAlbum(context, uri) } }
+            )
+            .semantics {
+                toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
+            }
             .padding(2.dp)
     ) {
         Box(
@@ -181,6 +215,24 @@ private fun AlbumTile(
             style = MaterialTheme.typography.labelSmall,
             color = scheme.onSurfaceVariant
         )
+    }
+}
+
+/**
+ * Opens the album's newest photo in the phone's own viewer - the default
+ * gallery where one is set, a chooser where none is. Read access travels with
+ * that one uri only, and a phone with no viewer at all simply does nothing
+ * rather than crashing the picker.
+ */
+private fun peekAlbum(context: Context, coverUri: String) {
+    runCatching {
+        val uri = Uri.parse(coverUri)
+        val mime = context.contentResolver.getType(uri) ?: "image/*"
+        val view = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(view, null))
     }
 }
 

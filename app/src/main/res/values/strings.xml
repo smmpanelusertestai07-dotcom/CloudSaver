@@ -68,7 +68,6 @@
     <string name="double_backup_body">If your cloud app already backs up your camera folder, turn that off there and keep only the CloudSaver folder. Otherwise your cloud will hold both the original and the optimised copy.</string>
     <string name="double_backup_show">Show me where</string>
     <string name="folder_gallery_note">This folder appears as an album in your gallery while files wait to be collected. Most gallery apps can hide an album from their own settings.</string>
-    <string name="about_updates_body">Updates install a newer APK over this one. Settings, history and files stay, as long as the new file is signed with the same key.</string>
     <string name="chain_success_title">Your first file reached %1$s</string>
     <string name="chain_success_body">Everything is working. From here on, backup runs on its own.</string>
     <string name="chain_stalled_title">Your first file has not been collected yet</string>
@@ -361,7 +360,7 @@
     <string name="hub_backed_up">Backed-up originals</string>
     <string name="hub_backed_up_hint">Originals whose optimised copy your cloud already has.</string>
     <string name="hub_duplicates_hint">The same file saved more than once on this phone.</string>
-    <string name="hub_biggest_hint">Your largest photos and videos.</string>
+    <string name="hub_biggest_hint">Your largest photos and videos, from every album on this phone — ticked or not.</string>
     <string name="hub_leftovers">Leftover work files</string>
     <string name="hub_leftovers_hint">Half-finished files from a run that was stopped.</string>
     <string name="hub_volume_line">Cleaning %1$s \u00b7 %2$s free now, about %3$s after</string>
@@ -551,6 +550,7 @@
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
     <string name="recommend_space">Recommended for this phone: keep %1$s free.</string>
     <string name="recommend_apply">Use recommended</string>
+    <string name="recommend_extra">Recommended for this phone: up to %1$s of its own space.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
     <string name="opt_transfer_hint">Save your settings and file history to a file, protected with a password.</string>
     <string name="backup_password_title">Protect this backup</string>
@@ -638,6 +638,8 @@
         <item quantity="one">%1$d item</item>
         <item quantity="other">%1$d items</item>
     </plurals>
+    <string name="album_peek_hint">Tap to tick an album. Press and hold one to peek at its newest photo.</string>
+    <string name="albums_sheet_done">Done</string>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
     <string name="onb0_title">Welcome!</string>
@@ -785,7 +787,7 @@
     <string name="problem_snapshot_failed">Could not save the safety copy of your history (%1$s). If you uninstall now, CloudSaver would not be able to restore what it already knows.</string>
     <string name="activity_setting_changed">%1$s changed to %2$s</string>
     <string name="activity_problem">Something needs your attention</string>
-    <string name="activity_unknown">Activity recorded by a newer version</string>
+    <string name="activity_unknown">Recorded activity</string>
     <string name="hero_projection_estimate">Roughly %1$s saved once the rest is done</string>
     <plurals name="duplicates_handled">
         <item quantity="one">%d duplicate handled once</item>
@@ -983,7 +985,7 @@
     <string name="trial_activity">Trial run on a few photos</string>
     <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
     <string name="trial_kept_detail">Detail kept: %1$d%% of the original pixels.</string>
-    <string name="trial_next">The copies are made. They are added to your upload folder on the next run, so your gallery does not change yet.</string>
+    <string name="trial_next">The copies are kept inside the app for now, so no CloudSaver album appears in your gallery yet. The first real run adds them to your upload folder — that is when the album appears.</string>
     <string name="quality_current_title">Your setting</string>
     <string name="quality_current_limits">Photos up to %1$d MP, video up to %2$d px across, saved at JPEG quality %3$d.</string>
     <string name="quality_looks_storage" formatted="false">Overall: photos keep about 97% of how they look, videos 90\u201395%.</string>
@@ -1043,7 +1045,6 @@
     <string name="trial_ready">Optimises up to 3 photos from the albums you chose, so you can see the size and quality before anything else happens. Nothing is uploaded, and your originals stay untouched.</string>
     <string name="trial_choose_albums">Choose albums</string>
     <string name="trial_run">Try it on a few photos</string>
-    <string name="onb_albums_back_to_summary">Save and go back</string>
 
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>

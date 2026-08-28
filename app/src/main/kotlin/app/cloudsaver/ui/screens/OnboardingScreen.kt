@@ -33,9 +33,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -102,7 +105,7 @@ private val AlbumListMaxHeight = 320.dp
  * the two can no longer disagree the way "Step 6 of 7" once sat above a card
  * headed "5.".
  */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
@@ -119,12 +122,6 @@ fun OnboardingScreen(vm: AppViewModel) {
     // is nothing to say, and the first tap forward puts it back to zero - see
     // goTo below, which is where the sentence stops being true.
     var resumedAt by rememberSaveable { mutableIntStateOf(0) }
-    // A detour to the album list from the summary must come back to the
-    // summary. Walking someone from the last step to the third and making
-    // them press through every screen again is not a correction, it is a
-    // punishment for correcting something.
-    var returnToSummary by rememberSaveable { mutableStateOf(false) }
-
     // Whether the gallery is fully readable, from the flow the view model
     // refreshes on resume rather than from a one-shot read that can only ever
     // be right at the moment the card is first drawn.
@@ -158,33 +155,13 @@ fun OnboardingScreen(vm: AppViewModel) {
     fun go(next: Step) = goTo(OnboardingSteps.indexOf(next))
 
     /**
-     * Leaves the correct-the-albums detour without taking it.
-     *
-     * The detour is only a promise to come back to the summary. Stepping away
-     * from the album list any other way - Back, or a fresh walk through the
-     * setup - has to cancel it, or the next visit to that list would end at
-     * the summary and skip notifications, battery, usage access and the cloud
-     * step for someone who had never seen them.
-     */
-    fun leaveDetour() {
-        returnToSummary = false
-    }
-
-    /**
-     * What Back means during setup, for the gesture and the button alike.
-     *
-     * Backing out of the album detour returns to the summary it started
-     * from. Anyone who reached the album list the ordinary way has no such
-     * promise to keep and steps back one card, so a first-timer still cannot
-     * use Back to skip the four steps the detour jumps over.
+     * What Back means during setup, for the gesture and the button alike:
+     * one card back, always. A correction from the summary no longer leaves
+     * the summary at all - the album chooser opens over it as a sheet, and
+     * its own dismiss is the way back - so there is no detour state for Back
+     * to unwind any more.
      */
     fun backOneStep() {
-        if (returnToSummary && step == OnboardingSteps.indexOf(Step.ALBUMS)) {
-            returnToSummary = false
-            go(Step.READY)
-            return
-        }
-        leaveDetour()
         goTo(step - 1)
     }
 
@@ -197,7 +174,6 @@ fun OnboardingScreen(vm: AppViewModel) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        leaveDetour()
         go(
             if (Permissions.mediaAccess(context) == Permissions.MediaAccess.FULL) {
                 Step.ALBUMS
@@ -307,22 +283,13 @@ fun OnboardingScreen(vm: AppViewModel) {
                 )
             }
         }
-        // The correct-the-albums detour is not a step, so it does not count
-        // itself as one. With the counter left up it read "Step 3 of 8" the
-        // moment "Choose albums" was tapped on the summary - the dots ran
-        // backwards and the page looked like five steps of progress had been
-        // lost, when nothing had moved at all.
-        if (!returnToSummary) {
-            Text(
-                stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 18.dp)
-            )
-            StepDots(current = step, total = OnboardingSteps.TOTAL)
-        } else {
-            Spacer(Modifier.height(18.dp))
-        }
+        Text(
+            stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 18.dp)
+        )
+        StepDots(current = step, total = OnboardingSteps.TOTAL)
 
         AnimatedContent(
             targetState = step,
@@ -377,7 +344,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                     },
                     onButton = {
                         when (access) {
-                            Permissions.MediaAccess.FULL -> { leaveDetour(); go(Step.ALBUMS) }
+                            Permissions.MediaAccess.FULL -> go(Step.ALBUMS)
                             // "Select photos" was chosen. Asking again shows
                             // the same picker; only the app's settings page
                             // can raise the level to full.
@@ -421,18 +388,8 @@ fun OnboardingScreen(vm: AppViewModel) {
                     text = stringResource(R.string.onb_albums_text),
                     // No Skip. Everything else here is a permission the app can
                     // work without; this is the list of someone's photos.
-                    buttonLabel = stringResource(
-                        if (returnToSummary) R.string.onb_albums_back_to_summary
-                        else R.string.onb_albums_confirm
-                    ),
-                    onButton = {
-                        if (returnToSummary) {
-                            returnToSummary = false
-                            go(Step.READY)
-                        } else {
-                            go(Step.NOTIFICATIONS)
-                        }
-                    },
+                    buttonLabel = stringResource(R.string.onb_albums_confirm),
+                    onButton = { go(Step.NOTIFICATIONS) },
                     buttonAtEnd = true
                 ) {
                     // Empty has two meanings and they are not the same
@@ -769,6 +726,10 @@ fun OnboardingScreen(vm: AppViewModel) {
                 val allAlbums by vm.buckets.collectAsStateWithLifecycle()
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
                 val includedAlbums = allAlbums.count { it !in options.excludedBuckets }
+                // Correcting the albums opens the chooser here, over the
+                // summary, as a sheet. The old way walked back to step 3 and
+                // the page read as five steps of progress lost.
+                var choosingAlbums by rememberSaveable { mutableStateOf(false) }
                 SummaryLine(
                     stringResource(R.string.onb_ready_what),
                     scopeSummary(options.scope, includedAlbums, allAlbums.size)
@@ -779,7 +740,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // be fixed in one tap.
                 if (allAlbums.isNotEmpty() && includedAlbums == 0) {
                     WarningText(stringResource(R.string.onb_ready_no_albums))
-                    TextButton(onClick = { returnToSummary = true; go(Step.ALBUMS) }) {
+                    TextButton(onClick = { choosingAlbums = true }) {
                         Text(stringResource(R.string.onb_ready_pick_albums))
                     }
                 }
@@ -851,20 +812,49 @@ fun OnboardingScreen(vm: AppViewModel) {
                     onChooseAlbums = if (includedAlbums == 0 && allAlbums.isNotEmpty()) {
                         null
                     } else {
-                        { returnToSummary = true; go(Step.ALBUMS) }
+                        { choosingAlbums = true }
                     },
                     accessFull = mediaAccess == Permissions.MediaAccess.FULL
                 )
 
+                if (choosingAlbums) {
+                    ModalBottomSheet(
+                        onDismissRequest = { choosingAlbums = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    ) {
+                        Column {
+                            // The grid takes what the button leaves. Done sat
+                            // inside the grid's footer once, which on a short
+                            // screen put it below the fold of the grid's own
+                            // scroll - a finish button that had to be found.
+                            // Pinned here it is always on screen, and the
+                            // weight is the ceiling the lazy grid measures
+                            // against when the screen is shorter than it is.
+                            AlbumChooserSheetBody(
+                                vm,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Button(
+                                onClick = { choosingAlbums = false },
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .padding(horizontal = Dimens.Screen)
+                                    .padding(top = 4.dp, bottom = 20.dp)
+                            ) {
+                                Text(
+                                    stringResource(R.string.albums_sheet_done),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         }
 
-        // On the detour the card's own "Save and go back" is the one way
-        // back; a second Back under it went to the same place and only asked
-        // the user to choose between two returns. The system's own Back still
-        // works and cancels the detour the same way.
-        if (step > 0 && !returnToSummary) {
+        if (step > 0) {
             TextButton(onClick = { backOneStep() }) {
                 Text(stringResource(R.string.back))
             }
@@ -1234,4 +1224,138 @@ private fun StepCard(
         }
         if (!buttonAtEnd) extra()
     }
+}
+
+/**
+ * The album chooser as a sheet over the summary. Correcting the ticks is a
+ * correction, not a journey: the chooser opens where the question arose, and
+ * closing it lands exactly where the user already was, with nothing walked
+ * back through.
+ *
+ * One bounded grid does all the scrolling. A sheet measures its content with
+ * no ceiling of its own, so the count row, the size line, the locked folders
+ * and the Done button ride inside the grid as full-width rows - outside it
+ * they would sit past the edge of a short screen with no way to reach them.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AlbumChooserSheetBody(vm: AppViewModel, modifier: Modifier = Modifier) {
+    val options by vm.options.collectAsStateWithLifecycle()
+    val buckets by vm.buckets.collectAsStateWithLifecycle()
+    val albums by vm.albums.collectAsStateWithLifecycle()
+    val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
+    val locked by vm.lockedBuckets.collectAsStateWithLifecycle()
+    val ticked by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
+    val included = buckets.count { it !in options.excludedBuckets }
+    LaunchedEffect(Unit) { vm.loadBuckets() }
+    LaunchedEffect(options.excludedBuckets, buckets) { vm.refreshSelectedAlbumBytes() }
+
+    if (buckets.isEmpty()) {
+        // The same two meanings of empty the album step distinguishes: still
+        // asking, or truly nothing. Static content, so the sheet can measure
+        // it without a scroller.
+        Column(
+            modifier
+                .padding(horizontal = Dimens.Screen)
+                .padding(bottom = 8.dp)
+        ) {
+            if (bucketsLoaded) {
+                EmptyState(
+                    title = stringResource(R.string.folders_none_title),
+                    body = stringResource(R.string.folders_none_body)
+                )
+            } else {
+                Text(
+                    stringResource(R.string.folders_loading),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    AlbumGrid(
+        albums = albums,
+        excluded = options.excludedBuckets,
+        onToggle = { name, include ->
+            vm.setExcludedBuckets(
+                if (include) options.excludedBuckets - name
+                else options.excludedBuckets + name
+            )
+        },
+        maxHeight = AlbumListMaxHeight,
+        modifier = modifier.padding(horizontal = Dimens.Screen),
+        testTag = ListTags.ROWS,
+        header = {
+            Column {
+                Text(
+                    stringResource(R.string.onb_albums_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        if (included == 0) {
+                            stringResource(R.string.onb_albums_none_yet)
+                        } else {
+                            pluralStringResource(
+                                R.plurals.onb_albums_selected, included, included
+                            )
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    TextButton(
+                        onClick = {
+                            vm.setExcludedBuckets(
+                                if (included == 0) emptySet() else buckets.toSet()
+                            )
+                        }
+                    ) {
+                        Text(
+                            stringResource(
+                                if (included == 0) R.string.onb_albums_all
+                                else R.string.onb_albums_none
+                            ),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (included > 0) ticked?.let { bytes ->
+                    Text(
+                        stringResource(R.string.onb_albums_size, Formats.bytes(bytes)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        footer = {
+            Column {
+                if (locked.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.folders_auto_excluded),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                    for ((bucket, _) in locked) {
+                        Text(
+                            bucket,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.MiddleEllipsis
+                        )
+                    }
+                }
+            }
+        }
+    )
 }

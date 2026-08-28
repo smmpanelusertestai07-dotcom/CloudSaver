@@ -162,7 +162,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 if (batch.isEmpty()) {
                     // Nothing left that this power state allows. If photos are
                     // the only thing waiting, say why they are not running.
-                    if (!plan.photos && db.items().countByState("NEW") > 0) {
+                    // Ticked albums only: rows in excluded albums are not
+                    // "waiting" and must not put up the photo-cap reason.
+                    if (!plan.photos && db.items().newInScopeCount(live.excludedBuckets) > 0) {
                         repo.setString(OptionsRepo.K.WAIT_REASON, RunDecider.Wait.PHOTO_CAP.name)
                     }
                     break@loop

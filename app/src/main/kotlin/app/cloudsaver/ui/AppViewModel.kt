@@ -55,6 +55,7 @@ import app.cloudsaver.work.Gates
 import app.cloudsaver.work.Scheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -131,20 +132,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val heldBack: Int = 0
     )
 
+    // The inventory is whole-phone on purpose (returned copies, duplicates,
+    // presence); the promise of future work is not. "Waiting" follows the
+    // album selection live, so unticking Screenshots takes its photos out of
+    // every count the same moment it takes them out of the queue.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val newInScope: Flow<Int> = options
+        .map { it.excludedBuckets }
+        .distinctUntilChanged()
+        .flatMapLatest { db.items().newInScopeCountFlow(it) }
+
     val counters: StateFlow<Counters> = combine(
-        db.items().stateCountsFlow(),
+        combine(newInScope, db.items().stateCountsFlow()) { n, s -> n to s },
         db.items().confirmedCountFlow(),
         db.items().verifiedCountFlow(),
         db.items().problemSkippedCountFlow(),
         db.items().duplicatesHandledCountFlow()
-    ) { states, confirmed, verified, problems, duplicates ->
+    ) { (newCount, states), confirmed, verified, problems, duplicates ->
         val byState = states.associate { it.state to it.cnt }
         Counters(
             // CC1.3: "in the upload folder" means a file the cloud app can
             // actually see. A STAGED item is compressed and held back by the
             // pacing limit - it is not in the folder, and counting it there
             // is what made the tile disagree with the gallery.
-            waiting = (byState[ItemState.NEW.name] ?: 0) +
+            waiting = newCount +
                 (byState[ItemState.STAGED.name] ?: 0),
             inFolder = byState[ItemState.RELEASED.name] ?: 0,
             heldBack = byState[ItemState.STAGED.name] ?: 0,
@@ -388,21 +399,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * mean four near-identical queries for no measurable gain.
      */
     val items: StateFlow<List<ItemRow>> =
-        combine(searchResults, filesState, filesSort) { rows, state, sort ->
+        combine(searchResults, filesState, filesSort, options) { rows, state, sort, o ->
+            // A NEW row in an un-ticked album is inventory, not work: no run
+            // will touch it, so listing it under "Waiting" (or at all) shows
+            // the whole phone where the user chose a part of it. History -
+            // anything already processed - stays whatever the ticks say now.
+            val inScope = rows.filter {
+                it.state != ItemState.NEW.name ||
+                    it.bucket == null || it.bucket !in o.excludedBuckets
+            }
             val filtered = when (state) {
-                null -> rows
+                null -> inScope
                 // "Backed up" is a story rather than one state: an item can be
                 // finished, its copy already tidied away, or its original
                 // reclaimed, and all three read the same to the user.
-                ItemState.DONE.name -> rows.filter {
+                ItemState.DONE.name -> inScope.filter {
                     it.state in setOf(
                         ItemState.DONE.name, ItemState.GONE.name, ItemState.FREED.name
                     )
                 }
-                ItemState.RELEASED.name -> rows.filter {
+                ItemState.RELEASED.name -> inScope.filter {
                     it.state in setOf(ItemState.STAGED.name, ItemState.RELEASED.name)
                 }
-                else -> rows.filter { it.state == state }
+                else -> inScope.filter { it.state == state }
             }
             when (sort) {
                 FilesSort.NEWEST -> filtered.sortedByDescending { it.captureAt }
@@ -502,7 +521,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshHealth() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
-            val waiting = runCatching { db.items().countByState(ItemState.NEW.name) }
+            // Scoped to ticked albums: a phone whose only NEW rows sit in
+            // excluded albums has no work stopped - warning that background
+            // work stalled over files no run may touch is a false alarm that
+            // never clears.
+            val waiting = runCatching { db.items().newInScopeCount(o.excludedBuckets) }
                 .getOrDefault(0)
             val silentFor = System.currentTimeMillis() - o.lastRunAt
             val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
@@ -729,14 +752,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshProjection() {
         viewModelScope.launch(Dispatchers.IO) {
-            val p = ProfileBuilder(ctx).current(repo.current())
+            val o = repo.current()
+            val p = ProfileBuilder(ctx).current(o)
+            val excluded = o.excludedBuckets
             projectedSavings.value = Projection.forQueue(
-                photoBytes = db.items().pendingBytesByType(video = false),
-                videoBytes = db.items().pendingBytesByType(video = true),
+                photoBytes = db.items().pendingBytesByType(video = false, excluded),
+                videoBytes = db.items().pendingBytesByType(video = true, excluded),
                 measuredPhotoRatio = p.photos.ratio,
                 measuredVideoRatio = p.videos.ratio,
-                photoCount = db.items().pendingCountByType(video = false),
-                videoCount = db.items().pendingCountByType(video = true)
+                photoCount = db.items().pendingCountByType(video = false, excluded),
+                videoCount = db.items().pendingCountByType(video = true, excluded)
             )
         }
     }
@@ -911,7 +936,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val minFreeMb: Int = Defaults.MIN_FREE_MB,
         val maxExtraMb: Int = Defaults.MAX_EXTRA_MB,
         val capLooksWrong: Boolean = false,
-        val freeLooksWrong: Boolean = false
+        val freeLooksWrong: Boolean = false,
+        /**
+         * False until the figures have actually been measured on this phone.
+         * The screen stays quiet on the defaults rather than recommending
+         * one number and correcting itself a frame later.
+         */
+        val computed: Boolean = false
     )
 
     val recommended = MutableStateFlow(Recommended())
@@ -938,17 +969,34 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 minFreeMb = minFree,
                 maxExtraMb = maxExtra,
                 capLooksWrong = DeviceDefaults.looksWrong(o.dailyCapMb, cap),
-                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, minFree)
+                freeLooksWrong = DeviceDefaults.looksWrong(o.minFreeMb, minFree),
+                computed = true
             )
         }
     }
 
-    fun applyRecommended() {
-        val r = recommended.value
+    // One recommendation, one setting, one button. The old single
+    // applyRecommended() silently rewrote all three limits from a button
+    // sitting on one card - pressing "Use recommended" beside the daily cap
+    // changed two settings the user was not looking at.
+
+    fun applyRecommendedCap() {
         viewModelScope.launch {
-            repo.setInt(OptionsRepo.K.DAILY_CAP_MB, r.dailyCapMb)
-            repo.setInt(OptionsRepo.K.MIN_FREE_MB, r.minFreeMb)
-            repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, r.maxExtraMb)
+            repo.setInt(OptionsRepo.K.DAILY_CAP_MB, recommended.value.dailyCapMb)
+            refreshRecommended()
+        }
+    }
+
+    fun applyRecommendedMinFree() {
+        viewModelScope.launch {
+            repo.setInt(OptionsRepo.K.MIN_FREE_MB, recommended.value.minFreeMb)
+            refreshRecommended()
+        }
+    }
+
+    fun applyRecommendedMaxExtra() {
+        viewModelScope.launch {
+            repo.setInt(OptionsRepo.K.MAX_EXTRA_MB, recommended.value.maxExtraMb)
             refreshRecommended()
         }
     }
@@ -1455,7 +1503,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * The button used to promise "3 files" whatever was there, so a phone
      * with two waiting photos was told a number the app could not deliver.
      */
-    val trialSize: StateFlow<Int> = db.items().waitingPhotoCountFlow()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val trialSize: StateFlow<Int> = options
+        .map { it.excludedBuckets }
+        .distinctUntilChanged()
+        .flatMapLatest { db.items().waitingPhotoCountFlow(it) }
         .map { it.coerceAtMost(TRIAL_SIZE) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
@@ -1485,7 +1537,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val o = repo.current()
                 MediaScanner(ctx, db).scan()
                 val stager = Stager(ctx, db)
-                val picked = db.items().newestNewPhotos(TRIAL_SIZE)
+                // The card promises photos "from the albums you chose". The
+                // scan above just inventoried the whole phone, so the pick
+                // must not read from beyond the ticked albums.
+                val picked = db.items().newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)
                 val results = mutableListOf<TestItem>()
                 for (row in picked) {
                     if (stager.stageOne(row, o)) {

@@ -57,44 +57,38 @@ class SetupFlowTest {
     }
 
     @Test
-    fun `a correction from the summary returns to the summary`() {
+    fun `a correction from the summary happens on the summary`() {
         val onb = src("ui/screens/OnboardingScreen.kt")
-        assertTrue(onb.contains("returnToSummary"))
-        // Both ways into the album list from the last step set the return,
-        // and the album step honours it instead of walking on.
+        // The chooser opens over the summary as a sheet. Nothing navigates
+        // away, so the old detour - a jump back to step 3 with a promise to
+        // return, a flag to cancel, and a Back rule of its own - has nothing
+        // left to manage and must be gone entirely.
+        assertFalse("the detour flag should be gone", onb.contains("returnToSummary"))
+        assertFalse("and its cancel machinery with it", onb.contains("leaveDetour"))
+        assertTrue("the chooser is a sheet over the summary", onb.contains("ModalBottomSheet("))
+        val ready = onb.substringAfter("Step.READY ->")
         assertTrue(
-            "the no-albums warning must remember where it came from",
-            onb.contains("returnToSummary = true; go(Step.ALBUMS)")
+            "the no-albums warning must open the sheet in place",
+            ready.contains("TextButton(onClick = { choosingAlbums = true })")
         )
-        val albums = onb.substringAfter("Step.ALBUMS ->").substringBefore("Step.NOTIFICATIONS ->")
-        assertTrue(albums.contains("if (returnToSummary)"))
-        assertTrue(albums.contains("go(Step.READY)"))
-        // And the promise dies with the detour. Stepping Back out of the album
-        // list, or reaching it on the ordinary forward path, must cancel it -
-        // otherwise the next confirm would jump a first-time user to the
-        // summary over notifications, battery, usage access and the cloud step.
-        assertTrue(onb.contains("fun leaveDetour()"))
+        assertTrue(
+            "the trial card must open the same sheet",
+            ready.contains("{ choosingAlbums = true }")
+        )
+        // A sheet measures its content with no ceiling, so the sheet's one
+        // scroller is the bounded grid, with the count row and the Done
+        // button riding inside it as spanned rows.
+        val sheet = onb.substringAfter("fun AlbumChooserSheetBody")
+        assertTrue(sheet.contains("AlbumGrid("))
+        assertTrue(sheet.contains("maxHeight = AlbumListMaxHeight"))
+        assertTrue(sheet.contains("footer ="))
         // One rule decides what Back means, and both the gesture and the
-        // button go through it. Before this existed the gesture went nowhere
-        // near the step machinery and simply closed the app.
+        // button go through it; with no detour, it is one card back, always.
         assertTrue("Back must have a handler at all", onb.contains("BackHandler(enabled = step > 0)"))
         assertTrue("the gesture and the button must agree", onb.contains("BackHandler(enabled = step > 0) { backOneStep() }"))
         assertTrue("the Back button must use it too", onb.contains("TextButton(onClick = { backOneStep() })"))
         val back = onb.substringAfter("fun backOneStep()").substringBefore("BackHandler")
-        assertTrue("Back must cancel the detour", back.contains("leaveDetour()"))
-        assertTrue("and otherwise step back one card", back.contains("goTo(step - 1)"))
-        // Backing out of the detour returns to the summary it started from
-        // rather than to the card before the album list, which is four steps
-        // earlier and reads as the app losing its place.
-        assertTrue(
-            "backing out of the detour must return to the summary",
-            back.contains("if (returnToSummary && step == OnboardingSteps.indexOf(Step.ALBUMS))") &&
-                back.contains("go(Step.READY)")
-        )
-        assertTrue(
-            "so must arriving from the permission step",
-            onb.contains("leaveDetour(); go(Step.ALBUMS)")
-        )
+        assertTrue("Back steps back one card", back.contains("goTo(step - 1)"))
     }
 
     @Test
@@ -131,6 +125,18 @@ class SetupFlowTest {
         val vm = src("ui/AppViewModel.kt")
         val run = vm.substringAfter("fun startTestRun").substringBefore("// ---- Free-up")
         assertTrue("the trial must scan before it picks", run.contains("MediaScanner(ctx, db).scan()"))
+        // The card promises photos "from the albums you chose", and the scan
+        // just inventoried the whole phone - so the pick must carry the
+        // exclusion set. Shipped without it, the trial optimised three photos
+        // from albums the user had just declined.
+        assertTrue(
+            "the trial must pick from ticked albums only",
+            run.contains("newestNewPhotos(TRIAL_SIZE, o.excludedBuckets)")
+        )
+        assertTrue(
+            "and the trial count must follow the same ticks",
+            vm.contains("flatMapLatest { db.items().waitingPhotoCountFlow(it) }")
+        )
         // Setup and Home ask the same question of the same card.
         assertTrue(src("ui/screens/OnboardingScreen.kt").contains("albumsChosen = includedAlbums > 0"))
         val home = src("ui/screens/HomeScreen.kt")
@@ -250,6 +256,13 @@ class SetupFlowTest {
         assertFalse("the fingerprint left About", help.contains("EXPECTED_CERT_SHA256"))
         assertTrue(help.contains("about_permissions_title"))
         assertFalse("the Advanced expander is gone", help.contains("about_advanced"))
+        // Finished software: the page must not talk about installing a newer
+        // APK, because there will never be one.
+        assertFalse("no update wording on About", help.contains("about_updates"))
+        assertTrue(
+            "the update string itself is gone",
+            stringsNamed("about_updates").isEmpty()
+        )
         val requires = stringsNamed("about_requires_min").single().second
         assertTrue("the minimum must be named", requires.contains("Android 10"))
         assertTrue("and what it is tested against", requires.contains("Android 16"))

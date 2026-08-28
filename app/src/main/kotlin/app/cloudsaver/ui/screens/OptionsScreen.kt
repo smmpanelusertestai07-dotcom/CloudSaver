@@ -354,13 +354,18 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 6.dp)
             )
             if (o.dailyCapMb < 0) WarningText(stringResource(R.string.unlimited_warning))
-            if (recommended.capLooksWrong) {
+            if (recommended.computed) {
                 RecommendationNote(
                     text = stringResource(
                         R.string.recommend_cap,
                         Formats.mbLabel(recommended.dailyCapMb)
                     ),
-                    onApply = { vm.applyRecommended() }
+                    onApply = if (o.dailyCapMb != recommended.dailyCapMb) {
+                        { vm.applyRecommendedCap() }
+                    } else {
+                        null
+                    },
+                    warning = recommended.capLooksWrong
                 )
             }
         }
@@ -380,12 +385,17 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 o.minFreeMb.toString()
             ) { vm.setMinFree(it.toInt()) }
             LiveValue(stringResource(R.string.space_now_free, Formats.bytes(deviceFree)))
-            if (recommended.freeLooksWrong) {
+            if (recommended.computed) {
                 RecommendationNote(
                     text = stringResource(
                         R.string.recommend_space, Formats.mbLabel(recommended.minFreeMb)
                     ),
-                    onApply = { vm.applyRecommended() }
+                    onApply = if (o.minFreeMb != recommended.minFreeMb) {
+                        { vm.applyRecommendedMinFree() }
+                    } else {
+                        null
+                    },
+                    warning = recommended.freeLooksWrong
                 )
             }
         }
@@ -408,6 +418,18 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                 )
             )
             if (o.maxExtraMb < 0) WarningText(stringResource(R.string.unlimited_warning))
+            if (recommended.computed) {
+                RecommendationNote(
+                    text = stringResource(
+                        R.string.recommend_extra, Formats.mbLabel(recommended.maxExtraMb)
+                    ),
+                    onApply = if (o.maxExtraMb != recommended.maxExtraMb) {
+                        { vm.applyRecommendedMaxExtra() }
+                    } else {
+                        null
+                    }
+                )
+            }
         }
         Text(
             stringResource(R.string.space_two_things),
@@ -1146,15 +1168,30 @@ fun RecommendedTag(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RecommendationNote(text: String, onApply: () -> Unit) {
+private fun RecommendationNote(
+    text: String,
+    onApply: (() -> Unit)?,
+    warning: Boolean = false
+) {
+    // Always on the card once measured, so "what should this be?" keeps its
+    // answer in view. The button appears exactly while the stored value
+    // differs and applies only the setting it sits under - it used to rewrite
+    // three limits from one card, and to vanish for good after any small
+    // manual change. Warning colour marks real drift; the note stays quiet.
     Column(Modifier.padding(top = 10.dp)) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        TextButton(onClick = onApply, contentPadding = PaddingValues(horizontal = 4.dp)) {
-            Text(stringResource(R.string.recommend_apply))
+        if (warning) {
+            app.cloudsaver.ui.components.WarningText(text)
+        } else {
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (onApply != null) {
+            TextButton(onClick = onApply, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                Text(stringResource(R.string.recommend_apply))
+            }
         }
     }
 }

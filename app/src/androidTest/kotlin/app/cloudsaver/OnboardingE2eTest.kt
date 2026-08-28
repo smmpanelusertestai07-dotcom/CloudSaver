@@ -191,54 +191,6 @@ class OnboardingE2eTest {
         )
     }
 
-    /**
-     * The album detour from the summary is not a step and must not count
-     * itself as one: no "Step 3 of 8", no regressed dots, no second Back
-     * under the card - one clear "Save and go back". The old header made the
-     * jump read as five steps of progress lost.
-     */
-    private fun awaitAlbumDetour() {
-        val title = titleOf(Step.ALBUMS)
-        compose.waitForIdle()
-        compose.waitUntil(timeoutMillis = STEP_TIMEOUT) {
-            compose.onAllNodesWithText(title).fetchSemanticsNodes().size == 1 &&
-                compose.onAllNodesWithText(s(R.string.onb_albums_back_to_summary))
-                    .fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithText(counterOf(Step.ALBUMS)).assertDoesNotExist()
-        compose.onNodeWithText(s(R.string.back)).assertDoesNotExist()
-    }
-
-    /**
-     * Presses the card's own Back until [target] is the card on screen.
-     *
-     * Reads where setup is off the screen rather than out of the store. The
-     * store is written asynchronously, so it lags the card by a frame or two;
-     * a loop that consults it presses Back again while the previous press is
-     * still settling, walks straight past the step it wanted and out of the
-     * app altogether - which is how this arrived as "the album card never
-     * appeared" against a screenshot of the launcher.
-     *
-     * Each press then waits for the card to actually change before the next
-     * one, so the walk cannot outrun the screen it is walking.
-     */
-    private fun backUntil(target: Step) {
-        var guard = 0
-        while (visibleStep() != target) {
-            check(guard++ < OnboardingSteps.TOTAL) {
-                "Back never reached $target - it is showing ${visibleStep()}"
-            }
-            val before = visibleStep()
-            tap(s(R.string.back))
-            compose.waitUntil(timeoutMillis = STEP_TIMEOUT) { visibleStep() != before }
-        }
-    }
-
-    /** Which card is on screen, by the position counter each one prints. */
-    private fun visibleStep(): Step? = OnboardingSteps.ALL.firstOrNull { step ->
-        compose.onAllNodesWithText(counterOf(step)).fetchSemanticsNodes().isNotEmpty()
-    }
-
     private fun tap(label: String) {
         compose.onNodeWithText(label).performScrollTo().performClick()
         compose.waitForIdle()
@@ -445,20 +397,18 @@ class OnboardingE2eTest {
     }
 
     /**
-     * The reported bug: correcting the albums from the summary used to drop
-     * the user back at the album step for good, making them press through
-     * notifications, battery, usage access and the cloud card a second time.
-     * The detour must return to the summary.
+     * The reported bug, in its third form: correcting the albums from the
+     * summary first dropped the user at step 3 for good, then became a
+     * detour page that walked back. It is now not a navigation at all - the
+     * chooser opens over the summary as a sheet, the correction is applied
+     * in place, and closing the sheet leaves the user exactly where they
+     * already were.
      */
     @Test
-    fun choosingAlbumsFromTheSummaryReturnsToTheSummary() {
+    fun choosingAlbumsFromTheSummaryHappensOnTheSummary() {
         launch()
         walkTo(Step.ALBUMS)
         val albums = awaitAlbums()
-
-        // Reached forwards, the album card is an ordinary step.
-        compose.onNodeWithText(s(R.string.onb_albums_confirm)).assertExists()
-        compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertDoesNotExist()
 
         // Untick everything, so the summary has something to complain about.
         tap(s(R.string.onb_albums_none))
@@ -476,38 +426,47 @@ class OnboardingE2eTest {
             .assertIsDisplayed()
         val choose = compose.onAllNodesWithText(s(R.string.onb_ready_pick_albums))
         assertTrue(
-            "the summary must offer a way back to the album list",
+            "the summary must offer the chooser",
             choose.fetchSemanticsNodes().isNotEmpty()
         )
         choose[0].performScrollTo().performClick()
 
-        // On the album list as a detour, and it says so: the button promises
-        // the summary, and the header does not pretend five steps were lost.
-        awaitAlbumDetour()
+        // The chooser is a sheet over this page, not another page: the grid
+        // arrives with its Done button, and the stored position never moves
+        // off the summary.
         awaitAlbums()
-        compose.onNodeWithText(s(R.string.onb_albums_back_to_summary))
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onNodeWithText(s(R.string.onb_albums_confirm)).assertDoesNotExist()
+        compose.onNodeWithText(s(R.string.albums_sheet_done)).assertExists()
+        assertEquals(OnboardingSteps.indexOf(Step.READY), stored().onboardingStep)
 
-        tap(s(R.string.onb_albums_all))
-        tap(s(R.string.onb_albums_back_to_summary))
-
-        // The whole point: back at the summary, not three steps earlier.
-        awaitStep(Step.READY)
-        compose.onNodeWithText(s(R.string.onb_ready_no_albums)).assertDoesNotExist()
+        // Inside the sheet nothing is walked to: the count row rides at the
+        // top of the lazy grid - which performScrollTo does not support at
+        // all - and the Done button is pinned under it, so both are already
+        // on screen and are clicked where they stand.
+        compose.onNodeWithText(s(R.string.onb_albums_all)).performClick()
         compose.waitUntil(timeoutMillis = STORE_TIMEOUT) {
             stored().excludedBuckets.isEmpty()
         }
+        compose.onNodeWithText(s(R.string.albums_sheet_done)).performClick()
+        compose.waitForIdle()
+
+        // Same page, corrected: the sheet is gone, the warning with it, and
+        // nothing was walked back through.
+        compose.waitUntil(timeoutMillis = STEP_TIMEOUT) {
+            compose.onAllNodesWithText(s(R.string.albums_sheet_done))
+                .fetchSemanticsNodes().isEmpty()
+        }
+        awaitStep(Step.READY)
+        compose.onNodeWithText(s(R.string.onb_ready_no_albums)).assertDoesNotExist()
     }
 
     /**
-     * Leaving the detour any other way has to cancel it, or the next ordinary
-     * visit to the album list would jump to the summary and skip four cards
-     * the user had never seen.
+     * Cancelling the correction - the system's own Back, exactly as a person
+     * abandons a sheet - must leave the summary standing with nothing
+     * changed and nowhere moved. The old detour turned this gesture into a
+     * navigation of its own.
      */
     @Test
-    fun leavingTheAlbumDetourWithBackCancelsThePromiseToReturn() {
+    fun dismissingTheAlbumSheetLeavesTheSummaryInPlace() {
         launch()
         walkTo(Step.ALBUMS)
         val albums = awaitAlbums()
@@ -521,21 +480,21 @@ class OnboardingE2eTest {
         compose.onAllNodesWithText(s(R.string.onb_ready_pick_albums))[0]
             .performScrollTo()
             .performClick()
-        awaitAlbumDetour()
+        awaitAlbums()
+        compose.onNodeWithText(s(R.string.albums_sheet_done)).assertExists()
 
-        // Back out of the detour with the system's own Back - the card offers
-        // exactly one on-screen way back, and this is the other door. It
-        // returns to the summary it started from, and the promise to come
-        // back is cancelled all the same.
         device.pressBack()
-        awaitStep(Step.READY)
+        compose.waitUntil(timeoutMillis = STEP_TIMEOUT) {
+            compose.onAllNodesWithText(s(R.string.albums_sheet_done))
+                .fetchSemanticsNodes().isEmpty()
+        }
 
-        // Reaching the album card the ordinary way now: it is a plain step
-        // again, with no promise to return to the summary.
-        backUntil(Step.ALBUMS)
-        awaitStep(Step.ALBUMS)
-        compose.onNodeWithText(s(R.string.onb_albums_confirm)).assertExists()
-        compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertDoesNotExist()
+        // Still on the summary, still complaining, nothing silently changed.
+        awaitStep(Step.READY)
+        compose.onNodeWithText(s(R.string.onb_ready_no_albums))
+            .performScrollTo()
+            .assertIsDisplayed()
+        assertTrue(stored().excludedBuckets.containsAll(albums))
     }
 
     /**

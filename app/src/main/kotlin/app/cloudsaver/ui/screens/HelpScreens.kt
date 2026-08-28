@@ -898,10 +898,11 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
         }
 
         // What a person actually checks here: that the app cannot reach the
-        // internet, and what "updates" means for an app built to need none.
-        // The build-chain facts that used to fill this card - package name,
-        // build number, the signing fingerprint - are release-page material,
-        // and every one of them ships in the release notes instead.
+        // internet. The build-chain facts that used to fill this card -
+        // package name, build number, the signing fingerprint - are
+        // release-page material and ship in the release notes instead. The
+        // app is finished software: nothing here talks about updating it,
+        // because there is nothing to update to.
         AppCard(modifier = Modifier.padding(top = 10.dp)) {
             Text(
                 stringResource(R.string.about_network_title),
@@ -912,12 +913,6 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 stringResource(R.string.about_network_none),
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 4.dp)
-            )
-            Text(
-                stringResource(R.string.about_updates_body),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 10.dp)
             )
         }
 
