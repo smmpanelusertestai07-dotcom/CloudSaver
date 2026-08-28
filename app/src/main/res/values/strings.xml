@@ -613,8 +613,8 @@
     <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
 
     <!-- onboarding -->
-    <string name="app_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
-    <string name="onb_tagline">Save your cloud space \u2014 light copies, safe originals.</string>
+    <string name="app_tagline">Fit more in the cloud you already have \u2014 light copies, untouched originals.</string>
+    <string name="onb_tagline">Fit more in the cloud you already have \u2014 light copies, untouched originals.</string>
     <string name="onb_albums_title">Which albums?</string>
     <string name="onb_albums_text">Only the albums you tick get a light copy. Everything else is left completely alone.</string>
     <string name="onb_albums_confirm">These are right</string>
@@ -702,6 +702,8 @@
     <string name="about_requires_title">Works on your phone</string>
     <string name="about_partner">Made to work with your cloud app. It never uploads anything itself.</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
+    <string name="about_mission_title">Why CloudSaver exists</string>
+    <string name="about_mission_body">End-to-end encrypted cloud apps keep your photos private, but they upload exactly what you hand them \u2014 almost none of them make a file smaller first. So a library of 4K video fills a paid plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nCloudSaver is the step in between. It optimises your photos and videos on the phone itself, into one folder your cloud app already knows how to back up, so the same library reaches your cloud in a fraction of the space \u2014 a free or small plan goes a great deal further, and you keep the encrypted app you chose rather than the one with the best price.\n\nIt looks after the phone as well as the plan: it works only while the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
 

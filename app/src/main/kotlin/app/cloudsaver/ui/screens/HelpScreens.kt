@@ -846,6 +846,22 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
+        // What the app is for, said once, on the page a person opens to ask
+        // exactly that. Everything else here describes how it behaves; this
+        // is the only card that says why any of it is worth doing.
+        AppCard(modifier = Modifier.padding(top = 10.dp)) {
+            Text(
+                stringResource(R.string.about_mission_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                stringResource(R.string.about_mission_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
         // What this phone gets, and nothing about any other phone. Version
         // ranges and "2019 onwards" made a reader work out whether the
         // sentence applied to them; this one already knows.
