@@ -897,19 +897,54 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                         },
                         maxHeight = FolderListMaxHeight,
                         testTag = ListTags.ROWS,
-                        header = if (included > 0 && tickedBytes != null) {
-                            {
-                                Text(
-                                    stringResource(
-                                        R.string.onb_albums_size,
-                                        Formats.bytes(tickedBytes ?: 0L)
-                                    ),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        header = {
+                            // The same running count and select-all the setup
+                            // step offers - two doors, one picker contract.
+                            Column(Modifier.fillMaxWidth()) {
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        if (included == 0) {
+                                            stringResource(R.string.onb_albums_none_yet)
+                                        } else {
+                                            pluralStringResource(
+                                                R.plurals.onb_albums_selected,
+                                                included, included
+                                            )
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    TextButton(onClick = {
+                                        vm.setExcludedBuckets(
+                                            if (included == 0) emptySet()
+                                            else buckets.toSet()
+                                        )
+                                    }) {
+                                        Text(
+                                            stringResource(
+                                                if (included == 0) R.string.onb_albums_all
+                                                else R.string.onb_albums_none
+                                            ),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                if (included > 0) tickedBytes?.let { bytes ->
+                                    Text(
+                                        stringResource(
+                                            R.string.onb_albums_size,
+                                            Formats.bytes(bytes)
+                                        ),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
-                        } else {
-                            null
                         },
                         footer = if (lockedBuckets.isNotEmpty()) {
                             {

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-press the icon: the two places someone goes on purpose. Both open
+  through the same route extra an alert tap already uses, so a locked app
+  still asks for the unlock first and a route that needs state still waits
+  for it - the shortcuts add doors, not paths around anything.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="free_up"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_monochrome"
+        android:shortcutShortLabel="@string/shortcut_free_up"
+        android:shortcutLongLabel="@string/shortcut_free_up">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.cloudsaver"
+            android:targetClass="app.cloudsaver.MainActivity">
+            <extra android:name="app.cloudsaver.route" android:value="free_space_hub" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="activity"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_monochrome"
+        android:shortcutShortLabel="@string/shortcut_activity"
+        android:shortcutLongLabel="@string/shortcut_activity">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.cloudsaver"
+            android:targetClass="app.cloudsaver.MainActivity">
+            <extra android:name="app.cloudsaver.route" android:value="activity" />
+        </intent>
+    </shortcut>
+</shortcuts>

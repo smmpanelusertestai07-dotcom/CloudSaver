@@ -86,7 +86,8 @@ jobs:
           set -eu
           VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "APK_NAME=CloudSaver-v$VERSION-release.apk" >> "$GITHUB_ENV"
+          APK_NAME="CloudSaver-v$VERSION-release.apk"
+          echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
           [ -f "$UNSIGNED" ] || UNSIGNED=app/build/outputs/apk/release/app-release.apk
@@ -98,11 +99,11 @@ jobs:
             --key-pass env:KEY_PASSWORD \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
-            --out "CloudSaver-$VERSION.apk" \
+            --out "$APK_NAME" \
             CloudSaver-aligned.apk
-          "$BT/apksigner" verify --print-certs "CloudSaver-$VERSION.apk"
+          "$BT/apksigner" verify --print-certs "$APK_NAME"
           # The emulator job installs a fixed name, so keep one alongside it.
-          cp "CloudSaver-$VERSION.apk" CloudSaver-release.apk
+          cp "$APK_NAME" CloudSaver-release.apk
 
       - name: Size gate (max 15 MB)
         run: |

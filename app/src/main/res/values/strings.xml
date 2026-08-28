@@ -632,6 +632,8 @@
     <string name="path_copied">Folder path copied</string>
     <string name="onb_step_counter">Step %1$d of %2$d</string>
     <string name="onb_albums_none_yet">Nothing ticked yet</string>
+    <string name="shortcut_free_up">Free up space</string>
+    <string name="shortcut_activity">Activity</string>
     <plurals name="album_item_count">
         <item quantity="one">%1$d item</item>
         <item quantity="other">%1$d items</item>

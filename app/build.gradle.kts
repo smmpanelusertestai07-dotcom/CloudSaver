@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "9.1.0"
+        versionName = "9.2.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -71,6 +71,13 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    androidResources {
+        // The app ships one language on purpose (13.F). The libraries under
+        // it ship ninety; this keeps their translations out of the APK, so
+        // the file says what the About page says.
+        localeFilters += "en"
     }
 }
 
