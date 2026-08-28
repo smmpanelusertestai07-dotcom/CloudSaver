@@ -602,6 +602,43 @@ class LayoutRulesTest {
         )
     }
 
+    @Test
+    fun noButtonLabelIsCutToOneLine() {
+        // What the owner's own phone showed, and eight emulators did not: an
+        // action bar whose button read "Optimise these ...", a top bar
+        // offering "Select all 37 matc...". A label that names an action is
+        // the one string on a screen that cannot be guessed from context -
+        // and every one of these was a single line with an ellipsis behind
+        // it, on a row that also held a sentence. Two lines cost nothing on
+        // a button that fits and save the verb on one that does not.
+        val offenders = mutableListOf<String>()
+        for ((path, raw) in sources()) {
+            val text = code(raw)
+            for (kind in listOf("Button(", "TextButton(", "OutlinedButton(", "FilledTonalButton(")) {
+                var from = 0
+                while (true) {
+                    val at = text.indexOf(kind, from)
+                    if (at < 0) break
+                    from = at + kind.length
+                    // The lambda body, not the parameter list: the label is
+                    // the trailing content block after the closing bracket.
+                    val params = blockAt(text, at + kind.length - 1)
+                    val brace = text.indexOf('{', at + kind.length - 1 + params.length)
+                    if (brace < 0 || brace > at + kind.length + params.length + 4) continue
+                    val body = blockAt(text, brace, '{', '}')
+                    if (body.contains("maxLines = 1")) {
+                        offenders += "$path:${lineOf(text, at)}"
+                    }
+                }
+            }
+        }
+        assertTrue(
+            "a button label cut to one line loses the word that says what the " +
+                "button does: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
     // ---- two people solving the same problem ---------------------------------
 
     /**
