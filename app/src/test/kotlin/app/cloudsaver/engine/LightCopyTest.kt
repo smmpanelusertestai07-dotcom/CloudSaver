@@ -125,6 +125,117 @@ class LightCopyTest {
         )
     }
 
+    /**
+     * In place means the original's own album, and the album has to be read
+     * off the original rather than rebuilt from its bucket name: two folders
+     * on one phone can carry the same name, and the app's own output folder
+     * must never be the answer - the scanner reads a file there as a copy
+     * that came back.
+     */
+    @Test
+    fun `an in-place copy lands in the original's real folder, never the app's`() {
+        val folder = engine.substringAfter("private fun originalFolder")
+            .substringBefore("private fun inPlaceName")
+        assertTrue(
+            "the folder must come from the original itself",
+            folder.contains("MediaStore.MediaColumns.RELATIVE_PATH")
+        )
+        assertTrue(
+            "our own folders can never be an in-place destination",
+            folder.contains("if (Defaults.isAppOwnedPath(path)) return null")
+        )
+        val write = engine.substringAfter("private suspend fun writeVerified")
+            .substringBefore("private fun originalFolder")
+        assertTrue(
+            "an unreadable folder falls back to the light copies album",
+            write.contains("folder ?: \"\${Defaults.KEPT_DIR}/\"")
+        )
+        assertTrue(
+            "and the copy must report where it actually landed",
+            write.contains("Pinned(target, inPlace = folder != null)")
+        )
+    }
+
+    /**
+     * The timeline must not move. A gallery sorts on date-taken where there
+     * is one and on the modified date otherwise - which is most video - so a
+     * copy that carried only date-taken would jump to today on exactly the
+     * files people notice most.
+     */
+    @Test
+    fun `an in-place copy carries the original's dates`() {
+        val write = engine.substringAfter("private suspend fun writeVerified")
+            .substringBefore("private fun originalFolder")
+        assertTrue(write.contains("put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)"))
+        assertTrue(
+            write.contains("put(MediaStore.MediaColumns.DATE_MODIFIED, row.dateModified)")
+        )
+    }
+
+    /**
+     * The one real risk of writing into a scanned album: the next scan meets
+     * the replacement, fingerprints it as something new, and optimises an
+     * already optimised photo - losing quality every round and sending the
+     * cloud a second copy of a file it already holds. The row is re-pointed
+     * at the new file under the fingerprint the scanner itself will compute,
+     * so the two meet as one photo, in a state that never re-queues.
+     */
+    @Test
+    fun `an in-place replacement is never optimised a second time`() {
+        val finish = engine.substringAfter("private suspend fun finishLocked")
+            .substringBefore("private suspend fun recordBatch")
+        assertTrue(
+            "the new file's identity must be read back from MediaStore",
+            finish.contains("identityOf(p.uri)")
+        )
+        for (field in listOf(
+            "fingerprint = identity?.fingerprint",
+            "contentUri = identity?.uri?.toString()",
+            "mediaStoreId = identity?.mediaStoreId",
+            "sizeBytes = identity?.sizeBytes",
+            "dateModified = identity?.dateModified"
+        )) {
+            assertTrue("the row must follow the file it now stands for ($field)",
+                finish.contains(field))
+        }
+        // Present only when the replacement could really be read back.
+        assertTrue(finish.contains("originalMissing = identity == null"))
+        // And the fingerprint is the scanner's own, not one invented here.
+        val identity = engine.substringAfter("private fun identityOf")
+            .substringBefore("Prepares a batch that removes originals")
+        assertTrue(identity.contains("Fingerprint.fp16(name, size, modified)"))
+    }
+
+    @Test
+    fun `refusing the removal still takes the copy back`() {
+        val finish = engine.substringAfter("private suspend fun finishLocked")
+            .substringBefore("private suspend fun recordBatch")
+        assertTrue(finish.contains("unpinLightCopy(it.uri)"))
+    }
+
+    @Test
+    fun `the in-place trade is stated where the choice is made`() {
+        val strings = File("src/main/res/values/strings.xml").readText()
+        for (name in listOf(
+            "kept_in_place_title", "kept_in_place_body", "kept_in_place_warning"
+        )) {
+            assertTrue("$name must exist", strings.contains("name=\"$name\""))
+        }
+        val warning = strings.substringAfter("name=\"kept_in_place_warning\">")
+            .substringBefore("</string>")
+        // The two things that genuinely change, said outright.
+        assertTrue("the extension change must be stated", warning.contains(".jpg"))
+        assertTrue(
+            "and that the album file is no longer the cloud's twin",
+            warning.contains("byte-for-byte")
+        )
+        assertTrue(screen.contains("InPlaceChoice"))
+        assertTrue(
+            "the switch belongs to the mode it changes",
+            screen.contains("if (option == mode) InPlaceChoice(rvm)")
+        )
+    }
+
     @Test
     fun `a dropped item is named on screen, with the reason`() {
         val strings = File("src/main/res/values/strings.xml").readText()

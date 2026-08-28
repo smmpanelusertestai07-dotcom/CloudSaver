@@ -111,13 +111,16 @@ class ReclaimEngine(private val context: Context) {
      * as an image or video. The original's removal is requested only after
      * this returns - a copy that cannot be proved keeps its original.
      */
-    suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Uri? {
+    /** Where a pinned copy landed: its uri, and whether it sits in the original's own album. */
+    data class Pinned(val uri: Uri, val inPlace: Boolean)
+
+    suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Pinned? {
         val src = pinSource(row, options) ?: run {
             AppLog.log(context, "reclaim", "no provable light-copy source for ${row.displayName}")
             return null
         }
         return try {
-            writeVerified(row, src, now)
+            writeVerified(row, src, now, options.keptInPlace)
         } finally {
             src.temp?.delete()
         }
@@ -195,17 +198,30 @@ class ReclaimEngine(private val context: Context) {
         return PinSource(name, sha, { FileInputStream(result.file) }, temp = result.file)
     }
 
-    private suspend fun writeVerified(row: ItemRow, src: PinSource, now: Long): Uri? {
+    private suspend fun writeVerified(
+        row: ItemRow,
+        src: PinSource,
+        now: Long,
+        inPlace: Boolean
+    ): Pinned? {
         val resolver = context.contentResolver
         val collection = if (row.isVideo) {
             MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         } else {
             MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
+        // In place means: the album the original is in, under the original's
+        // own name, so the gallery shows the same photo in the same place -
+        // only smaller. Where that album cannot be read the copy falls back
+        // to its own album rather than guessing at a folder, and says so by
+        // reporting inPlace = false.
+        val folder = if (inPlace) originalFolder(row) else null
+        val landing = folder ?: "${Defaults.KEPT_DIR}/"
+        val name = if (folder != null) inPlaceName(row, src.name) else src.name
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, src.name)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeForName(src.name, row.mimeType))
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "${Defaults.KEPT_DIR}/")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeForName(name, row.mimeType))
+            put(MediaStore.MediaColumns.RELATIVE_PATH, landing)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val target = try {
@@ -237,11 +253,20 @@ class ReclaimEngine(private val context: Context) {
                 target,
                 ContentValues().apply {
                     put(MediaStore.MediaColumns.DATE_TAKEN, row.captureAt)
+                    // In place, the copy has to sit exactly where the original
+                    // sat in the timeline. DATE_TAKEN alone is not enough: a
+                    // gallery with no date-taken on a file - which is most
+                    // video - falls back to the modified date, and a fresh
+                    // one would jump the photo to today, at the top of the
+                    // roll, which is not "the same album, the same place".
+                    if (folder != null) {
+                        put(MediaStore.MediaColumns.DATE_MODIFIED, row.dateModified)
+                    }
                 },
                 null, null
             )
             db.items().update(row.copy(keptUri = target.toString(), updatedAt = now))
-            target
+            Pinned(target, inPlace = folder != null)
         } catch (e: Exception) {
             runCatching { resolver.delete(target, null, null) }
             AppLog.log(context, "reclaim", "light copy failed for ${row.displayName}: ${e.message}")
@@ -254,6 +279,46 @@ class ReclaimEngine(private val context: Context) {
      * original's: after a HEIC-to-JPEG conversion the two disagree, and a
      * gallery that trusts the declared type over the extension shows nothing.
      */
+    /**
+     * The album the original actually lives in, as MediaStore spells it.
+     *
+     * Read from the original itself rather than assembled from its bucket
+     * name: two folders on a phone can carry the same bucket name, and a
+     * copy written into the wrong one of them would be a photo that moved.
+     * Null when the path cannot be read, or when it belongs to this app -
+     * "in place" must never mean "into our own output folder", which the
+     * scanner treats as a returned copy.
+     */
+    private fun originalFolder(row: ItemRow): String? {
+        val uri = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
+        val path = runCatching {
+            context.contentResolver.query(
+                uri, arrayOf(MediaStore.MediaColumns.RELATIVE_PATH), null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull()
+        if (path.isNullOrBlank()) return null
+        if (Defaults.isAppOwnedPath(path)) return null
+        return if (path.endsWith("/")) path else "$path/"
+    }
+
+    /**
+     * The name an in-place copy carries: the original's own.
+     *
+     * The extension is the one the encoder actually produced, because a HEIC
+     * that came out as JPEG cannot keep a .heic name - a gallery reading the
+     * extension would show a broken thumbnail. Everything before the dot is
+     * the original's, so the file a person finds in their album is still the
+     * file they remember.
+     */
+    private fun inPlaceName(row: ItemRow, produced: String): String {
+        val ext = produced.substringAfterLast('.', "")
+        if (ext.isEmpty()) return row.displayName
+        val current = row.displayName.substringAfterLast('.', "")
+        if (current.equals(ext, ignoreCase = true)) return row.displayName
+        val base = row.displayName.substringBeforeLast('.', row.displayName)
+        return "$base.$ext"
+    }
+
     private fun mimeForName(name: String, fallback: String): String =
         when (name.substringAfterLast('.', "").lowercase()) {
             "jpg", "jpeg" -> "image/jpeg"
@@ -348,6 +413,52 @@ class ReclaimEngine(private val context: Context) {
     }
 
     /**
+     * How the scanner will see a file that is already on the phone.
+     *
+     * The fingerprint is name + size + modified date, exactly as
+     * [app.cloudsaver.media.MediaScanner] computes it, and it is read back
+     * from MediaStore rather than predicted: the provider rewrites both the
+     * name (a collision becomes "IMG_1234 (1).jpg") and the modified date
+     * while publishing, and a fingerprint computed from what was asked for
+     * would not match the file that actually exists.
+     */
+    private data class Identity(
+        val uri: Uri,
+        val mediaStoreId: Long,
+        val displayName: String,
+        val sizeBytes: Long,
+        val dateModified: Long,
+        val fingerprint: String
+    )
+
+    private fun identityOf(uri: Uri): Identity? = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.DATE_MODIFIED
+            ),
+            null, null, null
+        )?.use { c ->
+            if (!c.moveToFirst()) return@use null
+            val name = c.getString(1) ?: return@use null
+            val size = c.getLong(2)
+            val modified = c.getLong(3)
+            if (size <= 0) return@use null
+            Identity(
+                uri = uri,
+                mediaStoreId = c.getLong(0),
+                displayName = name,
+                sizeBytes = size,
+                dateModified = modified,
+                fingerprint = Fingerprint.fp16(name, size, modified)
+            )
+        }
+    }.getOrNull()
+
+    /**
      * Prepares a batch that removes originals: proves every copy, pins where
      * the mode asks for it, and returns the uris the UI must put through
      * Android's own dialog.
@@ -355,7 +466,7 @@ class ReclaimEngine(private val context: Context) {
     data class Prepared(
         val uris: List<Uri>,
         val rows: List<ItemRow>,
-        val pinned: Map<Long, Uri>,
+        val pinned: Map<Long, Pinned>,
         val skipped: List<Outcome>
     )
 
@@ -367,7 +478,7 @@ class ReclaimEngine(private val context: Context) {
     ): Prepared {
         val uris = mutableListOf<Uri>()
         val ready = mutableListOf<ItemRow>()
-        val pinned = mutableMapOf<Long, Uri>()
+        val pinned = mutableMapOf<Long, Pinned>()
         val skipped = mutableListOf<Outcome>()
 
         for (row in rows) {
@@ -436,7 +547,7 @@ class ReclaimEngine(private val context: Context) {
             if (uri == null || uri !in deleted) {
                 // Refused in the dialog: the pinned copy would otherwise be a
                 // second file of the same photo sitting in the gallery.
-                prepared.pinned[row.id]?.let { unpinLightCopy(it) }
+                prepared.pinned[row.id]?.let { unpinLightCopy(it.uri) }
                 if (prepared.pinned.containsKey(row.id)) {
                     db.items().byId(row.id)?.let {
                         db.items().update(it.copy(keptUri = null, updatedAt = now))
@@ -451,11 +562,34 @@ class ReclaimEngine(private val context: Context) {
             } else {
                 row.sizeBytes
             }
+            val inPlace = prepared.pinned[row.id]?.takeIf { it.inPlace }
             db.items().byId(row.id)?.let {
+                // A copy that landed in the original's own album is a file the
+                // scanner will meet again on its next pass, in a folder it is
+                // meant to read. Left as it is, that pass would fingerprint it
+                // as something new, queue it, and optimise an already
+                // optimised photo - losing quality on every round and sending
+                // a second copy of a file the cloud already holds. Re-pointing
+                // the row at the new file, under the fingerprint the scanner
+                // will compute for it, is what makes the two meet as the same
+                // photo. The state stays a finished one, so nothing re-queues.
+                val identity = inPlace?.let { p -> identityOf(p.uri) }
                 db.items().update(
                     it.copy(
                         state = if (kept) ItemState.FREED_KEPT.name else ItemState.FREED.name,
-                        originalMissing = true,
+                        // The original is gone either way. In place, the file
+                        // standing in for it is present, which is what stops
+                        // the maintenance pass reading this as a deletion -
+                        // but only when that file could actually be read
+                        // back. An identity we failed to read is not a file
+                        // we may call present.
+                        originalMissing = identity == null,
+                        fingerprint = identity?.fingerprint ?: it.fingerprint,
+                        contentUri = identity?.uri?.toString() ?: it.contentUri,
+                        mediaStoreId = identity?.mediaStoreId ?: it.mediaStoreId,
+                        displayName = identity?.displayName ?: it.displayName,
+                        sizeBytes = identity?.sizeBytes ?: it.sizeBytes,
+                        dateModified = identity?.dateModified ?: it.dateModified,
                         updatedAt = now
                     )
                 )

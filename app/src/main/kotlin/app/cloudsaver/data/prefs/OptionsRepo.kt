@@ -69,6 +69,15 @@ data class Options(
     val firstChainState: String = "",
     val showFreeUp: Boolean = false,
     val freeUpAllowVerified30: Boolean = false,
+    /**
+     * Where a light copy lands when an original is replaced.
+     *
+     * False (the default): its own album, Pictures/Light copies, which is
+     * outside everything the scanner touches. True: the album the original
+     * was in, carrying the original's date so the gallery timeline does not
+     * move - the photo stays where it was and is simply smaller.
+     */
+    val keptInPlace: Boolean = false,
     val reprocessUnknown: Boolean = false,
     val pauseAll: Boolean = false,
     // runtime / bookkeeping
@@ -155,6 +164,7 @@ class OptionsRepo(private val context: Context) {
         val WARNINGS_NOTIF = booleanPreferencesKey("warningsNotif")
         val SHOW_FREE_UP = booleanPreferencesKey("showFreeUp")
         val FREE_UP_VERIFIED30 = booleanPreferencesKey("freeUpAllowVerified30")
+        val KEPT_IN_PLACE = booleanPreferencesKey("keptInPlace")
         val REPROCESS_UNKNOWN = booleanPreferencesKey("reprocessUnknown")
         val PAUSE_ALL = booleanPreferencesKey("pauseAll")
         val ONBOARDING_DONE = booleanPreferencesKey("onboardingDone")
@@ -232,6 +242,7 @@ class OptionsRepo(private val context: Context) {
             firstChainState = p[K.FIRST_CHAIN_STATE] ?: "",
             showFreeUp = p[K.SHOW_FREE_UP] ?: false,
             freeUpAllowVerified30 = p[K.FREE_UP_VERIFIED30] ?: false,
+            keptInPlace = p[K.KEPT_IN_PLACE] ?: false,
             reprocessUnknown = p[K.REPROCESS_UNKNOWN] ?: false,
             pauseAll = p[K.PAUSE_ALL] ?: false,
             onboardingDone = p[K.ONBOARDING_DONE] ?: false,

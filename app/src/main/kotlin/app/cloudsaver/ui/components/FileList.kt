@@ -113,7 +113,11 @@ fun FileRow(
     // few characters wide. A checkbox, a thumbnail and an overflow button all
     // hold their dp size whatever the text does, so at 200% on a 320 dp phone
     // there is barely a third of the row left for the two of them to share.
-    val stacked = LocalDensity.current.fontScale >= StackedTextScale
+    // A visible checkbox costs the same width as a font jump, and on a real
+    // phone the combination cut the name to one word and the duration to
+    // "1 m..." - so selection mode stacks at every font size.
+    val selectable = selected != null && onSelectedChange != null
+    val stacked = selectable || LocalDensity.current.fontScale >= StackedTextScale
     // Long-press starts a selection, exactly as it does on Files. Without it
     // a screen can show a checkbox once a selection exists but offer no way to
     // create one, which leaves "Select all" and the action bar unreachable.
@@ -137,8 +141,8 @@ fun FileRow(
     }
     AppCard(modifier = card, onClick = if (onLongPress != null) null else onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (selected != null && onSelectedChange != null) {
-                Checkbox(checked = selected, onCheckedChange = onSelectedChange)
+            if (selectable) {
+                Checkbox(checked = selected!!, onCheckedChange = onSelectedChange!!)
                 Spacer(Modifier.width(4.dp))
             }
             thumbnail()

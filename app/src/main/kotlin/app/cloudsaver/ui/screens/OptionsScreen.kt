@@ -1188,6 +1188,15 @@ private fun RecommendationNote(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        // Where the number came from, said under the number itself. "This
+        // phone" is a claim, and a claim about someone's storage should be
+        // answerable without leaving the setting it belongs to; the full
+        // working is in Help, under its own question.
+        Text(
+            stringResource(R.string.recommend_basis),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         if (onApply != null) {
             TextButton(onClick = onApply, contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Text(stringResource(R.string.recommend_apply))

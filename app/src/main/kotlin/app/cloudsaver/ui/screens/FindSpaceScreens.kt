@@ -453,7 +453,11 @@ private fun DuplicateEntryRow(
     }
     FileRow(
         name = entry.displayName,
-        context = entry.path.ifEmpty { entry.album.orEmpty() },
+        // The album, never entry.path: for a duplicate found through
+        // MediaStore that field holds the content:// uri, and a phone showed
+        // it verbatim as the row's one line of context. A machine address
+        // under a file name reads as a bug even when nothing is wrong.
+        context = entry.album ?: stringResource(R.string.biggest_no_album),
         size = Formats.bytes(entry.sizeBytes),
         proof = if (isKeeper) {
             stringResource(R.string.dupes_this_one_stays)

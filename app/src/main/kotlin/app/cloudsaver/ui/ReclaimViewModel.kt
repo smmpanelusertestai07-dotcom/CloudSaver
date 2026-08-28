@@ -27,6 +27,10 @@ import app.cloudsaver.engine.ReclaimEngine
 import app.cloudsaver.util.Formats
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.cloudsaver.R
 import app.cloudsaver.engine.ActivityLog
@@ -75,6 +79,18 @@ class ReclaimViewModel(
     }
 
     val entries = MutableStateFlow<List<Entry>>(emptyList())
+
+    /**
+     * Where a replacement copy lands, live from the stored options so the
+     * choice reads the same here as it does anywhere else it is shown.
+     */
+    val keptInPlace: StateFlow<Boolean> = repo.flow
+        .map { it.keptInPlace }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun setKeptInPlace(value: Boolean) {
+        viewModelScope.launch { repo.setBool(OptionsRepo.K.KEPT_IN_PLACE, value) }
+    }
 
     /**
      * Which cloud app holds each batch's copies (Z10.1). Proof belongs to the

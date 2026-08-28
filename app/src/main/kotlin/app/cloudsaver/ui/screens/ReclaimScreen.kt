@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -64,6 +65,8 @@ import app.cloudsaver.ui.components.ListOption
 import app.cloudsaver.ui.components.ListFilterRow
 import app.cloudsaver.ui.components.ListFilter
 import app.cloudsaver.ui.components.RemovalWarningCard
+import app.cloudsaver.ui.components.WarningNote
+import androidx.compose.material3.Switch
 import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.core.logic.ReclaimRules
@@ -842,6 +845,11 @@ private fun ModePicker(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 2.dp)
                     )
+                    // Where the replacement lands is a property of this mode,
+                    // so it is asked here rather than buried in Settings -
+                    // the question only means anything next to the choice it
+                    // changes, and only while that choice is the live one.
+                    if (option == mode) InPlaceChoice(rvm)
                 }
                 Text(
                     stringResource(R.string.reclaim_mode_saving, Formats.bytes(saving)),
@@ -849,6 +857,67 @@ private fun ModePicker(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * Where the replacement copy goes: its own album, or the original's.
+ *
+ * In place is the answer to "I want my album exactly as it was, only
+ * smaller" - the copy carries the original's name and its date, so the
+ * gallery timeline does not move. It is also the one choice here that
+ * changes a file a person will meet outside this app, so the trade is
+ * spelled out under the switch rather than left to be discovered: the
+ * extension can change, and the file in the album is no longer the byte
+ * for byte twin of what the cloud holds.
+ */
+@Composable
+private fun InPlaceChoice(rvm: ReclaimViewModel) {
+    val inPlace by rvm.keptInPlace.collectAsStateWithLifecycle()
+    // The switch is a fixed 52 dp whatever the text does, so past the shared
+    // stacking point it goes under the words rather than taking a third of
+    // the row from a sentence that by then needs all of it.
+    val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >=
+        app.cloudsaver.ui.components.StackedTextScale
+    Column(
+        Modifier
+            .padding(top = 8.dp)
+            .toggleable(
+                value = inPlace,
+                role = androidx.compose.ui.semantics.Role.Switch,
+                onValueChange = { rvm.setKeptInPlace(it) }
+            )
+    ) {
+        val label: @Composable () -> Unit = {
+            Column {
+                Text(
+                    stringResource(R.string.kept_in_place_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    stringResource(R.string.kept_in_place_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (stacked) {
+            label()
+            Switch(checked = inPlace, onCheckedChange = null, modifier = Modifier.padding(top = 6.dp))
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { label() }
+                Switch(
+                    checked = inPlace,
+                    onCheckedChange = null,
+                    modifier = Modifier.padding(start = 12.dp)
+                )
+            }
+        }
+        if (inPlace) {
+            WarningNote(stringResource(R.string.kept_in_place_warning))
         }
     }
 }

@@ -41,9 +41,10 @@ class HelpContentTest {
             .map { it.groupValues[1].toInt() }.toList().sorted()
         val answers = Regex("""<string name="faq_a(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
-        // CC10.1: grew by exactly the two v9.0 answers - Optimise now, and the
-        // .cloudsaver folders - and nothing else.
-        assertEquals("the FAQ must hold fourteen questions", (1..14).toList(), questions)
+        // Grew by exactly the two answers this release owes the owner: where
+        // the recommended figures come from, and what "keep it in the same
+        // album" does. Nothing else.
+        assertEquals("the FAQ must hold sixteen questions", (1..16).toList(), questions)
         assertEquals("every question needs its answer", questions, answers)
     }
 

@@ -1204,6 +1204,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setWarningsNotif(v: Boolean) = setBool(OptionsRepo.K.WARNINGS_NOTIF, v)
     fun setShowFreeUp(v: Boolean) = setBool(OptionsRepo.K.SHOW_FREE_UP, v)
     fun setFreeUpVerified30(v: Boolean) = setBool(OptionsRepo.K.FREE_UP_VERIFIED30, v)
+    fun setKeptInPlace(v: Boolean) = setBool(OptionsRepo.K.KEPT_IN_PLACE, v)
     fun setReclaimUnderstood(v: Boolean) = setBool(OptionsRepo.K.RECLAIM_UNDERSTOOD, v)
     fun setReclaimReminderGb(v: Int) = setInt(OptionsRepo.K.RECLAIM_REMINDER_GB, v)
     fun setReprocessUnknown(v: Boolean) {

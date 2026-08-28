@@ -288,6 +288,9 @@
     <string name="reclaim_mode_replace_body">The original goes, and the optimised copy stays in your gallery at optimised quality. Saves most of the space.</string>
     <string name="reclaim_mode_replace_note">If the optimised copy is no longer on this phone, CloudSaver remakes it from the original at the current quality setting and checks it before asking to remove anything. A file whose copy cannot be made and checked is left out, and the original stays.</string>
     <string name="skip_light_copy_failed">its light copy could not be made and checked, so the original stays</string>
+    <string name="kept_in_place_title">Keep it in the same album</string>
+    <string name="kept_in_place_body">The smaller copy takes the original\'s place: same album, same name, same date, so your gallery timeline does not move. Off, it goes to Pictures/Light copies instead.</string>
+    <string name="kept_in_place_warning">The copy carries the original\'s date, camera details and location. Two things do change: a HEIC photo comes back as .jpg, because that is what it was encoded to; and the file in your album is the optimised version, not the byte-for-byte original your cloud holds. Your cloud copy is untouched. If you put an original back from the gallery\'s trash later, it returns beside the smaller copy rather than replacing it.</string>
     <string name="skip_integrity_failed">its copy could not be checked, so the original stays</string>
     <string name="skip_not_confirmed">not confirmed in Android\'s dialog</string>
     <string name="skip_generic">left alone — nothing was removed</string>
@@ -550,6 +553,7 @@
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
     <string name="recommend_space">Recommended for this phone: keep %1$s free.</string>
     <string name="recommend_apply">Use recommended</string>
+    <string name="recommend_basis">Worked out from this phone: its total storage and how much is free right now.</string>
     <string name="recommend_extra">Recommended for this phone: up to %1$s of its own space.</string>
     <string name="opt_transfer">Backup &amp; restore settings</string>
     <string name="opt_transfer_hint">Save your settings and file history to a file, protected with a password.</string>
@@ -759,7 +763,7 @@
         <item quantity="one">Your largest photo or video takes %2$s. Optimising it would save about %3$s (rough estimate for now).</item>
         <item quantity="other">Your %1$d largest photos and videos take %2$s. Optimising them would save about %3$s (rough estimate for now).</item>
     </plurals>
-    <string name="biggest_after">about %1$s after optimising</string>
+    <string name="biggest_after">about %1$s after</string>
     <string name="list_optimise_these_first">Optimise these first</string>
     <string name="bulk_optimise_of">Optimise %1$d of %2$d selected</string>
     <plurals name="bulk_skipped_note">
@@ -832,7 +836,7 @@
     <string name="list_sort_saved">Most saved</string>
     <string name="list_exit_selection">Stop selecting</string>
     <string name="list_selected_count">%1$d selected</string>
-    <string name="list_select_all_matching">Select all %1$d matching</string>
+    <string name="list_select_all_matching">Select all (%1$d)</string>
     <string name="list_deselect_all">Deselect all</string>
     <string name="list_filtered_empty">Nothing matches these filters.</string>
     <string name="list_reset_filters">Reset filters</string>
@@ -938,6 +942,10 @@
     <string name="faq_a13" formatted="false">The schedule waits for good moments \u2014 charging, screen off, the day\u2019s allowance. The button skips the waiting, never the safety limits: it will not run when the phone is too hot, the battery is under 15%, or free space is below the reserve. The run is listed in Activity as \u201cStarted by you\u201d.</string>
     <string name="faq_q14">What are the .cloudsaver folders in Download and Documents?</string>
     <string name="faq_a14">They hold one small text file each: a list of file names, dates, sizes and short codes \u2014 never photos. It lets a reinstall pick up where you left off, and it is rewritten every day. Deleting them is safe: the app recreates them within a day. Only deleting every copy and then reinstalling loses the history \u2014 your originals and your cloud are unaffected either way. You never have to create this history yourself: it writes itself once a day, and a reinstall reads it back on its own. The Backup and restore buttons in Settings exist only for an extra copy you keep somewhere else, like a computer.</string>
+    <string name="faq_q15">Where do the “Recommended for this phone” figures come from?</string>
+    <string name="faq_a15">From this phone, measured on the spot: how much storage it has in total, and how much of it is free right now. A 64 GB phone and a 512 GB phone should not hold back the same headroom, so the app works out a reserve of about a twentieth of the phone (never under 1.5 GB), a daily limit that drops to the cautious figure on a small or nearly full phone, and a ceiling on its own working space of about a tenth of what is free, capped at 5 GB and never so low that the pipeline jams against it. Nothing is measured off the phone and no usage is sent anywhere. It is only ever an offer: the figure sits under the setting with a Use recommended button, your own value is never overwritten, and the line turns into a warning only when what is stored has drifted more than three times away from it.</string>
+    <string name="faq_q16">Can the smaller copy stay in the same album instead of a new folder?</string>
+    <string name="faq_a16">Yes. In Free up space, choose “Replace with light copy” and turn on “Keep it in the same album”. The optimised copy is then written into the album the original was in, under the original’s name and carrying its date, camera details and location — so your gallery timeline does not move and no extra folder appears. The copy is written and checked first; only then does Android ask you to confirm removing the original, and refusing leaves both untouched. Two honest caveats: a HEIC photo comes back as .jpg because that is what it was encoded to, and the file now in your album is the optimised version rather than the byte-for-byte original your cloud holds. CloudSaver recognises the replacement as the same photo, so it is never optimised a second time.</string>
     <string name="about_running_full">Android %1$s \u2014 everything works.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>
     <string name="about_network_title">Network access</string>

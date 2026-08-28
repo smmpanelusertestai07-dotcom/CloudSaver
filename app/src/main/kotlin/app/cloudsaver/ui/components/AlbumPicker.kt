@@ -24,7 +24,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -82,9 +82,11 @@ fun AlbumGrid(
     footer: (@Composable () -> Unit)? = null
 ) {
     LazyVerticalGrid(
-        // Adaptive rather than a fixed count: three tiles on a 320 dp phone,
-        // more as the screen widens, without anyone writing the number down.
-        columns = GridCells.Adaptive(minSize = 96.dp),
+        // Adaptive rather than a fixed count: three tiles on an ordinary
+        // phone, more as the screen widens, without anyone writing the
+        // number down. 100 dp is what puts three across a 360 dp screen -
+        // the size the backup pickers people already know draw their covers.
+        columns = GridCells.Adaptive(minSize = 100.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier
@@ -156,7 +158,11 @@ private fun AlbumTile(
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
+                // Portrait, not square: photos are mostly portrait on a
+                // phone, and the taller crop is what makes the grid read as
+                // the gallery pickers people already use rather than as an
+                // icon sheet.
+                .aspectRatio(0.8f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(scheme.surfaceVariant)
         ) {
@@ -182,25 +188,26 @@ private fun AlbumTile(
                 )
             }
             // The tick sits on the photo, the way every gallery draws
-            // selection. Unticked shows nothing rather than an empty ring:
-            // the state a tile is in is said by the tick and the veil
-            // together, and a page of hollow rings is noise.
+            // selection: a filled badge, and nothing else. The dark veil
+            // that used to cover a ticked cover is gone - dimming exactly
+            // the albums someone chose made the choice look like a penalty,
+            // and no backup picker on the phone does it.
             if (checked) {
                 Box(
                     Modifier
-                        .fillMaxSize()
-                        .background(scheme.scrim.copy(alpha = 0.28f))
-                )
-                Icon(
-                    Icons.Filled.CheckCircle,
-                    contentDescription = null,
-                    tint = scheme.primary,
-                    modifier = Modifier
                         .padding(6.dp)
-                        .size(24.dp)
+                        .size(22.dp)
                         .align(Alignment.TopEnd)
-                        .background(scheme.surface, CircleShape)
-                )
+                        .background(scheme.primary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        tint = scheme.onPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
             }
         }
         Text(

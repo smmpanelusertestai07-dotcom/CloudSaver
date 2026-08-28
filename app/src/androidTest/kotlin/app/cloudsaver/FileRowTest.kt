@@ -97,4 +97,33 @@ class FileRowTest {
         showRow(trailingNote = "about 459 KB after optimising", width = 320)
         assertNameIsReadable("the saving note on a 320 dp screen")
     }
+
+    /**
+     * Selection mode adds a checkbox, which costs the same width as a font
+     * jump - and on a real phone the checkbox, the thumbnail, the size column
+     * and the overflow together left the name one word and the duration
+     * "1 m...". With a checkbox showing, the value stacks under the name at
+     * every font size, so the name keeps the row.
+     */
+    @Test
+    fun aCheckboxCannotSqueezeOutTheNameEither() {
+        compose.setContent {
+            CloudSaverTheme(mode = ThemeMode.LIGHT, dynamicColor = false) {
+                Box(Modifier.width(320.dp)) {
+                    FileRow(
+                        name = name,
+                        context = "Video · 1 min",
+                        size = "249 MB",
+                        proof = null,
+                        thumbnail = { Box(Modifier.size(56.dp)) },
+                        actions = emptyList(),
+                        trailingNote = "about 92 MB after",
+                        selected = false,
+                        onSelectedChange = {}
+                    )
+                }
+            }
+        }
+        assertNameIsReadable("a checkbox and a saving note together")
+    }
 }

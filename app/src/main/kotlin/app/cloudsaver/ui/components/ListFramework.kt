@@ -17,6 +17,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -341,13 +343,17 @@ fun SelectionTopBar(
         // The button carries no weight of its own, so it measures at whatever
         // its label wants and the count is left with the remainder - which on
         // a narrow phone at a large font is not enough to say how many are
-        // selected. Half the row each, and neither can starve the other.
+        // selected. Half the row each, and neither can starve the other. The
+        // label itself is "(37)" rather than "37 matching": on a real phone
+        // the longer sentence lost its own ending to the ellipsis, and a
+        // button that says "Select all 37 matc..." reads as broken. Two lines
+        // stand behind it so no font size can take the count away.
         val buttonShare = Modifier.weight(1f, fill = false)
         if (selectedCount < matchingCount) {
             TextButton(onClick = onSelectAll, modifier = buttonShare) {
                 Text(
                     stringResource(R.string.list_select_all_matching, matchingCount),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -355,7 +361,7 @@ fun SelectionTopBar(
             TextButton(onClick = onDeselectAll, modifier = buttonShare) {
                 Text(
                     stringResource(R.string.list_deselect_all),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -370,6 +376,7 @@ fun SelectionTopBar(
  * chosen - "3 of 12 are not backed up yet". The button is not disabled and
  * left to be puzzled over; the bar says why and offers the way forward.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ListActionBar(
     summary: String,
@@ -404,25 +411,31 @@ fun ListActionBar(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Flowing, not a fixed row. Capped at half the row each, the
+            // button lost the end of its own verb on a real phone -
+            // "Optimise these ..." - and an action bar whose action cannot be
+            // read is the worst truncation in the app. When the sentence and
+            // the button cannot share a line in full, the button drops under
+            // the sentence, exactly as StepCard and PowerRow already do.
+            FlowRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
                 Text(
                     summary,
                     style = MaterialTheme.typography.bodyMedium.merge(TabularFigures),
-                    // Two lines, because this sentence says how many files and
-                    // how much space - and half of it is no use. The button
-                    // beside it is capped at half the row for the same reason.
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.align(Alignment.CenterVertically)
                 )
-                val actionShare = Modifier.weight(1f, fill = false)
                 if (blockedReason != null && narrowLabel != null && onNarrow != null) {
-                    TextButton(onClick = onNarrow, modifier = actionShare) {
-                        Text(narrowLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    TextButton(onClick = onNarrow) {
+                        Text(narrowLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
-                    Button(onClick = onAction, modifier = actionShare) {
-                        Text(actionLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Button(onClick = onAction) {
+                        Text(actionLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
