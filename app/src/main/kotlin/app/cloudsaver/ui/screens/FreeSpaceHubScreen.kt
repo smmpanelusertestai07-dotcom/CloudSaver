@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,6 +60,7 @@ import app.cloudsaver.util.Formats
 @Composable
 fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
     val findSpace by vm.findSpace.collectAsStateWithLifecycle()
+    val counters by vm.counters.collectAsStateWithLifecycle()
     val stats by vm.storageStats.collectAsStateWithLifecycle()
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val options by vm.options.collectAsStateWithLifecycle()
@@ -137,6 +139,41 @@ fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
             )
+            // An empty hub is not a dead end; it is a place in a journey.
+            // Say where the files actually are - waiting to be optimised,
+            // or optimised and waiting for the cloud app to collect them -
+            // with real counts, and only the lines that have a count. A
+            // sentence about nothing, twice, is the old screen.
+            if (total == 0L) {
+                Text(
+                    stringResource(R.string.hub_journey),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+                if (counters.waiting > 0) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.hub_next_optimise,
+                            counters.waiting, counters.waiting
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                if (counters.inFolder > 0) {
+                    Text(
+                        pluralStringResource(
+                            R.plurals.hub_next_upload,
+                            counters.inFolder, counters.inFolder
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = scheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+            }
 
             if (findSpace.reclaimableBytes > 0) {
                 HubCard(

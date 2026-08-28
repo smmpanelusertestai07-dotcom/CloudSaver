@@ -118,7 +118,16 @@ class LayoutRulesTest {
             Regex("AlertDialog\\(").findAll(text).forEach { m ->
                 val body = blockAt(text, m.range.last)
                 val hasText = Regex("\\btext\\s*=\\s*\\{").containsMatchIn(body)
-                if (hasText && !body.contains("verticalScroll")) {
+                // A body whose content lives inside a bounded lazy container
+                // scrolls through that container; wrapping it in a second
+                // verticalScroll is the nested-scroll crash. Either counts as
+                // reachable; a body with neither is the clipped dialog this
+                // rule exists for.
+                val scrolls = body.contains("verticalScroll") ||
+                    body.contains("LazyColumn(") ||
+                    body.contains("AlbumGrid(") ||
+                    body.contains("LazyVerticalGrid(")
+                if (hasText && !scrolls) {
                     offenders += "$path:${lineOf(text, m.range.first)}"
                 }
             }

@@ -43,8 +43,7 @@ class PlainEnglishTest {
      * from every other audit here (CC4.5).
      */
     private val allowed = setOf(
-        "lock_subtitle" to "fingerprint",
-        "about_cert_label" to "sha256"
+        "lock_subtitle" to "fingerprint"
     )
 
     private val entry = Regex(

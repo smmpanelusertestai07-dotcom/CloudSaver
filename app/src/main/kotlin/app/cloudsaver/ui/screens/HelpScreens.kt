@@ -897,52 +897,22 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
             )
         }
 
-        // Plainly, not behind an "Advanced" door. These are the facts someone
-        // needs to check a downloaded file against this install before
-        // replacing it, and hiding them behind a word that means "not for
-        // you" only made them harder to find for the one person who came
-        // looking. Nothing here is a setting; nothing here can be changed.
+        // What a person actually checks here: that the app cannot reach the
+        // internet, and what "updates" means for an app built to need none.
+        // The build-chain facts that used to fill this card - package name,
+        // build number, the signing fingerprint - are release-page material,
+        // and every one of them ships in the release notes instead.
         AppCard(modifier = Modifier.padding(top = 10.dp)) {
             Text(
-                stringResource(R.string.about_tech_title),
+                stringResource(R.string.about_network_title),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            KeyValueRow(
-                stringResource(R.string.about_tech_version),
-                BuildConfig.VERSION_NAME
+            Text(
+                stringResource(R.string.about_network_none),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 4.dp)
             )
-            KeyValueRow(
-                stringResource(R.string.about_tech_build),
-                BuildConfig.VERSION_CODE.toString()
-            )
-            KeyValueRow(
-                stringResource(R.string.about_tech_package),
-                BuildConfig.APPLICATION_ID
-            )
-            KeyValueRow(
-                stringResource(R.string.about_network_title),
-                stringResource(R.string.about_network_none)
-            )
-            // Z10.4: the fingerprint a future APK can be checked against
-            // before installing over this one. Sixty-four characters do not
-            // fit a value column - as a row it showed "4565a65bdf6c00..."
-            // and the one number worth printing was the one nobody could
-            // read. It gets its own wrapped monospace block instead.
-            if (BuildConfig.EXPECTED_CERT_SHA256.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.about_cert_label),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 10.dp)
-                )
-                Text(
-                    BuildConfig.EXPECTED_CERT_SHA256,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
             Text(
                 stringResource(R.string.about_updates_body),
                 style = MaterialTheme.typography.bodySmall,

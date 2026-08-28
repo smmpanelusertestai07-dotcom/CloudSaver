@@ -192,6 +192,24 @@ class OnboardingE2eTest {
     }
 
     /**
+     * The album detour from the summary is not a step and must not count
+     * itself as one: no "Step 3 of 8", no regressed dots, no second Back
+     * under the card - one clear "Save and go back". The old header made the
+     * jump read as five steps of progress lost.
+     */
+    private fun awaitAlbumDetour() {
+        val title = titleOf(Step.ALBUMS)
+        compose.waitForIdle()
+        compose.waitUntil(timeoutMillis = STEP_TIMEOUT) {
+            compose.onAllNodesWithText(title).fetchSemanticsNodes().size == 1 &&
+                compose.onAllNodesWithText(s(R.string.onb_albums_back_to_summary))
+                    .fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(counterOf(Step.ALBUMS)).assertDoesNotExist()
+        compose.onNodeWithText(s(R.string.back)).assertDoesNotExist()
+    }
+
+    /**
      * Presses the card's own Back until [target] is the card on screen.
      *
      * Reads where setup is off the screen rather than out of the store. The
@@ -463,8 +481,9 @@ class OnboardingE2eTest {
         )
         choose[0].performScrollTo().performClick()
 
-        // On the album list, and it says so: the button promises the summary.
-        awaitStep(Step.ALBUMS)
+        // On the album list as a detour, and it says so: the button promises
+        // the summary, and the header does not pretend five steps were lost.
+        awaitAlbumDetour()
         awaitAlbums()
         compose.onNodeWithText(s(R.string.onb_albums_back_to_summary))
             .performScrollTo()
@@ -502,14 +521,13 @@ class OnboardingE2eTest {
         compose.onAllNodesWithText(s(R.string.onb_ready_pick_albums))[0]
             .performScrollTo()
             .performClick()
-        awaitStep(Step.ALBUMS)
-        compose.onNodeWithText(s(R.string.onb_albums_back_to_summary)).assertExists()
+        awaitAlbumDetour()
 
-        // Back out of the detour. It returns to the summary it started from -
-        // dropping the user on the media step, four cards earlier, was the old
-        // behaviour and read as the app losing its place - but the promise to
-        // come back is cancelled all the same.
-        tap(s(R.string.back))
+        // Back out of the detour with the system's own Back - the card offers
+        // exactly one on-screen way back, and this is the other door. It
+        // returns to the summary it started from, and the promise to come
+        // back is cancelled all the same.
+        device.pressBack()
         awaitStep(Step.READY)
 
         // Reaching the album card the ordinary way now: it is a plain step

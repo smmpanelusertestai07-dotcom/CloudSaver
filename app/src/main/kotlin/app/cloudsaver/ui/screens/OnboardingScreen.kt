@@ -71,6 +71,7 @@ import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.WarningText
+import app.cloudsaver.ui.components.AlbumGrid
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.ListTags
@@ -306,13 +307,22 @@ fun OnboardingScreen(vm: AppViewModel) {
                 )
             }
         }
-        Text(
-            stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 18.dp)
-        )
-        StepDots(current = step, total = OnboardingSteps.TOTAL)
+        // The correct-the-albums detour is not a step, so it does not count
+        // itself as one. With the counter left up it read "Step 3 of 8" the
+        // moment "Choose albums" was tapped on the summary - the dots ran
+        // backwards and the page looked like five steps of progress had been
+        // lost, when nothing had moved at all.
+        if (!returnToSummary) {
+            Text(
+                stringResource(R.string.onb_step_counter, step + 1, OnboardingSteps.TOTAL),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 18.dp)
+            )
+            StepDots(current = step, total = OnboardingSteps.TOTAL)
+        } else {
+            Spacer(Modifier.height(18.dp))
+        }
 
         AnimatedContent(
             targetState = step,
@@ -395,6 +405,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             Step.ALBUMS -> {
                 androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
                 val buckets by vm.buckets.collectAsStateWithLifecycle()
+                val albums by vm.albums.collectAsStateWithLifecycle()
                 val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
                 val locked by vm.lockedBuckets.collectAsStateWithLifecycle()
                 val included = buckets.count { it !in options.excludedBuckets }
@@ -421,7 +432,8 @@ fun OnboardingScreen(vm: AppViewModel) {
                         } else {
                             go(Step.NOTIFICATIONS)
                         }
-                    }
+                    },
+                    buttonAtEnd = true
                 ) {
                     // Empty has two meanings and they are not the same
                     // sentence. Until the scan has answered, this is a wait.
@@ -454,9 +466,16 @@ fun OnboardingScreen(vm: AppViewModel) {
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            pluralStringResource(
-                                R.plurals.onb_albums_selected, included, included
-                            ),
+                            // "0 albums selected" is a zero standing where a
+                            // sentence should be; before anything is ticked
+                            // the state has a name instead.
+                            if (included == 0) {
+                                stringResource(R.string.onb_albums_none_yet)
+                            } else {
+                                pluralStringResource(
+                                    R.plurals.onb_albums_selected, included, included
+                                )
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
@@ -478,76 +497,34 @@ fun OnboardingScreen(vm: AppViewModel) {
                             )
                         }
                     }
-                    ticked?.let { bytes ->
+                    // Absent until something is ticked: "0 MB in the ticked
+                    // albums" under "Nothing ticked yet" said the same nothing
+                    // twice, once as a figure.
+                    if (included > 0) ticked?.let { bytes ->
                         Text(
                             stringResource(R.string.onb_albums_size, Formats.bytes(bytes)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    // A gallery of several hundred albums is an ordinary
-                    // gallery, and a plain loop built a tickable row for every
-                    // one of them before this card could be drawn - a wait, on
-                    // the one screen where the app is asking to be trusted
-                    // with someone's photos. A lazy list builds the handful of
-                    // rows that are actually on screen.
-                    //
-                    // The height is capped rather than left to grow. This card
-                    // is inside the setup screen's own vertical scroll, and a
-                    // lazy list given no ceiling there has no height to measure
-                    // itself against and refuses to measure at all. Capped, it
-                    // scrolls its own rows and hands the drag back to the page
-                    // once it reaches either end, so the two never fight over
-                    // the same gesture.
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = AlbumListMaxHeight)
-                            .testTag(ListTags.ROWS)
-                    ) {
-                        items(buckets) { bucket ->
-                            // The whole row is the tick box, not just the box:
-                            // otherwise the tap target is a few millimetres
-                            // wide and a screen reader reads "checkbox, not
-                            // ticked" with no idea which folder it belongs to.
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    // A Checkbox handed onCheckedChange = null
-                                    // is not the thing being tapped, so
-                                    // Material does not give it the interactive
-                                    // minimum it gives a live one: the row came
-                                    // out around 28 dp tall, and the whole row
-                                    // is what takes the tap. A floor, not a
-                                    // fixed height - a long album name at a
-                                    // large font still grows the row rather
-                                    // than being cut by it.
-                                    .heightIn(min = Dimens.TouchTarget)
-                                    .toggleable(
-                                        value = bucket !in options.excludedBuckets,
-                                        onValueChange = { include ->
-                                            vm.setExcludedBuckets(
-                                                if (include) options.excludedBuckets - bucket
-                                                else options.excludedBuckets + bucket
-                                            )
-                                        },
-                                        role = Role.Checkbox
-                                    )
-                            ) {
-                                Checkbox(
-                                    checked = bucket !in options.excludedBuckets,
-                                    onCheckedChange = null
-                                )
-                                Text(
-                                    bucket,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.MiddleEllipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                    }
+                    // The gallery, drawn as a gallery: covers with the tick on
+                    // the photo, through the same grid Settings uses. Lazy and
+                    // capped for the same reasons the old list was - hundreds
+                    // of albums are an ordinary gallery, and a lazy container
+                    // inside this page's own scroll needs a ceiling to measure
+                    // against at all.
+                    AlbumGrid(
+                        albums = albums,
+                        excluded = options.excludedBuckets,
+                        onToggle = { name, include ->
+                            vm.setExcludedBuckets(
+                                if (include) options.excludedBuckets - name
+                                else options.excludedBuckets + name
+                            )
+                        },
+                        maxHeight = AlbumListMaxHeight,
+                        testTag = ListTags.ROWS
+                    )
                     // Folders that already hold another app's compressed
                     // copies. Named so the absence is explained rather than
                     // looking like the scan missed them.
@@ -883,7 +860,11 @@ fun OnboardingScreen(vm: AppViewModel) {
         }
         }
 
-        if (step > 0) {
+        // On the detour the card's own "Save and go back" is the one way
+        // back; a second Back under it went to the same place and only asked
+        // the user to choose between two returns. The system's own Back still
+        // works and cancels the detour the same way.
+        if (step > 0 && !returnToSummary) {
             TextButton(onClick = { backOneStep() }) {
                 Text(stringResource(R.string.back))
             }
@@ -1213,6 +1194,10 @@ private fun StepCard(
     buttonLabel: String,
     onButton: () -> Unit,
     onSkip: (() -> Unit)? = null,
+    // Most steps are a sentence with a decision under it, so the action sits
+    // right after the text. The album step is a picker: the decision is the
+    // grid, and the action belongs after the choosing, not above it.
+    buttonAtEnd: Boolean = false,
     extra: @Composable () -> Unit = {}
 ) {
     AppCard {
@@ -1220,6 +1205,10 @@ private fun StepCard(
         Spacer(Modifier.height(6.dp))
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(10.dp))
+        if (buttonAtEnd) {
+            extra()
+            Spacer(Modifier.height(12.dp))
+        }
         // The action and its Skip are the pair that breaks first: "Grant
         // usage access" and "Skip" cannot share a line on a 320 dp phone at
         // the largest accessibility font, and a plain Row pushed Skip past
@@ -1243,6 +1232,6 @@ private fun StepCard(
                 }
             }
         }
-        extra()
+        if (!buttonAtEnd) extra()
     }
 }

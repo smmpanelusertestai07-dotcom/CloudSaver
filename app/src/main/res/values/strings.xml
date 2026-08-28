@@ -69,7 +69,6 @@
     <string name="double_backup_show">Show me where</string>
     <string name="folder_gallery_note">This folder appears as an album in your gallery while files wait to be collected. Most gallery apps can hide an album from their own settings.</string>
     <string name="about_updates_body">Updates install a newer APK over this one. Settings, history and files stay, as long as the new file is signed with the same key.</string>
-    <string name="about_cert_label">Signing certificate (SHA-256)</string>
     <string name="chain_success_title">Your first file reached %1$s</string>
     <string name="chain_success_body">Everything is working. From here on, backup runs on its own.</string>
     <string name="chain_stalled_title">Your first file has not been collected yet</string>
@@ -349,7 +348,16 @@
     <string name="hub_title">Free up space</string>
     <string name="hub_entry_hint">Everything that can make room, in one place.</string>
     <string name="hub_could_free">You could free about %1$s.</string>
-    <string name="hub_nothing">Nothing to free right now. New photos and videos are picked up automatically.</string>
+    <string name="hub_nothing">Nothing to free up yet</string>
+    <string name="hub_journey">Space appears here after a light copy of a photo is safely in your cloud. New photos and videos are picked up automatically.</string>
+    <plurals name="hub_next_optimise">
+        <item quantity="one">%1$d file is waiting to be optimised</item>
+        <item quantity="other">%1$d files are waiting to be optimised</item>
+    </plurals>
+    <plurals name="hub_next_upload">
+        <item quantity="one">%1$d light copy is in Pictures/CloudSaver, waiting for your cloud app to collect it</item>
+        <item quantity="other">%1$d light copies are in Pictures/CloudSaver, waiting for your cloud app to collect them</item>
+    </plurals>
     <string name="hub_backed_up">Backed-up originals</string>
     <string name="hub_backed_up_hint">Originals whose optimised copy your cloud already has.</string>
     <string name="hub_duplicates_hint">The same file saved more than once on this phone.</string>
@@ -623,6 +631,11 @@
     <string name="copy_path_action">Copy folder path</string>
     <string name="path_copied">Folder path copied</string>
     <string name="onb_step_counter">Step %1$d of %2$d</string>
+    <string name="onb_albums_none_yet">Nothing ticked yet</string>
+    <plurals name="album_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
     <string name="onb0_title">Welcome!</string>
@@ -1032,10 +1045,6 @@
 
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>
-    <string name="about_tech_title">Technical details</string>
-    <string name="about_tech_package">Package name</string>
-    <string name="about_tech_build">Build number</string>
-    <string name="about_tech_version">Version</string>
     <string name="about_permissions_title">What it may access</string>
     <string name="about_permissions_body">Your photos and videos, to make the smaller copies. Nothing else, and nothing leaves the phone.</string>
 </resources>

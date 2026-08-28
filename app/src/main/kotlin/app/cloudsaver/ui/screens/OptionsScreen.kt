@@ -91,6 +91,7 @@ import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.EmptyState
+import app.cloudsaver.ui.components.AlbumGrid
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.MeterBar
@@ -112,7 +113,10 @@ import app.cloudsaver.util.Formats
  * exactly as they did before, and on a very tall screen the buttons underneath
  * stay in view instead of being pushed down by a gallery's worth of albums.
  */
-private val FolderListMaxHeight = 360.dp
+// Shorter than the setup step's cap on purpose: this grid shares a dialog
+// with the size line and the auto-excluded folders, and the dialog body does
+// not scroll - the grid does. What the ceiling leaves over is theirs.
+private val FolderListMaxHeight = 300.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -828,6 +832,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
     if (showFolders) {
         val buckets by vm.buckets.collectAsStateWithLifecycle()
+        val albums by vm.albums.collectAsStateWithLifecycle()
         val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
         val lockedBuckets by vm.lockedBuckets.collectAsStateWithLifecycle()
         // The same measured figure the setup step shows: a count of albums says
@@ -846,132 +851,95 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             },
             title = { Text(stringResource(R.string.opt_folders)) },
             text = {
-                // The whole body of this dialog is one lazy list, and the list
-                // itself is what scrolls it. There is no verticalScroll Column
-                // wrapped around it on purpose: a scrolling column holding a
-                // scrolling list is two scrollers in the same direction
-                // arguing over one drag.
-                //
-                // Lazy, because a plain loop built a tickable row for every
-                // album in the gallery before the dialog could open, and a
-                // gallery of several hundred albums is an ordinary gallery -
-                // this owner's is one. The ceiling below is what lets it
-                // measure itself at all; a lazy list with no height to work
-                // against does not draw.
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = FolderListMaxHeight)
-                        .testTag(ListTags.ROWS)
-                ) {
-                    item(key = "head") {
-                        Column(Modifier.fillMaxWidth()) {
-                            // Empty has two meanings. Until the scan has
-                            // answered, this is a wait; once it has answered
-                            // with nothing, the phone has no photos on it and
-                            // "Loading albums..." is a wait that never ends.
-                            if (buckets.isEmpty()) {
-                                if (bucketsLoaded) {
-                                    EmptyState(
-                                        title = stringResource(R.string.folders_none_title),
-                                        body = stringResource(R.string.folders_none_body)
-                                    )
-                                } else {
-                                    Text(stringResource(R.string.folders_loading))
-                                }
-                            }
-                            tickedBytes?.let { bytes ->
+                // The same grid the setup step draws, because the two pickers
+                // are one decision seen from two doors. The body is a plain
+                // column and only the grid scrolls: a scrolling column around
+                // a lazy grid is two scrollers arguing over one drag, and a
+                // lazy grid with no ceiling in an unbounded dialog does not
+                // draw at all.
+                val included = buckets.count { it !in o.excludedBuckets }
+                if (buckets.isEmpty()) {
+                    // Empty has two meanings. Until the scan has answered,
+                    // this is a wait; once it has answered with nothing, the
+                    // phone has no photos on it and "Loading albums..." is a
+                    // wait that never ends. Scrollable, because a dialog's
+                    // text slot clips rather than scrolls on its own.
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        if (bucketsLoaded) {
+                            EmptyState(
+                                title = stringResource(R.string.folders_none_title),
+                                body = stringResource(R.string.folders_none_body)
+                            )
+                        } else {
+                            Text(stringResource(R.string.folders_loading))
+                        }
+                    }
+                } else {
+                    // Everything in this body lives inside the grid's own
+                    // scroll - the size line above the tiles and the
+                    // auto-excluded folders below them ride as full-width
+                    // rows, so a short screen at a large font can still reach
+                    // all of it. Two scrollers in one dialog, or rows a
+                    // non-scrolling column could clip, are how the last two
+                    // layouts here failed.
+                    AlbumGrid(
+                        albums = albums,
+                        excluded = o.excludedBuckets,
+                        onToggle = { name, include ->
+                            vm.setExcludedBuckets(
+                                if (include) o.excludedBuckets - name
+                                else o.excludedBuckets + name
+                            )
+                        },
+                        maxHeight = FolderListMaxHeight,
+                        testTag = ListTags.ROWS,
+                        header = if (included > 0 && tickedBytes != null) {
+                            {
                                 Text(
                                     stringResource(
-                                        R.string.onb_albums_size, Formats.bytes(bytes)
+                                        R.string.onb_albums_size,
+                                        Formats.bytes(tickedBytes ?: 0L)
                                     ),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
-                        }
-                    }
-                    items(buckets) { bucket ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .toggleable(
-                                    value = bucket !in o.excludedBuckets,
-                                    onValueChange = { include ->
-                                        val next = if (include) o.excludedBuckets - bucket
-                                        else o.excludedBuckets + bucket
-                                        vm.setExcludedBuckets(next)
-                                    },
-                                    role = Role.Checkbox
-                                )
-                        ) {
-                            Checkbox(
-                                checked = bucket !in o.excludedBuckets,
-                                onCheckedChange = null
-                            )
-                            Text(
-                                bucket,
-                                maxLines = 1,
-                                overflow = TextOverflow.MiddleEllipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                    // Folders holding another pipeline's compressed copies.
-                    // Shown so the absence is explained, but never selectable:
-                    // re-compressing copies of copies helps nobody. There are
-                    // only ever a handful of these, so they stay together in
-                    // one entry rather than being spread over the list.
-                    if (lockedBuckets.isNotEmpty()) {
-                        item(key = "locked") {
-                            Column(Modifier.fillMaxWidth()) {
-                                Spacer(Modifier.height(12.dp))
-                                Text(
-                                    stringResource(R.string.folders_auto_excluded),
-                                    style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                for ((bucket, reason) in lockedBuckets) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 6.dp)
-                                    ) {
-                                        Checkbox(
-                                            checked = false,
-                                            enabled = false,
-                                            onCheckedChange = null
+                            }
+                        } else {
+                            null
+                        },
+                        footer = if (lockedBuckets.isNotEmpty()) {
+                            {
+                                // Folders holding another pipeline's
+                                // compressed copies. Named so the absence is
+                                // explained; never tickable, because
+                                // re-compressing copies of copies helps
+                                // nobody.
+                                Column(Modifier.fillMaxWidth()) {
+                                    Text(
+                                        stringResource(R.string.folders_auto_excluded),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                    for ((bucket, _) in lockedBuckets) {
+                                        Text(
+                                            bucket,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.MiddleEllipsis
                                         )
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                bucket,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.MiddleEllipsis,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                            Text(
-                                                stringResource(
-                                                    when (reason) {
-                                                        ScanSources.Reason.OUR_OUTPUT ->
-                                                            R.string.folders_reason_ours
-                                                        ScanSources.Reason.HIDDEN ->
-                                                            R.string.folders_reason_hidden
-                                                        else ->
-                                                            R.string.folders_reason_compressed
-                                                    }
-                                                ),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.outline
-                                            )
-                                        }
                                     }
                                 }
                             }
+                        } else {
+                            null
                         }
-                    }
+                    )
                 }
             }
         )

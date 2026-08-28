@@ -1208,6 +1208,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val buckets = MutableStateFlow<List<String>>(emptyList())
 
     /**
+     * The same albums with their covers and counts, for the pickers. Filled
+     * by the same single scan as [buckets] - two flows, one query.
+     */
+    val albums = MutableStateFlow<List<MediaScanner.Album>>(emptyList())
+
+    /**
      * Whether the album list has actually been read yet.
      *
      * Without it an empty list has two meanings and the screen has to guess.
@@ -1255,7 +1261,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadBuckets() {
         viewModelScope.launch(Dispatchers.IO) {
             val scanner = MediaScanner(ctx, db)
-            buckets.value = runCatching { scanner.buckets() }.getOrDefault(emptyList())
+            val found = runCatching { scanner.albums() }.getOrDefault(emptyList())
+            albums.value = found
+            buckets.value = found.map { it.name }
             lockedBuckets.value = runCatching {
                 scanner.excludedBucketReasons().toList().sortedBy { it.first }
             }.getOrDefault(emptyList())

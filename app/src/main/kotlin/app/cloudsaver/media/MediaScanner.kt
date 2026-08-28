@@ -544,6 +544,27 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
     private fun folderKey(f: Found): String = f.relativePath ?: f.bucket ?: ""
 
     /** Distinct gallery folders the user may actually choose between. */
-    fun buckets(): List<String> =
-        excludeOutputFolders(queryAll()).mapNotNull { it.bucket }.distinct().sorted()
+    fun buckets(): List<String> = albums().map { it.name }
+
+    /**
+     * One entry per gallery album: its name, how many files it holds, and the
+     * newest file in it to stand as the cover. The cover is what turns the
+     * album picker from a list of words into the gallery someone actually
+     * recognises - "Camera" is a name, the photo taken this morning is the
+     * album.
+     */
+    data class Album(val name: String, val coverUri: String?, val count: Int)
+
+    fun albums(): List<Album> =
+        excludeOutputFolders(queryAll())
+            .filter { it.bucket != null }
+            .groupBy { it.bucket!! }
+            .map { (name, files) ->
+                Album(
+                    name = name,
+                    coverUri = files.maxByOrNull { it.dateModified }?.uri,
+                    count = files.size
+                )
+            }
+            .sortedBy { it.name.lowercase() }
 }

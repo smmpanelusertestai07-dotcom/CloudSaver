@@ -86,7 +86,7 @@ jobs:
           set -eu
           VERSION=$(./gradlew -q printVersionName --no-daemon | tail -1)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          echo "APK_NAME=CloudSaver-$VERSION.apk" >> "$GITHUB_ENV"
+          echo "APK_NAME=CloudSaver-v$VERSION-release.apk" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
           UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
           [ -f "$UNSIGNED" ] || UNSIGNED=app/build/outputs/apk/release/app-release.apk
@@ -323,10 +323,10 @@ jobs:
           set -eu
           TAG="v${VERSION}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" "CloudSaver-${VERSION}.apk" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" "CloudSaver-v${VERSION}-release.apk" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$TAG" --notes-file RELEASE_NOTES.md --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" "CloudSaver-${VERSION}.apk" \
+            gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \
               --title "CloudSaver $TAG" \
               --notes-file RELEASE_NOTES.md \
               --repo "$GITHUB_REPOSITORY"

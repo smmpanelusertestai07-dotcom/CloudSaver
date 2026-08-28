@@ -241,7 +241,13 @@ class SetupFlowTest {
     fun `About states the requirement plainly, with nothing hidden behind Advanced`() {
         val help = src("ui/screens/HelpScreens.kt")
         assertTrue(help.contains("about_requires_min"))
-        assertTrue(help.contains("about_tech_title"))
+        // The network promise stays on the page; the build-chain facts that
+        // once filled a "Technical details" card (package name, build number,
+        // signing fingerprint) moved to the release notes, where the person
+        // comparing a downloaded file actually is.
+        assertTrue(help.contains("about_network_none"))
+        assertFalse("build-chain facts left About", help.contains("about_tech_title"))
+        assertFalse("the fingerprint left About", help.contains("EXPECTED_CERT_SHA256"))
         assertTrue(help.contains("about_permissions_title"))
         assertFalse("the Advanced expander is gone", help.contains("about_advanced"))
         val requires = stringsNamed("about_requires_min").single().second
