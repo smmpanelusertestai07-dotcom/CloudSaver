@@ -909,24 +909,64 @@ fun WarningNote(text: String) {
     }
 }
 
-/** Friendly empty state instead of a blank screen. */
 /**
- * The app's own mark, exactly as the launcher draws it.
+ * How much a launcher enlarges an adaptive icon's layers: the artwork is
+ * drawn on a 108 unit canvas of which only the middle 72 are guaranteed to
+ * survive the mask, so every launcher scales by 108/72 and crops. A layer
+ * drawn at its natural size instead keeps that safe-zone padding as visible
+ * empty space, which is exactly why the mark inside the app looked smaller
+ * than the same icon on the home screen.
+ */
+private const val AdaptiveIconScale = 1.5f
+
+/**
+ * The app's own mark, composed the way the launcher composes it.
  *
- * The flat vector that used to stand in for it here is the notification
- * icon: the system tints that to one colour, so it has no gradient, no
- * gloss and no navy behind the cloud. Inside the app there is nothing to
- * tint, so the real artwork goes in and the icon on the home screen and the
- * icon on the Home screen are finally the same object.
+ * It used to be a separate flat PNG - a pre-baked tile with transparent
+ * margin around it and the glyph sitting small in the middle, drifting from
+ * the real icon every time either was touched. Now the two adaptive layers
+ * the launcher itself uses are drawn here, scaled by the launcher's own
+ * factor and clipped to a rounded tile, so the icon in the app and the icon
+ * on the home screen are one object with one source of truth. The corner
+ * radius is a share of the size rather than a fixed dp, so the shape reads
+ * the same at 34 dp on Home as it does at 64 dp in an empty state.
  */
 @Composable
 fun BrandMark(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.Image(
-        painter = painterResource(app.cloudsaver.R.drawable.ic_brand_mark),
-        contentDescription = null,
-        modifier = modifier.size(size)
-    )
+    Box(
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(percent = AdaptiveIconCornerPercent))
+    ) {
+        androidx.compose.foundation.Image(
+            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_background),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .matchParentSize()
+                .scale(AdaptiveIconScale)
+        )
+        androidx.compose.foundation.Image(
+            painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier
+                .matchParentSize()
+                .scale(AdaptiveIconScale)
+        )
+    }
 }
+
+/**
+ * The corner of the tile, as a percentage of its own size.
+ *
+ * Android's own icon mask is a squircle with roughly a quarter of the width
+ * taken off each corner. A rounded rectangle at the same share sits in the
+ * same family without shipping a second mask to keep in step.
+ */
+private const val AdaptiveIconCornerPercent = 24
+
+/** Friendly empty state instead of a blank screen. */
 
 @Composable
 fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
