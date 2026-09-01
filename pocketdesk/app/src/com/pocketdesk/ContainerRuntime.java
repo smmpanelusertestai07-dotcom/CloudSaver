@@ -164,7 +164,7 @@ final class ContainerRuntime {
                 // pointer stays the old X11 cross instead of an arrow.
                 + "xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata "
                 // On-screen toasts and dialogs: an app that fails to start has to be able to say so.
-                + "dunst libnotify-bin zenity; "
+                + "dunst libnotify-bin zenity xdotool; "
                 // A desktop clock is only useful in the user's own time.
                 + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                 + "echo 'Asia/Kolkata' > /etc/timezone; "
@@ -176,6 +176,12 @@ final class ContainerRuntime {
                 // that opens in a couple of seconds on a phone; Firefox is a separate choice in
                 // the app list for anyone who wants it.
                 + "apt-get install -y --no-install-recommends epiphany-browser || true; "
+                // GNOME Web's start page renders live thumbnails, which is the slowest possible
+                // first thing to draw on a phone -- and what put "Page Unresponsive" on screen.
+                + "mkdir -p /usr/share/glib-2.0/schemas; "
+                + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n' "
+                + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
+                + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                 + "chown -R coder:coder /home/coder; "
                 + "apt-get clean; rm -rf /var/lib/apt/lists/*";
     }

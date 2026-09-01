@@ -134,7 +134,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         });
         toolbarRow.addView(fitButton, barItem(96));
 
-        pointerMode = toolButton("Touchpad", R.drawable.ic_mouse);
+        pointerMode = toolButton("Mouse", R.drawable.ic_mouse);
         pointerMode.setOnClickListener(v -> togglePointerMode());
         toolbarRow.addView(pointerMode, barItem(124));
 
@@ -307,13 +307,25 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
     }
 
+    /** A slow phone's first desktop start can take well over a minute, so wait that long. */
+    private static final int CONNECT_ATTEMPTS = 600;
+
     private void connectWithRetry() {
         connectionThread = new Thread(() -> {
             String lastError = "Waiting for local display…";
-            for (int attempt = 0; attempt < 100 && !finished; attempt++) {
+            long startedAt = SystemClock.elapsedRealtime();
+            for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
                 if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
-                    if (attempt == 35 && !LinuxService.isDesktopRunning()) {
-                        desktop.onDisconnected("Desktop did not start · return and retry");
+                    if (!LinuxService.isDesktopRunning()) {
+                        desktop.onDisconnected("Desktop stopped · return and retry");
+                        return;
+                    }
+                    // Counting up beats a fixed sentence: it shows the wait is still going
+                    // somewhere, instead of announcing a failure that has not happened.
+                    if (attempt % 8 == 0) {
+                        long seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000L;
+                        desktop.onDisconnected("Starting the desktop · " + seconds
+                                + "s · the first start is the slow one");
                     }
                     SystemClock.sleep(250);
                     continue;
@@ -345,7 +357,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         VncView.PointerMode next = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD
                 ? VncView.PointerMode.DIRECT : VncView.PointerMode.TOUCHPAD;
         desktop.setPointerMode(next);
-        pointerMode.setText(next == VncView.PointerMode.TOUCHPAD ? "Touchpad" : "Direct touch");
+        boolean mouse = next == VncView.PointerMode.TOUCHPAD;
+        // "Touchpad" and "Direct touch" named the mechanism, not what it does to the arrow.
+        pointerMode.setText(mouse ? "Mouse" : "Finger");
+        android.widget.Toast.makeText(this, mouse
+                        ? "Mouse: drag anywhere to move the arrow, tap to click"
+                        : "Finger: the arrow jumps to wherever you touch",
+                android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void showKeyboard() {

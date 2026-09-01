@@ -78,16 +78,23 @@ final class LinuxApps {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt.
             new App("essentials", "Web browser and basics",
-                    "GNOME Web, icon theme, arrow cursor, Indian time and on-screen messages.",
+                    "GNOME Web browser, icons, arrow cursor, Indian time and on-screen messages.",
                     R.drawable.ic_network, R.drawable.logo_web, "about 150 MB", 700 * MB,
                     "2–6 min", null,
                     "/usr/bin/epiphany",
                     "apt-get update; apt-get install -y --no-install-recommends "
                             + "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
                             + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
-                            // An app that fails to open has to be able to say so on screen.
-                            + "dunst libnotify-bin zenity "
+                            // An app that fails to open has to be able to say so on screen, and
+                            // xdotool is how the launcher knows a window really appeared.
+                            + "dunst libnotify-bin zenity xdotool "
                             + "epiphany-browser; "
+                            // GNOME Web's start page renders live thumbnails, the slowest possible
+                            // first thing to draw here -- that is what showed "Page Unresponsive".
+                            + "mkdir -p /usr/share/glib-2.0/schemas; "
+                            + "printf '[org.gnome.Epiphany]\nhomepage-url=\047about:blank\047\n' "
+                            + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
+                            + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
 

@@ -52,11 +52,20 @@ if chromium_flags; then
          --disable-dev-shm-usage --disable-gpu
          # Without a keyring daemon the secret-service lookup blocks until it times out, which
          # reads as "the app never opened".
-         --password-store=basic)
+         --password-store=basic
+         # A phone has a fraction of a laptop's memory, and an Electron app that asks for more
+         # than there is gets killed. These keep it inside what is actually available.
+         --js-flags=--max-old-space-size=512
+         --renderer-process-limit=2
+         --disable-extensions
+         --disable-background-networking)
 fi
+
+free_mb() { awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null; }
 
 {
   echo "--- $(date '+%Y-%m-%d %I:%M:%S %p') ---"
+  echo "free memory at launch: $(free_mb) MB"
   echo "launching: $target ${flags[*]:-} $*"
 } > "$log" 2>/dev/null
 
@@ -65,12 +74,39 @@ notify normal "Opening $label" "The first start can take up to a minute."
 "$target" ${flags[@]+"${flags[@]}"} "$@" >> "$log" 2>&1 &
 pid=$!
 
-# Long enough for a cold Electron start to put a window up. Still running by then means it worked.
-for _ in $(seq 1 24); do
+# A window on screen is the only real proof it started. A big Electron app on a phone can take
+# a couple of minutes to get there, so keep watching and keep saying so, rather than declaring
+# success at twelve seconds and leaving the user staring at an empty desktop.
+has_window() {
+  command -v xdotool >/dev/null 2>&1 || return 1
+  # _NET_WM_PID first, since that is exact; the class is the fallback for apps that reparent.
+  [ -n "$(xdotool search --onlyvisible --pid "$pid" 2>/dev/null)" ] && return 0
+  [ -n "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
+}
+
+opened=0
+for elapsed in $(seq 1 150); do
   kill -0 "$pid" 2>/dev/null || break
-  sleep 0.5
+  if has_window; then
+    opened=1
+    break
+  fi
+  case "$elapsed" in
+    30|60|90|120)
+      notify normal "$label is still starting" "$elapsed seconds so far · $(free_mb) MB free" ;;
+  esac
+  sleep 1
 done
+
+if [ "$opened" = 1 ]; then
+  exit 0
+fi
 if kill -0 "$pid" 2>/dev/null; then
+  # Alive but nothing drawn. On a phone that is almost always memory, and saying so beats silence.
+  if command -v xdotool >/dev/null 2>&1; then
+    notify critical "$label has no window yet" \
+      "Still running after 150 seconds with $(free_mb) MB free. Close other apps, or use the browser instead."
+  fi
   exit 0
 fi
 
