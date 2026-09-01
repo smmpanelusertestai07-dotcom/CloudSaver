@@ -49,16 +49,25 @@ chromium_flags() {
 flags=()
 if chromium_flags; then
   flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
-         --disable-dev-shm-usage --disable-gpu
+         --disable-dev-shm-usage
+         # Every extra process costs far more here than on a PC: PRoot traces each one, so a
+         # cold start that takes seconds on a laptop can take minutes with the usual four or
+         # five. These collapse Chromium down to the fewest processes it can run with.
+         --no-zygote
+         --in-process-gpu
+         --renderer-process-limit=1
+         --disable-gpu --disable-gpu-compositing --disable-software-rasterizer
+         --ozone-platform=x11
          # Without a keyring daemon the secret-service lookup blocks until it times out, which
          # reads as "the app never opened".
          --password-store=basic
          # A phone has a fraction of a laptop's memory, and an Electron app that asks for more
-         # than there is gets killed. These keep it inside what is actually available.
+         # than there is gets killed.
          --js-flags=--max-old-space-size=512
-         --renderer-process-limit=2
          --disable-extensions
-         --disable-background-networking)
+         --disable-background-networking
+         --no-first-run
+         --disable-crash-reporter)
 fi
 
 free_mb() { awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null; }
@@ -99,13 +108,18 @@ for elapsed in $(seq 1 150); do
 done
 
 if [ "$opened" = 1 ]; then
+  echo "window appeared after ${elapsed}s" >> "$log"
   exit 0
 fi
 if kill -0 "$pid" 2>/dev/null; then
-  # Alive but nothing drawn. On a phone that is almost always memory, and saying so beats silence.
   if command -v xdotool >/dev/null 2>&1; then
+    # Alive but nothing drawn. Say so -- silence is what made this unfixable before.
+    echo "still running after 150s with no window · $(free_mb) MB free" >> "$log"
     notify critical "$label has no window yet" \
-      "Still running after 150 seconds with $(free_mb) MB free. Close other apps, or use the browser instead."
+      "Still running after 150 seconds, $(free_mb) MB free. Leave it, or check Why an app didn't open."
+  else
+    # Without xdotool a window cannot be confirmed either way, so do not claim there is none.
+    echo "still running after 150s · window state unknown (xdotool not installed)" >> "$log"
   fi
   exit 0
 fi

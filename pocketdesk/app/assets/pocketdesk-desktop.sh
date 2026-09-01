@@ -15,6 +15,12 @@ export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
+# Electron and GTK both look for this. Unset, they fall back to slow paths and print warnings
+# that end with an app sitting there having drawn nothing.
+export XDG_RUNTIME_DIR=/tmp/runtime-coder
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+# Chromium wants shared memory to exist even when told not to rely on it.
+mkdir -p /dev/shm 2>/dev/null && chmod 1777 /dev/shm 2>/dev/null || true
 cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \

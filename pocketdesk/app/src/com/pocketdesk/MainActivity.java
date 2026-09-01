@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.5.2";
+    static final String VERSION = "1.6.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -74,6 +74,7 @@ public final class MainActivity extends Activity {
     private Ui.Row batteryOptimisationRow;
     private Ui.Row autoStartRow;
     private Ui.Row crashRow;
+    private Ui.Row appLogRow;
     private boolean askBatteryAfterNotifications;
 
     private final java.util.Map<String, Ui.Row> appRows = new java.util.LinkedHashMap<>();
@@ -467,6 +468,12 @@ public final class MainActivity extends Activity {
         card.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
+
+        appLogRow = new Ui.Row(this, R.drawable.ic_terminal, "Why an app didn't open",
+                "The report Linux wrote the last time you tapped an app.",
+                R.drawable.ic_chevron, dark, v -> showAppLogs());
+        appLogRow.setVisibility(AppLogs.any(this) ? View.VISIBLE : View.GONE);
+        card.addView(appLogRow, Ui.matchWrap(this, 8));
 
         crashRow = new Ui.Row(this, R.drawable.ic_help, "Last error report",
                 "Something went wrong earlier. Tap to view or share it.",
@@ -940,6 +947,9 @@ public final class MainActivity extends Activity {
 
     /** A report the user has not seen yet is worth interrupting for; an old one just sits in the list. */
     private void showCrashRowIfNeeded() {
+        if (appLogRow != null) {
+            appLogRow.setVisibility(AppLogs.any(this) ? View.VISIBLE : View.GONE);
+        }
         if (crashRow == null) return;
         long recordedAt = Crash.recordedAt(this);
         crashRow.setVisibility(recordedAt == 0 ? View.GONE : View.VISIBLE);
@@ -947,6 +957,32 @@ public final class MainActivity extends Activity {
         if (preferences.getLong(ContainerRuntime.KEY_CRASH_SEEN, 0L) == recordedAt) return;
         preferences.edit().putLong(ContainerRuntime.KEY_CRASH_SEEN, recordedAt).apply();
         showCrashReport();
+    }
+
+    /**
+     * What Linux printed when an app was launched. Without this the only symptom of a failed
+     * start is that nothing happened, which is not something anyone can act on.
+     */
+    private void showAppLogs() {
+        java.io.File[] logs = AppLogs.newestFirst(this);
+        if (logs.length == 0) {
+            showMessage("Nothing to show yet",
+                    "Open the desktop and tap an app first. Whatever it prints is kept here.");
+            return;
+        }
+        String report = AppLogs.readAll(this);
+        String shown = report.length() > 4000 ? report.substring(0, 4000) + "\u2026" : report;
+        dialogBuilder()
+                .setTitle("Why an app didn't open")
+                .setMessage(shown)
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Share", (dialog, which) -> {
+                    Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, "PocketDesk app report")
+                            .putExtra(Intent.EXTRA_TEXT, report);
+                    launch(Intent.createChooser(share, "Share app report"));
+                })
+                .show();
     }
 
     /** The recorded stack is the difference between "keeps stopping" and a fixable report. */

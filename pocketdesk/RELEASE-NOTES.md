@@ -1,3 +1,36 @@
+# PocketDesk 1.6.0
+
+The desktop apps are the point of this, so this release is about making the Electron ones start,
+and about never again being unable to see why one did not.
+
+## Fewer processes, because PRoot charges for every one
+
+Chromium normally runs five or more processes: browser, zygote, GPU, renderers, utility. PRoot
+traces every syscall of every one of them, so a cold start that takes six seconds on a laptop can
+take minutes on a phone — which is exactly the "I waited three minutes and nothing opened"
+symptom. Every Chromium-based app is now started collapsed down to the fewest processes it can
+run with:
+
+`--no-zygote --in-process-gpu --renderer-process-limit=1 --disable-gpu --disable-gpu-compositing
+--disable-software-rasterizer --ozone-platform=x11`, on top of the sandbox flags from 1.5.0.
+
+Two things the session was missing are also set now: **`XDG_RUNTIME_DIR`**, which Electron and GTK
+both look for and fall back to slow paths without, and **`/dev/shm`**, which Chromium wants to
+exist even when told not to depend on it.
+
+## One tap to see why an app didn't open
+
+New row on the home screen: **Why an app didn't open**. It shows the report Linux wrote the last
+time you tapped an app — free memory at launch, the exact command, everything the app printed, and
+whether a window ever appeared — and it can be shared. No file manager, no terminal.
+
+The launcher no longer claims success at twelve seconds because a process is alive. It watches for
+a real window for 150 seconds, says how it is going at thirty-second marks with the free memory,
+and writes the outcome to the report either way. Where `xdotool` is not installed it says the
+window state is unknown rather than guessing.
+
+---
+
 # PocketDesk 1.5.0
 
 ChatGPT opens, the browser opens in a couple of seconds, every app row carries the vendor's own
