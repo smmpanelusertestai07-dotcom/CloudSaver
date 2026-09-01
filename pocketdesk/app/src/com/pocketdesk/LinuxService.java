@@ -250,7 +250,7 @@ public final class LinuxService extends Service {
             throw new IOException(app.name + " did not install (exit " + code
                     + "). Check the connection and free space, then try again.");
         }
-        ContainerRuntime.writeAppShortcut(this, app);
+        ContainerRuntime.refreshDesktopEntries(this);
         // Refresh the desktop's own menu so the new app is there without a restart.
         try {
             runTracked("/usr/local/bin/pocketdesk-menu || true", null);
@@ -269,9 +269,6 @@ public final class LinuxService extends Service {
         // Refresh the desktop scripts and every installed app's launcher on each start, so a
         // container set up by an older version picks up the current desktop without reinstalling.
         ContainerRuntime.writeDesktopScripts(this);
-        for (LinuxApps.App app : LinuxApps.CATALOG) {
-            if (ContainerRuntime.isAppInstalled(this, app)) ContainerRuntime.writeAppShortcut(this, app);
-        }
         status("Opening desktop", "Starting your local Linux screen…", -1, true, false);
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         int dpi = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)

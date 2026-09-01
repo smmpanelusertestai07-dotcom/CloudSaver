@@ -6,6 +6,12 @@ GEOMETRY=${1:-1280x720}
 DPI=${2:-160}
 export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8
 export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share"
+# PRoot cannot provide the process isolation these sandboxes need, so they fail closed and take
+# the app with them -- Firefox's "Gah. Your tab just crashed", Electron refusing to start at all.
+export MOZ_FAKE_NO_SANDBOX=1 MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1
+export MOZ_DISABLE_RDD_SANDBOX=1 MOZ_DISABLE_SOCKET_PROCESS=1 MOZ_ENABLE_WAYLAND=0
+export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1
+export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
 cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
@@ -29,7 +35,7 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
 # script - what do you want to do with it?" prompt instead of just launching the app.
-printf '[config]\nquick_exec=1\nsingle_click=0\nconfirm_del=1\nterminal=lxterminal\n' \
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
 printf '[*]\nwallpaper_mode=stretch\nwallpaper=/usr/share/backgrounds/pocketdesk.png\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \
@@ -44,6 +50,32 @@ if [ ! -f "$HOME/.config/openbox/rc.xml" ] && [ -f /etc/xdg/openbox/rc.xml ]; th
   sed -i 's|<size>[0-9]*</size>|<size>11</size>|g' "$HOME/.config/openbox/rc.xml"
   sed -i 's|<applications>|<applications>\n    <application class="*"><maximized>yes</maximized></application>|' \
     "$HOME/.config/openbox/rc.xml"
+fi
+
+# Firefox: no sandbox, no separate content processes, software rendering.
+FIREFOX_PROFILE=$(find "$HOME/.mozilla/firefox" -maxdepth 1 -name '*.default*' -type d 2>/dev/null | head -n 1)
+if [ -z "${FIREFOX_PROFILE:-}" ] && command -v firefox >/dev/null 2>&1; then
+  mkdir -p "$HOME/.mozilla/firefox/pocketdesk.default"
+  printf '[Profile0]\nName=default\nIsRelative=1\nPath=pocketdesk.default\nDefault=1\n\n[General]\nStartWithLastProfile=1\nVersion=2\n' \
+    > "$HOME/.mozilla/firefox/profiles.ini"
+  FIREFOX_PROFILE="$HOME/.mozilla/firefox/pocketdesk.default"
+fi
+if [ -n "${FIREFOX_PROFILE:-}" ]; then
+  cat > "$FIREFOX_PROFILE/user.js" <<'PREFS'
+user_pref("security.sandbox.content.level", 0);
+user_pref("browser.tabs.remote.autostart", false);
+user_pref("fission.autostart", false);
+user_pref("dom.ipc.processCount", 1);
+user_pref("gfx.webrender.software", true);
+user_pref("layers.acceleration.disabled", true);
+user_pref("media.hardware-video-decoding.enabled", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("toolkit.telemetry.reportingpolicy.firstRun", false);
+user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.download.dir", "/home/coder/Downloads");
+user_pref("browser.download.folderList", 2);
+PREFS
 fi
 
 /usr/local/bin/pocketdesk-menu || true

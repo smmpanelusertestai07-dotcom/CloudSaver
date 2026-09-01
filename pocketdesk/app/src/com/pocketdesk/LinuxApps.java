@@ -85,15 +85,20 @@ final class LinuxApps {
                             + "apt-get update; apt-get install -y --no-install-recommends firefox"),
 
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
-                    R.drawable.ic_chat, "about 700 MB", 2500L * 1024 * 1024, "5\u201315 min",
+                    R.drawable.ic_chat, "700 MB download, 1.3 GB installed", 4 * GB, "10\u201325 min",
                     "Computer Use is not offered on Linux. Your account's usage limits still apply.",
                     "/usr/bin/chatgpt",
+                    // The package registers OpenAI's own apt repository, so once it is on the
+                    // system an upgrade is the smaller and faster path than a fresh download.
                     "apt-get update; "
+                            + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
+                            + "apt-get install -y --only-upgrade chatgpt; else "
+                            + "apt-get install -y --no-install-recommends curl ca-certificates; "
                             + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
-                            + "apt-get install -y --no-install-recommends /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb"),
+                            + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi"),
 
             new App("claude", "Claude Desktop", "Anthropic's desktop app. Includes Claude Code.",
-                    R.drawable.ic_terminal, "about 600 MB", 2500L * 1024 * 1024, "5\u201315 min",
+                    R.drawable.ic_terminal, "about 600 MB", 3 * GB, "10\u201320 min",
                     "Linux support is in beta. Cowork needs hardware virtualisation, which a phone "
                             + "container cannot provide, so that tab stays unavailable.",
                     "/usr/bin/claude-desktop",
@@ -148,17 +153,4 @@ final class LinuxApps {
         return null;
     }
 
-    /** Electron apps cannot use their own sandbox under PRoot, so they are launched without it. */
-    static String launcherScript(String executable) {
-        String name = executable.substring(executable.lastIndexOf('/') + 1);
-        return "#!/bin/bash\n"
-                + "export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8\n"
-                + "export LIBGL_ALWAYS_SOFTWARE=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1\n"
-                + "for candidate in \"" + executable + "\" \"/usr/bin/" + name + "\" "
-                + "\"/opt/" + name + "/" + name + "\" \"$(command -v " + name + " 2>/dev/null)\"; do\n"
-                + "  [ -n \"$candidate\" ] && [ -x \"$candidate\" ] || continue\n"
-                + "  exec \"$candidate\" --no-sandbox --disable-gpu --disable-dev-shm-usage \"$@\"\n"
-                + "done\n"
-                + "lxterminal -e bash -lc 'echo \"" + name + " is not installed yet.\"; read -r -p \"Press Enter\"'\n";
-    }
 }

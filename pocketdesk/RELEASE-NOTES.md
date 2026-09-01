@@ -1,58 +1,58 @@
-# PocketDesk 1.3.0
+# PocketDesk 1.4.0
 
-The container now boots a desktop that behaves like a computer: wallpaper, arrow cursor, real
-icons, a browser, and a clock in your own time.
+The browser works, apps carry their own real logos, and the desktop reads like a small PC rather
+than three oversized windows.
 
-## It looks and works like a computer
+## Firefox stopped crashing
 
-- **Firefox is installed with Linux.** A computer without a browser is not much of a computer, so
-  it now comes with one, from Mozilla's own repository (Ubuntu's `firefox` package is a snap shim
-  that cannot run in a container).
-- **Wallpaper** instead of flat black.
-- **A normal arrow cursor.** The old X11 cross is gone: `dmz-cursor-theme` plus an Adwaita cursor
-  default, applied to both X and GTK.
-- **Real icons.** Every launcher was a generic blue diamond because no icon theme was installed —
-  `adwaita-icon-theme` is now part of the setup.
-- **The clock reads 06:06 pm**, not 18:06, and the timezone is Asia/Kolkata.
-- **A proper taskbar**: app launchers, the window list, a system tray and that clock, at 48px with
-  34px icons so it is usable with a finger.
-- Home is laid out like one: **Projects** for your work and **Downloads** for what the browser
-  saves, both shown in the file manager and the desktop.
+Every tab died with "Gah. Your tab just crashed." Firefox isolates each tab in a sandboxed content
+process, and PRoot cannot give that process the isolation it asks for — so it fails closed and
+takes the tab with it. Fixed on both sides:
 
-## Fixed
+- The session exports `MOZ_FAKE_NO_SANDBOX`, `MOZ_DISABLE_CONTENT_SANDBOX`, and the GMP, RDD and
+  socket-process equivalents, plus `ELECTRON_DISABLE_SANDBOX` for the AI apps, which fail the same
+  way.
+- A Firefox profile is created with `security.sandbox.content.level=0`, `fission.autostart=false`,
+  `browser.tabs.remote.autostart=false` and `dom.ipc.processCount=1`, so pages render in the main
+  process instead of a sandbox that cannot exist here. Software rendering is forced, telemetry
+  prompts are off, and downloads go to **Downloads**.
 
-- **Tapping a desktop icon opened an "Execute File" prompt** asking whether to run the script.
-  That is PCManFM refusing to trust a `.desktop` file; `quick_exec` is now on, so an icon just
-  opens its app.
-- **Rotation needed the screen reopened.** "Automatic" used `SCREEN_ORIENTATION_USER`, which obeys
-  the phone's rotation lock. It now follows the sensor directly, so turning the phone turns the
-  desktop straight away and the desktop resizes to match.
-- **The minus button did nothing.** Once the desktop matches the screen exactly, fit and fill are
-  the same size, and the old floor of 100% left nothing to zoom out to. The floor is now 40%.
-- **Install progress showed a wall of numbers** — raw `curl` output. Transfer lines are recognised
-  and dropped; the phase, elapsed time and expected duration remain.
-- App launchers now search several locations for the real binary instead of one fixed path, and
-  say so plainly in a terminal if an app is not installed.
+## Real logos, real launch commands
 
-## For a Linux you already installed
+The desktop used hand-made entries with a generic icon, which is why everything was the same blue
+diamond and why ChatGPT would not open — the entry guessed at a command instead of using the one
+its packager wrote.
 
-New setups get all of the above. An existing container catches up through a new **Desktop
-essentials** row at the top of Linux apps — browser, icons, cursor and Indian time in one tap.
-Nothing is rebuilt and nothing is lost.
+The desktop now builds itself from the `.desktop` files the packages actually install: real name,
+real icon, real `Exec`, for every installed application. Nothing is hand-maintained, so nothing can
+drift. `%U`-style placeholders are stripped and hidden entries skipped, the right-click menu lists
+everything installed, and the panel and desktop show the useful ones first.
 
-## Where your files are
+## A PC-sized desktop
 
-Now stated in About: Linux lives at `/home/coder`, inside this app's own private storage. **Projects**
-holds your work, **Downloads** holds what the browser saves. Removing Linux deletes both, so copy
-anything you want to keep out first.
+The default density drops from 168 dpi to **120**, so noticeably more fits on screen — the point of
+a PC-like layout. The setting is now **Compact · PC-like (96)**, **Normal (120)** and **Large (144)**.
 
-## Also
+## Touch
 
-Every button in the desktop toolbar now carries an icon *and* a word — Home, Fill/Fit, Touchpad,
-Keyboard, Rotate, Full screen — and the key row gains Home and End.
+- **One tap opens an icon.** PCManFM was in double-click mode, a mouse convention that a finger
+  should not have to imitate.
+- The touchpad pointer is drawn as **an arrow with a dark outline**, not a floating ring, so it
+  stays readable over the wallpaper.
+
+## ChatGPT
+
+The package is genuine — `Package: chatgpt`, `Maintainer: OpenAI`, arm64, and its `postinst`
+registers OpenAI's own signed apt repository. Two things were wrong on our side:
+
+- It needs **1.3 GB installed** on top of a 700 MB download; the free-space check asked for 2.5 GB
+  and now asks for 4 GB, with the row stating both figures.
+- Updates now go through `apt-get --only-upgrade` via the repository the package registered,
+  instead of re-downloading 700 MB every time.
 
 ## Verified in this build
 
 - All five checks pass
+- The ChatGPT package's control metadata was read directly from the published `.deb` to confirm
+  its name, architecture, installed size and repository behaviour
 - javac against API 35 (min 29), D8, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
-- Wallpaper and both desktop scripts confirmed packaged in the APK

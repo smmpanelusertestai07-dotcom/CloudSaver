@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.3.0";
+    static final String VERSION = "1.4.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -530,8 +530,10 @@ public final class MainActivity extends Activity {
     private static final String[] TIMER_LABELS = {"Off", "1 hour", "2 hours", "4 hours", "6 hours"};
     private static final int[] TIMER_VALUES = {0, 60, 120, 240, 360};
 
-    private static final String[] SCALE_LABELS = {"Normal", "Large", "Extra large"};
-    private static final int[] SCALE_VALUES = {140, 168, 200};
+    // Lower dpi means more of the desktop fits, which is what makes it read like a PC screen
+    // rather than three oversized windows.
+    private static final String[] SCALE_LABELS = {"Compact · PC-like", "Normal", "Large"};
+    private static final int[] SCALE_VALUES = {96, 120, 144};
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];

@@ -39,11 +39,8 @@ public final class LinuxAppsTest {
         require(chatgpt.installCommand().contains("/latest/"), "chatgpt must track the latest build");
         require(LinuxApps.byId("nope") == null, "byId must return null for an unknown id");
 
-        Path launcher = work.resolve("launcher.sh");
-        Files.write(launcher, LinuxApps.launcherScript("/usr/bin/chatgpt").getBytes(StandardCharsets.UTF_8));
-        Process check = new ProcessBuilder("bash", "-n", launcher.toString())
-                .redirectErrorStream(true).start();
-        require(check.waitFor() == 0, "the launcher script is not valid shell");
+        // Apps are launched from their own packaged .desktop entry now, so there is no
+        // hand-written launcher left to check here.
 
         System.out.println("PASS LinuxAppsTest (" + LinuxApps.CATALOG.length + " apps)");
     }

@@ -31,7 +31,8 @@ final class ContainerRuntime {
     static final String KEY_CRASH_SEEN = "crash_seen_at";
     static final String KEY_DESKTOP_INSTALLED = "desktop_installed";
     static final String KEY_UI_SCALE = "ui_scale_dpi";
-    static final int DEFAULT_UI_SCALE = 168;
+    /** 120 dpi reads like a small PC screen; 168 filled the display with a few huge windows. */
+    static final int DEFAULT_UI_SCALE = 120;
     /** Long side of the desktop framebuffer; keeps memory sane on a 4 GB phone. */
     static final int GEOMETRY_CAP = 1600;
 
@@ -187,9 +188,6 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-desktop.sh", "usr/local/bin/pocketdesk-desktop");
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
-        writeShortcut(context, "Browser", "web-browser", "firefox");
-        writeShortcut(context, "Files", "system-file-manager", "pcmanfm /home/coder/Projects");
-        writeShortcut(context, "Terminal", "utilities-terminal", "lxterminal");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -210,26 +208,9 @@ final class ContainerRuntime {
         Os.chmod(target.getAbsolutePath(), asset.endsWith(".sh") ? 0755 : 0644);
     }
 
-    /** A desktop icon plus a launcher wrapper, used for every app in the catalog. */
-    static void writeAppShortcut(Context context, LinuxApps.App app) throws IOException, ErrnoException {
-        if ("essentials".equals(app.id)) return;   // it installs the desktop itself, it is not an app
-        File root = rootfs(context);
-        String launcher = "/usr/local/bin/pocketdesk-" + app.id;
-        writeExecutable(new File(root, launcher.substring(1)), LinuxApps.launcherScript(app.marker));
-        writeShortcut(context, app.name, "application-x-executable", launcher);
-    }
-
-    private static void writeShortcut(Context context, String name, String icon, String exec)
-            throws IOException, ErrnoException {
-        File file = new File(rootfs(context), "home/coder/Desktop/" + name + ".desktop");
-        writeText(file, "[Desktop Entry]\nType=Application\nName=" + name
-                + "\nIcon=" + icon + "\nExec=" + exec + "\nTerminal=false\nCategories=Development;Utility;\n");
-        Os.chmod(file.getAbsolutePath(), 0755);
-        // The same entry in the system menu, so it is reachable even without desktop icons.
-        File shared = new File(rootfs(context), "usr/share/applications/pocketdesk-"
-                + name.toLowerCase(java.util.Locale.ROOT).replace(' ', '-') + ".desktop");
-        writeText(shared, "[Desktop Entry]\nType=Application\nName=" + name
-                + "\nIcon=" + icon + "\nExec=" + exec + "\nTerminal=false\nCategories=Development;Utility;\n");
+    /** Rebuilds the desktop's menu, panel and icons from what is really installed. */
+    static void refreshDesktopEntries(Context context) throws IOException, ErrnoException {
+        copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {

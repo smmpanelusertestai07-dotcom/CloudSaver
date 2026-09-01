@@ -24,6 +24,7 @@ final class VncView extends View implements VncClient.Listener {
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF destination = new RectF();
+    private final android.graphics.Path pointerPath = new android.graphics.Path();
     private Bitmap bitmap;
     private VncClient client;
     private StateListener stateListener;
@@ -226,16 +227,29 @@ final class VncView extends View implements VncClient.Listener {
 
         if (pointerMode == PointerMode.TOUCHPAD) {
             float scale = destination.width() / current.getWidth();
-            float px = destination.left + pointerX * scale;
-            float py = destination.top + pointerY * scale;
-            overlayPaint.setColor(Color.WHITE);
-            overlayPaint.setStyle(Paint.Style.STROKE);
-            overlayPaint.setStrokeWidth(Ui.dp(getContext(), 1.5f));
-            canvas.drawCircle(px, py, Ui.dp(getContext(), 5), overlayPaint);
-            overlayPaint.setColor(Color.BLACK);
-            canvas.drawCircle(px, py, Ui.dp(getContext(), 3), overlayPaint);
-            overlayPaint.setStyle(Paint.Style.FILL);
+            drawPointer(canvas, destination.left + pointerX * scale, destination.top + pointerY * scale);
         }
+    }
+
+    /** A real arrow, outlined in dark so it stays visible against any wallpaper. */
+    private void drawPointer(Canvas canvas, float x, float y) {
+        float unit = Ui.dp(getContext(), 1);
+        pointerPath.reset();
+        pointerPath.moveTo(x, y);
+        pointerPath.lineTo(x, y + 17 * unit);
+        pointerPath.lineTo(x + 4.4f * unit, y + 13.2f * unit);
+        pointerPath.lineTo(x + 7.2f * unit, y + 19.4f * unit);
+        pointerPath.lineTo(x + 10.2f * unit, y + 18f * unit);
+        pointerPath.lineTo(x + 7.4f * unit, y + 12f * unit);
+        pointerPath.lineTo(x + 12.6f * unit, y + 11.8f * unit);
+        pointerPath.close();
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(2.4f * unit);
+        overlayPaint.setColor(Color.argb(220, 0, 0, 0));
+        canvas.drawPath(pointerPath, overlayPaint);
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(Color.WHITE);
+        canvas.drawPath(pointerPath, overlayPaint);
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
