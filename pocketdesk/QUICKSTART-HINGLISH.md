@@ -46,6 +46,10 @@
 
 ## 4a. Koi app na khule to
 
+Home screen pe **"Why an app didn't open"** row tap karo — usme ChatGPT ki apni log bhi hoti hai. Share button se seedha bhej sakte ho.
+
+### Purana tareeka
+
 Har app `pocketdesk-open` ke through chalta hai. Agar app band ho jaye to screen pe wajah dikhegi,
 aur poori report yaha milegi:
 

@@ -149,6 +149,17 @@ clean_stale_locks() {
 flags=()
 is_chromium && flags=("${base_flags[@]}")
 
+# On a phone with 4 GB or less, ChatGPT's normal multi-process start has drawn nothing across
+# every attempt so far while Claude's does fine -- ChatGPT's renderer is the far heavier one.
+# So on such a phone ChatGPT goes straight to the single-process mode that the retry used to
+# reach only after a kill; the ordinary mode remains the retry, and Claude is untouched.
+total_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+lean_first=0
+if [ "$name" = "chatgpt" ] && [ "${#flags[@]}" -gt 0 ] && [ "$total_mb" -gt 0 ] && [ "$total_mb" -lt 5000 ]; then
+  lean_first=1
+  flags=("${flags[@]}" "${lean_flags[@]}")
+fi
+
 # ChatGPT honours this officially; setting it to its own default keeps the login while turning
 # off the app's silent exit-if-second-instance path. The C++ lock below is handled separately.
 [ "$name" = "chatgpt" ] && export CODEX_ELECTRON_USER_DATA_PATH="${CODEX_ELECTRON_USER_DATA_PATH:-$HOME/.config/Codex}"
@@ -186,9 +197,15 @@ status=$?
 # drawing anything. Either way one more try with everything in a single process is worth more
 # than a message saying it did not work.
 if [ "$status" = 137 ] && [ "${#flags[@]}" -gt 0 ]; then
-  echo "killed (137) · retrying in a single process · $(free_mb) MB free" >> "$log"
-  notify normal "$label was stopped, trying again" "Starting it in a smaller, single-process mode."
-  run_attempt "${flags[@]}" "${lean_flags[@]}" "$@"
+  if [ "$lean_first" = 1 ]; then
+    echo "killed (137) · retrying in the ordinary multi-process mode · $(free_mb) MB free" >> "$log"
+    notify normal "$label was stopped, trying again" "Starting it in the ordinary mode this time."
+    run_attempt "${base_flags[@]}" "$@"
+  else
+    echo "killed (137) · retrying in a single process · $(free_mb) MB free" >> "$log"
+    notify normal "$label was stopped, trying again" "Starting it in a smaller, single-process mode."
+    run_attempt "${flags[@]}" "${lean_flags[@]}" "$@"
+  fi
   status=$?
   [ "$status" = 0 ] && exit 0
 fi

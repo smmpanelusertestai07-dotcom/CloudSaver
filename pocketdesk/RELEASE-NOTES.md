@@ -1,3 +1,37 @@
+# PocketDesk 3.0.0 — final
+
+The finished app: an Ubuntu desktop on the phone, the AI desktop apps on it, and an honest
+account of everything in between.
+
+## What is in it
+
+- **AI desktop apps** — ChatGPT (with Codex), Claude Desktop (with Claude Code), Cursor,
+  Antigravity — each from the vendor's own current build; the same row updates in place, login
+  and settings kept.
+- **A desktop that behaves** — real icons, short names (Browser, Files), a Linux penguin, a
+  12-hour Indian clock, close/minimise/maximise on every window, and a **Windows** menu: open
+  windows, minimise all, close all.
+- **Touch like a phone** — tap clicks, swipe scrolls, hold is right-click; Mouse mode for
+  precise dragging; a solid, draggable Controls chip.
+- **Smart stopping** — ends a desktop nothing has touched for 25 minutes or one below 15 %
+  battery off the charger, and says which. Fixed hours and Never remain.
+- **Downloads reach the phone** — `Android/data/com.pocketdesk/files/Shared/Downloads`.
+- **Privacy answered in the app** — everything local, where logins live, exact paths, the full
+  permission list and what is absent, what uninstalling deletes.
+- **Nothing fails silently** — toasts on start, progress with free memory, a dialog naming the
+  reason on death, ChatGPT's own log (`~/.local/state/codex/logs`) folded into the report, and a
+  one-tap **Why an app didn't open** row that shares it all.
+
+## ChatGPT on a 4 GB phone
+
+Four faults were found and removed in order — the Chromium sandbox, a GPU flag that denied
+access outright, stale single-instance locks, and a half-started instance that made every new
+tap "succeed" into nothing. On phones with 4 GB or less ChatGPT now starts straight in the
+single-process mode, with the ordinary mode as the retry; Claude is untouched. If it still does
+not draw, the report now carries ChatGPT's own startup log, which names the step it stopped at.
+
+---
+
 # PocketDesk 1.6.0
 
 The desktop apps are the point of this, so this release is about making the Electron ones start,
