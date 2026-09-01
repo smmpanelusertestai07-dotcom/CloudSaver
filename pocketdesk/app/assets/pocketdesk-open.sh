@@ -90,33 +90,55 @@ has_window() {
   [ -n "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
 }
 
+# CPU time used so far by every process of this app, in clock ticks. A start that is still
+# consuming CPU is still working -- loading a large app on a slow core under PRoot takes
+# minutes, and killing it at a fixed second count was cutting it off mid-way. A start whose
+# CPU use has stopped with no window is the one that is actually stuck.
+cpu_ticks() {
+  local total=0 p
+  for p in $(pgrep -f "$real" 2>/dev/null); do
+    total=$((total + $(awk '{print $14 + $15}' "/proc/$p/stat" 2>/dev/null || echo 0)))
+  done
+  echo "$total"
+}
+
 # Runs the app and waits for a window. Returns 0 once one appears or the app is still going,
 # and the app's own exit code when it dies.
 run_attempt() {
   "$target" "$@" >> "$log" 2>&1 &
   pid=$!
-  for elapsed in $(seq 1 150); do
+  local last_ticks=0 idle_seconds=0 elapsed
+  for elapsed in $(seq 1 900); do
     kill -0 "$pid" 2>/dev/null || break
     if has_window; then
       echo "window appeared after ${elapsed}s" >> "$log"
       return 0
     fi
+    if [ $((elapsed % 15)) = 0 ] && command -v xdotool >/dev/null 2>&1; then
+      local now_ticks
+      now_ticks=$(cpu_ticks)
+      if [ $((now_ticks - last_ticks)) -lt 30 ]; then
+        idle_seconds=$((idle_seconds + 15))
+      else
+        idle_seconds=0
+      fi
+      last_ticks=$now_ticks
+      # Ninety seconds with no window and no CPU work is a hang, not a slow start.
+      if [ "$idle_seconds" -ge 90 ] && [ "$elapsed" -ge 120 ]; then
+        echo "no window and no CPU activity for ${idle_seconds}s at ${elapsed}s · treating as stuck · $(free_mb) MB free" >> "$log"
+        kill -9 "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null
+        return 137
+      fi
+    fi
     case "$elapsed" in
-      30|60|90|120)
-        notify normal "$label is still starting" "This try: ${elapsed}s · $(free_mb) MB free" ;;
+      30|60|120|240|420|600)
+        notify normal "$label is still loading" "This try: ${elapsed}s · still working · $(free_mb) MB free" ;;
     esac
     sleep 1
   done
   if kill -0 "$pid" 2>/dev/null; then
-    if command -v xdotool >/dev/null 2>&1; then
-      # Alive with nothing drawn after two and a half minutes is a stuck start, not a slow one.
-      # Reporting 'still running' hid that; 137 lets the caller try the leaner mode instead.
-      echo "no window after 150s · giving the leaner mode a turn · $(free_mb) MB free" >> "$log"
-      kill -9 "$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null
-      return 137
-    fi
-    echo "still running after 150s · window state unknown (xdotool not installed)" >> "$log"
+    echo "still running after 900s · leaving it to finish · $(free_mb) MB free" >> "$log"
     return 0
   fi
   wait "$pid" 2>/dev/null

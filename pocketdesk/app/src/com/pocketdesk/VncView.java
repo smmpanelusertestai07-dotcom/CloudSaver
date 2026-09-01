@@ -455,6 +455,10 @@ final class VncView extends View implements VncClient.Listener {
             replaceBitmap(width, height);
             pointerX = width / 2;
             pointerY = height / 2;
+            // Tell Linux where the pointer is, or its own cursor stays wherever the last session
+            // (or the last screen size) left it -- which is the second arrow at the screen edge.
+            VncClient active = client;
+            if (active != null) active.sendPointer(pointerX, pointerY, 0);
             centreOnNextLayout = true;
             status = "Connected";
             matchDesktopToScreen();
@@ -469,6 +473,8 @@ final class VncView extends View implements VncClient.Listener {
             centreOnNextLayout = true;
             pointerX = Math.min(pointerX, width - 1);
             pointerY = Math.min(pointerY, height - 1);
+            VncClient active = client;
+            if (active != null) active.sendPointer(pointerX, pointerY, 0);
             if (stateListener != null) stateListener.state(width + "×" + height, true);
             invalidate();
         });
