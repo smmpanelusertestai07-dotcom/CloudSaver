@@ -138,7 +138,17 @@ class HelpNavA11yE2eTest {
      */
     private fun ComposeTestRule.assertOn(label: String) {
         bringIntoView(label)
-        onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
+        val node = onAllNodes(hasText(label, substring = true)).onFirst()
+        // bringIntoView stops as soon as the node exists, which is the right
+        // rule for a lazy list and the wrong one for a Column that scrolls:
+        // that composes every child, so a row below the fold exists, is never
+        // scrolled to, and then fails an assertion about a screen that is
+        // perfectly correct. Adding one link to the Help list was enough to
+        // push the version line under the fold and turn two passing tests
+        // red. Scrolling to it is what a person does; a node with no
+        // scrollable ancestor simply stays where it already is.
+        runCatching { node.performScrollTo() }
+        node.assertIsDisplayed()
     }
 
     /**
