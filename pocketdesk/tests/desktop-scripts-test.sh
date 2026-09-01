@@ -68,6 +68,27 @@ PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" pla
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \
   || fail "an app that is not Chromium-based must be started with no extra flags"
 
+# A leftover instance with no window still owns the single-instance socket, so a fresh launch
+# hands over its request and exits 0 at once -- "success" -- and nothing appears. The launcher
+# must find that instance by the directory its binary lives in (ChatGPT's launcher path never
+# appears in the running process) and end it before starting. xdotool is stubbed to report no
+# window so the check runs here.
+printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
+cp "$(command -v sleep)" "$WORK/usr/lib/electronish/ghostproc"
+"$WORK/usr/lib/electronish/ghostproc" 300 &
+ghost=$!
+cat > "$WORK/usr/lib/electronish/electronish" <<'APP'
+#!/bin/sh
+exit 0
+APP
+set +e
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
+set -e
+grep -q "ending windowless leftover instance" "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "a windowless leftover instance in the app's own directory must be ended before launching"
+if kill -0 "$ghost" 2>/dev/null; then kill -9 "$ghost" 2>/dev/null; fail "the leftover instance must actually be gone"; fi
+rm -f "$WORK/usr/bin/xdotool"
+
 # ---- pocketdesk-menu: launchers route through pocketdesk-open ------------------------
 APPS="$WORK/apps"
 mkdir -p "$APPS" "$WORK/coder" "$WORK/fakebin"

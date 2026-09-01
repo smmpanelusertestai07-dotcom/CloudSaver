@@ -90,13 +90,21 @@ has_window() {
   [ -n "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
 }
 
+# Every process of this app. Matching the launcher's own path missed ChatGPT entirely:
+# /usr/bin/chatgpt resolves to a two-line shell script that execs /usr/lib/chatgpt/ChatGPT, so
+# the running process never carries the launcher's name. Everything the app runs lives in its
+# own directory, so that is what to match.
+app_pids() {
+  pgrep -f "$real_dir/" 2>/dev/null | grep -vx "$$" || true
+}
+
 # CPU time used so far by every process of this app, in clock ticks. A start that is still
 # consuming CPU is still working -- loading a large app on a slow core under PRoot takes
 # minutes, and killing it at a fixed second count was cutting it off mid-way. A start whose
 # CPU use has stopped with no window is the one that is actually stuck.
 cpu_ticks() {
   local total=0 p
-  for p in $(pgrep -f "$real" 2>/dev/null); do
+  for p in $(app_pids); do
     total=$((total + $(awk '{print $14 + $15}' "/proc/$p/stat" 2>/dev/null || echo 0)))
   done
   echo "$total"
@@ -198,12 +206,12 @@ fi
 # but no window, those processes are the problem: end them, then start clean.
 if [ "${#flags[@]}" -gt 0 ] && command -v xdotool >/dev/null 2>&1 \
    && [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]; then
-  leftovers=$(pgrep -f "$real" 2>/dev/null || true)
-  if [ -n "$leftovers" ]; then
+  leftovers=$(app_pids | tr '\n' ' ')
+  if [ -n "${leftovers// /}" ]; then
     echo "ending windowless leftover instance(s): $leftovers" >> "$log"
-    pkill -f "$real" 2>/dev/null || true
+    kill $leftovers 2>/dev/null || true
     sleep 2
-    pkill -9 -f "$real" 2>/dev/null || true
+    kill -9 $leftovers 2>/dev/null || true
   fi
 fi
 
@@ -211,8 +219,20 @@ fi
 
 notify normal "Opening $label" "The first start can take a minute or two."
 
+attempt_started=$(date +%s)
 run_attempt ${flags[@]+"${flags[@]}"} "$@"
 status=$?
+if [ "$status" = 0 ] && [ "${#flags[@]}" -gt 0 ] && [ $(( $(date +%s) - attempt_started )) -lt 8 ] \
+   && command -v xdotool >/dev/null 2>&1 \
+   && [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]; then
+  stragglers=$(app_pids | tr '\n' ' ')
+  echo "exited at once with no window: another instance took the request (${stragglers:-none found}) · ending it and starting again" >> "$log"
+  [ -n "${stragglers// /}" ] && { kill $stragglers 2>/dev/null; sleep 2; kill -9 $stragglers 2>/dev/null; } || true
+  clean_stale_locks
+  attempt_started=$(date +%s)
+  run_attempt ${flags[@]+"${flags[@]}"} "$@"
+  status=$?
+fi
 [ "$status" = 0 ] && exit 0
 
 # 137 means the app was killed -- by Android for memory, or by the watch above for never
