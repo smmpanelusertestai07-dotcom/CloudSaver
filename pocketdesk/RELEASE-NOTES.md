@@ -1,66 +1,58 @@
-# PocketDesk 1.1.0
+# PocketDesk 1.1.1
 
-The Ubuntu install now runs to the end, the desktop fills the screen, and Linux apps beyond
-ChatGPT can be installed from the app.
+Fixes the crash behind "PocketDesk keeps stopping" on the desktop screen, and answers "what is
+happening and how long will it take" during installs.
 
-## The install completes
+## The crash
 
-- **`Unsafe path in archive: etc/alternatives/pager`** — the path check resolved the whole path,
-  including the final component. Ubuntu fills `/etc/alternatives` with links to absolute guest
-  paths such as `/usr/bin/pager`, so as soon as one of those links existed, the archive's own
-  layout was reported as an escape and the install stopped. Only the directory part is resolved
-  now; it is still range-checked, and `cleanName` still rejects any `..`, so a real escape is
-  refused. `TarGzExtractorTest` reproduces it by extracting the same archive twice.
+The desktop viewer allocated a fresh multi-megabyte pixel array for every screen update — 4.6 MB
+per full frame at 1600×720. With apt working in the background, one of those allocations hit
+`OutOfMemoryError`, which is not an `IOException`, escaped the viewer thread's handler, and killed
+the whole process. That is why Open desktop bounced straight back, why the screen stayed black
+while saying "Connected", and why Android showed "PocketDesk keeps stopping".
 
-## The desktop fills the screen
+- The viewer now reads the screen in **reused fixed-size strips** (~750 KB, allocated once per
+  connection) instead of a fresh array per frame. The multi-megabyte churn is gone.
+- The viewer thread catches **everything**, ends the session with a readable message, and records
+  the report — it can no longer take the app down.
+- The crash recorder now installs at **process start** (Application class), whatever screen
+  Android launches first.
+- The desktop screen's own start-up is guarded: if it cannot build, you land back on the home
+  screen with the reason recorded, not in a crash loop.
+- New **"Last error report"** row under Permissions whenever a report exists: view, share or
+  clear it. A shared report is exactly what turns the next "keeps stopping" into a fix.
 
-- The framebuffer is built from **your phone's own screen size** instead of a fixed 1280×720. In
-  landscape that is a 1:1 match — sharp, no letterbox, no black bars.
-- Type and controls are made large by raising the desktop's **DPI**, not by scaling a smaller
-  picture up, so everything is bigger *and* stays crisp. New **Desktop text size** setting:
-  Normal, Large (default) or Extra large.
-- New view controls in the desktop toolbar: **pinch to zoom**, `−` / `+`, a percentage that
-  resets on tap, a **Fill / Fit** toggle, and **Full screen** to hide both bars. Two fingers pan
-  once the picture is larger than the screen, and still scroll when it is not.
-- The toolbar scrolls sideways, so no control is ever cut off on a narrow phone.
-- Rotating re-centres instead of leaving the desktop pinned to a corner.
-- LXTerminal, GTK and the panel are configured with readable font sizes and a dark palette.
-- `groups: cannot find name for group ID 3003` no longer greets you in every terminal: Android's
-  supplementary group ids are given names inside the container.
+## Install progress that answers your question
 
-## Linux apps, always the newest build
+While Linux or an app installs, the card now reads like:
 
-A new **Linux apps** card installs desktop apps into the container. Each row installs *and*
-updates — every entry resolves the latest build rather than a pinned version.
+> **Installing ChatGPT**
+> Downloading packages · 4 min so far · usually 5–15 min
+> Get:12 http://ports.ubuntu.com/… libgtk-3-0 [2,845 kB]
 
-| App | Source | Note |
-| --- | --- | --- |
-| ChatGPT | OpenAI's `latest` ARM64 `.deb` | includes Codex |
-| Claude Desktop | Anthropic's apt repository, signature pinned to the published fingerprint | Linux beta; Cowork needs hardware virtualisation a phone cannot give |
-| Antigravity | the ARM64 tarball named on Google's download page | resolved at install time, never pinned |
-| VS Code | Microsoft's `latest` ARM64 `.deb` | |
-| Firefox | Mozilla's own apt repository | Ubuntu's `firefox` package is a snap shim that cannot work in a container |
-| Developer tools | apt | Node.js, Python, pip, compiler |
+The phase (Preparing / Downloading packages / Unpacking files / Finishing set-up) is derived from
+what apt is actually printing, the elapsed time is real, and every catalogue app carries an honest
+typical duration. The Ubuntu tools step says up front that it usually takes 10–25 minutes.
 
-Each app states its download size, the free space it really needs, and any real limitation before
-you agree to install it. `LinuxAppsTest` checks every command is valid shell and that none pins a
-version.
+## Desktop view
 
-## Also
+- **Zoom out now works below 100%**: in Fill mode the picture can be pinched down until the whole
+  desktop fits, instead of stopping at full-screen size.
+- Toolbar buttons redrawn: ripple feedback, rounded, tinted icons, proper Fill/Fit and
+  Full screen glyphs, larger − / + targets.
 
-- The in-app mark is larger, matching the launcher icon more closely.
-- Free-space checks are per app instead of a blanket 2.5 GB.
+## In-app mark
+
+The logo inside the app keeps its plate size but the monitor mark inside it is drawn larger, as
+requested. The launcher icon is unchanged.
 
 ## Verified in this build
 
-- `tests/run-tests.sh` — `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest` and the new
-  `LinuxAppsTest` all pass
-- The generated desktop script is syntax-checked with `bash -n`
-- Mozilla's apt repository confirmed to publish an arm64 Firefox; Anthropic's and Google's ARM64
-  Linux downloads confirmed from their own documentation
+- All four test suites pass: `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest`,
+  `LinuxAppsTest`
 - javac against API 35 (min 29), D8, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
 
-## Still needs a device
+## Still needs the phone
 
-A full Ubuntu install running to completion, and each AI app actually launching, still need
-testing on the phone.
+The OutOfMemoryError diagnosis fits every symptom in the screenshots, but the definitive proof is
+the new error report row: if anything stops again, open it and share the text.

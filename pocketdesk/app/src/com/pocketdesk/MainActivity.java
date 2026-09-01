@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.1.0";
+    static final String VERSION = "1.1.1";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -73,6 +73,7 @@ public final class MainActivity extends Activity {
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
     private Ui.Row autoStartRow;
+    private Ui.Row crashRow;
     private boolean askBatteryAfterNotifications;
 
     private final java.util.Map<String, Ui.Row> appRows = new java.util.LinkedHashMap<>();
@@ -139,6 +140,9 @@ public final class MainActivity extends Activity {
         refreshPermissionRows();
         measureLinuxSize();
         maybeShowPermissionIntro();
+        if (crashRow != null) {
+            crashRow.setVisibility(Crash.read(this).isEmpty() ? View.GONE : View.VISIBLE);
+        }
         // Re-entering mid-setup should show the running job straight away, not an empty card.
         if (LinuxService.isBusy() || LinuxService.lastMessage() != null) {
             renderProgress(LinuxService.lastMessage(), LinuxService.lastDetail(),
@@ -465,6 +469,13 @@ public final class MainActivity extends Activity {
         card.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
+
+        crashRow = new Ui.Row(this, R.drawable.ic_help, "Last error report",
+                "Something went wrong earlier. Tap to view or share it.",
+                R.drawable.ic_chevron, dark, v -> showCrashReport());
+        crashRow.setStatus("NEW", Ui.WARNING);
+        crashRow.setVisibility(Crash.read(this).isEmpty() ? View.GONE : View.VISIBLE);
+        card.addView(crashRow, Ui.matchWrap(this, 8));
         return card;
     }
 
@@ -921,6 +932,31 @@ public final class MainActivity extends Activity {
         } catch (Throwable error) {
             return false;
         }
+    }
+
+    /** The recorded stack is the difference between "keeps stopping" and a fixable report. */
+    private void showCrashReport() {
+        String report = Crash.read(this);
+        if (report.isEmpty()) {
+            crashRow.setVisibility(View.GONE);
+            return;
+        }
+        String shown = report.length() > 3000 ? report.substring(0, 3000) + "\u2026" : report;
+        dialogBuilder()
+                .setTitle("Last error report")
+                .setMessage(shown)
+                .setNegativeButton("Close", null)
+                .setNeutralButton("Clear", (dialog, which) -> {
+                    Crash.clear(this);
+                    crashRow.setVisibility(View.GONE);
+                })
+                .setPositiveButton("Share", (dialog, which) -> {
+                    Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, "PocketDesk error report")
+                            .putExtra(Intent.EXTRA_TEXT, report);
+                    launch(Intent.createChooser(share, "Share error report"));
+                })
+                .show();
     }
 
     private void showMessage(String title, String message) {

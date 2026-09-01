@@ -17,19 +17,22 @@ final class LinuxApps {
         final String approximateSize;
         /** Free space the install genuinely needs, package plus unpacked files. */
         final long needsBytes;
+        /** Honest wall-clock expectation shown while installing, e.g. "5-15 min". */
+        final String typicalTime;
         /** Shown before install when the app has a real limitation on this setup. */
         final String caution;
         final String marker;        // file that exists once installed
         private final String command;
 
         App(String id, String name, String summary, int iconRes, String approximateSize,
-            long needsBytes, String caution, String marker, String command) {
+            long needsBytes, String typicalTime, String caution, String marker, String command) {
             this.id = id;
             this.name = name;
             this.summary = summary;
             this.iconRes = iconRes;
             this.approximateSize = approximateSize;
             this.needsBytes = needsBytes;
+            this.typicalTime = typicalTime;
             this.caution = caution;
             this.marker = marker;
             this.command = command;
@@ -63,7 +66,7 @@ final class LinuxApps {
 
     static final App[] CATALOG = {
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
-                    R.drawable.ic_chat, "about 700 MB", 2500L * 1024 * 1024,
+                    R.drawable.ic_chat, "about 700 MB", 2500L * 1024 * 1024, "5\u201315 min",
                     "Computer Use is not offered on Linux. Your account's usage limits still apply.",
                     "/usr/bin/chatgpt",
                     "apt-get update; "
@@ -71,7 +74,7 @@ final class LinuxApps {
                             + "apt-get install -y --no-install-recommends /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb"),
 
             new App("claude", "Claude Desktop", "Anthropic's desktop app. Includes Claude Code.",
-                    R.drawable.ic_terminal, "about 600 MB", 2500L * 1024 * 1024,
+                    R.drawable.ic_terminal, "about 600 MB", 2500L * 1024 * 1024, "5\u201315 min",
                     "Linux support is in beta. Cowork needs hardware virtualisation, which a phone "
                             + "container cannot provide, so that tab stays unavailable.",
                     "/usr/bin/claude-desktop",
@@ -86,7 +89,7 @@ final class LinuxApps {
                             + "apt-get update; apt-get install -y --no-install-recommends claude-desktop"),
 
             new App("antigravity", "Antigravity", "Google's agent-first IDE.",
-                    R.drawable.ic_desktop, "about 800 MB", 3 * GB,
+                    R.drawable.ic_desktop, "about 800 MB", 3 * GB, "5\u201320 min",
                     "Google ships Antigravity as a tarball, so it updates when you run this again.",
                     "/opt/antigravity/antigravity",
                     "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates "
@@ -106,14 +109,14 @@ final class LinuxApps {
                             + "chmod -R a+rX /opt/antigravity"),
 
             new App("vscode", "VS Code", "Microsoft's editor, ARM64 build.",
-                    R.drawable.ic_terminal, "about 400 MB", 1500L * 1024 * 1024, null,
+                    R.drawable.ic_terminal, "about 400 MB", 1500L * 1024 * 1024, "3\u201310 min", null,
                     "/usr/bin/code",
                     "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
                             + "curl --fail --location --retry 3 '" + VSCODE_LATEST + "' -o /tmp/code.deb; "
                             + "apt-get install -y --no-install-recommends /tmp/code.deb; rm -f /tmp/code.deb"),
 
             new App("firefox", "Firefox", "Web browser, from Mozilla's own repository.",
-                    R.drawable.ic_network, "about 300 MB", 1 * GB, null,
+                    R.drawable.ic_network, "about 300 MB", 1 * GB, "2\u20138 min", null,
                     "/usr/bin/firefox",
                     "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
                             + "install -d -m 0755 /etc/apt/keyrings; "
@@ -125,7 +128,7 @@ final class LinuxApps {
                             + "apt-get update; apt-get install -y --no-install-recommends firefox"),
 
             new App("devtools", "Developer tools", "Node.js, Python, pip and a compiler.",
-                    R.drawable.ic_install, "about 500 MB", 1500L * 1024 * 1024, null,
+                    R.drawable.ic_install, "about 500 MB", 1500L * 1024 * 1024, "3\u201310 min", null,
                     "/usr/bin/node",
                     "apt-get update; apt-get install -y --no-install-recommends "
                             + "nodejs npm python3 python3-pip python3-venv build-essential"),

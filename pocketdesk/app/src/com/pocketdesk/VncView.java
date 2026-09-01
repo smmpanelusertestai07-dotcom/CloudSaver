@@ -117,8 +117,19 @@ final class VncView extends View implements VncClient.Listener {
         if (zoomListener != null) zoomListener.zoomChanged(Math.round(zoom * 100), fillMode);
     }
 
-    private static float clampZoom(float value) {
-        return Math.max(1f, Math.min(value, 6f));
+    private float clampZoom(float value) {
+        return Math.max(minZoom(), Math.min(value, 6f));
+    }
+
+    /** The zoom at which the whole desktop is visible; below that there is only empty space. */
+    private float minZoom() {
+        Bitmap current = bitmap;
+        if (current == null || getWidth() == 0 || getHeight() == 0 || !fillMode) return 1f;
+        float fit = Math.min(getWidth() / (float) current.getWidth(),
+                getHeight() / (float) current.getHeight());
+        float fill = Math.max(getWidth() / (float) current.getWidth(),
+                getHeight() / (float) current.getHeight());
+        return fill <= 0 ? 1f : Math.max(0.2f, fit / fill);
     }
 
     /** Recomputes where the framebuffer lands on screen for the current zoom, pan and mode. */

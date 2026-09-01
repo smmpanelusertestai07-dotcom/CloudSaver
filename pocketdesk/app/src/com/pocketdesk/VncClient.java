@@ -30,6 +30,11 @@ final class VncClient {
     private DataOutputStream output;
     private volatile int width;
     private volatile int height;
+    /** Reused across every update. A fresh multi-megabyte array per frame caused real
+     *  OutOfMemoryError crashes on a 4 GB phone while apt was working in the background. */
+    private int[] stripPixels;
+    private byte[] rowBytes;
+    private static final int STRIP_ROWS = 120;
 
     VncClient(String host, int port, Listener listener) {
         this.host = host;
@@ -152,20 +157,29 @@ final class VncClient {
             int encoding = input.readInt();
             if (encoding == 0) {
                 if (w <= 0 || h <= 0 || (long) w * h > 5_000_000L) throw new IOException("Invalid desktop rectangle");
-                int[] pixels = new int[w * h];
-                byte[] row = new byte[w * 4];
-                int index = 0;
-                for (int py = 0; py < h; py++) {
-                    input.readFully(row);
-                    for (int px = 0; px < w; px++) {
-                        int base = px * 4;
-                        int blue = row[base] & 0xff;
-                        int green = row[base + 1] & 0xff;
-                        int red = row[base + 2] & 0xff;
-                        pixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
-                    }
+                int stripCapacity = Math.min(h, STRIP_ROWS);
+                if (stripPixels == null || stripPixels.length < w * stripCapacity) {
+                    stripPixels = new int[w * stripCapacity];
                 }
-                listener.onRectangle(x, y, w, h, pixels);
+                if (rowBytes == null || rowBytes.length < w * 4) rowBytes = new byte[w * 4];
+                for (int py = 0; py < h; ) {
+                    int rows = Math.min(stripCapacity, h - py);
+                    int index = 0;
+                    for (int r = 0; r < rows; r++) {
+                        input.readFully(rowBytes, 0, w * 4);
+                        for (int px = 0; px < w; px++) {
+                            int base = px * 4;
+                            int blue = rowBytes[base] & 0xff;
+                            int green = rowBytes[base + 1] & 0xff;
+                            int red = rowBytes[base + 2] & 0xff;
+                            stripPixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
+                        }
+                    }
+                    // The listener copies the strip into its bitmap before returning, so the
+                    // same array can be refilled for the next strip.
+                    listener.onRectangle(x, y + py, w, rows, stripPixels);
+                    py += rows;
+                }
             } else if (encoding == -223) {
                 width = w;
                 height = h;

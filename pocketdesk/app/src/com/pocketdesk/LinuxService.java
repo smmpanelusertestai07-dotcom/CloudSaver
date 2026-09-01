@@ -202,13 +202,18 @@ public final class LinuxService extends Service {
         }
         if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
 
-        status("Installing desktop tools", "Downloading the desktop, terminal and coding tools. This step takes the longest…", -1, true, false);
+        final long toolsStartedAt = System.currentTimeMillis();
+        status("Installing desktop tools",
+                "The longest step · usually takes 10\u201325 min on mobile data", -1, true, false);
         final long[] lastLine = {0L};
         int code = runTracked(ContainerRuntime.bootstrapCommand(), line -> {
             long now = System.currentTimeMillis();
-            if (now - lastLine[0] < 700L) return;
+            if (now - lastLine[0] < 900L) return;
             lastLine[0] = now;
-            status("Installing desktop tools", shortText(line), -1, true, false);
+            status("Installing desktop tools",
+                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 10\u201325 min"
+                            + "\n" + shortText(line),
+                    -1, true, false);
         });
         if (code != 0) throw new IOException("Ubuntu package setup exited with code " + code + ". Check Wi-Fi and free storage, then retry.");
         ContainerRuntime.writeDesktopScripts(this);
@@ -228,13 +233,18 @@ public final class LinuxService extends Service {
             throw new IOException(app.name + " needs " + DeviceProbe.formatBytes(app.needsBytes)
                     + " free. You have " + DeviceProbe.formatBytes(free) + ".");
         }
-        status("Installing " + app.name, "Downloading the newest build…", -1, true, false);
+        final long startedAt = System.currentTimeMillis();
+        status("Installing " + app.name,
+                "Fetching the newest build · usually takes " + app.typicalTime, -1, true, false);
         final long[] lastLine = {0L};
         int code = runTracked(app.installCommand(), line -> {
             long now = System.currentTimeMillis();
-            if (now - lastLine[0] < 700L) return;
+            if (now - lastLine[0] < 900L) return;
             lastLine[0] = now;
-            status("Installing " + app.name, shortText(line), -1, true, false);
+            status("Installing " + app.name,
+                    phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime
+                            + "\n" + shortText(line),
+                    -1, true, false);
         });
         if (code != 0) {
             throw new IOException(app.name + " did not install (exit " + code
@@ -562,6 +572,23 @@ public final class LinuxService extends Service {
     private void releaseWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         wakeLock = null;
+    }
+
+    /** Human phase for a raw apt/dpkg/curl output line. */
+    private static String phaseFor(String line) {
+        String value = line == null ? "" : line.trim();
+        if (value.startsWith("Get:") || value.contains("Fetched")) return "Downloading packages";
+        if (value.startsWith("Unpacking") || value.startsWith("Preparing to unpack")) return "Unpacking files";
+        if (value.startsWith("Setting up") || value.startsWith("Processing triggers")) return "Finishing set-up";
+        if (value.startsWith("Reading") || value.startsWith("Building") || value.startsWith("Selecting")) return "Preparing";
+        if (value.contains("% ") || value.startsWith("#")) return "Downloading";
+        return "Working";
+    }
+
+    private static String elapsedText(long startedAt) {
+        long minutes = (System.currentTimeMillis() - startedAt) / 60_000L;
+        if (minutes < 1) return "under a minute so far";
+        return minutes + " min so far";
     }
 
     private static String shortText(String value) {

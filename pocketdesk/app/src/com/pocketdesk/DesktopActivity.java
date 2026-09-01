@@ -45,11 +45,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        applyOrientation();
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setContentView(buildScreen());
-        connectWithRetry();
+        try {
+            applyOrientation();
+            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            setContentView(buildScreen());
+            connectWithRetry();
+        } catch (Throwable error) {
+            // Going back to the home screen with the reason recorded beats a crash loop.
+            Crash.save(this, error);
+            finish();
+        }
     }
 
     @Override protected void onDestroy() {
@@ -93,6 +99,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         toolbarRow.addView(status, statusLp);
 
         Button zoomOut = toolButton("−");
+        zoomOut.setTextSize(17);
         zoomOut.setContentDescription("Zoom out");
         zoomOut.setOnClickListener(v -> desktop.zoomBy(1f / 1.25f));
         toolbarRow.addView(zoomOut, barItem(44));
@@ -103,11 +110,12 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         toolbarRow.addView(zoomLabel, barItem(58));
 
         Button zoomIn = toolButton("+");
+        zoomIn.setTextSize(17);
         zoomIn.setContentDescription("Zoom in");
         zoomIn.setOnClickListener(v -> desktop.zoomBy(1.25f));
         toolbarRow.addView(zoomIn, barItem(44));
 
-        fitButton = toolButton("Fill", R.drawable.ic_desktop);
+        fitButton = toolButton("Fill", R.drawable.ic_fullscreen);
         fitButton.setOnClickListener(v -> {
             desktop.setFillMode(!desktop.isFillMode());
             fitButton.setText(desktop.isFillMode() ? "Fill" : "Fit");
@@ -123,7 +131,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         keyboard.setOnClickListener(v -> showKeyboard());
         toolbarRow.addView(keyboard, barItem(50));
 
-        Button hideBars = toolButton("Full screen", R.drawable.ic_rotate);
+        Button hideBars = toolButton("Full screen", R.drawable.ic_fit);
         hideBars.setOnClickListener(v -> setBarsHidden(true));
         toolbarRow.addView(hideBars, barItem(132));
 
@@ -223,6 +231,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     lastError = "Desktop connection ended";
                 } catch (IOException error) {
                     lastError = error.getMessage() == null ? "Connection failed" : error.getMessage();
+                } catch (Throwable error) {
+                    // An OutOfMemoryError here used to take the whole app down. Ending the
+                    // session with a message is always better than "PocketDesk keeps stopping".
+                    Crash.save(DesktopActivity.this, error);
+                    lastError = "Viewer ran out of memory or hit an error ("
+                            + error.getClass().getSimpleName() + "). Close other apps and reopen.";
+                    client.close();
                 }
                 if (!finished) desktop.onDisconnected(lastError);
                 return;
@@ -380,16 +395,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private Button toolButton(String label, int iconRes) {
         Button button = new Button(this);
         button.setText(label);
-        button.setTextSize(13);
+        button.setTextSize(13.5f);
         button.setTextColor(Color.rgb(232, 236, 255));
         button.setAllCaps(false);
+        button.setStateListAnimator(null);
         button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        if (iconRes != 0) Ui.setStartIcon(button, iconRes, Color.rgb(232, 236, 255), this, 18);
+        if (iconRes != 0) Ui.setStartIcon(button, iconRes, Color.rgb(150, 175, 255), this, 18);
         button.setGravity(Gravity.CENTER);
         button.setPadding(Ui.dp(this, 5), 0, Ui.dp(this, 5), 0);
         button.setMinWidth(0);
         button.setMinHeight(0);
-        button.setBackground(Ui.background(Color.rgb(35, 42, 73), 10, this));
+        button.setBackground(Ui.tappable(this, Ui.background(Color.rgb(35, 42, 73), 12, this), true));
         return button;
     }
 
