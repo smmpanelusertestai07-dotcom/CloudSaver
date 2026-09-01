@@ -34,7 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class LinuxService extends Service {
     static final String ACTION_SETUP = "com.pocketdesk.action.SETUP";
     static final String ACTION_START_DESKTOP = "com.pocketdesk.action.START_DESKTOP";
-    static final String ACTION_INSTALL_CHATGPT = "com.pocketdesk.action.INSTALL_CHATGPT";
+    static final String ACTION_INSTALL_APP = "com.pocketdesk.action.INSTALL_APP";
+    static final String EXTRA_APP_ID = "app_id";
     static final String ACTION_STOP = "com.pocketdesk.action.STOP";
     static final String ACTION_REMOVE = "com.pocketdesk.action.REMOVE";
     static final String ACTION_STATUS = "com.pocketdesk.action.STATUS";
@@ -110,6 +111,7 @@ public final class LinuxService extends Service {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
+        final String appId = intent == null ? null : intent.getStringExtra(EXTRA_APP_ID);
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(NOTIFICATION_ID, notification("PocketDesk", "Preparing local Linux…", -1),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
@@ -131,7 +133,7 @@ public final class LinuxService extends Service {
             try {
                 if (ACTION_SETUP.equals(action)) setupUbuntu();
                 else if (ACTION_START_DESKTOP.equals(action)) startDesktop();
-                else if (ACTION_INSTALL_CHATGPT.equals(action)) installChatGpt();
+                else if (ACTION_INSTALL_APP.equals(action)) installApp(appId);
                 else if (ACTION_REMOVE.equals(action)) removeLinux();
                 else status("Unknown action", "Nothing was changed.", -1, false, true);
             } catch (InterruptedException cancelled) {
@@ -216,25 +218,30 @@ public final class LinuxService extends Service {
         status("Linux is ready", "Your local desktop and coding tools are installed.", 100, false, false);
     }
 
-    private void installChatGpt() throws Exception {
+    private void installApp(String appId) throws Exception {
+        LinuxApps.App app = LinuxApps.byId(appId);
+        if (app == null) throw new IOException("Unknown app.");
         if (!ContainerRuntime.isInstalled(this)) throw new IOException("Install Linux first.");
         preflight(true, 10);
-        if (DeviceProbe.read(this).freeStorage < 2500L * 1024 * 1024) {
-            throw new IOException("ChatGPT needs at least 2.5 GB free for its package and dependencies.");
+        long free = DeviceProbe.read(this).freeStorage;
+        if (free < app.needsBytes) {
+            throw new IOException(app.name + " needs " + DeviceProbe.formatBytes(app.needsBytes)
+                    + " free. You have " + DeviceProbe.formatBytes(free) + ".");
         }
-        status("Installing ChatGPT", "Downloading the official Linux app and required files…", -1, true, false);
+        status("Installing " + app.name, "Downloading the newest build…", -1, true, false);
         final long[] lastLine = {0L};
-        int code = runTracked(ContainerRuntime.chatGptInstallCommand(), line -> {
+        int code = runTracked(app.installCommand(), line -> {
             long now = System.currentTimeMillis();
             if (now - lastLine[0] < 700L) return;
             lastLine[0] = now;
-            status("Installing ChatGPT", shortText(line), -1, true, false);
+            status("Installing " + app.name, shortText(line), -1, true, false);
         });
-        if (code != 0) throw new IOException("ChatGPT package install exited with code " + code + ". It may not be compatible with this container.");
-        ContainerRuntime.writeChatGptShortcut(this);
-        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
-                .putBoolean(ContainerRuntime.KEY_CHATGPT_INSTALLED, true).apply();
-        status("ChatGPT installed", "Start the desktop and tap the ChatGPT icon. First launch may be slow.", 100, false, false);
+        if (code != 0) {
+            throw new IOException(app.name + " did not install (exit " + code
+                    + "). Check the connection and free space, then try again.");
+        }
+        ContainerRuntime.writeAppShortcut(this, app);
+        status(app.name + " is ready", "Open the desktop and tap its icon.", 100, false, false);
     }
 
     private void startDesktop() throws Exception {
@@ -242,7 +249,11 @@ public final class LinuxService extends Service {
         preflight(false, 4);
         ContainerRuntime.installRuntime(this);
         status("Opening desktop", "Starting your local Linux screen…", -1, true, false);
-        activeProcess = ContainerRuntime.startContainer(this, ContainerRuntime.startDesktopCommand(1280, 720));
+        int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
+        int dpi = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
+                .getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        activeProcess = ContainerRuntime.startContainer(this,
+                ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi));
         sessionStartedAt = System.currentTimeMillis();
 
         Thread output = new Thread(() -> {
@@ -272,7 +283,8 @@ public final class LinuxService extends Service {
         desktopRunning = true;
         BUSY.set(false);
         releaseWakeLock();
-        status("Desktop is running", "Local display · 1280×720 · tap Open desktop", 100, false, false);
+        status("Desktop is running",
+                "Local display · " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
         updateNotification("Desktop is running", "Tap to return · phone protection is active", 100);
         handler.removeCallbacks(safetyMonitor);
         handler.postDelayed(safetyMonitor, 30_000L);
@@ -441,7 +453,6 @@ public final class LinuxService extends Service {
         if (part.exists()) part.delete();
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false)
-                .putBoolean(ContainerRuntime.KEY_CHATGPT_INSTALLED, false)
                 .apply();
         status("Linux removed", "The storage it was using is free again.", 100, false, false);
     }

@@ -27,3 +27,9 @@ java -cp "$OUT" com.pocketdesk.VncClientProtocolTest
   "$PROJECT_DIR/tests/TreesTest.java"
 java -cp "$OUT" com.pocketdesk.TarGzExtractorTest
 java -cp "$OUT" com.pocketdesk.TreesTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/tests/stub/com/pocketdesk/R.java" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/LinuxApps.java" \
+  "$PROJECT_DIR/tests/LinuxAppsTest.java"
+java -cp "$OUT" com.pocketdesk.LinuxAppsTest

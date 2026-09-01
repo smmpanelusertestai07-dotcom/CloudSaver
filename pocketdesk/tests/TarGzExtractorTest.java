@@ -31,6 +31,7 @@ public final class TarGzExtractorTest {
         require(Files.isSameFile(extracted, output.resolve("links/hello-hardlink")), "hardlink missing");
 
         hardLinksRefusedStillExtract(archive, work);
+        reExtractOverAnExistingTree(work);
         System.out.println("PASS TarGzExtractorTest");
     }
 
@@ -57,6 +58,34 @@ public final class TarGzExtractorTest {
         } finally {
             android.system.Os.denyHardLinks = false;
         }
+    }
+
+    /**
+     * A retry extracts over links left by the previous attempt. Ubuntu's /etc/alternatives/*
+     * point at absolute guest paths, so resolving an existing leaf link used to reject the
+     * archive with "Unsafe path in archive: etc/alternatives/pager".
+     */
+    private static void reExtractOverAnExistingTree(Path work) throws Exception {
+        Path source = Files.createDirectories(work.resolve("alt/etc/alternatives"));
+        Files.createDirectories(work.resolve("alt/usr/bin"));
+        Files.write(work.resolve("alt/usr/bin/pager"), "pager".getBytes(StandardCharsets.UTF_8));
+        Files.createSymbolicLink(source.resolve("pager"), Paths.get("/usr/bin/pager"));
+
+        Path archive = work.resolve("alt.tar.gz");
+        Process tar = new ProcessBuilder("tar", "--format=posix", "-czf", archive.toString(),
+                "-C", work.resolve("alt").toString(), ".").inheritIO().start();
+        require(tar.waitFor() == 0, "could not create the alternatives fixture");
+
+        Path output = work.resolve("output-retry");
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try (java.io.InputStream input = Files.newInputStream(archive)) {
+                TarGzExtractor.extract(input, output.toFile(), null);
+            } catch (Exception error) {
+                throw new AssertionError("extraction attempt " + attempt + " failed: " + error.getMessage(), error);
+            }
+        }
+        require(Files.isSymbolicLink(output.resolve("etc/alternatives/pager")),
+                "the alternatives link was not recreated on the second pass");
     }
 
     private static void require(boolean condition, String message) {

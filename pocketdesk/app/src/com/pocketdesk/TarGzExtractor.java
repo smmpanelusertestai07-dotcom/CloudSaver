@@ -171,11 +171,23 @@ final class TarGzExtractor {
         }
     }
 
+    /**
+     * Resolves an archive path inside the rootfs, resolving only the directory part.
+     *
+     * The leaf must not be resolved: Ubuntu fills /etc/alternatives with links to absolute guest
+     * paths such as /usr/bin/pager, so canonicalising the whole path reports the archive's own
+     * layout as an escape ("Unsafe path in archive: etc/alternatives/pager") the moment such a
+     * link already exists. Directory components are still resolved and range-checked, and
+     * cleanName has already rejected any "..", so a real escape is still refused.
+     */
     private static File safeFile(File root, String rootPath, String name) throws IOException {
-        File target = new File(root, name).getCanonicalFile();
-        String path = target.getPath();
-        if (!path.startsWith(rootPath)) throw new IOException("Unsafe path in archive: " + name);
-        return target;
+        File target = new File(root, name);
+        File parent = target.getParentFile();
+        File base = parent == null ? root.getCanonicalFile() : parent.getCanonicalFile();
+        if (!(base.getPath() + File.separator).startsWith(rootPath)) {
+            throw new IOException("Unsafe path in archive: " + name);
+        }
+        return new File(base, target.getName());
     }
 
     private static String cleanName(String value) throws IOException {

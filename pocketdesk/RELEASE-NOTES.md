@@ -1,122 +1,66 @@
-# PocketDesk 1.0.1
+# PocketDesk 1.1.0
 
-Fixes the two failures that stopped Linux from installing on a Realme Android 13 device.
+The Ubuntu install now runs to the end, the desktop fills the screen, and Linux apps beyond
+ChatGPT can be installed from the app.
 
-## Install now completes
+## The install completes
 
-- **`Could not extract usr/bin/perl5.38.2: link failed: EACCES`** — Ubuntu's base image ships
-  `/usr/bin/perl5.38.2` as a hard link, and this device's storage refuses `link(2)`. One refusal
-  used to abandon the whole install. Hard and symbolic links now fall back to a plain copy when
-  the filesystem returns `EACCES`, `EPERM`, `EXDEV`, `EOPNOTSUPP` or `ENOSYS`.
-- **`Could not remove incomplete setup: bin`** — this blocked every retry. Ubuntu ships `/bin`,
-  `/lib` and `/sbin` as links into `/usr`, and cleanup was resolving them with
-  `getCanonicalFile()`, so it deleted the link's target and then failed on the link left behind.
-  Deletion now inspects each entry with `lstat` and removes links as links, never descending
-  through them. It also frees a read-only directory and treats a dangling link as removable.
-- An absolute symlink target inside the rootfs now resolves against the rootfs root instead of
-  Android's own filesystem.
+- **`Unsafe path in archive: etc/alternatives/pager`** — the path check resolved the whole path,
+  including the final component. Ubuntu fills `/etc/alternatives` with links to absolute guest
+  paths such as `/usr/bin/pager`, so as soon as one of those links existed, the archive's own
+  layout was reported as an escape and the install stopped. Only the directory part is resolved
+  now; it is still range-checked, and `cleanName` still rejects any `..`, so a real escape is
+  refused. `TarGzExtractorTest` reproduces it by extracting the same archive twice.
 
-Both failures are covered by new tests: `TarGzExtractorTest` extracts the fixture a second time
-with `link(2)` denied, and the new `TreesTest` proves cleanup removes a linked tree without
-destroying what the link points at.
+## The desktop fills the screen
 
-## Permissions are asked for up front
+- The framebuffer is built from **your phone's own screen size** instead of a fixed 1280×720. In
+  landscape that is a 1:1 match — sharp, no letterbox, no black bars.
+- Type and controls are made large by raising the desktop's **DPI**, not by scaling a smaller
+  picture up, so everything is bigger *and* stays crisp. New **Desktop text size** setting:
+  Normal, Large (default) or Extra large.
+- New view controls in the desktop toolbar: **pinch to zoom**, `−` / `+`, a percentage that
+  resets on tap, a **Fill / Fit** toggle, and **Full screen** to hide both bars. Two fingers pan
+  once the picture is larger than the screen, and still scroll when it is not.
+- The toolbar scrolls sideways, so no control is ever cut off on a narrow phone.
+- Rotating re-centres instead of leaving the desktop pinned to a corner.
+- LXTerminal, GTK and the panel are configured with readable font sizes and a dark palette.
+- `groups: cannot find name for group ID 3003` no longer greets you in every terminal: Android's
+  supplementary group ids are given names inside the container.
 
-- A first-launch prompt explains, before any long download starts, that Notifications should be ON
-  and Battery usage should be Unrestricted — and what breaks if they are not. Answering it walks
-  straight into the Android prompts.
-- Battery usage now opens a single yes/no system prompt
-  (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) instead of a list to hunt through, with the list and
-  App info as fallbacks.
-- Every permission row carries a coloured **ON / OFF** pill and a sentence naming the action and
-  its effect, for example *"Restricted · set to Unrestricted, or Android stops setup in the
-  background"*. Auto-start, which no app can read, is marked **CHECK**.
-- The install confirmation warns if Battery usage is still Restricted.
+## Linux apps, always the newest build
 
-## Icon
+A new **Linux apps** card installs desktop apps into the container. Each row installs *and*
+updates — every entry resolves the latest build rather than a pinned version.
 
-The mark was slightly oversized inside the launcher mask. It is scaled back to the standard
-adaptive-icon keyline (about 50 dp of the 108 dp canvas), regenerated at every density.
-
-# PocketDesk 1.0.0
-
-First release under the PocketDesk name. Rebuilt from NexaDesk Linux 0.3.0.
-
-## New name and mark
-
-- Renamed to **PocketDesk** — short, and it says what the app is: a desktop in your pocket.
-- Package renamed to `com.pocketdesk`, so **any earlier NexaDesk or NexaDock build must be
-  uninstalled first**. It is a different app to Android, not an update.
-- New minimalist icon: a deep navy-to-blue gradient with a white monitor and a `>_` prompt.
-  Generated from code and exported to every launcher density, the adaptive foreground, the
-  themed-icon monochrome layer, the notification icon and the in-app logo, so the mark on the
-  home screen is the same mark inside the app.
-
-## Interface
-
-- New deep-blue palette with matched light and dark surfaces, and an explicit theme switch in
-  the header (Match phone / Light / Dark).
-- Live status strip at the top of the home screen: **Network, Battery %, Free space and
-  Temperature**, refreshed every 5 seconds and coloured when a value needs attention.
-- Every dropdown was replaced by a chooser sheet where **each option has its own icon** next to
-  its word, plus a check mark on the current choice. No more plain-text lists.
-- Every settings row, permission row and toolbar button now pairs an icon with a plain-English
-  term, with ripple feedback on touch.
-- Storage is now stated in MB and GB everywhere: free space, download progress, and the measured
-  size of the installed Linux system.
-- Setup progress shows transferred size, live speed and an estimate, for example
-  `142 MB of 289 MB · 1.4 MB/s · about 2 min left`, and the package step now shows what apt is
-  actually doing instead of a silent bar.
-- Re-opening the app mid-setup restores the running job's progress immediately.
-- Desktop toolbar buttons carry icons: back, pointer mode, keyboard and paste.
-
-## Downloads
-
-- Downloads resume from the byte they stopped at using HTTP range requests, so a dropped mobile
-  connection no longer restarts the archive.
-- Six attempts with backoff, failing over to a second Ubuntu mirror; every attempt is still
-  verified against the same SHA-256.
-- 256 KB buffers, and `apt` is configured with 5 retries and 40 s timeouts inside the container.
-
-## Phone health, relaxed
-
-The 0.3 guards stopped sessions too eagerly. Now:
-
-| Guard | 0.3.0 | 1.0.0 |
+| App | Source | Note |
 | --- | --- | --- |
-| Thermal stop | Android `SEVERE` | `CRITICAL` — `SEVERE` only warns |
-| Battery temperature stop | 45 °C | 49 °C — 45 °C only warns |
-| Low-battery stop | 5% | 3%, and ignored while charging |
-| Setup battery floor | 15% | 10%, skipped while charging |
-| Desktop battery floor | 5% | 4%, skipped while charging |
-| Default auto-stop | 3 hours | 4 hours (1/2/4/6 or Off) |
+| ChatGPT | OpenAI's `latest` ARM64 `.deb` | includes Codex |
+| Claude Desktop | Anthropic's apt repository, signature pinned to the published fingerprint | Linux beta; Cowork needs hardware virtualisation a phone cannot give |
+| Antigravity | the ARM64 tarball named on Google's download page | resolved at install time, never pinned |
+| VS Code | Microsoft's `latest` ARM64 `.deb` | |
+| Firefox | Mozilla's own apt repository | Ubuntu's `firefox` package is a snap shim that cannot work in a container |
+| Developer tools | apt | Node.js, Python, pip, compiler |
 
-## Permissions and storage
+Each app states its download size, the free space it really needs, and any real limitation before
+you agree to install it. `LinuxAppsTest` checks every command is valid shell and that none pins a
+version.
 
-- New Permissions card: notification access, battery usage, OEM auto-start and App info, each
-  showing its current state and opening the right Android page. Realme, OPPO, Xiaomi, vivo,
-  Huawei and Samsung auto-start pages are all attempted before falling back to App info.
-- New **Remove Linux** action that deletes the container and reports the space freed.
-- The card shows how much storage the installed Linux is really using, measured off the main thread.
+## Also
 
-## Reliability
-
-- A global crash handler records the last fatal error, and the recovery screen shows it instead of
-  the app closing.
-- `onCreate` stays wrapped in a guard, keeping the 0.2.1 fix for the Realme Android 13 startup
-  crash: no call into the OEM `WindowInsetsController` path.
-- `largeHeap` is enabled for the desktop framebuffer, and Android 13 predictive back is declared.
+- The in-app mark is larger, matching the launcher icon more closely.
+- Free-space checks are per app instead of a blanket 2.5 GB.
 
 ## Verified in this build
 
-- Java compilation against Android API 35, minimum API 29
-- D8 dexing, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
-- RFB 3.8 negotiation and raw framebuffer test
-- POSIX/PAX tar.gz regular file, long path, symlink and hard-link test
-- Launcher assets present at mdpi through xxxhdpi plus the adaptive and monochrome layers
-- Ubuntu mirrors and the ChatGPT ARM64 package URL confirmed reachable and range-capable
+- `tests/run-tests.sh` — `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest` and the new
+  `LinuxAppsTest` all pass
+- The generated desktop script is syntax-checked with `bash -n`
+- Mozilla's apt repository confirmed to publish an arm64 Firefox; Anthropic's and Google's ARM64
+  Linux downloads confirmed from their own documentation
+- javac against API 35 (min 29), D8, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
 
-## Still needs a physical device
+## Still needs a device
 
-Compilation and static checks cannot replace a Realme C25s install. If the recovery screen appears,
-send its diagnostic line — it now names the exact failure.
+A full Ubuntu install running to completion, and each AI app actually launching, still need
+testing on the phone.

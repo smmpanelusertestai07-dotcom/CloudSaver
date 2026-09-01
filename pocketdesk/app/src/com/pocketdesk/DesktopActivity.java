@@ -28,6 +28,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private VncView desktop;
     private TextView status;
     private Button pointerMode;
+    private Button zoomLabel;
+    private Button fitButton;
+    private LinearLayout toolbarRow;
+    private View keyRow;
+    private Button restoreBars;
     private Button ctrlButton;
     private Button altButton;
     private Button superButton;
@@ -60,31 +65,67 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(5, 7, 17));
 
-        LinearLayout toolbar = new LinearLayout(this);
-        toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
+        // Everything sits in one horizontally scrollable strip, so no control is ever cut off
+        // on a narrow phone while landscape still shows the whole set at once.
+        HorizontalScrollView toolbar = new HorizontalScrollView(this);
+        toolbar.setHorizontalScrollBarEnabled(false);
         toolbar.setBackgroundColor(Color.rgb(15, 19, 39));
-        root.addView(toolbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 49)));
+        toolbarRow = new LinearLayout(this);
+        toolbarRow.setGravity(Gravity.CENTER_VERTICAL);
+        toolbarRow.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
+        toolbar.addView(toolbarRow, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(toolbar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
 
         Button back = toolButton("", R.drawable.ic_arrow_back);
         back.setContentDescription("Back to PocketDesk home");
         back.setOnClickListener(v -> finish());
-        toolbar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 46), ViewGroup.LayoutParams.MATCH_PARENT));
+        toolbarRow.addView(back, barItem(46));
 
-        status = Ui.text(this, "Starting desktop…", 13, Color.rgb(194, 202, 230));
+        status = Ui.text(this, "Starting desktop…", 12.5f, Color.rgb(194, 202, 230));
         status.setSingleLine(true);
-        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        statusLp.leftMargin = Ui.dp(this, 6);
-        toolbar.addView(status, statusLp);
+        status.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 128), ViewGroup.LayoutParams.MATCH_PARENT);
+        statusLp.setMarginStart(Ui.dp(this, 8));
+        statusLp.setMarginEnd(Ui.dp(this, 8));
+        toolbarRow.addView(status, statusLp);
+
+        Button zoomOut = toolButton("−");
+        zoomOut.setContentDescription("Zoom out");
+        zoomOut.setOnClickListener(v -> desktop.zoomBy(1f / 1.25f));
+        toolbarRow.addView(zoomOut, barItem(44));
+
+        zoomLabel = toolButton("100%");
+        zoomLabel.setContentDescription("Reset zoom");
+        zoomLabel.setOnClickListener(v -> desktop.resetView());
+        toolbarRow.addView(zoomLabel, barItem(58));
+
+        Button zoomIn = toolButton("+");
+        zoomIn.setContentDescription("Zoom in");
+        zoomIn.setOnClickListener(v -> desktop.zoomBy(1.25f));
+        toolbarRow.addView(zoomIn, barItem(44));
+
+        fitButton = toolButton("Fill", R.drawable.ic_desktop);
+        fitButton.setOnClickListener(v -> {
+            desktop.setFillMode(!desktop.isFillMode());
+            fitButton.setText(desktop.isFillMode() ? "Fill" : "Fit");
+        });
+        toolbarRow.addView(fitButton, barItem(96));
 
         pointerMode = toolButton("Touchpad", R.drawable.ic_mouse);
         pointerMode.setOnClickListener(v -> togglePointerMode());
-        toolbar.addView(pointerMode, new LinearLayout.LayoutParams(Ui.dp(this, 124), ViewGroup.LayoutParams.MATCH_PARENT));
+        toolbarRow.addView(pointerMode, barItem(124));
 
         Button keyboard = toolButton("", R.drawable.ic_keyboard);
         keyboard.setContentDescription("Open phone keyboard");
         keyboard.setOnClickListener(v -> showKeyboard());
-        toolbar.addView(keyboard, new LinearLayout.LayoutParams(Ui.dp(this, 52), ViewGroup.LayoutParams.MATCH_PARENT));
+        toolbarRow.addView(keyboard, barItem(50));
+
+        Button hideBars = toolButton("Full screen", R.drawable.ic_rotate);
+        hideBars.setOnClickListener(v -> setBarsHidden(true));
+        toolbarRow.addView(hideBars, barItem(132));
 
         desktop = new VncView(this);
         desktop.setStateListener((text, connected) -> {
@@ -102,6 +143,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         keys.setPadding(Ui.dp(this, 5), Ui.dp(this, 4), Ui.dp(this, 5), Ui.dp(this, 4));
         scroller.addView(keys, new HorizontalScrollView.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        keyRow = scroller;
         root.addView(scroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
 
         addKey(keys, "Esc", 0xff1b);
@@ -126,7 +168,41 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         FrameLayout overlay = new FrameLayout(this);
         overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
         root.addView(overlay, new LinearLayout.LayoutParams(1, 1));
-        return root;
+
+        desktop.setZoomListener((percent, fill) -> {
+            zoomLabel.setText(percent + "%");
+            fitButton.setText(fill ? "Fill" : "Fit");
+        });
+
+        // A floating chip is the only thing left on screen in full-screen mode, so the bars can
+        // always be brought back.
+        FrameLayout outer = new FrameLayout(this);
+        outer.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        restoreBars = toolButton("Controls", R.drawable.ic_settings);
+        restoreBars.setVisibility(View.GONE);
+        restoreBars.setBackground(Ui.background(Color.argb(220, 35, 42, 73), 12, this));
+        restoreBars.setOnClickListener(v -> setBarsHidden(false));
+        FrameLayout.LayoutParams chip = new FrameLayout.LayoutParams(
+                Ui.dp(this, 118), Ui.dp(this, 40), Gravity.TOP | Gravity.END);
+        chip.topMargin = Ui.dp(this, 8);
+        chip.rightMargin = Ui.dp(this, 8);
+        outer.addView(restoreBars, chip);
+        return outer;
+    }
+
+    private LinearLayout.LayoutParams barItem(int widthDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                Ui.dp(this, widthDp), ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMarginEnd(Ui.dp(this, 5));
+        return lp;
+    }
+
+    private void setBarsHidden(boolean hidden) {
+        int visibility = hidden ? View.GONE : View.VISIBLE;
+        ((View) toolbarRow.getParent()).setVisibility(visibility);
+        if (keyRow != null) keyRow.setVisibility(visibility);
+        restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
     }
 
     private void connectWithRetry() {

@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.0.1";
+    static final String VERSION = "1.1.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -63,18 +63,19 @@ public final class MainActivity extends Activity {
 
     private Button setupButton;
     private Button startButton;
-    private Button chatgptButton;
     private Button stopButton;
     private Button removeButton;
 
     private Ui.Row appearanceRow;
     private Ui.Row rotationRow;
     private Ui.Row autoStopRow;
+    private Ui.Row desktopScaleRow;
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
     private Ui.Row autoStartRow;
     private boolean askBatteryAfterNotifications;
 
+    private final java.util.Map<String, Ui.Row> appRows = new java.util.LinkedHashMap<>();
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final Runnable liveRefresh = new Runnable() {
@@ -179,6 +180,7 @@ public final class MainActivity extends Activity {
         page.addView(buildHeader(text, muted));
         page.addView(buildLiveTiles(), Ui.matchWrap(this, 14));
         page.addView(buildDesktopCard(text, muted), Ui.matchWrap(this, 14));
+        page.addView(buildAppsCard(text, muted));
         page.addView(buildPhoneCard(text, muted));
         page.addView(buildSettingsCard(text, muted));
         page.addView(buildPermissionCard(text, muted));
@@ -199,7 +201,7 @@ public final class MainActivity extends Activity {
         logo.setImageResource(R.drawable.icon_in_app);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setContentDescription("PocketDesk");
-        header.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 46), Ui.dp(this, 46)));
+        header.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
 
         LinearLayout heading = new LinearLayout(this);
         heading.setOrientation(LinearLayout.VERTICAL);
@@ -304,19 +306,9 @@ public final class MainActivity extends Activity {
         startButton.setOnClickListener(v -> startDesktop());
         card.addView(startButton, Ui.matchWrap(this, 10));
 
-        LinearLayout secondaryRow = new LinearLayout(this);
-        secondaryRow.setOrientation(LinearLayout.HORIZONTAL);
-        chatgptButton = translucentButton("Add ChatGPT", R.drawable.ic_chat);
-        chatgptButton.setOnClickListener(v -> confirmChatGpt());
         stopButton = translucentButton("Stop", R.drawable.ic_stop);
         stopButton.setOnClickListener(v -> sendServiceAction(LinuxService.ACTION_STOP));
-        LinearLayout.LayoutParams leftLp =
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f);
-        leftLp.setMarginEnd(Ui.dp(this, 10));
-        secondaryRow.addView(chatgptButton, leftLp);
-        secondaryRow.addView(stopButton,
-                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        card.addView(secondaryRow, Ui.matchWrap(this, 10));
+        card.addView(stopButton, Ui.matchWrap(this, 10));
         return card;
     }
 
@@ -328,6 +320,65 @@ public final class MainActivity extends Activity {
                 Ui.outlined(Color.argb(38, 255, 255, 255), Color.argb(96, 255, 255, 255), 16, this), true));
         Ui.setStartIcon(button, iconRes, Color.WHITE, this, 19);
         return button;
+    }
+
+    private View buildAppsCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Linux apps", R.drawable.ic_apps, dark));
+        card.addView(Ui.text(this,
+                "Tap one to install it into Linux. Each tap fetches the newest build, so the same "
+                        + "row also updates an app you already have.", 12.5f, muted), Ui.matchWrap(this, 6));
+
+        appRows.clear();
+        for (LinuxApps.App app : LinuxApps.CATALOG) {
+            Ui.Row row = new Ui.Row(this, app.iconRes, app.name,
+                    app.summary + " · " + app.approximateSize, R.drawable.ic_download, dark,
+                    v -> confirmApp(app));
+            appRows.put(app.id, row);
+            card.addView(row, Ui.matchWrap(this, appRows.size() == 1 ? 12 : 8));
+        }
+        return card;
+    }
+
+    private void refreshAppRows(boolean linuxInstalled, boolean busy, boolean running) {
+        for (LinuxApps.App app : LinuxApps.CATALOG) {
+            Ui.Row row = appRows.get(app.id);
+            if (row == null) continue;
+            boolean present = linuxInstalled && ContainerRuntime.isAppInstalled(this, app);
+            row.setStatus(present ? "ADDED" : "ADD", present ? Ui.SUCCESS : Ui.accent(dark));
+            boolean usable = linuxInstalled && !busy && !running;
+            row.setEnabled(usable);
+            row.setAlpha(usable ? 1f : 0.45f);
+        }
+    }
+
+    private void confirmApp(LinuxApps.App app) {
+        if (!ContainerRuntime.isInstalled(this)) {
+            showMessage("Install Linux first", "Set up Linux once, then you can add desktop apps to it.");
+            return;
+        }
+        boolean present = ContainerRuntime.isAppInstalled(this, app);
+        StringBuilder message = new StringBuilder(app.summary);
+        message.append("\n\nDownload size: ").append(app.approximateSize)
+                .append("\nAlways installs the newest build.");
+        if (app.caution != null) message.append("\n\n").append(app.caution);
+        dialogBuilder()
+                .setTitle((present ? "Update " : "Install ") + app.name + "?")
+                .setMessage(message.toString())
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton(present ? "Update" : "Install", (dialog, which) -> {
+                    Intent intent = new Intent(this, LinuxService.class)
+                            .setAction(LinuxService.ACTION_INSTALL_APP)
+                            .putExtra(LinuxService.EXTRA_APP_ID, app.id);
+                    requestNotificationPermission(false);
+                    try {
+                        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+                        else startService(intent);
+                    } catch (Throwable error) {
+                        showMessage("Could not start", "Android refused to start the background task.");
+                    }
+                })
+                .show();
     }
 
     private View buildPhoneCard(int text, int muted) {
@@ -370,6 +421,12 @@ public final class MainActivity extends Activity {
                         preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES, 240)),
                 R.drawable.ic_chevron, dark, v -> chooseTimer());
         card.addView(autoStopRow, Ui.matchWrap(this, 8));
+
+        desktopScaleRow = new Ui.Row(this, R.drawable.ic_desktop, "Desktop text size",
+                labelOfInt(SCALE_LABELS, SCALE_VALUES,
+                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE)),
+                R.drawable.ic_chevron, dark, v -> chooseScale());
+        card.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
         Ui.Toggle wifiOnly = new Ui.Toggle(this, R.drawable.ic_wifi, "Download on Wi-Fi only",
                 "Off means mobile data is allowed", preferences.getBoolean(ContainerRuntime.KEY_WIFI_ONLY, false), dark);
@@ -422,11 +479,13 @@ public final class MainActivity extends Activity {
         card.addView(featureRow(R.drawable.ic_terminal, "Terminal, files and Openbox desktop", text), Ui.matchWrap(this, 12));
         card.addView(featureRow(R.drawable.ic_keyboard, "Hardware keyboard and coding key row", text), Ui.matchWrap(this, 8));
         card.addView(featureRow(R.drawable.ic_mouse, "Touchpad, left/right click and USB or Bluetooth mouse", text), Ui.matchWrap(this, 8));
-        card.addView(featureRow(R.drawable.ic_chat, "Optional ChatGPT desktop app for Linux (includes Codex)", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_apps, "Add ChatGPT, Claude Desktop, Antigravity, VS Code and more", text), Ui.matchWrap(this, 8));
 
         card.addView(Ui.text(this,
-                "Limits: needs an ARM64 phone with 4 GB RAM and 4 GB free space. ChatGPT desktop is heavy on 4 GB phones. "
-                        + "Computer Use is not offered on Linux, and your ChatGPT account limits still apply. Files stay in this app's private storage.",
+                "Limits: needs an ARM64 phone with 4 GB RAM and 4 GB free space. The AI desktop apps are "
+                        + "large Electron builds and run slowly on 4 GB. Computer Use is not offered on Linux by "
+                        + "either OpenAI or Anthropic, and your account limits still apply. Files stay in this "
+                        + "app's private storage.",
                 12.5f, muted), Ui.matchWrap(this, 12));
         return card;
     }
@@ -457,6 +516,9 @@ public final class MainActivity extends Activity {
 
     private static final String[] TIMER_LABELS = {"Off", "1 hour", "2 hours", "4 hours", "6 hours"};
     private static final int[] TIMER_VALUES = {0, 60, 120, 240, 360};
+
+    private static final String[] SCALE_LABELS = {"Normal", "Large", "Extra large"};
+    private static final int[] SCALE_VALUES = {140, 168, 200};
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];
@@ -491,6 +553,20 @@ public final class MainActivity extends Activity {
         showChooser("Auto-stop timer", TIMER_LABELS, icons, selected, index -> {
             preferences.edit().putInt(ContainerRuntime.KEY_SESSION_MINUTES, TIMER_VALUES[index]).apply();
             autoStopRow.setValue(TIMER_LABELS[index]);
+        });
+    }
+
+    /** Bigger type on the Linux desktop, without shrinking the picture. */
+    private void chooseScale() {
+        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        int selected = 0;
+        for (int i = 0; i < SCALE_VALUES.length; i++) if (SCALE_VALUES[i] == current) selected = i;
+        int[] icons = {R.drawable.ic_desktop, R.drawable.ic_desktop, R.drawable.ic_desktop};
+        showChooser("Desktop text size", SCALE_LABELS, icons, selected, index -> {
+            preferences.edit().putInt(ContainerRuntime.KEY_UI_SCALE, SCALE_VALUES[index]).apply();
+            desktopScaleRow.setValue(LinuxService.isDesktopRunning()
+                    ? SCALE_LABELS[index] + " · applies next time the desktop starts"
+                    : SCALE_LABELS[index]);
         });
     }
 
@@ -690,12 +766,11 @@ public final class MainActivity extends Activity {
         startButton.setVisibility(installed ? View.VISIBLE : View.GONE);
         startButton.setEnabled(installed && !busy);
         startButton.setText(running ? "Back to desktop" : "Open desktop");
-        chatgptButton.setEnabled(installed && !busy && !running);
-        chatgptButton.setText(ContainerRuntime.isChatGptInstalled(this) ? "Update ChatGPT" : "Add ChatGPT");
         stopButton.setEnabled(running || busy);
-        for (Button button : new Button[]{setupButton, startButton, chatgptButton, stopButton}) {
+        for (Button button : new Button[]{setupButton, startButton, stopButton}) {
             button.setAlpha(button.isEnabled() ? 1f : 0.45f);
         }
+        refreshAppRows(installed, busy, running);
     }
 
     private void renderProgress(String message, String detail, int progress, boolean busy, boolean error) {
@@ -746,17 +821,6 @@ public final class MainActivity extends Activity {
                         + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Install", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
-                .show();
-    }
-
-    private void confirmChatGpt() {
-        dialogBuilder()
-                .setTitle("Add ChatGPT for Linux?")
-                .setMessage("Installs OpenAI's official ChatGPT desktop package for Linux ARM64, which includes Codex.\n\n"
-                        + "It is a large Electron app and needs about 2.5 GB free. On a 4 GB phone it can be slow. "
-                        + "Sign-in and your account limits are handled by OpenAI, not by PocketDesk.")
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Install", (d, which) -> sendServiceAction(LinuxService.ACTION_INSTALL_CHATGPT))
                 .show();
     }
 
@@ -937,7 +1001,7 @@ public final class MainActivity extends Activity {
             ImageView logo = new ImageView(this);
             logo.setImageResource(R.drawable.icon_in_app);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            root.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 60), Ui.dp(this, 60)));
+            root.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 68), Ui.dp(this, 68)));
             root.addView(Ui.bold(this, "PocketDesk", 26, Ui.LIGHT_TEXT), Ui.matchWrap(this, 16));
             root.addView(Ui.title(this, "Recovery mode", 16, Ui.PRIMARY), Ui.matchWrap(this, 4));
 

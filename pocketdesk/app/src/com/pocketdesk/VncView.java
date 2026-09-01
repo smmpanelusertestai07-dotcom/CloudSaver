@@ -10,6 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.InputDevice;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 
 import java.util.concurrent.CountDownLatch;
@@ -36,7 +37,20 @@ final class VncView extends View implements VncClient.Listener {
     private long downAt;
     private boolean moved;
     private float twoFingerY;
+    private float twoFingerX;
     private String status = "Waiting for Linux desktop…";
+
+    /** 1.0 means "as large as the screen allows"; above that the user has zoomed in. */
+    private float zoom = 1f;
+    private float panX;
+    private float panY;
+    /** Fill uses the whole screen and lets the edges be panned to; fit shows everything at once. */
+    private boolean fillMode = true;
+    private boolean centreOnNextLayout = true;
+    private ScaleGestureDetector zoomDetector;
+    private ZoomListener zoomListener;
+
+    interface ZoomListener { void zoomChanged(int percent, boolean fill); }
 
     VncView(Context context) {
         super(context);
@@ -46,6 +60,92 @@ final class VncView extends View implements VncClient.Listener {
         setBackgroundColor(Color.BLACK);
         overlayPaint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
         overlayPaint.setTextAlign(Paint.Align.CENTER);
+        zoomDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override public boolean onScale(ScaleGestureDetector detector) {
+                float previous = zoom;
+                zoom = clampZoom(zoom * detector.getScaleFactor());
+                // Keep the point under the fingers still while the picture grows around it.
+                float focusX = detector.getFocusX();
+                float focusY = detector.getFocusY();
+                float ratio = zoom / previous;
+                panX = focusX - (focusX - panX) * ratio;
+                panY = focusY - (focusY - panY) * ratio;
+                notifyZoom();
+                invalidate();
+                return true;
+            }
+        });
+    }
+
+    void setZoomListener(ZoomListener listener) {
+        zoomListener = listener;
+        notifyZoom();
+    }
+
+    void zoomBy(float factor) {
+        float previous = zoom;
+        zoom = clampZoom(zoom * factor);
+        float ratio = zoom / previous;
+        panX = getWidth() / 2f - (getWidth() / 2f - panX) * ratio;
+        panY = getHeight() / 2f - (getHeight() / 2f - panY) * ratio;
+        notifyZoom();
+        invalidate();
+    }
+
+    void setFillMode(boolean fill) {
+        fillMode = fill;
+        resetView();
+    }
+
+    @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        // A rotation changes what "fills the screen" means, so re-centre instead of keeping a
+        // pan that was clamped against the old size.
+        centreOnNextLayout = true;
+    }
+
+    boolean isFillMode() { return fillMode; }
+
+    void resetView() {
+        zoom = 1f;
+        centreOnNextLayout = true;
+        notifyZoom();
+        invalidate();
+    }
+
+    private void notifyZoom() {
+        if (zoomListener != null) zoomListener.zoomChanged(Math.round(zoom * 100), fillMode);
+    }
+
+    private static float clampZoom(float value) {
+        return Math.max(1f, Math.min(value, 6f));
+    }
+
+    /** Recomputes where the framebuffer lands on screen for the current zoom, pan and mode. */
+    private void layoutDestination(Bitmap current) {
+        float fit = Math.min(getWidth() / (float) current.getWidth(),
+                getHeight() / (float) current.getHeight());
+        float fill = Math.max(getWidth() / (float) current.getWidth(),
+                getHeight() / (float) current.getHeight());
+        float scale = (fillMode ? fill : fit) * zoom;
+        float shownWidth = current.getWidth() * scale;
+        float shownHeight = current.getHeight() * scale;
+
+        if (centreOnNextLayout) {
+            // Open on the middle of the desktop rather than its top-left corner.
+            panX = (getWidth() - shownWidth) / 2f;
+            panY = (getHeight() - shownHeight) / 2f;
+            centreOnNextLayout = false;
+        }
+
+        // Centre whatever is smaller than the screen; otherwise keep the edges flush with it.
+        panX = shownWidth <= getWidth()
+                ? (getWidth() - shownWidth) / 2f
+                : Math.max(getWidth() - shownWidth, Math.min(panX, 0f));
+        panY = shownHeight <= getHeight()
+                ? (getHeight() - shownHeight) / 2f
+                : Math.max(getHeight() - shownHeight, Math.min(panY, 0f));
+        destination.set(panX, panY, panX + shownWidth, panY + shownHeight);
     }
 
     void setClient(VncClient client) { this.client = client; }
@@ -63,17 +163,13 @@ final class VncView extends View implements VncClient.Listener {
             canvas.drawText(status, getWidth() / 2f, getHeight() / 2f, overlayPaint);
             return;
         }
-        float scale = Math.min(getWidth() / (float) current.getWidth(), getHeight() / (float) current.getHeight());
-        float shownWidth = current.getWidth() * scale;
-        float shownHeight = current.getHeight() * scale;
-        float left = (getWidth() - shownWidth) / 2f;
-        float top = (getHeight() - shownHeight) / 2f;
-        destination.set(left, top, left + shownWidth, top + shownHeight);
+        layoutDestination(current);
         canvas.drawBitmap(current, null, destination, paint);
 
         if (pointerMode == PointerMode.TOUCHPAD) {
-            float px = left + pointerX * scale;
-            float py = top + pointerY * scale;
+            float scale = destination.width() / current.getWidth();
+            float px = destination.left + pointerX * scale;
+            float py = destination.top + pointerY * scale;
             overlayPaint.setColor(Color.WHITE);
             overlayPaint.setStyle(Paint.Style.STROKE);
             overlayPaint.setStrokeWidth(Ui.dp(getContext(), 1.5f));
@@ -88,17 +184,24 @@ final class VncView extends View implements VncClient.Listener {
         if (isMouse(event)) return handleMouse(event);
         VncClient active = client;
         if (active == null || bitmap == null) return true;
+        zoomDetector.onTouchEvent(event);
         int action = event.getActionMasked();
-        if (pointerMode == PointerMode.DIRECT) return directTouch(event, action, active);
 
         if (event.getPointerCount() >= 2) {
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+                twoFingerX = averageX(event);
                 twoFingerY = averageY(event);
-            } else if (action == MotionEvent.ACTION_MOVE) {
+            } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
+                float x = averageX(event);
                 float y = averageY(event);
-                float delta = y - twoFingerY;
-                if (Math.abs(delta) > Ui.dp(getContext(), 18)) {
-                    int mask = delta < 0 ? 8 : 16;
+                if (canPan()) {
+                    panX += x - twoFingerX;
+                    panY += y - twoFingerY;
+                    twoFingerX = x;
+                    twoFingerY = y;
+                    invalidate();
+                } else if (Math.abs(y - twoFingerY) > Ui.dp(getContext(), 18)) {
+                    int mask = y - twoFingerY < 0 ? 8 : 16;
                     active.sendPointer(pointerX, pointerY, mask);
                     active.sendPointer(pointerX, pointerY, 0);
                     twoFingerY = y;
@@ -106,6 +209,7 @@ final class VncView extends View implements VncClient.Listener {
             }
             return true;
         }
+        if (pointerMode == PointerMode.DIRECT) return directTouch(event, action, active);
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
@@ -226,6 +330,7 @@ final class VncView extends View implements VncClient.Listener {
             bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             pointerX = width / 2;
             pointerY = height / 2;
+            centreOnNextLayout = true;
             status = "Connected";
             if (stateListener != null) stateListener.state("Connected · " + width + "×" + height, true);
             invalidate();
@@ -291,6 +396,17 @@ final class VncView extends View implements VncClient.Listener {
     private int mapY(float viewY, int remoteHeight) {
         if (destination.height() <= 0) return 0;
         return clamp(Math.round((viewY - destination.top) * remoteHeight / destination.height()), 0, remoteHeight - 1);
+    }
+
+    /** True once the picture is larger than the screen, so dragging it has somewhere to go. */
+    private boolean canPan() {
+        return destination.width() > getWidth() + 1f || destination.height() > getHeight() + 1f;
+    }
+
+    private static float averageX(MotionEvent event) {
+        float total = 0;
+        for (int i = 0; i < event.getPointerCount(); i++) total += event.getX(i);
+        return total / event.getPointerCount();
     }
 
     private static float averageY(MotionEvent event) {

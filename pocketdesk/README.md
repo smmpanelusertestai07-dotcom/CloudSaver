@@ -12,10 +12,10 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | --- | --- |
 | Linux | Ubuntu 24.04.4 LTS ARM64, SHA-256 verified, running under PRoot |
 | Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, TigerVNC |
-| Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`, capped at 1280×720 |
+| Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`. The framebuffer matches the phone's own screen, so landscape is a sharp 1:1 fill; pinch, `+`/`−`, Fill/Fit and Full screen control the view |
 | Input | Touchpad and direct-touch modes, left/right click, two-finger scroll, USB and Bluetooth mouse, hardware keyboard, on-screen coding key row, Android clipboard bridge |
 | Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt` — install anything else yourself |
-| Optional | OpenAI's official ChatGPT desktop package for Linux ARM64, which bundles Codex |
+| Apps | One-tap installs for ChatGPT (with Codex), Claude Desktop, Antigravity, VS Code, Firefox and developer tools. Each install fetches the newest build, so the same button also updates |
 
 ## Device requirements
 
@@ -66,7 +66,8 @@ The app is tuned so daily multi-hour use does not damage the phone.
 
 | Guard | Behaviour | Configurable |
 | --- | --- | --- |
-| Desktop resolution | Capped at 1280×720, 24-bit, to limit RAM, bandwidth and heat | No |
+| Desktop resolution | Your screen's size, capped at a 1600 px long side, 24-bit | No |
+| Desktop text size | DPI-based, so type grows without the picture blurring | Yes (Normal / Large / Extra large) |
 | Auto-stop timer | Default 4 hours; 1/2/4/6 hours or Off | Yes |
 | Temperature | Warns at 45 °C battery or Android `SEVERE` thermal state; stops only at 49 °C or `CRITICAL` | Yes (Overheat protection) |
 | Low battery | Stops at 3% when not charging; ignored while plugged in | Yes |
@@ -83,8 +84,9 @@ The app is tuned so daily multi-hour use does not damage the phone.
 - VNC has no password because it binds to `127.0.0.1` only and is never exposed to a network.
 - Chromium and Electron apps run with `--no-sandbox`, because their normal Linux sandbox cannot work
   under PRoot. That weakens isolation inside the container.
-- ChatGPT desktop for Linux is a preview from OpenAI. Its **Computer Use** feature is not offered on
-  Linux, and this app cannot change ChatGPT or Codex plan and usage limits.
+- The AI desktop apps are previews on Linux. **Computer Use** is not offered on Linux by either
+  OpenAI or Anthropic, and this app cannot change anyone's plan or usage limits. Claude Desktop's
+  Cowork tab needs hardware virtualisation (KVM), which a phone container cannot provide.
 - A self-signed sideload can still show an Android or Play Protect warning. Only distribution through
   Play review removes that reliably.
 - x86 emulation is not included, so amd64-only Linux software will not run.

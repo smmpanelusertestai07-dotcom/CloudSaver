@@ -12,6 +12,8 @@ import android.os.Build;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.os.StatFs;
+import android.util.DisplayMetrics;
+import android.view.WindowManager;
 
 import java.util.Locale;
 
@@ -80,6 +82,49 @@ final class DeviceProbe {
         String abi = Build.SUPPORTED_ABIS.length == 0 ? "unknown" : Build.SUPPORTED_ABIS[0];
         return new DeviceProbe(niceModel, "Android " + Build.VERSION.RELEASE, abi,
                 memory.totalMem, free, level, temp, networkName(context), thermal);
+    }
+
+    /**
+     * Framebuffer size for the Linux desktop, in landscape orientation.
+     *
+     * Matching the phone's own pixel count keeps the picture sharp at 1:1 instead of scaling a
+     * smaller desktop up, which is what made text look soft. Size comes from the screen; how big
+     * things *look* is set by the desktop's DPI instead.
+     */
+    static int[] desktopGeometry(Context context, int longSideCap) {
+        int width = 1280;
+        int height = 720;
+        try {
+            WindowManager manager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+            int rawWidth = 0;
+            int rawHeight = 0;
+            if (manager != null && Build.VERSION.SDK_INT >= 30) {
+                try {
+                    android.graphics.Rect bounds = manager.getMaximumWindowMetrics().getBounds();
+                    rawWidth = bounds.width();
+                    rawHeight = bounds.height();
+                } catch (Throwable ignored) {
+                    rawWidth = 0;
+                }
+            }
+            if (rawWidth <= 0 && manager != null) {
+                DisplayMetrics metrics = new DisplayMetrics();
+                manager.getDefaultDisplay().getRealMetrics(metrics);
+                rawWidth = metrics.widthPixels;
+                rawHeight = metrics.heightPixels;
+            }
+            if (rawWidth > 0 && rawHeight > 0) {
+                width = Math.max(rawWidth, rawHeight);
+                height = Math.min(rawWidth, rawHeight);
+            }
+        } catch (Throwable ignored) {
+            // Keep the 1280x720 default when the display cannot be measured.
+        }
+        if (longSideCap > 0 && width > longSideCap) {
+            height = Math.round(height * (longSideCap / (float) width));
+            width = longSideCap;
+        }
+        return new int[]{Math.max(800, width - (width % 2)), Math.max(480, height - (height % 2))};
     }
 
     static boolean isWifi(Context context) {

@@ -28,7 +28,10 @@ final class ContainerRuntime {
     static final String KEY_POLICY_V2 = "balanced_policy_v2";
     static final String KEY_PERMISSION_INTRO = "permission_intro_v1";
     static final String KEY_DESKTOP_INSTALLED = "desktop_installed";
-    static final String KEY_CHATGPT_INSTALLED = "chatgpt_installed";
+    static final String KEY_UI_SCALE = "ui_scale_dpi";
+    static final int DEFAULT_UI_SCALE = 168;
+    /** Long side of the desktop framebuffer; keeps memory sane on a 4 GB phone. */
+    static final int GEOMETRY_CAP = 1600;
 
     static final String UBUNTU_URL = "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz";
     /** Failover order for the base archive. Every mirror is checked against UBUNTU_SHA256. */
@@ -37,7 +40,6 @@ final class ContainerRuntime {
             "https://mirror.us.leaseweb.net/ubuntu-cdimage/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
     };
     static final String UBUNTU_SHA256 = "04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2";
-    static final String CHATGPT_URL = "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb";
     static final String UBUNTU_LABEL = "Ubuntu 24.04.4 LTS · ARM64";
     static final String KEY_SETUP_STAGE = "setup_stage";
 
@@ -65,11 +67,6 @@ final class ContainerRuntime {
                 .getBoolean(KEY_DESKTOP_INSTALLED, false)
                 && new File(rootfs(context), "etc/os-release").isFile()
                 && new File(rootfs(context), "usr/bin/Xtigervnc").isFile();
-    }
-
-    static boolean isChatGptInstalled(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getBoolean(KEY_CHATGPT_INSTALLED, false);
     }
 
     static void installRuntime(Context context) throws IOException, ErrnoException {
@@ -169,67 +166,80 @@ final class ContainerRuntime {
     static void writeDesktopScripts(Context context) throws IOException, ErrnoException {
         File root = rootfs(context);
         writeExecutable(new File(root, "usr/local/bin/pocketdesk-desktop"), desktopScript());
-        writeExecutable(new File(root, "usr/local/bin/pocketdesk-chatgpt"), chatGptLaunchScript());
-        writeText(new File(root, "home/coder/Desktop/Terminal.desktop"),
-                "[Desktop Entry]\nType=Application\nName=Terminal\nIcon=utilities-terminal\nExec=lxterminal\nTerminal=false\n");
-        writeText(new File(root, "home/coder/Desktop/Files.desktop"),
-                "[Desktop Entry]\nType=Application\nName=Files\nIcon=system-file-manager\nExec=pcmanfm /home/coder/Shared\nTerminal=false\n");
-        Os.chmod(new File(root, "home/coder/Desktop/Terminal.desktop").getAbsolutePath(), 0755);
-        Os.chmod(new File(root, "home/coder/Desktop/Files.desktop").getAbsolutePath(), 0755);
+        writeShortcut(context, "Terminal", "utilities-terminal", "lxterminal");
+        writeShortcut(context, "Files", "system-file-manager", "pcmanfm /home/coder/Shared");
     }
 
-    static void writeChatGptShortcut(Context context) throws IOException, ErrnoException {
-        File desktop = new File(rootfs(context), "home/coder/Desktop/ChatGPT.desktop");
-        writeText(desktop,
-                "[Desktop Entry]\nType=Application\nName=ChatGPT\nComment=Official OpenAI Linux app (experimental in PRoot)\n"
-                        + "Icon=chatgpt\nExec=/usr/local/bin/pocketdesk-chatgpt\nTerminal=false\nCategories=Development;Utility;\n");
-        Os.chmod(desktop.getAbsolutePath(), 0755);
+    /** A desktop icon plus a launcher wrapper, used for every app in the catalog. */
+    static void writeAppShortcut(Context context, LinuxApps.App app) throws IOException, ErrnoException {
+        File root = rootfs(context);
+        String launcher = "/usr/local/bin/pocketdesk-" + app.id;
+        writeExecutable(new File(root, launcher.substring(1)), LinuxApps.launcherScript(app.marker));
+        writeShortcut(context, app.name, app.id, launcher);
     }
 
-    static String chatGptInstallCommand() {
-        return "set -eu; export DEBIAN_FRONTEND=noninteractive; "
-                + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'install ok installed'; then "
-                + "apt-get update; apt-get install -y --only-upgrade --no-install-recommends chatgpt; "
-                + "else apt-get update; "
-                + "curl --fail --location --retry 3 --progress-bar '" + CHATGPT_URL + "' -o /tmp/chatgpt_arm64.deb; "
-                + "apt-get install -y --no-install-recommends /tmp/chatgpt_arm64.deb; rm -f /tmp/chatgpt_arm64.deb; fi; "
-                + "apt-get clean; rm -rf /var/lib/apt/lists/*";
+    private static void writeShortcut(Context context, String name, String icon, String exec)
+            throws IOException, ErrnoException {
+        File file = new File(rootfs(context), "home/coder/Desktop/" + name + ".desktop");
+        writeText(file, "[Desktop Entry]\nType=Application\nName=" + name
+                + "\nIcon=" + icon + "\nExec=" + exec + "\nTerminal=false\nCategories=Development;Utility;\n");
+        Os.chmod(file.getAbsolutePath(), 0755);
     }
 
-    static String startDesktopCommand(int width, int height) {
-        int safeWidth = Math.max(800, Math.min(width, 1600));
-        int safeHeight = Math.max(480, Math.min(height, 1000));
+    static boolean isAppInstalled(Context context, LinuxApps.App app) {
+        return new File(rootfs(context), app.marker.substring(1)).exists();
+    }
+
+    static String startDesktopCommand(int width, int height, int dpi) {
+        int safeWidth = even(Math.max(800, Math.min(width, 1920)));
+        int safeHeight = even(Math.max(480, Math.min(height, 1200)));
+        int safeDpi = Math.max(96, Math.min(dpi, 240));
         return "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1; "
                 + "mkdir -p /tmp/.X11-unix; chmod 1777 /tmp /tmp/.X11-unix; "
-                + "exec su - coder -c '/usr/local/bin/pocketdesk-desktop " + safeWidth + "x" + safeHeight + "'";
+                // Android hands the container supplementary GIDs that Ubuntu has no names for.
+                // Naming them stops every login shell printing "groups: cannot find name for group ID".
+                + "for gid in $(id -G 2>/dev/null); do "
+                + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
+                + "exec su - coder -c '/usr/local/bin/pocketdesk-desktop "
+                + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
+    }
+
+    private static int even(int value) {
+        return value - (value % 2);
     }
 
     private static String desktopScript() {
         return "#!/bin/bash\n"
                 + "set -u\n"
                 + "GEOMETRY=${1:-1280x720}\n"
+                + "DPI=${2:-160}\n"
                 + "export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8\n"
                 + "cd \"$HOME\"\n"
                 + "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n"
-                + "/usr/bin/Xtigervnc :1 -rfbport 5901 -localhost yes -SecurityTypes None -ac -AlwaysShared -geometry \"$GEOMETRY\" -depth 24 -desktop 'PocketDesk' &\n"
+                // A real DPI is what makes text large without blurring it: the desktop renders at
+                // the phone's own pixel count, and only the type and controls grow.
+                + "printf 'Xft.dpi: %s\\nXft.antialias: true\\nXft.hinting: true\\n"
+                + "Xft.hintstyle: hintslight\\nXft.rgba: rgb\\n' \"$DPI\" > \"$HOME/.Xresources\"\n"
+                + "mkdir -p \"$HOME/.config/gtk-3.0\" \"$HOME/.config/lxterminal\" \"$HOME/.config/tint2\"\n"
+                + "printf '[Settings]\\ngtk-font-name=Sans 11\\ngtk-application-prefer-dark-theme=1\\n"
+                + "gtk-xft-dpi=%s\\n' \"$((DPI * 1024))\" > \"$HOME/.config/gtk-3.0/settings.ini\"\n"
+                + "printf '[general]\\nfontname=Monospace 12\\nscrollback=4000\\n"
+                + "bgcolor=rgb(23,26,38)\\nfgcolor=rgb(226,232,245)\\ngeometry_columns=100\\n"
+                + "geometry_rows=28\\nhidescrollbar=false\\n' > \"$HOME/.config/lxterminal/lxterminal.conf\"\n"
+                + "printf 'panel_items = LTSC\\npanel_size = 100%% 44\\ntaskbar_name = 0\\n"
+                + "task_font = Sans 11\\nclock_font_line1 = Sans 11\\nlauncher_icon_size = 28\\n"
+                + "task_maximum_size = 220 40\\n' > \"$HOME/.config/tint2/tint2rc\"\n"
+                + "/usr/bin/Xtigervnc :1 -rfbport 5901 -localhost yes -SecurityTypes None -ac -AlwaysShared "
+                + "-geometry \"$GEOMETRY\" -depth 24 -dpi \"$DPI\" -desktop 'PocketDesk' &\n"
                 + "VNC_PID=$!\n"
                 + "for n in 1 2 3 4 5 6 7 8; do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.5; done\n"
+                + "xrdb -merge \"$HOME/.Xresources\" >/dev/null 2>&1 || true\n"
                 + "eval \"$(dbus-launch --sh-syntax)\"\n"
                 + "openbox-session >/tmp/pocketdesk-openbox.log 2>&1 &\n"
                 + "tint2 >/tmp/pocketdesk-tint2.log 2>&1 &\n"
                 + "pcmanfm --desktop --profile LXDE >/tmp/pocketdesk-pcmanfm.log 2>&1 &\n"
                 + "lxterminal >/tmp/pocketdesk-terminal.log 2>&1 &\n"
                 + "wait \"$VNC_PID\"\n";
-    }
-
-    private static String chatGptLaunchScript() {
-        return "#!/bin/bash\n"
-                + "export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8\n"
-                + "export LIBGL_ALWAYS_SOFTWARE=1\n"
-                + "for app in /usr/bin/chatgpt /usr/bin/ChatGPT /opt/ChatGPT/chatgpt /opt/ChatGPT/ChatGPT; do\n"
-                + "  if [ -x \"$app\" ]; then exec \"$app\" --no-sandbox --disable-gpu --disable-dev-shm-usage; fi\n"
-                + "done\n"
-                + "lxterminal -e bash -lc 'echo ChatGPT executable was not found.; read -p Press_Enter'\n";
     }
 
     private static void writeExecutable(File file, String value) throws IOException, ErrnoException {
