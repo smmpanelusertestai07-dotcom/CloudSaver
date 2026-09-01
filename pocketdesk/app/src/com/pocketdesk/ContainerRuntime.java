@@ -12,6 +12,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ final class ContainerRuntime {
     static final String KEY_THEME = "theme";
     static final String KEY_POLICY_V2 = "balanced_policy_v2";
     static final String KEY_PERMISSION_INTRO = "permission_intro_v1";
+    static final String KEY_CRASH_SEEN = "crash_seen_at";
     static final String KEY_DESKTOP_INSTALLED = "desktop_installed";
     static final String KEY_UI_SCALE = "ui_scale_dpi";
     static final int DEFAULT_UI_SCALE = 168;
@@ -164,10 +166,28 @@ final class ContainerRuntime {
     }
 
     static void writeDesktopScripts(Context context) throws IOException, ErrnoException {
-        File root = rootfs(context);
-        writeExecutable(new File(root, "usr/local/bin/pocketdesk-desktop"), desktopScript());
+        copyAsset(context, "pocketdesk-desktop.sh", "usr/local/bin/pocketdesk-desktop");
+        copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         writeShortcut(context, "Terminal", "utilities-terminal", "lxterminal");
         writeShortcut(context, "Files", "system-file-manager", "pcmanfm /home/coder/Shared");
+    }
+
+    /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
+    private static void copyAsset(Context context, String asset, String relativePath)
+            throws IOException, ErrnoException {
+        File target = new File(rootfs(context), relativePath);
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Could not create " + parent.getName());
+        }
+        try (InputStream input = context.getAssets().open(asset);
+             FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            output.getFD().sync();
+        }
+        Os.chmod(target.getAbsolutePath(), 0755);
     }
 
     /** A desktop icon plus a launcher wrapper, used for every app in the catalog. */
@@ -184,6 +204,11 @@ final class ContainerRuntime {
         writeText(file, "[Desktop Entry]\nType=Application\nName=" + name
                 + "\nIcon=" + icon + "\nExec=" + exec + "\nTerminal=false\nCategories=Development;Utility;\n");
         Os.chmod(file.getAbsolutePath(), 0755);
+        // The same entry in the system menu, so it is reachable even without desktop icons.
+        File shared = new File(rootfs(context), "usr/share/applications/pocketdesk-"
+                + name.toLowerCase(java.util.Locale.ROOT).replace(' ', '-') + ".desktop");
+        writeText(shared, "[Desktop Entry]\nType=Application\nName=" + name
+                + "\nIcon=" + icon + "\nExec=" + exec + "\nTerminal=false\nCategories=Development;Utility;\n");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
@@ -200,6 +225,7 @@ final class ContainerRuntime {
                 // Naming them stops every login shell printing "groups: cannot find name for group ID".
                 + "for gid in $(id -G 2>/dev/null); do "
                 + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
+                + "chown -R coder:coder /home/coder 2>/dev/null || true; "
                 + "exec su - coder -c '/usr/local/bin/pocketdesk-desktop "
                 + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
     }

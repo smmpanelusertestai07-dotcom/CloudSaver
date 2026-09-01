@@ -53,6 +53,12 @@ final class Crash {
         }
     }
 
+    /** When the current report was written, or 0 if there is none. */
+    static long recordedAt(Context context) {
+        File file = new File(context.getFilesDir(), FILE);
+        return file.isFile() ? file.lastModified() : 0L;
+    }
+
     static void clear(Context context) {
         File file = new File(context.getFilesDir(), FILE);
         if (file.isFile()) file.delete();

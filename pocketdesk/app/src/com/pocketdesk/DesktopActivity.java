@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.Gravity;
@@ -47,9 +48,18 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         super.onCreate(state);
         try {
             applyOrientation();
-            getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            // The phone's own clock, battery and signal stay visible: hiding them was hiding
+            // exactly the information this app is otherwise careful to show.
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-            setContentView(buildScreen());
+            if (Build.VERSION.SDK_INT < 35) {
+                getWindow().setStatusBarColor(Color.rgb(15, 19, 39));
+                getWindow().setNavigationBarColor(Color.rgb(5, 7, 17));
+            }
+            View content = buildScreen();
+            setContentView(content);
+            applySystemInsets(content);
             connectWithRetry();
         } catch (Throwable error) {
             // Going back to the home screen with the reason recorded beats a crash loop.
@@ -93,7 +103,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         status.setSingleLine(true);
         status.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 128), ViewGroup.LayoutParams.MATCH_PARENT);
+                Ui.dp(this, 92), ViewGroup.LayoutParams.MATCH_PARENT);
         statusLp.setMarginStart(Ui.dp(this, 8));
         statusLp.setMarginEnd(Ui.dp(this, 8));
         toolbarRow.addView(status, statusLp);
@@ -130,6 +140,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         keyboard.setContentDescription("Open phone keyboard");
         keyboard.setOnClickListener(v -> showKeyboard());
         toolbarRow.addView(keyboard, barItem(50));
+
+        Button rotate = toolButton("", R.drawable.ic_rotate);
+        rotate.setContentDescription("Rotate the desktop");
+        rotate.setOnClickListener(v -> toggleOrientation());
+        toolbarRow.addView(rotate, barItem(50));
 
         Button hideBars = toolButton("Full screen", R.drawable.ic_fit);
         hideBars.setOnClickListener(v -> setBarsHidden(true));
@@ -418,8 +433,45 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private void applyOrientation() {
         SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
         String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
-        if ("portrait".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-        else if ("landscape".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-        // Auto follows Android's rotation setting without forcing an activity restart.
+        if ("portrait".equals(value)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
+            return;
+        }
+        // The desktop is built at the screen's landscape size, so landscape is an exact 1:1 fill.
+        // In portrait the same picture can only be letterboxed or cropped, which is what made it
+        // look like a tiny strip. The toolbar's rotate button switches when you want portrait.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+    }
+
+    private void toggleOrientation() {
+        boolean landscape = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        setRequestedOrientation(landscape
+                ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+    }
+
+    /** Keeps the toolbar clear of the status bar and the key row clear of the gesture bar. */
+    private void applySystemInsets(View root) {
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int top;
+            int bottom;
+            int left;
+            int right;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(
+                        android.view.WindowInsets.Type.systemBars()
+                                | android.view.WindowInsets.Type.displayCutout());
+                top = bars.top; bottom = bars.bottom; left = bars.left; right = bars.right;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+                left = insets.getSystemWindowInsetLeft();
+                right = insets.getSystemWindowInsetRight();
+            }
+            view.setPadding(left, top, right, bottom);
+            return insets;
+        });
+        root.requestApplyInsets();
     }
 }

@@ -251,7 +251,15 @@ public final class LinuxService extends Service {
                     + "). Check the connection and free space, then try again.");
         }
         ContainerRuntime.writeAppShortcut(this, app);
-        status(app.name + " is ready", "Open the desktop and tap its icon.", 100, false, false);
+        // Refresh the desktop's own menu so the new app is there without a restart.
+        try {
+            runTracked("/usr/local/bin/pocketdesk-menu || true", null);
+        } catch (Exception ignored) {
+            // The menu is rebuilt at the next desktop start anyway.
+        }
+        status(app.name + " is ready",
+                "Open the desktop, then tap its icon or right-click the background for the menu.",
+                100, false, false);
     }
 
     private void startDesktop() throws Exception {

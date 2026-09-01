@@ -1,58 +1,55 @@
-# PocketDesk 1.1.1
+# PocketDesk 1.1.2
 
-Fixes the crash behind "PocketDesk keeps stopping" on the desktop screen, and answers "what is
-happening and how long will it take" during installs.
+The desktop screen keeps the phone's status bar, opens in landscape at a true 1:1 fill, has a real
+right-click menu with your installed apps, and can no longer be killed by a stray error.
 
-## The crash
+## The app can no longer die on you
 
-The desktop viewer allocated a fresh multi-megabyte pixel array for every screen update — 4.6 MB
-per full frame at 1600×720. With apt working in the background, one of those allocations hit
-`OutOfMemoryError`, which is not an `IOException`, escaped the viewer thread's handler, and killed
-the whole process. That is why Open desktop bounced straight back, why the screen stayed black
-while saying "Connected", and why Android showed "PocketDesk keeps stopping".
+Every earlier fix removed one *cause* of a crash. This one removes the *consequence*: PocketDesk
+now re-enters Android's main message loop after an unhandled UI error instead of letting the
+process end. A stray exception shows a short notice, records the stack, and the app carries on —
+no more silently bouncing back from the desktop, no more "PocketDesk keeps stopping".
 
-- The viewer now reads the screen in **reused fixed-size strips** (~750 KB, allocated once per
-  connection) instead of a fresh array per frame. The multi-megabyte churn is gone.
-- The viewer thread catches **everything**, ends the session with a readable message, and records
-  the report — it can no longer take the app down.
-- The crash recorder now installs at **process start** (Application class), whatever screen
-  Android launches first.
-- The desktop screen's own start-up is guarded: if it cannot build, you land back on the home
-  screen with the reason recorded, not in a crash loop.
-- New **"Last error report"** row under Permissions whenever a report exists: view, share or
-  clear it. A shared report is exactly what turns the next "keeps stopping" into a fix.
+The recorded report is now shown **automatically, once**, the next time you open the app, with
+**Share** on it. If anything still misbehaves, that text names the exact line.
 
-## Install progress that answers your question
+## The desktop looks right
 
-While Linux or an app installs, the card now reads like:
+- **Your phone's clock, battery and signal stay visible.** The desktop screen no longer forces
+  full-screen, and the toolbar and key row are padded clear of the status and gesture bars.
+- **It opens in landscape.** The Linux screen is built at your phone's landscape size, so
+  landscape is an exact 1:1 fill — sharp, edge to edge, nothing letterboxed. Portrait could only
+  ever show that picture as a thin strip or a heavy crop, which is what you were seeing. A new
+  **rotate button** in the toolbar switches whenever you want, and the Screen rotation setting
+  still forces portrait if you prefer it.
+- **Windows open maximised.** On a phone-sized screen a floating half-size terminal is wasted
+  space, so Openbox now maximises by default.
+- **The desktop has a background and readable icon labels** instead of flat black, with larger
+  window title and menu fonts.
 
-> **Installing ChatGPT**
-> Downloading packages · 4 min so far · usually 5–15 min
-> Get:12 http://ports.ubuntu.com/… libgtk-3-0 [2,845 kB]
+## Finding your apps
 
-The phase (Preparing / Downloading packages / Unpacking files / Finishing set-up) is derived from
-what apt is actually printing, the elapsed time is real, and every catalogue app carries an honest
-typical duration. The Ubuntu tools step says up front that it usually takes 10–25 minutes.
+- **Right-click (two-finger tap) anywhere on the desktop** opens a menu listing Terminal, Files
+  and every app you have installed — ChatGPT, Claude Desktop, Antigravity and the rest appear
+  there automatically as soon as they finish installing, without restarting the desktop.
+- Each app also gets a desktop icon and a system menu entry, so there are three ways to reach it.
+- The menu rebuilds itself from the installed launchers, so it can never fall out of step with
+  what is actually on the system.
 
-## Desktop view
+## Under the hood
 
-- **Zoom out now works below 100%**: in Fill mode the picture can be pinched down until the whole
-  desktop fits, instead of stopping at full-screen size.
-- Toolbar buttons redrawn: ripple feedback, rounded, tinted icons, proper Fill/Fit and
-  Full screen glyphs, larger − / + targets.
-
-## In-app mark
-
-The logo inside the app keeps its plate size but the monitor mark inside it is drawn larger, as
-requested. The launcher icon is unchanged.
+The two desktop shell scripts moved out of escaped Java strings into real files under
+`app/assets/`, where they can be read and reviewed normally. The test suite now lints them with
+`bash -n`, so a syntax error can no longer reach the phone.
 
 ## Verified in this build
 
-- All four test suites pass: `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest`,
-  `LinuxAppsTest`
+- All five checks pass: `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest`,
+  `LinuxAppsTest`, and shell syntax on both desktop scripts
 - javac against API 35 (min 29), D8, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
+- The asset scripts are confirmed present in the packaged APK
 
-## Still needs the phone
+## If something still goes wrong
 
-The OutOfMemoryError diagnosis fits every symptom in the screenshots, but the definitive proof is
-the new error report row: if anything stops again, open it and share the text.
+Open PocketDesk, let the error report appear, tap **Share**, and send the text. It contains the
+exact failure — which is the one thing screenshots cannot show.

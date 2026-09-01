@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.1.1";
+    static final String VERSION = "1.1.2";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -140,9 +140,7 @@ public final class MainActivity extends Activity {
         refreshPermissionRows();
         measureLinuxSize();
         maybeShowPermissionIntro();
-        if (crashRow != null) {
-            crashRow.setVisibility(Crash.read(this).isEmpty() ? View.GONE : View.VISIBLE);
-        }
+        showCrashRowIfNeeded();
         // Re-entering mid-setup should show the running job straight away, not an empty card.
         if (LinuxService.isBusy() || LinuxService.lastMessage() != null) {
             renderProgress(LinuxService.lastMessage(), LinuxService.lastDetail(),
@@ -932,6 +930,17 @@ public final class MainActivity extends Activity {
         } catch (Throwable error) {
             return false;
         }
+    }
+
+    /** A report the user has not seen yet is worth interrupting for; an old one just sits in the list. */
+    private void showCrashRowIfNeeded() {
+        if (crashRow == null) return;
+        long recordedAt = Crash.recordedAt(this);
+        crashRow.setVisibility(recordedAt == 0 ? View.GONE : View.VISIBLE);
+        if (recordedAt == 0) return;
+        if (preferences.getLong(ContainerRuntime.KEY_CRASH_SEEN, 0L) == recordedAt) return;
+        preferences.edit().putLong(ContainerRuntime.KEY_CRASH_SEEN, recordedAt).apply();
+        showCrashReport();
     }
 
     /** The recorded stack is the difference between "keeps stopping" and a fixable report. */
