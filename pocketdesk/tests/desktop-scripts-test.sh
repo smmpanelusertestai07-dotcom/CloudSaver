@@ -46,6 +46,24 @@ grep -q -- '--disable-software-rasterizer' "$log" \
   && fail "--disable-software-rasterizer denies GPU access outright and stops ChatGPT opening"
 grep -q -- '--disable-gpu ' "$log" || fail "missing --disable-gpu"
 
+# A stale single-instance lock must be cleared -- and must never leak into the launcher's own
+# variables. This exact setup once made it execute the lock's target, "localhost-16621", as the
+# app: the launch line in the log carried the wrong command and the app exited 127.
+mkdir -p "$HOME/.config/Codex" "$HOME/.config/Live"
+touch "$HOME/.config/Codex/SingletonLock" "$HOME/.config/Codex/SingletonCookie"
+ln -sf "localhost-$$" "$HOME/.config/Live/SingletonLock"
+set +e
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" = 7 ] || fail "with stale locks present the app's own exit code must still come back, got $status"
+grep -q 'clearing stale lock in Codex' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "a dead app's singleton lock must be cleared before launching"
+[ -e "$HOME/.config/Codex/SingletonLock" ] && fail "the stale lock should be gone"
+[ -L "$HOME/.config/Live/SingletonLock" ] || fail "a live app's lock must not be touched"
+grep -q 'launching: .*electronish' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "the launch line must name the app, not a lock target"
+
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" plainish >/dev/null 2>&1
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \
   || fail "an app that is not Chromium-based must be started with no extra flags"

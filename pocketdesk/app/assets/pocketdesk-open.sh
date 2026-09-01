@@ -129,12 +129,15 @@ run_attempt() {
 # directory... Aborting now." That is the tap doing nothing all over again, so every stale lock
 # is cleared first. A lock whose process is still alive is left alone.
 clean_stale_locks() {
+  # Everything here is local: this function once overwrote the script's own $target with a
+  # lock's readlink result, and the launcher then tried to run "localhost-16621" as the app.
+  local lock profile lock_target lock_owner
   for lock in "$HOME"/.config/*/SingletonLock; do
     { [ -e "$lock" ] || [ -L "$lock" ]; } || continue
     profile=$(dirname "$lock")
-    target=$(readlink "$lock" 2>/dev/null || true)
-    owner=${target##*-}
-    if [ -n "$owner" ] && [ "$owner" -gt 0 ] 2>/dev/null && kill -0 "$owner" 2>/dev/null; then
+    lock_target=$(readlink "$lock" 2>/dev/null || true)
+    lock_owner=${lock_target##*-}
+    if [ -n "$lock_owner" ] && [ "$lock_owner" -gt 0 ] 2>/dev/null && kill -0 "$lock_owner" 2>/dev/null; then
       continue
     fi
     echo "clearing stale lock in ${profile##*/}" >> "$log"

@@ -385,21 +385,64 @@ final class VncView extends View implements VncClient.Listener {
                 || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE);
     }
 
+    /**
+     * Finger mode, behaving the way a phone behaves.
+     *
+     * The old version pressed the left button the instant a finger landed, so the slightest
+     * wobble became a drag -- icons moved, text selected, windows tore around -- and scrolling
+     * did not exist. Now a tap is a click where the finger first landed, holding still for half
+     * a second is a right-click, and a swipe turns the scroll wheel like every phone screen.
+     * Precise dragging is what Mouse mode is for.
+     */
     private boolean directTouch(MotionEvent event, int action, VncClient active) {
-        int x = mapX(event.getX(), active.getWidth());
-        int y = mapY(event.getY(), active.getHeight());
-        pointerX = x;
-        pointerY = y;
-        if (action == MotionEvent.ACTION_DOWN) {
-            requestFocus();
-            active.sendPointer(x, y, 1);
-        } else if (action == MotionEvent.ACTION_MOVE) {
-            active.sendPointer(x, y, 1);
-        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-            active.sendPointer(x, y, 0);
-            performClick();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                requestFocus();
+                downX = lastX = event.getX();
+                downY = lastY = event.getY();
+                downAt = System.currentTimeMillis();
+                moved = false;
+                pointerX = mapX(downX, active.getWidth());
+                pointerY = mapY(downY, active.getHeight());
+                active.sendPointer(pointerX, pointerY, 0);
+                invalidate();
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
+                        > Ui.dp(getContext(), 10)) {
+                    moved = true;
+                }
+                if (!moved) return true;
+                // A swipe is a scroll, in the direction the content moves on any phone screen.
+                float travelled = event.getY() - lastY;
+                int notch = Ui.dp(getContext(), 26);
+                while (travelled <= -notch) {
+                    active.sendPointer(pointerX, pointerY, 16);
+                    active.sendPointer(pointerX, pointerY, 0);
+                    lastY -= notch;
+                    travelled += notch;
+                }
+                while (travelled >= notch) {
+                    active.sendPointer(pointerX, pointerY, 8);
+                    active.sendPointer(pointerX, pointerY, 0);
+                    lastY += notch;
+                    travelled -= notch;
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (!moved && action == MotionEvent.ACTION_UP) {
+                    // Click where the finger first landed: the touch point, not the lift wobble.
+                    int button = System.currentTimeMillis() - downAt >= 500 ? 4 : 1;
+                    active.sendPointer(pointerX, pointerY, button);
+                    active.sendPointer(pointerX, pointerY, 0);
+                    performClick();
+                }
+                return true;
+            default:
+                return true;
         }
-        return true;
     }
 
     @Override public boolean performClick() {

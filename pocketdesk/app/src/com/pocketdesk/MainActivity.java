@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "2.4.0";
+    static final String VERSION = "2.5.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -365,9 +365,12 @@ public final class MainActivity extends Activity {
             return;
         }
         boolean present = ContainerRuntime.isAppInstalled(this, app);
-        StringBuilder message = new StringBuilder(app.summary);
+        StringBuilder message = new StringBuilder(present
+                ? "Already installed. This fetches the newest build from the maker and updates "
+                        + "it in place \u2014 your login and settings stay."
+                : app.summary);
         message.append("\n\nDownload size: ").append(app.approximateSize)
-                .append("\nAlways installs the newest build.");
+                .append(present ? "" : "\nAlways installs the newest build.");
         if (app.caution != null) message.append("\n\n").append(app.caution);
         dialogBuilder()
                 .setTitle((present ? "Update " : "Install ") + app.name + "?")
