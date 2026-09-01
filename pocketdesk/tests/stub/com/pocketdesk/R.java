@@ -15,5 +15,6 @@ public final class R {
         public static final int logo_firefox = 10;
         public static final int logo_web = 11;
         public static final int ic_bolt = 12;
+        public static final int logo_cursor = 13;
     }
 }

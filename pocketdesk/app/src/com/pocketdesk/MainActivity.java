@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.7.0";
+    static final String VERSION = "2.0.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -327,10 +327,10 @@ public final class MainActivity extends Activity {
 
     private View buildAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.sectionTitle(this, "Linux apps", R.drawable.ic_apps, dark));
+        card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
         card.addView(Ui.text(this,
-                "Tap one to install it into Linux. Each tap fetches the newest build, so the same "
-                        + "row also updates an app you already have.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "The real desktop apps, not websites. Each tap fetches the newest build, so the same "
+                        + "row also updates one you already have.", 12.5f, muted), Ui.matchWrap(this, 6));
 
         appRows.clear();
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -495,9 +495,9 @@ public final class MainActivity extends Activity {
         card.addView(featureRow(R.drawable.ic_terminal, "Terminal, files and Openbox desktop", text), Ui.matchWrap(this, 12));
         card.addView(featureRow(R.drawable.ic_keyboard, "Hardware keyboard and coding key row", text), Ui.matchWrap(this, 8));
         card.addView(featureRow(R.drawable.ic_mouse, "Touchpad, left/right click and USB or Bluetooth mouse", text), Ui.matchWrap(this, 8));
-        card.addView(featureRow(R.drawable.ic_apps, "Add ChatGPT, Claude Desktop, Antigravity, VS Code and more", text), Ui.matchWrap(this, 8));
-        card.addView(featureRow(R.drawable.ic_network, "Firefox is installed with Linux, so a browser is there from the start", text), Ui.matchWrap(this, 8));
-        card.addView(featureRow(R.drawable.ic_storage, "Your work lives in Projects; browser downloads land in Downloads", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_apps, "ChatGPT, Claude Desktop, Cursor and Antigravity", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_network, "A browser is installed with Linux, so one is there from the start", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_storage, "Downloads open in your phone's Files app too: Android/data/com.pocketdesk/files/Shared", text), Ui.matchWrap(this, 8));
 
         card.addView(Ui.text(this,
                 "Limits: needs an ARM64 phone with 4 GB RAM and 4 GB free space. The AI desktop apps are "

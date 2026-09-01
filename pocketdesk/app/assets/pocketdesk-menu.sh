@@ -17,9 +17,10 @@ OPEN=/usr/local/bin/pocketdesk-open
 mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
          "$HOME_DIR/Projects" "$HOME_DIR/Downloads"
 
-# Apps worth a desktop icon and a panel slot, most useful first. Everything installed still
-# appears in the right-click menu.
-FAVOURITES="chatgpt claude-desktop codex-cli claude-cli antigravity code epiphany firefox pcmanfm lxterminal"
+# What gets a desktop icon and a panel slot: the AI apps, the browser, the files. Everything
+# else that is installed -- the terminal included -- stays one right-click away instead of
+# taking up room on a phone-sized screen.
+FAVOURITES="chatgpt claude-desktop cursor antigravity epiphany firefox pcmanfm"
 
 field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
   awk -F= -v key="$2" '

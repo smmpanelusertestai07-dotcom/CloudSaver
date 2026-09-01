@@ -28,6 +28,19 @@ mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2
          "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
          "$HOME/Downloads" "$HOME/.pocketdesk/logs"
 
+# Downloads belong somewhere the phone itself can open. /home/coder/Shared is the one folder
+# that is really Android storage, so Downloads becomes a link into it. Nothing is deleted: the
+# old folder is only replaced if it empties cleanly.
+if [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
+  mkdir -p "$HOME/Shared/Downloads"
+  if [ -d "$HOME/Downloads" ] && [ ! -L "$HOME/Downloads" ]; then
+    mv "$HOME/Downloads"/* "$HOME/Shared/Downloads"/ 2>/dev/null || true
+    rmdir "$HOME/Downloads" 2>/dev/null && ln -s "$HOME/Shared/Downloads" "$HOME/Downloads"
+  elif [ ! -e "$HOME/Downloads" ]; then
+    ln -s "$HOME/Shared/Downloads" "$HOME/Downloads"
+  fi
+fi
+
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
 printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: rgb\nXcursor.theme: Adwaita\nXcursor.size: 32\n' \

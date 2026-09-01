@@ -77,8 +77,8 @@ final class LinuxApps {
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt.
-            new App("essentials", "Web browser and basics",
-                    "GNOME Web browser, icons, arrow cursor, Indian time and on-screen messages.",
+            new App("essentials", "Browser and desktop basics",
+                    "The browser, icons, arrow pointer, Indian time and on-screen messages.",
                     R.drawable.ic_network, R.drawable.logo_web, "about 150 MB", 700 * MB,
                     "2–6 min", null,
                     "/usr/bin/epiphany",
@@ -97,35 +97,6 @@ final class LinuxApps {
                             + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
-
-            // Claude Desktop opens here in seconds; ChatGPT's desktop build idles above a
-            // gigabyte, which is more than this class of phone has free. Codex CLI is OpenAI's
-            // own build of the same agent without the Electron shell, and Claude Code is
-            // Anthropic's -- both run in the terminal, in the same Projects folder.
-            new App("aicli", "Codex and Claude Code", "OpenAI and Anthropic's own command-line "
-                    + "agents. Light enough to run well on any phone.",
-                    R.drawable.ic_terminal, R.drawable.logo_chatgpt, "about 250 MB", 900 * MB,
-                    "3\u201310 min",
-                    "These run in the terminal, not in a window. Same agents, same accounts.",
-                    "/usr/lib/node_modules/@openai/codex/package.json",
-                    "apt-get update; apt-get install -y --no-install-recommends nodejs npm "
-                            + "ca-certificates git; "
-                            + "npm install -g --no-fund --no-audit @openai/codex @anthropic-ai/claude-code; "
-                            // Without entries the terminal is the only way in, and the desktop
-                            // would show nothing for something that is installed.
-                            // id | title | binary | icon that is actually shipped
-                            + "set -- 'codex|Codex|codex|chatgpt' 'claude|Claude Code|claude|claude'; "
-                            + "for app in \"$@\"; do "
-                            + "id=${app%%|*}; rest=${app#*|}; title=${rest%%|*}; rest=${rest#*|}; "
-                            + "bin=${rest%%|*}; icon=${rest#*|}; "
-                            + "command -v \"$bin\" >/dev/null 2>&1 || continue; "
-                            // The title has a space in it, so the Exec line has to quote it.
-                            + "printf '[Desktop Entry]\\nName=%s\\nComment=%s in a terminal\\n"
-                            + "Exec=lxterminal -t \\042%s\\042 -e %s\\nIcon=pocketdesk-%s\\n"
-                            + "Type=Application\\nTerminal=false\\nStartupNotify=true\\n"
-                            + "Categories=Development;\\n' "
-                            + "\"$title\" \"$title\" \"$title\" \"$bin\" \"$icon\" "
-                            + "> \"/usr/share/applications/$id-cli.desktop\"; done"),
 
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
@@ -157,6 +128,19 @@ final class LinuxApps {
                             + CLAUDE_REPO + " stable main' > /etc/apt/sources.list.d/claude-desktop.list; "
                             + "apt-get update; apt-get install -y --no-install-recommends claude-desktop"),
 
+            new App("cursor", "Cursor", "Anysphere's AI code editor.",
+                    R.drawable.ic_terminal, R.drawable.logo_cursor, "about 700 MB", 2500 * MB,
+                    "5\u201315 min",
+                    "A large editor. Expect it to take a while to open the first time.",
+                    "/usr/share/cursor/cursor",
+                    "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
+                            // Cursor's own endpoint always answers with the current build.
+                            + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
+                            + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
+                            + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
+                            + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
+                            + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb"),
+
             new App("antigravity", "Antigravity", "Google's agent-first IDE.",
                     R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 800 MB", 3 * GB,
                     "5–20 min",
@@ -184,35 +168,6 @@ final class LinuxApps {
                             + "Exec=/opt/antigravity/antigravity\\nIcon=antigravity\\nType=Application\\n"
                             + "Terminal=false\\nStartupNotify=true\\nCategories=Development;\\n' "
                             + "> /usr/share/applications/antigravity.desktop"),
-
-            new App("vscode", "VS Code", "Microsoft's editor, ARM64 build.",
-                    R.drawable.ic_terminal, R.drawable.logo_vscode, "about 400 MB", 1500 * MB,
-                    "3–10 min", null,
-                    "/usr/bin/code",
-                    "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
-                            + "curl --fail --location --retry 3 '" + VSCODE_LATEST + "' -o /tmp/code.deb; "
-                            + "apt-get install -y --no-install-recommends /tmp/code.deb; rm -f /tmp/code.deb"),
-
-            new App("firefox", "Firefox", "Mozilla's browser. Heavier, slower to open than GNOME Web.",
-                    R.drawable.ic_network, R.drawable.logo_firefox, "about 250 MB", 900 * MB,
-                    "3–10 min",
-                    "Takes several seconds to open on a phone. GNOME Web is already installed and "
-                            + "opens straight away.",
-                    "/usr/bin/firefox",
-                    "apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
-                            + "install -d -m 0755 /etc/apt/keyrings; "
-                            + "curl -fsSL '" + MOZILLA_KEY + "' -o /etc/apt/keyrings/packages.mozilla.org.asc; "
-                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
-                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
-                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
-                            + "> /etc/apt/preferences.d/mozilla; "
-                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
-
-            new App("devtools", "Developer tools", "Node.js, Python, pip and a compiler.",
-                    R.drawable.ic_install, 0, "about 500 MB", 1500 * MB, "3–10 min", null,
-                    "/usr/bin/node",
-                    "apt-get update; apt-get install -y --no-install-recommends "
-                            + "nodejs npm python3 python3-pip python3-venv build-essential"),
     };
 
     static App byId(String id) {
