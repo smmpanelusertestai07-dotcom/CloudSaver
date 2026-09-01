@@ -101,6 +101,7 @@ EOF
   echo '  <separator/>'
   echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   echo '  <item label="Downloads"><action name="Execute"><command>pcmanfm /home/coder/Downloads</command></action></item>'
+  echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Refresh desktop"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
   echo '</menu>'

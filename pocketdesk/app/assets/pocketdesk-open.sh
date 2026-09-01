@@ -78,14 +78,22 @@ wait "$pid" 2>/dev/null
 status=$?
 [ "$status" = 0 ] && exit 0
 
+# A bare number tells nobody anything. These three are the ones that actually happen on a phone.
+case "$status" in
+  137) reason="the phone ran out of memory and Android stopped it" ;;
+  139) reason="it crashed" ;;
+  134) reason="it stopped itself with an error" ;;
+  *)   reason="exit code $status" ;;
+esac
+
 detail=$(grep -v '^ *$' "$log" | tail -n 8 | cut -c1-150)
-message="$label stopped right after opening (exit code $status).
+message="$label stopped right after opening: $reason.
 
 $detail
 
 Full report: $log"
 
-notify critical "$label could not open" "Exit code $status. The report is in .pocketdesk/logs."
+notify critical "$label could not open" "$reason. The report is in .pocketdesk/logs."
 if command -v zenity >/dev/null 2>&1; then
   # zenity reads its text as Pango markup, so anything the app printed has to be escaped.
   markup=$(printf '%s' "$message" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
