@@ -101,7 +101,7 @@ final class LinuxApps {
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
 
-            new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
+            new App("chatgpt", "ChatGPT", "Official desktop app by OpenAI. Includes Codex.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
                     "700 MB download, 1.3 GB installed", 4 * GB, "10–25 min",
                     "Computer Use is not offered on Linux. Your account's usage limits still apply.",
@@ -115,7 +115,7 @@ final class LinuxApps {
                             + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
                             + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi"),
 
-            new App("claude", "Claude Desktop", "Anthropic's desktop app. Includes Claude Code.",
+            new App("claude", "Claude Desktop", "Official desktop app by Anthropic. Includes Claude Code.",
                     R.drawable.ic_terminal, R.drawable.logo_claude, "about 600 MB", 3 * GB,
                     "10–20 min",
                     "Linux support is in beta. Cowork needs hardware virtualisation, which a phone "
@@ -131,7 +131,7 @@ final class LinuxApps {
                             + CLAUDE_REPO + " stable main' > /etc/apt/sources.list.d/claude-desktop.list; "
                             + "apt-get update; apt-get install -y --no-install-recommends claude-desktop"),
 
-            new App("cursor", "Cursor", "Anysphere's AI code editor.",
+            new App("cursor", "Cursor", "Official AI code editor by Anysphere.",
                     R.drawable.ic_terminal, R.drawable.logo_cursor, "about 700 MB", 2500 * MB,
                     "5\u201315 min",
                     "A large editor. Expect it to take a while to open the first time.",
@@ -144,7 +144,7 @@ final class LinuxApps {
                             + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
                             + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb"),
 
-            new App("antigravity", "Antigravity", "Google's agent-first IDE.",
+            new App("antigravity", "Antigravity", "Official agent-first IDE by Google.",
                     R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 800 MB", 3 * GB,
                     "5–20 min",
                     "Google ships Antigravity as a tarball, so it updates when you run this again.",

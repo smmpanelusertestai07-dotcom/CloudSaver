@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.0.4";
+    static final String VERSION = "3.0.5";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -330,9 +330,10 @@ public final class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
         card.addView(Ui.text(this,
-                "The makers' own official Linux builds \u2014 real desktop apps, not websites. "
-                        + "Install once: new features arrive by themselves, and one tap on a row "
-                        + "updates the app itself whenever you like.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "Official desktop apps, installed from here \u2014 not from a browser. Each row "
+                        + "fetches the maker's own signed Linux package: OpenAI's, Anthropic's, "
+                        + "Anysphere's, Google's. Install once; new features arrive by themselves, "
+                        + "and one tap on a row updates the app itself whenever you like.", 12.5f, muted), Ui.matchWrap(this, 6));
 
         appRows.clear();
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -369,7 +370,8 @@ public final class MainActivity extends Activity {
         StringBuilder message = new StringBuilder(present
                 ? "Already installed. This fetches the newest build from the maker and updates "
                         + "it in place \u2014 your login and settings stay."
-                : app.summary);
+                : app.summary + "\n\nInstalled from the maker's own official package, "
+                        + "verified by their signature. Nothing is downloaded from a browser.");
         message.append("\n\nDownload size: ").append(app.approximateSize)
                 .append(present ? "" : "\nAlways installs the newest build.");
         if (app.caution != null) message.append("\n\n").append(app.caution);
@@ -553,9 +555,12 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_check, "Are these real Linux apps?",
                 "Yes. Every app here is the maker's own official Linux build \u2014 OpenAI's "
                         + "ChatGPT for Linux, Anthropic's Claude Desktop for Linux, Cursor's and "
-                        + "Google's Linux releases. Linux is a first-class platform for all of them, "
-                        + "the same one their own engineers use, not a workaround. That is what "
-                        + "makes this future-proof: as long as they ship for Linux, they run here.",
+                        + "Google's Linux releases. Install them from the rows above, not from a "
+                        + "browser: each row fetches the maker's own signed package, so what runs is "
+                        + "exactly what they published. Linux is a first-class platform for all of "
+                        + "them, the same one their own engineers use, not a workaround. That is "
+                        + "what makes this future-proof: as long as they ship for Linux, they run "
+                        + "here.",
                 false);
 
         addAnswer(card, R.drawable.ic_timer, "Why is an app slow to open?",
