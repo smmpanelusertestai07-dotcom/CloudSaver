@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketDesk</string>
+    <string name="notification_channel_name">Linux desktop</string>
+    <string name="notification_channel_description">Setup progress and desktop session status</string>
+</resources>

@@ -1,0 +1,333 @@
+package com.pocketdesk;
+
+import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import java.io.IOException;
+
+public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
+    private VncView desktop;
+    private TextView status;
+    private Button pointerMode;
+    private Button ctrlButton;
+    private Button altButton;
+    private Button superButton;
+    private KeyboardInputView keyboardInput;
+    private Thread connectionThread;
+    private volatile boolean finished;
+    private boolean ctrl;
+    private boolean alt;
+    private boolean superKey;
+
+    @Override protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        applyOrientation();
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setContentView(buildScreen());
+        connectWithRetry();
+    }
+
+    @Override protected void onDestroy() {
+        finished = true;
+        if (desktop != null && desktop.getClient() != null) desktop.getClient().close();
+        if (connectionThread != null) connectionThread.interrupt();
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        super.onDestroy();
+    }
+
+    private View buildScreen() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(5, 7, 17));
+
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        toolbar.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
+        toolbar.setBackgroundColor(Color.rgb(15, 19, 39));
+        root.addView(toolbar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 49)));
+
+        Button back = toolButton("", R.drawable.ic_arrow_back);
+        back.setContentDescription("Back to PocketDesk home");
+        back.setOnClickListener(v -> finish());
+        toolbar.addView(back, new LinearLayout.LayoutParams(Ui.dp(this, 46), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        status = Ui.text(this, "Starting desktop…", 13, Color.rgb(194, 202, 230));
+        status.setSingleLine(true);
+        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        statusLp.leftMargin = Ui.dp(this, 6);
+        toolbar.addView(status, statusLp);
+
+        pointerMode = toolButton("Touchpad", R.drawable.ic_mouse);
+        pointerMode.setOnClickListener(v -> togglePointerMode());
+        toolbar.addView(pointerMode, new LinearLayout.LayoutParams(Ui.dp(this, 124), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        Button keyboard = toolButton("", R.drawable.ic_keyboard);
+        keyboard.setContentDescription("Open phone keyboard");
+        keyboard.setOnClickListener(v -> showKeyboard());
+        toolbar.addView(keyboard, new LinearLayout.LayoutParams(Ui.dp(this, 52), ViewGroup.LayoutParams.MATCH_PARENT));
+
+        desktop = new VncView(this);
+        desktop.setStateListener((text, connected) -> {
+            status.setText(text);
+            status.setTextColor(connected ? Ui.SUCCESS : Color.rgb(239, 170, 57));
+        });
+        root.addView(desktop, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setFillViewport(false);
+        scroller.setBackgroundColor(Color.rgb(15, 19, 39));
+        LinearLayout keys = new LinearLayout(this);
+        keys.setGravity(Gravity.CENTER_VERTICAL);
+        keys.setPadding(Ui.dp(this, 5), Ui.dp(this, 4), Ui.dp(this, 5), Ui.dp(this, 4));
+        scroller.addView(keys, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.addView(scroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
+
+        addKey(keys, "Esc", 0xff1b);
+        addKey(keys, "Tab", 0xff09);
+        ctrlButton = addModifier(keys, "Ctrl", 0);
+        altButton = addModifier(keys, "Alt", 1);
+        superButton = addModifier(keys, "Super", 2);
+        addKey(keys, "←", 0xff51);
+        addKey(keys, "↑", 0xff52);
+        addKey(keys, "↓", 0xff54);
+        addKey(keys, "→", 0xff53);
+        addKey(keys, "Enter", 0xff0d);
+        addKey(keys, "⌫", 0xff08);
+        addKey(keys, "Del", 0xffff);
+        Button paste = toolButton("Paste", R.drawable.ic_apps);
+        paste.setOnClickListener(v -> pasteClipboard());
+        keys.addView(paste, keyLayout(92));
+
+        keyboardInput = new KeyboardInputView(this);
+        keyboardInput.setListener(this);
+        keyboardInput.setAlpha(0.01f);
+        FrameLayout overlay = new FrameLayout(this);
+        overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
+        root.addView(overlay, new LinearLayout.LayoutParams(1, 1));
+        return root;
+    }
+
+    private void connectWithRetry() {
+        connectionThread = new Thread(() -> {
+            String lastError = "Waiting for local display…";
+            for (int attempt = 0; attempt < 100 && !finished; attempt++) {
+                if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
+                    if (attempt == 35 && !LinuxService.isDesktopRunning()) {
+                        desktop.onDisconnected("Desktop did not start · return and retry");
+                    }
+                    SystemClock.sleep(250);
+                    continue;
+                }
+                VncClient client = new VncClient("127.0.0.1", 5901, desktop);
+                desktop.setClient(client);
+                try {
+                    client.connectAndRun();
+                    lastError = "Desktop connection ended";
+                } catch (IOException error) {
+                    lastError = error.getMessage() == null ? "Connection failed" : error.getMessage();
+                }
+                if (!finished) desktop.onDisconnected(lastError);
+                return;
+            }
+            if (!finished) desktop.onDisconnected(lastError);
+        }, "pocketdesk-vnc-client");
+        connectionThread.start();
+    }
+
+    private void togglePointerMode() {
+        VncView.PointerMode next = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD
+                ? VncView.PointerMode.DIRECT : VncView.PointerMode.TOUCHPAD;
+        desktop.setPointerMode(next);
+        pointerMode.setText(next == VncView.PointerMode.TOUCHPAD ? "Touchpad" : "Direct touch");
+    }
+
+    private void showKeyboard() {
+        keyboardInput.requestFocus();
+        InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        input.showSoftInput(keyboardInput, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private Button addKey(LinearLayout parent, String label, int keysym) {
+        Button button = toolButton(label);
+        button.setOnClickListener(v -> specialKey(keysym));
+        parent.addView(button, keyLayout(label.length() > 3 ? 66 : 52));
+        return button;
+    }
+
+    private Button addModifier(LinearLayout parent, String label, int type) {
+        Button button = toolButton(label);
+        button.setOnClickListener(v -> toggleModifier(type));
+        parent.addView(button, keyLayout(label.length() > 4 ? 70 : 58));
+        return button;
+    }
+
+    private void toggleModifier(int type) {
+        if (type == 0) {
+            ctrl = !ctrl;
+            sendKey(0xffe3, ctrl);
+            styleModifier(ctrlButton, ctrl);
+        } else if (type == 1) {
+            alt = !alt;
+            sendKey(0xffe9, alt);
+            styleModifier(altButton, alt);
+        } else {
+            superKey = !superKey;
+            sendKey(0xffeb, superKey);
+            styleModifier(superButton, superKey);
+        }
+    }
+
+    private void styleModifier(Button button, boolean active) {
+        button.setTextColor(active ? Color.rgb(12, 18, 45) : Color.rgb(232, 236, 255));
+        button.setBackground(active ? Ui.brandGradient(this, 10) : Ui.background(Color.rgb(35, 42, 73), 10, this));
+    }
+
+    @Override public void typeCodePoint(int codePoint) {
+        VncClient client = desktop.getClient();
+        if (client != null) client.typeCodePoint(codePoint);
+    }
+
+    @Override public void specialKey(int keysym) {
+        sendKey(keysym, true);
+        sendKey(keysym, false);
+    }
+
+    @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        int keysym = androidKeySym(event);
+        if (keysym == 0 || desktop == null || desktop.getClient() == null) {
+            return super.dispatchKeyEvent(event);
+        }
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            sendKey(keysym, true);
+            return true;
+        }
+        if (event.getAction() == KeyEvent.ACTION_UP) {
+            sendKey(keysym, false);
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    private static int androidKeySym(KeyEvent event) {
+        switch (event.getKeyCode()) {
+            case KeyEvent.KEYCODE_ESCAPE: return 0xff1b;
+            case KeyEvent.KEYCODE_TAB: return 0xff09;
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER: return 0xff0d;
+            case KeyEvent.KEYCODE_DEL: return 0xff08;
+            case KeyEvent.KEYCODE_FORWARD_DEL: return 0xffff;
+            case KeyEvent.KEYCODE_DPAD_LEFT: return 0xff51;
+            case KeyEvent.KEYCODE_DPAD_UP: return 0xff52;
+            case KeyEvent.KEYCODE_DPAD_RIGHT: return 0xff53;
+            case KeyEvent.KEYCODE_DPAD_DOWN: return 0xff54;
+            case KeyEvent.KEYCODE_MOVE_HOME: return 0xff50;
+            case KeyEvent.KEYCODE_MOVE_END: return 0xff57;
+            case KeyEvent.KEYCODE_PAGE_UP: return 0xff55;
+            case KeyEvent.KEYCODE_PAGE_DOWN: return 0xff56;
+            case KeyEvent.KEYCODE_INSERT: return 0xff63;
+            case KeyEvent.KEYCODE_SHIFT_LEFT: return 0xffe1;
+            case KeyEvent.KEYCODE_SHIFT_RIGHT: return 0xffe2;
+            case KeyEvent.KEYCODE_CTRL_LEFT: return 0xffe3;
+            case KeyEvent.KEYCODE_CTRL_RIGHT: return 0xffe4;
+            case KeyEvent.KEYCODE_CAPS_LOCK: return 0xffe5;
+            case KeyEvent.KEYCODE_ALT_LEFT: return 0xffe9;
+            case KeyEvent.KEYCODE_ALT_RIGHT: return 0xffea;
+            case KeyEvent.KEYCODE_META_LEFT: return 0xffeb;
+            case KeyEvent.KEYCODE_META_RIGHT: return 0xffec;
+            case KeyEvent.KEYCODE_F1: return 0xffbe;
+            case KeyEvent.KEYCODE_F2: return 0xffbf;
+            case KeyEvent.KEYCODE_F3: return 0xffc0;
+            case KeyEvent.KEYCODE_F4: return 0xffc1;
+            case KeyEvent.KEYCODE_F5: return 0xffc2;
+            case KeyEvent.KEYCODE_F6: return 0xffc3;
+            case KeyEvent.KEYCODE_F7: return 0xffc4;
+            case KeyEvent.KEYCODE_F8: return 0xffc5;
+            case KeyEvent.KEYCODE_F9: return 0xffc6;
+            case KeyEvent.KEYCODE_F10: return 0xffc7;
+            case KeyEvent.KEYCODE_F11: return 0xffc8;
+            case KeyEvent.KEYCODE_F12: return 0xffc9;
+            default:
+                int codePoint = event.getUnicodeChar(0);
+                if (codePoint == 0) codePoint = event.getUnicodeChar();
+                return codePoint <= 0xff ? codePoint : (codePoint == 0 ? 0 : 0x01000000 | codePoint);
+        }
+    }
+
+    private void sendKey(int keysym, boolean down) {
+        VncClient client = desktop.getClient();
+        if (client != null) client.sendKey(keysym, down);
+    }
+
+    private void pasteClipboard() {
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (!clipboard.hasPrimaryClip()) return;
+        ClipData clip = clipboard.getPrimaryClip();
+        if (clip == null || clip.getItemCount() == 0) return;
+        CharSequence text = clip.getItemAt(0).coerceToText(this);
+        VncClient client = desktop.getClient();
+        if (client == null || text == null) return;
+        client.sendClipboard(text.toString());
+        client.sendKey(0xffe3, true);
+        client.sendKey('v', true);
+        client.sendKey('v', false);
+        client.sendKey(0xffe3, false);
+    }
+
+    private Button toolButton(String label) {
+        return toolButton(label, 0);
+    }
+
+    /** Toolbar button with an icon in front of its word, matching the rest of the app. */
+    private Button toolButton(String label, int iconRes) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setTextSize(13);
+        button.setTextColor(Color.rgb(232, 236, 255));
+        button.setAllCaps(false);
+        button.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        if (iconRes != 0) Ui.setStartIcon(button, iconRes, Color.rgb(232, 236, 255), this, 18);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(Ui.dp(this, 5), 0, Ui.dp(this, 5), 0);
+        button.setMinWidth(0);
+        button.setMinHeight(0);
+        button.setBackground(Ui.background(Color.rgb(35, 42, 73), 10, this));
+        return button;
+    }
+
+    private LinearLayout.LayoutParams keyLayout(int widthDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(this, widthDp), ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMargins(Ui.dp(this, 3), 0, Ui.dp(this, 3), 0);
+        return lp;
+    }
+
+    private void applyOrientation() {
+        SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
+        if ("portrait".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
+        else if ("landscape".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+        // Auto follows Android's rotation setting without forcing an activity restart.
+    }
+}
