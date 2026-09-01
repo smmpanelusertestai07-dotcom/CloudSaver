@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class VncClient {
@@ -33,6 +35,15 @@ final class VncClient {
     /** Set once the server advertises ExtendedDesktopSize, which is what allows live resizing. */
     private volatile boolean resizable;
     private volatile int screenId;
+    /**
+     * Input events are written by this thread, never by the caller. Android forbids network
+     * writes on the main thread (NetworkOnMainThreadException), and every tap used to do exactly
+     * that -- which is what kept ending the app the moment the desktop was touched.
+     */
+    private Thread sender;
+    private final LinkedBlockingQueue<WriteTask> outbox = new LinkedBlockingQueue<>(512);
+
+    private interface WriteTask { void write() throws IOException; }
     /** Reused across every update. A fresh multi-megabyte array per frame caused real
      *  OutOfMemoryError crashes on a 4 GB phone while apt was working in the background. */
     private int[] stripPixels;
@@ -53,6 +64,9 @@ final class VncClient {
         input = new DataInputStream(new BufferedInputStream(socket.getInputStream(), 256 * 1024));
         output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 64 * 1024));
         handshake();
+        sender = new Thread(this::drainOutbox, "pocketdesk-vnc-sender");
+        sender.setDaemon(true);
+        sender.start();
         requestUpdate(false);
         try {
             readMessages();
@@ -188,6 +202,7 @@ final class VncClient {
                 width = w;
                 height = h;
                 listener.onResize(w, h);
+                requestUpdate(false);
             } else if (encoding == -308) {
                 readExtendedDesktopSize(x, y, w, h);
             } else if (encoding == -224) {
@@ -225,6 +240,7 @@ final class VncClient {
         width = newWidth;
         height = newHeight;
         listener.onResize(newWidth, newHeight);
+        requestUpdate(false);
     }
 
     private void readExactly(int count) throws IOException {
@@ -236,27 +252,26 @@ final class VncClient {
 
     /** Asks the desktop to become this size, so it can match the phone after a rotation. */
     void requestDesktopSize(int newWidth, int newHeight) {
-        if (closed.get() || output == null || !resizable) return;
-        if (newWidth <= 0 || newHeight <= 0) return;
-        try {
+        if (!resizable || newWidth <= 0 || newHeight <= 0) return;
+        final int requestedWidth = newWidth;
+        final int requestedHeight = newHeight;
+        enqueue(() -> {
             synchronized (writeLock) {
                 output.writeByte(251);
                 output.writeByte(0);
-                output.writeShort(newWidth);
-                output.writeShort(newHeight);
+                output.writeShort(requestedWidth);
+                output.writeShort(requestedHeight);
                 output.writeByte(1);
                 output.writeByte(0);
                 output.writeInt(screenId);
                 output.writeShort(0);
                 output.writeShort(0);
-                output.writeShort(newWidth);
-                output.writeShort(newHeight);
+                output.writeShort(requestedWidth);
+                output.writeShort(requestedHeight);
                 output.writeInt(0);
                 output.flush();
             }
-        } catch (IOException error) {
-            close();
-        }
+        });
     }
 
     private void readColorMap() throws IOException {
@@ -293,22 +308,45 @@ final class VncClient {
         }
     }
 
-    void sendPointer(int x, int y, int buttonMask) {
-        if (closed.get() || output == null) return;
+    private void drainOutbox() {
         try {
+            while (!closed.get()) {
+                WriteTask task = outbox.poll(500, TimeUnit.MILLISECONDS);
+                if (task == null) continue;
+                try {
+                    task.write();
+                } catch (IOException error) {
+                    close();
+                    return;
+                }
+            }
+        } catch (InterruptedException ended) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Full queue means a flood of pointer moves; dropping one is harmless, blocking the UI is not. */
+    private void enqueue(WriteTask task) {
+        if (closed.get() || output == null) return;
+        outbox.offer(task);
+    }
+
+    void sendPointer(int x, int y, int buttonMask) {
+        final int pointerX = clamp(x, 0, Math.max(0, width - 1));
+        final int pointerY = clamp(y, 0, Math.max(0, height - 1));
+        enqueue(() -> {
             synchronized (writeLock) {
                 output.writeByte(5);
                 output.writeByte(buttonMask & 0xff);
-                output.writeShort(clamp(x, 0, Math.max(0, width - 1)));
-                output.writeShort(clamp(y, 0, Math.max(0, height - 1)));
+                output.writeShort(pointerX);
+                output.writeShort(pointerY);
                 output.flush();
             }
-        } catch (IOException error) { close(); }
+        });
     }
 
     void sendKey(int keysym, boolean down) {
-        if (closed.get() || output == null) return;
-        try {
+        enqueue(() -> {
             synchronized (writeLock) {
                 output.writeByte(4);
                 output.writeByte(down ? 1 : 0);
@@ -316,7 +354,7 @@ final class VncClient {
                 output.writeInt(keysym);
                 output.flush();
             }
-        } catch (IOException error) { close(); }
+        });
     }
 
     void typeCodePoint(int codePoint) {
@@ -326,9 +364,9 @@ final class VncClient {
     }
 
     void sendClipboard(String text) {
-        if (closed.get() || output == null || text == null) return;
-        byte[] value = text.getBytes(StandardCharsets.UTF_8);
-        try {
+        if (text == null) return;
+        final byte[] value = text.getBytes(StandardCharsets.UTF_8);
+        enqueue(() -> {
             synchronized (writeLock) {
                 output.writeByte(6);
                 output.write(new byte[3]);
@@ -336,7 +374,7 @@ final class VncClient {
                 output.write(value);
                 output.flush();
             }
-        } catch (IOException error) { close(); }
+        });
     }
 
     int getWidth() { return width; }
@@ -344,6 +382,8 @@ final class VncClient {
 
     void close() {
         if (!closed.compareAndSet(false, true)) return;
+        Thread activeSender = sender;
+        if (activeSender != null) activeSender.interrupt();
         try { if (socket != null) socket.close(); } catch (IOException ignored) {}
     }
 

@@ -80,7 +80,32 @@ public final class VncClientProtocolTest {
                 output.writeInt(0);
                 output.write(new byte[]{0, 0, (byte) 255, 0, 0, (byte) 255, 0, 0});
                 output.flush();
-                Thread.sleep(200);
+
+                // Two messages follow in either order: the reader thread's next update request
+                // (type 3, 10 bytes) and the queued pointer press (type 5, 6 bytes). Input events
+                // ride a sender thread now -- writing them on Android's main thread was the
+                // NetworkOnMainThreadException that ended the app on every tap.
+                boolean sawPointer = false;
+                boolean sawRequest = false;
+                for (int message = 0; message < 2; message++) {
+                    int type = input.readUnsignedByte();
+                    if (type == 3) {
+                        byte[] rest = new byte[9];
+                        input.readFully(rest);
+                        sawRequest = true;
+                    } else if (type == 5) {
+                        int buttons = input.readUnsignedByte();
+                        int pointerX = input.readUnsignedShort();
+                        int pointerY = input.readUnsignedShort();
+                        require(buttons == 1, "left button expected");
+                        require(pointerX == 1 && pointerY == 0, "pointer must land on the second pixel");
+                        sawPointer = true;
+                    } else {
+                        throw new AssertionError("unexpected client message " + type);
+                    }
+                }
+                require(sawPointer, "the queued pointer press never reached the server");
+                require(sawRequest, "the follow-up framebuffer request never reached the server");
             } catch (Throwable error) {
                 serverError.set(error);
             }
@@ -99,9 +124,8 @@ public final class VncClientProtocolTest {
             }
             @Override public void onResize(int width, int height) {}
             @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
-                received.set(pixels);
+                received.set(pixels.clone());   // the buffer is reused once this returns
                 frame.countDown();
-                holder[0].close();
             }
             @Override public void onClipboard(String text) {}
             @Override public void onDisconnected(String reason) {}
@@ -115,8 +139,10 @@ public final class VncClientProtocolTest {
         client.start();
 
         require(frame.await(5, TimeUnit.SECONDS), "frame timed out");
+        holder[0].sendPointer(1, 0, 1);          // from this thread, like a tap on the UI thread
+        fakeServer.join(4000);
+        holder[0].close();
         client.join(2000);
-        fakeServer.join(2000);
         server.close();
         if (serverError.get() != null) throw new AssertionError("server failed", serverError.get());
         if (clientError.get() != null) throw new AssertionError("client failed", clientError.get());
