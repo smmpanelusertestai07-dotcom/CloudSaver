@@ -19,7 +19,7 @@ mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
 
 # Apps worth a desktop icon and a panel slot, most useful first. Everything installed still
 # appears in the right-click menu.
-FAVOURITES="chatgpt chatgpt-web claude-web claude-desktop antigravity code epiphany firefox pcmanfm lxterminal"
+FAVOURITES="chatgpt claude-desktop codex-cli claude-cli antigravity code epiphany firefox pcmanfm lxterminal"
 
 field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
   awk -F= -v key="$2" '

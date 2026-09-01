@@ -314,9 +314,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         connectionThread = new Thread(() -> {
             String lastError = "Waiting for local display…";
             long startedAt = SystemClock.elapsedRealtime();
+            final int[] missed = {0};
             for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
                 if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
-                    if (!LinuxService.isDesktopRunning()) {
+                    // The service reports "running" only once it has the process, which is a
+                    // moment after this screen opens. Treating the first false as a stopped
+                    // desktop is what left this screen saying so forever.
+                    if (LinuxService.isDesktopRunning()) {
+                        missed[0] = 0;
+                    } else if (attempt > 60 && ++missed[0] > 8) {
                         desktop.onDisconnected("Desktop stopped · return and retry");
                         return;
                     }

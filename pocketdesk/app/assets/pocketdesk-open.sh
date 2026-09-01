@@ -50,12 +50,16 @@ flags=()
 if chromium_flags; then
   flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
          --disable-dev-shm-usage
-         # Every extra process costs far more here than on a PC: PRoot traces each one, so a
-         # cold start that takes seconds on a laptop can take minutes with the usual four or
-         # five. These collapse Chromium down to the fewest processes it can run with.
-         --no-zygote
+         # Every extra process costs far more here than on a PC: PRoot traces each one, and each
+         # one re-executes a binary that is 200-300 MB. The zygote is what avoids that -- it is
+         # forked, not executed -- so it stays; what goes is everything optional around it.
          --in-process-gpu
          --renderer-process-limit=1
+         --process-per-site
+         # A spare renderer kept warm, and a separate process per origin, are both memory this
+         # phone does not have. Site isolation is a real boundary, but --no-sandbox above is
+         # already a bigger one, and it is the difference between opening and not.
+         --disable-features=SpareRendererForSitePerProcess,IsolateOrigins,site-per-process
          --disable-gpu --disable-gpu-compositing --disable-software-rasterizer
          --ozone-platform=x11
          # Without a keyring daemon the secret-service lookup blocks until it times out, which
@@ -63,7 +67,7 @@ if chromium_flags; then
          --password-store=basic
          # A phone has a fraction of a laptop's memory, and an Electron app that asks for more
          # than there is gets killed.
-         --js-flags=--max-old-space-size=512
+         --js-flags=--max-old-space-size=384
          --disable-extensions
          --disable-background-networking
          --no-first-run

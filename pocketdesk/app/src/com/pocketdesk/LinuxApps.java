@@ -98,28 +98,34 @@ final class LinuxApps {
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
 
-            // A phone has a fraction of a laptop's memory. The desktop builds of these apps are
-            // Electron, which wants about a gigabyte on its own; the same accounts opened in the
-            // browser want a fraction of that and start in seconds. On a 4 GB phone that is the
-            // difference between working and not, so it is offered as its own row rather than
-            // buried as a fallback.
-            new App("aiweb", "ChatGPT and Claude, light",
-                    "Opens the same accounts in the browser. Starts in seconds, uses far less memory.",
-                    R.drawable.ic_bolt, R.drawable.logo_chatgpt, "under 1 MB", 64 * MB,
-                    "under 1 min",
-                    "This is the website in its own window, so Codex CLI and local file access are "
-                            + "not part of it. Everything you do in the chat is the same.",
-                    "/usr/share/applications/chatgpt-web.desktop",
-                    "command -v epiphany >/dev/null 2>&1 "
-                            + "|| { echo 'Add \"Web browser and basics\" first \u2014 this needs the browser.'; exit 1; }; "
-                            + "for app in chatgpt:ChatGPT:https://chatgpt.com "
-                            + "claude:Claude:https://claude.ai; do "
-                            + "id=${app%%:*}; rest=${app#*:}; title=${rest%%:*}; url=${rest#*:}; "
-                            + "printf '[Desktop Entry]\\nName=%s (web)\\nComment=%s in its own window\\n"
-                            + "Exec=epiphany --new-window %s\\nIcon=pocketdesk-%s\\nType=Application\\n"
-                            + "Terminal=false\\nStartupNotify=true\\nCategories=Network;\\n' "
-                            + "\"$title\" \"$title\" \"$url\" \"$id\" "
-                            + "> \"/usr/share/applications/$id-web.desktop\"; done"),
+            // Claude Desktop opens here in seconds; ChatGPT's desktop build idles above a
+            // gigabyte, which is more than this class of phone has free. Codex CLI is OpenAI's
+            // own build of the same agent without the Electron shell, and Claude Code is
+            // Anthropic's -- both run in the terminal, in the same Projects folder.
+            new App("aicli", "Codex and Claude Code", "OpenAI and Anthropic's own command-line "
+                    + "agents. Light enough to run well on any phone.",
+                    R.drawable.ic_terminal, R.drawable.logo_chatgpt, "about 250 MB", 900 * MB,
+                    "3\u201310 min",
+                    "These run in the terminal, not in a window. Same agents, same accounts.",
+                    "/usr/lib/node_modules/@openai/codex/package.json",
+                    "apt-get update; apt-get install -y --no-install-recommends nodejs npm "
+                            + "ca-certificates git; "
+                            + "npm install -g --no-fund --no-audit @openai/codex @anthropic-ai/claude-code; "
+                            // Without entries the terminal is the only way in, and the desktop
+                            // would show nothing for something that is installed.
+                            // id | title | binary | icon that is actually shipped
+                            + "set -- 'codex|Codex|codex|chatgpt' 'claude|Claude Code|claude|claude'; "
+                            + "for app in \"$@\"; do "
+                            + "id=${app%%|*}; rest=${app#*|}; title=${rest%%|*}; rest=${rest#*|}; "
+                            + "bin=${rest%%|*}; icon=${rest#*|}; "
+                            + "command -v \"$bin\" >/dev/null 2>&1 || continue; "
+                            // The title has a space in it, so the Exec line has to quote it.
+                            + "printf '[Desktop Entry]\\nName=%s\\nComment=%s in a terminal\\n"
+                            + "Exec=lxterminal -t \\042%s\\042 -e %s\\nIcon=pocketdesk-%s\\n"
+                            + "Type=Application\\nTerminal=false\\nStartupNotify=true\\n"
+                            + "Categories=Development;\\n' "
+                            + "\"$title\" \"$title\" \"$title\" \"$bin\" \"$icon\" "
+                            + "> \"/usr/share/applications/$id-cli.desktop\"; done"),
 
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
