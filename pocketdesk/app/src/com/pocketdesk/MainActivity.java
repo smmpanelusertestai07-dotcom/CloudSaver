@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "2.3.0";
+    static final String VERSION = "2.4.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -187,6 +187,7 @@ public final class MainActivity extends Activity {
         page.addView(buildPhoneCard(text, muted));
         page.addView(buildSettingsCard(text, muted));
         page.addView(buildPermissionCard(text, muted));
+        page.addView(buildPrivacyCard(text, muted));
         page.addView(buildAboutCard(text, muted));
 
         TextView version = Ui.text(this, "PocketDesk " + VERSION + " · Ubuntu 24.04 LTS ARM64", 12, muted);
@@ -349,6 +350,9 @@ public final class MainActivity extends Activity {
             if (row == null) continue;
             boolean present = linuxInstalled && ContainerRuntime.isAppInstalled(this, app);
             row.setStatus(present ? "ADDED" : "ADD", present ? Ui.SUCCESS : Ui.accent(dark));
+            row.setValue(present
+                    ? "Installed \u00b7 tap any time to update to the newest build"
+                    : app.summary + " \u00b7 " + app.approximateSize);
             boolean usable = linuxInstalled && !busy && !running;
             row.setEnabled(usable);
             row.setAlpha(usable ? 1f : 0.45f);
@@ -483,6 +487,66 @@ public final class MainActivity extends Activity {
         crashRow.setVisibility(Crash.read(this).isEmpty() ? View.GONE : View.VISIBLE);
         card.addView(crashRow, Ui.matchWrap(this, 8));
         return card;
+    }
+
+    /**
+     * The questions anyone would ask before trusting a phone with a computer, answered in the
+     * app itself rather than in a chat thread that scrolls away.
+     */
+    private View buildPrivacyCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Privacy and your questions", R.drawable.ic_shield, dark));
+        card.addView(Ui.text(this,
+                "Short version: the whole Linux computer lives inside this app, on this phone, "
+                        + "and belongs to you. Nothing is uploaded anywhere.", 12.5f, muted),
+                Ui.matchWrap(this, 6));
+
+        addAnswer(card, R.drawable.ic_phone, "Is it all on my phone?",
+                "Yes. The entire Linux computer runs locally on this phone \u2014 no cloud, no "
+                        + "server, no PocketDesk account, no tracking or analytics of any kind. "
+                        + "The internet is used only to download Ubuntu, the apps you choose, and "
+                        + "whatever you yourself open in the browser or an AI app.", true);
+
+        addAnswer(card, R.drawable.ic_lock, "Are my logins safe?",
+                "When you sign in to ChatGPT or Claude inside Linux, the login is stored by that "
+                        + "app inside /home/coder \u2014 which is this app's private storage on "
+                        + "this phone. Android lets no other app read it, and PocketDesk itself "
+                        + "never sees, stores or sends your passwords. They travel only to "
+                        + "OpenAI's or Anthropic's own servers, exactly as on any computer.", false);
+
+        addAnswer(card, R.drawable.ic_storage, "Where do my files go?",
+                "Your work: /home/coder/Projects, inside Linux.\n\n"
+                        + "Browser downloads: /home/coder/Downloads \u2014 the same folder also "
+                        + "appears in your phone's Files app at Android/data/com.pocketdesk/"
+                        + "files/Shared/Downloads.\n\n"
+                        + "The Linux system itself: this app's private storage "
+                        + "(/data/data/com.pocketdesk/files/ubuntu-rootfs), which no other app "
+                        + "can open.", false);
+
+        addAnswer(card, R.drawable.ic_shield, "What can this app touch on my phone?",
+                "Its permissions are: internet, network status, notifications, and running in "
+                        + "the background with battery settings.\n\nIt has NO permission for "
+                        + "your storage, camera, microphone, location, contacts, calls or "
+                        + "messages \u2014 so it cannot read your photos, files or chats even if "
+                        + "it wanted to.", false);
+
+        addAnswer(card, R.drawable.ic_delete, "What if I uninstall?",
+                "Android deletes the whole Linux computer with the app \u2014 system, apps, "
+                        + "logins, files, everything. Before uninstalling, copy anything you want "
+                        + "to keep into Downloads, which stays visible to your phone.", false);
+
+        addAnswer(card, R.drawable.ic_timer, "Why is an app slow to open?",
+                "The AI desktop apps are full computer programs \u2014 ChatGPT alone is 1.3 GB "
+                        + "\u2014 and this phone runs them with a fraction of a PC's memory. The "
+                        + "first open after installing is the slowest. If one fails, the reason "
+                        + "appears on screen and in \u201cWhy an app didn't open\u201d above.", false);
+        return card;
+    }
+
+    private void addAnswer(LinearLayout card, int iconRes, String question, String answer,
+                           boolean first) {
+        card.addView(new Ui.Row(this, iconRes, question, null, R.drawable.ic_chevron, dark,
+                v -> showMessage(question, answer)), Ui.matchWrap(this, first ? 12 : 8));
     }
 
     private View buildAboutCard(int text, int muted) {

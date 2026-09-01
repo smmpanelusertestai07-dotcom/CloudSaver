@@ -203,7 +203,10 @@ final class Ui {
             TextView caption = text(context, label.toUpperCase(java.util.Locale.ROOT), 9.5f, muted(dark));
             caption.setGravity(Gravity.CENTER);
             caption.setMaxLines(1);
-            caption.setLetterSpacing(0.07f);
+            caption.setLetterSpacing(0.05f);
+            // TEMPERATURE is longer than the tile is wide; shrinking beats losing letters.
+            caption.setAutoSizeTextTypeUniformWithConfiguration(7, 10, 1,
+                    android.util.TypedValue.COMPLEX_UNIT_SP);
             caption.setIncludeFontPadding(false);
             LayoutParams captionLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
             captionLp.topMargin = dp(context, 5);

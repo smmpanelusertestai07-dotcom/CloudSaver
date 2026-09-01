@@ -123,6 +123,26 @@ run_attempt() {
   return $?
 }
 
+# A Chromium app killed mid-run -- by Android, or by the watchdog above -- leaves its
+# single-instance lock behind. On the next start Chromium finds a lock it cannot read, tries to
+# replace it, fails, and aborts on purpose: "Failed to create a ProcessSingleton for your profile
+# directory... Aborting now." That is the tap doing nothing all over again, so every stale lock
+# is cleared first. A lock whose process is still alive is left alone.
+clean_stale_locks() {
+  for lock in "$HOME"/.config/*/SingletonLock; do
+    { [ -e "$lock" ] || [ -L "$lock" ]; } || continue
+    profile=$(dirname "$lock")
+    target=$(readlink "$lock" 2>/dev/null || true)
+    owner=${target##*-}
+    if [ -n "$owner" ] && [ "$owner" -gt 0 ] 2>/dev/null && kill -0 "$owner" 2>/dev/null; then
+      continue
+    fi
+    echo "clearing stale lock in ${profile##*/}" >> "$log"
+    rm -f "$profile/SingletonLock" "$profile/SingletonSocket" "$profile/SingletonCookie" \
+          "$profile"/.l2s.Singleton* 2>/dev/null || true
+  done
+}
+
 flags=()
 is_chromium && flags=("${base_flags[@]}")
 
@@ -131,6 +151,8 @@ is_chromium && flags=("${base_flags[@]}")
   echo "free memory at launch: $(free_mb) MB"
   echo "launching: $target ${flags[*]:-} $*"
 } > "$log" 2>/dev/null
+
+[ "${#flags[@]}" -gt 0 ] && clean_stale_locks
 
 notify normal "Opening $label" "The first start can take a minute or two."
 

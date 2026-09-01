@@ -316,10 +316,18 @@ public final class LinuxService extends Service {
         Thread output = new Thread(() -> {
             Process process = activeProcess;
             if (process == null) return;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            // The display server narrates as it works -- "ComparingUpdateTracker", xkbcomp
+            // notes -- and none of it means anything outside a terminal. It goes to a file for
+            // debugging; the notification keeps saying something a person can read.
+            File sessionLog = new File(ContainerRuntime.rootfs(this),
+                    "home/coder/.pocketdesk/logs/desktop-session.log");
+            File parent = sessionLog.getParentFile();
+            if (parent != null) parent.mkdirs();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                 java.io.PrintWriter writer = new java.io.PrintWriter(new FileOutputStream(sessionLog, false))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    if (!line.trim().isEmpty()) updateNotification("Linux desktop", shortText(line), -1);
+                    if (!line.trim().isEmpty()) writer.println(line);
                 }
             } catch (IOException ignored) {}
         }, "pocketdesk-linux-output");

@@ -273,6 +273,8 @@ final class ContainerRuntime {
         copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");
+        // A folder that looks like a folder: the theme's file-manager mark reads as a grey box.
+        copyAsset(context, "pocketdesk-files.png", "usr/share/pixmaps/pocketdesk-files.png");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */

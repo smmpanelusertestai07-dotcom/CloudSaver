@@ -74,12 +74,22 @@ short_name() {   # short_name <base> <name>
   esac
 }
 
+# Icon overrides where the theme's own mark reads badly on a phone.
+icon_for() {   # icon_for <base> -> icon name or empty to keep the original
+  case "$1" in
+    pcmanfm) printf 'pocketdesk-files' ;;
+    *) printf '' ;;
+  esac
+}
+
 write_entry() {   # write_entry <source> <target> <label> <command>
-  awk -v cmd="$4" -v label="$3" '
+  icon_override=$(icon_for "$(basename "$1" .desktop)")
+  awk -v cmd="$4" -v label="$3" -v icon="$icon_override" '
     /^\[/ { group++ }
     group > 1 { next }
     /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd; next }
     /^Name=/ { print "Name=" label; next }
+    /^Icon=/ && icon != "" { print "Icon=" icon; next }
     /^Name\[/ { next }
     /^(DBusActivatable|TryExec|Actions|X-PocketDesk)=/ { next }
     { print }
