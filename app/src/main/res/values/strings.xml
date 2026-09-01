@@ -558,7 +558,7 @@
     <string name="opt_warnings">Alerts</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>
-    <string name="opt_pause_hint">Stops optimising and uploading until you turn it back on.</string>
+    <string name="opt_pause_hint">Stops optimising and stops adding copies to the upload folder. It cannot stop your cloud app \u2014 pause that inside the app itself.</string>
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
     <string name="recommend_space">Recommended for this phone: keep %1$s free.</string>
     <string name="recommend_apply">Use recommended</string>
@@ -623,7 +623,6 @@
 
     <!-- onboarding -->
     <string name="app_tagline">Save your cloud space \u2014 smaller copies, untouched originals.</string>
-    <string name="onb_tagline">Save your cloud space \u2014 smaller copies, untouched originals.</string>
     <string name="onb_albums_title">Which albums?</string>
     <string name="onb_albums_text">Only the albums you tick get a smaller copy. Everything else is left completely alone.</string>
     <string name="onb_albums_confirm">These are right</string>
@@ -689,9 +688,9 @@
     <string name="power_open">Open</string>
     <string name="folder_pick_one">In your cloud app, back up only this folder:</string>
     <string name="folder_pick_two">In your cloud app, back up only these folders:</string>
-    <string name="promise_exact">This app removes files after upload and skips duplicates, so confirmation is exact and a re-sent file never becomes a second copy.</string>
-    <string name="promise_ledger">This app has no duplicate check. CloudSaver never re-sends a file it has already confirmed, so duplicates are avoided from our side, but we cannot control what the app itself does.</string>
-    <string name="promise_unknown">This app has no duplicate check, and we cannot detect its abilities, so confirmation uses upload size and time. CloudSaver never re-sends a file it has already confirmed.</string>
+    <string name="promise_exact">Your cloud app removes files after upload and skips duplicates, so confirmation is exact and a re-sent file never becomes a second copy.</string>
+    <string name="promise_ledger">Your cloud app has no duplicate check. CloudSaver never re-sends a file it has already confirmed, so duplicates are avoided from our side, but we cannot control what the app itself does.</string>
+    <string name="promise_unknown">Your cloud app has no duplicate check, and we cannot detect its abilities, so confirmation uses upload size and time. CloudSaver never re-sends a file it has already confirmed.</string>
     <string name="link_connected">Looks connected - your cloud app is installed, the folder has files, and it has been uploading.</string>
     <string name="link_no_app">That cloud app is not installed. Install it, or pick a different one.</string>
     <string name="link_no_folder">The upload folder is still empty. Come back after CloudSaver has optimised its first files.</string>
@@ -1067,7 +1066,7 @@
     <string name="help_deleted">If something is deleted</string>
     <string name="help_deleted_intro">Every place a file can disappear from, and what actually happens next. In every row, your originals are only ever removed by you.</string>
     <string name="deleted_r1_t">An optimised copy in Pictures/CloudSaver</string>
-    <string name="deleted_r1_b">If it was already confirmed as backed up, nothing happens — a disappearing copy is exactly what an upload looks like. If it was not yet confirmed, CloudSaver remakes the copy from your original and sends it again. If the same copy keeps vanishing before it is collected, the file is set aside and listed under Skipped instead of looping.</string>
+    <string name="deleted_r1_b">If it was already confirmed as backed up, nothing happens — a disappearing copy is exactly what an upload looks like. If it was not yet confirmed, CloudSaver remakes the copy from your original and puts it back in the upload folder. If the same copy keeps vanishing before it is collected, the file is set aside and listed under Skipped instead of looping.</string>
     <string name="deleted_r2_t">An original photo or video in your gallery</string>
     <string name="deleted_r2_b">CloudSaver never deletes an original by itself, so this only happens by your hand or another app\'s. Anything already in your cloud stays there. If the file had not been optimised yet, there is simply nothing left to optimise, and the app stops counting it.</string>
     <string name="deleted_r3_t">A kept light copy in Pictures/Light copies</string>

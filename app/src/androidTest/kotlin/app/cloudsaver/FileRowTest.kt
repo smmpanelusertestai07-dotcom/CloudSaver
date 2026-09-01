@@ -45,7 +45,11 @@ class FileRowTest {
 
     private val name = "IMG_20240517_181233.jpg"
 
-    private fun showRow(trailingNote: String?, width: Int = 360) {
+    private fun showRow(
+        trailingNote: String?,
+        width: Int = 360,
+        actions: List<Pair<String, () -> Unit>> = listOf("Open" to {})
+    ) {
         compose.setContent {
             CloudSaverTheme(mode = ThemeMode.LIGHT, dynamicColor = false) {
                 Box(Modifier.width(width.dp)) {
@@ -55,7 +59,7 @@ class FileRowTest {
                         size = "643 KB",
                         proof = null,
                         thumbnail = { Box(Modifier.size(56.dp)) },
-                        actions = emptyList(),
+                        actions = actions,
                         trailingNote = trailingNote
                     )
                 }
@@ -68,7 +72,7 @@ class FileRowTest {
         compose.onNodeWithText(name).assertIsDisplayed()
         val width = compose.onNodeWithText(name).getUnclippedBoundsInRoot()
             .let { it.right - it.left }
-        assertTrue("$what left the name $width wide", width > 80.dp)
+        assertTrue("$what left the name $width wide", width > 130.dp)
     }
 
     @Test
@@ -96,6 +100,32 @@ class FileRowTest {
     fun theNameSurvivesOnANarrowPhone() {
         showRow(trailingNote = "about 459 KB after optimising", width = 320)
         assertNameIsReadable("the saving note on a 320 dp screen")
+    }
+
+    /**
+     * The size column has to be able to hold its own text.
+     *
+     * On a 320 dp phone a Largest files row printed "643" over "KB" in a
+     * column about 42 dp wide, and cut the name it had displaced to
+     * "tour_photo...". Every file on that screen begins "tour_photo", so the
+     * row named nothing at all. The screenshot showed it; this test asks the
+     * row the same question the screen does - with the overflow button the
+     * screen has.
+     */
+    @Test
+    fun theSizeIsNeverWrappedIntoAThinColumn() {
+        showRow(trailingNote = "about 459 KB after", width = 320)
+        assertNameIsReadable("the saving note beside an overflow button")
+        // One line, not "643" over "KB": a wrapped size is twice as tall as
+        // the text it holds, which is what a too-narrow column looks like.
+        val sizeBounds = compose.onNodeWithText("643 KB").getUnclippedBoundsInRoot()
+        val nameBounds = compose.onNodeWithText(name).getUnclippedBoundsInRoot()
+        val sizeHeight = sizeBounds.bottom - sizeBounds.top
+        val lineHeight = nameBounds.bottom - nameBounds.top
+        assertTrue(
+            "the size wrapped: $sizeHeight tall against a $lineHeight line",
+            sizeHeight < lineHeight * 1.6f
+        )
     }
 
     /**

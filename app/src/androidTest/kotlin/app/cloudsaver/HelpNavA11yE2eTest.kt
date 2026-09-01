@@ -43,7 +43,7 @@ import org.junit.runner.RunWith
 /**
  * Can a person actually get to every screen, and back out of it again?
  *
- * The app declares twenty routes. A route nobody can reach by tapping is a
+ * The app declares twenty-one routes. A route nobody can reach by tapping is a
  * screen that does not exist, and a route with no way back is a trap - so
  * every page here is opened the way a user opens it, never by calling
  * navigate() directly, and left again with the system Back gesture.

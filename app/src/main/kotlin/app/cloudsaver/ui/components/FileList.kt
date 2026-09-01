@@ -2,6 +2,7 @@ package app.cloudsaver.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -117,7 +118,6 @@ fun FileRow(
     // phone the combination cut the name to one word and the duration to
     // "1 m..." - so selection mode stacks at every font size.
     val selectable = selected != null && onSelectedChange != null
-    val stacked = selectable || LocalDensity.current.fontScale >= StackedTextScale
     // Long-press starts a selection, exactly as it does on Files. Without it
     // a screen can show a checkbox once a selection exists but offer no way to
     // create one, which leaves "Select all" and the action bar unreachable.
@@ -140,85 +140,101 @@ fun FileRow(
         modifier.padding(vertical = 4.dp)
     }
     AppCard(modifier = card, onClick = if (onLongPress != null) null else onClick) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (selectable) {
-                Checkbox(checked = selected!!, onCheckedChange = onSelectedChange!!)
-                Spacer(Modifier.width(4.dp))
-            }
-            thumbnail()
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp)
-            ) {
-                Text(
-                    name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    context,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                proof?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                        // No line limit. This is the sentence the whole
-                        // evidence feature rests on - "Your cloud app uploaded
-                        // this much data right after we added the file" - and
-                        // two lines cut it mid-word with no ellipsis on any
-                        // phone. The row has no fixed height, so it wraps and
-                        // the card grows, which is what Reclaim already does
-                        // with the same text.
-                    )
+        // The row asks the row how wide it is. Font scale alone was not enough:
+        // at ordinary text size on a 320 dp phone, a Largest files row spends
+        // its width on a thumbnail, an overflow button and the card's own
+        // padding, and what is left splits 1 to 0.45 - so the size column got
+        // about 42 dp, too narrow to hold "643 KB" on one line, and wrapped
+        // into a thin two-line stack while the name it had displaced was cut to
+        // "tour_photo...". Both columns lost. Below the width the two of them
+        // need, the value goes under the name and takes the full row instead.
+        BoxWithConstraints {
+            val chrome = ThumbnailWidth + 12.dp +
+                (if (selectable) CheckboxWidth else 0.dp) +
+                (if (actions.isNotEmpty()) OverflowWidth else 0.dp)
+            val stacked = selectable ||
+                LocalDensity.current.fontScale >= StackedTextScale ||
+                maxWidth - chrome < SideBySideMinWidth
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selectable) {
+                    Checkbox(checked = selected!!, onCheckedChange = onSelectedChange!!)
+                    Spacer(Modifier.width(4.dp))
                 }
-                if (stacked) {
+                thumbnail()
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp)
+                ) {
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        context,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    proof?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            // No line limit. This is the sentence the whole
+                            // evidence feature rests on - "Your cloud app uploaded
+                            // this much data right after we added the file" - and
+                            // two lines cut it mid-word with no ellipsis on any
+                            // phone. The row has no fixed height, so it wraps and
+                            // the card grows, which is what Reclaim already does
+                            // with the same text.
+                        )
+                    }
+                    if (stacked) {
+                        FileRowValue(
+                            size = size,
+                            trailingNote = trailingNote,
+                            alignEnd = false,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        )
+                    }
+                }
+                // A share of the row, not a fixed 120 dp. Bounding the note in dp
+                // stopped it emptying the name off the row, but dp does not grow
+                // with the font: at a large scale "about 459 KB after optimising"
+                // was cut back to "about 459 KB af..." and lost the words that say
+                // what the number means. A weight lets both sides scale together.
+                if (!stacked) {
                     FileRowValue(
                         size = size,
                         trailingNote = trailingNote,
-                        alignEnd = false,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp)
+                        alignEnd = true,
+                        modifier = Modifier.weight(0.45f, fill = false)
                     )
                 }
-            }
-            // A share of the row, not a fixed 120 dp. Bounding the note in dp
-            // stopped it emptying the name off the row, but dp does not grow
-            // with the font: at a large scale "about 459 KB after optimising"
-            // was cut back to "about 459 KB af..." and lost the words that say
-            // what the number means. A weight lets both sides scale together.
-            if (!stacked) {
-                FileRowValue(
-                    size = size,
-                    trailingNote = trailingNote,
-                    alignEnd = true,
-                    modifier = Modifier.weight(0.45f, fill = false)
-                )
-            }
-            if (actions.isNotEmpty()) {
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Icon(
-                            Icons.Outlined.MoreVert,
-                            contentDescription = stringResource(R.string.list_more_actions)
-                        )
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        for ((label, action) in actions) {
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    menuOpen = false
-                                    action()
-                                }
+                if (actions.isNotEmpty()) {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(
+                                Icons.Outlined.MoreVert,
+                                contentDescription = stringResource(R.string.list_more_actions)
                             )
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            for ((label, action) in actions) {
+                                DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        menuOpen = false
+                                        action()
+                                    }
+                                )
+                            }
                         }
                     }
                 }

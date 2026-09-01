@@ -555,10 +555,9 @@ class OnboardingE2eTest {
         launch()
         awaitHome()
         compose.onNodeWithText(titleOf(Step.WELCOME)).assertDoesNotExist()
-        // Not the tagline: onb_tagline and app_tagline are the same sentence,
-        // and Home prints it under the app's name, so its absence would be a
-        // claim about Home rather than about setup being over. "Get started"
-        // exists on the welcome card and nowhere else.
+        // Not the tagline: setup and Home print the one app_tagline, so its
+        // absence would be a claim about Home rather than about setup being
+        // over. "Get started" exists on the welcome card and nowhere else.
         compose.onNodeWithText(s(R.string.onb_start)).assertDoesNotExist()
         assertTrue(stored().onboardingDone)
     }

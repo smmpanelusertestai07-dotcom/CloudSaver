@@ -267,7 +267,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             )
         }
         Text(
-            stringResource(R.string.onb_tagline),
+            stringResource(R.string.app_tagline),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)

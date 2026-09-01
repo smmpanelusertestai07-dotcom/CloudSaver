@@ -34,16 +34,17 @@ class HelpContentTest {
             .toList()
 
     @Test
-    fun `the FAQ is exactly twelve questions, each with an answer`() {
+    fun `the FAQ is exactly eighteen questions, each with an answer`() {
         assumeTrue("strings.xml not found", strings() != null)
         val body = text()
         val questions = Regex("""<string name="faq_q(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
         val answers = Regex("""<string name="faq_a(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
-        // Grew by exactly the two answers this release owes the owner: where
-        // the recommended figures come from, and what "keep it in the same
-        // album" does. Nothing else.
+        // Eighteen: the twelve it opened with, plus where the recommended
+        // figures come from, what "keep it in the same album" does, what
+        // happens with no cloud app, and why Files is scoped where Free up
+        // space is not.
         assertEquals("the FAQ must hold eighteen questions", (1..18).toList(), questions)
         assertEquals("every question needs its answer", questions, answers)
     }
@@ -126,6 +127,64 @@ class HelpContentTest {
         }
         assertTrue(
             "a light copy lives in the gallery, not the upload folder: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    @Test
+    fun `the tagline is one sentence stored once`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        // It was stored twice - app_tagline for Home, onb_tagline for the
+        // welcome card - with the same words in both. Nothing failed while
+        // they matched, which is the problem: the next edit touches one of
+        // them, and setup greets a person with a promise Home no longer
+        // makes. One sentence, one string, both screens read it.
+        val tagline = values().single { it.first == "app_tagline" }.second.trim()
+        val copies = values().filter { it.second.trim() == tagline }
+        assertEquals(
+            "the tagline must live in exactly one string, not ${copies.map { it.first }}",
+            1, copies.size
+        )
+    }
+
+    @Test
+    fun `the app never says it uploads anything itself`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        // The app holds no internet permission. It makes smaller copies; a
+        // cloud app the user chooses uploads them. Settings said "Pause
+        // CloudSaver - stops optimising and uploading", so someone trying to
+        // stop a transfer on mobile data was told it had worked while their
+        // cloud app carried on. A screenshot caught it; nothing else could,
+        // because the sentence was only false about the world.
+        //
+        // "Upload folder", "daily upload limit" and the like are names, not
+        // claims. Denying an upload, and watching for one, are both honest.
+        val names = Regex(
+            """upload(?:s)? (?:folder|limit|record|size|time|activity)|auto-?upload|Camera uploads""",
+            RegexOption.IGNORE_CASE
+        )
+        val control = Regex(
+            """\b(?:stops?|starts?|pauses?|resumes?|begins?)\s+(?:\w+\s+){0,3}?upload(?:s|ing)?\b""",
+            RegexOption.IGNORE_CASE
+        )
+        val itself = Regex(
+            """\b(?:CloudSaver|This app|We)\s+((?:\w+\s+){0,3}?)upload(?:s|ing|ed)?\b""",
+            RegexOption.IGNORE_CASE
+        )
+        val honest = Regex(
+            """\b(?:never|not|cannot|no|check|checks|confirm|confirms|see|sees|watch|watches|verify)\b""",
+            RegexOption.IGNORE_CASE
+        )
+        val offenders = values().flatMap { (key, value) ->
+            val text = names.replace(value, "")
+            val said = control.findAll(text).map { it.value }.toMutableList()
+            itself.findAll(text)
+                .filterNot { honest.containsMatchIn(it.groupValues[1]) }
+                .forEach { said += it.value }
+            said.map { "$key: \"$it\"" }
+        }
+        assertTrue(
+            "this app has no internet permission and cannot upload: $offenders",
             offenders.isEmpty()
         )
     }

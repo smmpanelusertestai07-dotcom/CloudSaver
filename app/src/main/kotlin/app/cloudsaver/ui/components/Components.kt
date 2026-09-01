@@ -100,6 +100,31 @@ internal val CardShape = RoundedCornerShape(24.dp)
  */
 internal const val StackedTextScale = 1.5f
 
+/**
+ * A file row's chrome: the parts that hold their dp size whatever the text
+ * does, and so eat the width the name and the size have to share.
+ */
+internal val ThumbnailWidth = 56.dp
+internal val CheckboxWidth = 52.dp
+internal val OverflowWidth = 48.dp
+
+/**
+ * How much room the name and the size need before they can sit side by side.
+ *
+ * The two share what the chrome leaves in a 1 to 0.45 split, so the size gets
+ * under a third of it and the name barely two thirds. At 320 dp that made the
+ * size 42 dp - it broke into "643" over "KB", a column twice as tall as its
+ * own text, holding width the name was being cut for. Raising it only far
+ * enough to stop that wrap still leaves the name a prefix on an ordinary
+ * phone, and a file row whose name reads "tour_photo..." on a screen where
+ * every file starts "tour_photo" has told the reader nothing. So the floor is
+ * the width at which BOTH still work; under it the size goes beneath the name
+ * and takes the whole row, which is what selection mode has always done, and
+ * side by side is left to the widths that genuinely have room - a tablet, or
+ * a phone turned sideways.
+ */
+internal val SideBySideMinWidth = 240.dp
+
 /** Shrinks slightly while pressed - cheap, universal touch feedback. */
 @Composable
 private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {

@@ -1,6 +1,14 @@
-# CloudSaver 4.0.0 — v4.0 verification, point by point
+# CloudSaver — the running verification log
 
 Required by X5. Every item states done or not done, and why.
+
+This is a dated record, not a statement about the app as it stands today:
+each section was written when that round shipped and is left as it was
+written, counts included. What is true of the current build is in
+`RELEASE_MATRIX.md`, which ships inside every release and whose own numbers
+are read off the source tree by `MatrixHonestyTest` rather than typed.
+
+## v4.0 verification, point by point
 
 ## Critical bugs
 
