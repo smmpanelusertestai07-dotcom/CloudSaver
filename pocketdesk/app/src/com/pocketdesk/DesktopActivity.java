@@ -102,6 +102,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         toolbarRow.addView(back, barItem(92));
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
+        // Boxed like the buttons around it, in the toolbar's own palette rather than a raw green.
+        status.setBackground(Ui.background(Color.rgb(24, 31, 61), 10, this));
+        status.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
+        status.setGravity(Gravity.CENTER);
         status.setSingleLine(true);
         // A fixed-width label with no ellipsis cut words in half: "Starting your Linu".
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -159,7 +163,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             // The toolbar has room for the headline only; the full sentence is on the card.
             text = text.contains(". ") ? text.substring(0, text.indexOf(". ")) : text;
             status.setText(text);
-            status.setTextColor(connected ? Ui.SUCCESS : Color.rgb(239, 170, 57));
+            status.setTextColor(connected ? Color.rgb(170, 190, 255) : Color.rgb(239, 170, 57));
         });
         root.addView(desktop, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 

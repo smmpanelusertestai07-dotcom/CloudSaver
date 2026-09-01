@@ -26,10 +26,22 @@ final class AppLogs {
         return new File(ContainerRuntime.rootfs(context), "home/coder/.pocketdesk/logs");
     }
 
+    /** ChatGPT keeps its own startup story here; reading it beats guessing at ours. */
+    static File codexOwnLogs(Context context) {
+        return new File(ContainerRuntime.rootfs(context), "home/coder/.local/state/codex/logs");
+    }
+
     /** The reports, newest first. Empty when no app has been launched yet. */
     static File[] newestFirst(Context context) {
-        File[] logs = directory(context).listFiles((dir, name) -> name.endsWith(".log"));
-        if (logs == null || logs.length == 0) return new File[0];
+        java.util.List<File> all = new java.util.ArrayList<>();
+        File[] ours = directory(context).listFiles((dir, name) -> name.endsWith(".log"));
+        if (ours != null) all.addAll(Arrays.asList(ours));
+        File[] theirs = codexOwnLogs(context).listFiles();
+        if (theirs != null) {
+            for (File log : theirs) if (log.isFile()) all.add(log);
+        }
+        if (all.isEmpty()) return new File[0];
+        File[] logs = all.toArray(new File[0]);
         Arrays.sort(logs, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
         return logs;
     }
@@ -60,7 +72,9 @@ final class AppLogs {
     static String readAll(Context context) {
         StringBuilder all = new StringBuilder();
         SimpleDateFormat when = new SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault());
-        for (File log : newestFirst(context)) {
+        File[] logs = newestFirst(context);
+        for (int i = 0; i < Math.min(logs.length, 6); i++) {
+            File log = logs[i];
             all.append("=== ").append(appName(log))
                     .append(" · ").append(when.format(new Date(log.lastModified())))
                     .append(" ===\n").append(read(log)).append('\n');

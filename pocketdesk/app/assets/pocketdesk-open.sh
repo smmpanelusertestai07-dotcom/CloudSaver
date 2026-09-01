@@ -103,7 +103,7 @@ run_attempt() {
     fi
     case "$elapsed" in
       30|60|90|120)
-        notify normal "$label is still starting" "$elapsed seconds so far · $(free_mb) MB free" ;;
+        notify normal "$label is still starting" "This try: ${elapsed}s · $(free_mb) MB free" ;;
     esac
     sleep 1
   done
@@ -149,11 +149,30 @@ clean_stale_locks() {
 flags=()
 is_chromium && flags=("${base_flags[@]}")
 
+# ChatGPT honours this officially; setting it to its own default keeps the login while turning
+# off the app's silent exit-if-second-instance path. The C++ lock below is handled separately.
+[ "$name" = "chatgpt" ] && export CODEX_ELECTRON_USER_DATA_PATH="${CODEX_ELECTRON_USER_DATA_PATH:-$HOME/.config/Codex}"
+
 {
   echo "--- $(date '+%Y-%m-%d %I:%M:%S %p') ---"
   echo "free memory at launch: $(free_mb) MB"
   echo "launching: $target ${flags[*]:-} $*"
 } > "$log" 2>/dev/null
+
+# A half-started instance that never drew a window still legitimately owns the single-instance
+# socket. A fresh launch hands it the request, exits 0 -- "success" -- and nothing appears,
+# which looks exactly like a dead tap and produces no error to read. If this app has processes
+# but no window, those processes are the problem: end them, then start clean.
+if [ "${#flags[@]}" -gt 0 ] && command -v xdotool >/dev/null 2>&1 \
+   && [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]; then
+  leftovers=$(pgrep -f "$real" 2>/dev/null || true)
+  if [ -n "$leftovers" ]; then
+    echo "ending windowless leftover instance(s): $leftovers" >> "$log"
+    pkill -f "$real" 2>/dev/null || true
+    sleep 2
+    pkill -9 -f "$real" 2>/dev/null || true
+  fi
+fi
 
 [ "${#flags[@]}" -gt 0 ] && clean_stale_locks
 
@@ -173,6 +192,19 @@ if [ "$status" = 137 ] && [ "${#flags[@]}" -gt 0 ]; then
   status=$?
   [ "$status" = 0 ] && exit 0
 fi
+
+append_own_log() {
+  local own="$HOME/.local/state/codex/logs"
+  [ "$name" = "chatgpt" ] && [ -d "$own" ] || return 0
+  local newest
+  newest=$(ls -t "$own" 2>/dev/null | head -n 1)
+  [ -n "$newest" ] || return 0
+  {
+    echo "--- ChatGPT's own log: $newest ---"
+    tail -n 25 "$own/$newest"
+  } >> "$log" 2>/dev/null
+}
+append_own_log
 
 case "$status" in
   137) reason="Android stopped it, which on a phone nearly always means memory ran short" ;;
