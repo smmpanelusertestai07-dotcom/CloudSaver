@@ -64,11 +64,23 @@ entries() {
 # A copy of the package's own entry with the launch command routed through pocketdesk-open.
 # DBusActivatable would let a file manager start the app behind our back, and extra action groups
 # would start it unwrapped, so both go.
+# "Web" says nothing and "File Manager PCManFM" does not fit under an icon on a phone.
+short_name() {   # short_name <base> <name>
+  case "$1" in
+    org.gnome.Epiphany|epiphany) printf 'Browser' ;;
+    pcmanfm) printf 'Files' ;;
+    lxterminal) printf 'Terminal' ;;
+    *) printf '%s' "$2" ;;
+  esac
+}
+
 write_entry() {   # write_entry <source> <target> <label> <command>
   awk -v cmd="$4" -v label="$3" '
     /^\[/ { group++ }
     group > 1 { next }
     /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd; next }
+    /^Name=/ { print "Name=" label; next }
+    /^Name\[/ { next }
     /^(DBusActivatable|TryExec|Actions|X-PocketDesk)=/ { next }
     { print }
   ' "$1" > "$2"
@@ -84,7 +96,7 @@ write_entry() {   # write_entry <source> <target> <label> <command>
   found=0
   while read -r desktop; do
     [ -n "$desktop" ] || continue
-    name=$(field "$desktop" Name)
+    name=$(short_name "$(basename "$desktop" .desktop)" "$(field "$desktop" Name)")
     [ -n "$name" ] || continue
     command=$(strip_codes "$(field "$desktop" Exec)")
     if [ "$(field "$desktop" Terminal)" = "true" ]; then
@@ -103,6 +115,10 @@ EOF
   echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   echo '  <item label="Downloads"><action name="Execute"><command>pcmanfm /home/coder/Downloads</command></action></item>'
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
+  echo '  <separator label="Windows"/>'
+  echo '  <item label="Open windows"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></item>'
+  echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
+  echo '  <item label="Close all"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows close-all</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Refresh desktop"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
   echo '</menu>'
@@ -116,7 +132,7 @@ launcher_lines=""
 add_favourite() {   # add_favourite <desktop file>
   base=$(basename "$1" .desktop)
   exec_line=$(field "$1" Exec)
-  label=$(field "$1" Name | tr -d '"\\')
+  label=$(short_name "$base" "$(field "$1" Name)" | tr -d '"\\')
   wrapped="$LOCAL_APPS/pocketdesk-$base.desktop"
   write_entry "$1" "$wrapped" "$label" "$(strip_codes "$exec_line")"
   cp -f "$wrapped" "$DESKTOP_DIR/$base.desktop" 2>/dev/null || true

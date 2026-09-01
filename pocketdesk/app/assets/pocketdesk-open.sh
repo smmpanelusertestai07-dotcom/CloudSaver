@@ -109,10 +109,14 @@ run_attempt() {
   done
   if kill -0 "$pid" 2>/dev/null; then
     if command -v xdotool >/dev/null 2>&1; then
-      echo "still running after 150s with no window · $(free_mb) MB free" >> "$log"
-    else
-      echo "still running after 150s · window state unknown (xdotool not installed)" >> "$log"
+      # Alive with nothing drawn after two and a half minutes is a stuck start, not a slow one.
+      # Reporting 'still running' hid that; 137 lets the caller try the leaner mode instead.
+      echo "no window after 150s · giving the leaner mode a turn · $(free_mb) MB free" >> "$log"
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null
+      return 137
     fi
+    echo "still running after 150s · window state unknown (xdotool not installed)" >> "$log"
     return 0
   fi
   wait "$pid" 2>/dev/null
@@ -134,9 +138,9 @@ run_attempt ${flags[@]+"${flags[@]}"} "$@"
 status=$?
 [ "$status" = 0 ] && exit 0
 
-# 137 is SIGKILL: something outside the app stopped it, and on a phone that is nearly always
-# memory pressure. One more try with everything in a single process is worth more than a
-# message saying it did not work.
+# 137 means the app was killed -- by Android for memory, or by the watch above for never
+# drawing anything. Either way one more try with everything in a single process is worth more
+# than a message saying it did not work.
 if [ "$status" = 137 ] && [ "${#flags[@]}" -gt 0 ]; then
   echo "killed (137) · retrying in a single process · $(free_mb) MB free" >> "$log"
   notify normal "$label was stopped, trying again" "Starting it in a smaller, single-process mode."

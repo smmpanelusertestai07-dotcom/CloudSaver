@@ -25,6 +25,12 @@ final class ContainerRuntime {
     static final String KEY_WIFI_ONLY = "wifi_only";
     static final String KEY_THERMAL_GUARD = "thermal_guard";
     static final String KEY_SESSION_MINUTES = "session_minutes";
+    /** Stop when the phone says so, not when a clock does. Stored in place of a minute count. */
+    static final int SESSION_SMART = -1;
+    /** How long a desktop nobody is touching is allowed to keep running, in minutes. */
+    static final int SMART_IDLE_MINUTES = 25;
+    /** Below this, and off the charger, a session is costing more than it is worth. */
+    static final int SMART_BATTERY_FLOOR = 15;
     static final String KEY_ORIENTATION = "orientation";
     static final String KEY_THEME = "theme";
     static final String KEY_POLICY_V2 = "balanced_policy_v2";
@@ -231,6 +237,11 @@ final class ContainerRuntime {
                 // Without an icon and cursor theme every launcher is a generic diamond and the
                 // pointer stays the old X11 cross instead of an arrow.
                 + "xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata "
+                // adwaita only Recommends this, and we install without recommends -- so without
+                // naming it every SVG icon in the theme falls back to a generic diamond.
+                + "librsvg2-common "
+                // Window controls the desktop offers: minimise all, close all, list what is open.
+                + "wmctrl xdotool "
                 // On-screen toasts and dialogs: an app that fails to start has to be able to say so.
                 + "dunst libnotify-bin zenity xdotool; "
                 // A desktop clock is only useful in the user's own time.
@@ -258,6 +269,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-desktop.sh", "usr/local/bin/pocketdesk-desktop");
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
+        copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
         copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");
@@ -285,6 +297,7 @@ final class ContainerRuntime {
     static void refreshDesktopEntries(Context context) throws IOException, ErrnoException {
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
+        copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {

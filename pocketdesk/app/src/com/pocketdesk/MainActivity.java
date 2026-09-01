@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "2.2.0";
+    static final String VERSION = "2.3.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -419,9 +419,10 @@ public final class MainActivity extends Activity {
                 ROTATION_VALUES, ContainerRuntime.KEY_ORIENTATION, "auto", rotationRow, false));
         card.addView(rotationRow, Ui.matchWrap(this, 8));
 
-        autoStopRow = new Ui.Row(this, R.drawable.ic_timer, "Auto-stop timer",
+        autoStopRow = new Ui.Row(this, R.drawable.ic_timer, "When to stop by itself",
                 labelOfInt(TIMER_LABELS, TIMER_VALUES,
-                        preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES, 240)),
+                        preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
+                                ContainerRuntime.SESSION_SMART)),
                 R.drawable.ic_chevron, dark, v -> chooseTimer());
         card.addView(autoStopRow, Ui.matchWrap(this, 8));
 
@@ -534,8 +535,13 @@ public final class MainActivity extends Activity {
     private static final int[] ROTATION_ICONS =
             {R.drawable.ic_rotate, R.drawable.ic_phone, R.drawable.ic_desktop};
 
-    private static final String[] TIMER_LABELS = {"Off", "1 hour", "2 hours", "4 hours", "6 hours"};
-    private static final int[] TIMER_VALUES = {0, 60, 120, 240, 360};
+    // A clock does not know whether you are using the desktop; it only knows how long ago you
+    // opened it. Smart watches the phone instead -- it lets a session you are working in run,
+    // and ends one you walked away from, or one the battery can no longer carry.
+    private static final String[] TIMER_LABELS = {
+            "Smart · recommended", "1 hour", "2 hours", "4 hours", "6 hours", "Never stop"};
+    private static final int[] TIMER_VALUES = {
+            ContainerRuntime.SESSION_SMART, 60, 120, 240, 360, 0};
 
     // Lower dpi means more of the desktop fits, which is what makes it read like a PC screen
     // rather than three oversized windows.
@@ -566,13 +572,15 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseTimer() {
-        int current = preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES, 240);
+        int current = preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
+                ContainerRuntime.SESSION_SMART);
         int selected = 0;
         for (int i = 0; i < TIMER_VALUES.length; i++) if (TIMER_VALUES[i] == current) selected = i;
         int[] icons = new int[TIMER_LABELS.length];
         for (int i = 0; i < icons.length; i++) icons[i] = R.drawable.ic_timer;
-        icons[0] = R.drawable.ic_power;
-        showChooser("Auto-stop timer", TIMER_LABELS, icons, selected, index -> {
+        icons[0] = R.drawable.ic_auto_mode;
+        icons[icons.length - 1] = R.drawable.ic_power;
+        showChooser("When to stop by itself", TIMER_LABELS, icons, selected, index -> {
             preferences.edit().putInt(ContainerRuntime.KEY_SESSION_MINUTES, TIMER_VALUES[index]).apply();
             autoStopRow.setValue(TIMER_LABELS[index]);
         });

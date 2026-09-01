@@ -418,6 +418,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     @Override public void specialKey(int keysym) {
+        // Typing is using the desktop just as much as touching it is.
+        VncView.lastInteractionAt = System.currentTimeMillis();
         sendKey(keysym, true);
         sendKey(keysym, false);
     }

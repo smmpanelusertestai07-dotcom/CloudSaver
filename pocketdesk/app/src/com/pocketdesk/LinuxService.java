@@ -69,9 +69,17 @@ public final class LinuxService extends Service {
         @Override public void run() {
             if (!desktopRunning) return;
             SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
-            int minutes = prefs.getInt(ContainerRuntime.KEY_SESSION_MINUTES, 240);
+            int minutes = prefs.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
+                    ContainerRuntime.SESSION_SMART);
             long elapsed = System.currentTimeMillis() - sessionStartedAt;
-            if (minutes > 0 && elapsed >= minutes * 60_000L) {
+            if (minutes == ContainerRuntime.SESSION_SMART) {
+                String reason = smartStopReason();
+                if (reason != null) {
+                    status("Linux stopped by itself", reason, 100, false, false);
+                    stopEverything(false);
+                    return;
+                }
+            } else if (minutes > 0 && elapsed >= minutes * 60_000L) {
                 status("Session timer reached", "Linux was stopped after " + minutes + " minutes.", 100, false, false);
                 stopEverything(false);
                 return;
@@ -103,6 +111,34 @@ public final class LinuxService extends Service {
             handler.postDelayed(this, 30_000L);
         }
     };
+
+    /**
+     * Why Smart mode would end this session now, or null to let it keep running.
+     *
+     * A fixed timer measures the wrong thing: it cannot tell a session being worked in from one
+     * left open by accident. These three can. Each returns a sentence rather than a code, because
+     * a desktop that closed itself should be able to say why.
+     */
+    private String smartStopReason() {
+        long idleMinutes = (System.currentTimeMillis() - lastInteractionAt()) / 60_000L;
+        if (idleMinutes >= ContainerRuntime.SMART_IDLE_MINUTES) {
+            return "Nothing was touched for " + idleMinutes + " minutes, so the session was closed "
+                    + "to save battery. Open the desktop again whenever you like.";
+        }
+        DeviceProbe probe = DeviceProbe.read(this);
+        if (probe.batteryPercent >= 0 && probe.batteryPercent < ContainerRuntime.SMART_BATTERY_FLOOR
+                && !DeviceProbe.isCharging(this)) {
+            return "Battery reached " + probe.batteryPercent + "%. Plug in the phone and open the "
+                    + "desktop again.";
+        }
+        return null;
+    }
+
+    /** The last time anything was typed or tapped on the desktop, or when it opened. */
+    private long lastInteractionAt() {
+        long touched = VncView.lastInteractionAt;
+        return touched > 0 ? Math.max(touched, sessionStartedAt) : sessionStartedAt;
+    }
 
     @Override public void onCreate() {
         super.onCreate();

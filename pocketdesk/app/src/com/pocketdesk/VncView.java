@@ -24,6 +24,12 @@ final class VncView extends View implements VncClient.Listener {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     /** Guards the framebuffer between the network reader and the drawing pass. */
+    /**
+     * When the desktop was last touched or typed on. Smart auto-stop reads it: a session being
+     * worked in should never be closed by a clock, and one nobody is using should not run on.
+     */
+    static volatile long lastInteractionAt;
+
     private final Object pixelLock = new Object();
     private final RectF spinnerBounds = new RectF();
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
@@ -256,6 +262,7 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
+        lastInteractionAt = System.currentTimeMillis();
         if (isMouse(event)) return handleMouse(event);
         VncClient active = client;
         if (active == null || bitmap == null) return true;
