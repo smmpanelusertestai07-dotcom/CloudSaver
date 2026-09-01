@@ -11,12 +11,16 @@ export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share"
 export MOZ_FAKE_NO_SANDBOX=1 MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1
 export MOZ_DISABLE_RDD_SANDBOX=1 MOZ_DISABLE_SOCKET_PROCESS=1 MOZ_ENABLE_WAYLAND=0
 export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1
+# WebKit (GNOME Web) builds its sandbox on bubblewrap, which needs the same namespaces.
+export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
 cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
          "$HOME/.config/openbox" "$HOME/.config/pcmanfm/LXDE" "$HOME/.config/libfm" \
-         "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects"
+         "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
+         "$HOME/Downloads" "$HOME/.pocketdesk/logs"
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
@@ -51,6 +55,20 @@ if [ ! -f "$HOME/.config/openbox/rc.xml" ] && [ -f /etc/xdg/openbox/rc.xml ]; th
   sed -i 's|<applications>|<applications>\n    <application class="*"><maximized>yes</maximized></application>|' \
     "$HOME/.config/openbox/rc.xml"
 fi
+
+# Whichever browser is installed becomes the one that links and downloads open in.
+BROWSER_ENTRY=""
+for candidate in org.gnome.Epiphany.desktop firefox.desktop; do
+  [ -f "/usr/share/applications/$candidate" ] && { BROWSER_ENTRY=$candidate; break; }
+done
+if [ -n "$BROWSER_ENTRY" ]; then
+  printf '[Default Applications]\nx-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
+    "$BROWSER_ENTRY" "$BROWSER_ENTRY" "$BROWSER_ENTRY" > "$HOME/.config/mimeapps.list"
+fi
+
+# Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
+printf '[global]\nfont = Sans 10\nframe_width = 1\nframe_color = "#2b3563"\ncorner_radius = 10\noffset = 12x56\norigin = top-right\ntimeout = 6\nmax_icon_size = 40\n\n[urgency_low]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_normal]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\ntimeout = 0\n' \
+  > "$HOME/.config/dunst/dunstrc"
 
 # Firefox: no sandbox, no separate content processes, software rendering.
 FIREFOX_PROFILE=$(find "$HOME/.mozilla/firefox" -maxdepth 1 -name '*.default*' -type d 2>/dev/null | head -n 1)
@@ -90,5 +108,6 @@ xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
 eval "$(dbus-launch --sh-syntax)"
 openbox-session >/tmp/pocketdesk-openbox.log 2>&1 &
 tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
+command -v dunst >/dev/null 2>&1 && dunst >/tmp/pocketdesk-dunst.log 2>&1 &
 pcmanfm --desktop --profile LXDE >/tmp/pocketdesk-pcmanfm.log 2>&1 &
 wait "$VNC_PID"

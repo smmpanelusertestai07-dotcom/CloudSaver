@@ -4,19 +4,29 @@
 # Reading each package's own .desktop file is what gives every app its real name, its real icon
 # and the launch command its packager intended -- rather than a hand-made entry with a generic
 # icon that has to be kept in step by hand.
+#
+# Every launcher points at pocketdesk-open rather than the app directly, because a Chromium-based
+# app started without --no-sandbox dies before it draws anything and the tap looks ignored.
 set -u
 HOME_DIR=/home/coder
 OPENBOX_DIR="$HOME_DIR/.config/openbox"
 TINT2_DIR="$HOME_DIR/.config/tint2"
 DESKTOP_DIR="$HOME_DIR/Desktop"
-mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$HOME_DIR/Projects" "$HOME_DIR/Downloads"
+LOCAL_APPS="$HOME_DIR/.local/share/applications"
+OPEN=/usr/local/bin/pocketdesk-open
+mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+         "$HOME_DIR/Projects" "$HOME_DIR/Downloads"
 
 # Apps worth a desktop icon and a panel slot, most useful first. Everything installed still
 # appears in the right-click menu.
-FAVOURITES="chatgpt claude-desktop claude antigravity code firefox lxterminal pcmanfm"
+FAVOURITES="chatgpt claude-desktop claude antigravity code epiphany firefox pcmanfm lxterminal"
 
-field() {   # field <file> <key>
-  sed -n "s/^$2=//p" "$1" | head -n 1
+field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
+  awk -F= -v key="$2" '
+    /^\[/ { group++ }
+    group > 1 { exit }
+    $1 == key { sub(/^[^=]*=/, ""); print; exit }
+  ' "$1"
 }
 
 is_visible() {
@@ -26,9 +36,13 @@ is_visible() {
   return 0
 }
 
-# Exec lines carry placeholders like %U or %F that a menu must not pass through.
-clean_exec() {
-  printf '%s' "$1" | sed 's/ *%[UufFdDnNickvm]//g' | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+# Exec lines carry placeholders like %U or %F that a launcher must not pass through.
+strip_codes() {
+  printf '%s' "$1" | sed 's/ *%[UufFdDnNickvm]//g'
+}
+
+xml_escape() {
+  printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
 }
 
 entries() {
@@ -46,6 +60,21 @@ entries() {
   done
 }
 
+# A copy of the package's own entry with the launch command routed through pocketdesk-open.
+# DBusActivatable would let a file manager start the app behind our back, and extra action groups
+# would start it unwrapped, so both go.
+write_entry() {   # write_entry <source> <target> <label> <command>
+  awk -v cmd="$4" -v label="$3" '
+    /^\[/ { group++ }
+    group > 1 { next }
+    /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd; next }
+    /^(DBusActivatable|TryExec|Actions|X-PocketDesk)=/ { next }
+    { print }
+  ' "$1" > "$2"
+  echo 'X-PocketDesk=1' >> "$2"
+  chmod 755 "$2"
+}
+
 # ---- Openbox right-click menu: every installed app ----------------------------------
 {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
@@ -56,9 +85,14 @@ entries() {
     [ -n "$desktop" ] || continue
     name=$(field "$desktop" Name)
     [ -n "$name" ] || continue
+    command=$(strip_codes "$(field "$desktop" Exec)")
+    if [ "$(field "$desktop" Terminal)" = "true" ]; then
+      command="lxterminal -e $command"
+    else
+      command="$OPEN --label \"$(printf '%s' "$name" | tr -d '\"\\\\')\" $command"
+    fi
     printf '  <item label="%s"><action name="Execute"><command>%s</command></action></item>\n' \
-      "$(printf '%s' "$name" | sed 's/&/\&amp;/g; s/</\&lt;/g')" \
-      "$(clean_exec "$(field "$desktop" Exec)")"
+      "$(xml_escape "$name")" "$(xml_escape "$command")"
     found=1
   done <<EOF
 $(entries)
@@ -66,6 +100,7 @@ EOF
   [ "$found" = 1 ] || echo '  <item label="No apps yet"><action name="Execute"><command>true</command></action></item>'
   echo '  <separator/>'
   echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Downloads"><action name="Execute"><command>pcmanfm /home/coder/Downloads</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Refresh desktop"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
   echo '</menu>'
@@ -74,16 +109,21 @@ EOF
 
 # ---- Desktop icons and panel launchers: the favourites, using their own entries -----
 find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -delete 2>/dev/null || true
+find "$LOCAL_APPS" -maxdepth 1 -name 'pocketdesk-*.desktop' -delete 2>/dev/null || true
 launcher_lines=""
 for wanted in $FAVOURITES; do
   while read -r desktop; do
     [ -n "$desktop" ] || continue
     base=$(basename "$desktop" .desktop)
-    binary=$(basename "$(printf '%s' "$(field "$desktop" Exec)" | awk '{print $1}')")
+    exec_line=$(field "$desktop" Exec)
+    binary=$(basename "$(printf '%s' "$exec_line" | awk '{print $1}')")
     if [ "$base" = "$wanted" ] || [ "$binary" = "$wanted" ]; then
-      cp -f "$desktop" "$DESKTOP_DIR/" 2>/dev/null || true
+      label=$(field "$desktop" Name | tr -d '"\\')
+      wrapped="$LOCAL_APPS/pocketdesk-$binary.desktop"
+      write_entry "$desktop" "$wrapped" "$label" "$(strip_codes "$exec_line")"
+      cp -f "$wrapped" "$DESKTOP_DIR/$binary.desktop" 2>/dev/null || true
       launcher_lines="$launcher_lines
-launcher_item_app = $desktop"
+launcher_item_app = $wrapped"
       break
     fi
   done <<EOF
@@ -123,7 +163,7 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="$HOME/Downloads"\n' \
   > "$HOME_DIR/.config/user-dirs.dirs"
 
-chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" \
+chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
   "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/Projects" "$HOME_DIR/Downloads" 2>/dev/null || true
 
 if [ -S /tmp/.X11-unix/X1 ]; then

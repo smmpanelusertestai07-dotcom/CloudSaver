@@ -15,3 +15,23 @@ Binary package sources and recorded fingerprints:
 - `libtalloc_2.4.3_aarch64.deb` — SHA-256 `ac81ad623d74c209718b9f3acb2dd702cc8a88c431e820d212229910b4db29da`
 
 Packages were obtained from `https://packages.termux.dev/apt/termux-main/`. Corresponding source and license texts are available from the linked upstream projects and Termux packaging repository. These components remain under their respective licenses. NexaDesk Linux's Java application sources are provided alongside the APK for inspection and reproducible rebuilding.
+
+## Application logos
+
+PocketDesk's app list shows each application's own logo so a row is recognisable at a glance. The
+images are taken from the vendor's own distribution — the package PocketDesk installs, or the
+vendor's own site — and are used unmodified apart from being trimmed and scaled to 128×128. They
+identify the applications they name; they are not PocketDesk's own marks, and each remains the
+property and trademark of its owner.
+
+| File | Identifies | Taken from |
+| --- | --- | --- |
+| `logo_chatgpt.png` | ChatGPT (OpenAI) | `usr/share/pixmaps/chatgpt.png` in `chatgpt_arm64.deb` |
+| `logo_claude.png` | Claude (Anthropic) | Anthropic's published Claude app icon |
+| `logo_antigravity.png` | Antigravity (Google) | `antigravity.google` |
+| `logo_vscode.png` | Visual Studio Code (Microsoft) | `code.visualstudio.com` |
+| `logo_firefox.png` | Firefox (Mozilla) | `firefox.com` |
+| `logo_web.png` | GNOME Web / Epiphany | `epiphany-browser-data`, CC BY-SA 4.0, rendered from the shipped SVG |
+
+`app/assets/antigravity.png` is the same Antigravity mark, shipped into the container because
+Antigravity is distributed as a tarball that registers no icon of its own.

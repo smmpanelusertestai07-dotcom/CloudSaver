@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.4.0";
+    static final String VERSION = "1.5.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -333,7 +333,7 @@ public final class MainActivity extends Activity {
 
         appRows.clear();
         for (LinuxApps.App app : LinuxApps.CATALOG) {
-            Ui.Row row = new Ui.Row(this, app.iconRes, app.name,
+            Ui.Row row = new Ui.Row(this, app.displayIcon(), app.logoRes != 0, app.name,
                     app.summary + " · " + app.approximateSize, R.drawable.ic_download, dark,
                     v -> confirmApp(app));
             appRows.put(app.id, row);

@@ -8,5 +8,11 @@ public final class R {
         public static final int ic_desktop = 3;
         public static final int ic_network = 4;
         public static final int ic_install = 5;
+        public static final int logo_chatgpt = 6;
+        public static final int logo_claude = 7;
+        public static final int logo_antigravity = 8;
+        public static final int logo_vscode = 9;
+        public static final int logo_firefox = 10;
+        public static final int logo_web = 11;
     }
 }

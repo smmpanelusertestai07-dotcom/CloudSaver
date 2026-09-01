@@ -34,13 +34,40 @@
 
 ## 4. ChatGPT / Codex (optional)
 
-1. Home screen pe **Add ChatGPT** dabao.
+1. Home screen pe **ChatGPT** row dabao.
 2. OpenAI ka official Linux ARM64 package install hoga, jisme **Codex** bhi aata hai.
-3. Iske liye ~2.5 GB extra space chahiye. 4 GB RAM wale phone pe yeh slow chalega — sach yahi hai.
-4. Install ke baad desktop kholo aur **ChatGPT** icon dabao.
+3. Iske liye ~4 GB free space chahiye (700 MB download, 1.3 GB installed). 4 GB RAM wale phone pe
+   yeh slow chalega — sach yahi hai.
+4. Install ke baad desktop kholo aur **ChatGPT** icon ek baar dabao. Upar right me
+   "Opening ChatGPT…" ka message aayega — pehli baar ek minute tak lag sakta hai.
 5. Login aur usage limit OpenAI ke account ka hai, app iska control nahi karta.
 6. **Computer Use** feature Linux pe available nahi hai — yeh OpenAI ki taraf se hai, app ki kami
    nahi.
+
+## 4a. Koi app na khule to
+
+Har app `pocketdesk-open` ke through chalta hai. Agar app band ho jaye to screen pe wajah dikhegi,
+aur poori report yaha milegi:
+
+```
+/home/coder/.pocketdesk/logs/<app>.log
+```
+
+Files app me `.pocketdesk` folder kholo (hidden files on karke) ya terminal me
+`cat ~/.pocketdesk/logs/chatgpt.log`.
+
+## 4b. Browser aur downloads
+
+- Default browser **Web (GNOME Web)** hai — 1-2 second me khulta hai.
+- Firefox chahiye to app list me uska apna row hai (khulne me time lagta hai, isliye default nahi).
+- Browser se jo bhi download karoge wo Linux ke andar yaha jata hai:
+
+```
+/home/coder/Downloads
+```
+
+Desktop pe right click → **Downloads** se seedha khul jayega. `.deb` file ko terminal me
+`sudo apt-get install -y ~/Downloads/naam.deb` se install kar sakte ho.
 
 ## 5. Settings
 

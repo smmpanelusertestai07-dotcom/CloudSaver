@@ -34,6 +34,8 @@ java -cp "$OUT" com.pocketdesk.TreesTest
   "$PROJECT_DIR/tests/LinuxAppsTest.java"
 java -cp "$OUT" com.pocketdesk.LinuxAppsTest
 
+bash "$PROJECT_DIR/tests/desktop-scripts-test.sh"
+
 # The desktop scripts ship as assets and only ever run on the phone, so lint them here.
 for script in "$PROJECT_DIR"/app/assets/*.sh; do
   bash -n "$script" || { echo "FAIL shell syntax: $script"; exit 1; }

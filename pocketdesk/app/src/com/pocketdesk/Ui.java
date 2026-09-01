@@ -113,10 +113,11 @@ final class Ui {
         return badge;
     }
 
+    /** Pass a tint of 0 for artwork that carries its own colours, such as an app's real logo. */
     static ImageView icon(Context context, int iconRes, int tint, int sizeDp) {
         ImageView view = new ImageView(context);
         view.setImageResource(iconRes);
-        view.setImageTintList(ColorStateList.valueOf(tint));
+        if (tint != 0) view.setImageTintList(ColorStateList.valueOf(tint));
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
         int size = dp(context, sizeDp);
         view.setLayoutParams(new LinearLayout.LayoutParams(size, size));
@@ -223,6 +224,11 @@ final class Ui {
 
         Row(Context context, int iconRes, String title, String value, int trailingIcon,
             boolean dark, OnClickListener onClick) {
+            this(context, iconRes, false, title, value, trailingIcon, dark, onClick);
+        }
+
+        Row(Context context, int iconRes, boolean fullColour, String title, String value,
+            int trailingIcon, boolean dark, OnClickListener onClick) {
             super(context);
             setOrientation(HORIZONTAL);
             setGravity(Gravity.CENTER_VERTICAL);
@@ -233,7 +239,7 @@ final class Ui {
             setFocusable(onClick != null);
             if (onClick != null) setOnClickListener(onClick);
 
-            addView(icon(context, iconRes, accent(dark), 22));
+            addView(icon(context, iconRes, fullColour ? 0 : accent(dark), fullColour ? 26 : 22));
 
             LinearLayout labels = new LinearLayout(context);
             labels.setOrientation(VERTICAL);

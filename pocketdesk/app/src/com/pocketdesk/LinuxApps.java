@@ -13,7 +13,10 @@ final class LinuxApps {
         final String id;
         final String name;
         final String summary;
+        /** Line-art fallback, used when the app has no brand mark of its own. */
         final int iconRes;
+        /** The app's real logo, taken from the vendor's own package. Zero when there is none. */
+        final int logoRes;
         final String approximateSize;
         /** Free space the install genuinely needs, package plus unpacked files. */
         final long needsBytes;
@@ -24,18 +27,24 @@ final class LinuxApps {
         final String marker;        // file that exists once installed
         private final String command;
 
-        App(String id, String name, String summary, int iconRes, String approximateSize,
+        App(String id, String name, String summary, int iconRes, int logoRes, String approximateSize,
             long needsBytes, String typicalTime, String caution, String marker, String command) {
             this.id = id;
             this.name = name;
             this.summary = summary;
             this.iconRes = iconRes;
+            this.logoRes = logoRes;
             this.approximateSize = approximateSize;
             this.needsBytes = needsBytes;
             this.typicalTime = typicalTime;
             this.caution = caution;
             this.marker = marker;
             this.command = command;
+        }
+
+        /** What the row should show: the real logo when there is one, the line-art otherwise. */
+        int displayIcon() {
+            return logoRes != 0 ? logoRes : iconRes;
         }
 
         String installCommand() {
@@ -63,29 +72,28 @@ final class LinuxApps {
     private static final String MOZILLA_REPO = "https://packages.mozilla.org/apt";
 
     private static final long GB = 1024L * 1024L * 1024L;
+    private static final long MB = 1024L * 1024L;
 
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt.
-            new App("essentials", "Desktop essentials",
-                    "Firefox, icon theme, arrow cursor and Indian time.",
-                    R.drawable.ic_network, "about 350 MB", 1 * GB, "3\u201310 min", null,
-                    "/usr/bin/firefox",
+            new App("essentials", "Web browser and basics",
+                    "GNOME Web, icon theme, arrow cursor, Indian time and on-screen messages.",
+                    R.drawable.ic_network, R.drawable.logo_web, "about 150 MB", 700 * MB,
+                    "2–6 min", null,
+                    "/usr/bin/epiphany",
                     "apt-get update; apt-get install -y --no-install-recommends "
                             + "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
-                            + "xdg-utils x11-xserver-utils; "
+                            + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
+                            // An app that fails to open has to be able to say so on screen.
+                            + "dunst libnotify-bin zenity "
+                            + "epiphany-browser; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
-                            + "echo 'Asia/Kolkata' > /etc/timezone; "
-                            + "install -d -m 0755 /etc/apt/keyrings; "
-                            + "curl -fsSL '" + MOZILLA_KEY + "' -o /etc/apt/keyrings/packages.mozilla.org.asc; "
-                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
-                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
-                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
-                            + "> /etc/apt/preferences.d/mozilla; "
-                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
+                            + "echo 'Asia/Kolkata' > /etc/timezone"),
 
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
-                    R.drawable.ic_chat, "700 MB download, 1.3 GB installed", 4 * GB, "10\u201325 min",
+                    R.drawable.ic_chat, R.drawable.logo_chatgpt,
+                    "700 MB download, 1.3 GB installed", 4 * GB, "10–25 min",
                     "Computer Use is not offered on Linux. Your account's usage limits still apply.",
                     "/usr/bin/chatgpt",
                     // The package registers OpenAI's own apt repository, so once it is on the
@@ -98,7 +106,8 @@ final class LinuxApps {
                             + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi"),
 
             new App("claude", "Claude Desktop", "Anthropic's desktop app. Includes Claude Code.",
-                    R.drawable.ic_terminal, "about 600 MB", 3 * GB, "10\u201320 min",
+                    R.drawable.ic_terminal, R.drawable.logo_claude, "about 600 MB", 3 * GB,
+                    "10–20 min",
                     "Linux support is in beta. Cowork needs hardware virtualisation, which a phone "
                             + "container cannot provide, so that tab stays unavailable.",
                     "/usr/bin/claude-desktop",
@@ -113,9 +122,10 @@ final class LinuxApps {
                             + "apt-get update; apt-get install -y --no-install-recommends claude-desktop"),
 
             new App("antigravity", "Antigravity", "Google's agent-first IDE.",
-                    R.drawable.ic_desktop, "about 800 MB", 3 * GB, "5\u201320 min",
+                    R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 800 MB", 3 * GB,
+                    "5–20 min",
                     "Google ships Antigravity as a tarball, so it updates when you run this again.",
-                    "/opt/antigravity/antigravity",
+                    "/usr/share/applications/antigravity.desktop",
                     "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates "
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "
                             + "libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0; "
@@ -130,17 +140,40 @@ final class LinuxApps {
                             + "bin=$(find /opt/antigravity -maxdepth 2 -type f -name 'antigravity*' -perm -u+x | head -n 1); "
                             + "[ -n \"$bin\" ] || { echo 'The download did not contain a runnable Antigravity binary'; exit 1; }; "
                             + "ln -sf \"$bin\" /opt/antigravity/antigravity; "
-                            + "chmod -R a+rX /opt/antigravity"),
+                            + "chmod -R a+rX /opt/antigravity; "
+                            // A tarball registers nothing, so the desktop would never list it.
+                            + "icon=$(find /opt/antigravity/resources -maxdepth 4 -name '*.png' -path '*linux*' | head -n 1); "
+                            + "[ -n \"$icon\" ] && install -D -m 0644 \"$icon\" /usr/share/pixmaps/antigravity.png; "
+                            + "printf '[Desktop Entry]\\nName=Antigravity\\nComment=Google agent-first IDE\\n"
+                            + "Exec=/opt/antigravity/antigravity\\nIcon=antigravity\\nType=Application\\n"
+                            + "Terminal=false\\nStartupNotify=true\\nCategories=Development;\\n' "
+                            + "> /usr/share/applications/antigravity.desktop"),
 
             new App("vscode", "VS Code", "Microsoft's editor, ARM64 build.",
-                    R.drawable.ic_terminal, "about 400 MB", 1500L * 1024 * 1024, "3\u201310 min", null,
+                    R.drawable.ic_terminal, R.drawable.logo_vscode, "about 400 MB", 1500 * MB,
+                    "3–10 min", null,
                     "/usr/bin/code",
                     "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
                             + "curl --fail --location --retry 3 '" + VSCODE_LATEST + "' -o /tmp/code.deb; "
                             + "apt-get install -y --no-install-recommends /tmp/code.deb; rm -f /tmp/code.deb"),
 
+            new App("firefox", "Firefox", "Mozilla's browser. Heavier, slower to open than GNOME Web.",
+                    R.drawable.ic_network, R.drawable.logo_firefox, "about 250 MB", 900 * MB,
+                    "3–10 min",
+                    "Takes several seconds to open on a phone. GNOME Web is already installed and "
+                            + "opens straight away.",
+                    "/usr/bin/firefox",
+                    "apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+                            + "install -d -m 0755 /etc/apt/keyrings; "
+                            + "curl -fsSL '" + MOZILLA_KEY + "' -o /etc/apt/keyrings/packages.mozilla.org.asc; "
+                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
+                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
+                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
+                            + "> /etc/apt/preferences.d/mozilla; "
+                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
+
             new App("devtools", "Developer tools", "Node.js, Python, pip and a compiler.",
-                    R.drawable.ic_install, "about 500 MB", 1500L * 1024 * 1024, "3\u201310 min", null,
+                    R.drawable.ic_install, 0, "about 500 MB", 1500 * MB, "3–10 min", null,
                     "/usr/bin/node",
                     "apt-get update; apt-get install -y --no-install-recommends "
                             + "nodejs npm python3 python3-pip python3-venv build-essential"),

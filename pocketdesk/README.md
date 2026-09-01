@@ -11,11 +11,13 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Area | Detail |
 | --- | --- |
 | Linux | Ubuntu 24.04.4 LTS ARM64, SHA-256 verified, running under PRoot |
-| Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, TigerVNC |
+| Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, dunst notifications, TigerVNC |
 | Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`. The framebuffer matches the phone's own screen, so landscape is a sharp 1:1 fill; pinch, `+`/`−`, Fill/Fit and Full screen control the view |
 | Input | Touchpad and direct-touch modes, left/right click, two-finger scroll, USB and Bluetooth mouse, hardware keyboard, on-screen coding key row, Android clipboard bridge |
 | Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt` — install anything else yourself |
+| Browser | GNOME Web (Epiphany) is installed by default because it opens in a second or two; Firefox is a one-tap extra. Downloads land in `~/Downloads` inside Linux |
 | Apps | One-tap installs for ChatGPT (with Codex), Claude Desktop, Antigravity, VS Code, Firefox and developer tools. Each install fetches the newest build, so the same button also updates |
+| Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
 
 ## Device requirements
 
@@ -96,6 +98,9 @@ The app is tuned so daily multi-hour use does not damage the phone.
 - Ubuntu Base 24.04.4 ARM64 — `https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz`
 - Expected SHA-256 — `04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2`
 - ChatGPT for Linux ARM64 — `https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb`
+- Claude Desktop — Anthropic's apt repository, accepted only when the signing key matches the
+  fingerprint `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` that Anthropic publishes
+- Firefox — Mozilla's own apt repository, because Ubuntu's `firefox` package is a snap shim
 
 Downloads resume after a dropped connection and fail over to a second Ubuntu mirror. Every archive is
 checked against the SHA-256 above before it is unpacked.

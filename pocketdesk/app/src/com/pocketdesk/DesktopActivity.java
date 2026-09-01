@@ -13,7 +13,9 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
@@ -206,14 +208,89 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
         restoreBars.setVisibility(View.GONE);
-        restoreBars.setBackground(Ui.background(Color.argb(220, 35, 42, 73), 12, this));
+        // Solid rather than see-through: while the bars are hidden this chip is the only way
+        // back to them, so it has to stay readable over a bright window.
+        restoreBars.setBackground(Ui.outlined(
+                Color.rgb(28, 36, 70), Color.rgb(96, 118, 190), 12, this));
+        restoreBars.setElevation(Ui.dp(this, 6));
         restoreBars.setOnClickListener(v -> setBarsHidden(false));
         FrameLayout.LayoutParams chip = new FrameLayout.LayoutParams(
-                Ui.dp(this, 118), Ui.dp(this, 40), Gravity.TOP | Gravity.END);
+                Ui.dp(this, 122), Ui.dp(this, 42), Gravity.TOP | Gravity.START);
         chip.topMargin = Ui.dp(this, 8);
-        chip.rightMargin = Ui.dp(this, 8);
+        chip.leftMargin = Ui.dp(this, 8);
         outer.addView(restoreBars, chip);
+        // Wherever it lands it can cover something, so it can be dragged anywhere on the screen.
+        makeChipDraggable(outer);
+        outer.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or2, ob) -> keepChipOnScreen(outer));
         return outer;
+    }
+
+    /** True once the chip has been dragged, after which it stays where it was put. */
+    private boolean chipMoved;
+
+    /** Keeps the chip inside the screen, and parks it top-right until it is first moved. */
+    private void keepChipOnScreen(FrameLayout parent) {
+        if (restoreBars == null || parent.getWidth() == 0) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) restoreBars.getLayoutParams();
+        int width = restoreBars.getWidth() > 0 ? restoreBars.getWidth() : Ui.dp(this, 122);
+        int height = restoreBars.getHeight() > 0 ? restoreBars.getHeight() : Ui.dp(this, 42);
+        int maxLeft = Math.max(0, parent.getWidth() - width);
+        int maxTop = Math.max(0, parent.getHeight() - height);
+        int left = chipMoved ? lp.leftMargin : Math.max(0, maxLeft - Ui.dp(this, 8));
+        left = Math.max(0, Math.min(left, maxLeft));
+        int top = Math.max(0, Math.min(lp.topMargin, maxTop));
+        if (left == lp.leftMargin && top == lp.topMargin) return;
+        lp.leftMargin = left;
+        lp.topMargin = top;
+        restoreBars.setLayoutParams(lp);
+    }
+
+    private void makeChipDraggable(FrameLayout parent) {
+        final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+        restoreBars.setOnTouchListener(new View.OnTouchListener() {
+            private float downX;
+            private float downY;
+            private int startLeft;
+            private int startTop;
+            private boolean dragging;
+
+            @Override public boolean onTouch(View view, MotionEvent event) {
+                FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) view.getLayoutParams();
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        downX = event.getRawX();
+                        downY = event.getRawY();
+                        startLeft = lp.leftMargin;
+                        startTop = lp.topMargin;
+                        dragging = false;
+                        return false;   // let the button keep its ripple and its tap
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = event.getRawX() - downX;
+                        float dy = event.getRawY() - downY;
+                        if (!dragging && Math.hypot(dx, dy) < slop) return false;
+                        if (!dragging) {
+                            dragging = true;
+                            chipMoved = true;
+                            view.setPressed(false);
+                        }
+                        int maxLeft = Math.max(0, parent.getWidth() - view.getWidth());
+                        int maxTop = Math.max(0, parent.getHeight() - view.getHeight());
+                        lp.leftMargin = Math.max(0, Math.min(startLeft + Math.round(dx), maxLeft));
+                        lp.topMargin = Math.max(0, Math.min(startTop + Math.round(dy), maxTop));
+                        view.setLayoutParams(lp);
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (!dragging) return false;   // a tap: the click listener takes it
+                        dragging = false;
+                        view.setPressed(false);
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+        });
     }
 
     private LinearLayout.LayoutParams barItem(int widthDp) {
