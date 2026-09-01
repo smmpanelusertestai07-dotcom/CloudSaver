@@ -1,3 +1,43 @@
+# PocketDesk 1.0.1
+
+Fixes the two failures that stopped Linux from installing on a Realme Android 13 device.
+
+## Install now completes
+
+- **`Could not extract usr/bin/perl5.38.2: link failed: EACCES`** — Ubuntu's base image ships
+  `/usr/bin/perl5.38.2` as a hard link, and this device's storage refuses `link(2)`. One refusal
+  used to abandon the whole install. Hard and symbolic links now fall back to a plain copy when
+  the filesystem returns `EACCES`, `EPERM`, `EXDEV`, `EOPNOTSUPP` or `ENOSYS`.
+- **`Could not remove incomplete setup: bin`** — this blocked every retry. Ubuntu ships `/bin`,
+  `/lib` and `/sbin` as links into `/usr`, and cleanup was resolving them with
+  `getCanonicalFile()`, so it deleted the link's target and then failed on the link left behind.
+  Deletion now inspects each entry with `lstat` and removes links as links, never descending
+  through them. It also frees a read-only directory and treats a dangling link as removable.
+- An absolute symlink target inside the rootfs now resolves against the rootfs root instead of
+  Android's own filesystem.
+
+Both failures are covered by new tests: `TarGzExtractorTest` extracts the fixture a second time
+with `link(2)` denied, and the new `TreesTest` proves cleanup removes a linked tree without
+destroying what the link points at.
+
+## Permissions are asked for up front
+
+- A first-launch prompt explains, before any long download starts, that Notifications should be ON
+  and Battery usage should be Unrestricted — and what breaks if they are not. Answering it walks
+  straight into the Android prompts.
+- Battery usage now opens a single yes/no system prompt
+  (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) instead of a list to hunt through, with the list and
+  App info as fallbacks.
+- Every permission row carries a coloured **ON / OFF** pill and a sentence naming the action and
+  its effect, for example *"Restricted · set to Unrestricted, or Android stops setup in the
+  background"*. Auto-start, which no app can read, is marked **CHECK**.
+- The install confirmation warns if Battery usage is still Restricted.
+
+## Icon
+
+The mark was slightly oversized inside the launcher mask. It is scaled back to the standard
+adaptive-icon keyline (about 50 dp of the 108 dp canvas), regenerated at every density.
+
 # PocketDesk 1.0.0
 
 First release under the PocketDesk name. Rebuilt from NexaDesk Linux 0.3.0.

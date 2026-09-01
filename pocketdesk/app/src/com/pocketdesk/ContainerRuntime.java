@@ -26,6 +26,7 @@ final class ContainerRuntime {
     static final String KEY_ORIENTATION = "orientation";
     static final String KEY_THEME = "theme";
     static final String KEY_POLICY_V2 = "balanced_policy_v2";
+    static final String KEY_PERMISSION_INTRO = "permission_intro_v1";
     static final String KEY_DESKTOP_INSTALLED = "desktop_installed";
     static final String KEY_CHATGPT_INSTALLED = "chatgpt_installed";
 
@@ -247,37 +248,10 @@ final class ContainerRuntime {
 
     /** Recursive on-disk size, used to show how much space Linux is really taking. */
     static long directorySize(File root) {
-        if (root == null || !root.exists()) return 0L;
-        if (root.isFile()) return root.length();
-        File[] children = root.listFiles();
-        if (children == null) return 0L;
-        long total = 0L;
-        for (File child : children) {
-            try {
-                if (child.isFile()) total += child.length();
-                else if (child.isDirectory() && !isSymlink(child)) total += directorySize(child);
-            } catch (Exception ignored) {
-                // A single unreadable entry must not break the total.
-            }
-        }
-        return total;
-    }
-
-    private static boolean isSymlink(File file) {
-        try {
-            return !file.getAbsolutePath().equals(file.getCanonicalPath());
-        } catch (IOException error) {
-            return true;
-        }
+        return Trees.size(root);
     }
 
     static void deleteTree(File root) throws IOException {
-        if (root == null || !root.exists()) return;
-        File canonical = root.getCanonicalFile();
-        File[] children = canonical.listFiles();
-        if (children != null) {
-            for (File child : children) deleteTree(child);
-        }
-        if (!canonical.delete()) throw new IOException("Could not remove incomplete setup: " + canonical.getName());
+        Trees.delete(root);
     }
 }

@@ -2,6 +2,7 @@ package com.pocketdesk;
 
 import android.system.ErrnoException;
 import android.system.Os;
+import android.system.OsConstants;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -94,14 +95,19 @@ final class TarGzExtractor {
                             skipExact(input, size);
                             break;
                         case '2':
-                            if (target.exists() && !target.delete()) throw new IOException("Could not replace " + name);
-                            Os.symlink(link, target.getAbsolutePath());
+                            replaceExisting(target, name);
+                            // Inside a rootfs an absolute link target is relative to the root,
+                            // not to Android's filesystem.
+                            File linkTarget = link.startsWith("/")
+                                    ? safeFile(destination, rootPath, cleanName(link))
+                                    : new File(target.getParentFile(), link);
+                            linkOrCopy(target, linkTarget, link, true);
                             skipExact(input, size);
                             break;
                         case '1':
                             File source = safeFile(destination, rootPath, cleanName(link));
-                            if (target.exists() && !target.delete()) throw new IOException("Could not replace " + name);
-                            Os.link(source.getAbsolutePath(), target.getAbsolutePath());
+                            replaceExisting(target, name);
+                            linkOrCopy(target, source, link, false);
                             skipExact(input, size);
                             break;
                         default:
@@ -115,6 +121,53 @@ final class TarGzExtractor {
                 files++;
                 if (progress != null && (files % 100 == 0 || files < 10)) progress.onFile(files, name);
             }
+        }
+    }
+
+    private static void replaceExisting(File target, String name) throws IOException {
+        // A dangling symlink reports exists() == false, so delete() is attempted either way.
+        if (!target.delete() && target.exists()) throw new IOException("Could not replace " + name);
+    }
+
+    /**
+     * Creates a link, falling back to a plain copy when the filesystem refuses one.
+     * Android app storage denies hard links on several OEM builds (EACCES/EPERM), and Ubuntu's
+     * base image relies on them, so a refusal must not end the install.
+     */
+    private static void linkOrCopy(File target, File source, String link, boolean symbolic)
+            throws IOException {
+        try {
+            if (symbolic) Os.symlink(link, target.getAbsolutePath());
+            else Os.link(source.getAbsolutePath(), target.getAbsolutePath());
+            return;
+        } catch (ErrnoException refused) {
+            if (refused.errno != OsConstants.EACCES && refused.errno != OsConstants.EPERM
+                    && refused.errno != OsConstants.EXDEV && refused.errno != OsConstants.EOPNOTSUPP
+                    && refused.errno != OsConstants.ENOSYS) {
+                throw new IOException("Could not link " + target.getName() + ": " + refused.getMessage(), refused);
+            }
+        }
+        File resolved = source.getCanonicalFile();
+        if (!resolved.exists()) return;          // nothing to copy yet; the tree stays usable
+        if (resolved.isDirectory()) {
+            if (!target.exists() && !target.mkdirs()) throw new IOException("Could not create " + target.getName());
+            return;
+        }
+        copyFile(resolved, target);
+    }
+
+    private static void copyFile(File source, File target) throws IOException {
+        try (java.io.FileInputStream input = new java.io.FileInputStream(source);
+             FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[128 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+            output.getFD().sync();
+        }
+        try {
+            Os.chmod(target.getAbsolutePath(), Os.stat(source.getAbsolutePath()).st_mode & 07777);
+        } catch (ErrnoException ignored) {
+            // Keeping the default mode is better than failing the whole extraction.
         }
     }
 

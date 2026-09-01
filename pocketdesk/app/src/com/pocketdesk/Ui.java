@@ -212,9 +212,14 @@ final class Ui {
         }
     }
 
-    /** Icon + title + current value + trailing icon. Used for every settings and link row. */
+    /**
+     * Icon + title + current value + an optional state pill + trailing icon.
+     * The pill is what makes "on or off" readable at a glance on the permissions list.
+     */
     static final class Row extends LinearLayout {
         private final TextView valueView;
+        private final TextView statusView;
+        private final boolean dark;
 
         Row(Context context, int iconRes, String title, String value, int trailingIcon,
             boolean dark, OnClickListener onClick) {
@@ -241,6 +246,13 @@ final class Ui {
             valueView.setVisibility(value == null ? GONE : VISIBLE);
             labels.addView(valueView);
 
+            this.dark = dark;
+            statusView = badge(context, "", muted(dark), field(dark));
+            statusView.setVisibility(GONE);
+            LayoutParams statusLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            statusLp.setMarginEnd(dp(context, 8));
+            addView(statusView, statusLp);
+
             if (trailingIcon != 0) addView(icon(context, trailingIcon, muted(dark), 18));
         }
 
@@ -248,6 +260,23 @@ final class Ui {
             valueView.setText(value);
             valueView.setVisibility(value == null || value.isEmpty() ? GONE : VISIBLE);
         }
+
+        /** Shows a coloured ON / OFF style pill. Pass null to hide it again. */
+        void setStatus(String label, int colour) {
+            if (label == null || label.isEmpty()) {
+                statusView.setVisibility(GONE);
+                return;
+            }
+            statusView.setVisibility(VISIBLE);
+            statusView.setText(label);
+            statusView.setTextColor(colour);
+            statusView.setBackground(background(tint(colour, dark), 99, getContext()));
+        }
+    }
+
+    /** A low-opacity wash of a semantic colour, readable on either surface. */
+    static int tint(int colour, boolean dark) {
+        return Color.argb(dark ? 46 : 30, Color.red(colour), Color.green(colour), Color.blue(colour));
     }
 
     /** Icon + title + subtitle + platform switch, so toggles read like the rest of the list. */

@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.0.0";
+    static final String VERSION = "1.0.1";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -72,6 +72,8 @@ public final class MainActivity extends Activity {
     private Ui.Row autoStopRow;
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
+    private Ui.Row autoStartRow;
+    private boolean askBatteryAfterNotifications;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
 
@@ -135,6 +137,7 @@ public final class MainActivity extends Activity {
         refreshDeviceCard();
         refreshPermissionRows();
         measureLinuxSize();
+        maybeShowPermissionIntro();
         // Re-entering mid-setup should show the running job straight away, not an empty card.
         if (LinuxService.isBusy() || LinuxService.lastMessage() != null) {
             renderProgress(LinuxService.lastMessage(), LinuxService.lastDetail(),
@@ -385,7 +388,7 @@ public final class MainActivity extends Activity {
     private View buildPermissionCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "Permissions", R.drawable.ic_lock, dark));
-        card.addView(Ui.text(this, "PocketDesk asks for the minimum it needs. Tap a row to open its Android page.",
+        card.addView(Ui.text(this, "PocketDesk asks for the minimum it needs. Tap a row to change it.",
                 12.5f, muted), Ui.matchWrap(this, 6));
 
         notificationRow = new Ui.Row(this, R.drawable.ic_notification, "Notifications", "Checking…",
@@ -396,10 +399,14 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_open_in_new, dark, v -> openBatterySettings());
         card.addView(batteryOptimisationRow, Ui.matchWrap(this, 8));
 
-        card.addView(new Ui.Row(this, R.drawable.ic_power, "Auto-start", "Keeps the desktop alive in background",
-                R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings()), Ui.matchWrap(this, 8));
+        autoStartRow = new Ui.Row(this, R.drawable.ic_power, "Auto-start",
+                "Turn this ON in the list that opens, so the desktop keeps running with the screen off",
+                R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
+        autoStartRow.setStatus("CHECK", Ui.muted(dark));
+        card.addView(autoStartRow, Ui.matchWrap(this, 8));
 
-        card.addView(new Ui.Row(this, R.drawable.ic_info, "App info", "All Android settings for this app",
+        card.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
+                "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
         return card;
     }
@@ -587,19 +594,71 @@ public final class MainActivity extends Activity {
         }, "pocketdesk-size").start();
     }
 
+    private boolean notificationsAllowed() {
+        return Build.VERSION.SDK_INT < 33
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean batteryUnrestricted() {
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        return power != null && power.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
     private void refreshPermissionRows() {
         if (notificationRow != null) {
-            boolean granted = Build.VERSION.SDK_INT < 33
-                    || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
-            notificationRow.setValue(granted ? "Allowed · progress alerts on" : "Not allowed · tap to enable");
+            boolean on = notificationsAllowed();
+            notificationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
+            notificationRow.setValue(on
+                    ? "On · you can see setup progress and a Stop button"
+                    : "Off · turn ON to see setup progress and a Stop button");
         }
         if (batteryOptimisationRow != null) {
-            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-            boolean unrestricted = power != null && power.isIgnoringBatteryOptimizations(getPackageName());
-            batteryOptimisationRow.setValue(unrestricted
-                    ? "Unrestricted · long sessions stay alive"
-                    : "Optimised · Android may stop long sessions");
+            boolean on = batteryUnrestricted();
+            batteryOptimisationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
+            batteryOptimisationRow.setValue(on
+                    ? "Unrestricted · a 30-minute setup keeps running"
+                    : "Restricted · set to Unrestricted, or Android stops setup in the background");
         }
+    }
+
+    /** Asks for what the app needs on first launch, before the user starts a long install. */
+    private void maybeShowPermissionIntro() {
+        if (preferences.getBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, false)) return;
+        preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
+        if (notificationsAllowed() && batteryUnrestricted()) return;
+        dialogBuilder()
+                .setTitle("Allow two things first")
+                .setMessage("Installing Linux downloads for 10–30 minutes in the background. "
+                        + "Without these, Android stops it half way.\n\n"
+                        + "1. Notifications — ON, so you can watch progress and stop it any time.\n\n"
+                        + "2. Battery usage — Unrestricted, so the download is not killed when the "
+                        + "screen turns off.\n\n"
+                        + "Nothing else is requested. You can change both later under Permissions.")
+                .setNegativeButton("Later", null)
+                .setPositiveButton("Allow", (dialog, which) -> startPermissionFlow())
+                .show();
+    }
+
+    private void startPermissionFlow() {
+        if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed()) {
+            askBatteryAfterNotifications = true;
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 41);
+            return;
+        }
+        askBatteryPermission();
+    }
+
+    private void askBatteryPermission() {
+        if (batteryUnrestricted()) return;
+        dialogBuilder()
+                .setTitle("Allow background battery use")
+                .setMessage("On the next screen choose Unrestricted (some phones call it "
+                        + "\"Don't optimise\" or \"Allow background activity\").\n\n"
+                        + "This does not drain the battery on its own — it only stops Android from "
+                        + "killing a setup that is already running.")
+                .setNegativeButton("Later", null)
+                .setPositiveButton("Open settings", (dialog, which) -> openBatterySettings())
+                .show();
     }
 
     private void refreshState() {
@@ -674,13 +733,17 @@ public final class MainActivity extends Activity {
                     + DeviceProbe.formatBytes(probe.freeStorage) + " free right now.");
             return;
         }
+        String warning = batteryUnrestricted() ? ""
+                : "\n\nBattery usage is still Restricted. Android may stop the setup when the screen "
+                + "turns off — set it to Unrestricted under Permissions first.";
         dialogBuilder()
                 .setTitle("Install Linux?")
                 .setMessage("Ubuntu 24.04 ARM64 will be downloaded and set up inside this app.\n\n"
                         + "• Download: about 30 MB, then desktop packages\n"
                         + "• Final size: 1.5–3 GB\n"
                         + "• Wi-Fi or mobile data both work\n"
-                        + "• Takes 10–30 minutes depending on your connection")
+                        + "• Takes 10–30 minutes depending on your connection"
+                        + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Install", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
                 .show();
@@ -739,12 +802,21 @@ public final class MainActivity extends Activity {
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(code, permissions, results);
         refreshPermissionRows();
+        if (askBatteryAfterNotifications) {
+            askBatteryAfterNotifications = false;
+            askBatteryPermission();
+        }
     }
 
     private void openBatterySettings() {
-        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-        if (power != null && power.isIgnoringBatteryOptimizations(getPackageName())) {
+        if (batteryUnrestricted()) {
             openAppInfo();
+            return;
+        }
+        // The targeted action is a single yes/no prompt; the list is the fallback for OEMs
+        // that block it, and App info is the last resort.
+        if (launch(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + getPackageName())))) {
             return;
         }
         if (!launch(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))) openAppInfo();

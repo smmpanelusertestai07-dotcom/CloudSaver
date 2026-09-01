@@ -51,12 +51,14 @@ PocketDesk asks for the minimum set, and every one of them is visible in the app
 | `POST_NOTIFICATIONS` | Show setup progress and the session's stop button |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | Required to keep the Linux process alive while you use it |
 | `VIBRATE` | Right-click and long-press feedback in the desktop viewer |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Shows one yes/no prompt asking to exempt a 10–30 minute setup from battery saver. The user always chooses; nothing is exempted silently |
 
 There is **no** storage, camera, microphone, location, contacts, accessibility or overlay
 permission, and the app never requests device admin.
 
-Battery optimisation and OEM auto-start are *not* permissions — they are Android settings pages
-that the Permissions card links to, so long sessions are not killed in the background.
+OEM auto-start is *not* a permission — it is a settings page the Permissions card links to. Every
+row in that card shows an ON/OFF pill and states what changes if it is off, and a first-launch
+prompt asks for what setup needs before any long download begins.
 
 ## Phone health
 

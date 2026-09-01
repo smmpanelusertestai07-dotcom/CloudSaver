@@ -18,7 +18,12 @@ java -cp "$OUT" com.pocketdesk.VncClientProtocolTest
 
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
   "$PROJECT_DIR/tests/android/system/ErrnoException.java" \
+  "$PROJECT_DIR/tests/android/system/OsConstants.java" \
+  "$PROJECT_DIR/tests/android/system/StructStat.java" \
   "$PROJECT_DIR/tests/android/system/Os.java" \
   "$PROJECT_DIR/app/src/com/pocketdesk/TarGzExtractor.java" \
-  "$PROJECT_DIR/tests/TarGzExtractorTest.java"
+  "$PROJECT_DIR/app/src/com/pocketdesk/Trees.java" \
+  "$PROJECT_DIR/tests/TarGzExtractorTest.java" \
+  "$PROJECT_DIR/tests/TreesTest.java"
 java -cp "$OUT" com.pocketdesk.TarGzExtractorTest
+java -cp "$OUT" com.pocketdesk.TreesTest
