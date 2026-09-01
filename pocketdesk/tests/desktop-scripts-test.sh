@@ -45,6 +45,9 @@ grep -q -- '--password-store=basic' "$log" || fail "missing --password-store=bas
 grep -q -- '--disable-software-rasterizer' "$log" \
   && fail "--disable-software-rasterizer denies GPU access outright and stops ChatGPT opening"
 grep -q -- '--disable-gpu ' "$log" || fail "missing --disable-gpu"
+# In single-process mode there is no GPU process at all, so Chromium reports GPU access as
+# denied whatever the flags say -- and ChatGPT's error reporter makes that fatal.
+grep -q -- '--single-process' "$log" && fail "--single-process re-denies GPU access and must never be passed"
 
 # A stale single-instance lock must be cleared -- and must never leak into the launcher's own
 # variables. This exact setup once made it execute the lock's target, "localhost-16621", as the

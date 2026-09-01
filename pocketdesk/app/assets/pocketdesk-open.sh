@@ -78,9 +78,11 @@ base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             --no-first-run
             --disable-crash-reporter)
 
-# Everything in one process. Not how Electron expects to run, so it is the second try rather
-# than the first -- but it is the only thing left that meaningfully cuts memory.
-lean_flags=(--single-process --no-zygote --js-flags=--max-old-space-size=256)
+# The retry after a kill: a smaller JavaScript heap, nothing else. --single-process was tried
+# here and must never return -- with no GPU process at all, Chromium reports GPU access as
+# denied, and ChatGPT's error reporter turns that into the fatal unhandled rejection that the
+# 2.2.0 fix had removed. A test fails if it comes back.
+lean_flags=(--js-flags=--max-old-space-size=256)
 
 pid=""
 has_window() {
@@ -179,16 +181,6 @@ clean_stale_locks() {
 flags=()
 is_chromium && flags=("${base_flags[@]}")
 
-# On a phone with 4 GB or less, ChatGPT's normal multi-process start has drawn nothing across
-# every attempt so far while Claude's does fine -- ChatGPT's renderer is the far heavier one.
-# So on such a phone ChatGPT goes straight to the single-process mode that the retry used to
-# reach only after a kill; the ordinary mode remains the retry, and Claude is untouched.
-total_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
-lean_first=0
-if [ "$name" = "chatgpt" ] && [ "${#flags[@]}" -gt 0 ] && [ "$total_mb" -gt 0 ] && [ "$total_mb" -lt 5000 ]; then
-  lean_first=1
-  flags=("${flags[@]}" "${lean_flags[@]}")
-fi
 
 # ChatGPT honours this officially; setting it to its own default keeps the login while turning
 # off the app's silent exit-if-second-instance path. The C++ lock below is handled separately.
@@ -219,35 +211,43 @@ fi
 
 notify normal "Opening $label" "The first start can take a minute or two."
 
-attempt_started=$(date +%s)
-run_attempt ${flags[@]+"${flags[@]}"} "$@"
-status=$?
-if [ "$status" = 0 ] && [ "${#flags[@]}" -gt 0 ] && [ $(( $(date +%s) - attempt_started )) -lt 8 ] \
-   && command -v xdotool >/dev/null 2>&1 \
-   && [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]; then
-  stragglers=$(app_pids | tr '\n' ' ')
-  echo "exited at once with no window: another instance took the request (${stragglers:-none found}) · ending it and starting again" >> "$log"
-  [ -n "${stragglers// /}" ] && { kill $stragglers 2>/dev/null; sleep 2; kill -9 $stragglers 2>/dev/null; } || true
-  clean_stale_locks
-  attempt_started=$(date +%s)
-  run_attempt ${flags[@]+"${flags[@]}"} "$@"
+handed_off() {   # true when the last attempt exited 0 at once, or Chromium said it deferred
+  [ "$1" = 0 ] || return 1
+  [ "${#flags[@]}" -gt 0 ] || return 1
+  grep -q 'Opening in existing browser session' "$log" 2>/dev/null && return 0
+  [ "$2" -lt 8 ] || return 1
+  command -v xdotool >/dev/null 2>&1 || return 1
+  [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
+}
+
+launch_guarded() {   # launch_guarded <flags...> -- run_attempt, and once more if it was handed off
+  local started status
+  started=$(date +%s)
+  run_attempt "$@"
   status=$?
-fi
+  if handed_off "$status" $(( $(date +%s) - started )); then
+    local stragglers
+    stragglers=$(app_pids | tr '\n' ' ')
+    echo "handed its request to another instance (${stragglers:-none found}) · ending it and starting again" >> "$log"
+    [ -n "${stragglers// /}" ] && { kill $stragglers 2>/dev/null; sleep 2; kill -9 $stragglers 2>/dev/null; } || true
+    clean_stale_locks
+    run_attempt "$@"
+    status=$?
+  fi
+  return "$status"
+}
+
+launch_guarded ${flags[@]+"${flags[@]}"} "$@"
+status=$?
 [ "$status" = 0 ] && exit 0
 
 # 137 means the app was killed -- by Android for memory, or by the watch above for never
 # drawing anything. Either way one more try with everything in a single process is worth more
 # than a message saying it did not work.
 if [ "$status" = 137 ] && [ "${#flags[@]}" -gt 0 ]; then
-  if [ "$lean_first" = 1 ]; then
-    echo "killed (137) · retrying in the ordinary multi-process mode · $(free_mb) MB free" >> "$log"
-    notify normal "$label was stopped, trying again" "Starting it in the ordinary mode this time."
-    run_attempt "${base_flags[@]}" "$@"
-  else
-    echo "killed (137) · retrying in a single process · $(free_mb) MB free" >> "$log"
-    notify normal "$label was stopped, trying again" "Starting it in a smaller, single-process mode."
-    run_attempt "${flags[@]}" "${lean_flags[@]}" "$@"
-  fi
+  echo "killed (137) · retrying with a smaller memory footprint · $(free_mb) MB free" >> "$log"
+  notify normal "$label was stopped, trying again" "Starting it with less memory this time."
+  launch_guarded "${flags[@]}" "${lean_flags[@]}" "$@"
   status=$?
   [ "$status" = 0 ] && exit 0
 fi
