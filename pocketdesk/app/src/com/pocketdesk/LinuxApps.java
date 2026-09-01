@@ -98,6 +98,29 @@ final class LinuxApps {
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
 
+            // A phone has a fraction of a laptop's memory. The desktop builds of these apps are
+            // Electron, which wants about a gigabyte on its own; the same accounts opened in the
+            // browser want a fraction of that and start in seconds. On a 4 GB phone that is the
+            // difference between working and not, so it is offered as its own row rather than
+            // buried as a fallback.
+            new App("aiweb", "ChatGPT and Claude, light",
+                    "Opens the same accounts in the browser. Starts in seconds, uses far less memory.",
+                    R.drawable.ic_bolt, R.drawable.logo_chatgpt, "under 1 MB", 64 * MB,
+                    "under 1 min",
+                    "This is the website in its own window, so Codex CLI and local file access are "
+                            + "not part of it. Everything you do in the chat is the same.",
+                    "/usr/share/applications/chatgpt-web.desktop",
+                    "command -v epiphany >/dev/null 2>&1 "
+                            + "|| { echo 'Add \"Web browser and basics\" first \u2014 this needs the browser.'; exit 1; }; "
+                            + "for app in chatgpt:ChatGPT:https://chatgpt.com "
+                            + "claude:Claude:https://claude.ai; do "
+                            + "id=${app%%:*}; rest=${app#*:}; title=${rest%%:*}; url=${rest#*:}; "
+                            + "printf '[Desktop Entry]\\nName=%s (web)\\nComment=%s in its own window\\n"
+                            + "Exec=epiphany --new-window %s\\nIcon=pocketdesk-%s\\nType=Application\\n"
+                            + "Terminal=false\\nStartupNotify=true\\nCategories=Network;\\n' "
+                            + "\"$title\" \"$title\" \"$url\" \"$id\" "
+                            + "> \"/usr/share/applications/$id-web.desktop\"; done"),
+
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
                     "700 MB download, 1.3 GB installed", 4 * GB, "10–25 min",

@@ -91,9 +91,12 @@ grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt$' "$entr
 grep -q '^Icon=chatgpt$' "$entry" || fail "the package's own icon name must be kept"
 grep -q '%U' "$entry" && fail "field codes must not survive into the launch command"
 
-claude="$WORK/coder/Desktop/claude-desktop.desktop"
+claude="$WORK/coder/Desktop/com.anthropic.Claude.desktop"
+[ -f "$claude" ] || fail "Claude should get a desktop icon, looked for $claude"
 grep -q 'Desktop Action' "$claude" && fail "extra action groups would start the app unwrapped"
 grep -q '^Actions=' "$claude" && fail "Actions= must be dropped along with its groups"
+grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "Claude" claude-desktop$' "$claude" \
+  || fail "Claude's launcher must go through pocketdesk-open too"
 
 menu="$WORK/coder/.config/openbox/menu.xml"
 grep -q 'pocketdesk-open --label "ChatGPT" chatgpt' "$menu" || fail "the menu must use the wrapper"

@@ -193,6 +193,9 @@ final class ContainerRuntime {
         copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");
+        // The browser shortcuts need a mark of their own, since the desktop app may not be there.
+        copyAsset(context, "pocketdesk-chatgpt.png", "usr/share/pixmaps/pocketdesk-chatgpt.png");
+        copyAsset(context, "pocketdesk-claude.png", "usr/share/pixmaps/pocketdesk-claude.png");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */

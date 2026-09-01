@@ -19,7 +19,7 @@ mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
 
 # Apps worth a desktop icon and a panel slot, most useful first. Everything installed still
 # appears in the right-click menu.
-FAVOURITES="chatgpt claude-desktop claude antigravity code epiphany firefox pcmanfm lxterminal"
+FAVOURITES="chatgpt chatgpt-web claude-web claude-desktop antigravity code epiphany firefox pcmanfm lxterminal"
 
 field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
   awk -F= -v key="$2" '
@@ -112,24 +112,41 @@ EOF
 find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -delete 2>/dev/null || true
 find "$LOCAL_APPS" -maxdepth 1 -name 'pocketdesk-*.desktop' -delete 2>/dev/null || true
 launcher_lines=""
-for wanted in $FAVOURITES; do
-  while read -r desktop; do
-    [ -n "$desktop" ] || continue
-    base=$(basename "$desktop" .desktop)
-    exec_line=$(field "$desktop" Exec)
-    binary=$(basename "$(printf '%s' "$exec_line" | awk '{print $1}')")
-    if [ "$base" = "$wanted" ] || [ "$binary" = "$wanted" ]; then
-      label=$(field "$desktop" Name | tr -d '"\\')
-      wrapped="$LOCAL_APPS/pocketdesk-$binary.desktop"
-      write_entry "$desktop" "$wrapped" "$label" "$(strip_codes "$exec_line")"
-      cp -f "$wrapped" "$DESKTOP_DIR/$binary.desktop" 2>/dev/null || true
-      launcher_lines="$launcher_lines
+add_favourite() {   # add_favourite <desktop file>
+  base=$(basename "$1" .desktop)
+  exec_line=$(field "$1" Exec)
+  label=$(field "$1" Name | tr -d '"\\')
+  wrapped="$LOCAL_APPS/pocketdesk-$base.desktop"
+  write_entry "$1" "$wrapped" "$label" "$(strip_codes "$exec_line")"
+  cp -f "$wrapped" "$DESKTOP_DIR/$base.desktop" 2>/dev/null || true
+  launcher_lines="$launcher_lines
 launcher_item_app = $wrapped"
-      break
-    fi
-  done <<EOF
+  taken="$taken $base"
+}
+
+# Several entries can share one command -- the browser itself and the web-app launchers all run
+# epiphany -- so a favourite claims the file named after it first, and only then one by command.
+taken=""
+for wanted in $FAVOURITES; do
+  match=""
+  for pass in base binary; do
+    while read -r desktop; do
+      [ -n "$desktop" ] || continue
+      case " $taken " in *" $(basename "$desktop" .desktop) "*) continue ;; esac
+      case "$pass" in
+        base) candidate=$(basename "$desktop" .desktop) ;;
+        binary) candidate=$(basename "$(printf '%s' "$(field "$desktop" Exec)" | awk '{print $1}')") ;;
+      esac
+      if [ "$candidate" = "$wanted" ]; then
+        match=$desktop
+        break
+      fi
+    done <<EOF
 $(entries)
 EOF
+    [ -n "$match" ] && break
+  done
+  [ -n "$match" ] && add_favourite "$match"
 done
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
