@@ -110,6 +110,27 @@ class HelpContentTest {
     }
 
     @Test
+    fun `a light copy is never described as living in the upload folder`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        // "Light copy" is the name of one specific thing: the smaller file
+        // that stays in your gallery in place of an original you removed,
+        // in Pictures/Light copies. The copies waiting in Pictures/CloudSaver
+        // for the cloud app are optimised copies, and five strings called
+        // those light copies too - teaching the wrong meaning of the word
+        // before a reader ever met the feature. Checked per clause, because
+        // a sentence may legitimately contrast the two.
+        val offenders = values().flatMap { (key, value) ->
+            value.split(",", ".", ";")
+                .filter { it.contains("ight cop") && it.contains("Pictures/CloudSaver") }
+                .map { "$key: ${it.trim()}" }
+        }
+        assertTrue(
+            "a light copy lives in the gallery, not the upload folder: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    @Test
     fun `no help sentence runs past about fifteen words`() {
         assumeTrue("strings.xml not found", strings() != null)
         // R4: short sentences, everywhere someone is being explained something.

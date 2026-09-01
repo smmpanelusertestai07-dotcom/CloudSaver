@@ -358,14 +358,14 @@
     <string name="hub_could_free">You could free about %1$s.</string>
     <string name="hub_nothing">Nothing to free up yet</string>
     <string name="hub_checking">Checking your photos and videos\u2026</string>
-    <string name="hub_journey">Space appears here after a light copy of a photo is safely in your cloud. New photos and videos are picked up automatically.</string>
+    <string name="hub_journey">Space appears here after an optimised copy of a photo is safely in your cloud. New photos and videos are picked up automatically.</string>
     <plurals name="hub_next_optimise">
         <item quantity="one">%1$d file is waiting to be optimised</item>
         <item quantity="other">%1$d files are waiting to be optimised</item>
     </plurals>
     <plurals name="hub_next_upload">
-        <item quantity="one">%1$d light copy is in Pictures/CloudSaver, waiting for your cloud app to collect it</item>
-        <item quantity="other">%1$d light copies are in Pictures/CloudSaver, waiting for your cloud app to collect them</item>
+        <item quantity="one">%1$d optimised copy is in Pictures/CloudSaver, waiting for your cloud app to collect it</item>
+        <item quantity="other">%1$d optimised copies are in Pictures/CloudSaver, waiting for your cloud app to collect them</item>
     </plurals>
     <string name="hub_backed_up">Backed-up originals</string>
     <string name="hub_backed_up_hint">Originals whose optimised copy your cloud already has.</string>
@@ -483,7 +483,7 @@
     <string name="opt_output">Upload folder layout</string>
     <string name="opt_output_hint">One folder, or separate folders for photos and videos.</string>
     <string name="output_switch_title">Change folder layout?</string>
-    <string name="output_switch_body">New light copies will go to a different folder, so you will need to point your cloud app at it as well.</string>
+    <string name="output_switch_body">New optimised copies will go to a different folder, so you will need to point your cloud app at it as well.</string>
     <string name="output_switch_confirm">Change layout</string>
     <string name="output_switch_note">Switching layout never deletes anything. Files already in the old folder stay there and are still uploaded; new files go to the new layout, and CloudSaver keeps watching both until the old one is empty.</string>
     <string name="output_single">Single</string>
@@ -622,10 +622,10 @@
     <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
 
     <!-- onboarding -->
-    <string name="app_tagline">Smaller copies for your cloud. Your originals never change.</string>
-    <string name="onb_tagline">Smaller copies for your cloud. Your originals never change.</string>
+    <string name="app_tagline">Save your cloud space \u2014 smaller copies, untouched originals.</string>
+    <string name="onb_tagline">Save your cloud space \u2014 smaller copies, untouched originals.</string>
     <string name="onb_albums_title">Which albums?</string>
-    <string name="onb_albums_text">Only the albums you tick get a light copy. Everything else is left completely alone.</string>
+    <string name="onb_albums_text">Only the albums you tick get a smaller copy. Everything else is left completely alone.</string>
     <string name="onb_albums_confirm">These are right</string>
     <string name="onb_albums_all">Select all</string>
     <string name="onb_albums_none">Deselect all</string>
