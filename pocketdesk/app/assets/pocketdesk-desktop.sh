@@ -129,6 +129,12 @@ for n in 1 2 3 4 5 6 7 8; do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.5; done
 xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
 eval "$(dbus-launch --sh-syntax)"
+# Electron apps ask the system bus about power, network and devices. There is no init here to
+# start one, so every request failed and was retried: "Failed to connect to socket
+# /run/dbus/system_bus_socket" appears dozens of times in their logs before they give up.
+mkdir -p /run/dbus 2>/dev/null || true
+pgrep -f 'dbus-daemon --system' >/dev/null 2>&1 || \
+  dbus-daemon --system --fork >/dev/null 2>&1 || true
 openbox-session >/tmp/pocketdesk-openbox.log 2>&1 &
 tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
 command -v dunst >/dev/null 2>&1 && dunst >/tmp/pocketdesk-dunst.log 2>&1 &

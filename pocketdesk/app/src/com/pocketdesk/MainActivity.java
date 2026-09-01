@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "2.1.0";
+    static final String VERSION = "2.2.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -215,7 +215,7 @@ public final class MainActivity extends Activity {
         TextView name = Ui.bold(this, "PocketDesk", 22, text);
         name.setLetterSpacing(-0.015f);
         heading.addView(name);
-        heading.addView(Ui.text(this, "Linux desktop on your phone", 12.5f, muted));
+        heading.addView(Ui.text(this, "A Linux computer that runs locally on your phone", 12.5f, muted));
 
         ImageView themeButton = Ui.icon(this, dark ? R.drawable.ic_light_mode : R.drawable.ic_dark_mode,
                 Ui.accent(dark), 22);

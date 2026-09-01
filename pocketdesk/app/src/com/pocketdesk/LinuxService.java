@@ -290,9 +290,15 @@ public final class LinuxService extends Service {
         output.setDaemon(true);
         output.start();
 
+        // Fifteen seconds was never enough: this phone takes half a minute to put the display up,
+        // so the wait expired, the session was killed, and the home screen reported a failure for
+        // a desktop that was only slow. Wait as long as the viewer does, and say how it is going.
         boolean ready = false;
-        for (int i = 0; i < 60 && activeProcess.isAlive(); i++) {
+        for (int i = 0; i < 600 && activeProcess.isAlive(); i++) {
             if (VncClient.canConnect("127.0.0.1", 5901, 250)) { ready = true; break; }
+            if (i > 0 && i % 20 == 0) {
+                status("Opening desktop", "Starting the display… " + (i / 4) + "s", -1, true, false);
+            }
             Thread.sleep(250);
         }
         if (!ready) {

@@ -188,20 +188,25 @@ final class Ui {
             super(context);
             setOrientation(VERTICAL);
             setGravity(Gravity.CENTER_HORIZONTAL);
-            setPadding(dp(context, 6), dp(context, 10), dp(context, 6), dp(context, 10));
+            setPadding(dp(context, 4), dp(context, 11), dp(context, 4), dp(context, 9));
             setBackground(outlined(surface(dark), line(dark), 16, context));
-            addView(icon(context, iconRes, accent(dark), 20));
-            value = bold(context, "—", 14.5f, text(dark));
+            addView(icon(context, iconRes, accent(dark), 19));
+            // The reading is what the eye should land on; the category names it underneath, small
+            // and spaced, so four of these stay legible side by side on a phone.
+            value = bold(context, "—", 17f, text(dark));
             value.setGravity(Gravity.CENTER);
             value.setMaxLines(1);
+            value.setIncludeFontPadding(false);
             LayoutParams valueLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            valueLp.topMargin = dp(context, 6);
+            valueLp.topMargin = dp(context, 7);
             addView(value, valueLp);
-            TextView caption = text(context, label, 11, muted(dark));
+            TextView caption = text(context, label.toUpperCase(java.util.Locale.ROOT), 9.5f, muted(dark));
             caption.setGravity(Gravity.CENTER);
             caption.setMaxLines(1);
+            caption.setLetterSpacing(0.07f);
+            caption.setIncludeFontPadding(false);
             LayoutParams captionLp = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT);
-            captionLp.topMargin = dp(context, 1);
+            captionLp.topMargin = dp(context, 5);
             addView(caption, captionLp);
         }
 

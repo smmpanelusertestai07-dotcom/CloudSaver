@@ -103,6 +103,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
         status.setSingleLine(true);
+        // A fixed-width label with no ellipsis cut words in half: "Starting your Linu".
+        status.setEllipsize(android.text.TextUtils.TruncateAt.END);
         status.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 92), ViewGroup.LayoutParams.MATCH_PARENT);
@@ -154,6 +156,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
         desktop = new VncView(this);
         desktop.setStateListener((text, connected) -> {
+            // The toolbar has room for the headline only; the full sentence is on the card.
+            text = text.contains(". ") ? text.substring(0, text.indexOf(". ")) : text;
             status.setText(text);
             status.setTextColor(connected ? Ui.SUCCESS : Color.rgb(239, 170, 57));
         });

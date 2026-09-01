@@ -39,6 +39,12 @@ log="$HOME/.pocketdesk/logs/electronish.log"
 grep -q -- '--no-sandbox' "$log" || fail "a Chromium-based app must be started with --no-sandbox"
 grep -q -- '--disable-dev-shm-usage' "$log" || fail "missing --disable-dev-shm-usage"
 grep -q -- '--password-store=basic' "$log" || fail "missing --password-store=basic"
+# ChatGPT's main process asks Chromium whether GPU access is possible and throws when the answer
+# is no. --disable-gpu alone still leaves software rasterisation, so the answer stays yes; adding
+# --disable-software-rasterizer denies it outright and no window is ever created.
+grep -q -- '--disable-software-rasterizer' "$log" \
+  && fail "--disable-software-rasterizer denies GPU access outright and stops ChatGPT opening"
+grep -q -- '--disable-gpu ' "$log" || fail "missing --disable-gpu"
 
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" plainish >/dev/null 2>&1
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \

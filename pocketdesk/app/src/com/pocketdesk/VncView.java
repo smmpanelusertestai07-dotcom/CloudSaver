@@ -527,6 +527,10 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     private void replaceBitmap(int width, int height) {
+        // A pointer parked at a stale coordinate lands in a corner on a phone-shaped desktop.
+        // The middle is where a mouse pointer belongs when a screen first appears.
+        pointerX = width / 2;
+        pointerY = height / 2;
         synchronized (pixelLock) {
             Bitmap old = bitmap;
             bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);

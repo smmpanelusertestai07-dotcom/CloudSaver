@@ -7,8 +7,8 @@ BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
 ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_BASENAME="PocketDesk"
-VERSION_NAME="2.1.0"
-VERSION_CODE="20"
+VERSION_NAME="2.2.0"
+VERSION_CODE="21"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2

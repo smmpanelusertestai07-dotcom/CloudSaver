@@ -62,7 +62,12 @@ base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             --disable-features=SpareRendererForSitePerProcess,IsolateOrigins,site-per-process
             # Chromium's own switch for machines like this one: smaller caches, fewer threads.
             --enable-low-end-device-mode
-            --disable-gpu --disable-gpu-compositing --disable-software-rasterizer
+            # --disable-gpu alone leaves software rasterisation available, which is what
+            # Chromium needs to still report GPU access as possible. Adding
+            # --disable-software-rasterizer on top denies it outright, and ChatGPT's main
+            # process asks for it at startup: the rejected promise went unhandled and no
+            # window was ever created. Claude never asks, which is why only one of them opened.
+            --disable-gpu --disable-gpu-compositing
             --ozone-platform=x11
             # Without a keyring daemon the secret-service lookup blocks until it times out,
             # which reads as "the app never opened".
