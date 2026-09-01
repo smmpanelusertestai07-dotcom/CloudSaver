@@ -12,12 +12,13 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 final class ContainerRuntime {
     static final String PREFS = "pocketdesk_preferences";
@@ -86,6 +87,62 @@ final class ContainerRuntime {
         Os.chmod(tmp.getAbsolutePath(), 0700);
     }
 
+    /**
+     * Stand-ins for the /proc entries Android will not let a normal app read.
+     *
+     * Each is bound over the path it replaces. The values are ordinary, unremarkable ones: the
+     * point is only that the file exists and parses, so software that reads it carries on
+     * instead of failing and then guessing.
+     */
+    private static Map<String, String> fakeProcFiles(Context context) throws IOException {
+        Map<String, String> contents = new LinkedHashMap<>();
+        contents.put("/proc/loadavg", "0.32 0.28 0.24 1/512 4096\n");
+        contents.put("/proc/uptime", "1234.56 4321.00\n");
+        contents.put("/proc/version",
+                "Linux version 6.2.1 (pocketdesk@localhost) (gcc 13.2.0) #1 SMP PREEMPT\n");
+        contents.put("/proc/sys/kernel/cap_last_cap", "40\n");
+        // Chromium's file watcher reads this one and logs an error for every process without it.
+        contents.put("/proc/sys/fs/inotify/max_user_watches", "524288\n");
+        contents.put("/proc/stat", statContents());
+        contents.put("/proc/vmstat", vmstatContents());
+
+        File directory = new File(context.getFilesDir(), "proc-fakes");
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IOException("Could not create the /proc stand-in directory");
+        }
+        Map<String, String> binds = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : contents.entrySet()) {
+            String name = entry.getKey().substring(entry.getKey().lastIndexOf('/') + 1);
+            File file = new File(directory, name);
+            if (!file.exists() || file.length() == 0) {
+                try (FileOutputStream output = new FileOutputStream(file)) {
+                    output.write(entry.getValue().getBytes("UTF-8"));
+                }
+            }
+            binds.put(entry.getKey(), file.getAbsolutePath());
+        }
+        return binds;
+    }
+
+    private static String statContents() {
+        StringBuilder stat = new StringBuilder("cpu  100000 0 50000 900000 0 0 0 0 0 0\n");
+        for (int cpu = 0; cpu < 8; cpu++) {
+            stat.append("cpu").append(cpu).append(" 12500 0 6250 112500 0 0 0 0 0 0\n");
+        }
+        stat.append("intr 0\nctxt 100000\nbtime 1700000000\nprocesses 4096\n")
+                .append("procs_running 1\nprocs_blocked 0\nsoftirq 0\n");
+        return stat.toString();
+    }
+
+    private static String vmstatContents() {
+        String[] keys = {"nr_free_pages", "nr_zone_inactive_anon", "nr_zone_active_anon",
+                "nr_zone_inactive_file", "nr_zone_active_file", "nr_dirty", "nr_writeback",
+                "pgpgin", "pgpgout", "pswpin", "pswpout", "pgfault", "pgmajfault"};
+        StringBuilder vmstat = new StringBuilder();
+        for (String key : keys) vmstat.append(key).append(" 0\n");
+        return vmstat.toString();
+    }
+
     static Process startContainer(Context context, String command) throws IOException {
         File root = rootfs(context);
         File nativeDirectory = new File(context.getApplicationInfo().nativeLibraryDir);
@@ -106,6 +163,17 @@ final class ContainerRuntime {
         args.add("/dev");
         args.add("-b");
         args.add("/proc");
+        // Chromium reads /sys to learn what machine it is on. Without it, it logs
+        // "Failed to initialize cpuinfo" and guesses -- including how many threads to start.
+        args.add("-b");
+        args.add("/sys");
+        // Android hides several /proc files that ordinary Linux software expects to read.
+        // A real file bound over each missing path is what proot-distro does; the bind has to
+        // come after -b /proc so that it wins.
+        for (Map.Entry<String, String> fake : fakeProcFiles(context).entrySet()) {
+            args.add("-b");
+            args.add(fake.getValue() + ":" + fake.getKey());
+        }
         args.add("-b");
         args.add(guestShared.getAbsolutePath() + ":/home/coder/Shared");
         args.add("-w");

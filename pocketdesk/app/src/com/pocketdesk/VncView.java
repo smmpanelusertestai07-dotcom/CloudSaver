@@ -8,10 +8,14 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+
+import java.util.ArrayList;
+import java.util.List;
 
 
 final class VncView extends View implements VncClient.Listener {
@@ -21,6 +25,7 @@ final class VncView extends View implements VncClient.Listener {
     private final Handler main = new Handler(Looper.getMainLooper());
     /** Guards the framebuffer between the network reader and the drawing pass. */
     private final Object pixelLock = new Object();
+    private final RectF spinnerBounds = new RectF();
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF destination = new RectF();
@@ -214,9 +219,7 @@ final class VncView extends View implements VncClient.Listener {
         super.onDraw(canvas);
         Bitmap current = bitmap;
         if (current == null) {
-            overlayPaint.setColor(Color.rgb(186, 195, 224));
-            overlayPaint.setTextSize(Ui.dp(getContext(), 16));
-            canvas.drawText(status, getWidth() / 2f, getHeight() / 2f, overlayPaint);
+            drawWaiting(canvas);
             return;
         }
         layoutDestination(current);
@@ -452,6 +455,75 @@ final class VncView extends View implements VncClient.Listener {
             if (stateListener != null) stateListener.state(status, false);
             invalidate();
         });
+    }
+
+    /**
+     * The screen shown while the desktop is still coming up.
+     *
+     * A single centred line of text ran off both edges of a phone screen, so a sentence that
+     * said how long the wait had been read as a fragment. This wraps, and turns while it waits,
+     * so the wait looks like a wait rather than a hang.
+     */
+    private void drawWaiting(Canvas canvas) {
+        Context context = getContext();
+        canvas.drawColor(Color.rgb(9, 13, 26));
+
+        float cardWidth = Math.min(getWidth() - Ui.dp(context, 48), Ui.dp(context, 340));
+        float centreX = getWidth() / 2f;
+        float centreY = getHeight() / 2f;
+
+        overlayPaint.setTextSize(Ui.dp(context, 15));
+        overlayPaint.setTextAlign(Paint.Align.CENTER);
+        List<String> lines = wrap(status, cardWidth - Ui.dp(context, 32));
+        float lineHeight = overlayPaint.getFontSpacing();
+        float spinner = Ui.dp(context, 18);
+        float cardHeight = spinner * 2 + Ui.dp(context, 34) + lines.size() * lineHeight
+                + Ui.dp(context, 32);
+
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(Color.rgb(17, 24, 44));
+        canvas.drawRoundRect(centreX - cardWidth / 2f, centreY - cardHeight / 2f,
+                centreX + cardWidth / 2f, centreY + cardHeight / 2f,
+                Ui.dp(context, 18), Ui.dp(context, 18), overlayPaint);
+
+        float spinnerY = centreY - cardHeight / 2f + Ui.dp(context, 26) + spinner;
+        spinnerBounds.set(centreX - spinner, spinnerY - spinner, centreX + spinner, spinnerY + spinner);
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(Ui.dp(context, 3));
+        overlayPaint.setStrokeCap(Paint.Cap.ROUND);
+        overlayPaint.setColor(Color.rgb(31, 43, 78));
+        canvas.drawArc(spinnerBounds, 0, 360, false, overlayPaint);
+        overlayPaint.setColor(Color.rgb(122, 155, 255));
+        float sweepStart = (SystemClock.elapsedRealtime() / 3L) % 360L;
+        canvas.drawArc(spinnerBounds, sweepStart, 90, false, overlayPaint);
+
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(Color.rgb(214, 222, 245));
+        float textY = spinnerY + spinner + Ui.dp(context, 26);
+        for (String line : lines) {
+            canvas.drawText(line, centreX, textY, overlayPaint);
+            textY += lineHeight;
+        }
+        postInvalidateOnAnimation();
+    }
+
+    /** Greedy word wrap, so a long sentence stays inside the card instead of past the screen. */
+    private List<String> wrap(String text, float maxWidth) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (overlayPaint.measureText(candidate) <= maxWidth || line.length() == 0) {
+                line.setLength(0);
+                line.append(candidate);
+            } else {
+                lines.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            }
+        }
+        if (line.length() > 0) lines.add(line.toString());
+        return lines;
     }
 
     private void replaceBitmap(int width, int height) {

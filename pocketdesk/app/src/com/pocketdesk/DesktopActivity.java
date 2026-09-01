@@ -312,26 +312,21 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void connectWithRetry() {
         connectionThread = new Thread(() -> {
-            String lastError = "Waiting for local display…";
+            String lastError = "The desktop did not come up. Go back and open it again.";
             long startedAt = SystemClock.elapsedRealtime();
-            final int[] missed = {0};
             for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
                 if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
-                    // The service reports "running" only once it has the process, which is a
-                    // moment after this screen opens. Treating the first false as a stopped
-                    // desktop is what left this screen saying so forever.
-                    if (LinuxService.isDesktopRunning()) {
-                        missed[0] = 0;
-                    } else if (attempt > 60 && ++missed[0] > 8) {
-                        desktop.onDisconnected("Desktop stopped · return and retry");
-                        return;
-                    }
-                    // Counting up beats a fixed sentence: it shows the wait is still going
-                    // somewhere, instead of announcing a failure that has not happened.
+                    // The service's "running" flag is set late and cleared early, so it is not a
+                    // reliable failure signal while starting up: reading it as one is what put
+                    // "Desktop stopped" on a desktop that was still on its way. The wait simply
+                    // runs its course now, and the only thing reported is how long it has been.
                     if (attempt % 8 == 0) {
                         long seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000L;
-                        desktop.onDisconnected("Starting the desktop · " + seconds
-                                + "s · the first start is the slow one");
+                        desktop.onDisconnected(seconds < 25
+                                ? "Starting your Linux desktop… " + seconds + "s"
+                                : "Starting your Linux desktop… " + seconds
+                                        + "s. The first start after an update is the slow one — "
+                                        + "please keep waiting.");
                     }
                     SystemClock.sleep(250);
                     continue;

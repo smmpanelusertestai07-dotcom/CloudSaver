@@ -61,7 +61,7 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
-printf '[*]\nwallpaper_mode=stretch\nwallpaper=/usr/share/backgrounds/pocketdesk.png\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \
+printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.png\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
@@ -71,7 +71,11 @@ printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removabl
 if [ ! -f "$HOME/.config/openbox/rc.xml" ] && [ -f /etc/xdg/openbox/rc.xml ]; then
   cp /etc/xdg/openbox/rc.xml "$HOME/.config/openbox/rc.xml"
   sed -i 's|<size>[0-9]*</size>|<size>11</size>|g' "$HOME/.config/openbox/rc.xml"
-  sed -i 's|<applications>|<applications>\n    <application class="*"><maximized>yes</maximized></application>|' \
+  sed -i 's|<applications>|<applications>\n    <application class="*"><maximized>yes</maximized><decor>yes</decor></application>|' \
+    "$HOME/.config/openbox/rc.xml"
+  # Close, minimise and maximise on every window. Electron apps draw their own title bar on a
+  # desktop; on a phone that leaves no way to close them, which is how one kept coming back.
+  sed -i 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>NLIMC</titleLayout>|' \
     "$HOME/.config/openbox/rc.xml"
 fi
 
