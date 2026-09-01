@@ -117,38 +117,47 @@ cpu_ticks() {
 run_attempt() {
   "$target" "$@" >> "$log" 2>&1 &
   pid=$!
-  local last_ticks=0 idle_seconds=0 elapsed
-  for elapsed in $(seq 1 900); do
+  # Wall-clock throughout. Counting loop turns reported "3s" for a start that took forty,
+  # because every xdotool call under PRoot costs seconds of its own.
+  local t0 elapsed last_ticks=0 last_check=0 idle_since=-1 next_notice=30
+  t0=$(date +%s)
+  while :; do
+    elapsed=$(( $(date +%s) - t0 ))
     kill -0 "$pid" 2>/dev/null || break
     if has_window; then
       echo "window appeared after ${elapsed}s" >> "$log"
       return 0
     fi
-    if [ $((elapsed % 15)) = 0 ] && command -v xdotool >/dev/null 2>&1; then
+    [ "$elapsed" -ge 900 ] && break
+    if [ $((elapsed - last_check)) -ge 15 ] && command -v xdotool >/dev/null 2>&1; then
       local now_ticks
       now_ticks=$(cpu_ticks)
       if [ $((now_ticks - last_ticks)) -lt 30 ]; then
-        idle_seconds=$((idle_seconds + 15))
+        [ "$idle_since" -lt 0 ] && idle_since=$elapsed
       else
-        idle_seconds=0
+        idle_since=-1
       fi
       last_ticks=$now_ticks
+      last_check=$elapsed
       # Ninety seconds with no window and no CPU work is a hang, not a slow start.
-      if [ "$idle_seconds" -ge 90 ] && [ "$elapsed" -ge 120 ]; then
-        echo "no window and no CPU activity for ${idle_seconds}s at ${elapsed}s · treating as stuck · $(free_mb) MB free" >> "$log"
+      if [ "$idle_since" -ge 0 ] && [ $((elapsed - idle_since)) -ge 90 ] && [ "$elapsed" -ge 120 ]; then
+        echo "no window and no CPU activity since ${idle_since}s, now ${elapsed}s · treating as stuck · $(free_mb) MB free" >> "$log"
         kill -9 "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null
         return 137
       fi
     fi
-    case "$elapsed" in
-      30|60|120|240|420|600)
-        notify normal "$label is still loading" "This try: ${elapsed}s · still working · $(free_mb) MB free" ;;
-    esac
+    if [ "$elapsed" -ge "$next_notice" ]; then
+      notify normal "$label is still loading" "This try: ${elapsed}s · still working · $(free_mb) MB free"
+      case "$next_notice" in
+        30) next_notice=60 ;; 60) next_notice=120 ;; 120) next_notice=240 ;;
+        240) next_notice=420 ;; 420) next_notice=600 ;; *) next_notice=100000 ;;
+      esac
+    fi
     sleep 1
   done
   if kill -0 "$pid" 2>/dev/null; then
-    echo "still running after 900s · leaving it to finish · $(free_mb) MB free" >> "$log"
+    echo "still running after ${elapsed}s · leaving it to finish · $(free_mb) MB free" >> "$log"
     return 0
   fi
   wait "$pid" 2>/dev/null
