@@ -94,10 +94,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         root.addView(toolbar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
 
-        Button back = toolButton("", R.drawable.ic_arrow_back);
+        Button back = toolButton("Home", R.drawable.ic_arrow_back);
         back.setContentDescription("Back to PocketDesk home");
         back.setOnClickListener(v -> finish());
-        toolbarRow.addView(back, barItem(46));
+        toolbarRow.addView(back, barItem(92));
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
         status.setSingleLine(true);
@@ -109,10 +109,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         toolbarRow.addView(status, statusLp);
 
         Button zoomOut = toolButton("−");
-        zoomOut.setTextSize(17);
+        zoomOut.setTextSize(19);
         zoomOut.setContentDescription("Zoom out");
         zoomOut.setOnClickListener(v -> desktop.zoomBy(1f / 1.25f));
-        toolbarRow.addView(zoomOut, barItem(44));
+        toolbarRow.addView(zoomOut, barItem(46));
 
         zoomLabel = toolButton("100%");
         zoomLabel.setContentDescription("Reset zoom");
@@ -120,10 +120,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         toolbarRow.addView(zoomLabel, barItem(58));
 
         Button zoomIn = toolButton("+");
-        zoomIn.setTextSize(17);
+        zoomIn.setTextSize(19);
         zoomIn.setContentDescription("Zoom in");
         zoomIn.setOnClickListener(v -> desktop.zoomBy(1.25f));
-        toolbarRow.addView(zoomIn, barItem(44));
+        toolbarRow.addView(zoomIn, barItem(46));
 
         fitButton = toolButton("Fill", R.drawable.ic_fullscreen);
         fitButton.setOnClickListener(v -> {
@@ -136,15 +136,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         pointerMode.setOnClickListener(v -> togglePointerMode());
         toolbarRow.addView(pointerMode, barItem(124));
 
-        Button keyboard = toolButton("", R.drawable.ic_keyboard);
-        keyboard.setContentDescription("Open phone keyboard");
+        Button keyboard = toolButton("Keyboard", R.drawable.ic_keyboard);
+        keyboard.setContentDescription("Open the phone keyboard");
         keyboard.setOnClickListener(v -> showKeyboard());
-        toolbarRow.addView(keyboard, barItem(50));
+        toolbarRow.addView(keyboard, barItem(126));
 
-        Button rotate = toolButton("", R.drawable.ic_rotate);
-        rotate.setContentDescription("Rotate the desktop");
+        Button rotate = toolButton("Rotate", R.drawable.ic_rotate);
+        rotate.setContentDescription("Turn the desktop between portrait and landscape");
         rotate.setOnClickListener(v -> toggleOrientation());
-        toolbarRow.addView(rotate, barItem(50));
+        toolbarRow.addView(rotate, barItem(104));
 
         Button hideBars = toolButton("Full screen", R.drawable.ic_fit);
         hideBars.setOnClickListener(v -> setBarsHidden(true));
@@ -179,8 +179,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         addKey(keys, "↓", 0xff54);
         addKey(keys, "→", 0xff53);
         addKey(keys, "Enter", 0xff0d);
-        addKey(keys, "⌫", 0xff08);
+        addKey(keys, "Back", 0xff08);
         addKey(keys, "Del", 0xffff);
+        addKey(keys, "Home", 0xff50);
+        addKey(keys, "End", 0xff57);
         Button paste = toolButton("Paste", R.drawable.ic_apps);
         paste.setOnClickListener(v -> pasteClipboard());
         keys.addView(paste, keyLayout(92));
@@ -441,9 +443,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
             return;
         }
-        // Automatic really is automatic: the Linux desktop resizes itself to whichever way the
-        // phone is held, so neither orientation has to be letterboxed or cropped.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
+        // FULL_SENSOR, not USER: USER obeys the phone's rotation lock, which is why turning the
+        // phone did nothing until the screen was reopened. The desktop resizes itself to match,
+        // so following the sensor is safe here even when the rest of the system is locked.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
     }
 
     private void toggleOrientation() {

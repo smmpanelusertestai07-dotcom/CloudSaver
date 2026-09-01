@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.2.1";
+    static final String VERSION = "1.3.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -489,12 +489,16 @@ public final class MainActivity extends Activity {
         card.addView(featureRow(R.drawable.ic_keyboard, "Hardware keyboard and coding key row", text), Ui.matchWrap(this, 8));
         card.addView(featureRow(R.drawable.ic_mouse, "Touchpad, left/right click and USB or Bluetooth mouse", text), Ui.matchWrap(this, 8));
         card.addView(featureRow(R.drawable.ic_apps, "Add ChatGPT, Claude Desktop, Antigravity, VS Code and more", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_network, "Firefox is installed with Linux, so a browser is there from the start", text), Ui.matchWrap(this, 8));
+        card.addView(featureRow(R.drawable.ic_storage, "Your work lives in Projects; browser downloads land in Downloads", text), Ui.matchWrap(this, 8));
 
         card.addView(Ui.text(this,
                 "Limits: needs an ARM64 phone with 4 GB RAM and 4 GB free space. The AI desktop apps are "
                         + "large Electron builds and run slowly on 4 GB. Computer Use is not offered on Linux by "
                         + "either OpenAI or Anthropic, and your account limits still apply. Files stay in this "
-                        + "app's private storage.",
+                        + "app's private storage: /home/coder inside Linux, which is this app's own data "
+                        + "folder on Android. Projects and Downloads are the two folders you will use; "
+                        + "removing Linux deletes both, so copy anything you want to keep out first.",
                 12.5f, muted), Ui.matchWrap(this, 12));
         return card;
     }

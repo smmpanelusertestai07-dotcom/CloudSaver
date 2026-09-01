@@ -156,16 +156,25 @@ final class VncView extends View implements VncClient.Listener {
         return Math.max(minZoom(), Math.min(value, 6f));
     }
 
-    /** The zoom at which the whole desktop is visible; below that there is only empty space. */
+    /**
+     * How far out the view may zoom. Never above the point where the whole desktop is visible,
+     * and never above 1 -- once the desktop matches the screen, fit and fill are the same size
+     * and a floor of 1 would leave the minus button doing nothing.
+     */
     private float minZoom() {
         Bitmap current = bitmap;
-        if (current == null || getWidth() == 0 || getHeight() == 0 || !fillMode) return 1f;
+        if (current == null || getWidth() == 0 || getHeight() == 0) return ZOOM_FLOOR;
         float fit = Math.min(getWidth() / (float) current.getWidth(),
                 getHeight() / (float) current.getHeight());
-        float fill = Math.max(getWidth() / (float) current.getWidth(),
-                getHeight() / (float) current.getHeight());
-        return fill <= 0 ? 1f : Math.max(0.2f, fit / fill);
+        float base = fillMode
+                ? Math.max(getWidth() / (float) current.getWidth(),
+                           getHeight() / (float) current.getHeight())
+                : fit;
+        if (base <= 0) return ZOOM_FLOOR;
+        return Math.max(ZOOM_FLOOR, Math.min(1f, fit / base));
     }
+
+    private static final float ZOOM_FLOOR = 0.4f;
 
     /** Recomputes where the framebuffer lands on screen for the current zoom, pan and mode. */
     private void layoutDestination(Bitmap current) {

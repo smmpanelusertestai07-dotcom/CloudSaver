@@ -212,7 +212,7 @@ public final class LinuxService extends Service {
             lastLine[0] = now;
             status("Installing desktop tools",
                     phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 10\u201325 min"
-                            + "\n" + shortText(line),
+                            + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
                     -1, true, false);
         });
         if (code != 0) throw new IOException("Ubuntu package setup exited with code " + code + ". Check Wi-Fi and free storage, then retry.");
@@ -243,7 +243,7 @@ public final class LinuxService extends Service {
             lastLine[0] = now;
             status("Installing " + app.name,
                     phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime
-                            + "\n" + shortText(line),
+                            + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
                     -1, true, false);
         });
         if (code != 0) {
@@ -596,6 +596,7 @@ public final class LinuxService extends Service {
         if (value.startsWith("Setting up") || value.startsWith("Processing triggers")) return "Finishing set-up";
         if (value.startsWith("Reading") || value.startsWith("Building") || value.startsWith("Selecting")) return "Preparing";
         if (value.contains("% ") || value.startsWith("#")) return "Downloading";
+        if (value.startsWith("Get:") || value.startsWith("Hit:")) return "Downloading packages";
         return "Working";
     }
 
@@ -603,6 +604,22 @@ public final class LinuxService extends Service {
         long minutes = (System.currentTimeMillis() - startedAt) / 60_000L;
         if (minutes < 1) return "under a minute so far";
         return minutes + " min so far";
+    }
+
+    /** True for a curl/wget progress line, which is a wall of numbers rather than a status. */
+    private static boolean isTransferNoise(String value) {
+        if (value == null) return true;
+        String line = value.trim();
+        if (line.isEmpty()) return true;
+        if (line.startsWith("%") || line.startsWith("Dload") || line.startsWith("Current")) return true;
+        int digits = 0;
+        int letters = 0;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (Character.isDigit(c)) digits++;
+            else if (Character.isLetter(c)) letters++;
+        }
+        return digits > 8 && digits > letters * 2;
     }
 
     private static String shortText(String value) {

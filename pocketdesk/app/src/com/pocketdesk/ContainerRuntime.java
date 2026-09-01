@@ -158,18 +158,38 @@ final class ContainerRuntime {
                 + "apt-get update; "
                 + "apt-get install -y --no-install-recommends "
                 + "tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
-                + "x11-xserver-utils xfonts-base fonts-dejavu-core ca-certificates curl git nano sudo xdg-utils; "
+                + "x11-xserver-utils xfonts-base fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
+                // Without an icon and cursor theme every launcher is a generic diamond and the
+                // pointer stays the old X11 cross instead of an arrow.
+                + "xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata; "
+                // A desktop clock is only useful in the user's own time.
+                + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
+                + "echo 'Asia/Kolkata' > /etc/timezone; "
                 + "id coder >/dev/null 2>&1 || useradd -m -s /bin/bash coder; "
                 + "printf 'coder ALL=(ALL) NOPASSWD:ALL\\n' > /etc/sudoers.d/coder; chmod 0440 /etc/sudoers.d/coder; "
-                + "mkdir -p /home/coder/Desktop /home/coder/.config; chown -R coder:coder /home/coder; "
+                + "mkdir -p /home/coder/Desktop /home/coder/.config /home/coder/Projects "
+                + "/home/coder/Downloads /usr/share/backgrounds; "
+                // A computer with no browser is not much of a computer. Ubuntu's own firefox
+                // package is a snap shim that cannot run in a container, so use Mozilla's build.
+                + "install -d -m 0755 /etc/apt/keyrings; "
+                + "curl -fsSL 'https://packages.mozilla.org/apt/repo-signing-key.gpg' "
+                + "-o /etc/apt/keyrings/packages.mozilla.org.asc || true; "
+                + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
+                + "https://packages.mozilla.org/apt mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
+                + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
+                + "> /etc/apt/preferences.d/mozilla; "
+                + "apt-get update; apt-get install -y --no-install-recommends firefox || true; "
+                + "chown -R coder:coder /home/coder; "
                 + "apt-get clean; rm -rf /var/lib/apt/lists/*";
     }
 
     static void writeDesktopScripts(Context context) throws IOException, ErrnoException {
         copyAsset(context, "pocketdesk-desktop.sh", "usr/local/bin/pocketdesk-desktop");
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
+        copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
+        writeShortcut(context, "Browser", "web-browser", "firefox");
+        writeShortcut(context, "Files", "system-file-manager", "pcmanfm /home/coder/Projects");
         writeShortcut(context, "Terminal", "utilities-terminal", "lxterminal");
-        writeShortcut(context, "Files", "system-file-manager", "pcmanfm /home/coder/Shared");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -187,11 +207,12 @@ final class ContainerRuntime {
             while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
             output.getFD().sync();
         }
-        Os.chmod(target.getAbsolutePath(), 0755);
+        Os.chmod(target.getAbsolutePath(), asset.endsWith(".sh") ? 0755 : 0644);
     }
 
     /** A desktop icon plus a launcher wrapper, used for every app in the catalog. */
     static void writeAppShortcut(Context context, LinuxApps.App app) throws IOException, ErrnoException {
+        if ("essentials".equals(app.id)) return;   // it installs the desktop itself, it is not an app
         File root = rootfs(context);
         String launcher = "/usr/local/bin/pocketdesk-" + app.id;
         writeExecutable(new File(root, launcher.substring(1)), LinuxApps.launcherScript(app.marker));

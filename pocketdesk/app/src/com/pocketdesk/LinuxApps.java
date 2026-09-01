@@ -65,6 +65,25 @@ final class LinuxApps {
     private static final long GB = 1024L * 1024L * 1024L;
 
     static final App[] CATALOG = {
+            // New installs get all of this during setup. This row is how a container built by an
+            // earlier version catches up without being rebuilt.
+            new App("essentials", "Desktop essentials",
+                    "Firefox, icon theme, arrow cursor and Indian time.",
+                    R.drawable.ic_network, "about 350 MB", 1 * GB, "3\u201310 min", null,
+                    "/usr/bin/firefox",
+                    "apt-get update; apt-get install -y --no-install-recommends "
+                            + "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
+                            + "xdg-utils x11-xserver-utils; "
+                            + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
+                            + "echo 'Asia/Kolkata' > /etc/timezone; "
+                            + "install -d -m 0755 /etc/apt/keyrings; "
+                            + "curl -fsSL '" + MOZILLA_KEY + "' -o /etc/apt/keyrings/packages.mozilla.org.asc; "
+                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
+                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
+                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
+                            + "> /etc/apt/preferences.d/mozilla; "
+                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
+
             new App("chatgpt", "ChatGPT", "OpenAI's desktop app. Includes Codex.",
                     R.drawable.ic_chat, "about 700 MB", 2500L * 1024 * 1024, "5\u201315 min",
                     "Computer Use is not offered on Linux. Your account's usage limits still apply.",
@@ -115,18 +134,6 @@ final class LinuxApps {
                             + "curl --fail --location --retry 3 '" + VSCODE_LATEST + "' -o /tmp/code.deb; "
                             + "apt-get install -y --no-install-recommends /tmp/code.deb; rm -f /tmp/code.deb"),
 
-            new App("firefox", "Firefox", "Web browser, from Mozilla's own repository.",
-                    R.drawable.ic_network, "about 300 MB", 1 * GB, "2\u20138 min", null,
-                    "/usr/bin/firefox",
-                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
-                            + "install -d -m 0755 /etc/apt/keyrings; "
-                            + "curl -fsSL '" + MOZILLA_KEY + "' -o /etc/apt/keyrings/packages.mozilla.org.asc; "
-                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
-                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
-                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
-                            + "> /etc/apt/preferences.d/mozilla; "
-                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
-
             new App("devtools", "Developer tools", "Node.js, Python, pip and a compiler.",
                     R.drawable.ic_install, "about 500 MB", 1500L * 1024 * 1024, "3\u201310 min", null,
                     "/usr/bin/node",
@@ -143,9 +150,15 @@ final class LinuxApps {
 
     /** Electron apps cannot use their own sandbox under PRoot, so they are launched without it. */
     static String launcherScript(String executable) {
+        String name = executable.substring(executable.lastIndexOf('/') + 1);
         return "#!/bin/bash\n"
                 + "export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8\n"
                 + "export LIBGL_ALWAYS_SOFTWARE=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1\n"
-                + "exec \"" + executable + "\" --no-sandbox --disable-gpu --disable-dev-shm-usage \"$@\"\n";
+                + "for candidate in \"" + executable + "\" \"/usr/bin/" + name + "\" "
+                + "\"/opt/" + name + "/" + name + "\" \"$(command -v " + name + " 2>/dev/null)\"; do\n"
+                + "  [ -n \"$candidate\" ] && [ -x \"$candidate\" ] || continue\n"
+                + "  exec \"$candidate\" --no-sandbox --disable-gpu --disable-dev-shm-usage \"$@\"\n"
+                + "done\n"
+                + "lxterminal -e bash -lc 'echo \"" + name + " is not installed yet.\"; read -r -p \"Press Enter\"'\n";
     }
 }

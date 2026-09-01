@@ -27,8 +27,6 @@ label_of() {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
   echo '<openbox_menu xmlns="http://openbox.org/3.4/menu">'
   echo '<menu id="root-menu" label="PocketDesk">'
-  echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
-  echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Shared</command></action></item>'
   echo '  <separator label="Apps"/>'
   found=0
   while read -r launcher; do
@@ -40,44 +38,55 @@ label_of() {
 $(launchers)
 EOF
   [ "$found" = 1 ] || echo '  <item label="No apps yet — add them in PocketDesk"><action name="Execute"><command>true</command></action></item>'
+  echo '  <separator label="System"/>'
+  echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <separator/>'
-  echo '  <item label="Refresh"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
+  echo '  <item label="Refresh desktop"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
   echo '</menu>'
   echo '</openbox_menu>'
 } > "$OPENBOX_DIR/menu.xml"
 
-# ---- Taskbar, with a launcher icon per installed app --------------------------------
+# ---- Taskbar: launchers, window list, tray and an Indian-time clock -----------------
 {
   echo 'panel_items = LTSC'
-  echo 'panel_size = 100% 46'
-  echo 'panel_padding = 6 2 6'
+  echo 'panel_size = 100% 48'
+  echo 'panel_padding = 6 3 8'
+  echo 'panel_background_id = 1'
   echo 'background_color = #0f1327 100'
+  echo 'border_color = #223056 100'
+  echo 'border_width = 0'
   echo 'taskbar_name = 0'
   echo 'task_font = Sans 11'
   echo 'task_font_color = #e6ecf7 100'
-  echo 'task_maximum_size = 240 42'
-  echo 'clock_font_line1 = Sans 11'
+  echo 'task_maximum_size = 260 44'
+  echo 'task_padding = 8 3 6'
+  # 12-hour clock, so 18:06 reads as 06:06 pm.
+  echo 'time1_format = %I:%M %P'
+  echo 'time2_format = %a %d %b'
+  echo 'time1_font = Sans Bold 12'
+  echo 'time2_font = Sans 9'
   echo 'clock_font_color = #e6ecf7 100'
-  echo 'time1_format = %H:%M'
-  echo 'launcher_icon_size = 32'
-  echo 'launcher_padding = 6 4 6'
+  echo 'clock_padding = 10 2'
+  echo 'time_tooltip_format = %A %d %B %Y, %I:%M %P'
+  echo 'systray_padding = 6 2 6'
+  echo 'systray_icon_size = 24'
+  echo 'launcher_icon_size = 34'
+  echo 'launcher_padding = 8 4 8'
   echo 'launcher_icon_theme = Adwaita'
-  echo 'launcher_item_app = /usr/share/applications/pocketdesk-terminal.desktop'
-  echo 'launcher_item_app = /usr/share/applications/pocketdesk-files.desktop'
+  echo 'launcher_tooltip = 1'
   for desktop in /usr/share/applications/pocketdesk-*.desktop; do
     [ -f "$desktop" ] || continue
-    case "$(basename "$desktop")" in
-      pocketdesk-terminal.desktop|pocketdesk-files.desktop) continue ;;
-    esac
     echo "launcher_item_app = $desktop"
   done
 } > "$TINT2_DIR/tint2rc"
 
-# The desktop folder must be where pcmanfm looks, or the icons never show.
-printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOWNLOAD_DIR="$HOME/Shared"\n' \
+printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="$HOME/Downloads"\n' \
   > "$HOME_DIR/.config/user-dirs.dirs"
+mkdir -p "$HOME_DIR/Downloads" "$HOME_DIR/Projects"
 
-chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$HOME_DIR/.config/user-dirs.dirs" 2>/dev/null || true
+chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$HOME_DIR/.config/user-dirs.dirs" \
+  "$HOME_DIR/Downloads" "$HOME_DIR/Projects" 2>/dev/null || true
 
 # Pick the changes up live when a desktop is already running.
 if [ -S /tmp/.X11-unix/X1 ]; then
