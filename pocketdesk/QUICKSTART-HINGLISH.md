@@ -73,6 +73,14 @@ Files app me `.pocketdesk` folder kholo (hidden files on karke) ya terminal me
 Desktop pe right click → **Downloads** se seedha khul jayega. `.deb` file ko terminal me
 `sudo apt-get install -y ~/Downloads/naam.deb` se install kar sakte ho.
 
+## 4c. Install ek baar, update ek tap
+
+- **Dobara install kabhi nahi.** ChatGPT, Claude, Cursor, Antigravity ek baar add karo, bas.
+- **Naye features apne aap aate hain** — ChatGPT aur Claude apne maker ki live service load karte hain, jaise phone app. Naya model, naya tool — kuch karna nahi padta.
+- **App ka program** update karna ho to uski row pe tap — wahi tap update hai. ChatGPT OpenAI ka official update channel register karta hai, Claude Anthropic ka; login aur settings waise ke waise rehte hain.
+- Ye forced nahi hota — 700 MB mobile data pe bina pooche nahi utarta.
+- **Ye sab official Linux builds hain** — OpenAI, Anthropic, Cursor, Google chaaron Linux ke liye khud ship karte hain. Isliye ye app future-proof hai: jab tak wo Linux ke liye banate hain, yahan chalta hai.
+
 ## 5. Settings
 
 | Option | Kya karta hai |

@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.0.3";
+    static final String VERSION = "3.0.4";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -330,8 +330,9 @@ public final class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
         card.addView(Ui.text(this,
-                "The real desktop apps, not websites. Each tap fetches the newest build, so the same "
-                        + "row also updates one you already have.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "The makers' own official Linux builds \u2014 real desktop apps, not websites. "
+                        + "Install once: new features arrive by themselves, and one tap on a row "
+                        + "updates the app itself whenever you like.", 12.5f, muted), Ui.matchWrap(this, 6));
 
         appRows.clear();
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -537,6 +538,25 @@ public final class MainActivity extends Activity {
                 "Android deletes the whole Linux computer with the app \u2014 system, apps, "
                         + "logins, files, everything. Before uninstalling, copy anything you want "
                         + "to keep into Downloads, which stays visible to your phone.", false);
+
+        addAnswer(card, R.drawable.ic_download, "Do I have to reinstall or update?",
+                "Install once \u2014 never again.\n\nNew features arrive by themselves: "
+                        + "ChatGPT and Claude Desktop load their makers' live service, exactly as "
+                        + "the phone apps do, so new models and tools appear without you doing "
+                        + "anything.\n\nThe app program itself updates with one tap on its row. "
+                        + "ChatGPT registers OpenAI's official update channel when it installs and "
+                        + "Claude registers Anthropic's, so a tap pulls exactly what they "
+                        + "published \u2014 login and settings kept. It is never forced, because a "
+                        + "700 MB download should not start on mobile data without you choosing it.",
+                false);
+
+        addAnswer(card, R.drawable.ic_check, "Are these real Linux apps?",
+                "Yes. Every app here is the maker's own official Linux build \u2014 OpenAI's "
+                        + "ChatGPT for Linux, Anthropic's Claude Desktop for Linux, Cursor's and "
+                        + "Google's Linux releases. Linux is a first-class platform for all of them, "
+                        + "the same one their own engineers use, not a workaround. That is what "
+                        + "makes this future-proof: as long as they ship for Linux, they run here.",
+                false);
 
         addAnswer(card, R.drawable.ic_timer, "Why is an app slow to open?",
                 "The AI desktop apps are full computer programs \u2014 ChatGPT alone is 1.3 GB "
