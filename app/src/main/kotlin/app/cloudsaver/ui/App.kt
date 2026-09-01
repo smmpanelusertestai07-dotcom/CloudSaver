@@ -50,6 +50,7 @@ import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
+import app.cloudsaver.ui.screens.HelpCloudScreen
 import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.FreeSpaceHubScreen
 import app.cloudsaver.ui.screens.BiggestFilesScreen
@@ -92,6 +93,7 @@ object Routes {
     const val HELP_DELETED = "help_deleted"
     const val HELP_QUALITY = "help_quality"
     const val HELP_LOGS = "help_logs"
+    const val HELP_CLOUD = "help_cloud"
     const val HELP_PRIVACY = "help_privacy"
     const val HELP_LICENSES = "help_licenses"
     const val HELP_ABOUT = "help_about"
@@ -166,7 +168,12 @@ private fun MainNav(vm: AppViewModel) {
     // The Settings dot has to be right on whichever tab the app opens on, so
     // health is refreshed here rather than only by Home, and again every time
     // the app comes back to the foreground.
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.refreshHealth() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        vm.refreshHealth()
+        // A cloud app installed after setup is found by the app, not
+        // by asking the user to go and correct a picker.
+        vm.adoptCloudIfObvious()
+    }
 
     // A lock that only ever asks once is not a lock: re-arm it whenever the
     // app leaves the foreground, so returning to it authenticates again.
@@ -319,6 +326,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.HELP_DELETED) { HelpDeletedScreen(nav) }
                 composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav, vm) }
                 composable(Routes.HELP_LOGS) { HelpLogsScreen(nav) }
+                composable(Routes.HELP_CLOUD) { HelpCloudScreen(nav) }
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }
                 composable(Routes.HELP_LICENSES) { HelpLicensesScreen(nav) }
                 composable(Routes.HELP_ABOUT) { HelpAboutScreen(vm, nav) }

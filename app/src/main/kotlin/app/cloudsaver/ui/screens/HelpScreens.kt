@@ -134,6 +134,7 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
             nav.goTo(Routes.HELP_QUALITY)
         }
         HelpLink(stringResource(R.string.help_logs)) { nav.goTo(Routes.HELP_LOGS) }
+        HelpLink(stringResource(R.string.help_cloud)) { nav.goTo(Routes.HELP_CLOUD) }
         HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.goTo(Routes.HELP_LICENSES) }
         HelpLink(stringResource(R.string.help_about)) { nav.goTo(Routes.HELP_ABOUT) }
@@ -997,5 +998,46 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
+    }
+}
+
+/**
+ * Everything about the other half of the job, in one place.
+ *
+ * The cloud app was explained in pieces scattered across setup, a warning
+ * card, two settings hints and three FAQ answers - which is fine while you
+ * are being walked through it and useless when you come back six months
+ * later asking one specific question. This page is where those questions
+ * live: why a second app at all, which ones suit, the one setting that
+ * matters, how the app finds yours, what the name is really used for, what
+ * happens with none, and what happens if you change.
+ */
+@Composable
+fun HelpCloudScreen(nav: NavHostController) {
+    HelpPage(nav, stringResource(R.string.help_cloud)) {
+        CloudHelpBlock(R.string.cloudhelp_intro_t, R.string.cloudhelp_intro_b)
+        CloudHelpBlock(R.string.cloudhelp_which_t, R.string.cloudhelp_which_b)
+        CloudHelpBlock(R.string.cloudhelp_setup_t, R.string.cloudhelp_setup_b)
+        CloudHelpBlock(R.string.cloudhelp_detect_t, R.string.cloudhelp_detect_b)
+        CloudHelpBlock(R.string.cloudhelp_proof_t, R.string.cloudhelp_proof_b)
+        CloudHelpBlock(R.string.cloudhelp_none_t, R.string.cloudhelp_none_b)
+        CloudHelpBlock(R.string.cloudhelp_switch_t, R.string.cloudhelp_switch_b)
+    }
+}
+
+@Composable
+private fun CloudHelpBlock(title: Int, body: Int) {
+    AppCard(modifier = Modifier.padding(vertical = 4.dp)) {
+        Text(
+            stringResource(title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            stringResource(body),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp)
+        )
     }
 }

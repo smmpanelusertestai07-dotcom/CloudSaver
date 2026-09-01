@@ -96,6 +96,20 @@ class HelpContentTest {
     }
 
     @Test
+    fun `no two attention chips say the same words`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        // Two chips with identical text appear side by side on Home, and a
+        // test asking for that text finds two nodes and fails on all eight
+        // emulators - which is how this was found, at the cost of a full
+        // matrix. The strings themselves can answer it in a millisecond.
+        val chips = values().filter { (name, _) -> name.startsWith("chip_") }
+        val duplicates = chips.groupBy { it.second.trim() }
+            .filterValues { it.size > 1 }
+            .map { (text, keys) -> "\"$text\" is used by ${keys.map { it.first }}" }
+        assertTrue("two chips cannot say the same thing: $duplicates", duplicates.isEmpty())
+    }
+
+    @Test
     fun `no help sentence runs past about fifteen words`() {
         assumeTrue("strings.xml not found", strings() != null)
         // R4: short sentences, everywhere someone is being explained something.

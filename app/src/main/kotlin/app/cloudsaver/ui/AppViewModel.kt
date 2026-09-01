@@ -1380,6 +1380,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val cloudDetection = MutableStateFlow(CloudDetection())
 
+    /**
+     * Notices a cloud app that arrived after setup, without being asked.
+     *
+     * Detection used to run exactly once, on the setup card. Anyone who
+     * installed Ente the day after finishing setup stayed on "Other app" for
+     * ever - and "Other app" has no package, so the byte-level proof that
+     * makes a removal safe could never be measured for them. Waiting for the
+     * user to go back into a picker and correct it is leaving the app's own
+     * accuracy to somebody who has no reason to know it matters.
+     *
+     * It only adopts where there is nothing to decide: the current choice is
+     * not a working one, and exactly one known cloud app is now on the
+     * phone. A deliberate choice that is still installed is never touched,
+     * and the change is written to the activity log rather than made
+     * silently.
+     */
+    fun adoptCloudIfObvious() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val o = repo.current()
+            val current = CloudApps.byId(o.cloudSingle)
+            val currentWorks = current.packages.isNotEmpty() &&
+                CloudApps.installedPackage(ctx, current) != null
+            if (currentWorks) return@launch
+            val installed = CloudApps.SELECTABLE.filter {
+                it.packages.isNotEmpty() && CloudApps.installedPackage(ctx, it) != null
+            }
+            val only = installed.singleOrNull() ?: return@launch
+            if (only.id == o.cloudSingle) return@launch
+            persistCloud(only.id)
+            activityLog.record(
+                ActivityLog.Kind.SETTINGS_CHANGED,
+                detail = ctx.getString(R.string.activity_cloud_adopted, only.label)
+            )
+            refreshCloudCaps()
+        }
+    }
+
     fun detectAndPersistCloud() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()

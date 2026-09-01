@@ -605,16 +605,18 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             OemPages.openUsageAccess(context)
                         }
                     }
-                    if (health.cloudMissing) {
-                        StatusChip(stringResource(R.string.chip_cloud)) {
-                            nav.goTo(Routes.OPTIONS)
-                        }
-                    }
-                    // Nothing on the phone can collect the copies. The work
-                    // still runs; this is the one fact that makes the folder
-                    // filling up make sense.
-                    if (health.cloudNone) {
-                        StatusChip(stringResource(R.string.chip_cloud_none)) {
+                    // One chip, and it says which of the two things is
+                    // actually true. A second chip for "no cloud app at all"
+                    // carried the very same four words as this one, so a
+                    // phone with nothing installed - the common case - drew
+                    // the identical chip twice.
+                    if (health.cloudMissing || health.cloudNone) {
+                        StatusChip(
+                            stringResource(
+                                if (health.cloudNone) R.string.chip_cloud
+                                else R.string.chip_cloud_gone
+                            )
+                        ) {
                             nav.goTo(Routes.OPTIONS)
                         }
                     }

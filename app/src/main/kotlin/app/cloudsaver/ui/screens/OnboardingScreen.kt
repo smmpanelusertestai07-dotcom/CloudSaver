@@ -1217,13 +1217,20 @@ private fun CloudPickRowSimple(
                 },
                 style = MaterialTheme.typography.bodyLarge
             )
-            if (installed && app.packages.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.cloud_installed_mark),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            // Three different rows, three different truths. "Other app" is
+            // not an app and can never be installed or missing, so it says
+            // what it actually is; the rest say plainly whether they are on
+            // this phone, because a row that said nothing when an app was
+            // absent left the reader to guess from a missing icon.
+            Text(
+                when {
+                    app.packages.isEmpty() -> stringResource(R.string.cloud_other_note)
+                    installed -> stringResource(R.string.cloud_installed_mark)
+                    else -> stringResource(R.string.cloud_not_installed_mark)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

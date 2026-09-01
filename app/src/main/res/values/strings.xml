@@ -60,6 +60,7 @@
     <string name="skip_returned_copy">Already optimised \u2014 came back from your cloud</string>
     <string name="chip_usage">Usage access off</string>
     <string name="chip_cloud">No cloud app</string>
+    <string name="chip_cloud_gone">Cloud app is gone</string>
     <string name="partial_title">CloudSaver can only see the photos you picked</string>
     <string name="partial_body">To back up your gallery it needs access to all photos. Until then nothing is scanned, and no total is shown.</string>
     <string name="partial_action">Allow all photos</string>
@@ -225,6 +226,7 @@
     <string name="activity_recovered">State restored from a safety snapshot</string>
     <string name="activity_removed_early">%1$s kept disappearing before upload</string>
     <string name="activity_pending_repaired">Finished publishing files a previous run left half-written</string>
+    <string name="activity_cloud_adopted">Found %1$s on this phone and set it as your cloud app</string>
     <string name="activity_reclaim_skipped">%1$s was left alone - CloudSaver could not confirm it was safe</string>
     <string name="activity_cloud_ok">Your cloud app is uploading again</string>
 
@@ -495,6 +497,8 @@
     <string name="cloud_intended">CloudSaver is built for end-to-end encrypted clouds (Ente, MEGA, Filen, Proton Drive) that store files exactly as sent. Clouds like Google Photos and OneDrive already make photos smaller for you.</string>
     <string name="cloud_recommended">Recommended: end-to-end encrypted, independently audited, removes files after upload, and skips duplicates by content.</string>
     <string name="cloud_installed_mark">Installed on this phone</string>
+    <string name="cloud_not_installed_mark">Not on this phone yet</string>
+    <string name="cloud_other_note">For a cloud app not listed here. Set it to back up the CloudSaver folder yourself.</string>
     <string name="cloud_section_e2ee">Best fit (E2EE)</string>
     <string name="cloud_section_also">Also works</string>
     <string name="opt_speed">Speed</string>
@@ -697,6 +701,21 @@
     <!-- help -->
     <string name="help_faq">FAQ</string>
     <string name="help_logs">Logs</string>
+    <string name="help_cloud">Cloud apps explained</string>
+    <string name="cloudhelp_intro_t">Why a second app is needed at all</string>
+    <string name="cloudhelp_intro_b">CloudSaver never uploads anything: it holds no internet permission, so there is no code in it that could. What it does is make a smaller copy of each photo and video and put it in one folder. Your cloud app uploads that folder. Two apps, one job each \u2014 and because the upload is not ours, your files reach your cloud exactly as that cloud normally receives them, with its own encryption and its own account.</string>
+    <string name="cloudhelp_which_t">Which cloud apps suit this</string>
+    <string name="cloudhelp_which_b">Any app that can be told to back up one folder you choose. End-to-end encrypted apps suit it best, because they store what you send without making it smaller themselves \u2014 so the saving CloudSaver made is the saving you keep. Apps that already shrink photos on their own servers gain far less from this, which is why they are listed but not recommended.</string>
+    <string name="cloudhelp_setup_t">The one setting that matters</string>
+    <string name="cloudhelp_setup_b">In your cloud app, turn auto-backup on for the CloudSaver folder and off for your camera folder. Backing up both stores every photo twice \u2014 once full size, once optimised \u2014 and fills the plan faster than using no CloudSaver at all. This is the single most expensive mistake available here, which is why setup shows it before anything runs.</string>
+    <string name="cloudhelp_detect_t">How the app knows which one you use</string>
+    <string name="cloudhelp_detect_b">It looks for the cloud apps it knows and picks the one it finds. If you install one later it is found on the next time you open CloudSaver, and the change is written into Activity so you can see it happened. You can always set it yourself in Settings; a choice you made is never overwritten while that app is still on the phone.</string>
+    <string name="cloudhelp_proof_t">What the choice is actually used for</string>
+    <string name="cloudhelp_proof_b">Proof. Before any original can be offered for removal, CloudSaver has to be satisfied that the copy reached your cloud, and it has two ways to tell. The copy vanishing from the folder is the strong one and needs no help. The other measures how much data your cloud app sent while a copy was waiting, and that needs to know which app to measure \u2014 which is the whole reason the app is named. Get it wrong and nothing breaks: the proof is simply weaker, and the app waits longer before offering anything.</string>
+    <string name="cloudhelp_none_t">If you have no cloud app</string>
+    <string name="cloudhelp_none_b">Everything still runs. Photos are optimised on the usual schedule and the copies wait in the folder, using the space you allowed the app. Once that space is full it stops making more and says so on Home. No original is ever offered for removal, because nothing can prove anything reached a cloud. Install an app whenever you like and point it at the folder \u2014 the waiting copies go up on its next backup and nothing is redone.</string>
+    <string name="cloudhelp_switch_t">If you switch cloud apps</string>
+    <string name="cloudhelp_switch_b">Change it in Settings and CloudSaver carries on from where it is. Files already proved to have reached the old cloud are not sent again \u2014 they are finished, and re-sending them would put second copies in the new one. Anything still waiting is simply collected by whichever app is now watching the folder.</string>
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
@@ -709,7 +728,6 @@
     <string name="cloud_none_title">No cloud app found on this phone</string>
     <string name="cloud_none_body">CloudSaver will still optimise your photos and videos on its usual schedule, and the smaller copies will wait in the Pictures/CloudSaver folder. Nothing is uploaded until you install a cloud app and point it at that folder, and until something collects them the copies use the space you allowed and no original can be offered for removal. You can finish setup now and install a cloud app whenever you like.</string>
     <string name="onb_ready_cloud_none">None installed yet</string>
-    <string name="chip_cloud_none">No cloud app</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_mission_title">Why CloudSaver exists</string>
     <string name="about_mission_body">End-to-end encrypted cloud apps keep your photos private, but they upload exactly what you hand them \u2014 almost none of them make a file smaller first. So a library of 4K video fills a paid plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nCloudSaver is the step in between. It optimises your photos and videos on the phone itself, into one folder your cloud app already knows how to back up, so the same library reaches your cloud in a fraction of the space \u2014 a free or small plan goes a great deal further, and you keep the encrypted app you chose rather than the one with the best price.\n\nIt looks after the phone as well as the plan: it works only while the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
