@@ -186,6 +186,20 @@ is_chromium && flags=("${base_flags[@]}")
 # off the app's silent exit-if-second-instance path. The C++ lock below is handled separately.
 [ "$name" = "chatgpt" ] && export CODEX_ELECTRON_USER_DATA_PATH="${CODEX_ELECTRON_USER_DATA_PATH:-$HOME/.config/Codex}"
 
+# ChatGPT's main process asks Chromium for GPU information at startup and dies if the answer
+# is "access denied". With this Chromium, --disable-gpu alone produces exactly that answer --
+# the phone's log said so with no other GPU flag on the line. So for ChatGPT the GPU is not
+# disabled but replaced: SwiftShader, the software GPU the package ships for this purpose,
+# forced explicitly so nothing probes a real driver that is not there. GPU access stays
+# "allowed", rendering happens on the CPU. Claude never asks, so its proven flags are untouched.
+if [ "$name" = "chatgpt" ] && [ "${#flags[@]}" -gt 0 ]; then
+  kept=()
+  for flag in "${flags[@]}"; do
+    [ "$flag" = "--disable-gpu" ] || kept+=("$flag")
+  done
+  flags=("${kept[@]}" --use-gl=angle --use-angle=swiftshader --ignore-gpu-blocklist)
+fi
+
 {
   echo "--- $(date '+%Y-%m-%d %I:%M:%S %p') ---"
   echo "free memory at launch: $(free_mb) MB"

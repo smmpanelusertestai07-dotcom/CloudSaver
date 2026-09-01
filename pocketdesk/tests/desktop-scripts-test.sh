@@ -92,6 +92,19 @@ grep -q "ending windowless leftover instance" "$HOME/.pocketdesk/logs/electronis
 if kill -0 "$ghost" 2>/dev/null; then kill -9 "$ghost" 2>/dev/null; fail "the leftover instance must actually be gone"; fi
 rm -f "$WORK/usr/bin/xdotool"
 
+# ChatGPT specifically: its main process asks for GPU info and dies on "access denied", and on
+# this Chromium --disable-gpu alone yields that answer. It must get SwiftShader instead.
+mkdir -p "$WORK/usr/lib/chatgpt"
+: > "$WORK/usr/lib/chatgpt/chrome_100_percent.pak"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/chatgpt/chatgpt"
+chmod +x "$WORK/usr/lib/chatgpt/chatgpt"
+ln -sf ../lib/chatgpt/chatgpt "$WORK/usr/bin/chatgpt"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" chatgpt >/dev/null 2>&1 || true
+gpt_log="$HOME/.pocketdesk/logs/chatgpt.log"
+grep -q -- '--use-angle=swiftshader' "$gpt_log" || fail "ChatGPT must be given SwiftShader so GPU access stays allowed"
+grep -q -- ' --disable-gpu ' "$gpt_log" && fail "--disable-gpu denies GPU access outright for ChatGPT and must not be passed to it"
+grep -q -- '--no-sandbox' "$gpt_log" || fail "ChatGPT still needs the sandbox flags"
+
 # ---- pocketdesk-menu: launchers route through pocketdesk-open ------------------------
 APPS="$WORK/apps"
 mkdir -p "$APPS" "$WORK/coder" "$WORK/fakebin"
