@@ -266,6 +266,12 @@ public final class LinuxService extends Service {
         if (!ContainerRuntime.isInstalled(this)) throw new IOException("Install Linux first.");
         preflight(false, 4);
         ContainerRuntime.installRuntime(this);
+        // Refresh the desktop scripts and every installed app's launcher on each start, so a
+        // container set up by an older version picks up the current desktop without reinstalling.
+        ContainerRuntime.writeDesktopScripts(this);
+        for (LinuxApps.App app : LinuxApps.CATALOG) {
+            if (ContainerRuntime.isAppInstalled(this, app)) ContainerRuntime.writeAppShortcut(this, app);
+        }
         status("Opening desktop", "Starting your local Linux screen…", -1, true, false);
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         int dpi = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)

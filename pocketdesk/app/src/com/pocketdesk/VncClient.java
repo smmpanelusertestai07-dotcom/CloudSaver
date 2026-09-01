@@ -30,6 +30,9 @@ final class VncClient {
     private DataOutputStream output;
     private volatile int width;
     private volatile int height;
+    /** Set once the server advertises ExtendedDesktopSize, which is what allows live resizing. */
+    private volatile boolean resizable;
+    private volatile int screenId;
     /** Reused across every update. A fresh multi-megabyte array per frame caused real
      *  OutOfMemoryError crashes on a 4 GB phone while apt was working in the background. */
     private int[] stripPixels;
@@ -123,10 +126,11 @@ final class VncClient {
         synchronized (writeLock) {
             output.writeByte(2);
             output.writeByte(0);
-            output.writeShort(3);
-            output.writeInt(0);
-            output.writeInt(-223);
-            output.writeInt(-224);
+            output.writeShort(4);
+            output.writeInt(0);        // Raw
+            output.writeInt(-223);     // DesktopSize
+            output.writeInt(-224);     // LastRect
+            output.writeInt(-308);     // ExtendedDesktopSize, needed to resize the desktop
             output.flush();
         }
     }
@@ -184,6 +188,8 @@ final class VncClient {
                 width = w;
                 height = h;
                 listener.onResize(w, h);
+            } else if (encoding == -308) {
+                readExtendedDesktopSize(x, y, w, h);
             } else if (encoding == -224) {
                 break;
             } else {
@@ -191,6 +197,66 @@ final class VncClient {
             }
         }
         requestUpdate(true);
+    }
+
+    /**
+     * The server's answer about the desktop size. Its "x" and "y" carry the reason and status of
+     * the change rather than a position, which is how the RFB extension is specified.
+     */
+    private void readExtendedDesktopSize(int reason, int status, int newWidth, int newHeight)
+            throws IOException {
+        int screens = input.readUnsignedByte();
+        readExactly(3);
+        int firstId = 0;
+        for (int i = 0; i < screens; i++) {
+            int id = input.readInt();
+            input.readUnsignedShort();
+            input.readUnsignedShort();
+            input.readUnsignedShort();
+            input.readUnsignedShort();
+            input.readInt();
+            if (i == 0) firstId = id;
+        }
+        resizable = true;
+        if (screens > 0) screenId = firstId;
+        if (reason == 1 && status != 0) return;          // our request was refused
+        if (newWidth <= 0 || newHeight <= 0) return;
+        if (newWidth == width && newHeight == height) return;
+        width = newWidth;
+        height = newHeight;
+        listener.onResize(newWidth, newHeight);
+    }
+
+    private void readExactly(int count) throws IOException {
+        byte[] discard = new byte[count];
+        input.readFully(discard);
+    }
+
+    boolean isResizable() { return resizable; }
+
+    /** Asks the desktop to become this size, so it can match the phone after a rotation. */
+    void requestDesktopSize(int newWidth, int newHeight) {
+        if (closed.get() || output == null || !resizable) return;
+        if (newWidth <= 0 || newHeight <= 0) return;
+        try {
+            synchronized (writeLock) {
+                output.writeByte(251);
+                output.writeByte(0);
+                output.writeShort(newWidth);
+                output.writeShort(newHeight);
+                output.writeByte(1);
+                output.writeByte(0);
+                output.writeInt(screenId);
+                output.writeShort(0);
+                output.writeShort(0);
+                output.writeShort(newWidth);
+                output.writeShort(newHeight);
+                output.writeInt(0);
+                output.flush();
+            }
+        } catch (IOException error) {
+            close();
+        }
     }
 
     private void readColorMap() throws IOException {

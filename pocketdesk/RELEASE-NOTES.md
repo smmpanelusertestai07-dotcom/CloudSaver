@@ -1,55 +1,59 @@
-# PocketDesk 1.1.2
+# PocketDesk 1.2.0
 
-The desktop screen keeps the phone's status bar, opens in landscape at a true 1:1 fill, has a real
-right-click menu with your installed apps, and can no longer be killed by a stray error.
+Automatic rotation genuinely works, the picture stops corrupting itself, and installed apps show
+up in three places on the desktop.
 
-## The app can no longer die on you
+## Automatic rotation, done properly
 
-Every earlier fix removed one *cause* of a crash. This one removes the *consequence*: PocketDesk
-now re-enters Android's main message loop after an unhandled UI error instead of letting the
-process end. A stray exception shows a short notice, records the stack, and the app carries on —
-no more silently bouncing back from the desktop, no more "PocketDesk keeps stopping".
+Previous versions built the Linux desktop at one fixed landscape size. Portrait could then only
+show that picture as a thin strip or a heavy crop — so 1.1.2 forced landscape, which is not what
+"Automatic" means.
 
-The recorded report is now shown **automatically, once**, the next time you open the app, with
-**Share** on it. If anything still misbehaves, that text names the exact line.
+The desktop now **resizes itself to match the phone**, using the RFB `SetDesktopSize` extension:
 
-## The desktop looks right
+- The viewer asks for `ExtendedDesktopSize` at connect and asks the desktop to become exactly the
+  size of the view, again after every rotation (debounced, since a rotation delivers several).
+- Hold the phone in portrait and you get a portrait Linux desktop filling the screen; rotate and
+  it becomes a landscape one. Both are an exact 1:1 fill — nothing letterboxed, nothing cropped,
+  nothing blurred.
+- **Automatic is automatic again.** Portrait and Landscape still force their orientation.
+- If a desktop ever refuses to resize, the viewer falls back to fit/fill with zoom as before.
 
-- **Your phone's clock, battery and signal stay visible.** The desktop screen no longer forces
-  full-screen, and the toolbar and key row are padded clear of the status and gesture bars.
-- **It opens in landscape.** The Linux screen is built at your phone's landscape size, so
-  landscape is an exact 1:1 fill — sharp, edge to edge, nothing letterboxed. Portrait could only
-  ever show that picture as a thin strip or a heavy crop, which is what you were seeing. A new
-  **rotate button** in the toolbar switches whenever you want, and the Screen rotation setting
-  still forces portrait if you prefer it.
-- **Windows open maximised.** On a phone-sized screen a floating half-size terminal is wasted
-  space, so Openbox now maximises by default.
-- **The desktop has a background and readable icon labels** instead of flat black, with larger
-  window title and menu fonts.
+## The picture stops corrupting itself
 
-## Finding your apps
+1.1.1 replaced a per-frame allocation with one reused buffer — which fixed the memory crash but
+introduced a race: the buffer was handed to the main thread and then refilled before that thread
+had read it, so screen updates could overwrite each other. That is why the terminal came up blank
+or half-drawn.
 
-- **Right-click (two-finger tap) anywhere on the desktop** opens a menu listing Terminal, Files
-  and every app you have installed — ChatGPT, Claude Desktop, Antigravity and the rest appear
-  there automatically as soon as they finish installing, without restarting the desktop.
-- Each app also gets a desktop icon and a system menu entry, so there are three ways to reach it.
-- The menu rebuilds itself from the installed launchers, so it can never fall out of step with
-  what is actually on the system.
+The framebuffer is now written straight from the network thread under a lock that the drawing pass
+also takes. No shared buffer in flight, no one-second wait per update, and bitmap swaps take the
+same lock so a reader can never write into a recycled bitmap.
 
-## Under the hood
+## Finding your apps — three ways
 
-The two desktop shell scripts moved out of escaped Java strings into real files under
-`app/assets/`, where they can be read and reviewed normally. The test suite now lints them with
-`bash -n`, so a syntax error can no longer reach the phone.
+- **Taskbar launcher icons** along the bottom panel, one per installed app.
+- **Right-click (two-finger tap) the desktop** for a menu of Terminal, Files and every app.
+- **Desktop icons**, now that the desktop folder is declared where pcmanfm actually looks.
+
+All three are generated from what is really installed, and rebuilt the moment an install finishes —
+the taskbar restarts itself to pick them up. App entries use an icon name the theme actually ships,
+because a missing icon made the taskbar drop the launcher silently.
+
+**Existing installs heal themselves**: every desktop start now rewrites the desktop scripts and the
+launcher for each installed app. If ChatGPT was installed under an older version, just open the
+desktop once and it appears — no reinstall.
 
 ## Verified in this build
 
-- All five checks pass: `VncClientProtocolTest`, `TarGzExtractorTest`, `TreesTest`,
-  `LinuxAppsTest`, and shell syntax on both desktop scripts
+- All five checks pass. `VncClientProtocolTest` caught a real regression while writing this
+  release — the fake server read a fixed-length `SetEncodings` and desynchronised when a fourth
+  encoding was added — and now reads the declared count, so it cannot break that way again. It
+  also asserts `ExtendedDesktopSize` is offered, which is what makes rotation work.
 - javac against API 35 (min 29), D8, zipalign, APK Signature Scheme v3, `aapt2 dump badging`
-- The asset scripts are confirmed present in the packaged APK
+- Both desktop shell scripts lint clean with `bash -n`
 
 ## If something still goes wrong
 
-Open PocketDesk, let the error report appear, tap **Share**, and send the text. It contains the
-exact failure — which is the one thing screenshots cannot show.
+The error report is still there under Permissions, and still appears by itself once after any
+problem. Tap **Share** and send the text — it names the exact line.

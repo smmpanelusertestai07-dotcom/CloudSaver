@@ -195,7 +195,7 @@ final class ContainerRuntime {
         File root = rootfs(context);
         String launcher = "/usr/local/bin/pocketdesk-" + app.id;
         writeExecutable(new File(root, launcher.substring(1)), LinuxApps.launcherScript(app.marker));
-        writeShortcut(context, app.name, app.id, launcher);
+        writeShortcut(context, app.name, "application-x-executable", launcher);
     }
 
     private static void writeShortcut(Context context, String name, String icon, String exec)

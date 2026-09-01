@@ -99,7 +99,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         back.setOnClickListener(v -> finish());
         toolbarRow.addView(back, barItem(46));
 
-        status = Ui.text(this, "Starting desktop…", 12.5f, Color.rgb(194, 202, 230));
+        status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
         status.setSingleLine(true);
         status.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
@@ -437,10 +437,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
             return;
         }
-        // The desktop is built at the screen's landscape size, so landscape is an exact 1:1 fill.
-        // In portrait the same picture can only be letterboxed or cropped, which is what made it
-        // look like a tiny strip. The toolbar's rotate button switches when you want portrait.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+        if ("landscape".equals(value)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+            return;
+        }
+        // Automatic really is automatic: the Linux desktop resizes itself to whichever way the
+        // phone is held, so neither orientation has to be letterboxed or cropped.
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER);
     }
 
     private void toggleOrientation() {

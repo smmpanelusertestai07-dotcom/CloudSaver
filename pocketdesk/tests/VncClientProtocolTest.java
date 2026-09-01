@@ -49,9 +49,23 @@ public final class VncClientProtocolTest {
                 byte[] setPixelFormat = new byte[20];
                 input.readFully(setPixelFormat);
                 require(setPixelFormat[0] == 0, "SetPixelFormat missing");
-                byte[] setEncodings = new byte[16];
-                input.readFully(setEncodings);
-                require(setEncodings[0] == 2, "SetEncodings missing");
+                // Read the declared count rather than a fixed length, so adding an encoding
+                // cannot silently desynchronise this fake server again.
+                byte[] encodingsHeader = new byte[4];
+                input.readFully(encodingsHeader);
+                require(encodingsHeader[0] == 2, "SetEncodings missing");
+                int encodingCount = ((encodingsHeader[2] & 0xff) << 8) | (encodingsHeader[3] & 0xff);
+                require(encodingCount > 0 && encodingCount < 64, "unreasonable encoding count");
+                int[] encodings = new int[encodingCount];
+                boolean rawOffered = false;
+                boolean resizeOffered = false;
+                for (int i = 0; i < encodingCount; i++) {
+                    encodings[i] = input.readInt();
+                    if (encodings[i] == 0) rawOffered = true;
+                    if (encodings[i] == -308) resizeOffered = true;
+                }
+                require(rawOffered, "Raw encoding must be offered");
+                require(resizeOffered, "ExtendedDesktopSize must be offered so the desktop can resize");
                 byte[] request = new byte[10];
                 input.readFully(request);
                 require(request[0] == 3 && request[1] == 0, "full framebuffer request missing");

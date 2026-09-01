@@ -13,14 +13,14 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 final class VncView extends View implements VncClient.Listener {
     enum PointerMode { TOUCHPAD, DIRECT }
     interface StateListener { void state(String text, boolean connected); }
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    /** Guards the framebuffer between the network reader and the drawing pass. */
+    private final Object pixelLock = new Object();
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF destination = new RectF();
@@ -102,7 +102,42 @@ final class VncView extends View implements VncClient.Listener {
         // A rotation changes what "fills the screen" means, so re-centre instead of keeping a
         // pan that was clamped against the old size.
         centreOnNextLayout = true;
+        matchDesktopToScreen();
     }
+
+    /**
+     * Asks the Linux desktop to become exactly the size of this view.
+     *
+     * With the two matched there is nothing to letterbox or crop: portrait gives a portrait
+     * desktop and landscape a landscape one, both filling the screen pixel for pixel. Debounced,
+     * because a rotation delivers several size changes in a row.
+     */
+    private void matchDesktopToScreen() {
+        main.removeCallbacks(desktopResize);
+        main.postDelayed(desktopResize, 450L);
+    }
+
+    private final Runnable desktopResize = new Runnable() {
+        @Override public void run() {
+            VncClient active = client;
+            if (active == null || !active.isResizable()) return;
+            int viewWidth = getWidth();
+            int viewHeight = getHeight();
+            if (viewWidth < 320 || viewHeight < 320) return;
+            long pixels = (long) viewWidth * viewHeight;
+            if (pixels > MAX_DESKTOP_PIXELS) {
+                double shrink = Math.sqrt(MAX_DESKTOP_PIXELS / (double) pixels);
+                viewWidth = (int) Math.round(viewWidth * shrink);
+                viewHeight = (int) Math.round(viewHeight * shrink);
+            }
+            viewWidth -= viewWidth % 2;
+            viewHeight -= viewHeight % 2;
+            if (viewWidth == active.getWidth() && viewHeight == active.getHeight()) return;
+            active.requestDesktopSize(viewWidth, viewHeight);
+        }
+    };
+
+    private static final long MAX_DESKTOP_PIXELS = 2_300_000L;
 
     boolean isFillMode() { return fillMode; }
 
@@ -175,7 +210,10 @@ final class VncView extends View implements VncClient.Listener {
             return;
         }
         layoutDestination(current);
-        canvas.drawBitmap(current, null, destination, paint);
+        synchronized (pixelLock) {
+            if (current.isRecycled()) return;
+            canvas.drawBitmap(current, null, destination, paint);
+        }
 
         if (pointerMode == PointerMode.TOUCHPAD) {
             float scale = destination.width() / current.getWidth();
@@ -338,49 +376,43 @@ final class VncView extends View implements VncClient.Listener {
 
     @Override public void onConnected(int width, int height, String name) {
         main.post(() -> {
-            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            replaceBitmap(width, height);
             pointerX = width / 2;
             pointerY = height / 2;
             centreOnNextLayout = true;
             status = "Connected";
-            if (stateListener != null) stateListener.state("Connected · " + width + "×" + height, true);
+            matchDesktopToScreen();
+            if (stateListener != null) stateListener.state(width + "×" + height, true);
             invalidate();
         });
     }
 
     @Override public void onResize(int width, int height) {
         main.post(() -> {
-            Bitmap old = bitmap;
-            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            if (old != null) old.recycle();
+            replaceBitmap(width, height);
+            centreOnNextLayout = true;
             pointerX = Math.min(pointerX, width - 1);
             pointerY = Math.min(pointerY, height - 1);
-            if (stateListener != null) stateListener.state("Connected · " + width + "×" + height, true);
+            if (stateListener != null) stateListener.state(width + "×" + height, true);
             invalidate();
         });
     }
 
     @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
-        CountDownLatch applied = new CountDownLatch(1);
-        main.post(() -> {
-            try {
-                Bitmap current = bitmap;
-                if (current == null || current.isRecycled()) return;
-                int safeWidth = Math.min(width, current.getWidth() - x);
-                int safeHeight = Math.min(height, current.getHeight() - y);
-                if (x >= 0 && y >= 0 && safeWidth > 0 && safeHeight > 0) {
-                    current.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
-                    invalidate();
-                }
-            } finally {
-                applied.countDown();
-            }
-        });
-        try {
-            applied.await(1, TimeUnit.SECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+        // Written straight from the network thread under the same lock onDraw holds. The previous
+        // version posted a shared buffer to the main thread and waited up to a second for it,
+        // which both stalled the reader and let the next strip overwrite the pending one.
+        synchronized (pixelLock) {
+            Bitmap current = bitmap;
+            if (current == null || current.isRecycled()) return;
+            int safeWidth = Math.min(width, current.getWidth() - x);
+            int safeHeight = Math.min(height, current.getHeight() - y);
+            if (x < 0 || y < 0 || safeWidth <= 0 || safeHeight <= 0) return;
+            long needed = (long) (safeHeight - 1) * width + safeWidth;
+            if (needed > pixels.length) return;
+            current.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
         }
+        postInvalidate();
     }
 
     @Override public void onClipboard(String text) {
@@ -397,6 +429,14 @@ final class VncView extends View implements VncClient.Listener {
             if (stateListener != null) stateListener.state(status, false);
             invalidate();
         });
+    }
+
+    private void replaceBitmap(int width, int height) {
+        synchronized (pixelLock) {
+            Bitmap old = bitmap;
+            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            if (old != null) old.recycle();
+        }
     }
 
     private int mapX(float viewX, int remoteWidth) {

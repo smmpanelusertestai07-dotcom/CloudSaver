@@ -21,9 +21,6 @@ printf '[Settings]\ngtk-font-name=Sans 11\ngtk-application-prefer-dark-theme=1\n
 printf '[general]\nfontname=Monospace 12\nscrollback=4000\nbgcolor=rgb(16,24,40)\nfgcolor=rgb(226,232,245)\ngeometry_columns=100\ngeometry_rows=30\nhidescrollbar=false\ndisallowbold=false\n' \
   > "$HOME/.config/lxterminal/lxterminal.conf"
 
-printf 'panel_items = LTSC\npanel_size = 100%% 46\npanel_padding = 6 2 6\ntaskbar_name = 0\ntask_font = Sans 11\ntask_font_color = #e6ecf7 100\nclock_font_line1 = Sans 11\nclock_font_color = #e6ecf7 100\nlauncher_icon_size = 30\ntask_maximum_size = 240 42\nbackground_color = #0f1327 100\n' \
-  > "$HOME/.config/tint2/tint2rc"
-
 # A dark desktop with visible icon labels, instead of pure black.
 printf '[*]\nwallpaper_mode=color\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"

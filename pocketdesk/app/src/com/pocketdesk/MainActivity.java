@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "1.1.2";
+    static final String VERSION = "1.2.0";
 
     private SharedPreferences preferences;
     private boolean dark;
