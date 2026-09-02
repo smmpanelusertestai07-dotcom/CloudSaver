@@ -1,3 +1,10 @@
+# PocketDesk 10.0.1 — hotfix
+
+- The four rows of **Linux only, on purpose** did nothing when tapped: the questions card was
+  resetting the page's shared list of expandable answers after those rows had been added, so
+  their taps opened the wrong answers far below. The list is now reset once, before the page is
+  built. Nothing else changed.
+
 # PocketDesk 10.0.0 — the last release
 
 Everything from the final round of device screenshots, and nothing left that was there only for

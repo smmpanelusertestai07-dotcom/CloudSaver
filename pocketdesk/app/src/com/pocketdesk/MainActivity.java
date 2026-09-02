@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.0";
+    static final String VERSION = "10.0.1";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -401,6 +401,9 @@ public final class MainActivity extends Activity {
         int muted = Ui.muted(dark);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
+        // One list of expandable answers for the whole page (the Linux-only card and the
+        // questions card both add to it), reset once here and never again mid-build.
+        answers.clear();
         page.addView(buildHeader(text, muted));
         page.addView(buildLiveTiles(), Ui.matchWrap(this, 14));
         page.addView(buildDesktopCard(text, muted), Ui.matchWrap(this, 14));
@@ -1125,7 +1128,6 @@ public final class MainActivity extends Activity {
                 "Short version: the whole Linux computer lives inside this app, on this phone, "
                         + "and belongs to you. Nothing is uploaded anywhere.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
-        answers.clear();
 
         addAnswer(card, R.drawable.ic_desktop, "What exactly is this?",
                 "A real Ubuntu 24.04 computer running inside this app, on your phone's own "
