@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.20";
+    static final String VERSION = "10.0.25";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -81,7 +81,12 @@ public final class MainActivity extends Activity {
     private TextView statusNote;
     private TextView deviceDetails;
     private TextView linuxSize;
+    private Ui.Row basicsUpdateRow;
     private Ui.Row compatibleRow;
+    /** True while the opening screen is on top: the lock waits for it rather than covering it. */
+    private boolean introShowing;
+    /** True between onStart and onStop: the lock prompt is only ever raised on a visible screen. */
+    private boolean started;
 
     private LinearLayout progressCard;
     private TextView progressTitle;
@@ -165,7 +170,7 @@ public final class MainActivity extends Activity {
             setContentView(content);
             configureSystemBars();
             applySystemInsets();
-            if (state == null && !AppLock.isLocked(this)) showIntro();
+            if (state == null) showIntro();
         } catch (Throwable error) {
             Crash.save(this, error);
             showSafeScreen(error);
@@ -174,9 +179,11 @@ public final class MainActivity extends Activity {
 
     /**
      * The opening: the app's mark and name, then Tux with the system it runs, then the home
-     * screen. Only on a cold start; a rotation or a return from another app skips it.
+     * screen -- and, when App lock is on, the fingerprint or PIN prompt right after it. Only on
+     * a cold start; a rotation or a return from another app skips straight to the lock.
      */
     private void showIntro() {
+        introShowing = true;
         final FrameLayout intro = new FrameLayout(this);
         intro.setBackgroundColor(Color.rgb(13, 27, 62));
         intro.setClickable(true);
@@ -204,7 +211,7 @@ public final class MainActivity extends Activity {
         TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
         powered.setGravity(Gravity.CENTER);
         second.addView(powered, Ui.matchWrap(this, 18));
-        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · the makers' own AI desktop apps · everything on this phone",
+        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · official AI desktop apps · everything on this phone",
                 14f, Color.rgb(190, 204, 240));
         system.setGravity(Gravity.CENTER);
         system.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), 0);
@@ -225,7 +232,13 @@ public final class MainActivity extends Activity {
             second.animate().alpha(1f).setDuration(420).start();
         }, 1300L);
         handler.postDelayed(() -> intro.animate().alpha(0f).setDuration(360)
-                .withEndAction(() -> shell.removeView(intro)).start(), 3100L);
+                .withEndAction(() -> {
+                    shell.removeView(intro);
+                    introShowing = false;
+                    // The lock belongs after the opening screen, never on top of it -- and never
+                    // on a screen the owner has already left, where onStart raises it instead.
+                    if (started && AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                }).start(), 3100L);
     }
 
     private LinearLayout introColumn() {
@@ -249,6 +262,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
+        started = true;
         if (safeMode) return;
         try {
             IntentFilter filter = new IntentFilter(LinuxService.ACTION_STATUS);
@@ -261,7 +275,7 @@ public final class MainActivity extends Activity {
         } catch (Throwable error) {
             Crash.save(this, error);
         }
-        if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+        if (AppLock.isLocked(this) && !introShowing) AppLock.show(this, shell, this::consumeRoute);
     }
 
     @Override protected void onResume() {
@@ -282,7 +296,7 @@ public final class MainActivity extends Activity {
             renderProgress(LinuxService.lastMessage(), LinuxService.lastDetail(),
                     LinuxService.lastProgress(), LinuxService.isBusy(), LinuxService.lastWasError());
         }
-        if (!AppLock.showing(shell)) consumeRoute();
+        if (!AppLock.showing(shell) && !introShowing) consumeRoute();
     }
 
     @Override protected void onPause() {
@@ -291,6 +305,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onStop() {
+        started = false;
         if (receiverRegistered) {
             try { unregisterReceiver(statusReceiver); } catch (Throwable ignored) {}
             receiverRegistered = false;
@@ -693,8 +708,9 @@ public final class MainActivity extends Activity {
 
     /**
      * Why the computer is Linux and only Linux, in checked facts rather than opinion. Every
-     * date and name here was confirmed against the makers' own announcements when this
-     * version was built; nothing that could change next month is stated as permanent.
+     * date, name and number here was confirmed against the publisher's own announcement or a
+     * published survey when this version was built; nothing that could change next month is
+     * stated as permanent.
      */
     private View buildWhyLinuxCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
@@ -702,11 +718,31 @@ public final class MainActivity extends Activity {
         card.addView(Ui.text(this,
                 "The computer inside this app is Ubuntu 24.04 LTS, running on the phone's own "
                         + "processor. It is built for one purpose: an agentic development "
-                        + "environment, where the makers' own AI desktop apps, Google Chrome and the "
+                        + "environment, where the official AI desktop apps, Google Chrome and the "
                         + "developer tools they use run locally. It is not a feature-rich "
                         + "general-purpose desktop, and it does not try to be. Tap a line for the "
                         + "facts behind it.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
+        addAnswer(card, R.drawable.ic_desktop, "Why Ubuntu — the system AI agents work in",
+                "Ubuntu is the Linux that development runs on, and the one AI agents are given "
+                        + "when they are given a computer.\n\n"
+                        + "• When an AI agent works in the cloud, it works inside a Linux container, "
+                        + "and Ubuntu is the usual choice: OpenAI's Codex cloud environments start "
+                        + "from an image built on Ubuntu 24.04 — the same release running in this "
+                        + "app.\n"
+                        + "• It is the Linux developers themselves use most: about 28 % of the "
+                        + "49,000 developers in Stack Overflow's 2025 survey, and the same share at "
+                        + "work as at home — roughly two and a half times the next distribution.\n"
+                        + "• Every publisher here ships their Linux build for Ubuntu and Debian "
+                        + "first, so their instructions, their packages and their support all match "
+                        + "what is on this phone.\n"
+                        + "• 24.04 LTS is a long-term-support release: Canonical delivers security "
+                        + "updates for it until April 2029, so a computer set up today is still "
+                        + "supported years from now.\n\n"
+                        + "So this is not a cut-down phone Linux — it is the same Ubuntu 24.04 LTS "
+                        + "that developers and AI agents work on every day, running on your phone's "
+                        + "own processor.", true);
+
         addAnswer(card, R.drawable.ic_check, "Every AI desktop app here ships for Linux",
                 "OpenAI released the ChatGPT desktop app for Linux (with Codex) as a public preview "
                         + "on 11 August 2026, for Ubuntu 24.04 LTS and 26.04 LTS, Debian 13 and "
@@ -714,8 +750,8 @@ public final class MainActivity extends Activity {
                         + "(with Claude Code) as a beta on 30 June 2026, for Ubuntu and Debian on "
                         + "x64 and ARM64, from its own apt repository. Cursor publishes Linux ARM64 "
                         + ".deb and AppImage builds, and Google publishes Antigravity for Linux. "
-                        + "PocketDesk installs exactly those packages, from the makers' own "
-                        + "servers, and each app updates itself the way the makers ship updates.", true);
+                        + "PocketDesk installs exactly those packages, from each publisher's own "
+                        + "servers, and every app updates the way its publisher ships updates.", false);
         addAnswer(card, R.drawable.ic_phone, "Why not Windows or macOS on the phone",
                 "Windows and macOS can only run inside a virtual machine, and a virtual machine "
                         + "needs hardware virtualisation that Android does not offer to apps: a "
@@ -733,7 +769,7 @@ public final class MainActivity extends Activity {
                         + "analytics; Android's cloud backup is switched off for this app. Ubuntu "
                         + "24.04 LTS receives security updates from Canonical until April 2029 "
                         + "(and to 2034 with Ubuntu Pro), so the base does not go stale, and the "
-                        + "AI apps update from their makers as long as the makers ship them.", false);
+                        + "AI apps update from their publishers for as long as they ship updates.", false);
         addAnswer(card, R.drawable.ic_bolt, "Fast for a phone, and built to last",
                 "Nothing is emulated: the apps are ARM64 programs running directly on the "
                         + "phone's ARM64 processor. What a phone lacks is a graphics card and a "
@@ -762,13 +798,15 @@ public final class MainActivity extends Activity {
     private View buildAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
-        card.addView(Ui.text(this, "The makers' own official Linux apps. Tap a row to install; "
-                + "tap an installed row to update or remove it.", 13f, text), Ui.matchWrap(this, 8));
-        card.addView(Ui.text(this, "ARM64 · runs locally on your phone · updates from the maker",
+        card.addView(Ui.text(this, "The official Linux apps from OpenAI, Anthropic, Anysphere and "
+                + "Google. Tap a row to install; tap an installed row to update or uninstall it.",
+                13f, text), Ui.matchWrap(this, 8));
+        card.addView(Ui.text(this, "ARM64 · runs locally on your phone · updates from the publisher",
                 12f, Ui.accent(dark)), Ui.matchWrap(this, 6));
-        card.addView(Ui.text(this, "Already on the computer from set-up: the desktop, Google Chrome, "
-                + "and the developer tools these apps use (gcc and make, Python 3, Node.js, Git, SSH). "
-                + "Nothing else to add before these.", 12.5f, muted), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this, "The computer already has everything these apps need: the desktop, "
+                + "Google Chrome and the developer tools (Python, Node.js, Git and a C/C++ compiler), "
+                + "all installed by set-up. Nothing else to add before these.",
+                12.5f, muted), Ui.matchWrap(this, 6));
         appsNote = Ui.text(this, "", 12.5f, Ui.WARNING);
         appsNote.setVisibility(View.GONE);
         card.addView(appsNote, Ui.matchWrap(this, 8));
@@ -833,7 +871,7 @@ public final class MainActivity extends Activity {
             if (present && !"essentials".equals(app.id)) installed++;
             row.setStatus(present ? "ADDED" : "ADD", present ? Ui.SUCCESS : Ui.accent(dark));
             row.setValue(present
-                    ? "Installed · tap to update" + (app.removable() ? " or remove" : "")
+                    ? "Installed · tap to update" + (app.removable() ? " or uninstall" : "")
                     : app.summary + " · " + app.approximateSize);
             // An open desktop is no obstacle: the install runs beside it and the new app
             // appears on it. Only a task already running (setup, another install) waits.
@@ -853,9 +891,9 @@ public final class MainActivity extends Activity {
         }
         boolean present = ContainerRuntime.isAppInstalled(this, app);
         StringBuilder message = new StringBuilder(present
-                ? "Already installed. This fetches the newest build from the maker and updates "
-                        + "it in place — your login and settings stay."
-                : app.summary + "\n\nInstalled from the maker's own official package, "
+                ? "Already installed. This fetches the newest build from the publisher and "
+                        + "updates it in place — your login and settings stay."
+                : app.summary + "\n\nInstalled from the publisher's own official package, "
                         + "verified by their signature. Nothing is downloaded from a browser.");
         message.append("\n\nDownload size: ").append(app.approximateSize)
                 .append(present ? "" : "\nAlways installs the newest build.");
@@ -869,22 +907,24 @@ public final class MainActivity extends Activity {
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton(present ? "Update" : "Install", (dialog, which) ->
                         sendAppTask(LinuxService.ACTION_INSTALL_APP, app.id));
-        // Installed things that can be removed get a Remove button, so a phone tight on space
-        // can take one back without removing the whole computer.
+        // An installed AI app can be uninstalled on its own, so a phone tight on space can take
+        // one back without touching the computer. The computer's own basics have no such button:
+        // they are the computer, and go only when it does.
         if (present && app.removable()) {
-            builder.setNeutralButton("Remove", (dialog, which) -> confirmRemoveApp(app));
+            builder.setNeutralButton("Uninstall", (dialog, which) -> confirmRemoveApp(app));
         }
         builder.show();
     }
 
     private void confirmRemoveApp(LinuxApps.App app) {
         dialogBuilder()
-                .setTitle("Remove " + app.name + "?")
-                .setMessage("Frees the space it uses. Its sign-in and settings go with it; install it "
-                        + "again any time and sign in once more. The Linux computer and everything else "
-                        + "stay as they are.")
+                .setTitle("Uninstall " + app.name + "?")
+                .setMessage("Deletes the app and frees the space it uses. Its sign-in and its "
+                        + "settings go with it; install it again any time from this tab and sign in "
+                        + "once more. The Linux computer, your files and every other app stay as "
+                        + "they are.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Remove", (d, w) -> sendAppTask(LinuxService.ACTION_UNINSTALL_APP, app.id))
+                .setPositiveButton("Uninstall", (d, w) -> sendAppTask(LinuxService.ACTION_UNINSTALL_APP, app.id))
                 .show();
     }
 
@@ -955,19 +995,17 @@ public final class MainActivity extends Activity {
         wifiOnly.control.setOnCheckedChangeListener((button, checked) ->
                 preferences.edit().putBoolean(ContainerRuntime.KEY_WIFI_ONLY, checked).apply());
         data.addView(wifiOnly, Ui.matchWrap(this, 8));
-        Ui.Toggle shareDownloads = new Ui.Toggle(this, R.drawable.ic_storage, "Downloads visible to the phone",
-                "On: Downloads also appears in your phone's Files app. Off: it stays inside the "
-                        + "Linux computer only. Applies at the next desktop start; files are moved, never deleted.",
-                preferences.getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true), dark);
-        shareDownloads.control.setOnCheckedChangeListener((b, checked) ->
-                preferences.edit().putBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, checked).apply());
-        data.addView(shareDownloads, Ui.matchWrap(this, 8));
+        data.addView(Ui.text(this, "What the computer downloads stays inside it, where no other "
+                + "app on this phone can read it. To move a file out, save it into the computer's "
+                + "Shared folder — that one appears in the phone's Files app — or turn on Phone "
+                + "files below and save straight to the phone.", 12.5f, muted), Ui.matchWrap(this, 10));
 
         // Privacy and safety
         LinearLayout privacy = group(page, "Privacy and safety");
         appLockToggle = new Ui.Toggle(this, R.drawable.ic_lock, "App lock",
-                "Asks for your fingerprint or the phone's PIN whenever PocketDesk comes to the "
-                        + "front — the home screen and the desktop both. No separate password.",
+                "Asks for your fingerprint or the phone's PIN right after the opening screen, and "
+                        + "again whenever PocketDesk comes back to the front — the home screen and "
+                        + "the desktop both. No separate password to remember.",
                 preferences.getBoolean(ContainerRuntime.KEY_APP_LOCK, false), dark);
         appLockToggle.control.setOnCheckedChangeListener((b, checked) -> onAppLockToggled(checked));
         privacy.addView(appLockToggle, Ui.matchWrap(this, 0));
@@ -1033,23 +1071,26 @@ public final class MainActivity extends Activity {
         LinearLayout storage = group(page, "Storage");
         linuxSize = Ui.text(this, "", 12.5f, muted);
         storage.addView(linuxSize, Ui.matchWrap(this, 0));
-        Ui.Row updateRow = new Ui.Row(this, R.drawable.ic_download, "Update the computer's basics",
-                "Desktop, Google Chrome and the developer tools, brought up to date. Set-up "
-                        + "installs all of this; use this after an app update or on an older computer.",
+        // Only when there is something to install: this row stays hidden while the computer's
+        // basics match this version of the app (see measureLinuxSize).
+        basicsUpdateRow = new Ui.Row(this, R.drawable.ic_download, "Update the computer's basics",
+                "This version has newer desktop packages, Google Chrome and developer tools, plus "
+                        + "Ubuntu's security updates. Nothing of yours changes.",
                 R.drawable.ic_chevron, dark, v -> confirmBasicsUpdate());
-        storage.addView(updateRow, Ui.matchWrap(this, 10));
-        removeButton = Ui.secondaryButton(this, "Remove the Linux computer and free space", dark, R.drawable.ic_delete);
+        basicsUpdateRow.setStatus("UPDATE", Ui.WARNING);
+        basicsUpdateRow.setVisibility(ContainerRuntime.basicsUpdateDue(this) ? View.VISIBLE : View.GONE);
+        storage.addView(basicsUpdateRow, Ui.matchWrap(this, 10));
+        removeButton = Ui.secondaryButton(this, "Delete the Linux computer and free space", dark, R.drawable.ic_delete);
         removeButton.setOnClickListener(v -> confirmRemove());
         storage.addView(removeButton, Ui.matchWrap(this, 10));
 
-        TextView footer = Ui.text(this, "Changing settings never removes the Linux computer or your "
-                + "files. Desktop text size and the Downloads location apply the next time the desktop "
-                + "starts.", 12.5f, muted);
+        TextView footer = Ui.text(this, "Changing a setting never deletes the Linux computer or your "
+                + "files. Desktop text size applies the next time the desktop starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
         TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS. Tux, the Linux mascot, by Larry "
-                + "Ewing and The GIMP. Ubuntu is a trademark of Canonical Ltd. Each app's name and "
-                + "logo belong to its maker. Open-source notices ship with the app.",
+                + "Ewing and The GIMP. Ubuntu is a trademark of Canonical Ltd. App names and logos "
+                + "are the property of their respective owners. Open-source notices ship with the app.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -1125,8 +1166,8 @@ public final class MainActivity extends Activity {
                 "A real Ubuntu 24.04 LTS computer running inside this app, on your phone's own "
                         + "processor — a container, not a cloud PC and not a virtual machine. It is "
                         + "an agentic development environment: a desktop, Google Chrome, the "
-                        + "developer tools (gcc and make, Python 3, Node.js, Git, SSH), and the "
-                        + "four AI desktop apps, each the maker's own official Linux build. It is "
+                        + "developer tools (Python, Node.js, Git and a C/C++ compiler), and the "
+                        + "four AI desktop apps, each the publisher's own official Linux build. It is "
                         + "not a general-purpose desktop with every feature of a PC. The phone stays "
                         + "a phone; the computer lives in this app's private storage and is removed "
                         + "with it.", true);
@@ -1167,14 +1208,39 @@ public final class MainActivity extends Activity {
                         + "OpenAI's or Anthropic's own servers, exactly as on any computer.", false);
 
         addAnswer(card, R.drawable.ic_storage, "Where do my files go?",
-                "Your work: /home/coder/Projects, inside the Linux computer.\n\n"
-                        + "Downloads: /home/coder/Downloads. With “Downloads visible to the "
-                        + "phone” on (the default) the same folder appears in your phone's "
-                        + "Files app at Android/data/com.pocketdesk/files/Shared/Downloads; off, "
-                        + "it stays inside the computer where no other app can see it.\n\n"
-                        + "The Linux system itself: this app's private storage "
-                        + "(/data/data/com.pocketdesk/files/ubuntu-rootfs), which no other app "
-                        + "can open.", false);
+                "Inside the computer:\n"
+                        + "• Projects — /home/coder/Projects, your work.\n"
+                        + "• Downloads — /home/coder/Downloads, what the browser and the apps save. "
+                        + "It stays inside the computer, where no other app on the phone can read it.\n"
+                        + "• Shared — /home/coder/Shared, the way out: this one folder also appears in "
+                        + "the phone's Files app under Android/data/com.pocketdesk/files/Shared. Save "
+                        + "or copy a file there and the phone can open it.\n"
+                        + "• Phone — the phone's own storage, once Phone files is on in Settings → "
+                        + "Permissions. Saving there puts the file on the phone itself.\n\n"
+                        + "The Linux system itself lives in this app's private storage "
+                        + "(/data/data/com.pocketdesk/files/ubuntu-rootfs), which no other app can open.",
+                false);
+
+        addAnswer(card, R.drawable.ic_shield, "Is there virus and malware protection?",
+                "Yes, and it is on by default — the same layered kind a phone uses, not a "
+                        + "scanner you have to run.\n\n"
+                        + "• Google Play Protect already checks PocketDesk itself on your phone, as "
+                        + "it does every Android app.\n"
+                        + "• Google Chrome inside the computer runs Safe Browsing at its Enhanced "
+                        + "level: dangerous sites and downloads are blocked before they open, and a "
+                        + "malware or phishing warning cannot be clicked through. That check is done "
+                        + "by Google's Safe Browsing service, exactly as in Chrome on your phone.\n"
+                        + "• Nothing is installed from a browser or a random link: every app comes "
+                        + "from its publisher's own repository and apt refuses a package whose "
+                        + "signature does not match.\n"
+                        + "• Ubuntu's security updates install with the computer's basics, and "
+                        + "Settings → Storage offers that update when a new version brings one.\n"
+                        + "• The computer is sealed in: it lives in this app's private storage, has "
+                        + "no open network ports, cannot see your phone's files unless you turn on "
+                        + "Phone files, and no other app on the phone can reach into it.\n\n"
+                        + "A separate antivirus (ClamAV and the like) is deliberately not included: "
+                        + "on a 4 GB phone its background scanning would take memory the AI apps "
+                        + "need, to look for Windows viruses that cannot run here anyway.", false);
 
         addAnswer(card, R.drawable.ic_shield, "What can this app touch on my phone?",
                 "Its permissions are: internet, network status, notifications, running in "
@@ -1185,18 +1251,18 @@ public final class MainActivity extends Activity {
                         + "the camera, microphone, location, contacts, calls or messages.", false);
 
         addAnswer(card, R.drawable.ic_check, "Are these real Linux apps, and the best ones?",
-                "Yes. Every app here is the maker's own official Linux build — OpenAI's "
+                "Yes. Every app here is the publisher's own official Linux build — OpenAI's "
                         + "ChatGPT (with Codex), Anthropic's Claude Desktop (with Claude Code), "
                         + "Anysphere's Cursor and Google's Antigravity — the leading AI assistants "
                         + "and AI coding environments, from the companies leading AI. Install "
-                        + "them from the Apps tab, not from a browser: each row fetches the maker's "
+                        + "them from the Apps tab, not from a browser: each row fetches the publisher's "
                         + "own signed package, so what runs is exactly what they published, and a "
                         + "tap on an installed row updates it. The Linux only, on purpose card "
                         + "above has the dates and the facts.", false);
 
         addAnswer(card, R.drawable.ic_download, "Do I have to reinstall or update?",
                 "Install once — never again.\n\nNew features arrive by themselves: "
-                        + "ChatGPT and Claude Desktop load their makers' live service, exactly as "
+                        + "ChatGPT and Claude Desktop load their publishers' live service, exactly as "
                         + "the phone apps do, so new models and tools appear without you doing "
                         + "anything.\n\nThe app program itself updates with one tap on its row in "
                         + "Apps. ChatGPT registers OpenAI's official update channel when it installs "
@@ -1239,8 +1305,9 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
                 "No account and no separate password — the Linux computer is yours, "
                         + "protected by the phone itself. If you want a lock, turn on App lock in "
-                        + "Settings: it asks for the phone's own fingerprint or PIN whenever "
-                        + "PocketDesk comes to the front. Inside Linux the user is ‘coder’ "
+                        + "Settings: it asks for the phone's own fingerprint or PIN right after the "
+                        + "opening screen when you start PocketDesk, and again each time it comes "
+                        + "back to the front, the desktop included. Inside Linux the user is ‘coder’ "
                         + "with no password, which is fine because nothing outside this app can "
                         + "reach it.", false);
 
@@ -1268,10 +1335,15 @@ public final class MainActivity extends Activity {
                         + "on the desktop screen. For speed: one AI app at a time, close the "
                         + "browser when done, Desktop text size Compact, and keep the phone cool.", false);
 
-        addAnswer(card, R.drawable.ic_delete, "What if I uninstall?",
-                "Android deletes the whole Linux computer with the app — system, apps, "
-                        + "logins, files, everything. Before uninstalling, copy anything you want "
-                        + "to keep into Downloads with “Downloads visible to the phone” on.", false);
+        addAnswer(card, R.drawable.ic_delete, "What if I uninstall PocketDesk?",
+                "Android deletes the whole Linux computer with the app — the system, the AI apps, "
+                        + "their sign-ins and every file inside it. Nothing is kept, and nothing "
+                        + "is copied anywhere first.\n\nSo before uninstalling, move anything you "
+                        + "want to keep out of the computer: save it into the Shared folder (it "
+                        + "appears in the phone's Files app) or, with Phone files on, straight into "
+                        + "the phone's own Download or Documents folder. Uninstalling one AI app "
+                        + "instead — Apps tab → the installed row → Uninstall — leaves the computer "
+                        + "and your files exactly as they are.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can it run Windows or macOS instead?",
                 "No, on any phone: Windows and macOS need a virtual machine, and Android keeps "
@@ -1298,7 +1370,8 @@ public final class MainActivity extends Activity {
                         + "neither can anything that needs a virtual machine. Your AI accounts' "
                         + "own plans and limits still apply; PocketDesk cannot change them. "
                         + "PocketDesk is provided as is: it is a computer inside an app, not a "
-                        + "backup service — copy anything precious to Downloads.", false);
+                        + "backup service — copy anything precious into the Shared folder or onto "
+                        + "the phone.", false);
         return card;
     }
 
@@ -1574,15 +1647,21 @@ public final class MainActivity extends Activity {
         if (removeButton != null) {
             removeButton.setVisibility(installed ? View.VISIBLE : View.GONE);
         }
+        final boolean updateDue = ContainerRuntime.basicsUpdateDue(this);
+        if (basicsUpdateRow != null) {
+            basicsUpdateRow.setVisibility(installed && updateDue ? View.VISIBLE : View.GONE);
+        }
         if (!installed) {
-            linuxSize.setText("The Linux computer is not set up yet. Download is about 30 MB; the finished system uses 1.5–3 GB.");
+            linuxSize.setText("The Linux computer is not set up yet. Set-up downloads about 30 MB, "
+                    + "then about 700 MB of packages; the finished computer uses 3.5–4.5 GB.");
             return;
         }
         linuxSize.setText("Measuring the Linux computer's size…");
         new Thread(() -> {
             final long bytes = ContainerRuntime.directorySize(ContainerRuntime.rootfs(this));
-            handler.post(() -> linuxSize.setText("The Linux computer is using " + DeviceProbe.formatBytes(bytes)
-                    + " of this phone's storage."));
+            handler.post(() -> linuxSize.setText("The Linux computer is using "
+                    + DeviceProbe.formatBytes(bytes) + " of this phone's storage."
+                    + (updateDue ? "" : " Its basics are up to date.")));
         }, "pocketdesk-size").start();
     }
 
@@ -1716,12 +1795,18 @@ public final class MainActivity extends Activity {
             }
             statusNote.setText(note);
         } else {
-            statusBadge.setText("Not set up");
-            statusHeadline.setText("Set up the Linux computer once");
+            boolean started = preferences.contains(ContainerRuntime.KEY_SETUP_STAGE);
+            statusBadge.setText(started ? "Part way" : "Not set up");
+            statusHeadline.setText(started ? "Continue setting up the computer"
+                    : "Set up the Linux computer once");
             statusNote.setText("One set-up does it all: Ubuntu 24.04 LTS, the desktop, sound, Google "
-                    + "Chrome and the developer tools (gcc and make, Python 3, Node.js, Git, SSH). "
+                    + "Chrome and the developer tools (Python, Node.js, Git and a C/C++ compiler). "
                     + "About 30 MB now, then about 700 MB of packages; 3.5–4.5 GB when finished. "
-                    + "Then add the AI desktop apps from the Apps tab.");
+                    + "Then add the AI desktop apps from the Apps tab."
+                    + (started ? "\n\nA set-up was started and did not finish. Nothing is lost and "
+                            + "nothing is downloaded twice: this carries on from the step it reached."
+                            : ""));
+            setupButton.setText(started ? "Continue set-up" : "Set up Linux");
         }
 
         setupButton.setVisibility(installed || busy ? View.GONE : View.VISIBLE);
@@ -1781,7 +1866,9 @@ public final class MainActivity extends Activity {
                         + "• Download: about 30 MB, then about 700 MB of packages\n"
                         + "• Final size: 3.5–4.5 GB\n"
                         + "• Wi-Fi or mobile data both work\n"
-                        + "• Takes 15–40 minutes depending on your connection"
+                        + "• Takes 15–40 minutes depending on your connection\n"
+                        + "• Safe to stop: tapping Continue set-up later carries on from the step "
+                        + "it reached, without downloading anything twice"
                         + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Set up", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
@@ -1794,13 +1881,20 @@ public final class MainActivity extends Activity {
                     + "tools. This row only brings an already set-up computer up to date.");
             return;
         }
+        if (!ContainerRuntime.basicsUpdateDue(this)) {
+            showMessage("Already up to date", "The computer's basics were installed by this version "
+                    + "of PocketDesk. This row comes back when a newer version has something to add.");
+            return;
+        }
         LinuxApps.App basics = LinuxApps.byId("basics");
         if (basics == null) return;
         dialogBuilder()
                 .setTitle("Update the computer's basics?")
                 .setMessage("Fetches the newest desktop packages, Google Chrome and developer tools "
-                        + "from their own repositories. Nothing of yours changes. Download: "
-                        + basics.approximateSize + "; usually " + basics.typicalTime + "."
+                        + "from their own repositories, and installs Ubuntu's security updates for "
+                        + "everything already on the computer. Your files, your apps and their "
+                        + "sign-ins are untouched. Download: up to " + basics.approximateSize
+                        + " (usually far less); usually " + basics.typicalTime + "."
                         + (LinuxService.isDesktopRunning() ? "\n\nThe desktop keeps running meanwhile." : ""))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Update", (d, w) -> sendAppTask(LinuxService.ACTION_INSTALL_APP, basics.id))
@@ -1809,12 +1903,13 @@ public final class MainActivity extends Activity {
 
     private void confirmRemove() {
         dialogBuilder()
-                .setTitle("Remove the Linux computer?")
-                .setMessage("Deletes Ubuntu and everything inside it, including the AI apps, their logins and "
-                        + "files saved in the Linux home folder. Files in the Shared folder (Downloads visible "
-                        + "to the phone) are not deleted. This cannot be undone.")
+                .setTitle("Delete the Linux computer?")
+                .setMessage("Deletes Ubuntu and everything inside it: the AI apps, their sign-ins and "
+                        + "every file in the Linux home folder. Files you saved in the Shared folder "
+                        + "or on the phone itself are not touched. PocketDesk stays installed, and "
+                        + "set-up can build the computer again. This cannot be undone.")
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Remove", (d, which) -> sendServiceAction(LinuxService.ACTION_REMOVE))
+                .setPositiveButton("Delete", (d, which) -> sendServiceAction(LinuxService.ACTION_REMOVE))
                 .show();
     }
 

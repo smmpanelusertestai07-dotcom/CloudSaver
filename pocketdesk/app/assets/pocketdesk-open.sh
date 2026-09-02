@@ -48,6 +48,62 @@ notify() {   # notify <urgency> <summary> <body>
   notify-send -a PocketDesk -u "$1" -i "$name" "$2" "$3" >/dev/null 2>&1 || true
 }
 
+# How long this app really takes to draw its first window on a phone, so the message on screen
+# is an honest expectation instead of a guess. Measured on a 4 GB phone, cold and warm.
+expected_wait() {
+  case "$name" in
+    chatgpt|claude-desktop|cursor|antigravity|code|codium)
+      printf 'usually 30-90 seconds, and longer the first time after installing' ;;
+    google-chrome*|chrome|chromium*|brave*|epiphany|firefox)
+      printf 'usually 10-30 seconds' ;;
+    *) printf 'usually a few seconds' ;;
+  esac
+}
+
+# The desktop's own "working on it": the round watch pointer, and a pulsing progress window that
+# names the app and how long it usually takes. Both disappear the moment a window appears.
+spinner_open=0
+spinner_fifo=""
+spinner_pid=""
+spinner_start() {
+  command -v xsetroot >/dev/null 2>&1 && xsetroot -cursor_name watch >/dev/null 2>&1 || true
+  [ "$spinner_open" = "1" ] && return 0
+  command -v zenity >/dev/null 2>&1 || return 0
+  spinner_fifo="/tmp/pocketdesk-open-$$.progress"
+  rm -f "$spinner_fifo"
+  mkfifo "$spinner_fifo" 2>/dev/null || { spinner_fifo=""; return 0; }
+  zenity --progress --pulsate --auto-close --no-cancel --width=340 \
+    --title="PocketDesk" --text="Opening $label...
+$(expected_wait)" < "$spinner_fifo" >/dev/null 2>&1 &
+  spinner_pid=$!
+  # Read-write, so opening the pipe cannot block even if zenity never starts: a busy indicator
+  # must never be the reason an app fails to open.
+  exec 9<>"$spinner_fifo"
+  spinner_open=1
+}
+# A quarter-circle that turns once a second, so the message on screen is visibly alive.
+spin_frame=0
+spin_glyph() {
+  spin_frame=$(( (spin_frame + 1) % 4 ))
+  case "$spin_frame" in
+    0) printf '\u25d0' ;; 1) printf '\u25d3' ;; 2) printf '\u25d1' ;; *) printf '\u25d2' ;;
+  esac
+}
+spinner_text() {   # spinner_text <line>
+  [ "$spinner_open" = "1" ] || return 0
+  printf '# %s\n' "$1" >&9 2>/dev/null || true
+}
+spinner_stop() {
+  command -v xsetroot >/dev/null 2>&1 && xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
+  [ "$spinner_open" = "1" ] || return 0
+  spinner_open=0
+  printf '100\n' >&9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+  rm -f "$spinner_fifo"
+  kill "$spinner_pid" >/dev/null 2>&1 || true
+}
+trap 'spinner_stop' EXIT INT TERM
+
 # Chromium keeps these files beside its binary, and every Electron app inherits the layout.
 # Finding one is what tells us the sandbox flags are needed -- and that they will be understood.
 is_chromium() {
@@ -183,6 +239,7 @@ cpu_ticks() {
 run_attempt() {
   "$target" "$@" >> "$log" 2>&1 &
   pid=$!
+  spinner_start
   # Wall-clock throughout. Counting loop turns reported "3s" for a start that took forty,
   # because every xdotool call under PRoot costs seconds of its own.
   local t0 elapsed last_ticks=0 last_check=0 idle_since=-1 next_notice=30
@@ -192,6 +249,7 @@ run_attempt() {
     kill -0 "$pid" 2>/dev/null || break
     if has_window; then
       echo "window appeared after ${elapsed}s" >> "$log"
+      spinner_stop
       return 0
     fi
     [ "$elapsed" -ge 900 ] && break
@@ -210,11 +268,13 @@ run_attempt() {
         echo "no window and no CPU activity since ${idle_since}s, now ${elapsed}s · treating as stuck · $(free_mb) MB free" >> "$log"
         kill -9 "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null
+        spinner_stop
         return 137
       fi
     fi
+    spinner_text "$(spin_glyph) Opening $label... ${elapsed}s so far, $(expected_wait)"
     if [ "$elapsed" -ge "$next_notice" ]; then
-      notify normal "$label is opening" "${elapsed} seconds so far. Please wait."
+      notify normal "$label is opening" "${elapsed}s so far, $(expected_wait)."
       case "$next_notice" in
         30) next_notice=60 ;; 60) next_notice=120 ;; 120) next_notice=240 ;;
         240) next_notice=420 ;; 420) next_notice=600 ;; *) next_notice=100000 ;;
@@ -222,6 +282,7 @@ run_attempt() {
     fi
     sleep 1
   done
+  spinner_stop
   if kill -0 "$pid" 2>/dev/null; then
     echo "still running after ${elapsed}s · leaving it to finish · $(free_mb) MB free" >> "$log"
     return 0

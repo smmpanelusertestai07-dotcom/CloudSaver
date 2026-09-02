@@ -1,3 +1,57 @@
+# PocketDesk 10.0.25 — a set-up that continues, and protection that is on by default
+
+- **Set-up continues where it stopped.** It is now a chain of steps that each record when they
+  finish, inside the container. Stop it, run out of battery, lose the network or have Android
+  end the app: the Home card says **Part way / Continue set-up**, and the next run skips the
+  30 MB download, the unpacking and every package step that already finished. The old flow
+  deleted the unpacked Ubuntu and started the whole 700 MB again.
+- **The "exited with code 1" set-up failure is fixed at the source.** Every package step first
+  repairs an install that was cut off half-applied (`dpkg --configure -a`, `apt-get -f install`)
+  — until now that state made the next attempt fail instantly — then retries three times on a
+  bad connection, and gives up with its own code so the phone can say *which* part failed and
+  what to do, instead of "code 1. Check Wi-Fi and free storage".
+- **Set-up is faster.** dpkg no longer waits for the phone's slow storage after every single
+  file (`force-unsafe-io`, what container images use), manuals and documentation are not
+  unpacked at all (copyright files are kept), translation indexes are not downloaded, and no
+  step is ever repeated. Same result, less time and less space.
+- **Virus and malware protection, on by default.** Google Chrome inside the computer now runs
+  Safe Browsing at its Enhanced level, blocks dangerous downloads, and will not let a malware or
+  phishing warning be clicked through — enforced by policy, not a setting anyone has to find.
+  Ubuntu's security updates come with the basics update. A new question, *Is there virus and
+  malware protection?*, lays out every layer, including why a separate antivirus is deliberately
+  not there on a 4 GB phone.
+- **App lock now comes when it should.** With App lock on, the opening screen plays first and
+  the fingerprint or PIN prompt follows it, then again every time PocketDesk comes back to the
+  front — the home screen and the desktop both. Before, a locked app skipped its own opening
+  screen and the prompt could be missed entirely.
+- **The basics update appears only when there is one.** The computer records which version of
+  the app built it, so Settings → Storage shows **Update the computer's basics** with an UPDATE
+  badge only when this version has something newer — and says "Its basics are up to date"
+  otherwise. That update now also installs Ubuntu's security updates.
+- **Opening an app looks like opening an app.** The desktop shows the round watch pointer and a
+  pulsing window — "Opening ChatGPT… 25s so far, usually 30-90 seconds, and longer the first
+  time after installing" — both gone the moment the window appears. The times are per app, not
+  one number for everything.
+- **Words that mean what they say.** "The makers' own apps" is gone: apps are the **publisher's**
+  official Linux build everywhere. AI apps are **uninstalled** (Android's word), the whole
+  computer is **deleted**, and the computer's basics have no uninstall at all — they are the
+  computer. The developer tools are named as *Python, Node.js, Git and a C/C++ compiler* rather
+  than a list of package names.
+- **"Downloads visible to the phone" is gone.** One folder, one rule: what the computer
+  downloads stays inside it, where no other app on the phone can read it. The **Shared** folder
+  (now bookmarked in the file manager) is the way out to the phone's Files app, and Phone files
+  is the way in. *Where do my files go?* and *What if I uninstall PocketDesk?* say exactly that.
+- **Why Ubuntu, answered with checked facts.** A new line in the Linux-only card: cloud AI
+  agents work in Ubuntu containers (OpenAI's Codex cloud image is built on Ubuntu 24.04 — the
+  release in this app), Ubuntu is the Linux developers use most (about 28 % in Stack Overflow's
+  2025 survey of 49,000 developers), every publisher ships for Ubuntu and Debian first, and
+  24.04 LTS has security updates until April 2029.
+- Tests: the resume and retry helpers are now executed for real against a stand-in `apt-get`
+  (a finished step is skipped, a flaky one is retried, a hopeless one gives up and is not
+  recorded), the basics are asserted to be non-uninstallable while every AI app is, Chrome's
+  protection policies are asserted, and the launcher's busy indicator is checked.
+- Version 10.0.25 (code 125).
+
 # PocketDesk 10.0.20 — one set-up does it all
 
 - **Set up Linux installs everything.** The one button on the Home tab now brings the desktop,

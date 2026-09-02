@@ -36,15 +36,13 @@ mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2
 
 # The left-hand list of every Open and Save dialog (ChatGPT's "attach", the browser's upload,
 # the file manager): the phone's files and the computer's own, side by side.
-printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Downloads Downloads\nfile:///home/coder/Projects Projects\n' \
+printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Downloads Downloads\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared Shared with phone\n' \
   > "$HOME/.config/gtk-3.0/bookmarks"
 
-# Downloads belong somewhere the phone itself can open. /home/coder/Shared is the one folder
-# that is really Android storage, so Downloads becomes a link into it. Nothing is deleted: the
-# old folder is only replaced if it empties cleanly.
-# The owner chooses (Settings: Downloads visible to the phone). On: Downloads is a link into
-# Shared, which is real Android storage. Off: Downloads is an ordinary folder inside the
-# computer that no other app can see. Switching moves the files, never deletes them.
+# Downloads stay inside the computer, where no other app on the phone can read them; the
+# Shared folder is the deliberate way out to the phone's Files app. POCKETDESK_SHARE_DOWNLOADS
+# is 0 from 10.0.25 onwards, and the second branch moves an older computer's shared Downloads
+# back inside. Nothing is ever deleted, only moved.
 if [ "${POCKETDESK_SHARE_DOWNLOADS:-1}" = "1" ] && [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
   mkdir -p "$HOME/Shared/Downloads"
   if [ -d "$HOME/Downloads" ] && [ ! -L "$HOME/Downloads" ]; then

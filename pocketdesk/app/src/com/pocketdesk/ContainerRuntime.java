@@ -224,6 +224,9 @@ final class ContainerRuntime {
         args.add("TERM=xterm-256color");
         args.add("LANG=C.UTF-8");
         args.add("TMPDIR=/tmp");
+        // Written into /var/lib/pocketdesk/basics-version, so Settings can offer the basics
+        // update only when this version has something newer to install.
+        args.add("POCKETDESK_APP_VERSION=" + MainActivity.VERSION);
         args.add("/bin/bash");
         args.add("-lc");
         args.add(command);
@@ -254,41 +257,40 @@ final class ContainerRuntime {
         return process.waitFor();
     }
 
+    /**
+     * Everything the computer needs, in steps that can be repeated safely.
+     *
+     * Each step records that it finished under /var/lib/pocketdesk/stage, so a set-up that was
+     * stopped -- by the owner, a flat battery, or Android ending the app -- continues from the
+     * step it reached instead of downloading the whole 700 MB again. Each step also repairs a
+     * half-applied install and retries three times before giving up, and gives up with its own
+     * exit code so the phone can say which part failed rather than "code 1".
+     */
     static String bootstrapCommand() {
         return "set -eu; "
-                + "export DEBIAN_FRONTEND=noninteractive; "
                 + "rm -f /etc/resolv.conf; printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf; "
                 + "printf '127.0.0.1 localhost\\n::1 localhost\\n' > /etc/hosts; "
                 // IPv4 first. A phone network that hands out an IPv6 address it cannot route
                 // left every page "loading" until the IPv6 attempt timed out.
                 + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
-                + "printf 'Acquire::Retries \"5\";\nAcquire::http::Timeout \"40\";\nAcquire::https::Timeout \"40\";\n' > /etc/apt/apt.conf.d/99pocketdesk; "
-                + "apt-get update; "
-                + "apt-get install -y --no-install-recommends "
-                + "tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
+                + LinuxApps.APT_HELPERS
+                + "pd_repair; "
+                + "pd_update || exit 11; "
+                // The desktop itself: X server, window manager, panel, file manager, terminal.
+                + "pd_step desktop tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
                 + "x11-xserver-utils x11-utils xfonts-base fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
-                // Without an icon and cursor theme every launcher is a generic diamond and the
-                // pointer stays the old X11 cross instead of an arrow.
-                + "xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata "
-                // adwaita only Recommends this, and we install without recommends -- so without
-                // naming it every SVG icon in the theme falls back to a generic diamond.
-                + "librsvg2-common "
-                // Window controls the desktop offers: minimise all, close all, list what is open.
-                + "wmctrl xdotool "
-                // Builds the table a browser reads to hand a sign-in link (chatgpt://, claude://)
-                // back to the app that asked for it. Without it the login never completes.
-                + "desktop-file-utils "
-                // On-screen toasts and dialogs: an app that fails to start has to be able to say so.
-                + "dunst libnotify-bin zenity xdotool "
-                // Sound: PulseAudio plays into a virtual output that the phone's viewer streams
-                // and plays through the speaker (see pocketdesk-desktop).
-                + "pulseaudio pulseaudio-utils "
-                // The small tools a computer is expected to have from the first minute.
-                + "less file unzip zip wget; "
-                // The developer tools an agentic development environment needs: compilers,
-                // Python, Node.js, Git, SSH. One set-up, nothing to add later.
-                + "apt-get install -y --no-install-recommends " + LinuxApps.DEVELOPER_PACKAGES + "; "
-                // A desktop clock is only useful in the user's own time.
+                + "|| exit 12; "
+                // What makes it look and behave like a computer: icons and a pointer theme
+                // (librsvg2-common or every SVG icon falls back to a generic diamond), window
+                // controls, the table a browser reads to hand a sign-in link back to the app
+                // that asked for it, on-screen messages, sound, and the small everyday tools.
+                + "pd_step extras xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata librsvg2-common "
+                + "wmctrl xdotool desktop-file-utils dunst libnotify-bin zenity "
+                + "pulseaudio pulseaudio-utils less file unzip zip wget || exit 13; "
+                // The developer tools an agentic development environment needs from the first
+                // minute: a compiler, Python, Node.js, Git and SSH. One set-up, nothing to add.
+                + "pd_step devtools " + LinuxApps.DEVELOPER_PACKAGES + " || exit 14; "
+                // A desktop clock is only useful in the owner's own time.
                 + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                 + "echo 'Asia/Kolkata' > /etc/timezone; "
                 + "id coder >/dev/null 2>&1 || useradd -m -s /bin/bash coder; "
@@ -296,11 +298,53 @@ final class ContainerRuntime {
                 + "mkdir -p /home/coder/Desktop /home/coder/.config /home/coder/Projects "
                 + "/home/coder/Downloads /usr/share/backgrounds; "
                 // The browser is Google Chrome, from Google's own repository (arm64 since July
-                // 2026). Best-effort here: a network hiccup must not fail the whole set-up, and
-                // the Google Chrome row on the Apps tab installs it again.
+                // 2026). Best-effort: a network hiccup here must not fail a set-up that is
+                // otherwise finished, and Settings -> Storage installs it on the next update.
+                // The marker is written from what is actually on the computer afterwards, not
+                // from the exit status: inside an "|| true" list a failure is invisible.
+                + "if [ ! -f \"$PD_STATE/stage/chrome\" ]; then "
                 + "( " + LinuxApps.CHROME_INSTALL + " ) || true; "
+                + "if [ -x /usr/bin/google-chrome-stable ]; then : > \"$PD_STATE/stage/chrome\"; "
+                + "else echo 'PocketDesk: Google Chrome did not install this time'; fi; fi; "
+                // Which app version built these basics, so the phone can offer an update only
+                // when there is one to make.
+                + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"; "
                 + "chown -R coder:coder /home/coder; "
                 + "apt-get clean; rm -rf /var/lib/apt/lists/*";
+    }
+
+    /** What a bootstrap exit code means, in the owner's words. Null when it is not one of ours. */
+    static String setupFailureReason(int code) {
+        switch (code) {
+            case 11: return "The Ubuntu package servers could not be reached. Check the internet "
+                    + "connection, then tap Continue set-up — it carries on from where it stopped.";
+            case 12: return "The desktop packages did not finish downloading. Check the connection "
+                    + "and free space, then tap Continue set-up — the parts already installed are kept.";
+            case 13: return "The desktop's icons, sound and tools did not finish installing. Tap "
+                    + "Continue set-up to finish that step; nothing already done is repeated.";
+            case 14: return "The developer tools did not finish installing. Tap Continue set-up to "
+                    + "finish that step; nothing already done is repeated.";
+            default: return null;
+        }
+    }
+
+    /** The app version that last brought the computer's basics up to date, or null. */
+    static String basicsVersion(Context context) {
+        File marker = new File(rootfs(context), LinuxApps.BASICS_VERSION_FILE);
+        if (!marker.isFile()) return null;
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(new java.io.FileInputStream(marker)))) {
+            String value = reader.readLine();
+            return value == null ? null : value.trim();
+        } catch (IOException error) {
+            return null;
+        }
+    }
+
+    /** True when the basics were built by an older version of the app and an update is due. */
+    static boolean basicsUpdateDue(Context context) {
+        if (!isInstalled(context)) return false;
+        return !MainActivity.VERSION.equals(basicsVersion(context));
     }
 
     static void writeDesktopScripts(Context context) throws IOException, ErrnoException {
@@ -351,6 +395,7 @@ final class ContainerRuntime {
         return new File(rootfs(context), app.marker.substring(1)).exists();
     }
 
+    /** Removed in 10.0.25; kept so an upgrade can clear the old value. Downloads stay inside. */
     static final String KEY_SHARE_DOWNLOADS = "share_downloads";
     static final String KEY_APP_LOCK = "app_lock";
     /** Set when the app lock switched itself off because the phone's own lock was removed. */
@@ -392,7 +437,7 @@ final class ContainerRuntime {
     static final String KEY_FAST_DESKTOP = "fast_desktop";
 
     static String startDesktopCommand(int width, int height, int dpi) {
-        return startDesktopCommand(width, height, dpi, true);
+        return startDesktopCommand(width, height, dpi, false);
     }
 
     /**

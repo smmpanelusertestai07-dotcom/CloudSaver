@@ -428,4 +428,15 @@ grep -q 'source=phone.monitor' "$desktop" || fail "the stream must carry the Pho
 grep -q 'port=4712' "$desktop" || fail "the sound port must match AudioBridge.PORT"
 grep -q 'backgrounds/pocketdesk.jpg' "$desktop" || fail "the desktop must use the Ubuntu wallpaper"
 
+# An app that takes a minute to open has to look like it is opening: the round watch pointer and
+# a pulsing window that names the app and how long it usually takes, both gone once it appears.
+opener="$PROJECT_DIR/app/assets/pocketdesk-open.sh"
+grep -q 'zenity --progress --pulsate' "$opener" || fail "opening an app must show a busy indicator"
+grep -q "xsetroot -cursor_name watch" "$opener" || fail "the pointer must show that the desktop is busy"
+grep -q "xsetroot -cursor_name left_ptr" "$opener" || fail "the busy pointer must be put back"
+grep -q 'expected_wait' "$opener" || fail "the wait message must say how long it usually takes"
+grep -q 'trap .spinner_stop. EXIT' "$opener" || fail "the busy indicator must go even if the launcher dies"
+awk '/if has_window; then/,/fi/' "$opener" | grep -q 'spinner_stop' \
+  || fail "the busy indicator must close as soon as the app has a window"
+
 echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound)"

@@ -32,7 +32,7 @@ java -cp "$OUT" com.pocketdesk.TreesTest
   "$PROJECT_DIR/tests/stub/com/pocketdesk/R.java" \
   "$PROJECT_DIR/app/src/com/pocketdesk/LinuxApps.java" \
   "$PROJECT_DIR/tests/LinuxAppsTest.java"
-java -cp "$OUT" com.pocketdesk.LinuxAppsTest
+java -cp "$OUT" com.pocketdesk.LinuxAppsTest "$PROJECT_DIR"
 
 bash "$PROJECT_DIR/tests/desktop-scripts-test.sh"
 

@@ -5,8 +5,8 @@ package com.pocketdesk;
  *
  * Every entry installs the newest build each time it runs, so "install" and "update" are the same
  * action: apt repositories upgrade in place, and the direct downloads all resolve a "latest" URL
- * rather than a pinned version. Every app comes from its maker's own apt repository or download
- * endpoint, never from a third party.
+ * rather than a pinned version. Every app comes from its publisher's own apt repository or
+ * download endpoint, never from a third party.
  */
 final class LinuxApps {
 
@@ -55,20 +55,66 @@ final class LinuxApps {
         boolean removable() { return uninstall != null; }
 
         String installCommand() {
-            return "set -eu; export DEBIAN_FRONTEND=noninteractive; "
-                    + "printf 'Acquire::Retries \"5\";\\n' > /etc/apt/apt.conf.d/99pocketdesk-retry; "
+            // pd_repair first: an install interrupted by a stop leaves dpkg half-applied, and
+            // every later apt command fails until it is finished.
+            return "set -eu; " + APT_HELPERS + "pd_repair; "
                     + command
                     + "; apt-get clean; rm -rf /var/lib/apt/lists/*";
         }
 
         String uninstallCommand() {
-            return "set -eu; export DEBIAN_FRONTEND=noninteractive; "
+            return "set -eu; " + APT_HELPERS + "pd_repair; "
                     + (uninstall == null ? "true" : uninstall)
                     + "; apt-get -y autoremove 2>/dev/null || true; apt-get clean";
         }
     }
 
     private LinuxApps() {}
+
+    /**
+     * The shell helpers every package step uses.
+     *
+     * pd_repair finishes an install that a stop, a low battery or Android ending the app left
+     * half-applied -- dpkg refuses every later command until that is done, which is why a
+     * second set-up used to fail immediately with "exited with code 1".
+     * pd_update and pd_step retry a step that failed on a flaky mobile connection, and pd_step
+     * records each finished step under /var/lib/pocketdesk/stage, so a set-up that was stopped
+     * continues from where it stopped instead of starting over.
+     */
+    static final String APT_HELPERS =
+            "export DEBIAN_FRONTEND=noninteractive; "
+            // POCKETDESK_TEST_ROOT is empty on the phone, so these are the real paths; the test
+            // suite sets it to a temporary folder and runs these very functions.
+            + "PD_ROOT=\"${POCKETDESK_TEST_ROOT:-}\"; PD_STATE=\"$PD_ROOT/var/lib/pocketdesk\"; "
+            + "mkdir -p \"$PD_STATE/stage\" \"$PD_ROOT/etc/apt/apt.conf.d\" \"$PD_ROOT/etc/dpkg/dpkg.cfg.d\"; "
+            + "printf 'Acquire::Retries \"5\";\nAcquire::http::Timeout \"40\";\n"
+            + "Acquire::https::Timeout \"40\";\nAcquire::Languages \"none\";\n"
+            + "APT::Install-Suggests \"false\";\nquiet \"1\";\n"
+            + "Dpkg::Options {\"--force-confdef\";\"--force-confold\";};\n' "
+            + "> \"$PD_ROOT/etc/apt/apt.conf.d/99pocketdesk\"; "
+            // Phone storage is slow, and dpkg's fsync after every file was most of the wait.
+            // force-unsafe-io is what container images use for the same reason; an install cut
+            // off mid-way is repaired by pd_repair rather than by the filesystem. Manuals and
+            // documentation are not unpacked either -- there is no man page reader here -- but
+            // every package's copyright file is kept, because the licences must stay.
+            + "printf 'force-unsafe-io\npath-exclude=/usr/share/man/*\npath-exclude=/usr/share/doc/*\n"
+            + "path-include=/usr/share/doc/*/copyright\npath-exclude=/usr/share/groff/*\n"
+            + "path-exclude=/usr/share/info/*\n' > \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketdesk\"; "
+            + "pd_repair() { dpkg --configure -a >/dev/null 2>&1 || true; "
+            + "apt-get -y -f install >/dev/null 2>&1 || true; }; "
+            + "pd_update() { pd_u=1; while [ $pd_u -le 3 ]; do apt-get update && return 0; "
+            + "echo \"PocketDesk: package list attempt $pd_u did not finish\"; "
+            + "sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; pd_u=$((pd_u+1)); done; return 1; }; "
+            + "pd_step() { pd_stage=$1; shift; "
+            + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketDesk: $pd_stage is already done\"; return 0; fi; "
+            + "pd_try=1; while [ $pd_try -le 3 ]; do "
+            + "if apt-get install -y --no-install-recommends \"$@\"; then : > \"$PD_STATE/stage/$pd_stage\"; return 0; fi; "
+            + "echo \"PocketDesk: $pd_stage attempt $pd_try did not finish, repairing and trying again\"; "
+            + "pd_repair; pd_update || true; sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; "
+            + "pd_try=$((pd_try+1)); done; return 1; }; ";
+
+    /** Where the container records which app version last brought its basics up to date. */
+    static final String BASICS_VERSION_FILE = "var/lib/pocketdesk/basics-version";
 
     private static final String LATEST_CHATGPT =
             "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb";
@@ -101,13 +147,17 @@ final class LinuxApps {
      * one and told not to come back. Policies: a blank start page, no background mode, no
      * "make me default" prompt (there is nothing else here), no GPU (there is none), no
      * metrics. Passwords and sign-in stay, in Chrome's basic store (no keyring here).
+     *
+     * Protection is enforced, not left to a setting: Safe Browsing runs at its Enhanced level
+     * (the same Google service that protects Chrome on the phone), dangerous downloads are
+     * blocked, and a malware or phishing warning cannot be clicked through.
      */
     static final String CHROME_INSTALL =
-            "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+            "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
             + fetchKey(CHROME_KEY, "/etc/apt/keyrings/google-chrome.gpg")
             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
             + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
-            + "apt-get update; apt-get install -y --no-install-recommends google-chrome-stable; "
+            + "pd_update || exit 11; apt-get install -y --no-install-recommends google-chrome-stable; "
             + "printf 'repo_add_once=\"false\"\nrepo_reenable_on_distupgrade=\"false\"\n' > /etc/default/google-chrome; "
             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
             + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
@@ -116,7 +166,10 @@ final class LinuxApps {
             + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
             + "\"BackgroundModeEnabled\": false, \"DefaultBrowserSettingEnabled\": false, "
             + "\"MetricsReportingEnabled\": false, \"HardwareAccelerationModeEnabled\": false, "
-            + "\"PromotionalTabsEnabled\": false}\n' > /etc/opt/chrome/policies/managed/pocketdesk.json; "
+            + "\"PromotionalTabsEnabled\": false, \"SafeBrowsingProtectionLevel\": 2, "
+            + "\"SafeBrowsingProceedAnywayDisabled\": true, \"SafeBrowsingExtendedReportingEnabled\": false, "
+            + "\"DownloadRestrictions\": 1, \"AdvancedProtectionAllowed\": true}\n' "
+            + "> /etc/opt/chrome/policies/managed/pocketdesk.json; "
             // The old built-in browser goes once Chrome is here: one browser, not two.
             + "apt-get remove -y epiphany-browser >/dev/null 2>&1 || true";
 
@@ -137,17 +190,26 @@ final class LinuxApps {
             // earlier version catches up without being rebuilt. Not removable: it is the computer.
             // Not on the Apps tab: set-up installs all of this. Settings -> Storage -> Update the
             // computer's basics runs it again, for a computer built by an earlier version.
-            new App("basics", "Desktop, Google Chrome and developer tools",
-                    "The desktop, sound, Google Chrome and the developer tools, brought up to date.",
+            new App("basics", "Computer basics",
+                    "The desktop, sound, Google Chrome and the developer tools, plus Ubuntu's "
+                            + "security updates.",
                     R.drawable.ic_desktop, 0, "about 700 MB", 3 * GB,
                     "10–30 min", null,
                     "/usr/bin/gcc",
-                    "apt-get update; apt-get install -y --no-install-recommends " + DESKTOP_PACKAGES + "; "
-                            + "apt-get install -y --no-install-recommends " + DEVELOPER_PACKAGES + "; "
+                    // Run again from the top: the finished-step marks are cleared first, so every
+                    // part is re-checked and anything the publisher has updated is fetched.
+                    "rm -f \"$PD_STATE/stage/\"* 2>/dev/null || true; "
+                            + "pd_update || exit 11; "
+                            + "pd_step core " + DESKTOP_PACKAGES + " || exit 12; "
+                            + "pd_step devtools " + DEVELOPER_PACKAGES + " || exit 14; "
+                            // Ubuntu's own security updates for everything already installed.
+                            + "apt-get -y upgrade || pd_repair; "
                             + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone; "
-                            + "( " + CHROME_INSTALL + " ) || true",
+                            + "( " + CHROME_INSTALL + " ) || true; "
+                            + "[ -x /usr/bin/google-chrome-stable ] && : > \"$PD_STATE/stage/chrome\" || true; "
+                            + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
                     null),
 
             new App("chatgpt", "ChatGPT",
@@ -157,7 +219,7 @@ final class LinuxApps {
                     "OpenAI's Linux app is a public preview; that is OpenAI's current scope, and it "
                             + "grows with their updates. Your account's usage limits apply.",
                     "/usr/bin/chatgpt",
-                    "apt-get update; "
+                    "pd_update || exit 11; "
                             + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
                             + "apt-get install -y --only-upgrade chatgpt; else "
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
@@ -173,14 +235,14 @@ final class LinuxApps {
                             + "virtualisation that a phone does not give apps, so that tab stays "
                             + "unavailable here. Chat and Claude Code work.",
                     "/usr/bin/claude-desktop",
-                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
                             + "curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc '" + CLAUDE_KEY + "'; "
                             + "gpg --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc "
                             + "| grep -q '" + CLAUDE_FINGERPRINT + "' "
                             + "|| { echo 'Claude signing key did not match the published fingerprint'; exit 1; }; "
                             + "echo 'deb [arch=arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] "
                             + CLAUDE_REPO + " stable main' > /etc/apt/sources.list.d/claude-desktop.list; "
-                            + "apt-get update; apt-get install -y --no-install-recommends claude-desktop",
+                            + "pd_update || exit 11; apt-get install -y --no-install-recommends claude-desktop",
                     "apt-get remove -y claude-desktop; rm -f /etc/apt/sources.list.d/claude-desktop.list"),
 
             new App("cursor", "Cursor",
@@ -189,7 +251,7 @@ final class LinuxApps {
                     "5–15 min",
                     "A large editor. Expect it to take a while to open the first time.",
                     "/usr/share/cursor/cursor",
-                    "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
+                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl ca-certificates; "
                             + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
                             + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
@@ -203,13 +265,13 @@ final class LinuxApps {
                     "5–20 min",
                     "Installed from Google's own apt repository, so a tap on this row updates it in place.",
                     "/usr/share/applications/antigravity.desktop",
-                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates "
+                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates "
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "
                             + "libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0; "
                             + fetchKey(ANTIGRAVITY_KEY, "/etc/apt/keyrings/antigravity-repo-key.gpg")
                             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] "
                             + ANTIGRAVITY_REPO + " antigravity-debian main' > /etc/apt/sources.list.d/antigravity.list; "
-                            + "apt-get update; apt-get install -y --no-install-recommends antigravity; "
+                            + "pd_update || exit 11; apt-get install -y --no-install-recommends antigravity; "
                             + "if [ ! -f /usr/share/applications/antigravity.desktop ]; then "
                             + "bin=$(command -v antigravity || find /usr/share/antigravity /opt/antigravity -maxdepth 2 -type f -name 'antigravity' 2>/dev/null | head -n 1); "
                             + "[ -n \"$bin\" ] || { echo 'Antigravity installed but no runnable binary was found'; exit 1; }; "

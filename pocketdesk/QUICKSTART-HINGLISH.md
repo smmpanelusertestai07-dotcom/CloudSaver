@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.20-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.25-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -34,7 +34,7 @@
 - Desktop, sound, **Google Chrome** (computer ka ek hi browser) aur **developer tools** (gcc/make, Python 3, Node.js, Git, SSH, jq, htop, vim)
   sab setup me hi install ho jaate hain — Apps tab me sirf 4 AI apps hain.
 - Purane computer ko update karna ho: Settings → Storage → **Update the computer's basics**.
-- **App hatana:** installed AI app ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.
+- **App hatana:** installed AI app ki row tap karo → **Uninstall**. Space wapas, baaki sab (computer, files, dusre apps) waisa hi. Computer basics uninstall nahi hote — wo computer ka hissa hai.
 
 ### Sign in kaise hoga
 - **ChatGPT:** email daalo. Account Google se bana hai to Google ka sign-in page khulega — normal hai, wahi complete karo. Browser apne aap app me wapas bhej deta hai.
@@ -71,10 +71,10 @@ Neeche (ya upar, tumhari marzi) **ek hi bar**:
 | --- | --- |
 | Appearance | Theme (Match phone / Light / Dark), Screen rotation, Desktop text size (Compact / Normal / Large) |
 | Running | When to stop by itself (Smart · recommended / 1–6 hours / Never), Overheat protection |
-| Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only, Downloads visible to the phone |
+| Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only |
 | Privacy and safety | App lock — fingerprint/PIN, home aur desktop dono screen pe; on karte waqt ek baar pooch ke confirm karta hai |
 | Permissions | Notifications, Battery usage (Unrestricted), **Background activity** (phone ki battery page pe Allow foreground + Allow background activity ON), **Auto-launch** (Allow auto-launch ON), **Phone files**, App info |
-| Storage | Linux computer kitna space le raha hai, **Remove the Linux computer and free space** |
+| Storage | Linux computer kitna space le raha hai, **Update the computer's basics** (sirf tab dikhta hai jab is version me kuch naya ho — Ubuntu ke security updates ke saath), **Delete the Linux computer and free space** |
 
 Settings badalne se kabhi kuch delete nahi hota.
 
@@ -97,7 +97,8 @@ Settings badalne se kabhi kuch delete nahi hota.
 ## 7. Files kahan jati hain
 
 - Kaam: `/home/coder/Projects` (computer ke andar).
-- Downloads: `/home/coder/Downloads`. **Downloads visible to the phone** on ho (default) to phone ke Files app me `Android/data/com.pocketdesk/files/Shared/Downloads` me bhi dikhta hai; off ho to sirf computer ke andar.
+- Downloads: `/home/coder/Downloads` — computer ke andar hi rehta hai, phone ka koi dusra app nahi padh sakta.
+- Shared: `/home/coder/Shared` — bahar nikalne ka rasta. Yehi ek folder phone ke Files app me `Android/data/com.pocketdesk/files/Shared` par dikhta hai. File manager me bhi bookmark hai.
 - Uninstall karne se poora computer delete ho jata hai — pehle Downloads me copy kar lo.
 
 ## Kya kaam nahi karega (permanent)

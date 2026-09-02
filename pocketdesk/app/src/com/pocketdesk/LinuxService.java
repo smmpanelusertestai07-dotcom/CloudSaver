@@ -308,61 +308,89 @@ public final class LinuxService extends Service {
                 .apply();
     }
 
+    /**
+     * One set-up, in parts that can be repeated safely.
+     *
+     * Nothing already finished is done twice: a download continues from the byte it stopped at,
+     * an unpacked Ubuntu is kept as it is, and the package steps inside the container each
+     * remember that they finished. So a set-up stopped by the owner, a flat battery or Android
+     * carries on from where it stopped when it is started again.
+     */
     private void setupUbuntu() throws Exception {
         preflight(true, 10);
+        SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "started").apply();
         status("Preparing Linux", "Getting the local Linux system ready…", 2, true, false);
         ContainerRuntime.installRuntime(this);
 
-        File archive = ContainerRuntime.downloadFile(this);
-        if (!archive.isFile() || !ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(sha256(archive))) {
-            if (archive.exists() && !archive.delete()) throw new IOException("Could not replace old Ubuntu download");
-            download(ContainerRuntime.UBUNTU_MIRRORS, archive, "Downloading Ubuntu");
-        }
-        status("Checking download", "Verifying that the Linux download is safe and complete…", 36, true, false);
-        String actual = sha256(archive);
-        if (!ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(actual)) {
-            archive.delete();
-            throw new IOException("Ubuntu checksum did not match. The download was removed for safety.");
-        }
-
         File root = ContainerRuntime.rootfs(this);
-        if (root.exists()) ContainerRuntime.deleteTree(root);
-        status("Installing Linux files", "Saving Linux inside private app storage…", 40, true, false);
-        try (FileInputStream input = new FileInputStream(archive)) {
-            TarGzExtractor.extract(input, root, (count, name) -> {
-                if (Thread.currentThread().isInterrupted()) return;
-                if (count % 500 == 0) status("Installing Linux files", count + " files prepared", 45, true, false);
-            });
+        File archive = ContainerRuntime.downloadFile(this);
+        boolean unpacked = new File(root, "usr/bin/apt-get").isFile()
+                && new File(root, "usr/bin/dpkg").isFile();
+        if (unpacked) {
+            // Everything below this point is repeatable, so the 30 MB download and the unpacking
+            // are simply skipped: this is what makes "Continue set-up" continue.
+            status("Continuing set-up", "Ubuntu is already on the phone; carrying on from where "
+                    + "it stopped.", 38, true, false);
+        } else {
+            if (!archive.isFile() || !ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(sha256(archive))) {
+                if (archive.exists() && !archive.delete()) throw new IOException("Could not replace old Ubuntu download");
+                download(ContainerRuntime.UBUNTU_MIRRORS, archive, "Downloading Ubuntu");
+            }
+            status("Checking download", "Verifying that the Linux download is safe and complete…", 36, true, false);
+            String actual = sha256(archive);
+            if (!ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(actual)) {
+                archive.delete();
+                throw new IOException("Ubuntu checksum did not match. The download was removed for safety.");
+            }
+            if (root.exists()) ContainerRuntime.deleteTree(root);
+            status("Installing Linux files", "Saving Linux inside private app storage…", 40, true, false);
+            try (FileInputStream input = new FileInputStream(archive)) {
+                TarGzExtractor.extract(input, root, (count, name) -> {
+                    if (Thread.currentThread().isInterrupted()) return;
+                    if (count % 500 == 0) status("Installing Linux files", count + " files prepared", 45, true, false);
+                });
+            }
+            if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
+            preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "unpacked").apply();
         }
-        if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
 
         final long toolsStartedAt = System.currentTimeMillis();
         status("Setting up the desktop",
-                "The longest step · usually takes 10\u201325 min on mobile data", -1, true, false);
+                "The longest part · usually 15\u201340 min in total", -1, true, false);
         final long[] lastLine = {0L};
         int code = runTracked(ContainerRuntime.bootstrapCommand(), line -> {
             long now = System.currentTimeMillis();
             if (now - lastLine[0] < 900L) return;
             lastLine[0] = now;
             status("Setting up the desktop",
-                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 10\u201325 min",
+                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 15\u201340 min in total",
                     -1, true, false);
         });
-        if (code != 0) throw new IOException("Ubuntu package setup exited with code " + code + ". Check Wi-Fi and free storage, then retry.");
+        if (code != 0) {
+            String reason = ContainerRuntime.setupFailureReason(code);
+            throw new IOException(reason != null ? reason
+                    : "Set-up stopped while installing packages (code " + code + "). Check the "
+                    + "internet connection and free space, then tap Continue set-up — it carries "
+                    + "on from where it stopped.");
+        }
         ContainerRuntime.writeDesktopScripts(this);
-        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+        preferences.edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, true)
+                .remove(ContainerRuntime.KEY_SETUP_STAGE)
+                .remove(ContainerRuntime.KEY_SHARE_DOWNLOADS)
                 .remove(ContainerRuntime.KEY_PROOT_NO_SECCOMP).apply();
         archive.delete();
-        status("Linux is ready", "Your local desktop and coding tools are installed.", 100, false, false);
+        status("Linux is ready", "Your local desktop and developer tools are installed.", 100, false, false);
     }
 
     private void uninstallApp(String appId) throws Exception {
         LinuxApps.App app = LinuxApps.byId(appId);
         if (app == null) throw new IOException("Unknown app.");
-        if (!ContainerRuntime.isInstalled(this)) throw new IOException("Nothing to remove.");
+        if (!ContainerRuntime.isInstalled(this)) throw new IOException("Nothing to uninstall.");
+        if (!app.removable()) throw new IOException(app.name + " is part of the computer and stays.");
         final long startedAt = System.currentTimeMillis();
-        status("Removing " + app.name, "Freeing the space it used", -1, true, false);
+        status("Uninstalling " + app.name, "Freeing the space it used", -1, true, false);
         installingNow = true;
         int code;
         try {
@@ -371,11 +399,11 @@ public final class LinuxService extends Service {
             installingNow = false;
         }
         if (code != 0) {
-            throw new IOException(app.name + " could not be removed (exit " + code + ").");
+            throw new IOException(app.name + " could not be uninstalled (exit " + code + ").");
         }
         ContainerRuntime.refreshDesktopEntries(this);
         try { runInstall("/usr/local/bin/pocketdesk-menu || true", null); } catch (Exception ignored) {}
-        status(app.name + " was removed",
+        status(app.name + " was uninstalled",
                 "Its space is freed. Install it again any time from the Apps tab.", 100, false, false);
     }
 
@@ -408,8 +436,11 @@ public final class LinuxService extends Service {
             installingNow = false;
         }
         if (code != 0) {
-            throw new IOException(app.name + " did not install (exit " + code
-                    + "). Check the connection and free space, then try again.");
+            String reason = ContainerRuntime.setupFailureReason(code);
+            throw new IOException(reason != null ? reason
+                    : app.name + " did not finish installing (code " + code + "). Check the "
+                    + "internet connection and free space, then tap the row again — what was "
+                    + "already downloaded is kept.");
         }
         ContainerRuntime.refreshDesktopEntries(this);
         // Refresh the desktop's own menu, panel and icons so the new app is there at once --
@@ -467,8 +498,10 @@ public final class LinuxService extends Service {
             geometry = new int[]{geometry[1], geometry[0]};
         }
         int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
-        boolean shareDownloads = prefs.getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true);
-        String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads);
+        // Downloads live inside the computer, where no other app on the phone can read them.
+        // The Shared folder is the way out to the phone's own Files app, and Phone files is the
+        // way in; a toggle that quietly moved the folder about was one choice too many.
+        String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, false);
         geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
         // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
@@ -731,8 +764,8 @@ public final class LinuxService extends Service {
     }
 
     private void removeLinux() throws Exception {
-        if (isDesktopRunning()) throw new IOException("Stop the Linux computer before removing it.");
-        status("Removing Linux", "Deleting the Ubuntu system…", -1, true, false);
+        if (isDesktopRunning()) throw new IOException("Stop the Linux computer before deleting it.");
+        status("Deleting Linux", "Deleting the Ubuntu system…", -1, true, false);
         ContainerRuntime.deleteTree(ContainerRuntime.rootfs(this));
         File archive = ContainerRuntime.downloadFile(this);
         if (archive.exists()) archive.delete();
@@ -740,9 +773,11 @@ public final class LinuxService extends Service {
         if (part.exists()) part.delete();
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false)
+                // Nothing is part way any more: the next set-up starts from the beginning.
+                .remove(ContainerRuntime.KEY_SETUP_STAGE)
                 .remove(ContainerRuntime.KEY_PROOT_NO_SECCOMP)
                 .apply();
-        status("Linux removed", "The storage it was using is free again.", 100, false, false);
+        status("Linux deleted", "The storage it was using is free again.", 100, false, false);
     }
 
     private String sha256(File file) throws Exception {
@@ -867,6 +902,13 @@ public final class LinuxService extends Service {
     /** Human phase for a raw apt/dpkg/curl output line. */
     private static String phaseFor(String line) {
         String value = line == null ? "" : line.trim();
+        // The container's own step lines, so the phone can say what is happening rather than
+        // echoing package names at someone who did not ask for them.
+        if (value.startsWith("PocketDesk:")) {
+            if (value.contains("already done")) return "Skipping a part that is already installed";
+            if (value.contains("did not finish")) return "Connection hiccup · trying that part again";
+            if (value.contains("Chrome")) return "Installing Google Chrome";
+        }
         if (value.startsWith("Get:") || value.contains("Fetched")) return "Downloading packages";
         if (value.startsWith("Unpacking") || value.startsWith("Preparing to unpack")) return "Unpacking files";
         if (value.startsWith("Setting up") || value.startsWith("Processing triggers")) return "Finishing set-up";
