@@ -1,0 +1,83 @@
+name: pocketdesk
+
+# PocketDesk lives under pocketdesk/ and has its own Gradle-free build. CloudSaver's own
+# workflow ignores that folder; this one covers it: the test suites on every push, then the
+# release APK as a downloadable artifact.
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "pocketdesk/**"
+      - ".github/workflows/pocketdesk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketdesk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Run the seven suites
+        run: bash pocketdesk/tests/run-tests.sh
+
+  build:
+    name: Release APK
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Android platform 35 and build-tools 35.0.0
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+      # Optional: the same signing key every time. Add POCKETDESK_KEYSTORE_B64 (a base64 .jks
+      # with key alias "pocketdesk"), POCKETDESK_STORE_PASS and POCKETDESK_KEY_PASS as repository
+      # secrets. Without them the build signs with a key generated for this run only, and an APK
+      # signed that way cannot install over one signed with a different key.
+      - name: Signing key from secrets, when present
+        env:
+          KEYSTORE_B64: ${{ secrets.POCKETDESK_KEYSTORE_B64 }}
+          STORE_PASS: ${{ secrets.POCKETDESK_STORE_PASS }}
+          KEY_PASS: ${{ secrets.POCKETDESK_KEY_PASS }}
+        run: |
+          set -eu
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            mkdir -p pocketdesk/.signing
+            echo "$KEYSTORE_B64" | base64 -d > pocketdesk/.signing/ci.jks
+            echo "POCKETDESK_KEYSTORE=$PWD/pocketdesk/.signing/ci.jks" >> "$GITHUB_ENV"
+            echo "POCKETDESK_STORE_PASS=$STORE_PASS" >> "$GITHUB_ENV"
+            echo "POCKETDESK_KEY_PASS=${KEY_PASS:-$STORE_PASS}" >> "$GITHUB_ENV"
+            echo "Signing with the repository's keystore."
+          else
+            echo "No signing secrets: this run signs with a key generated for this run only."
+          fi
+      - name: Build
+        run: |
+          set -eu
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          cd pocketdesk && ./build.sh
+      - name: Checksum
+        run: sha256sum pocketdesk/build/PocketDesk-v*-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PocketDesk-apk
+          path: pocketdesk/build/PocketDesk-v*-release.apk
+          if-no-files-found: error

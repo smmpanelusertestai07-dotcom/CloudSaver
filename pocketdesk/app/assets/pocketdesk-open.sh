@@ -214,7 +214,7 @@ run_attempt() {
       fi
     fi
     if [ "$elapsed" -ge "$next_notice" ]; then
-      notify normal "$label is still loading" "This try: ${elapsed}s · still working · $(free_mb) MB free"
+      notify normal "$label is opening" "${elapsed} seconds so far. Please wait."
       case "$next_notice" in
         30) next_notice=60 ;; 60) next_notice=120 ;; 120) next_notice=240 ;;
         240) next_notice=420 ;; 420) next_notice=600 ;; *) next_notice=100000 ;;
@@ -383,7 +383,7 @@ record_end() {
   ran=$(( $(date +%s) - started_at ))
   echo "$(date '+%I:%M:%S %p') $label ended after ${ran}s · exit $end · $(free_mb) MB free" >> "$log"
   if [ "$end" = 137 ] || [ "$end" = 9 ]; then
-    notify critical "$label was closed by the phone" "Memory ran short. Keep one AI app open at a time and close the browser when you are done with it."
+    notify critical "$label was closed by the phone" "Memory ran short. Close the browser and any other app, then open $label again."
   fi
 }
 
@@ -419,28 +419,25 @@ append_own_log() {
 append_own_log
 
 case "$status" in
-  137) reason="Android stopped it, which on a phone nearly always means memory ran short" ;;
-  139) reason="it crashed" ;;
-  134) reason="it stopped itself with an error" ;;
-  *)   reason="exit code $status" ;;
+  137|9) reason="the phone closed it to free memory"
+         advice="Close the browser and any other app, then open $label again." ;;
+  139)   reason="it crashed while starting"
+         advice="Open $label again. If it keeps happening, tap $label on the Apps tab to update it." ;;
+  134)   reason="it stopped itself with an error"
+         advice="Open $label again. If it keeps happening, tap $label on the Apps tab to update it." ;;
+  *)     reason="it stopped with error $status"
+         advice="Open $label again. If it keeps happening, tap $label on the Apps tab to update it." ;;
 esac
-message="$label stopped right after opening: $reason.
+message="$label could not open: $reason.
 
-Free memory now: $(free_mb) MB
+$advice"
 
-$(grep -v '^ *$' "$log" | tail -n 8 | cut -c1-150)
-
-Full report: $log"
-
-notify critical "$label could not open" "$reason. The report is in .pocketdesk/logs."
+notify critical "$label could not open" "$reason. $advice"
 if command -v zenity >/dev/null 2>&1; then
-  # zenity reads its text as Pango markup, so anything the app printed has to be escaped.
+  # zenity reads its text as Pango markup, so the app's name has to be escaped.
   markup=$(printf '%s' "$message" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-  zenity --error --width=620 --title="$label" --text="$markup" >/dev/null 2>&1 &
+  zenity --error --width=420 --title="$label could not open" --text="$markup" >/dev/null 2>&1 &
 elif command -v xmessage >/dev/null 2>&1; then
   printf '%s\n' "$message" | xmessage -center -file - >/dev/null 2>&1 &
-elif command -v lxterminal >/dev/null 2>&1; then
-  lxterminal --title="$label could not open" \
-    -e sh -c "cat '$log'; echo; echo 'Press Enter to close'; read reply" >/dev/null 2>&1 &
 fi
 exit "$status"

@@ -49,7 +49,7 @@ Requires JDK 17 or newer and `zip`. The script creates a reusable local preview 
 `.signing/`. For a public release supply your own keystore through `POCKETDESK_KEYSTORE`,
 `POCKETDESK_STORE_PASS` and `POCKETDESK_KEY_PASS`, and never publish the private key.
 
-Run the static tests with `bash tests/run-tests.sh`.
+Run the static tests with `bash tests/run-tests.sh`. GitHub Actions runs the same suites and builds the release APK as an artifact on every push that touches `pocketdesk/` (`.github/workflows/pocketdesk.yml`); add `POCKETDESK_KEYSTORE_B64`, `POCKETDESK_STORE_PASS` and `POCKETDESK_KEY_PASS` as repository secrets to sign CI builds with one fixed key.
 
 ## Permissions
 

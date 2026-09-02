@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.15-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.

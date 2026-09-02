@@ -1,3 +1,19 @@
+# PocketDesk 10.0.15 — plain error messages, and CI
+
+- **When an app cannot open, the desktop now says so plainly.** One title ("ChatGPT could not
+  open"), one reason in ordinary words ("the phone closed it to free memory", "it crashed while
+  starting", "it stopped itself with an error", or the error number), and one line of what to
+  do. No log lines, no memory figures, no file paths. The other desktop toasts were shortened
+  the same way ("ChatGPT is opening · 60 seconds so far. Please wait.").
+- **CI for PocketDesk.** A GitHub Actions workflow (`.github/workflows/pocketdesk.yml`) runs
+  the seven test suites on every push that touches `pocketdesk/`, then builds the release APK
+  with the Android SDK and publishes it as a downloadable artifact. It signs with the
+  repository's key when the `POCKETDESK_KEYSTORE_B64` / `POCKETDESK_STORE_PASS` /
+  `POCKETDESK_KEY_PASS` secrets exist, otherwise with a key made for that run (such an APK
+  cannot install over one signed with a different key; the APKs delivered in this session
+  share one key).
+- Version 10.0.15 (code 115).
+
 # PocketDesk 10.0.5 — final check pass
 
 - An app install or removal started while the desktop is open now holds a wake lock for its
