@@ -1,3 +1,77 @@
+# PocketDesk 3.2.0 — the last update: every item of the final prompt, done
+
+The release that closes the list. The home screen is three tabs on a bottom bar, the desktop
+screen is one row of controls, and the reasons behind "the keyboard types elsewhere", "ChatGPT
+closed by itself", "text copies itself" and "the close button is off screen" were each found in
+the code and removed, not worked around.
+
+## What was actually wrong, and what changed
+
+- **Keyboard typed in the wrong place / dropped letters.** The viewer took focus on every touch,
+  so the phone keyboard was restarted against a bare fallback connection each time the desktop
+  was tapped. The viewer no longer takes focus. Keyboards that hold a word as "composing" text
+  (Gboard with suggestions, Samsung, SwiftKey) are now mirrored keystroke by keystroke, so what
+  Linux shows is what the keyboard shows. **Finger** (tap where you touch) is the default pointer
+  mode and is remembered; Ctrl, Alt and Super let go after the next key, like Shift on a phone.
+- **ChatGPT closed by itself.** The launcher looked for a window *classed* "chatgpt"; ChatGPT's
+  window is not, so a second tap on its icon saw "no window", called the running app a leftover
+  and ended it. Windows are now matched by the process that owns them (wmctrl lists every window
+  with its pid). A tap on an open app brings its window to the front and does nothing else.
+- **Text copied itself in touch mode.** The display server forwarded every X11 highlight (the
+  PRIMARY selection) to the phone as a copy, and Android 13 showed "Copied" each time. Started
+  with `-SendPrimary=0`: only a real copy reaches the phone.
+- **Desktop off screen in portrait, close button hidden.** The desktop was born landscape and the
+  viewer defaulted to Fill (crop) until the resize landed, cutting both edges — and the X with
+  them. Now: the desktop is born in the phone's current orientation, Fill mode is gone (the whole
+  desktop always fits; zoom in from there), and the close, minimise and maximise buttons sit at
+  the left edge of the title bar, where a maximised window always starts. The window rules are
+  rewritten on every start, so containers built by earlier versions get them too.
+- **Landscape would not scroll; Mouse mode could not drag.** Two fingers always scroll now (at the
+  fingers, several notches for a fast swipe, in the phone's direction); when zoomed in, the view
+  follows the arrow instead of pan stealing the gesture. Tap-then-press-and-move drags.
+- **App lock did nothing useful.** It covered the home screen only, with a two-minute grace. It
+  now covers the desktop too, shows a locked screen with an Unlock button (Cancel does not close
+  the app), falls back to the phone's PIN screen if the fingerprint prompt cannot run, re-arms
+  whenever the app leaves the foreground, and proves itself with one prompt when switched on.
+- **Slow.** PRoot's seccomp accelerator was switched off since 1.0.0; the desktop session now runs
+  with it (most of the difference between a desktop that lags and one that does not), and the
+  first start that fails without a display falls back permanently. Chromium apps skip animated
+  scrolling; the browser runs with no compositor, no WebGL and no smooth scrolling.
+- **Sign-in never came back to the app.** The table that tells the browser which app answers
+  `chatgpt://`, `codex://` and `claude://` links was never built. `desktop-file-utils` is installed,
+  the table is rebuilt from the installed packages on every start.
+
+## The home screen: three tabs
+- **Home** — the Linux computer's state (with when it last opened and, if it stopped by itself,
+  when and why), Open desktop, **Needs attention** (only while something is wrong, each row opens
+  the fix), **Mobile data today** (a meter, while a limit is set), Your phone with **Your phone is
+  compatible**, and **Privacy and your questions** with the answers opening under the question.
+- **Apps** — the four **AI desktop apps** (ChatGPT and Claude for everyday work, Cursor and
+  Antigravity for building software; the makers' own Linux apps, from the companies leading AI),
+  and **Anything else, from the browser**: what installs and what does not, short.
+- **Settings** — grouped: Appearance, Running, Data and files, Privacy and safety, Permissions,
+  Reports, Storage, with a footer saying nothing here deletes anything. A dot on the tab only for
+  what Settings can fix. **Why an app didn't open** stays, in Reports, until testing is finished.
+
+## The desktop screen: one bar
+Home · **Linux computer** (tap for details) · **Screen ▾** (Fit, Zoom in, Zoom out, Rotate,
+Full screen, move the controls to the top or the bottom) · **Finger/Mouse** (hand or arrow) ·
+**Keyboard** · **Keys** (shows the Esc/Tab/Ctrl/arrows row only when wanted) · **Window ▾**
+(Close, **Force close** for a stuck app, Switch, All windows, Minimise all, Paste from the phone).
+Zoom never goes below 100 %, because 100 % is already the whole desktop; − says so.
+
+## Also
+- Sizes in decimal, like Android's Settings; requirements from one set of constants, and the
+  tests check the app's minimum Android version against the build's.
+- Today's mobile data limit now also stops the running desktop, not only downloads.
+- A long-press shortcut on the app icon: **Open desktop** (the lock still asks first).
+- Windows reach the notch on Android 10–14; content stays a readable width on tablets; every
+  tappable thing is at least 48 dp.
+- Apps: `Close all` in the desktop menu ends a stuck app after three seconds; Super+F4 force-closes
+  the window in front.
+
+---
+
 # PocketDesk 3.1.0 — ChatGPT opens; the finishing release
 
 **ChatGPT's desktop app opens on the Realme C25s** — `window ready-to-show`, Codex CLI initialised,

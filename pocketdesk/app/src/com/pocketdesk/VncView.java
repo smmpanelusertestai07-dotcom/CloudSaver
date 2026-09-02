@@ -23,13 +23,13 @@ final class VncView extends View implements VncClient.Listener {
     interface StateListener { void state(String text, boolean connected); }
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    /** Guards the framebuffer between the network reader and the drawing pass. */
     /**
      * When the desktop was last touched or typed on. Smart auto-stop reads it: a session being
      * worked in should never be closed by a clock, and one nobody is using should not run on.
      */
     static volatile long lastInteractionAt;
 
+    /** Guards the framebuffer between the network reader and the drawing pass. */
     private final Object pixelLock = new Object();
     private final RectF spinnerBounds = new RectF();
     private float ringX, ringY;
@@ -52,25 +52,32 @@ final class VncView extends View implements VncClient.Listener {
     private boolean moved;
     private float twoFingerY;
     private float twoFingerX;
-    private String status = "Waiting for Linux desktop…";
+    private String status = "Waiting for the Linux computer…";
 
-    /** 1.0 means "as large as the screen allows"; above that the user has zoomed in. */
+    /** 1.0 means "the whole desktop fits the screen"; above that the user has zoomed in. */
     private float zoom = 1f;
     private float panX;
     private float panY;
-    /** Fill uses the whole screen and lets the edges be panned to; fit shows everything at once. */
-    private boolean fillMode = true;
     private boolean centreOnNextLayout = true;
     private ScaleGestureDetector zoomDetector;
     private ZoomListener zoomListener;
 
-    interface ZoomListener { void zoomChanged(int percent, boolean fill); }
+    // Mouse mode dragging: a tap followed at once by a press-and-move holds the left button,
+    // the way every laptop touchpad does it. Windows can be moved and text selected on purpose.
+    private long lastTapAt = -10_000L;
+    private boolean dragArmed;
+    private boolean dragging;
+
+    interface ZoomListener { void zoomChanged(int percent); }
 
     VncView(Context context) {
         super(context);
-        setFocusable(true);
-        setFocusableInTouchMode(true);
-        setContentDescription("Local Linux desktop");
+        // Not focusable by touch: the phone keyboard types into a hidden field, and a view that
+        // took focus on every tap restarted the keyboard against a bare fallback connection --
+        // letters were dropped and the keyboard went full-screen in landscape.
+        setFocusable(false);
+        setFocusableInTouchMode(false);
+        setContentDescription("Linux computer");
         setBackgroundColor(Color.BLACK);
         overlayPaint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
         overlayPaint.setTextAlign(Paint.Align.CENTER);
@@ -96,24 +103,24 @@ final class VncView extends View implements VncClient.Listener {
         notifyZoom();
     }
 
-    void zoomBy(float factor) {
+    /** Zooms around the middle of the screen. Returns false when already at the limit. */
+    boolean zoomBy(float factor) {
         float previous = zoom;
         zoom = clampZoom(zoom * factor);
+        if (zoom == previous) return false;
         float ratio = zoom / previous;
         panX = getWidth() / 2f - (getWidth() / 2f - panX) * ratio;
         panY = getHeight() / 2f - (getHeight() / 2f - panY) * ratio;
         notifyZoom();
         invalidate();
+        return true;
     }
 
-    void setFillMode(boolean fill) {
-        fillMode = fill;
-        resetView();
-    }
+    int zoomPercent() { return Math.round(zoom * 100); }
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        // A rotation changes what "fills the screen" means: back to 100 % (which, with the
+        // A rotation changes what "fits the screen" means: back to 100 % (which, with the
         // desktop matched to the view, is exactly "fits the screen") and re-centred, rather
         // than keeping a zoom or pan that was right for the other orientation.
         zoom = 1f;
@@ -184,8 +191,7 @@ final class VncView extends View implements VncClient.Listener {
 
     private static final long MAX_DESKTOP_PIXELS = 2_300_000L;
 
-    boolean isFillMode() { return fillMode; }
-
+    /** Back to 100 %: the whole desktop on screen, centred. */
     void resetView() {
         zoom = 1f;
         centreOnNextLayout = true;
@@ -194,40 +200,24 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     private void notifyZoom() {
-        if (zoomListener != null) zoomListener.zoomChanged(Math.round(zoom * 100), fillMode);
-    }
-
-    private float clampZoom(float value) {
-        return Math.max(minZoom(), Math.min(value, 6f));
+        if (zoomListener != null) zoomListener.zoomChanged(Math.round(zoom * 100));
     }
 
     /**
-     * How far out the view may zoom. Never above the point where the whole desktop is visible,
-     * and never above 1 -- once the desktop matches the screen, fit and fill are the same size
-     * and a floor of 1 would leave the minus button doing nothing.
+     * Never below 1: at 100 % the whole desktop is already on screen (the desktop is kept the
+     * size of the screen, and when it cannot be, it is letterboxed rather than cropped), so
+     * there is nothing smaller to show. Fill-and-crop was removed: it hid the right-hand edge
+     * of every window, close button included, in portrait.
      */
-    private float minZoom() {
-        Bitmap current = bitmap;
-        if (current == null || getWidth() == 0 || getHeight() == 0) return ZOOM_FLOOR;
-        float fit = Math.min(getWidth() / (float) current.getWidth(),
-                getHeight() / (float) current.getHeight());
-        float base = fillMode
-                ? Math.max(getWidth() / (float) current.getWidth(),
-                           getHeight() / (float) current.getHeight())
-                : fit;
-        if (base <= 0) return ZOOM_FLOOR;
-        return Math.max(ZOOM_FLOOR, Math.min(1f, fit / base));
+    private float clampZoom(float value) {
+        return Math.max(1f, Math.min(value, 6f));
     }
 
-    private static final float ZOOM_FLOOR = 0.4f;
-
-    /** Recomputes where the framebuffer lands on screen for the current zoom, pan and mode. */
+    /** Recomputes where the framebuffer lands on screen for the current zoom and pan. */
     private void layoutDestination(Bitmap current) {
         float fit = Math.min(getWidth() / (float) current.getWidth(),
                 getHeight() / (float) current.getHeight());
-        float fill = Math.max(getWidth() / (float) current.getWidth(),
-                getHeight() / (float) current.getHeight());
-        float scale = (fillMode ? fill : fit) * zoom;
+        float scale = fit * zoom;
         float shownWidth = current.getWidth() * scale;
         float shownHeight = current.getHeight() * scale;
 
@@ -308,7 +298,7 @@ final class VncView extends View implements VncClient.Listener {
         overlayPaint.setColor(Color.argb(220, 0, 0, 0));
         canvas.drawPath(pointerPath, overlayPaint);
         overlayPaint.setStyle(Paint.Style.FILL);
-        overlayPaint.setColor(Color.WHITE);
+        overlayPaint.setColor(dragging ? Color.rgb(160, 190, 255) : Color.WHITE);
         canvas.drawPath(pointerPath, overlayPaint);
     }
 
@@ -321,23 +311,47 @@ final class VncView extends View implements VncClient.Listener {
         int action = event.getActionMasked();
 
         if (event.getPointerCount() >= 2) {
+            // A second finger ends any one-finger gesture: nothing is held or dragged.
+            if (dragging) {
+                dragging = false;
+                active.sendPointer(pointerX, pointerY, 0);
+            }
+            dragArmed = false;
+            moved = true;
             if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
                 twoFingerX = averageX(event);
                 twoFingerY = averageY(event);
+                // Scroll the window under the fingers, as a phone does: X sends the wheel to
+                // whatever is under the pointer, so the pointer goes there first.
+                pointerX = mapX(twoFingerX, active.getWidth());
+                pointerY = mapY(twoFingerY, active.getHeight());
+                active.sendPointer(pointerX, pointerY, 0);
             } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
                 float x = averageX(event);
                 float y = averageY(event);
-                if (zoomedIn()) {
+                // Two fingers always scroll in Mouse mode -- the arrow is what moves the view
+                // when zoomed in. In Finger mode one finger already scrolls, so two fingers
+                // pan a zoomed-in picture instead.
+                if (pointerMode == PointerMode.DIRECT && zoomedIn()) {
                     panX += x - twoFingerX;
                     panY += y - twoFingerY;
                     twoFingerX = x;
                     twoFingerY = y;
                     invalidate();
-                } else if (Math.abs(y - twoFingerY) > Ui.dp(getContext(), 14)) {
-                    int mask = y - twoFingerY < 0 ? 8 : 16;
-                    active.sendPointer(pointerX, pointerY, mask);
-                    active.sendPointer(pointerX, pointerY, 0);
-                    twoFingerY = y;
+                } else {
+                    // Fingers up, content up: wheel down. Several notches for a fast swipe.
+                    int notch = Ui.dp(getContext(), 16);
+                    float dy = y - twoFingerY;
+                    float dx = x - twoFingerX;
+                    if (Math.abs(dy) >= Math.abs(dx)) {
+                        while (dy <= -notch) { wheel(active, 16); twoFingerY -= notch; dy += notch; }
+                        while (dy >= notch) { wheel(active, 8); twoFingerY += notch; dy -= notch; }
+                        if (Math.abs(dy) < notch) twoFingerX = x;
+                    } else {
+                        while (dx <= -notch) { wheel(active, 64); twoFingerX -= notch; dx += notch; }
+                        while (dx >= notch) { wheel(active, 32); twoFingerX += notch; dx -= notch; }
+                        twoFingerY = y;
+                    }
                 }
             }
             return true;
@@ -346,35 +360,74 @@ final class VncView extends View implements VncClient.Listener {
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-                requestFocus();
                 downX = lastX = event.getX();
                 downY = lastY = event.getY();
                 downAt = System.currentTimeMillis();
                 moved = false;
+                dragging = false;
+                dragArmed = downAt - lastTapAt < 300L;
                 return true;
-            case MotionEvent.ACTION_MOVE:
+            case MotionEvent.ACTION_MOVE: {
                 float dx = event.getX() - lastX;
                 float dy = event.getY() - lastY;
                 if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY) > Ui.dp(getContext(), 8)) moved = true;
+                if (moved && dragArmed && !dragging) {
+                    dragging = true;
+                    active.sendPointer(pointerX, pointerY, 1);
+                }
                 pointerX = clamp(pointerX + Math.round(dx * 1.35f), 0, active.getWidth() - 1);
                 pointerY = clamp(pointerY + Math.round(dy * 1.35f), 0, active.getHeight() - 1);
-                active.sendPointer(pointerX, pointerY, 0);
+                active.sendPointer(pointerX, pointerY, dragging ? 1 : 0);
                 lastX = event.getX();
                 lastY = event.getY();
+                followPointer();
                 invalidate();
                 return true;
+            }
             case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
                 long duration = System.currentTimeMillis() - downAt;
-                if (!moved) {
+                if (dragging) {
+                    dragging = false;
+                    active.sendPointer(pointerX, pointerY, 0);
+                    invalidate();
+                } else if (!moved && action == MotionEvent.ACTION_UP) {
                     int button = duration >= 550 ? 4 : 1;
                     active.sendPointer(pointerX, pointerY, button);
                     active.sendPointer(pointerX, pointerY, 0);
+                    lastTapAt = button == 1 ? System.currentTimeMillis() : -10_000L;
                     performClick();
                 }
+                dragArmed = false;
                 return true;
+            }
             default:
                 return true;
         }
+    }
+
+    /** One wheel click, in the direction the mask names (8 up, 16 down, 32 left, 64 right). */
+    private void wheel(VncClient active, int mask) {
+        active.sendPointer(pointerX, pointerY, mask);
+        active.sendPointer(pointerX, pointerY, 0);
+    }
+
+    /**
+     * Mouse mode, zoomed in: the picture slides so the arrow never leaves the screen. Without
+     * this the arrow ran off the visible part and there was no way to scroll after it.
+     */
+    private void followPointer() {
+        Bitmap current = bitmap;
+        if (current == null || !zoomedIn()) return;
+        float scale = destination.width() / current.getWidth();
+        float x = destination.left + pointerX * scale;
+        float y = destination.top + pointerY * scale;
+        float margin = Ui.dp(getContext(), 40);
+        if (x < margin) panX += margin - x;
+        else if (x > getWidth() - margin) panX -= x - (getWidth() - margin);
+        float bottom = getHeight() - keyboardInset;
+        if (y < margin) panY += margin - y;
+        else if (y > bottom - margin) panY -= y - (bottom - margin);
     }
 
     @Override public boolean onGenericMotionEvent(MotionEvent event) {
@@ -386,7 +439,6 @@ final class VncView extends View implements VncClient.Listener {
         VncClient active = client;
         Bitmap current = bitmap;
         if (active == null || current == null) return true;
-        requestFocus();
 
         float relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
         float relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
@@ -409,6 +461,7 @@ final class VncView extends View implements VncClient.Listener {
         } else {
             active.sendPointer(pointerX, pointerY, buttons);
         }
+        followPointer();
         invalidate();
         return true;
     }
@@ -448,7 +501,6 @@ final class VncView extends View implements VncClient.Listener {
     private boolean directTouch(MotionEvent event, int action, VncClient active) {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
-                requestFocus();
                 downX = lastX = event.getX();
                 downY = lastY = event.getY();
                 downAt = System.currentTimeMillis();
@@ -468,14 +520,12 @@ final class VncView extends View implements VncClient.Listener {
                 float travelled = event.getY() - lastY;
                 int notch = Ui.dp(getContext(), 16);
                 while (travelled <= -notch) {
-                    active.sendPointer(pointerX, pointerY, 16);
-                    active.sendPointer(pointerX, pointerY, 0);
+                    wheel(active, 16);
                     lastY -= notch;
                     travelled += notch;
                 }
                 while (travelled >= notch) {
-                    active.sendPointer(pointerX, pointerY, 8);
-                    active.sendPointer(pointerX, pointerY, 0);
+                    wheel(active, 8);
                     lastY += notch;
                     travelled -= notch;
                 }
@@ -515,7 +565,7 @@ final class VncView extends View implements VncClient.Listener {
             centreOnNextLayout = true;
             status = "Connected";
             matchDesktopToScreen();
-            if (stateListener != null) stateListener.state(width + "×" + height, true);
+            if (stateListener != null) stateListener.state("Linux computer", true);
             invalidate();
         });
     }
@@ -528,9 +578,15 @@ final class VncView extends View implements VncClient.Listener {
             pointerY = Math.min(pointerY, height - 1);
             VncClient active = client;
             if (active != null) active.sendPointer(pointerX, pointerY, 0);
-            if (stateListener != null) stateListener.state(width + "×" + height, true);
+            if (stateListener != null) stateListener.state("Linux computer", true);
             invalidate();
         });
+    }
+
+    /** The desktop's current size in pixels, for the details the status label opens. */
+    String desktopSize() {
+        Bitmap current = bitmap;
+        return current == null ? "not connected yet" : current.getWidth() + " × " + current.getHeight();
     }
 
     @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
@@ -550,11 +606,20 @@ final class VncView extends View implements VncClient.Listener {
         postInvalidate();
     }
 
+    /**
+     * Text the Linux side copied. Only a real copy arrives here now (the display server no
+     * longer forwards every highlighted word), so the phone's "Copied" bubble appears when
+     * something was actually copied and not whenever text was selected.
+     */
+    private String lastClip;
+
     @Override public void onClipboard(String text) {
+        if (text == null || text.isEmpty() || text.equals(lastClip)) return;
+        lastClip = text;
         main.post(() -> {
             android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
                     getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux desktop", text));
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux computer", text));
         });
     }
 
@@ -657,12 +722,7 @@ final class VncView extends View implements VncClient.Listener {
         return clamp(Math.round((viewY - destination.top) * remoteHeight / destination.height()), 0, remoteHeight - 1);
     }
 
-    /** True once the picture is larger than the screen, so dragging it has somewhere to go. */
-    private boolean canPan() {
-        return destination.width() > getWidth() + 1f || destination.height() > getHeight() + 1f;
-    }
-
-    /** Clearly zoomed in, not merely a few pixels over: only then do two fingers pan. */
+    /** Clearly zoomed in, not merely a few pixels over: only then is there anywhere to pan. */
     private boolean zoomedIn() {
         return destination.width() > getWidth() * 1.15f || destination.height() > getHeight() * 1.15f;
     }

@@ -151,19 +151,23 @@ final class DeviceProbe {
         return false;
     }
 
+    /**
+     * Decimal units, like Android's own Settings screen: a phone that says 12.4 GB free there
+     * says 12.4 GB free here, and "4 GB needed" means the same 4 GB in both places.
+     */
     static String formatBytes(long bytes) {
         if (bytes < 0) return "Unknown";
-        if (bytes >= 1073741824L) return String.format(Locale.ROOT, "%.1f GB", bytes / 1073741824.0);
-        if (bytes >= 1048576L) return String.format(Locale.ROOT, "%.0f MB", bytes / 1048576.0);
-        if (bytes >= 1024L) return String.format(Locale.ROOT, "%.0f KB", bytes / 1024.0);
+        if (bytes >= 1_000_000_000L) return String.format(Locale.ROOT, "%.1f GB", bytes / 1e9);
+        if (bytes >= 1_000_000L) return String.format(Locale.ROOT, "%.0f MB", bytes / 1e6);
+        if (bytes >= 1_000L) return String.format(Locale.ROOT, "%.0f KB", bytes / 1e3);
         return bytes + " B";
     }
 
     /** Human transfer rate, e.g. "1.4 MB/s". */
     static String formatRate(long bytesPerSecond) {
         if (bytesPerSecond <= 0) return "";
-        if (bytesPerSecond >= 1048576L) return String.format(Locale.ROOT, "%.1f MB/s", bytesPerSecond / 1048576.0);
-        return String.format(Locale.ROOT, "%.0f KB/s", bytesPerSecond / 1024.0);
+        if (bytesPerSecond >= 1_000_000L) return String.format(Locale.ROOT, "%.1f MB/s", bytesPerSecond / 1e6);
+        return String.format(Locale.ROOT, "%.0f KB/s", bytesPerSecond / 1e3);
     }
 
     /** Remaining time in plain words, e.g. "about 4 min left". */

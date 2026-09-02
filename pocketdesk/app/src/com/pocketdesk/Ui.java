@@ -16,8 +16,25 @@ import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
 
-/** Single source of truth for colours, spacing and the reusable rows of the app. */
+/**
+ * Single source of truth for colours, spacing and the reusable rows of the app.
+ *
+ * Vocabulary, named once and used everywhere: the machine is "the Linux computer"; what it
+ * shows is "the desktop"; the system on it is "Ubuntu 24.04"; the device in hand is "your
+ * phone"; the four AI programs are "AI desktop apps". Calling one thing by four names on one
+ * screen ("Linux", "the desktop", "your Linux screen", "the container") is how an app reads as
+ * unfinished, so no screen invents a fifth.
+ */
 final class Ui {
+    /**
+     * The widest any page of the home screen gets. Every phone is narrower than this in either
+     * orientation, so on a phone it does nothing; on a tablet or a foldable opened flat the
+     * content centres itself instead of running a line of text across the whole glass.
+     */
+    static final int CONTENT_MAX_WIDTH_DP = 600;
+    /** Nothing tappable is smaller than this: a constraint about fingers, not looks. */
+    static final int TOUCH_TARGET_DP = 48;
+
     // Light surfaces
     static final int LIGHT_BG = Color.rgb(244, 246, 251);
     static final int LIGHT_CARD = Color.WHITE;
@@ -320,6 +337,75 @@ final class Ui {
             control.setChecked(checked);
             addView(control);
             setOnClickListener(v -> control.toggle());
+        }
+    }
+
+    /** A small heading over a group of settings rows: "Appearance", "Data and files". */
+    static TextView groupLabel(Context context, String label, boolean dark) {
+        TextView view = title(context, label, 13f, muted(dark));
+        view.setPadding(dp(context, 4), dp(context, 10), dp(context, 4), dp(context, 6));
+        view.setLetterSpacing(0.02f);
+        return view;
+    }
+
+    /**
+     * One tab of the bottom bar: icon over a short label, a pill behind the icon when it is
+     * the current tab, and a small dot when something on that tab needs attention.
+     */
+    static final class NavItem extends LinearLayout {
+        private final ImageView icon;
+        private final TextView label;
+        private final View dot;
+        private final boolean dark;
+        private final int iconRes;
+
+        NavItem(Context context, int iconRes, String text, boolean dark) {
+            super(context);
+            this.dark = dark;
+            this.iconRes = iconRes;
+            setOrientation(VERTICAL);
+            setGravity(Gravity.CENTER);
+            setMinimumHeight(dp(context, TOUCH_TARGET_DP));
+            setPadding(0, dp(context, 8), 0, dp(context, 8));
+            setClickable(true);
+            setFocusable(true);
+            setBackground(tappable(context, background(Color.TRANSPARENT, 16, context), dark));
+            setContentDescription(text);
+
+            android.widget.FrameLayout pill = new android.widget.FrameLayout(context);
+            icon = Ui.icon(context, iconRes, muted(dark), 24);
+            android.widget.FrameLayout.LayoutParams iconLp = new android.widget.FrameLayout.LayoutParams(
+                    dp(context, 24), dp(context, 24), Gravity.CENTER);
+            pill.addView(icon, iconLp);
+            dot = new View(context);
+            dot.setBackground(background(DANGER, 99, context));
+            dot.setVisibility(GONE);
+            android.widget.FrameLayout.LayoutParams dotLp = new android.widget.FrameLayout.LayoutParams(
+                    dp(context, 8), dp(context, 8), Gravity.TOP | Gravity.END);
+            dotLp.topMargin = dp(context, 4);
+            dotLp.rightMargin = dp(context, 10);
+            pill.addView(dot, dotLp);
+            addView(pill, new LayoutParams(dp(context, 64), dp(context, 32)));
+
+            label = title(context, text, 12f, muted(dark));
+            label.setMaxLines(1);
+            label.setGravity(Gravity.CENTER);
+            LayoutParams labelLp = new LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT);
+            labelLp.topMargin = dp(context, 4);
+            addView(label, labelLp);
+            setActive(false);
+        }
+
+        void setActive(boolean active) {
+            View pill = (View) icon.getParent();
+            pill.setBackground(active ? background(tint(accent(dark), dark), 16, getContext()) : null);
+            icon.setImageTintList(ColorStateList.valueOf(active ? accent(dark) : muted(dark)));
+            label.setTextColor(active ? text(dark) : muted(dark));
+            setSelected(active);
+        }
+
+        void setDot(boolean visible) {
+            dot.setVisibility(visible ? VISIBLE : GONE);
         }
     }
 

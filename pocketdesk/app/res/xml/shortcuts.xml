@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: straight to the desktop. The route goes through MainActivity so
+     the app lock still asks first. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_desktop"
+        android:enabled="true"
+        android:icon="@drawable/ic_desktop"
+        android:shortcutShortLabel="@string/shortcut_open_desktop"
+        android:shortcutLongLabel="@string/shortcut_open_desktop_long">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.pocketdesk"
+            android:targetClass="com.pocketdesk.MainActivity">
+            <extra android:name="com.pocketdesk.route" android:value="desktop" />
+        </intent>
+    </shortcut>
+</shortcuts>

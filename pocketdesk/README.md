@@ -12,19 +12,22 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | --- | --- |
 | Linux | Ubuntu 24.04.4 LTS ARM64, SHA-256 verified, running under PRoot |
 | Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, dunst notifications, TigerVNC |
-| Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`. The framebuffer matches the phone's own screen, so landscape is a sharp 1:1 fill; pinch, `+`/`−`, Fill/Fit and Full screen control the view |
-| Input | Touchpad and direct-touch modes, left/right click, two-finger scroll, USB and Bluetooth mouse, hardware keyboard, on-screen coding key row, Android clipboard bridge |
+| Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`. The desktop is born in the phone's orientation and kept the size of the screen, so the whole desktop always fits at 100 %; pinch or Screen → Zoom to look closer, Fit to come back, Full screen to hide the controls |
+| Controls | One bar, top or bottom: Home · status · Screen ▾ · Finger/Mouse · Keyboard · Keys (Esc, Tab, Ctrl, Alt, Super, arrows, on demand) · Window ▾ (Close, Force close, Switch, All windows, Minimise all, Paste) |
+| Input | Finger mode (tap where you touch, swipe to scroll, hold to right-click) and Mouse mode (drag the arrow, two fingers scroll, tap-then-drag), USB and Bluetooth mouse, hardware keyboard, composing-aware phone keyboard, Android clipboard bridge |
 | Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt` — install anything else yourself |
 | Browser | GNOME Web (Epiphany) is installed by default because it opens in a second or two; Firefox is a one-tap extra. Downloads land in `~/Downloads` inside Linux |
 | Apps | One-tap installs of the makers' own official Linux builds: ChatGPT (with Codex), Claude Desktop (with Claude Code), Cursor and Antigravity. Install once; the same row updates in place |
-| Data and privacy | Daily mobile-data limit with midnight reset; Downloads visible to the phone or kept inside Linux; optional app lock using the phone's fingerprint or PIN; everything local |
-| Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
+| Data and privacy | Daily mobile-data limit with midnight reset (stops downloads and the desktop); Downloads visible to the phone or kept inside Linux; app lock covering the whole app with the phone's fingerprint or PIN; everything local, Android cloud backup off |
+| Home screen | Three tabs on a bottom bar: Home (state, Needs attention, mobile data meter, Your phone is compatible, the questions), Apps, Settings (grouped; a dot only for what Settings can fix) |
+| Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, recognises an already-open app by the process that owns its window and brings it to the front, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
+| Sign-in | The browser hands `chatgpt://`, `codex://` and `claude://` links back to the app that asked (`desktop-file-utils` + a mimeapps table rebuilt on every start) |
 
 ## Device requirements
 
-- Android 10 (API 29) and every version after it, on any brand of phone with an ARM64 processor — checked live on the home screen
+- Android 10 (API 29) and every version after it, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
 - 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
-- At least 4 GB free storage before setup; the finished system uses 1.5–3 GB
+- At least 4 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 1.5–3 GB
 - Reference device: Realme C25s, Android 13, 4 GB RAM
 
 ## Build
@@ -69,9 +72,10 @@ The app is tuned so daily multi-hour use does not damage the phone.
 
 | Guard | Behaviour | Configurable |
 | --- | --- | --- |
-| Desktop resolution | Your screen's size, capped at a 1600 px long side, 24-bit | No |
-| Desktop text size | DPI-based, so type grows without the picture blurring | Yes (Normal / Large / Extra large) |
-| Auto-stop timer | Default 4 hours; 1/2/4/6 hours or Off | Yes |
+| Desktop resolution | Your screen's size in the current orientation, capped at a 1600 px long side, 24-bit; resized live on rotation | No |
+| Desktop text size | DPI-based, so type grows without the picture blurring | Yes (Compact / Normal / Large) |
+| Stopping by itself | Smart (default): 25 minutes untouched, battery under 15 % off the charger, dangerous heat, or today's mobile data limit reached; or 1/2/4/6 hours; or Never. The home screen says when and why it last stopped | Yes |
+| Speed | The desktop session runs with PRoot's seccomp accelerator; a first start that dies without a display falls back permanently to the plain mode | No |
 | Temperature | Warns at 45 °C battery or Android `SEVERE` thermal state; stops only at 49 °C or `CRITICAL` | Yes (Overheat protection) |
 | Low battery | Stops at 3% when not charging; ignored while plugged in | Yes |
 | Entry check | Setup needs 10% battery, opening the desktop needs 4% — both skipped while charging | No |

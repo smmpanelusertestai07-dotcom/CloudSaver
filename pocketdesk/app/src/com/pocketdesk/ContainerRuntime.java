@@ -150,6 +150,15 @@ final class ContainerRuntime {
     }
 
     static Process startContainer(Context context, String command) throws IOException {
+        return startContainer(context, command, false);
+    }
+
+    /**
+     * @param accelerated run with PRoot's seccomp accelerator. Used for the desktop session,
+     *                    where speed is what the owner feels; installs keep the plain, slower,
+     *                    always-works mode because a failed install costs a 700 MB download.
+     */
+    static Process startContainer(Context context, String command, boolean accelerated) throws IOException {
         File root = rootfs(context);
         File nativeDirectory = new File(context.getApplicationInfo().nativeLibraryDir);
         File proot = new File(nativeDirectory, "libproot.so");
@@ -202,7 +211,7 @@ final class ContainerRuntime {
         builder.redirectErrorStream(true);
         builder.environment().put("PROOT_TMP_DIR", new File(context.getFilesDir(), "usr/tmp").getAbsolutePath());
         builder.environment().put("PROOT_LOADER", new File(nativeDirectory, "libproot-loader.so").getAbsolutePath());
-        builder.environment().put("PROOT_NO_SECCOMP", "1");
+        if (!accelerated) builder.environment().put("PROOT_NO_SECCOMP", "1");
         builder.environment().put("PROOT_NO_MOUNTINFO", "1");
         builder.environment().put("LD_LIBRARY_PATH", nativeDirectory.getAbsolutePath());
         return builder.start();
@@ -242,6 +251,9 @@ final class ContainerRuntime {
                 + "librsvg2-common "
                 // Window controls the desktop offers: minimise all, close all, list what is open.
                 + "wmctrl xdotool "
+                // Builds the table a browser reads to hand a sign-in link (chatgpt://, claude://)
+                // back to the app that asked for it. Without it the login never completes.
+                + "desktop-file-utils "
                 // On-screen toasts and dialogs: an app that fails to start has to be able to say so.
                 + "dunst libnotify-bin zenity xdotool; "
                 // A desktop clock is only useful in the user's own time.
@@ -308,6 +320,25 @@ final class ContainerRuntime {
 
     static final String KEY_SHARE_DOWNLOADS = "share_downloads";
     static final String KEY_APP_LOCK = "app_lock";
+    /** Set when the app lock switched itself off because the phone's own lock was removed. */
+    static final String KEY_LOCK_NOTICE = "app_lock_notice";
+    /** "finger" (tap where you touch, the phone way) or "mouse" (an arrow you drag). */
+    static final String KEY_POINTER_MODE = "pointer_mode";
+    /** Where the desktop screen's control bar sits: "top" or "bottom". */
+    static final String KEY_CONTROLS_AT = "controls_at";
+    /** Whether the row of special keys is shown under the control bar. */
+    static final String KEY_KEY_ROW = "key_row";
+    /** When and why the Linux computer last stopped by itself, so the home screen can say. */
+    static final String KEY_LAST_STOP_AT = "last_stop_at";
+    static final String KEY_LAST_STOP_REASON = "last_stop_reason";
+    static final String KEY_LAST_OPENED_AT = "last_opened_at";
+    /**
+     * PRoot's seccomp accelerator cuts the ptrace stops per system call by a large factor,
+     * which is most of the difference between a desktop that lags and one that does not. A
+     * few Android kernels cannot run it; the first desktop start that dies without a display
+     * sets this and the next start runs without it, permanently.
+     */
+    static final String KEY_PROOT_NO_SECCOMP = "proot_no_seccomp";
 
     static String startDesktopCommand(int width, int height, int dpi) {
         return startDesktopCommand(width, height, dpi, true);
@@ -324,6 +355,18 @@ final class ContainerRuntime {
                 + "for gid in $(id -G 2>/dev/null); do "
                 + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
                 + "chown -R coder:coder /home/coder 2>/dev/null || true; "
+                // The browser on a phone with no graphics driver: hardware acceleration
+                // never (the compositor path stalled for seconds per page here) and a blank
+                // start page (the thumbnail page was the "Page Unresponsive"). Only keys that
+                // exist in GNOME Web 45's schema: an unknown key is ignored with a warning.
+                + "mkdir -p /usr/share/glib-2.0/schemas; "
+                + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n"
+                + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n' "
+                + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
+                + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
+                // The table of which app answers which link scheme, rebuilt from what is
+                // installed now, so a sign-in that opens in the browser finds its way back.
+                + "command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database /usr/share/applications >/dev/null 2>&1; "
                 + "export POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0) + "; "
                 + "exec su - coder -c 'POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0)
                 + " /usr/local/bin/pocketdesk-desktop "
@@ -332,40 +375,6 @@ final class ContainerRuntime {
 
     private static int even(int value) {
         return value - (value % 2);
-    }
-
-    private static String desktopScript() {
-        return "#!/bin/bash\n"
-                + "set -u\n"
-                + "GEOMETRY=${1:-1280x720}\n"
-                + "DPI=${2:-160}\n"
-                + "export HOME=/home/coder USER=coder LOGNAME=coder DISPLAY=:1 LANG=C.UTF-8\n"
-                + "cd \"$HOME\"\n"
-                + "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1\n"
-                // A real DPI is what makes text large without blurring it: the desktop renders at
-                // the phone's own pixel count, and only the type and controls grow.
-                + "printf 'Xft.dpi: %s\\nXft.antialias: true\\nXft.hinting: true\\n"
-                + "Xft.hintstyle: hintslight\\nXft.rgba: rgb\\n' \"$DPI\" > \"$HOME/.Xresources\"\n"
-                + "mkdir -p \"$HOME/.config/gtk-3.0\" \"$HOME/.config/lxterminal\" \"$HOME/.config/tint2\"\n"
-                + "printf '[Settings]\\ngtk-font-name=Sans 11\\ngtk-application-prefer-dark-theme=1\\n"
-                + "gtk-xft-dpi=%s\\n' \"$((DPI * 1024))\" > \"$HOME/.config/gtk-3.0/settings.ini\"\n"
-                + "printf '[general]\\nfontname=Monospace 12\\nscrollback=4000\\n"
-                + "bgcolor=rgb(23,26,38)\\nfgcolor=rgb(226,232,245)\\ngeometry_columns=100\\n"
-                + "geometry_rows=28\\nhidescrollbar=false\\n' > \"$HOME/.config/lxterminal/lxterminal.conf\"\n"
-                + "printf 'panel_items = LTSC\\npanel_size = 100%% 44\\ntaskbar_name = 0\\n"
-                + "task_font = Sans 11\\nclock_font_line1 = Sans 11\\nlauncher_icon_size = 28\\n"
-                + "task_maximum_size = 220 40\\n' > \"$HOME/.config/tint2/tint2rc\"\n"
-                + "/usr/bin/Xtigervnc :1 -rfbport 5901 -localhost yes -SecurityTypes None -ac -AlwaysShared "
-                + "-geometry \"$GEOMETRY\" -depth 24 -dpi \"$DPI\" -desktop 'PocketDesk' &\n"
-                + "VNC_PID=$!\n"
-                + "for n in 1 2 3 4 5 6 7 8; do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.5; done\n"
-                + "xrdb -merge \"$HOME/.Xresources\" >/dev/null 2>&1 || true\n"
-                + "eval \"$(dbus-launch --sh-syntax)\"\n"
-                + "openbox-session >/tmp/pocketdesk-openbox.log 2>&1 &\n"
-                + "tint2 >/tmp/pocketdesk-tint2.log 2>&1 &\n"
-                + "pcmanfm --desktop --profile LXDE >/tmp/pocketdesk-pcmanfm.log 2>&1 &\n"
-                + "lxterminal >/tmp/pocketdesk-terminal.log 2>&1 &\n"
-                + "wait \"$VNC_PID\"\n";
     }
 
     private static void writeExecutable(File file, String value) throws IOException, ErrnoException {

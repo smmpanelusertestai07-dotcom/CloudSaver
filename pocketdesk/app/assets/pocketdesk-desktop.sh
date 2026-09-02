@@ -73,28 +73,11 @@ printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.pn
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
 
-# Start from Openbox's own defaults, then enlarge the fonts and open every window maximised --
-# on a phone-sized screen a floating half-size window is wasted space.
-if [ ! -f "$HOME/.config/openbox/rc.xml" ] && [ -f /etc/xdg/openbox/rc.xml ]; then
-  cp /etc/xdg/openbox/rc.xml "$HOME/.config/openbox/rc.xml"
-  sed -i 's|<size>[0-9]*</size>|<size>11</size>|g' "$HOME/.config/openbox/rc.xml"
-  sed -i 's|<applications>|<applications>\n    <application class="*"><maximized>yes</maximized><decor>yes</decor></application>|' \
-    "$HOME/.config/openbox/rc.xml"
-  # Close, minimise and maximise on every window. Electron apps draw their own title bar on a
-  # desktop; on a phone that leaves no way to close them, which is how one kept coming back.
-  sed -i 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>NLIMC</titleLayout>|' \
-    "$HOME/.config/openbox/rc.xml"
-fi
+# The window manager's settings are written by pocketdesk-menu, which runs below on every
+# start: a container set up by an older version gets the current window rules too.
 
-# Whichever browser is installed becomes the one that links and downloads open in.
-BROWSER_ENTRY=""
-for candidate in org.gnome.Epiphany.desktop firefox.desktop; do
-  [ -f "/usr/share/applications/$candidate" ] && { BROWSER_ENTRY=$candidate; break; }
-done
-if [ -n "$BROWSER_ENTRY" ]; then
-  printf '[Default Applications]\nx-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
-    "$BROWSER_ENTRY" "$BROWSER_ENTRY" "$BROWSER_ENTRY" > "$HOME/.config/mimeapps.list"
-fi
+# Which app opens links, and which app a browser sign-in comes back to, is written by
+# pocketdesk-menu below from the packages that are really installed.
 
 # Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
 printf '[global]\nfont = Sans 10\nframe_width = 1\nframe_color = "#2b3563"\ncorner_radius = 10\noffset = 12x56\norigin = top-right\ntimeout = 6\nmax_icon_size = 40\n\n[urgency_low]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_normal]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\ntimeout = 0\n' \
@@ -128,8 +111,12 @@ fi
 
 /usr/local/bin/pocketdesk-menu || true
 
+# SendPrimary off: X11 treats any highlighted text as a selection, and the display server was
+# forwarding every one of them to the phone as a copy -- so the phone showed "Copied" whenever
+# a word was selected, and its clipboard was overwritten. Only a real copy (Ctrl+C, or the
+# menu) reaches the phone now.
 /usr/bin/Xtigervnc :1 -rfbport 5901 -localhost yes -SecurityTypes None -ac -AlwaysShared \
-  -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' &
+  -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' &
 VNC_PID=$!
 for n in 1 2 3 4 5 6 7 8; do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.5; done
 

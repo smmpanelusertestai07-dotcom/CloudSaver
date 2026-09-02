@@ -5,7 +5,7 @@
 # than the exception -- which makes "show me what is open" and "close everything" ordinary
 # things to want, not power-user extras.
 #
-# Usage: pocketdesk-windows list|minimise-all|close-all|count
+# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|count
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
@@ -48,6 +48,22 @@ EOF
     done <<EOF
 $(open_windows)
 EOF
+    # A hung app ignores the polite request. Whatever is still open after a moment is ended
+    # outright, so "Close all" always ends with nothing open.
+    sleep 3
+    while read -r id _; do
+      [ -n "$id" ] || continue
+      command -v xdotool >/dev/null 2>&1 && xdotool windowkill "$id" 2>/dev/null || true
+    done <<EOF
+$(open_windows)
+EOF
+    ;;
+  kill-active)
+    # Force close: the window in front is ended without asking it, for an app that has stopped
+    # answering. Bound to Super+F4 in Openbox and to Force close on the phone's toolbar.
+    command -v xdotool >/dev/null 2>&1 || exit 0
+    id=$(xdotool getactivewindow 2>/dev/null) || exit 0
+    [ -n "$id" ] && xdotool windowkill "$id" 2>/dev/null || true
     ;;
   list|*)
     rows=""

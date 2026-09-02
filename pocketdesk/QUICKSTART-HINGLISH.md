@@ -2,116 +2,83 @@
 
 ## 1. Install karo
 
-1. Purana **NexaDesk / NexaDock** app pehle uninstall karo. Package badal gaya hai, isliye
-   Android ise naya app maanta hai.
-2. `PocketDesk-1.0.0-arm64.apk` open karo → *Install* → agar "unknown apps" ka prompt aaye to
-   allow karo.
-3. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
+1. `PocketDesk-3.2.0.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
+3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
 
-## 2. Pehli baar setup
+## 2. Home tab: pehli baar setup
 
-1. App kholo. Upar 4 tiles dikhenge: **Network, Battery, Free space, Temperature**.
-2. Free space kam se kam **4 GB** hona chahiye.
-3. **Install Linux** dabao → confirm karo.
-4. Ab Ubuntu download hoga. Progress me MB, speed aur time dikhega, jaise
-   `142 MB of 289 MB · 1.4 MB/s · about 2 min left`.
-5. Uske baad desktop packages install honge — yeh sabse lamba step hai (10–30 min, net speed pe
-   depend karta hai). Beech me net kat jaye to app wahi se resume karta hai.
-6. Mobile data by default allowed hai. Sirf Wi-Fi chahiye to Settings me **Download on Wi-Fi only**
-   on kar do.
+1. App kholo. Neeche 3 tabs: **Home · Apps · Settings**.
+2. Upar 4 tiles: **Network, Battery, Free space, Temperature**. Neeche *Your phone* card me
+   **Your phone is compatible** likha hona chahiye — nahi to tap karke dekho kya kam hai.
+3. **Set up Linux** dabao → confirm karo. Ubuntu download hoga (30 MB), phir desktop packages
+   (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
+4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix khulta hai.
 
-## 3. Desktop chalao
+## 3. Apps tab: AI desktop apps
 
-- **Open desktop** dabao. Ubuntu ka Openbox desktop full screen me khulega.
-- Toolbar me:
-  - back icon — home screen pe wapas
-  - **Touchpad / Direct touch** — pointer ka tarika badlo
-  - keyboard icon — phone ka keyboard kholo
-  - **Paste** — Android clipboard ko Linux me bhejo
-- Neeche coding key row hai: Esc, Tab, Ctrl, Alt, Super, arrows, Enter, Backspace, Delete.
-- USB ya Bluetooth mouse aur keyboard laga sakte ho — dono seedha kaam karte hain.
-- Right click: touchpad mode me two-finger tap, ya mouse ka right button.
+- **ChatGPT** (Codex ke saath), **Claude Desktop** (Claude Code ke saath), **Cursor**, **Antigravity**.
+  ChatGPT aur Claude roz ke sawaal, likhna, kaam ke liye; Cursor aur Antigravity software banane ke liye.
+- Chaaron **maker ke apne official Linux desktop app** hain — web page nahi, command line nahi.
+  Row tap → install. Ek baar install; naye features apne aap; row dubara tap = update, login waise ka waisa.
+- Ek waqt me **ek hi AI app** kholo — 4 GB RAM wale phone pe do saath me memory kha jate hain.
+- Koi aur Linux app chahiye to desktop ke browser se khud install kar sakte ho — *Anything else,
+  from the browser* card me likha hai kya chalega (arm64 .deb, aarch64 AppImage) aur kya nahi (amd64, snap, .exe, .apk).
 
-## 4. ChatGPT / Codex (optional)
+### Sign in kaise hoga
+- **ChatGPT:** email daalo. Account Google se bana hai to Google ka sign-in page khulega — normal hai, wahi complete karo. Browser apne aap app me wapas bhej deta hai.
+- **Claude:** email daalo. Anthropic mail me code ya link bhejta hai. Phone ke Gmail me mail kholo — code aaya to seedha app me daalo; link aaya to link kholo, jo page khule usme code milega, wo app me daalo.
+- Ek baar sign in kaafi hai — stop/restart/update ke baad bhi signed in rehta hai.
 
-1. Home screen pe **ChatGPT** row dabao.
-2. OpenAI ka official Linux ARM64 package install hoga, jisme **Codex** bhi aata hai.
-3. Iske liye ~4 GB free space chahiye (700 MB download, 1.3 GB installed). 4 GB RAM wale phone pe
-   yeh slow chalega — sach yahi hai.
-4. Install ke baad desktop kholo aur **ChatGPT** icon ek baar dabao. Upar right me
-   "Opening ChatGPT…" ka message aayega — pehli baar ek minute tak lag sakta hai.
-5. Login aur usage limit OpenAI ke account ka hai, app iska control nahi karta.
-6. **Computer Use** feature Linux pe available nahi hai — yeh OpenAI ki taraf se hai, app ki kami
-   nahi.
+## 4. Open desktop: Linux computer ki screen
 
-## 4a. Koi app na khule to
+Upar (ya neeche, tumhari marzi) **ek hi bar**:
 
-Home screen pe **"Why an app didn't open"** row tap karo — usme ChatGPT ki apni log bhi hoti hai. Share button se seedha bhej sakte ho.
-
-### Purana tareeka
-
-Har app `pocketdesk-open` ke through chalta hai. Agar app band ho jaye to screen pe wajah dikhegi,
-aur poori report yaha milegi:
-
-```
-/home/coder/.pocketdesk/logs/<app>.log
-```
-
-Files app me `.pocketdesk` folder kholo (hidden files on karke) ya terminal me
-`cat ~/.pocketdesk/logs/chatgpt.log`.
-
-## 4b. Browser aur downloads
-
-- Default browser **Web (GNOME Web)** hai — 1-2 second me khulta hai.
-- Firefox chahiye to app list me uska apna row hai (khulne me time lagta hai, isliye default nahi).
-- Browser se jo bhi download karoge wo Linux ke andar yaha jata hai:
-
-```
-/home/coder/Downloads
-```
-
-Desktop pe right click → **Downloads** se seedha khul jayega. `.deb` file ko terminal me
-`sudo apt-get install -y ~/Downloads/naam.deb` se install kar sakte ho.
-
-## 4c. Install ek baar, update ek tap
-
-- **Dobara install kabhi nahi.** ChatGPT, Claude, Cursor, Antigravity ek baar add karo, bas.
-- **Naye features apne aap aate hain** — ChatGPT aur Claude apne maker ki live service load karte hain, jaise phone app. Naya model, naya tool — kuch karna nahi padta.
-- **App ka program** update karna ho to uski row pe tap — wahi tap update hai. ChatGPT OpenAI ka official update channel register karta hai, Claude Anthropic ka; login aur settings waise ke waise rehte hain.
-- Ye forced nahi hota — 700 MB mobile data pe bina pooche nahi utarta.
-- **Ye sab official Linux builds hain** — OpenAI, Anthropic, Cursor, Google chaaron Linux ke liye khud ship karte hain. Isliye ye app future-proof hai: jab tak wo Linux ke liye banate hain, yahan chalta hai.
-
-## 5. Settings
-
-| Option | Kya karta hai |
+| Button | Kya karta hai |
 | --- | --- |
-| Appearance | Match phone / Light / Dark |
-| Screen rotation | Automatic / Portrait / Landscape |
-| Auto-stop timer | Off / 1 / 2 / 4 / 6 ghante — default 4 |
-| Download on Wi-Fi only | Off = mobile data allowed |
-| Overheat protection | Garam hone pe Linux band kar deta hai |
+| Home | PocketDesk home pe wapas (computer chalta rehta hai) |
+| **Linux computer** | status; tap karo to details |
+| **Screen ▾** | Fit (poora desktop), Zoom in/out, Rotate, Full screen, controls upar/neeche |
+| **Finger / Mouse** | Finger = jahan chhuo wahi click, swipe = scroll, hold = right-click. Mouse = arrow ghumao, tap = click, do ungli = scroll, tap-then-drag = drag |
+| **Keyboard** | phone ka keyboard |
+| **Keys** | Esc, Tab, Ctrl, Alt, Super, arrows, Enter, Del, Home, End, PgUp, PgDn ki row on/off |
+| **Window ▾** | Close, **Force close** (atka hua app), Switch, All windows, Minimise all, Paste from phone |
 
-## 6. Permissions card
+- Zoom 100 % se neeche nahi jata — 100 % matlab poora desktop pehle se screen pe hai.
+- Full screen me sirf ek **Controls** chip bachta hai; use kahin bhi drag karo, tap karo to bar wapas.
+- Desktop ke andar har window ka close/minimise/maximise **left** side title bar me hai, taki portrait me bhi hamesha dikhe.
+- Copy sirf Ctrl+C se hota hai; sirf text select karne se phone pe "Copied" nahi aayega.
 
-- **Notifications** — progress aur Stop button dikhane ke liye
-- **Battery usage** — "Unrestricted" kar do, warna Android lambi session band kar deta hai
-- **Auto-start** — Realme/ColorOS ki auto-start list kholta hai
-- **App info** — Android ka poora app page
+## 5. Settings tab
 
-## 7. Phone health
+| Group | Options |
+| --- | --- |
+| Appearance | Theme (Match phone / Light / Dark), Screen rotation, Desktop text size (Compact / Normal / Large) |
+| Running | When to stop by itself (Smart · recommended / 1–6 hours / Never), Overheat protection |
+| Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only, Downloads visible to the phone |
+| Privacy and safety | App lock — fingerprint/PIN, home aur desktop dono screen pe; on karte waqt ek baar pooch ke confirm karta hai |
+| Permissions | Notifications, Battery usage (Unrestricted karo), Auto-start, App info |
+| Reports | **Why an app didn't open** (app ki log, Share button), Last error report |
+| Storage | Linux computer kitna space le raha hai, **Remove the Linux computer and free space** |
 
-- 45 °C pe warning, 49 °C pe Linux apne aap band.
-- 3% battery pe band (charging me nahi).
-- Resolution 1280×720 fixed hai — isse RAM, data aur garmi teeno kam rehti hai.
-- Roz 3 ghante use karne ke liye 4 ghante ka default timer theek hai.
+Settings badalne se kabhi kuch delete nahi hota.
 
-## 8. Space wapas chahiye?
+## 6. Computer apne aap kab band hota hai
 
-*Your phone* card me **Remove Linux and free space** dabao. Shared folder ki files delete nahi hoti.
+- Smart mode: 25 min tak kuch na chhuo, battery 15 % se neeche (charger ke bina), phone bahut garam, ya aaj ka mobile data limit khatam.
+- Band hone pe kuch nahi jata — apps signed in rehte hain, files wahin. Home pe likha aata hai kab aur kyun band hua.
+- Apne aap restart kabhi nahi hota — tum **Open desktop** dabate ho.
+- Bina net ke computer chalta hai (desktop, files, browser ke saved pages); AI apps ko net chahiye.
+
+## 7. Files kahan jati hain
+
+- Kaam: `/home/coder/Projects` (computer ke andar).
+- Downloads: `/home/coder/Downloads`. **Downloads visible to the phone** on ho (default) to phone ke Files app me `Android/data/com.pocketdesk/files/Shared/Downloads` me bhi dikhta hai; off ho to sirf computer ke andar.
+- Uninstall karne se poora computer delete ho jata hai — pehle Downloads me copy kar lo.
 
 ## Kya kaam nahi karega
 
 - Windows ya macOS — yeh Linux container hai, hardware VM nahi.
 - Docker, KVM, kernel modules — Android ka kernel share hota hai.
-- amd64-only software — sirf ARM64 chalega.
-- ChatGPT ka Computer Use — Linux pe OpenAI deta hi nahi.
+- amd64-only software, snap, flatpak — sirf ARM64 .deb / AppImage chalega.
+- ChatGPT ka Computer Use, Claude ka Cowork — Linux/phone pe maker deta hi nahi.

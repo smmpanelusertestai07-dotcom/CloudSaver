@@ -36,6 +36,13 @@ java -cp "$OUT" com.pocketdesk.LinuxAppsTest
 
 bash "$PROJECT_DIR/tests/desktop-scripts-test.sh"
 
+# The Android version the app says it supports must be the one the APK is built for.
+build_min=$(grep -o -- '--min-sdk-version [0-9]*' "$PROJECT_DIR/build.sh" | head -n 1 | awk '{print $2}')
+code_min=$(grep -o 'MIN_SDK = [0-9]*' "$PROJECT_DIR/app/src/com/pocketdesk/DeviceCheck.java" | awk '{print $3}')
+[ -n "$build_min" ] && [ "$build_min" = "$code_min" ] \
+  || { echo "FAIL MinSdkAgreement: build.sh says '$build_min', DeviceCheck says '$code_min'"; exit 1; }
+echo "PASS MinSdkAgreement (Android API $build_min)"
+
 # The desktop scripts ship as assets and only ever run on the phone, so lint them here.
 for script in "$PROJECT_DIR"/app/assets/*.sh; do
   bash -n "$script" || { echo "FAIL shell syntax: $script"; exit 1; }

@@ -12,6 +12,10 @@
         <item name="android:windowSplashScreenBackground">#102B6B</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_foreground_art</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#102B6B</item>
+        <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
+             landscape and paint a black band down one side; both screens pad for the cutout
+             themselves. Android 15 made this the default. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 
@@ -25,6 +29,10 @@
         <item name="android:windowSplashScreenBackground">#102B6B</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_foreground_art</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#102B6B</item>
+        <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
+             landscape and paint a black band down one side; both screens pad for the cutout
+             themselves. Android 15 made this the default. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowNoTitle">true</item>
     </style>
 </resources>

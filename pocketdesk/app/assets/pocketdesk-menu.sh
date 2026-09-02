@@ -13,6 +13,7 @@ OPENBOX_DIR="$HOME_DIR/.config/openbox"
 TINT2_DIR="$HOME_DIR/.config/tint2"
 DESKTOP_DIR="$HOME_DIR/Desktop"
 LOCAL_APPS="$HOME_DIR/.local/share/applications"
+APPLICATIONS_DIR=/usr/share/applications
 OPEN=/usr/local/bin/pocketdesk-open
 mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
          "$HOME_DIR/Projects" "$HOME_DIR/Downloads"
@@ -47,7 +48,7 @@ xml_escape() {
 }
 
 entries() {
-  for desktop in /usr/share/applications/*.desktop; do
+  for desktop in "$APPLICATIONS_DIR"/*.desktop; do
     [ -f "$desktop" ] || continue
     is_visible "$desktop" || continue
     exec_line=$(field "$desktop" Exec)
@@ -63,7 +64,8 @@ entries() {
 
 # A copy of the package's own entry with the launch command routed through pocketdesk-open.
 # DBusActivatable would let a file manager start the app behind our back, and extra action groups
-# would start it unwrapped, so both go.
+# would start it unwrapped, so both go. %U stays on the end: that is how a sign-in link handed
+# to the app by the browser reaches it (the launcher passes it on to the running instance).
 # "Web" says nothing and "File Manager PCManFM" does not fit under an icon on a phone.
 short_name() {   # short_name <base> <name>
   case "$1" in
@@ -87,7 +89,7 @@ write_entry() {   # write_entry <source> <target> <label> <command>
   awk -v cmd="$4" -v label="$3" -v icon="$icon_override" '
     /^\[/ { group++ }
     group > 1 { next }
-    /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd; next }
+    /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd " %U"; next }
     /^Name=/ { print "Name=" label; next }
     /^Icon=/ && icon != "" { print "Icon=" icon; next }
     /^Name\[/ { next }
@@ -208,8 +210,64 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="$HOME/Downloads"\n' \
   > "$HOME_DIR/.config/user-dirs.dirs"
 
+# ---- Which app answers which kind of link -------------------------------------------
+# http and https go to the browser. A sign-in that opens in the browser comes back to the app
+# that asked for it through the app's own link scheme (chatgpt://, claude://, cursor://...),
+# which each package declares in its .desktop file; those are copied here so the browser can
+# find them. Without this table the login page said "done" and the app never heard.
+BROWSER_ENTRY=""
+for candidate in org.gnome.Epiphany.desktop firefox.desktop; do
+  [ -f "$APPLICATIONS_DIR/$candidate" ] && { BROWSER_ENTRY=$candidate; break; }
+done
+{
+  echo '[Default Applications]'
+  if [ -n "$BROWSER_ENTRY" ]; then
+    printf 'x-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
+      "$BROWSER_ENTRY" "$BROWSER_ENTRY" "$BROWSER_ENTRY"
+  fi
+  for desktop in "$APPLICATIONS_DIR"/*.desktop; do
+    [ -f "$desktop" ] || continue
+    mime=$(field "$desktop" MimeType)
+    [ -n "$mime" ] || continue
+    handler=$(basename "$desktop")
+    # The wrapped copy, when there is one, so the link arrives with the sandbox flags too.
+    [ -f "$LOCAL_APPS/pocketdesk-$handler" ] && handler="pocketdesk-$handler"
+    printf '%s' "$mime" | tr ';' '\n' | grep '^x-scheme-handler/' | while read -r scheme; do
+      case "$scheme" in x-scheme-handler/http|x-scheme-handler/https) continue ;; esac
+      printf '%s=%s\n' "$scheme" "$handler"
+    done
+  done
+} > "$HOME_DIR/.config/mimeapps.list"
+if command -v update-desktop-database >/dev/null 2>&1 && [ -w "$APPLICATIONS_DIR" ]; then
+  update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+fi
+
+# ---- Window manager: Openbox's defaults, adjusted for a phone-sized screen ------------
+# Rewritten on every run, so a container built by an earlier version gets these rules too
+# (it used to be written once and never touched again, which is why old installs kept
+# floating half-size windows).
+#   - every normal window opens maximised: a floating window is wasted space on a phone;
+#   - a title bar on every window, Electron apps included, or there is no way to close them;
+#   - the close, minimise and maximise buttons sit at the LEFT edge of the title bar. A
+#     maximised window always starts at the left edge of the screen, so those buttons are
+#     always on screen -- at the right edge they vanished whenever an app's smallest allowed
+#     width was wider than a portrait phone screen;
+#   - two keys the phone's toolbar sends: Super+F4 force-closes the window in front (for an
+#     app that stopped answering), Super+Tab lists the open windows. Alt+F4 and Alt+Tab are
+#     Openbox's own defaults and stay.
+OPENBOX_DEFAULT=${POCKETDESK_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
+if [ -f "$OPENBOX_DEFAULT" ]; then
+  sed -e 's|<size>[0-9]*</size>|<size>11</size>|g' \
+      -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>CIMNL</titleLayout>|' \
+      -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></keybind>|' \
+      "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
+    && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
+fi
+
 chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
-  "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/Projects" "$HOME_DIR/Downloads" 2>/dev/null || true
+  "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \
+  "$HOME_DIR/Projects" "$HOME_DIR/Downloads" 2>/dev/null || true
 
 if [ -S /tmp/.X11-unix/X1 ]; then
   DISPLAY=:1 openbox --reconfigure 2>/dev/null || true

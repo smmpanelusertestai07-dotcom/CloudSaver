@@ -75,12 +75,24 @@ public final class LinuxService extends Service {
             if (minutes == ContainerRuntime.SESSION_SMART) {
                 String reason = smartStopReason();
                 if (reason != null) {
-                    status("Linux stopped by itself", reason, 100, false, false);
+                    status("The Linux computer stopped by itself", reason, 100, false, false);
+                    recordStop(reason);
                     stopEverything(false);
                     return;
                 }
             } else if (minutes > 0 && elapsed >= minutes * 60_000L) {
-                status("Session timer reached", "Linux was stopped after " + minutes + " minutes.", 100, false, false);
+                String reason = "The " + minutes + "-minute timer chosen in Settings ran out. Nothing was lost.";
+                status("The Linux computer stopped by itself", reason, 100, false, false);
+                recordStop(reason);
+                stopEverything(false);
+                return;
+            }
+            if (DataBudget.exhausted(LinuxService.this)) {
+                String reason = "Today's mobile data limit is used up, so the Linux computer was "
+                        + "stopped to stay within it. Open it again on Wi-Fi, after midnight, or "
+                        + "with a higher limit in Settings.";
+                status("The Linux computer stopped by itself", reason, 100, false, false);
+                recordStop(reason);
                 stopEverything(false);
                 return;
             }
@@ -90,10 +102,11 @@ public final class LinuxService extends Service {
                 // genuinely hot battery, so ordinary warm-phone coding is never interrupted.
                 if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
                         || probe.batteryTempC >= STOP_TEMPERATURE_C) {
-                    status("Stopped to cool down",
-                            String.format(Locale.ROOT, "The phone reached %.0f°C. Linux was closed to protect the battery.",
-                                    probe.batteryTempC),
-                            -1, false, true);
+                    String reason = String.format(Locale.ROOT,
+                            "The phone reached %.0f°C, so the Linux computer was closed to protect the battery. "
+                                    + "Let it cool for a few minutes, then open it again.", probe.batteryTempC);
+                    status("Stopped to cool down", reason, -1, false, true);
+                    recordStop(reason);
                     stopEverything(false);
                     return;
                 }
@@ -103,7 +116,9 @@ public final class LinuxService extends Service {
                 }
                 if (probe.batteryPercent >= 0 && probe.batteryPercent <= 3
                         && !DeviceProbe.isCharging(LinuxService.this)) {
-                    status("Stopped at 3% battery", "Charge the phone, then open the desktop again.", -1, false, true);
+                    String reason = "Battery reached 3%. Charge the phone, then open the desktop again.";
+                    status("Stopped at 3% battery", reason, -1, false, true);
+                    recordStop(reason);
                     stopEverything(false);
                     return;
                 }
@@ -132,6 +147,18 @@ public final class LinuxService extends Service {
                     + "desktop again.";
         }
         return null;
+    }
+
+    /**
+     * Why the Linux computer stopped, kept for the home screen. A stop the owner asked for
+     * records nothing; a stop Android forced records nothing either, so a stale reason is
+     * never shown for a later, different stop (the home screen checks the timestamps).
+     */
+    private void recordStop(String reason) {
+        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+                .putLong(ContainerRuntime.KEY_LAST_STOP_AT, System.currentTimeMillis())
+                .putString(ContainerRuntime.KEY_LAST_STOP_REASON, reason)
+                .apply();
     }
 
     /** The last time anything was typed or tapped on the desktop, or when it opened. */
@@ -299,28 +326,81 @@ public final class LinuxService extends Service {
     }
 
     private void startDesktop() throws Exception {
-        if (!ContainerRuntime.isInstalled(this)) throw new IOException("Install Linux first.");
+        if (!ContainerRuntime.isInstalled(this)) throw new IOException("Set up the Linux computer first.");
         preflight(false, 4);
         ContainerRuntime.installRuntime(this);
         // Refresh the desktop scripts and every installed app's launcher on each start, so a
         // container set up by an older version picks up the current desktop without reinstalling.
         ContainerRuntime.writeDesktopScripts(this);
-        status("Opening desktop", "Starting your local Linux screen…", -1, true, false);
+        status("Opening the desktop", "Starting your Linux computer…", -1, true, false);
+        SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis())
+                .remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
-        int dpi = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
-                .getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
-        boolean shareDownloads = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
-                .getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true);
-        activeProcess = ContainerRuntime.startContainer(this,
-                ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads));
-        sessionStartedAt = System.currentTimeMillis();
+        // The desktop is born the way the phone is held. It used to start landscape whatever
+        // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
+        // a cropped sideways one in the meantime.
+        if (getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
+            geometry = new int[]{geometry[1], geometry[0]};
+        }
+        int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        boolean shareDownloads = prefs.getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true);
+        String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads);
 
+        boolean accelerated = !prefs.getBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, false);
+        for (int attempt = 0; ; attempt++) {
+            activeProcess = ContainerRuntime.startContainer(this, command, accelerated);
+            sessionStartedAt = System.currentTimeMillis();
+            recordOutput(activeProcess);
+            // Fifteen seconds was never enough: this phone takes half a minute to put the
+            // display up, so the wait expired, the session was killed, and the home screen
+            // reported a failure for a desktop that was only slow. Wait as long as the viewer
+            // does, and say how it is going.
+            boolean ready = false;
+            for (int i = 0; i < 600 && activeProcess.isAlive(); i++) {
+                if (VncClient.canConnect("127.0.0.1", 5901, 250)) { ready = true; break; }
+                if (i > 0 && i % 20 == 0) {
+                    status("Opening the desktop", "Starting the display… " + (i / 4) + "s", -1, true, false);
+                }
+                Thread.sleep(250);
+            }
+            if (ready) break;
+            int exit = activeProcess.isAlive() ? -1 : activeProcess.exitValue();
+            activeProcess.destroyForcibly();
+            activeProcess = null;
+            // A process that died before the display came up, in accelerated mode, on the
+            // first try: this kernel may not run PRoot's accelerator. Once more without it,
+            // and remember the answer.
+            if (accelerated && exit >= 0 && attempt == 0) {
+                prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
+                accelerated = false;
+                status("Opening the desktop", "Starting again in compatibility mode…", -1, true, false);
+                continue;
+            }
+            throw new IOException("The display did not start" + (exit >= 0 ? " (exit " + exit + ")" : "")
+                    + ". Open the desktop again; if it repeats, run Setup once more.");
+        }
+        desktopRunning = true;
+        BUSY.set(false);
+        releaseWakeLock();
+        status("The Linux computer is running",
+                "Desktop " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
+        updateNotification("The Linux computer is running", "Tap to return · phone protection is active", 100);
+        handler.removeCallbacks(safetyMonitor);
+        handler.postDelayed(safetyMonitor, 30_000L);
+
+        int exitCode = activeProcess.waitFor();
+        activeProcess = null;
+        desktopRunning = false;
+        handler.removeCallbacks(safetyMonitor);
+        status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
+    }
+
+    /** The display server narrates as it works; it goes to a file, not the notification. */
+    private void recordOutput(Process process) {
         Thread output = new Thread(() -> {
-            Process process = activeProcess;
             if (process == null) return;
-            // The display server narrates as it works -- "ComparingUpdateTracker", xkbcomp
-            // notes -- and none of it means anything outside a terminal. It goes to a file for
-            // debugging; the notification keeps saying something a person can read.
             File sessionLog = new File(ContainerRuntime.rootfs(this),
                     "home/coder/.pocketdesk/logs/desktop-session.log");
             File parent = sessionLog.getParentFile();
@@ -335,38 +415,6 @@ public final class LinuxService extends Service {
         }, "pocketdesk-linux-output");
         output.setDaemon(true);
         output.start();
-
-        // Fifteen seconds was never enough: this phone takes half a minute to put the display up,
-        // so the wait expired, the session was killed, and the home screen reported a failure for
-        // a desktop that was only slow. Wait as long as the viewer does, and say how it is going.
-        boolean ready = false;
-        for (int i = 0; i < 600 && activeProcess.isAlive(); i++) {
-            if (VncClient.canConnect("127.0.0.1", 5901, 250)) { ready = true; break; }
-            if (i > 0 && i % 20 == 0) {
-                status("Opening desktop", "Starting the display… " + (i / 4) + "s", -1, true, false);
-            }
-            Thread.sleep(250);
-        }
-        if (!ready) {
-            int exit = activeProcess.isAlive() ? -1 : activeProcess.exitValue();
-            activeProcess.destroyForcibly();
-            activeProcess = null;
-            throw new IOException("Desktop display did not start" + (exit >= 0 ? " (exit " + exit + ")" : "") + ". Try setup again if the issue repeats.");
-        }
-        desktopRunning = true;
-        BUSY.set(false);
-        releaseWakeLock();
-        status("Desktop is running",
-                "Local display · " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
-        updateNotification("Desktop is running", "Tap to return · phone protection is active", 100);
-        handler.removeCallbacks(safetyMonitor);
-        handler.postDelayed(safetyMonitor, 30_000L);
-
-        int exitCode = activeProcess.waitFor();
-        activeProcess = null;
-        desktopRunning = false;
-        handler.removeCallbacks(safetyMonitor);
-        status("Desktop stopped", "The Linux session ended safely.", 100, false, false);
     }
 
     private int runTracked(String command, ContainerRuntime.OutputListener listener)
@@ -402,18 +450,19 @@ public final class LinuxService extends Service {
                 || probe.batteryTempC >= STOP_TEMPERATURE_C) {
             throw new IOException("The phone is too hot right now. Let it cool for a few minutes.");
         }
+        // The daily limit is a limit on everything: a desktop on mobile data uses data too.
+        if (DataBudget.exhausted(this)) {
+            int cap = DataBudget.capMb(getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE));
+            throw new IOException("Today's mobile data limit (" + DeviceProbe.formatBytes(cap * 1_000_000L)
+                    + ") is used up. Connect to Wi-Fi, raise the limit in Settings, or wait "
+                    + "for midnight when it resets.");
+        }
         if (download) {
             if (!DeviceProbe.hasInternet(this)) throw new IOException("Connect to the internet first.");
             boolean wifiOnly = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
                     .getBoolean(ContainerRuntime.KEY_WIFI_ONLY, false);
-            if (DataBudget.exhausted(this)) {
-                int cap = DataBudget.capMb(getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE));
-                throw new IOException("Today's mobile data limit (" + DeviceProbe.formatBytes(cap * 1024L * 1024L)
-                        + ") is used up. Connect to Wi-Fi, raise the limit in Settings, or wait "
-                        + "for midnight when it resets.");
-            }
             if (wifiOnly && !DeviceProbe.isWifi(this)) {
-                throw new IOException("Wi-Fi-only download is enabled. Connect to Wi-Fi or change Phone care settings.");
+                throw new IOException("Wi-Fi-only download is enabled. Connect to Wi-Fi, or turn it off in Settings.");
             }
         }
     }
@@ -523,7 +572,7 @@ public final class LinuxService extends Service {
     }
 
     private void removeLinux() throws Exception {
-        if (isDesktopRunning()) throw new IOException("Stop the desktop before removing Linux.");
+        if (isDesktopRunning()) throw new IOException("Stop the Linux computer before removing it.");
         status("Removing Linux", "Deleting the Ubuntu system…", -1, true, false);
         ContainerRuntime.deleteTree(ContainerRuntime.rootfs(this));
         File archive = ContainerRuntime.downloadFile(this);
@@ -563,7 +612,7 @@ public final class LinuxService extends Service {
         desktopRunning = false;
         BUSY.set(false);
         releaseWakeLock();
-        if (userRequested) status("Linux stopped", "PocketDesk ended the local processes safely.", 100, false, false);
+        if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }

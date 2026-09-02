@@ -62,6 +62,8 @@ base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             --disable-features=SpareRendererForSitePerProcess,IsolateOrigins,site-per-process
             # Chromium's own switch for machines like this one: smaller caches, fewer threads.
             --enable-low-end-device-mode
+            # Every animated scroll frame is drawn on the CPU here; jump instead.
+            --disable-smooth-scrolling
             # --disable-gpu alone leaves software rasterisation available, which is what
             # Chromium needs to still report GPU access as possible. Adding
             # --disable-software-rasterizer on top denies it outright, and ChatGPT's main
@@ -85,12 +87,6 @@ base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
 lean_flags=(--js-flags=--max-old-space-size=256)
 
 pid=""
-has_window() {
-  command -v xdotool >/dev/null 2>&1 || return 1
-  # _NET_WM_PID first, since that is exact; the class is the fallback for apps that reparent.
-  [ -n "$(xdotool search --onlyvisible --pid "$pid" 2>/dev/null)" ] && return 0
-  [ -n "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
-}
 
 # Every process of this app. Matching the launcher's own path missed ChatGPT entirely:
 # /usr/bin/chatgpt resolves to a two-line shell script that execs /usr/lib/chatgpt/ChatGPT, so
@@ -99,6 +95,34 @@ has_window() {
 app_pids() {
   pgrep -f "$real_dir/" 2>/dev/null | grep -vx "$$" || true
 }
+
+# The id of a window owned by any process of this app, or nothing. Every window carries the
+# pid of its owner (_NET_WM_PID), and wmctrl lists them all. The old check looked for a window
+# with the app's class name -- and ChatGPT's window is not classed "chatgpt", so a running,
+# visible ChatGPT counted as "no window": a second tap on its icon then ended it as a leftover,
+# which is exactly what "ChatGPT closes by itself" looked like.
+app_window() {
+  local pids p id
+  pids=" $(app_pids | tr '\n' ' ') ${pid:-0} "
+  if command -v wmctrl >/dev/null 2>&1; then
+    while read -r id _ p _; do
+      [ -n "$p" ] && [ "$p" != 0 ] || continue
+      case "$pids" in *" $p "*) printf '%s' "$id"; return 0 ;; esac
+    done <<WINDOWS
+$(wmctrl -lp 2>/dev/null)
+WINDOWS
+  fi
+  command -v xdotool >/dev/null 2>&1 || return 1
+  if [ -n "${pid:-}" ]; then
+    id=$(xdotool search --onlyvisible --pid "$pid" 2>/dev/null | head -n 1)
+    [ -n "$id" ] && { printf '%s' "$id"; return 0; }
+  fi
+  id=$(xdotool search --onlyvisible --class "$name" 2>/dev/null | head -n 1)
+  [ -n "$id" ] && { printf '%s' "$id"; return 0; }
+  return 1
+}
+
+has_window() { [ -n "$(app_window)" ]; }
 
 # CPU time used so far by every process of this app, in clock ticks. A start that is still
 # consuming CPU is still working -- loading a large app on a slow core under PRoot takes
@@ -215,12 +239,26 @@ fi
   echo "launching: $target ${flags[*]:-} $*"
 } > "$log" 2>/dev/null
 
+# Already open: bring its window to the front and stop here. A second copy of a Chromium app
+# only hands its request to the first and exits, so launching again never helps.
+open_id=$(app_window)
+if [ -n "$open_id" ]; then
+  echo "already open (window $open_id) · bringing it to the front" >> "$log"
+  command -v wmctrl >/dev/null 2>&1 && wmctrl -ia "$open_id" 2>/dev/null
+  # A link to deliver (a sign-in coming back from the browser): a second copy started with the
+  # same flags hands it to the running app through the single-instance socket and exits.
+  if [ "$#" -gt 0 ]; then
+    echo "handing it: $*" >> "$log"
+    "$target" ${flags[@]+"${flags[@]}"} "$@" >> "$log" 2>&1
+  fi
+  exit 0
+fi
+
 # A half-started instance that never drew a window still legitimately owns the single-instance
 # socket. A fresh launch hands it the request, exits 0 -- "success" -- and nothing appears,
 # which looks exactly like a dead tap and produces no error to read. If this app has processes
 # but no window, those processes are the problem: end them, then start clean.
-if [ "${#flags[@]}" -gt 0 ] && command -v xdotool >/dev/null 2>&1 \
-   && [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]; then
+if [ "${#flags[@]}" -gt 0 ]; then
   leftovers=$(app_pids | tr '\n' ' ')
   if [ -n "${leftovers// /}" ]; then
     echo "ending windowless leftover instance(s): $leftovers" >> "$log"
@@ -239,8 +277,7 @@ handed_off() {   # true when the last attempt exited 0 at once, or Chromium said
   [ "${#flags[@]}" -gt 0 ] || return 1
   grep -q 'Opening in existing browser session' "$log" 2>/dev/null && return 0
   [ "$2" -lt 8 ] || return 1
-  command -v xdotool >/dev/null 2>&1 || return 1
-  [ -z "$(xdotool search --onlyvisible --class "$name" 2>/dev/null)" ]
+  ! has_window
 }
 
 launch_guarded() {   # launch_guarded <flags...> -- run_attempt, and once more if it was handed off

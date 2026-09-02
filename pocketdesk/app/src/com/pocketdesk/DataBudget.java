@@ -49,7 +49,7 @@ final class DataBudget {
         if (cap <= 0) return false;
         if (!"Mobile data".equals(DeviceProbe.read(context).network)) return false;
         long used = usedToday(context);
-        return used >= 0 && used >= cap * 1024L * 1024L;
+        return used >= 0 && used >= cap * 1_000_000L;
     }
 
     private static int dayStamp() {

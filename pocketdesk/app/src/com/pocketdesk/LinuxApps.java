@@ -78,7 +78,7 @@ final class LinuxApps {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt.
             new App("essentials", "Browser and desktop basics",
-                    "Browser, real icons, arrow pointer, Indian time, window controls and messages.",
+                    "Browser, real icons, arrow pointer, Indian time, window controls, sign-in handoff and messages.",
                     R.drawable.ic_network, R.drawable.logo_web, "about 150 MB", 700 * MB,
                     "2–6 min", null,
                     "/usr/bin/epiphany",
@@ -87,7 +87,7 @@ final class LinuxApps {
                             + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
                             // An app that fails to open has to be able to say so on screen, and
                             // xdotool is how the launcher knows a window really appeared.
-                            + "dunst libnotify-bin zenity xdotool wmctrl "
+                            + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils "
                             // Named explicitly: adwaita only Recommends it, and without it every
                             // SVG icon in the theme renders as a generic diamond.
                             + "librsvg2-common "

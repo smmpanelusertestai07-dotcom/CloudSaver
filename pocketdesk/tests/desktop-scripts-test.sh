@@ -74,9 +74,10 @@ grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \
 # A leftover instance with no window still owns the single-instance socket, so a fresh launch
 # hands over its request and exits 0 at once -- "success" -- and nothing appears. The launcher
 # must find that instance by the directory its binary lives in (ChatGPT's launcher path never
-# appears in the running process) and end it before starting. xdotool is stubbed to report no
-# window so the check runs here.
+# appears in the running process) and end it before starting. xdotool and wmctrl are stubbed to
+# report no window so the check runs here.
 printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
+printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/wmctrl"; chmod +x "$WORK/usr/bin/wmctrl"
 cp "$(command -v sleep)" "$WORK/usr/lib/electronish/ghostproc"
 "$WORK/usr/lib/electronish/ghostproc" 300 &
 ghost=$!
@@ -90,7 +91,32 @@ set -e
 grep -q "ending windowless leftover instance" "$HOME/.pocketdesk/logs/electronish.log" \
   || fail "a windowless leftover instance in the app's own directory must be ended before launching"
 if kill -0 "$ghost" 2>/dev/null; then kill -9 "$ghost" 2>/dev/null; fail "the leftover instance must actually be gone"; fi
-rm -f "$WORK/usr/bin/xdotool"
+
+# The opposite case, which is the one that ended ChatGPT: the app IS running and HAS a window,
+# but its window is not classed after the launcher's name. A second tap must recognise the
+# window by the owning pid (wmctrl -lp lists it) and bring it to the front -- never end it.
+"$WORK/usr/lib/electronish/ghostproc" 300 &
+ghost=$!
+cat > "$WORK/usr/bin/wmctrl" <<WM
+#!/bin/sh
+case "\$1" in
+  -lp) printf '0x02000003  0 $ghost phone Something Unrelated\\n' ;;
+  -ia) echo "raised \$2" >> "$HOME/.pocketdesk/raised" ;;
+esac
+exit 0
+WM
+chmod +x "$WORK/usr/bin/wmctrl"
+set +e
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" = 0 ] || fail "a tap on an app that is already open must simply succeed, got $status"
+grep -q "already open" "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "an app with a window owned by one of its processes must be recognised as open"
+grep -q "raised 0x02000003" "$HOME/.pocketdesk/raised" || fail "the open window must be brought to the front"
+kill -0 "$ghost" 2>/dev/null || fail "an app that has a window must never be ended by a second tap"
+kill -9 "$ghost" 2>/dev/null || true
+rm -f "$WORK/usr/bin/xdotool" "$WORK/usr/bin/wmctrl" "$HOME/.pocketdesk/raised"
 
 # ChatGPT specifically: its main process asks for GPU info and dies on "access denied", and on
 # this Chromium --disable-gpu alone yields that answer. It must get SwiftShader instead.
@@ -104,6 +130,14 @@ gpt_log="$HOME/.pocketdesk/logs/chatgpt.log"
 grep -q -- '--use-angle=swiftshader' "$gpt_log" || fail "ChatGPT must be given SwiftShader so GPU access stays allowed"
 grep -q -- ' --disable-gpu ' "$gpt_log" && fail "--disable-gpu denies GPU access outright for ChatGPT and must not be passed to it"
 grep -q -- '--no-sandbox' "$gpt_log" || fail "ChatGPT still needs the sandbox flags"
+
+# ---- pocketdesk-desktop: what the display server is started with -----------------------
+# Every highlighted word used to be pushed to the phone's clipboard (the phone said "Copied"
+# on every selection). Only a real copy may reach the phone.
+grep -q -- '-SendPrimary=0' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
+  || fail "Xtigervnc must be started with -SendPrimary=0"
+grep -q 'openbox/rc.xml' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
+  && fail "the window manager settings belong to pocketdesk-menu, which runs on every start"
 
 # ---- pocketdesk-menu: launchers route through pocketdesk-open ------------------------
 APPS="$WORK/apps"
@@ -147,23 +181,93 @@ PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
 
 entry="$WORK/coder/Desktop/chatgpt.desktop"
 [ -f "$entry" ] || fail "ChatGPT should get a desktop icon"
-grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt$' "$entry" \
-  || fail "the desktop icon must launch through pocketdesk-open"
+grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt %U$' "$entry" \
+  || fail "the desktop icon must launch through pocketdesk-open and still accept a link (%U)"
 grep -q '^Icon=chatgpt$' "$entry" || fail "the package's own icon name must be kept"
-grep -q '%U' "$entry" && fail "field codes must not survive into the launch command"
 
 claude="$WORK/coder/Desktop/com.anthropic.Claude.desktop"
 [ -f "$claude" ] || fail "Claude should get a desktop icon, looked for $claude"
 grep -q 'Desktop Action' "$claude" && fail "extra action groups would start the app unwrapped"
 grep -q '^Actions=' "$claude" && fail "Actions= must be dropped along with its groups"
-grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "Claude" claude-desktop$' "$claude" \
+grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "Claude" claude-desktop %U$' "$claude" \
   || fail "Claude's launcher must go through pocketdesk-open too"
 
 menu="$WORK/coder/.config/openbox/menu.xml"
 grep -q 'pocketdesk-open --label "ChatGPT" chatgpt' "$menu" || fail "the menu must use the wrapper"
+grep -q '%U' "$menu" && fail "field codes must not survive into a menu command, which no launcher expands"
 grep -q 'Should Not Appear' "$menu" && fail "NoDisplay entries must stay out of the menu"
 
 grep -q 'launcher_item_app = .*pocketdesk-chatgpt.desktop' "$WORK/coder/.config/tint2/tint2rc" \
   || fail "the panel launcher must point at the wrapped entry"
 
-echo "PASS DesktopScripts (launcher flags, menu wiring)"
+# ---- pocketdesk-menu: the window manager rules, rewritten on every run ------------------
+cat > "$WORK/rc-default.xml" <<'RC'
+<openbox_config>
+  <font place="ActiveWindow"><name>sans</name><size>8</size></font>
+  <theme><titleLayout>NLIMC</titleLayout></theme>
+  <keyboard>
+    <keybind key="A-F4"><action name="Close"/></keybind>
+  </keyboard>
+  <applications>
+  </applications>
+</openbox_config>
+RC
+cat > "$APPS/chatgpt.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=ChatGPT
+Exec=chatgpt %U
+Icon=chatgpt
+Type=Application
+MimeType=x-scheme-handler/chatgpt;x-scheme-handler/codex;
+ENTRY
+cat > "$APPS/org.gnome.Epiphany.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=Web
+Exec=epiphany %U
+Icon=org.gnome.Epiphany
+Type=Application
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+ENTRY
+printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/epiphany"; chmod +x "$WORK/fakebin/epiphany"
+POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
+rc="$WORK/coder/.config/openbox/rc.xml"
+[ -f "$rc" ] || fail "pocketdesk-menu must write the Openbox settings"
+grep -q '<titleLayout>CIMNL</titleLayout>' "$rc" \
+  || fail "the close button must sit at the left edge of the title bar, where a maximised window always starts"
+grep -q '<application type="normal"><maximized>yes</maximized><decor>yes</decor></application>' "$rc" \
+  || fail "every normal window must open maximised with a title bar"
+grep -q '<size>11</size>' "$rc" || fail "title font must be enlarged for a phone"
+grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"
+grep -q 'key="A-F4"' "$rc" || fail "Openbox's own bindings must be kept"
+
+# The browser opens links; a sign-in that opened in the browser comes back to the app through
+# the scheme its package declares.
+mime="$WORK/coder/.config/mimeapps.list"
+[ -f "$mime" ] || fail "pocketdesk-menu must write mimeapps.list"
+grep -q '^x-scheme-handler/https=org.gnome.Epiphany.desktop$' "$mime" || fail "https must open in the browser"
+grep -q '^x-scheme-handler/chatgpt=pocketdesk-chatgpt.desktop$' "$mime" \
+  || fail "chatgpt:// links must come back to ChatGPT through the wrapped entry"
+grep -q '^x-scheme-handler/codex=pocketdesk-chatgpt.desktop$' "$mime" || fail "every scheme an app declares must be routed"
+grep -q '^MimeType=x-scheme-handler/chatgpt' "$WORK/coder/.local/share/applications/pocketdesk-chatgpt.desktop" \
+  || fail "the wrapped entry must keep the schemes the package declares"
+
+# A link handed to an app that is already open must reach it, not be dropped.
+"$WORK/usr/lib/electronish/ghostproc" 300 &
+ghost=$!
+cat > "$WORK/usr/bin/wmctrl" <<WM
+#!/bin/sh
+case "\$1" in -lp) printf '0x02000004  0 $ghost phone Open Already\\n' ;; esac
+exit 0
+WM
+chmod +x "$WORK/usr/bin/wmctrl"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/electronish/electronish"
+set +e
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish 'electronish://callback?code=1' >/dev/null 2>&1
+set -e
+grep -q 'ARGS: .*--no-sandbox.*electronish://callback?code=1' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "a link for an open app must be handed to it with the sandbox flags"
+kill -9 "$ghost" 2>/dev/null || true
+rm -f "$WORK/usr/bin/wmctrl"
+grep -c '^x-scheme-handler/http=' "$mime" | grep -qx 1 || fail "http must be routed to the browser exactly once"
+
+echo "PASS DesktopScripts (launcher flags, window detection, menu wiring, window rules, link routing)"

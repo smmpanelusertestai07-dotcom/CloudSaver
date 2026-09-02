@@ -1,9 +1,11 @@
 package com.pocketdesk;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
@@ -13,6 +15,7 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -23,18 +26,35 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.IOException;
 
+/**
+ * The Linux computer's screen, with one row of controls around it.
+ *
+ * One bar, not two: Home, the computer's status, and then one button per category -- Screen,
+ * the pointer, Keyboard, Keys, Window. A category button opens its choices as a vertical list,
+ * so nothing is spread along a strip that has to be scrolled to be read. The bar sits at the
+ * top or the bottom, the owner's choice, and the row of special keys appears only when asked
+ * for. Full screen hides all of it behind one draggable chip.
+ */
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
+    private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
+            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11,
+            MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13, MENU_MINIMISE_ALL = 14, MENU_PASTE = 15;
+
+    private SharedPreferences preferences;
+    private FrameLayout outer;
+    private LinearLayout column;
+    private HorizontalScrollView bar;
+    private HorizontalScrollView keyRow;
     private VncView desktop;
     private TextView status;
-    private Button pointerMode;
-    private Button zoomLabel;
-    private Button fitButton;
-    private LinearLayout toolbarRow;
-    private View keyRow;
+    private Button pointerButton;
+    private Button keysButton;
     private Button restoreBars;
     private Button ctrlButton;
     private Button altButton;
@@ -45,10 +65,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private boolean ctrl;
     private boolean alt;
     private boolean superKey;
+    private boolean controlsAtTop;
+    private boolean keyRowShown;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         try {
+            preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+            controlsAtTop = !"bottom".equals(preferences.getString(ContainerRuntime.KEY_CONTROLS_AT, "top"));
+            keyRowShown = preferences.getBoolean(ContainerRuntime.KEY_KEY_ROW, false);
             applyOrientation();
             // The phone's own clock, battery and signal stay visible: hiding them was hiding
             // exactly the information this app is otherwise careful to show.
@@ -70,6 +95,18 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        // The lock covers this screen too: the desktop, with every AI app signed in, is the
+        // one screen that matters most.
+        if (outer != null && AppLock.isLocked(this)) AppLock.show(this, outer, null);
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        if (AppLock.handleResult(this, outer, request, result, null)) return;
+        super.onActivityResult(request, result, data);
+    }
+
     @Override protected void onDestroy() {
         finished = true;
         if (desktop != null && desktop.getClient() != null) desktop.getClient().close();
@@ -79,113 +116,60 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private View buildScreen() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(5, 7, 17));
+        column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setBackgroundColor(Color.rgb(5, 7, 17));
 
-        // Everything sits in one horizontally scrollable strip, so no control is ever cut off
-        // on a narrow phone while landscape still shows the whole set at once.
-        HorizontalScrollView toolbar = new HorizontalScrollView(this);
-        toolbar.setHorizontalScrollBarEnabled(false);
-        toolbar.setBackgroundColor(Color.rgb(15, 19, 39));
-        toolbarRow = new LinearLayout(this);
-        toolbarRow.setGravity(Gravity.CENTER_VERTICAL);
-        toolbarRow.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
-        toolbar.addView(toolbarRow, new HorizontalScrollView.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        root.addView(toolbar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
+        // ---- The control bar ----------------------------------------------------------------
+        bar = strip();
+        LinearLayout barRow = (LinearLayout) bar.getChildAt(0);
 
-        Button back = toolButton("Home", R.drawable.ic_arrow_back);
-        back.setContentDescription("Back to PocketDesk home");
-        back.setOnClickListener(v -> finish());
-        toolbarRow.addView(back, barItem(92));
+        Button home = toolButton("Home", R.drawable.ic_arrow_back);
+        home.setContentDescription("Back to PocketDesk home");
+        home.setOnClickListener(v -> finish());
+        barRow.addView(home, barItem(88));
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
-        // Boxed like the buttons around it, in the toolbar's own palette rather than a raw green.
-        status.setBackground(Ui.background(Color.rgb(24, 31, 61), 10, this));
+        status.setBackground(Ui.tappable(this, Ui.background(Color.rgb(24, 31, 61), 12, this), true));
         status.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
-        status.setGravity(Gravity.CENTER);
         status.setSingleLine(true);
-        // A fixed-width label with no ellipsis cut words in half: "Starting your Linu".
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        status.setGravity(Gravity.CENTER_VERTICAL);
+        status.setGravity(Gravity.CENTER);
+        status.setContentDescription("Linux computer status. Tap for details.");
+        status.setOnClickListener(v -> showDetails());
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 92), ViewGroup.LayoutParams.MATCH_PARENT);
-        statusLp.setMarginStart(Ui.dp(this, 8));
-        statusLp.setMarginEnd(Ui.dp(this, 8));
-        toolbarRow.addView(status, statusLp);
+                Ui.dp(this, 122), ViewGroup.LayoutParams.MATCH_PARENT);
+        statusLp.setMarginEnd(Ui.dp(this, 5));
+        barRow.addView(status, statusLp);
 
-        toolbarRow.addView(toolCaption("View"), captionLayout());
-        Button zoomOut = toolButton("−");
-        zoomOut.setTextSize(19);
-        zoomOut.setContentDescription("Zoom out");
-        zoomOut.setOnClickListener(v -> desktop.zoomBy(1f / 1.25f));
-        toolbarRow.addView(zoomOut, barItem(46));
+        Button screen = toolButton("Screen ▾", R.drawable.ic_fit);
+        screen.setContentDescription("Screen: fit, zoom, rotate, full screen, bar position");
+        screen.setOnClickListener(v -> showScreenMenu(v));
+        barRow.addView(screen, barItem(104));
 
-        zoomLabel = toolButton("100%");
-        zoomLabel.setContentDescription("Reset zoom");
-        zoomLabel.setOnClickListener(v -> desktop.resetView());
-        toolbarRow.addView(zoomLabel, barItem(58));
-
-        Button zoomIn = toolButton("+");
-        zoomIn.setTextSize(19);
-        zoomIn.setContentDescription("Zoom in");
-        zoomIn.setOnClickListener(v -> desktop.zoomBy(1.25f));
-        toolbarRow.addView(zoomIn, barItem(46));
-
-        fitButton = toolButton("Fill screen", R.drawable.ic_fullscreen);
-        fitButton.setOnClickListener(v -> {
-            desktop.setFillMode(!desktop.isFillMode());
-            boolean fill = desktop.isFillMode();
-            fitButton.setText(fill ? "Fill screen" : "Fit screen");
-            android.widget.Toast.makeText(this, fill
-                    ? "Fill screen: edge to edge, the far edges may be cropped"
-                    : "Fit screen: the whole desktop stays visible",
-                    android.widget.Toast.LENGTH_SHORT).show();
-        });
-        toolbarRow.addView(fitButton, barItem(96));
-
-        toolbarRow.addView(toolCaption("Input"), captionLayout());
-        pointerMode = toolButton("Mouse", R.drawable.ic_mouse);
-        pointerMode.setOnClickListener(v -> togglePointerMode());
-        toolbarRow.addView(pointerMode, barItem(124));
+        pointerButton = toolButton("Finger", R.drawable.ic_touch);
+        pointerButton.setContentDescription("Switch between finger and mouse control");
+        pointerButton.setOnClickListener(v -> togglePointerMode());
+        barRow.addView(pointerButton, barItem(96));
 
         Button keyboard = toolButton("Keyboard", R.drawable.ic_keyboard);
         keyboard.setContentDescription("Open the phone keyboard");
         keyboard.setOnClickListener(v -> showKeyboard());
-        toolbarRow.addView(keyboard, barItem(126));
+        barRow.addView(keyboard, barItem(116));
 
-        Button rotate = toolButton("Rotate", R.drawable.ic_rotate);
-        rotate.setContentDescription("Turn the desktop between portrait and landscape");
-        rotate.setOnClickListener(v -> toggleOrientation());
-        toolbarRow.addView(rotate, barItem(104));
+        keysButton = toolButton("Keys", R.drawable.ic_terminal);
+        keysButton.setContentDescription("Show or hide the row of special keys");
+        keysButton.setOnClickListener(v -> setKeyRowShown(!keyRowShown));
+        barRow.addView(keysButton, barItem(82));
 
-        Button hideBars = toolButton("Full screen", R.drawable.ic_fit);
-        hideBars.setOnClickListener(v -> setBarsHidden(true));
-        toolbarRow.addView(hideBars, barItem(132));
+        Button window = toolButton("Window ▾", R.drawable.ic_desktop);
+        window.setContentDescription("Window: close, force close, switch, paste");
+        window.setOnClickListener(v -> showWindowMenu(v));
+        barRow.addView(window, barItem(112));
 
-        desktop = new VncView(this);
-        desktop.setStateListener((text, connected) -> {
-            // The toolbar has room for the headline only; the full sentence is on the card.
-            text = text.contains(". ") ? text.substring(0, text.indexOf(". ")) : text;
-            status.setText(text);
-            status.setTextColor(connected ? Color.rgb(170, 190, 255) : Color.rgb(239, 170, 57));
-        });
-        root.addView(desktop, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-
-        HorizontalScrollView scroller = new HorizontalScrollView(this);
-        scroller.setHorizontalScrollBarEnabled(false);
-        scroller.setFillViewport(false);
-        scroller.setBackgroundColor(Color.rgb(15, 19, 39));
-        LinearLayout keys = new LinearLayout(this);
-        keys.setGravity(Gravity.CENTER_VERTICAL);
-        keys.setPadding(Ui.dp(this, 5), Ui.dp(this, 4), Ui.dp(this, 5), Ui.dp(this, 4));
-        scroller.addView(keys, new HorizontalScrollView.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        keyRow = scroller;
-        root.addView(scroller, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 52)));
-
+        // ---- The row of special keys, shown on request ----------------------------------------
+        keyRow = strip();
+        LinearLayout keys = (LinearLayout) keyRow.getChildAt(0);
         addKey(keys, "Esc", 0xff1b);
         addKey(keys, "Tab", 0xff09);
         ctrlButton = addModifier(keys, "Ctrl", 0);
@@ -200,31 +184,39 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         addKey(keys, "Del", 0xffff);
         addKey(keys, "Home", 0xff50);
         addKey(keys, "End", 0xff57);
-        Button paste = toolButton("Paste", R.drawable.ic_apps);
-        paste.setOnClickListener(v -> pasteClipboard());
-        keys.addView(paste, keyLayout(92));
+        addKey(keys, "PgUp", 0xff55);
+        addKey(keys, "PgDn", 0xff56);
+
+        // ---- The desktop itself -----------------------------------------------------------------
+        desktop = new VncView(this);
+        desktop.setPointerMode("mouse".equals(preferences.getString(ContainerRuntime.KEY_POINTER_MODE, "finger"))
+                ? VncView.PointerMode.TOUCHPAD : VncView.PointerMode.DIRECT);
+        stylePointerButton();
+        desktop.setStateListener((text, connected) -> {
+            // The bar has room for the headline only; the full sentence is on the card.
+            text = text.contains(". ") ? text.substring(0, text.indexOf(". ")) : text;
+            status.setText(text);
+            status.setTextColor(connected ? Color.rgb(170, 190, 255) : Color.rgb(239, 170, 57));
+        });
 
         keyboardInput = new KeyboardInputView(this);
         keyboardInput.setListener(this);
         keyboardInput.setAlpha(0.01f);
+
+        layoutBars();
+
+        // A floating chip is the only thing left on screen in full-screen mode, so the bar can
+        // always be brought back.
+        outer = new FrameLayout(this);
+        outer.addView(column, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         FrameLayout overlay = new FrameLayout(this);
         overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
-        root.addView(overlay, new LinearLayout.LayoutParams(1, 1));
-
-        desktop.setZoomListener((percent, fill) -> {
-            zoomLabel.setText(percent + "%");
-            fitButton.setText(fill ? "Fill screen" : "Fit screen");
-        });
-
-        // A floating chip is the only thing left on screen in full-screen mode, so the bars can
-        // always be brought back.
-        FrameLayout outer = new FrameLayout(this);
-        outer.addView(root, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        outer.addView(overlay, new FrameLayout.LayoutParams(1, 1));
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
         restoreBars.setVisibility(View.GONE);
-        // Solid rather than see-through: while the bars are hidden this chip is the only way
-        // back to them, so it has to stay readable over a bright window.
+        // Solid rather than see-through: while the bar is hidden this chip is the only way
+        // back to it, so it has to stay readable over a bright window.
         restoreBars.setBackground(Ui.outlined(
                 Color.rgb(28, 36, 70), Color.rgb(96, 118, 190), 12, this));
         restoreBars.setElevation(Ui.dp(this, 6));
@@ -238,6 +230,137 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         makeChipDraggable(outer);
         outer.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or2, ob) -> keepChipOnScreen(outer));
         return outer;
+    }
+
+    /** A 56 dp horizontal strip whose buttons measure the 48 dp a finger needs. */
+    private HorizontalScrollView strip() {
+        HorizontalScrollView scroller = new HorizontalScrollView(this);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.setBackgroundColor(Color.rgb(15, 19, 39));
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
+        scroller.addView(row, new HorizontalScrollView.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return scroller;
+    }
+
+    /** Puts the bar, the key row and the desktop in the order the owner chose. */
+    private void layoutBars() {
+        column.removeAllViews();
+        LinearLayout.LayoutParams stripLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56));
+        LinearLayout.LayoutParams desktopLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
+        keyRow.setVisibility(keyRowShown ? View.VISIBLE : View.GONE);
+        if (controlsAtTop) {
+            column.addView(bar, stripLp);
+            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
+            column.addView(desktop, desktopLp);
+        } else {
+            column.addView(desktop, desktopLp);
+            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
+            column.addView(bar, stripLp);
+        }
+        styleToggle(keysButton, keyRowShown);
+    }
+
+    private void setKeyRowShown(boolean shown) {
+        keyRowShown = shown;
+        preferences.edit().putBoolean(ContainerRuntime.KEY_KEY_ROW, shown).apply();
+        keyRow.setVisibility(shown ? View.VISIBLE : View.GONE);
+        styleToggle(keysButton, shown);
+    }
+
+    private void styleToggle(Button button, boolean active) {
+        button.setBackground(Ui.tappable(this, active
+                ? Ui.outlined(Color.rgb(35, 42, 73), Color.rgb(122, 155, 255), 12, this)
+                : Ui.background(Color.rgb(35, 42, 73), 12, this), true));
+    }
+
+    private void showScreenMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.setForceShowIcon(true);
+        Menu items = menu.getMenu();
+        items.add(0, MENU_FIT, 0, "Fit: whole desktop, centred").setIcon(R.drawable.ic_fit);
+        items.add(0, MENU_ZOOM_IN, 1, "Zoom in (" + desktop.zoomPercent() + " %)").setIcon(R.drawable.ic_fullscreen);
+        items.add(0, MENU_ZOOM_OUT, 2, "Zoom out").setIcon(R.drawable.ic_fullscreen);
+        items.add(0, MENU_ROTATE, 3, "Rotate").setIcon(R.drawable.ic_rotate);
+        items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
+        items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
+                .setIcon(R.drawable.ic_settings);
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case MENU_FIT:
+                    desktop.resetView();
+                    Toast.makeText(this, "The whole desktop is on screen", Toast.LENGTH_SHORT).show();
+                    return true;
+                case MENU_ZOOM_IN: desktop.zoomBy(1.25f); return true;
+                case MENU_ZOOM_OUT:
+                    if (!desktop.zoomBy(1f / 1.25f)) {
+                        Toast.makeText(this, "Already showing the whole desktop", Toast.LENGTH_SHORT).show();
+                    }
+                    return true;
+                case MENU_ROTATE: toggleOrientation(); return true;
+                case MENU_FULL_SCREEN: setBarsHidden(true); return true;
+                case MENU_BAR_POSITION:
+                    controlsAtTop = !controlsAtTop;
+                    preferences.edit().putString(ContainerRuntime.KEY_CONTROLS_AT, controlsAtTop ? "top" : "bottom").apply();
+                    layoutBars();
+                    return true;
+                default: return false;
+            }
+        });
+        menu.show();
+    }
+
+    private void showWindowMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.setForceShowIcon(true);
+        Menu items = menu.getMenu();
+        items.add(0, MENU_CLOSE, 0, "Close this window").setIcon(R.drawable.ic_close);
+        items.add(0, MENU_FORCE_CLOSE, 1, "Force close (stuck app)").setIcon(R.drawable.ic_stop);
+        items.add(0, MENU_SWITCH, 2, "Switch to the next window").setIcon(R.drawable.ic_switch);
+        items.add(0, MENU_ALL_WINDOWS, 3, "All open windows").setIcon(R.drawable.ic_apps);
+        items.add(0, MENU_MINIMISE_ALL, 4, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
+        items.add(0, MENU_PASTE, 5, "Paste from the phone").setIcon(R.drawable.ic_download);
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                // Alt+F4 and Alt+Tab are Openbox's own bindings; Super+F4, Super+Tab and Super+D
+                // are set up by pocketdesk-menu.
+                case MENU_CLOSE: chord(0xffe9, 0xffc1); return true;
+                case MENU_FORCE_CLOSE: chord(0xffeb, 0xffc1); return true;
+                case MENU_SWITCH: chord(0xffe9, 0xff09); return true;
+                case MENU_ALL_WINDOWS: chord(0xffeb, 0xff09); return true;
+                case MENU_MINIMISE_ALL: chord(0xffeb, 'd'); return true;
+                case MENU_PASTE: pasteClipboard(); return true;
+                default: return false;
+            }
+        });
+        menu.show();
+    }
+
+    /** What the status label opens: the plain facts about this session and how to drive it. */
+    private void showDetails() {
+        boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
+        String text = "Linux computer: Ubuntu 24.04, running on this phone.\n\n"
+                + "Screen: " + desktop.desktopSize() + " pixels, the size of this display, so "
+                + "the whole desktop fits at 100 %. Zoom " + desktop.zoomPercent() + " %. Pinch, "
+                + "or Screen → Zoom, to look closer; Fit brings it all back.\n\n"
+                + "Pointer: " + (mouse ? "Mouse" : "Finger") + ".\n"
+                + "Finger — tap where you touch, swipe to scroll, hold for a right-click.\n"
+                + "Mouse — drag anywhere to move the arrow, tap to click, hold to right-click, "
+                + "two fingers to scroll, tap then press-and-move to drag.\n\n"
+                + "Keyboard opens the phone keyboard; Keys adds Esc, Tab, Ctrl, arrows and more. "
+                + "Window closes, force-closes or switches the window in front, and pastes "
+                + "from the phone.\n\n"
+                + "Stopping the computer keeps everything: apps stay signed in and files stay "
+                + "where they are, so the next open continues from here.";
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle(status.getText())
+                .setMessage(text)
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     /** True once the chip has been dragged, after which it stays where it was put. */
@@ -316,9 +439,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private void setBarsHidden(boolean hidden) {
-        int visibility = hidden ? View.GONE : View.VISIBLE;
-        ((View) toolbarRow.getParent()).setVisibility(visibility);
-        if (keyRow != null) keyRow.setVisibility(visibility);
+        bar.setVisibility(hidden ? View.GONE : View.VISIBLE);
+        keyRow.setVisibility(hidden || !keyRowShown ? View.GONE : View.VISIBLE);
         restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
     }
 
@@ -350,7 +472,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 desktop.setClient(client);
                 try {
                     client.connectAndRun();
-                    lastError = "Desktop connection ended";
+                    lastError = "The Linux computer was stopped";
                 } catch (IOException error) {
                     lastError = error.getMessage() == null ? "Connection failed" : error.getMessage();
                 } catch (Throwable error) {
@@ -374,12 +496,20 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 ? VncView.PointerMode.DIRECT : VncView.PointerMode.TOUCHPAD;
         desktop.setPointerMode(next);
         boolean mouse = next == VncView.PointerMode.TOUCHPAD;
-        // "Touchpad" and "Direct touch" named the mechanism, not what it does to the arrow.
-        pointerMode.setText(mouse ? "Mouse" : "Finger");
-        android.widget.Toast.makeText(this, mouse
-                        ? "Mouse: drag anywhere to move the arrow, tap to click"
-                        : "Finger: the arrow jumps to wherever you touch",
-                android.widget.Toast.LENGTH_SHORT).show();
+        preferences.edit().putString(ContainerRuntime.KEY_POINTER_MODE, mouse ? "mouse" : "finger").apply();
+        stylePointerButton();
+        Toast.makeText(this, mouse
+                        ? "Mouse: drag to move the arrow, tap to click, two fingers to scroll"
+                        : "Finger: tap where you touch, swipe to scroll, hold to right-click",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    /** The button shows what is on the screen: an arrow for the mouse, a hand for touch. */
+    private void stylePointerButton() {
+        boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
+        pointerButton.setText(mouse ? "Mouse" : "Finger");
+        Ui.setStartIcon(pointerButton, mouse ? R.drawable.ic_cursor : R.drawable.ic_touch,
+                Color.rgb(150, 175, 255), this, 18);
     }
 
     private void showKeyboard() {
@@ -402,6 +532,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return button;
     }
 
+    /**
+     * Ctrl, Alt and Super hold until the next key and then let go, the way a phone's Shift
+     * does: Ctrl then C is a copy, and the next letter is a plain letter again.
+     */
     private void toggleModifier(int type) {
         if (type == 0) {
             ctrl = !ctrl;
@@ -418,14 +552,31 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
+    private void releaseModifiers() {
+        if (ctrl) { ctrl = false; sendKey(0xffe3, false); styleModifier(ctrlButton, false); }
+        if (alt) { alt = false; sendKey(0xffe9, false); styleModifier(altButton, false); }
+        if (superKey) { superKey = false; sendKey(0xffeb, false); styleModifier(superButton, false); }
+    }
+
     private void styleModifier(Button button, boolean active) {
         button.setTextColor(active ? Color.rgb(12, 18, 45) : Color.rgb(232, 236, 255));
         button.setBackground(active ? Ui.brandGradient(this, 10) : Ui.background(Color.rgb(35, 42, 73), 10, this));
     }
 
+    /** Modifier held, key tapped, modifier released: Alt+F4, Alt+Tab, Super+D. */
+    private void chord(int modifier, int keysym) {
+        VncView.lastInteractionAt = System.currentTimeMillis();
+        sendKey(modifier, true);
+        sendKey(keysym, true);
+        sendKey(keysym, false);
+        sendKey(modifier, false);
+    }
+
     @Override public void typeCodePoint(int codePoint) {
+        VncView.lastInteractionAt = System.currentTimeMillis();
         VncClient client = desktop.getClient();
         if (client != null) client.typeCodePoint(codePoint);
+        releaseModifiers();
     }
 
     @Override public void specialKey(int keysym) {
@@ -433,6 +584,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         VncView.lastInteractionAt = System.currentTimeMillis();
         sendKey(keysym, true);
         sendKey(keysym, false);
+        releaseModifiers();
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
@@ -504,7 +656,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void pasteClipboard() {
         ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        if (!clipboard.hasPrimaryClip()) return;
+        if (!clipboard.hasPrimaryClip()) {
+            Toast.makeText(this, "Nothing copied on the phone yet", Toast.LENGTH_SHORT).show();
+            return;
+        }
         ClipData clip = clipboard.getPrimaryClip();
         if (clip == null || clip.getItemCount() == 0) return;
         CharSequence text = clip.getItemAt(0).coerceToText(this);
@@ -519,24 +674,6 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private Button toolButton(String label) {
         return toolButton(label, 0);
-    }
-
-    /** A small, unclickable group name in the toolbar, so the buttons read as categories. */
-    private TextView toolCaption(String label) {
-        TextView caption = Ui.text(this, label.toUpperCase(java.util.Locale.ROOT), 10f,
-                Color.rgb(150, 170, 230));
-        caption.setLetterSpacing(0.08f);
-        caption.setGravity(Gravity.CENTER);
-        caption.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 2), 0);
-        return caption;
-    }
-
-    private LinearLayout.LayoutParams captionLayout() {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        lp.setMarginStart(Ui.dp(this, 4));
-        lp.setMarginEnd(Ui.dp(this, 2));
-        return lp;
     }
 
     /** Toolbar button with an icon in front of its word, matching the rest of the app. */
@@ -564,7 +701,6 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private void applyOrientation() {
-        SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
         String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
         if ("portrait".equals(value)) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
@@ -588,7 +724,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 : ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
     }
 
-    /** Keeps the toolbar clear of the status bar and the key row clear of the gesture bar. */
+    /** Keeps the bar clear of the status bar and the gesture bar, whichever end it sits at. */
     private void applySystemInsets(View root) {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             // The keyboard's height goes to the viewer, which slides up under it; it never
