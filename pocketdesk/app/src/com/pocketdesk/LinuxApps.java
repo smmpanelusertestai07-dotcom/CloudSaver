@@ -120,28 +120,33 @@ final class LinuxApps {
             // The old built-in browser goes once Chrome is here: one browser, not two.
             + "apt-get remove -y epiphany-browser >/dev/null 2>&1 || true";
 
+    /** The desktop and its tools: what set-up installs, and what the Settings row refreshes. */
+    static final String DESKTOP_PACKAGES =
+            "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
+            + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
+            + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils librsvg2-common "
+            + "lxterminal pcmanfm tint2 pulseaudio pulseaudio-utils "
+            + "less file unzip zip wget";
+    /** The developer tools an agentic development environment needs from the first minute. */
+    static final String DEVELOPER_PACKAGES =
+            "build-essential pkg-config python3 python3-pip python3-venv nodejs npm "
+            + "git git-lfs openssh-client jq htop tree vim nano rsync";
+
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt. Not removable: it is the computer.
-            new App("essentials", "Desktop basics",
-                    "Browser: Google Chrome, latest official ARM64 build. Plus sound, terminal, Files, "
-                            + "Phone files, icons and the apps menu. Comes with setup; tap to update.",
-                    R.drawable.ic_desktop, 0, "about 320 MB", 1500 * MB,
-                    "5–15 min", null,
-                    "/usr/bin/pactl",
-                    "apt-get update; apt-get install -y --no-install-recommends "
-                            + "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
-                            + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
-                            + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils "
-                            + "librsvg2-common "
-                            + "lxterminal pcmanfm tint2 "
-                            + "pulseaudio pulseaudio-utils "
-                            + "less file unzip zip wget; "
+            // Not on the Apps tab: set-up installs all of this. Settings -> Storage -> Update the
+            // computer's basics runs it again, for a computer built by an earlier version.
+            new App("basics", "Desktop, Google Chrome and developer tools",
+                    "The desktop, sound, Google Chrome and the developer tools, brought up to date.",
+                    R.drawable.ic_desktop, 0, "about 700 MB", 3 * GB,
+                    "10–30 min", null,
+                    "/usr/bin/gcc",
+                    "apt-get update; apt-get install -y --no-install-recommends " + DESKTOP_PACKAGES + "; "
+                            + "apt-get install -y --no-install-recommends " + DEVELOPER_PACKAGES + "; "
                             + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone; "
-                            // Chrome as part of the basics; a failure here is not a failure of the
-                            // basics, and the Google Chrome row can always try again.
                             + "( " + CHROME_INSTALL + " ) || true",
                     null),
 
@@ -214,17 +219,6 @@ final class LinuxApps {
                             + "> /usr/share/applications/antigravity.desktop; fi",
                     "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list"),
 
-            new App("devtools", "Developer tools",
-                    "gcc and make, Python 3 with pip, Node.js with npm, Git, SSH, jq, htop, vim.",
-                    R.drawable.ic_terminal, 0, "400 MB", 2500 * MB,
-                    "5–15 min",
-                    "For building and running software in the terminal or from Cursor and Antigravity. "
-                            + "Ubuntu 24.04's own packages; sudo apt install adds anything else.",
-                    "/usr/bin/gcc",
-                    "apt-get update; apt-get install -y --no-install-recommends "
-                            + "build-essential pkg-config python3 python3-pip python3-venv nodejs npm "
-                            + "git git-lfs openssh-client jq htop tree vim nano rsync ca-certificates curl",
-                    null),
     };
 
     /** The four AI apps, as opposed to the computer's own parts (browser, tools, basics). */

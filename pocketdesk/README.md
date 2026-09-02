@@ -2,7 +2,9 @@
 
 PocketDesk is a native Android app that runs a real Ubuntu 24.04 LTS ARM64 desktop on your phone,
 with a built-in screen viewer, keyboard and mouse support. It is built for people who code from a
-phone because they do not have a PC.
+phone because they do not have a PC. It is an **agentic development environment** — the makers'
+own AI desktop apps, Google Chrome and the developer tools they use, running locally — not a
+feature-rich general-purpose desktop, and it does not try to be one.
 
 No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 
@@ -17,9 +19,9 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Input | Finger mode (tap where you touch, swipe to scroll with a fling, hold to right-click, a hand at the pointer) and Mouse mode (drag the pointer, which is the shape the desktop reports; two fingers scroll; tap-then-drag), USB and Bluetooth mouse, hardware keyboard, composing-aware phone keyboard, Android clipboard bridge |
 | Viewer internals | Cursor pseudo-encoding (the desktop does not paint its pointer into the picture), double-buffered updates (an RFB update is blitted to the screen only when complete, so frames never tear) |
 | Sound | PulseAudio inside Linux plays into a virtual output whose PCM is streamed on `127.0.0.1:4712` (module-simple-protocol-tcp) and played by the app through AudioTrack while the desktop screen is open; the volume keys set it. No microphone yet |
-| Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt`, `wget`, `zip`/`unzip`, `less`, `file`, LXTerminal on the desktop; a **Developer tools** row adds compilers, Python 3, Node.js, Git extras, SSH, jq, htop, vim |
+| Tools | Installed by set-up: `bash`, `git` and Git LFS, `curl`, `wget`, `nano`, `vim`, `sudo`, `apt`, `zip`/`unzip`, `less`, `file`, `rsync`, `jq`, `htop`, `tree`, SSH, gcc and make (`build-essential`), Python 3 with pip and venv, Node.js with npm; LXTerminal on the desktop. Settings → Storage → Update the computer's basics refreshes all of it |
 | Browser | **Google Chrome**, installed by set-up from Google's own apt repository (arm64 published since July 2026) as part of Desktop basics, and the only browser on the computer: desktop, panel, every link and sign-in. Extensions and sync work; policies give a blank start page, no background mode, no default-browser prompt, no metrics, no GPU. The Desktop basics row updates it. Downloads land in `~/Downloads` inside Linux |
-| Apps | One-tap installs of the makers' own official Linux builds: ChatGPT (AI assistant, with Codex), Claude Desktop (AI assistant, with Claude Code), Cursor (the AI code editor) and Antigravity (Google's agentic development platform, from Google's apt repository). Install once; the same row updates in place, an install or a **Remove** runs beside an open desktop |
+| Apps | The Apps tab is the four AI apps only, the makers' own official Linux builds: ChatGPT (AI assistant, with Codex), Claude Desktop (AI assistant, with Claude Code), Cursor (the AI code editor) and Antigravity (Google's agentic development platform, from Google's apt repository). Install once; the same row updates in place, an install or a **Remove** runs beside an open desktop |
 | Reliability | The desktop runs **without PRoot's seccomp accelerator**, always — the accelerator breaks Chromium/Electron signal-handler resets (`socket()`/`readlink()` return ENOSYS and the app aborts), which was the "ChatGPT goes back by itself". Chromium apps also use `--no-zygote` |
 | Data and privacy | Daily mobile-data limit with midnight reset (stops downloads and the desktop); Downloads visible to the phone or kept inside Linux; app lock covering the whole app with the phone's fingerprint or PIN; everything local, Android cloud backup off |
 | Home screen | An opening (app mark and name, then Tux and "Powered by Linux · Ubuntu 24.04 LTS"), then three tabs on a bottom bar: Home (state with Tux, Needs attention, mobile data meter, Your phone is compatible, **Linux only, on purpose** with the checked facts, the questions with chevrons that turn while open, branded dialogs), Apps (AI desktop apps with a line saying why rows are grey; Computer basics: Desktop basics with Chrome, Developer tools), Settings (Appearance, Running, Data and files, Privacy and safety, Permissions incl. Background activity and Auto-launch, Storage; a dot only for what Settings can fix) |
@@ -32,7 +34,7 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 
 - Android 10 (API 29) and above, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
 - 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
-- At least 4 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 1.5–3 GB
+- At least 6 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 3.5–4.5 GB
 - Reference device: Realme C25s, Android 13, 4 GB RAM
 
 ## Build

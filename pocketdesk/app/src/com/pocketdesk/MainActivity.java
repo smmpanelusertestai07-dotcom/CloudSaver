@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.15";
+    static final String VERSION = "10.0.20";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -701,9 +701,11 @@ public final class MainActivity extends Activity {
         card.addView(Ui.sectionTitle(this, "Linux only, on purpose", R.drawable.ic_desktop, dark));
         card.addView(Ui.text(this,
                 "The computer inside this app is Ubuntu 24.04 LTS, running on the phone's own "
-                        + "processor. It is the only kind of computer a phone can run natively, "
-                        + "and it is where every one of these AI desktop apps is officially "
-                        + "published. Tap a line for the facts behind it.", 12.5f, muted),
+                        + "processor. It is built for one purpose: an agentic development "
+                        + "environment, where the makers' own AI desktop apps, Google Chrome and the "
+                        + "developer tools they use run locally. It is not a feature-rich "
+                        + "general-purpose desktop, and it does not try to be. Tap a line for the "
+                        + "facts behind it.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
         addAnswer(card, R.drawable.ic_check, "Every AI desktop app here ships for Linux",
                 "OpenAI released the ChatGPT desktop app for Linux (with Codex) as a public preview "
@@ -752,7 +754,6 @@ public final class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         appRows.clear();
         page.addView(buildAppsCard(text, muted));
-        page.addView(buildBasicsCard(text, muted));
         page.addView(buildOtherAppsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
         return page;
@@ -765,6 +766,9 @@ public final class MainActivity extends Activity {
                 + "tap an installed row to update or remove it.", 13f, text), Ui.matchWrap(this, 8));
         card.addView(Ui.text(this, "ARM64 · runs locally on your phone · updates from the maker",
                 12f, Ui.accent(dark)), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this, "Already on the computer from set-up: the desktop, Google Chrome, "
+                + "and the developer tools these apps use (gcc and make, Python 3, Node.js, Git, SSH). "
+                + "Nothing else to add before these.", 12.5f, muted), Ui.matchWrap(this, 6));
         appsNote = Ui.text(this, "", 12.5f, Ui.WARNING);
         appsNote.setVisibility(View.GONE);
         card.addView(appsNote, Ui.matchWrap(this, 8));
@@ -777,23 +781,6 @@ public final class MainActivity extends Activity {
         card.addView(Ui.text(this, "Signing in happens in the browser inside the desktop, exactly as "
                 + "on a computer, and the app stays signed in afterwards. Home → Privacy and your "
                 + "questions explains each app's sign-in.", 12.5f, muted), Ui.matchWrap(this, 12));
-        return card;
-    }
-
-    /** The computer's own parts: the browser, the developer tools, the desktop basics. */
-    private View buildBasicsCard(int text, int muted) {
-        LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.sectionTitle(this, "Computer basics", R.drawable.ic_desktop, dark));
-        card.addView(Ui.text(this,
-                "Desktop basics come with setup and include the browser, Google Chrome; tap the "
-                        + "row to bring an older computer up to date. Developer tools add compilers, "
-                        + "Python, Node.js and Git for building software.",
-                12.5f, muted), Ui.matchWrap(this, 6));
-        int added = 0;
-        for (LinuxApps.App app : LinuxApps.CATALOG) {
-            if (LinuxApps.isAiApp(app)) continue;
-            card.addView(appRow(app), Ui.matchWrap(this, added++ == 0 ? 12 : 8));
-        }
         return card;
     }
 
@@ -1046,6 +1033,11 @@ public final class MainActivity extends Activity {
         LinearLayout storage = group(page, "Storage");
         linuxSize = Ui.text(this, "", 12.5f, muted);
         storage.addView(linuxSize, Ui.matchWrap(this, 0));
+        Ui.Row updateRow = new Ui.Row(this, R.drawable.ic_download, "Update the computer's basics",
+                "Desktop, Google Chrome and the developer tools, brought up to date. Set-up "
+                        + "installs all of this; use this after an app update or on an older computer.",
+                R.drawable.ic_chevron, dark, v -> confirmBasicsUpdate());
+        storage.addView(updateRow, Ui.matchWrap(this, 10));
         removeButton = Ui.secondaryButton(this, "Remove the Linux computer and free space", dark, R.drawable.ic_delete);
         removeButton.setOnClickListener(v -> confirmRemove());
         storage.addView(removeButton, Ui.matchWrap(this, 10));
@@ -1130,11 +1122,14 @@ public final class MainActivity extends Activity {
                 Ui.matchWrap(this, 6));
 
         addAnswer(card, R.drawable.ic_desktop, "What exactly is this?",
-                "A real Ubuntu 24.04 computer running inside this app, on your phone's own "
-                        + "processor — a container, not a cloud PC and not a virtual machine. It "
-                        + "has a desktop, a file manager, a browser, and the four AI desktop apps, "
-                        + "each the maker's own official Linux build. The phone stays a phone; the "
-                        + "computer lives in this app's private storage and is removed with it.", true);
+                "A real Ubuntu 24.04 LTS computer running inside this app, on your phone's own "
+                        + "processor — a container, not a cloud PC and not a virtual machine. It is "
+                        + "an agentic development environment: a desktop, Google Chrome, the "
+                        + "developer tools (gcc and make, Python 3, Node.js, Git, SSH), and the "
+                        + "four AI desktop apps, each the maker's own official Linux build. It is "
+                        + "not a general-purpose desktop with every feature of a PC. The phone stays "
+                        + "a phone; the computer lives in this app's private storage and is removed "
+                        + "with it.", true);
 
         addAnswer(card, R.drawable.ic_phone, "Is it all on my phone?",
                 "Yes. The entire Linux computer runs locally on this phone — no cloud, no "
@@ -1294,9 +1289,11 @@ public final class MainActivity extends Activity {
                         + "Volume. Sound into the computer (a microphone) is not carried yet.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
-                "These are the permanent ones. A phone has no graphics card and a fraction of "
-                        + "a PC's memory, so the AI desktop apps draw on the processor and open "
-                        + "more slowly than on a PC, and one heavy app at a time is the "
+                "These are the permanent ones. This is an agentic development environment, "
+                        + "not a feature-rich general desktop: what it does, it does fully; what "
+                        + "it does not include is not missing by accident. A phone has no graphics "
+                        + "card and a fraction of a PC's memory, so the AI desktop apps draw on the "
+                        + "processor and open more slowly than on a PC, and one heavy app at a time is the "
                         + "comfortable way to work. Windows and macOS cannot run on a phone, and "
                         + "neither can anything that needs a virtual machine. Your AI accounts' "
                         + "own plans and limits still apply; PocketDesk cannot change them. "
@@ -1721,9 +1718,10 @@ public final class MainActivity extends Activity {
         } else {
             statusBadge.setText("Not set up");
             statusHeadline.setText("Set up the Linux computer once");
-            statusNote.setText("Downloads Ubuntu 24.04 LTS and sets up the desktop, files, sound and "
-                    + "Google Chrome. About 30 MB now, then packages; 2–3.5 GB when finished. Then add "
-                    + "the AI desktop apps from the Apps tab.");
+            statusNote.setText("One set-up does it all: Ubuntu 24.04 LTS, the desktop, sound, Google "
+                    + "Chrome and the developer tools (gcc and make, Python 3, Node.js, Git, SSH). "
+                    + "About 30 MB now, then about 700 MB of packages; 3.5–4.5 GB when finished. "
+                    + "Then add the AI desktop apps from the Apps tab.");
         }
 
         setupButton.setVisibility(installed || busy ? View.GONE : View.VISIBLE);
@@ -1778,14 +1776,34 @@ public final class MainActivity extends Activity {
                 + "turns off — set it to Unrestricted under Settings → Permissions first.";
         dialogBuilder()
                 .setTitle("Set up the Linux computer?")
-                .setMessage("Ubuntu 24.04 LTS will be downloaded and set up inside this app.\n\n"
-                        + "• Download: about 30 MB, then desktop packages and Google Chrome (about 350 MB)\n"
-                        + "• Final size: 2–3.5 GB\n"
+                .setMessage("Ubuntu 24.04 LTS will be downloaded and set up inside this app, with "
+                        + "the desktop, Google Chrome and the developer tools.\n\n"
+                        + "• Download: about 30 MB, then about 700 MB of packages\n"
+                        + "• Final size: 3.5–4.5 GB\n"
                         + "• Wi-Fi or mobile data both work\n"
-                        + "• Takes 10–30 minutes depending on your connection"
+                        + "• Takes 15–40 minutes depending on your connection"
                         + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Set up", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
+                .show();
+    }
+
+    private void confirmBasicsUpdate() {
+        if (!ContainerRuntime.isInstalled(this)) {
+            showMessage("Set up Linux first", "Set-up installs the desktop, Google Chrome and the developer "
+                    + "tools. This row only brings an already set-up computer up to date.");
+            return;
+        }
+        LinuxApps.App basics = LinuxApps.byId("basics");
+        if (basics == null) return;
+        dialogBuilder()
+                .setTitle("Update the computer's basics?")
+                .setMessage("Fetches the newest desktop packages, Google Chrome and developer tools "
+                        + "from their own repositories. Nothing of yours changes. Download: "
+                        + basics.approximateSize + "; usually " + basics.typicalTime + "."
+                        + (LinuxService.isDesktopRunning() ? "\n\nThe desktop keeps running meanwhile." : ""))
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Update", (d, w) -> sendAppTask(LinuxService.ACTION_INSTALL_APP, basics.id))
                 .show();
     }
 

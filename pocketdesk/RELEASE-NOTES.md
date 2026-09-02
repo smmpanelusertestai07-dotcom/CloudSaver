@@ -1,3 +1,20 @@
+# PocketDesk 10.0.20 — one set-up does it all
+
+- **Set up Linux installs everything.** The one button on the Home tab now brings the desktop,
+  sound, Google Chrome and the developer tools (gcc and make, Python 3 with pip and venv,
+  Node.js with npm, Git and Git LFS, SSH, jq, htop, tree, vim, rsync) in one go. About 700 MB of
+  packages after the 30 MB base; 3.5–4.5 GB when finished; 15–40 minutes. Set-up now asks for
+  6 GB free.
+- **The Apps tab is the four AI apps, nothing else.** Computer basics and Developer tools are
+  gone from it; a line under the intro says what set-up already installed. Settings → Storage
+  gains **Update the computer's basics** for a computer built by an earlier version (it runs
+  beside an open desktop like every other install).
+- **What this computer is, said where people read it:** an agentic development environment —
+  the makers' own AI desktop apps, Google Chrome and the developer tools they use, running
+  locally — and not a feature-rich general-purpose desktop. In the Linux-only card, in "What
+  exactly is this?", and in the honest limits.
+- Version 10.0.20 (code 120).
+
 # PocketDesk 10.0.15 — plain error messages, and CI
 
 - **When an app cannot open, the desktop now says so plainly.** One title ("ChatGPT could not

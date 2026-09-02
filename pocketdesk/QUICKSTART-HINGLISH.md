@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.15-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.20-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -12,8 +12,9 @@
 1. App kholo. Neeche 3 tabs: **Home · Apps · Settings**.
 2. Upar 4 tiles: **Network, Battery, Free space, Temperature**. Neeche *Your phone* card me
    **Your phone is compatible** likha hona chahiye — tap karo to detail wahin niche khulti hai.
-3. **Set up Linux** dabao → confirm karo. Ubuntu 24.04 LTS download hoga (30 MB), phir desktop
-   packages aur Google Chrome (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
+3. **Set up Linux** dabao → confirm karo. Ubuntu 24.04 LTS download hoga (30 MB), phir ek hi baar me
+   desktop, sound, Google Chrome aur developer tools (gcc/make, Python 3, Node.js, Git, SSH) — lagbhag
+   700 MB packages, 15–40 min. 6 GB free chahiye. Beech me net kat jaye to wahi se resume hota hai.
 4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix ya detail khulta hai.
 5. **Linux only, on purpose** card me likha hai computer Linux hi kyun hai — har line tap karo,
    facts (dates ke saath) wahin khulte hain.
@@ -29,11 +30,10 @@
   uska icon desktop pe aa jata hai.
 - Ek waqt me **ek hi AI app** kholo — 4 GB RAM wale phone pe do saath me memory kha jate hain.
 
-### Computer basics
-- **Desktop basics** — setup ke saath aata hai, aur isi me browser hai: **Google Chrome**, Google ke apne ARM64 repo se, latest.
-  Extensions, sync, har link aur sign-in Chrome me. Purane computer ko update karne ke liye yeh row tap karo.
-- **Developer tools** — gcc/make, Python 3 (pip, venv), Node.js (npm), git extras, ssh, jq, htop, vim.
-  Cursor/Antigravity/Claude Code se software banane ke liye.
+### Baaki sab setup ke saath hi aa gaya
+- Desktop, sound, **Google Chrome** (computer ka ek hi browser) aur **developer tools** (gcc/make, Python 3, Node.js, Git, SSH, jq, htop, vim)
+  sab setup me hi install ho jaate hain — Apps tab me sirf 4 AI apps hain.
+- Purane computer ko update karna ho: Settings → Storage → **Update the computer's basics**.
 - **App hatana:** installed AI app ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.
 
 ### Sign in kaise hoga

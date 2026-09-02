@@ -285,6 +285,9 @@ final class ContainerRuntime {
                 + "pulseaudio pulseaudio-utils "
                 // The small tools a computer is expected to have from the first minute.
                 + "less file unzip zip wget; "
+                // The developer tools an agentic development environment needs: compilers,
+                // Python, Node.js, Git, SSH. One set-up, nothing to add later.
+                + "apt-get install -y --no-install-recommends " + LinuxApps.DEVELOPER_PACKAGES + "; "
                 // A desktop clock is only useful in the user's own time.
                 + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                 + "echo 'Asia/Kolkata' > /etc/timezone; "

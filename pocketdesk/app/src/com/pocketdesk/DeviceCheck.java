@@ -19,7 +19,7 @@ final class DeviceCheck {
     static final int TARGET_SDK = 35;
     static final long MIN_RAM_GB = 4;
     /** Decimal, like Android's own Settings screen prints sizes. */
-    static final long MIN_FREE_BYTES = 4_000_000_000L;
+    static final long MIN_FREE_BYTES = 6_000_000_000L;
     /** Once installed, the desktop still needs room to breathe. */
     static final long LOW_FREE_BYTES = 1_000_000_000L;
 
