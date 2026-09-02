@@ -76,13 +76,13 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
 # script - what do you want to do with it?" prompt instead of just launching the app.
-printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=64\nsmall_icon_size=24\nthumbnail_size=128\n' \
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=72\nsmall_icon_size=24\nthumbnail_size=128\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
 # Ubuntu 24.04's own wallpaper; a right-click (a long press, in Finger mode) on it opens the
 # window manager's menu, which lists every installed app, Phone files, the terminal and the
 # window commands, rather than the file manager's own short one.
-printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\ndesktop_bg=#2c001e\ndesktop_fg=#ffffff\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
+printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\ndesktop_bg=#0b1220\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"

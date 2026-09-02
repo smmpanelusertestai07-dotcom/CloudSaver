@@ -6,5 +6,11 @@
     <color name="window_light">#F4F6FB</color>
     <color name="window_dark">#080D1A</color>
     <color name="white">#FFFFFF</color>
+    <color name="brand_on_dark">#7A9BFF</color>
+    <color name="card_dark">#101A2E</color>
+    <color name="text_dark">#F1F5FB</color>
+    <color name="muted_dark">#9AA7BD</color>
+    <color name="text_light">#0E1729</color>
+    <color name="muted_light">#5A6478</color>
     <color name="transparent">#00000000</color>
 </resources>

@@ -48,6 +48,7 @@ grep -q -- '--disable-gpu ' "$log" || fail "missing --disable-gpu"
 # In single-process mode there is no GPU process at all, so Chromium reports GPU access as
 # denied whatever the flags say -- and ChatGPT's error reporter makes that fatal.
 grep -q -- '--single-process' "$log" && fail "--single-process re-denies GPU access and must never be passed"
+grep -q -- '--no-zygote' "$log" || fail "Chromium apps must start with --no-zygote (the zygote fails under PRoot)"
 
 # A stale single-instance lock must be cleared -- and must never leak into the launcher's own
 # variables. This exact setup once made it execute the lock's target, "localhost-16621", as the

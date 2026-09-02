@@ -67,7 +67,7 @@ entries() {
 # else GNOME Web, the light one every container starts with. One browser on the desktop and
 # the panel, and the same one answers every link, so a sign-in never opens in a second one.
 BROWSER_ENTRY=""
-for candidate in brave-browser.desktop firefox.desktop org.gnome.Epiphany.desktop; do
+for candidate in brave-browser.desktop org.gnome.Epiphany.desktop; do
   [ -f "$APPLICATIONS_DIR/$candidate" ] || continue
   runnable "$APPLICATIONS_DIR/$candidate" || continue
   BROWSER_ENTRY=$candidate
@@ -224,7 +224,7 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 {
   echo 'panel_items = LTSC'
-  echo 'panel_size = 100% 52'
+  echo 'panel_size = 100% 58'
   echo 'panel_padding = 6 3 8'
   echo 'background_color = #0f1327 100'
   echo 'border_width = 0'
@@ -243,7 +243,7 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
   echo 'time_tooltip_format = %A %d %B %Y, %I:%M %P'
   echo 'systray_padding = 6 2 6'
   echo 'systray_icon_size = 22'
-  echo 'launcher_icon_size = 36'
+  echo 'launcher_icon_size = 44'
   echo 'launcher_padding = 8 4 8'
   echo 'launcher_icon_theme = Adwaita'
   echo 'launcher_tooltip = 1'

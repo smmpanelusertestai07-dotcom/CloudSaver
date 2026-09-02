@@ -103,7 +103,8 @@ final class VncView extends View implements VncClient.Listener {
         setFocusable(false);
         setFocusableInTouchMode(false);
         setContentDescription("Linux computer");
-        setBackgroundColor(Color.BLACK);
+        // A deep, calm backdrop, so at 100 % the framed desktop sits on colour, not black.
+        setBackgroundColor(Color.rgb(9, 14, 26));
         overlayPaint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
         overlayPaint.setTextAlign(Paint.Align.CENTER);
         zoomDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -238,10 +239,15 @@ final class VncView extends View implements VncClient.Listener {
         return Math.max(1f, Math.min(value, 6f));
     }
 
+    /** The gap kept around the desktop at 100 %, so it reads as a screen on a desk, not a crop. */
+    private int frame() { return Ui.dp(getContext(), 7); }
+
     /** Recomputes where the framebuffer lands on screen for the current zoom and pan. */
     private void layoutDestination(Bitmap current) {
-        float fit = Math.min(getWidth() / (float) current.getWidth(),
-                getHeight() / (float) current.getHeight());
+        int m = frame();
+        float availW = Math.max(1f, getWidth() - 2f * m);
+        float availH = Math.max(1f, getHeight() - 2f * m);
+        float fit = Math.min(availW / current.getWidth(), availH / current.getHeight());
         float scale = fit * zoom;
         float shownWidth = current.getWidth() * scale;
         float shownHeight = current.getHeight() * scale;
@@ -286,6 +292,16 @@ final class VncView extends View implements VncClient.Listener {
             if (current.isRecycled()) return;
             canvas.drawBitmap(current, null, destination, paint);
         }
+        // A thin rounded border around the desktop, in both orientations, so the framed edge
+        // is deliberate rather than a picture that ran off the screen.
+        float r = Ui.dp(getContext(), 6);
+        float bw = Ui.dp(getContext(), 1.5f);
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(bw);
+        overlayPaint.setColor(Color.argb(150, 122, 155, 255));
+        canvas.drawRoundRect(destination.left - bw, destination.top - bw,
+                destination.right + bw, destination.bottom + bw, r, r, overlayPaint);
+        overlayPaint.setStyle(Paint.Style.FILL);
 
         float scale = destination.width() / current.getWidth();
         float px = destination.left + pointerX * scale;

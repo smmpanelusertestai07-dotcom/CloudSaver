@@ -139,6 +139,17 @@ final class AppLock {
      */
     static void prompt(Activity activity, Callback callback) {
         if (!hasScreenLock(activity)) { locked = false; callback.done(true); return; }
+        // Some Android builds throw SecurityException from authenticate() when the app does not
+        // hold USE_BIOMETRIC, even to reach the PIN fallback. If the permission is not granted,
+        // skip the biometric prompt entirely and use the phone's own PIN screen, which needs no
+        // permission. This is what turned an old build's app-lock into a crash on resume.
+        boolean canBiometric = Build.VERSION.SDK_INT < 29
+                || activity.checkSelfPermission(android.Manifest.permission.USE_BIOMETRIC)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (!canBiometric) {
+            if (!credentialScreen(activity, callback)) callback.done(false);
+            return;
+        }
         try {
             android.hardware.biometrics.BiometricPrompt.Builder builder =
                     new android.hardware.biometrics.BiometricPrompt.Builder(activity)

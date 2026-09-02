@@ -61,6 +61,11 @@ is_chromium() {
 
 base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             --disable-dev-shm-usage
+            # No zygote: under PRoot the zygote's forked children reset their signal handlers,
+            # which breaks the tracer and fills the log with "Error reading message from
+            # browser: Function not implemented". Forking renderers straight from the browser
+            # process avoids that whole path. Safe only with --no-sandbox, which is set above.
+            --no-zygote
             # Every extra process costs far more here than on a PC: PRoot traces each one, and
             # each re-executes a binary of 200-300 MB. The zygote stays -- it is forked, not
             # executed -- and everything optional around it goes.

@@ -311,7 +311,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
-        // Ubuntu 24.04's own wallpaper (CC BY-SA, see OPEN_SOURCE_NOTICES.md).
+        // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");
@@ -381,6 +381,16 @@ final class ContainerRuntime {
      * sets this and the next start runs without it, permanently.
      */
     static final String KEY_PROOT_NO_SECCOMP = "proot_no_seccomp";
+    /**
+     * "Faster desktop": run the desktop with PRoot's seccomp accelerator. Off by default,
+     * because Chromium and Electron apps (ChatGPT, Claude, Cursor, Antigravity, Brave) reset
+     * their own signal handlers at startup, which breaks the accelerator's SIGSYS emulation and
+     * makes socket(), readlink() and unlink() return "Function not implemented" in the app's
+     * main process -- ChatGPT then aborts and the screen drops back to the home tab. Without the
+     * accelerator every syscall is traced instead, which is a little slower but lets every app
+     * actually run. The owner can turn this on to trade reliability for speed.
+     */
+    static final String KEY_FAST_DESKTOP = "fast_desktop";
 
     static String startDesktopCommand(int width, int height, int dpi) {
         return startDesktopCommand(width, height, dpi, true);

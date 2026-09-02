@@ -1,3 +1,64 @@
+# PocketDesk 3.4.0 — the ChatGPT auto-back root cause, one browser, uninstall, and a themed, framed UI
+
+This release starts from real-device evidence: a ChatGPT crash log and screenshots from a Realme
+C25s. The log named the cause, so this is a root-cause fix, not another guess.
+
+## ChatGPT (and every Chromium app) closing by itself — found and fixed
+The log showed the fatal line: `socket() failed: Function not implemented (38)`, with the same
+`Function not implemented` on `readlink` and `unlink` of ChatGPT's own lock file, and a flood of
+"Error reading message from browser: Function not implemented" from its zygote. The cause is
+PRoot's **seccomp accelerator**: Chromium and Electron reset their signal handlers at startup,
+which breaks the accelerator's SIGSYS-based syscall emulation, so ordinary syscalls come back
+"not implemented" and the app aborts — dropping the screen back to Home.
+
+- The desktop now runs **without the seccomp accelerator by default**, so every app's syscalls
+  are traced correctly and Chromium apps actually run. A little slower, reliably working.
+- A **Settings → Running → Faster desktop (experimental)** toggle turns the accelerator back on
+  for anyone who wants to trade reliability for speed; a start that fails still falls back.
+- Chromium apps also launch with **`--no-zygote`**, which removes the failing zygote path.
+
+## One browser, not three
+"Keep one, the best." Firefox is removed. **Brave** is the single full browser: a Chromium engine
+(best compatibility with the AI sign-in pages and the largest extension library), Brave's official
+ARM64 apt repository, with Rewards, Wallet, VPN, news and AI chat switched off by policy. The
+built-in GNOME Web stays as the instant, lightweight default until Brave is installed; whichever
+is present is the computer's one browser everywhere.
+
+## Uninstall an app
+Every installed AI app and Brave now has a **Remove** button (tap an installed row). It frees the
+space and its sign-in; the computer and everything else stay. The remove runs beside an open
+desktop, like installs do.
+
+## The app-lock crash
+An earlier build could crash on resume with `SecurityException: Must have USE_BIOMETRIC` on some
+Realme/ColorOS phones. The lock now checks the permission first and, if it is missing, goes
+straight to the phone's PIN screen — it can never throw.
+
+## Correct terms
+- ChatGPT and Claude Desktop are **AI assistants**, each with its maker's coding agent (Codex,
+  Claude Code). **Cursor** is "the AI code editor". **Antigravity** is Google's "agentic
+  development platform", where AI agents plan, write, run and test software.
+- The Apps tab carries a quiet "ARM64 · runs locally on your phone · updates from the maker" line.
+- Settings' footer credit is shorter and generic; "Android 10 and above" everywhere.
+
+## A themed, framed desktop
+- **Dialogs are branded** now (dark card, blue accent, rounded) instead of the grey Material box —
+  the "Linux computer" details, every chooser and confirmation.
+- The viewer no longer fills the screen edge to edge: at 100 % the desktop sits inside a small
+  gap with a **rounded blue border** on a deep backdrop, in portrait and landscape, so the framed
+  screen is deliberate. A **hairline divides** the desktop from the control bar.
+- The desktop **wallpaper is now a deep-blue Linux one with Tux** (replacing the maroon), the
+  desktop and panel **icons are larger**, and the **launch screen shows the app mark with Tux** on
+  blue. The **Phone files icon** was redrawn. On the home screen the hero card and Your phone card
+  have room to breathe.
+
+## Not done, and why (unchanged and permanent)
+- Windows or macOS on a phone: impossible (no hardware virtualisation for apps; macOS is
+  Apple-only). Wine runs small native ARM64 Windows programs, not these Electron AI apps.
+- Sound plays out to the phone; a **microphone into the computer** is not carried yet.
+- The app stays plain Java (Gradle-free, reproducible); a Kotlin rewrite would change nothing
+  visible and cost every tested behaviour its history.
+
 # PocketDesk 3.3.0 — Linux only, on purpose; sound; a browser with extensions; installs beside a running desktop
 
 The virtualisation test is gone from the home screen, and in its place the app says, in checked

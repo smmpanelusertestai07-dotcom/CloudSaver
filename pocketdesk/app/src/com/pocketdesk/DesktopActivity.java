@@ -278,14 +278,27 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         keyRow.setVisibility(keyRowShown ? View.VISIBLE : View.GONE);
         if (controlsAtTop) {
             column.addView(bar, stripLp);
+            column.addView(hairline(), dividerLp());
             column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
             column.addView(desktop, desktopLp);
         } else {
             column.addView(desktop, desktopLp);
             column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
+            column.addView(hairline(), dividerLp());
             column.addView(bar, stripLp);
         }
         styleToggle(keysButton, keyRowShown);
+    }
+
+    /** A one-pixel line between the desktop and the control bar, so the bar reads as a shelf. */
+    private View hairline() {
+        View line = new View(this);
+        line.setBackgroundColor(Color.rgb(35, 48, 74));
+        return line;
+    }
+
+    private LinearLayout.LayoutParams dividerLp() {
+        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 1)));
     }
 
     private void setKeyRowShown(boolean shown) {
@@ -398,7 +411,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "set it.\n\n"
                 + "Stopping the computer keeps everything: apps stay signed in and files stay "
                 + "where they are, so the next open continues from here.";
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+        new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)
                 .setTitle(status.getText())
                 .setMessage(text)
                 .setPositiveButton("OK", null)

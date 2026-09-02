@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.3.0";
+    static final String VERSION = "3.4.0";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -341,6 +341,7 @@ public final class MainActivity extends Activity {
         page.addView(buildDesktopCard(text, muted), Ui.matchWrap(this, 14));
         page.addView(buildAttentionCard(text, muted));
         page.addView(buildDataCard(text, muted));
+        Ui.addSpace(page, this, 6);
         page.addView(buildPhoneCard(text, muted));
         page.addView(buildWhyLinuxCard(text, muted));
         page.addView(buildQuestionsCard(text, muted));
@@ -698,10 +699,12 @@ public final class MainActivity extends Activity {
                         + "Desktop (Anthropic) are the assistants, each with its maker's coding "
                         + "agent built in: Codex and Claude Code. Cursor (Anysphere) is an AI code "
                         + "editor and Antigravity (Google) an agentic development platform: both "
-                        + "are full IDEs where AI agents write, run and test software. Each row "
+                        + "are full IDEs where AI agents plan, write, run and test software. Each row "
                         + "installs the maker's own signed Linux package; a tap on an installed row "
                         + "updates it in place, login kept. The desktop can stay open while an app "
                         + "installs.", 12.5f, muted), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this, "ARM64 · runs locally on your phone · updates from the maker",
+                12f, Ui.accent(dark)), Ui.matchWrap(this, 8));
 
         int added = 0;
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -802,25 +805,43 @@ public final class MainActivity extends Activity {
         if (LinuxService.isDesktopRunning()) {
             message.append("\n\nThe desktop keeps running while this installs; the app appears on it when done.");
         }
-        dialogBuilder()
+        AlertDialog.Builder builder = dialogBuilder()
                 .setTitle((present ? "Update " : "Install ") + app.name + "?")
                 .setMessage(message.toString())
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton(present ? "Update" : "Install", (dialog, which) -> {
-                    Intent intent = new Intent(this, LinuxService.class)
-                            .setAction(LinuxService.ACTION_INSTALL_APP)
-                            .putExtra(LinuxService.EXTRA_APP_ID, app.id);
-                    requestNotificationPermission(false);
-                    try {
-                        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
-                        else startService(intent);
-                    } catch (Throwable error) {
-                        showMessage("Could not start", "Android refused to start the background task.");
-                    }
-                    selectTab(TAB_HOME);
-                    refreshState();
-                })
+                .setPositiveButton(present ? "Update" : "Install", (dialog, which) ->
+                        sendAppTask(LinuxService.ACTION_INSTALL_APP, app.id));
+        // Installed things that can be removed get a Remove button, so a phone tight on space
+        // can take one back without removing the whole computer.
+        if (present && app.removable()) {
+            builder.setNeutralButton("Remove", (dialog, which) -> confirmRemoveApp(app));
+        }
+        builder.show();
+    }
+
+    private void confirmRemoveApp(LinuxApps.App app) {
+        dialogBuilder()
+                .setTitle("Remove " + app.name + "?")
+                .setMessage("Frees the space it uses. Its sign-in and settings go with it; install it "
+                        + "again any time and sign in once more. The Linux computer and everything else "
+                        + "stay as they are.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Remove", (d, w) -> sendAppTask(LinuxService.ACTION_UNINSTALL_APP, app.id))
                 .show();
+    }
+
+    private void sendAppTask(String action, String appId) {
+        Intent intent = new Intent(this, LinuxService.class).setAction(action)
+                .putExtra(LinuxService.EXTRA_APP_ID, appId);
+        requestNotificationPermission(false);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+            else startService(intent);
+        } catch (Throwable error) {
+            showMessage("Could not start", "Android refused to start the background task.");
+        }
+        selectTab(TAB_HOME);
+        refreshState();
     }
 
     // ---------------------------------------------------------------- Settings
@@ -864,6 +885,13 @@ public final class MainActivity extends Activity {
         guard.control.setOnCheckedChangeListener((button, checked) ->
                 preferences.edit().putBoolean(ContainerRuntime.KEY_THERMAL_GUARD, checked).apply());
         running.addView(guard, Ui.matchWrap(this, 8));
+        Ui.Toggle fast = new Ui.Toggle(this, R.drawable.ic_bolt, "Faster desktop (experimental)",
+                "Off is best: every app runs. On uses a speed-up that ChatGPT, Claude, Cursor, "
+                        + "Antigravity and Brave can crash on. Applies at the next desktop start.",
+                preferences.getBoolean(ContainerRuntime.KEY_FAST_DESKTOP, false), dark);
+        fast.control.setOnCheckedChangeListener((button, checked) ->
+                preferences.edit().putBoolean(ContainerRuntime.KEY_FAST_DESKTOP, checked).apply());
+        running.addView(fast, Ui.matchWrap(this, 8));
 
         // Data and files
         LinearLayout data = group(page, "Data and files");
@@ -969,9 +997,9 @@ public final class MainActivity extends Activity {
                 + "starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
-        TextView credits = Ui.text(this, "Tux, the Linux mascot, by Larry Ewing (lewing@isc.tamu.edu) "
-                + "and The GIMP. Wallpaper: Ubuntu 24.04 LTS, by Canonical and the Ubuntu community, "
-                + "CC BY-SA. Ubuntu is a trademark of Canonical Ltd; app logos belong to their makers.",
+        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS. Tux, the Linux mascot, by Larry "
+                + "Ewing and The GIMP. Ubuntu is a trademark of Canonical Ltd. Each app's name and "
+                + "logo belong to its maker. Open-source notices ship with the app.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -1868,8 +1896,8 @@ public final class MainActivity extends Activity {
 
     private AlertDialog.Builder dialogBuilder() {
         return new AlertDialog.Builder(this, dark
-                ? android.R.style.Theme_Material_Dialog_Alert
-                : android.R.style.Theme_Material_Light_Dialog_Alert);
+                ? R.style.Theme_PocketDesk_Dialog
+                : R.style.Theme_PocketDesk_Dialog_Light);
     }
 
     // --------------------------------------------------------------- system

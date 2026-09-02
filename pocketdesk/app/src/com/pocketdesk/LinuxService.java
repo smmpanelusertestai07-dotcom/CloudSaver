@@ -35,6 +35,7 @@ public final class LinuxService extends Service {
     static final String ACTION_SETUP = "com.pocketdesk.action.SETUP";
     static final String ACTION_START_DESKTOP = "com.pocketdesk.action.START_DESKTOP";
     static final String ACTION_INSTALL_APP = "com.pocketdesk.action.INSTALL_APP";
+    static final String ACTION_UNINSTALL_APP = "com.pocketdesk.action.UNINSTALL_APP";
     static final String EXTRA_APP_ID = "app_id";
     static final String ACTION_STOP = "com.pocketdesk.action.STOP";
     static final String ACTION_REMOVE = "com.pocketdesk.action.REMOVE";
@@ -203,17 +204,18 @@ public final class LinuxService extends Service {
         // process, the install gets its own of each, and the new app appears on the running
         // desktop when it is done. Waiting for the desktop to be stopped first was the reason
         // the Apps tab went grey whenever the computer was on.
-        if (ACTION_INSTALL_APP.equals(action) && isDesktopRunning()) {
+        if ((ACTION_INSTALL_APP.equals(action) || ACTION_UNINSTALL_APP.equals(action)) && isDesktopRunning()) {
+            final boolean removing = ACTION_UNINSTALL_APP.equals(action);
             if (!INSTALLING.compareAndSet(false, true)) {
-                status("PocketDesk is busy", "An install is already running; wait for it to finish.", -1, true, false);
+                status("PocketDesk is busy", "A task is already running; wait for it to finish.", -1, true, false);
                 return START_NOT_STICKY;
             }
             installExecutor.submit(() -> {
                 try {
-                    installApp(appId);
+                    if (removing) uninstallApp(appId); else installApp(appId);
                 } catch (InterruptedException cancelled) {
                     Thread.currentThread().interrupt();
-                    status("Install cancelled", "The desktop is still running.", -1, false, false);
+                    status("Cancelled", "The desktop is still running.", -1, false, false);
                 } catch (Exception error) {
                     status("Could not complete task", cleanError(error), -1, false, true);
                 } finally {
@@ -233,6 +235,7 @@ public final class LinuxService extends Service {
                 if (ACTION_SETUP.equals(action)) setupUbuntu();
                 else if (ACTION_START_DESKTOP.equals(action)) startDesktop();
                 else if (ACTION_INSTALL_APP.equals(action)) installApp(appId);
+                else if (ACTION_UNINSTALL_APP.equals(action)) uninstallApp(appId);
                 else if (ACTION_REMOVE.equals(action)) removeLinux();
                 else status("Unknown action", "Nothing was changed.", -1, false, true);
             } catch (InterruptedException cancelled) {
@@ -351,6 +354,28 @@ public final class LinuxService extends Service {
         status("Linux is ready", "Your local desktop and coding tools are installed.", 100, false, false);
     }
 
+    private void uninstallApp(String appId) throws Exception {
+        LinuxApps.App app = LinuxApps.byId(appId);
+        if (app == null) throw new IOException("Unknown app.");
+        if (!ContainerRuntime.isInstalled(this)) throw new IOException("Nothing to remove.");
+        final long startedAt = System.currentTimeMillis();
+        status("Removing " + app.name, "Freeing the space it used", -1, true, false);
+        installingNow = true;
+        int code;
+        try {
+            code = runInstall(app.uninstallCommand(), line -> {});
+        } finally {
+            installingNow = false;
+        }
+        if (code != 0) {
+            throw new IOException(app.name + " could not be removed (exit " + code + ").");
+        }
+        ContainerRuntime.refreshDesktopEntries(this);
+        try { runInstall("/usr/local/bin/pocketdesk-menu || true", null); } catch (Exception ignored) {}
+        status(app.name + " was removed",
+                "Its space is freed. Install it again any time from the Apps tab.", 100, false, false);
+    }
+
     private void installApp(String appId) throws Exception {
         LinuxApps.App app = LinuxApps.byId(appId);
         if (app == null) throw new IOException("Unknown app.");
@@ -444,7 +469,10 @@ public final class LinuxService extends Service {
         String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads);
         geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
-        boolean accelerated = !prefs.getBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, false);
+        // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
+        // KEY_FAST_DESKTOP). The owner can turn Faster desktop on to try it; if that start
+        // never draws a display, the next attempt drops back to the reliable path.
+        boolean accelerated = prefs.getBoolean(ContainerRuntime.KEY_FAST_DESKTOP, false);
         boolean fellBack = false;
         File sessionLog = new File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/logs/desktop-session.log");
         File logParent = sessionLog.getParentFile();

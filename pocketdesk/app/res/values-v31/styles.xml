@@ -10,7 +10,7 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowSplashScreenBackground">#102B6B</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_tux</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_combined</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#102B6B</item>
         <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
              landscape and paint a black band down one side; both screens pad for the cutout
@@ -27,7 +27,7 @@
         <item name="android:navigationBarColor">#080D1A</item>
         <item name="android:statusBarColor">#080D1A</item>
         <item name="android:windowSplashScreenBackground">#102B6B</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_tux</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_combined</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#102B6B</item>
         <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
              landscape and paint a black band down one side; both screens pad for the cutout
@@ -35,4 +35,26 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowNoTitle">true</item>
     </style>
+
+    <style name="Theme.PocketDesk.Dialog" parent="android:Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg_dark</item>
+        <item name="android:colorAccent">@color/brand_on_dark</item>
+        <item name="android:textColorPrimary">@color/text_dark</item>
+        <item name="android:textColorSecondary">@color/muted_dark</item>
+        <item name="android:colorBackground">@color/card_dark</item>
+        <item name="android:windowTitleStyle">@style/Theme.PocketDesk.Dialog.Title</item>
+    </style>
+
+    <style name="Theme.PocketDesk.Dialog.Title" parent="@android:style/TextAppearance.Material.DialogWindowTitle">
+        <item name="android:textColor">@color/text_dark</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+
+    <style name="Theme.PocketDesk.Dialog.Light" parent="android:Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_bg_light</item>
+        <item name="android:colorAccent">@color/brand</item>
+        <item name="android:textColorPrimary">@color/text_light</item>
+        <item name="android:textColorSecondary">@color/muted_light</item>
+    </style>
+
 </resources>
