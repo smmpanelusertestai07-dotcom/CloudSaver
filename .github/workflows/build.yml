@@ -5,6 +5,11 @@ on:
     branches:
       - main
       - "claude/**"
+    paths-ignore:
+      # The other project that lives in this repository. Nothing under it can
+      # change what this workflow builds, so running the eight-emulator matrix
+      # for it costs half an hour and proves nothing about CloudSaver.
+      - "pocketdesk/**"
   workflow_dispatch:
 
 permissions:
@@ -316,19 +321,32 @@ jobs:
         with:
           name: CloudSaver-release.apk
 
-      - name: Create or update the GitHub Release
+      - name: Publish the GitHub Release, once
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -eu
           TAG="v${VERSION}"
+          # A published tag is one binary, for good.
+          #
+          # The notes print that APK's SHA-256 and the fingerprint of the
+          # certificate it was signed with, and with no signing secret set CI
+          # mints a fresh keystore on every run - so re-uploading over a tag
+          # that already exists hands a differently-signed file, under a
+          # different hash, to everyone who downloaded the first one. Their
+          # phone then refuses to install it over what they have, and the
+          # hash they were told to check no longer matches the file they got.
+          #
+          # This is not hypothetical: a second project shares this repository,
+          # and each of its pushes to main re-ran this job and silently
+          # re-signed the last CloudSaver release.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" "CloudSaver-v${VERSION}-release.apk" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$TAG" --notes-file RELEASE_NOTES.md --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \
-              --title "CloudSaver $TAG" \
-              --notes-file RELEASE_NOTES.md \
-              --repo "$GITHUB_REPOSITORY"
+            echo "::notice::$TAG is already published - leaving it exactly as it is."
+            echo "To publish a new build, raise versionName in app/build.gradle.kts."
+            exit 0
           fi
+          gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \
+            --title "CloudSaver $TAG" \
+            --notes-file RELEASE_NOTES.md \
+            --repo "$GITHUB_REPOSITORY"
