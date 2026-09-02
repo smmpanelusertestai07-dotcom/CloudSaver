@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -34,7 +34,7 @@
   Extensions, sync, har link aur sign-in Chrome me. Purane computer ko update karne ke liye yeh row tap karo.
 - **Developer tools** — gcc/make, Python 3 (pip, venv), Node.js (npm), git extras, ssh, jq, htop, vim.
   Cursor/Antigravity/Claude Code se software banane ke liye.
-- **App hatana:** installed app (ya Brave) ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.
+- **App hatana:** installed AI app ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.
 
 ### Sign in kaise hoga
 - **ChatGPT:** email daalo. Account Google se bana hai to Google ka sign-in page khulega — normal hai, wahi complete karo. Browser apne aap app me wapas bhej deta hai.

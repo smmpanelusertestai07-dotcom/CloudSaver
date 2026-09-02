@@ -1,3 +1,12 @@
+# PocketDesk 10.0.5 — final check pass
+
+- An app install or removal started while the desktop is open now holds a wake lock for its
+  duration. The desktop itself holds none once it is up (the screen does while it is on), so a
+  long download with the screen off could have stalled.
+- A last sweep for leftovers from earlier rounds (Brave, Firefox, Reports, Faster desktop) in
+  the app's text and the documents; one line in the quick start was still naming Brave.
+- All seven test suites pass; every download endpoint was re-checked live.
+
 # PocketDesk 10.0.1 — hotfix
 
 - The four rows of **Linux only, on purpose** did nothing when tapped: the questions card was

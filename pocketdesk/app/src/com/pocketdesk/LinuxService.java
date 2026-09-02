@@ -210,6 +210,9 @@ public final class LinuxService extends Service {
                 status("PocketDesk is busy", "A task is already running; wait for it to finish.", -1, true, false);
                 return START_NOT_STICKY;
             }
+            // A running desktop holds no wake lock of its own (the screen does, while it is on),
+            // so the download takes one, or a 700 MB fetch would stall with the screen off.
+            acquireWakeLock();
             installExecutor.submit(() -> {
                 try {
                     if (removing) uninstallApp(appId); else installApp(appId);
@@ -220,6 +223,7 @@ public final class LinuxService extends Service {
                     status("Could not complete task", cleanError(error), -1, false, true);
                 } finally {
                     INSTALLING.set(false);
+                    releaseWakeLock();
                 }
             });
             return START_NOT_STICKY;
