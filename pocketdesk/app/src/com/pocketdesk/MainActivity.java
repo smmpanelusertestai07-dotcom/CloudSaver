@@ -577,6 +577,17 @@ public final class MainActivity extends Activity {
         compatibleRow.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
                 check.compatible ? Ui.SUCCESS : Ui.DANGER);
         card.addView(compatibleRow, Ui.matchWrap(this, 10));
+        // Measured on this phone, not assumed: the one fact that decides whether a Windows
+        // or macOS virtual machine could ever run here.
+        Virtualisation.Result vm = Virtualisation.check();
+        Ui.Row vmRow = new Ui.Row(this, vm.available ? R.drawable.ic_check : R.drawable.ic_info,
+                vm.headline, "Tap for what this test does and what it means for Windows or macOS",
+                R.drawable.ic_chevron, dark, v -> {
+                    Virtualisation.Result now = Virtualisation.check();
+                    showMessage(now.headline, now.detail);
+                });
+        vmRow.setStatus(vm.available ? "YES" : "NO", vm.available ? Ui.SUCCESS : Ui.muted(dark));
+        card.addView(vmRow, Ui.matchWrap(this, 8));
         card.addView(Ui.text(this, DeviceCheck.requirements(), 12.5f, muted), Ui.matchWrap(this, 10));
         return card;
     }
@@ -1059,6 +1070,18 @@ public final class MainActivity extends Activity {
                 "Android deletes the whole Linux computer with the app — system, apps, "
                         + "logins, files, everything. Before uninstalling, copy anything you want "
                         + "to keep into Downloads with “Downloads visible to the phone” on.", false);
+
+        addAnswer(card, R.drawable.ic_desktop, "Can it run Windows or macOS instead?",
+                "Not on this phone, and the Your phone card above measures why: Windows and "
+                        + "macOS can only run inside a virtual machine, a virtual machine needs "
+                        + "hardware virtualisation, and the Hardware virtualisation row says "
+                        + "whether this phone gives apps any. Without it the only way is emulation, "
+                        + "ten to fifty times slower than the phone itself, with less memory than "
+                        + "those systems need. macOS additionally runs only on Apple's own "
+                        + "hardware. Linux is the one system that runs natively on the phone's own "
+                        + "kernel, which is what this app does, and the AI desktop apps are the "
+                        + "same programs on all three systems. For Windows or macOS with their AI "
+                        + "apps, a cloud PC used over remote desktop is the real route.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
                 "The AI desktop apps are large and run more slowly here than on a PC. Computer "
