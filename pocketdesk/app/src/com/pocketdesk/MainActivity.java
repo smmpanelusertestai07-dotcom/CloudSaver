@@ -115,6 +115,8 @@ public final class MainActivity extends Activity {
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
     private Ui.Row autoStartRow;
+    private Ui.Row phoneFilesRow;
+    private DeviceProbe lastProbe;
     private Ui.Row crashRow;
     private Ui.Row appLogRow;
     private Ui.Row dataCapRow;
@@ -154,7 +156,9 @@ public final class MainActivity extends Activity {
                 selectedTab = state.getInt("tab", TAB_HOME);
                 openAnswer = state.getInt("answer", -1);
             }
-            pendingRoute = getIntent() == null ? null : getIntent().getStringExtra(EXTRA_ROUTE);
+            // Only a fresh start honours the shortcut; a rotation or a theme change recreates
+            // this screen with the same intent and must not open the desktop again.
+            pendingRoute = state == null && getIntent() != null ? getIntent().getStringExtra(EXTRA_ROUTE) : null;
             applyOrientation();
             View content = buildScreen();
             setContentView(content);
@@ -238,6 +242,7 @@ public final class MainActivity extends Activity {
         if (pendingRoute == null || AppLock.isLocked(this)) return;
         String route = pendingRoute;
         pendingRoute = null;
+        if (getIntent() != null) getIntent().removeExtra(EXTRA_ROUTE);
         if ("desktop".equals(route) && ContainerRuntime.isInstalled(this) && !LinuxService.isBusy()) {
             startDesktop();
         } else {
@@ -788,6 +793,30 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
         autoStartRow.setStatus("CHECK", Ui.muted(dark));
         permissions.addView(autoStartRow, Ui.matchWrap(this, 8));
+        phoneFilesRow = new Ui.Row(this, R.drawable.ic_storage, "Phone files", "Checking…",
+                R.drawable.ic_open_in_new, dark, v -> {
+                    if (PhoneFiles.allowed(this)) {
+                        showMessage("Phone files are on", "Your phone's storage appears inside the "
+                                + "Linux computer as the Phone folder: in ChatGPT's attach dialog, the "
+                                + "browser's upload dialog and Files, pick Phone on the left, then "
+                                + "Download, DCIM (photos) or Documents. To turn it off, remove All "
+                                + "files access for PocketDesk in Android settings.");
+                        PhoneFiles.request(this);
+                    } else {
+                        dialogBuilder()
+                                .setTitle("Show the phone's files inside the computer?")
+                                .setMessage("Android will ask you to allow All files access for PocketDesk. "
+                                        + "With it on, your phone's Download, DCIM (photos), Documents and "
+                                        + "other folders appear inside the Linux computer as the Phone folder, "
+                                        + "so ChatGPT, Claude and the browser can attach a file from the phone "
+                                        + "and save one to it. Nothing on the phone is touched unless you "
+                                        + "pick it in an app.\n\nApplies the next time the desktop starts.")
+                                .setNegativeButton("Not now", null)
+                                .setPositiveButton("Allow", (d, w) -> PhoneFiles.request(this))
+                                .show();
+                    }
+                });
+        permissions.addView(phoneFilesRow, Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
@@ -914,6 +943,15 @@ public final class MainActivity extends Activity {
                         + "Signing in once is enough. The app stays signed in through stops, "
                         + "restarts and updates.", false);
 
+        addAnswer(card, R.drawable.ic_storage, "How do I attach a file from my phone to ChatGPT or Claude?",
+                "Turn on Settings → Permissions → Phone files (Android calls it All files "
+                        + "access), then open the desktop again. Your phone's storage is now the "
+                        + "Phone folder inside the computer. In ChatGPT's attach dialog, the "
+                        + "browser's upload dialog or Files, pick Phone in the left-hand list, then "
+                        + "Download, DCIM for photos, or Documents. The computer's own files are "
+                        + "Projects and Downloads, right beside it — two folders, your choice each "
+                        + "time. Saving into Phone puts the file on the phone.", false);
+
         addAnswer(card, R.drawable.ic_lock, "Are my logins safe?",
                 "When you sign in to ChatGPT or Claude inside Linux, the login is stored by that "
                         + "app inside /home/coder — which is this app's private storage on "
@@ -932,11 +970,12 @@ public final class MainActivity extends Activity {
                         + "can open.", false);
 
         addAnswer(card, R.drawable.ic_shield, "What can this app touch on my phone?",
-                "Its permissions are: internet, network status, notifications, and running in "
-                        + "the background with battery settings.\n\nIt has NO permission for "
-                        + "your storage, camera, microphone, location, contacts, calls or "
-                        + "messages — so it cannot read your photos, files or chats even if "
-                        + "it wanted to.", false);
+                "Its permissions are: internet, network status, notifications, running in "
+                        + "the background with battery settings, and the phone's fingerprint prompt "
+                        + "for the optional App lock.\n\nYour phone's storage is reachable only if "
+                        + "you turn on Phone files in Settings → Permissions; off (the default) the "
+                        + "computer cannot see a single file on the phone. It has NO permission for "
+                        + "the camera, microphone, location, contacts, calls or messages.", false);
 
         addAnswer(card, R.drawable.ic_check, "Are these real Linux apps, and the best ones?",
                 "Yes. Every app here is the maker's own official Linux build — OpenAI's "
@@ -968,9 +1007,10 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_auto_mode, "When does the computer stop or restart by itself?",
                 "Only when you let it: with Smart stopping (the default) it closes after 25 "
                         + "minutes of nothing being touched, when the battery drops under 15 % off "
-                        + "the charger, when the phone gets dangerously hot, or when today's mobile "
-                        + "data limit is used up. A fixed timer or Never stop can be chosen in "
-                        + "Settings. Android may also end it when the phone runs very low on memory.\n\n"
+                        + "the charger (and it will not open below 15 % on battery either — plug in, "
+                        + "or choose a fixed timer or Never stop), when the phone gets dangerously "
+                        + "hot, or when today's mobile data limit is used up. Android may also end "
+                        + "it when the phone runs very low on memory.\n\n"
                         + "Stopping never logs you out or loses anything: the whole computer is kept "
                         + "exactly as it was, and the next Open desktop continues from there. It "
                         + "never restarts on its own — you open it. The Home tab says when and "
@@ -981,9 +1021,11 @@ public final class MainActivity extends Activity {
                         + "ChatGPT alone is 1.3 GB — and on a 4 GB phone Android ends the biggest "
                         + "program when memory runs out. Keep one AI app open at a time, close the "
                         + "browser when you are done with it (Window → Close this window), and "
-                        + "use Window → Force close for an app that has stopped answering.\n\n"
-                        + "PocketDesk itself never closes an app that has a window open. If an app "
-                        + "would not open at all, the reason is in Settings → Reports.", false);
+                        + "use Window → Force close for an app that has stopped answering. During a "
+                        + "sign-in, the browser closes itself once it has handed the result back.\n\n"
+                        + "PocketDesk itself never closes an app that has a window open, and it "
+                        + "writes down how every app ended: Settings → Reports shows when it "
+                        + "ended and whether the phone took the memory back.", false);
 
         addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
                 "No account and no separate password — the Linux computer is yours, "
@@ -1225,6 +1267,7 @@ public final class MainActivity extends Activity {
         if (networkTile == null) return;
         try {
             DeviceProbe probe = DeviceProbe.read(this);
+            lastProbe = probe;
             networkTile.set(probe.network);
             batteryTile.set(probe.batteryPercent < 0 ? "—" : probe.batteryPercent + "%",
                     probe.batteryPercent >= 0 && probe.batteryPercent <= 15 ? Ui.WARNING : Ui.text(dark));
@@ -1256,6 +1299,8 @@ public final class MainActivity extends Activity {
         attentionData.setVisibility(health.dataCapReached ? View.VISIBLE : View.GONE);
         attentionLock.setVisibility(health.lockDisabledItself ? View.VISIBLE : View.GONE);
         attentionCompatible.setVisibility(health.notCompatible ? View.VISIBLE : View.GONE);
+        // Low free space before setup already makes the phone "not compatible": one row, not two.
+        if (health.spaceLow && health.notCompatible && check.onlySpace) attentionCompatible.setVisibility(View.GONE);
         boolean any = health.notificationsOff || health.batteryRestricted || health.spaceLow
                 || health.hot || health.dataCapReached || health.lockDisabledItself || health.notCompatible;
         attentionCard.setVisibility(any ? View.VISIBLE : View.GONE);
@@ -1315,6 +1360,14 @@ public final class MainActivity extends Activity {
             notificationRow.setValue(on
                     ? "On · you can see setup progress and a Stop button"
                     : "Off · turn ON to see setup progress and a Stop button");
+        }
+        if (phoneFilesRow != null) {
+            boolean on = PhoneFiles.allowed(this);
+            phoneFilesRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.muted(dark));
+            phoneFilesRow.setValue(on
+                    ? "On · the phone's files are the Phone folder inside the computer"
+                    + (LinuxService.isDesktopRunning() ? " (from the next desktop start)" : "")
+                    : "Off · turn on so ChatGPT, Claude and the browser can attach a file from the phone");
         }
         if (batteryOptimisationRow != null) {
             boolean on = batteryUnrestricted();
@@ -1403,6 +1456,16 @@ public final class MainActivity extends Activity {
             if (openedAt > 0) note += " Last opened " + clock(openedAt) + ".";
             String story = stopStory();
             if (story != null) note += "\n\n" + story;
+            DeviceProbe probe = lastProbe;
+            boolean smart = preferences.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
+                    ContainerRuntime.SESSION_SMART) == ContainerRuntime.SESSION_SMART;
+            if (smart && probe != null && probe.batteryPercent >= 0
+                    && probe.batteryPercent < ContainerRuntime.SMART_BATTERY_FLOOR
+                    && !DeviceProbe.isCharging(this)) {
+                note += "\n\nBattery " + probe.batteryPercent + " %: plug in to open. Smart stopping keeps "
+                        + "the computer off below " + ContainerRuntime.SMART_BATTERY_FLOOR
+                        + " % on battery; a fixed timer or Never stop in Settings lifts that.";
+            }
             statusNote.setText(note);
         } else {
             statusBadge.setText("Not set up");
@@ -1731,6 +1794,16 @@ public final class MainActivity extends Activity {
             settings.setOnClickListener(v -> openAppInfo());
             root.addView(settings, Ui.matchWrap(this, 10));
             setContentView(scroll);
+            final int pad = Ui.dp(this, 24);
+            scroll.setOnApplyWindowInsetsListener((view, insets) -> {
+                int top = Build.VERSION.SDK_INT >= 30
+                        ? insets.getInsets(WindowInsets.Type.systemBars()).top : insets.getSystemWindowInsetTop();
+                int bottom = Build.VERSION.SDK_INT >= 30
+                        ? insets.getInsets(WindowInsets.Type.systemBars()).bottom : insets.getSystemWindowInsetBottom();
+                root.setPadding(pad, pad + top, pad, pad + bottom);
+                return insets;
+            });
+            scroll.requestApplyInsets();
         } catch (Throwable ignored) {
             TextView emergency = new TextView(this);
             emergency.setText("PocketDesk safe mode\nPlease reinstall the latest APK.");

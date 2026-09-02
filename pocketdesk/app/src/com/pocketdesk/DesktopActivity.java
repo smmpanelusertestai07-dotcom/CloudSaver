@@ -99,7 +99,19 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         super.onStart();
         // The lock covers this screen too: the desktop, with every AI app signed in, is the
         // one screen that matters most.
-        if (outer != null && AppLock.isLocked(this)) AppLock.show(this, outer, null);
+        if (outer != null && AppLock.isLocked(this)) {
+            AppLock.show(this, outer, null);
+            // The phone keyboard, if it was open, must not keep typing into the desktop.
+            InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+            if (input != null && keyboardInput != null) {
+                input.hideSoftInputFromWindow(keyboardInput.getWindowToken(), 0);
+            }
+        }
+    }
+
+    /** True while the locked screen covers the desktop: keys and taps stop here. */
+    private boolean lockedNow() {
+        return outer != null && AppLock.showing(outer);
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -573,6 +585,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     @Override public void typeCodePoint(int codePoint) {
+        if (lockedNow()) return;
         VncView.lastInteractionAt = System.currentTimeMillis();
         VncClient client = desktop.getClient();
         if (client != null) client.typeCodePoint(codePoint);
@@ -580,6 +593,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     @Override public void specialKey(int keysym) {
+        if (lockedNow()) return;
         // Typing is using the desktop just as much as touching it is.
         VncView.lastInteractionAt = System.currentTimeMillis();
         sendKey(keysym, true);
@@ -589,6 +603,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        if (lockedNow()) return true;
         int keysym = androidKeySym(event);
         if (keysym == 0 || desktop == null || desktop.getClient() == null) {
             return super.dispatchKeyEvent(event);

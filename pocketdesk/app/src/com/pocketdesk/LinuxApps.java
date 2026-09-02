@@ -95,7 +95,7 @@ final class LinuxApps {
                             // GNOME Web's start page renders live thumbnails, the slowest possible
                             // first thing to draw here -- that is what showed "Page Unresponsive".
                             + "mkdir -p /usr/share/glib-2.0/schemas; "
-                            + "printf '[org.gnome.Epiphany]\nhomepage-url=\047about:blank\047\n' "
+                            + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n' "
                             + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
                             + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "

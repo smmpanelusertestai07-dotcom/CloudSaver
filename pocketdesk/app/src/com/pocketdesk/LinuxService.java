@@ -64,6 +64,8 @@ public final class LinuxService extends Service {
     private volatile Thread workerThread;
     private PowerManager.WakeLock wakeLock;
     private long sessionStartedAt;
+    /** Set while the monitor is ending a session for a reason it has already announced. */
+    private volatile boolean stoppedForReason;
 
     private final Runnable safetyMonitor = new Runnable() {
         @Override public void run() {
@@ -155,6 +157,7 @@ public final class LinuxService extends Service {
      * never shown for a later, different stop (the home screen checks the timestamps).
      */
     private void recordStop(String reason) {
+        stoppedForReason = true;
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
                 .putLong(ContainerRuntime.KEY_LAST_STOP_AT, System.currentTimeMillis())
                 .putString(ContainerRuntime.KEY_LAST_STOP_REASON, reason)
@@ -201,10 +204,11 @@ public final class LinuxService extends Service {
                 else status("Unknown action", "Nothing was changed.", -1, false, true);
             } catch (InterruptedException cancelled) {
                 Thread.currentThread().interrupt();
-                status("Task cancelled", "No background task is running.", -1, false, false);
+                // The monitor already said why it ended the session; that reason stays.
+                if (!stoppedForReason) status("Task cancelled", "No background task is running.", -1, false, false);
             } catch (Exception error) {
                 if (Thread.currentThread().isInterrupted()) {
-                    status("Task cancelled", "No background task is running.", -1, false, false);
+                    if (!stoppedForReason) status("Task cancelled", "No background task is running.", -1, false, false);
                 } else {
                     String message = cleanError(error);
                     status("Could not complete task", message, -1, false, true);
@@ -281,7 +285,8 @@ public final class LinuxService extends Service {
         if (code != 0) throw new IOException("Ubuntu package setup exited with code " + code + ". Check Wi-Fi and free storage, then retry.");
         ContainerRuntime.writeDesktopScripts(this);
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
-                .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, true).apply();
+                .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, true)
+                .remove(ContainerRuntime.KEY_PROOT_NO_SECCOMP).apply();
         archive.delete();
         status("Linux is ready", "Your local desktop and coding tools are installed.", 100, false, false);
     }
@@ -334,8 +339,8 @@ public final class LinuxService extends Service {
         ContainerRuntime.writeDesktopScripts(this);
         status("Opening the desktop", "Starting your Linux computer…", -1, true, false);
         SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
-        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis())
-                .remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
+        prefs.edit().remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
+        stoppedForReason = false;
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         // The desktop is born the way the phone is held. It used to start landscape whatever
         // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
@@ -347,12 +352,18 @@ public final class LinuxService extends Service {
         int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
         boolean shareDownloads = prefs.getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true);
         String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads);
+        geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
         boolean accelerated = !prefs.getBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, false);
+        boolean fellBack = false;
+        File sessionLog = new File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/logs/desktop-session.log");
+        File logParent = sessionLog.getParentFile();
+        if (logParent != null) logParent.mkdirs();
+        sessionLog.delete();
         for (int attempt = 0; ; attempt++) {
             activeProcess = ContainerRuntime.startContainer(this, command, accelerated);
             sessionStartedAt = System.currentTimeMillis();
-            recordOutput(activeProcess);
+            recordOutput(activeProcess, sessionLog, attempt);
             // Fifteen seconds was never enough: this phone takes half a minute to put the
             // display up, so the wait expired, the session was killed, and the home screen
             // reported a failure for a desktop that was only slow. Wait as long as the viewer
@@ -369,18 +380,22 @@ public final class LinuxService extends Service {
             int exit = activeProcess.isAlive() ? -1 : activeProcess.exitValue();
             activeProcess.destroyForcibly();
             activeProcess = null;
-            // A process that died before the display came up, in accelerated mode, on the
-            // first try: this kernel may not run PRoot's accelerator. Once more without it,
-            // and remember the answer.
-            if (accelerated && exit >= 0 && attempt == 0) {
-                prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
+            // The first, accelerated try never produced a display -- it died, or it hung until
+            // the wait ran out. Either is what a kernel that cannot run PRoot's accelerator
+            // looks like, so the second try goes without it. The answer is remembered only if
+            // that second try works: a death for some other reason (memory, a broken install)
+            // must not condemn every later start to the slow mode.
+            if (accelerated && attempt == 0) {
                 accelerated = false;
+                fellBack = true;
                 status("Opening the desktop", "Starting again in compatibility mode…", -1, true, false);
                 continue;
             }
             throw new IOException("The display did not start" + (exit >= 0 ? " (exit " + exit + ")" : "")
                     + ". Open the desktop again; if it repeats, run Setup once more.");
         }
+        if (fellBack) prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
+        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis()).apply();
         desktopRunning = true;
         BUSY.set(false);
         releaseWakeLock();
@@ -397,22 +412,23 @@ public final class LinuxService extends Service {
         status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
     }
 
-    /** The display server narrates as it works; it goes to a file, not the notification. */
-    private void recordOutput(Process process) {
+    /**
+     * The display server narrates as it works; it goes to a file, not the notification. The
+     * file is appended to and flushed line by line, so a second attempt's output follows the
+     * first attempt's instead of wiping it -- the first attempt's last lines are the diagnosis.
+     */
+    private void recordOutput(Process process, File sessionLog, int attempt) {
         Thread output = new Thread(() -> {
             if (process == null) return;
-            File sessionLog = new File(ContainerRuntime.rootfs(this),
-                    "home/coder/.pocketdesk/logs/desktop-session.log");
-            File parent = sessionLog.getParentFile();
-            if (parent != null) parent.mkdirs();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                 java.io.PrintWriter writer = new java.io.PrintWriter(new FileOutputStream(sessionLog, false))) {
+                 java.io.PrintWriter writer = new java.io.PrintWriter(new FileOutputStream(sessionLog, true), true)) {
+                writer.println("--- start attempt " + (attempt + 1) + " ---");
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (!line.trim().isEmpty()) writer.println(line);
                 }
             } catch (IOException ignored) {}
-        }, "pocketdesk-linux-output");
+        }, "pocketdesk-linux-output-" + attempt);
         output.setDaemon(true);
         output.start();
     }
@@ -449,6 +465,18 @@ public final class LinuxService extends Service {
         if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
                 || probe.batteryTempC >= STOP_TEMPERATURE_C) {
             throw new IOException("The phone is too hot right now. Let it cool for a few minutes.");
+        }
+        // Smart stopping keeps the computer off below its battery floor unless charging. The
+        // desktop used to open at 9 % and be stopped thirty seconds later by the same rule,
+        // which read as the app breaking; the rule now speaks before the start instead.
+        SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        if (!download && !DeviceProbe.isCharging(this)
+                && prefs.getInt(ContainerRuntime.KEY_SESSION_MINUTES, ContainerRuntime.SESSION_SMART)
+                        == ContainerRuntime.SESSION_SMART
+                && probe.batteryPercent >= 0 && probe.batteryPercent < ContainerRuntime.SMART_BATTERY_FLOOR) {
+            throw new IOException("Battery is at " + probe.batteryPercent + "%. Smart stopping keeps the "
+                    + "Linux computer off below " + ContainerRuntime.SMART_BATTERY_FLOOR + "% unless the "
+                    + "charger is connected. Plug in, or choose a fixed timer or Never stop in Settings.");
         }
         // The daily limit is a limit on everything: a desktop on mobile data uses data too.
         if (DataBudget.exhausted(this)) {
@@ -581,6 +609,7 @@ public final class LinuxService extends Service {
         if (part.exists()) part.delete();
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false)
+                .remove(ContainerRuntime.KEY_PROOT_NO_SECCOMP)
                 .apply();
         status("Linux removed", "The storage it was using is free again.", 100, false, false);
     }
@@ -623,6 +652,9 @@ public final class LinuxService extends Service {
     static boolean lastWasError() { return lastError; }
 
     private void status(String message, String detail, int progress, boolean busy, boolean error) {
+        // Every report is a chance to attribute the bytes moved since the last one to the
+        // network they moved on; the daily limit counts mobile data only.
+        DataBudget.usedToday(this);
         lastMessage = message;
         lastDetail = detail;
         lastProgress = progress;

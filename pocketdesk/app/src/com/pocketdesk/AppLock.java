@@ -33,6 +33,8 @@ final class AppLock {
     /** Locked from the moment the process starts, so the first opening asks. */
     private static volatile boolean locked = true;
     private static final int REQUEST_CREDENTIAL = 7701;
+    /** The caller waiting on the PIN screen, which answers through onActivityResult. */
+    private static Callback pending;
 
     private AppLock() {}
 
@@ -80,6 +82,8 @@ final class AppLock {
         screen.setGravity(Gravity.CENTER);
         screen.setBackgroundColor(Ui.DARK_BG);
         screen.setClickable(true);   // swallows touches meant for what is underneath
+        // Above everything else in the same frame, the desktop's floating chip included.
+        screen.setElevation(Ui.dp(context, 24));
         screen.setPadding(Ui.dp(context, 32), Ui.dp(context, 32), Ui.dp(context, 32), Ui.dp(context, 32));
         // Nothing underneath is shown in the recent-apps thumbnail while locked.
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
@@ -107,9 +111,11 @@ final class AppLock {
         Runnable ask = () -> prompt(activity, unlocked -> {
             if (unlocked) {
                 locked = false;
-                root.removeView(screen);
-                activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
-                if (onUnlocked != null) onUnlocked.run();
+                if (screen.getParent() == root) {
+                    root.removeView(screen);
+                    activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                    if (onUnlocked != null) onUnlocked.run();
+                }
             } else {
                 outcome.setText("Not unlocked. Tap Unlock to try again.");
             }
@@ -132,7 +138,7 @@ final class AppLock {
      * lock never depends on a sensor being available.
      */
     static void prompt(Activity activity, Callback callback) {
-        if (!hasScreenLock(activity)) { callback.done(true); return; }
+        if (!hasScreenLock(activity)) { locked = false; callback.done(true); return; }
         try {
             android.hardware.biometrics.BiometricPrompt.Builder builder =
                     new android.hardware.biometrics.BiometricPrompt.Builder(activity)
@@ -149,6 +155,7 @@ final class AppLock {
                     new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
                         @Override public void onAuthenticationSucceeded(
                                 android.hardware.biometrics.BiometricPrompt.AuthenticationResult result) {
+                            locked = false;
                             callback.done(true);
                         }
                         @Override public void onAuthenticationError(int code, CharSequence message) {
@@ -157,39 +164,50 @@ final class AppLock {
                                     || code == 13 /* negative button */;
                             if (cancelled) { callback.done(false); return; }
                             // Anything else (no sensor, sensor busy, lockout): the PIN screen.
-                            if (!credentialScreen(activity)) callback.done(false);
+                            if (!credentialScreen(activity, callback)) callback.done(false);
                         }
                     });
         } catch (Throwable error) {
-            if (!credentialScreen(activity)) callback.done(false);
+            Crash.save(activity, error);
+            if (!credentialScreen(activity, callback)) callback.done(false);
         }
     }
 
     /** Android's own PIN / pattern / password screen; the result comes back through onActivityResult. */
-    private static boolean credentialScreen(Activity activity) {
+    private static boolean credentialScreen(Activity activity, Callback callback) {
         KeyguardManager keyguard = (KeyguardManager) activity.getSystemService(Context.KEYGUARD_SERVICE);
         if (keyguard == null) return false;
         Intent intent = keyguard.createConfirmDeviceCredentialIntent("PocketDesk is locked",
                 "Enter the phone's PIN, pattern or password");
         if (intent == null) return false;
         try {
+            pending = callback;
             activity.startActivityForResult(intent, REQUEST_CREDENTIAL);
             return true;
         } catch (Throwable error) {
+            pending = null;
             return false;
         }
     }
 
-    /** Activities hand their onActivityResult here; true when it was the PIN screen saying yes. */
+    /**
+     * Activities hand their onActivityResult here; true when it was the PIN screen answering.
+     * The caller that asked (the locked screen, or the Settings switch being turned on) gets
+     * the answer it was waiting for.
+     */
     static boolean handleResult(Activity activity, FrameLayout root, int request, int result, Runnable onUnlocked) {
         if (request != REQUEST_CREDENTIAL) return false;
-        if (result == Activity.RESULT_OK) {
+        boolean ok = result == Activity.RESULT_OK;
+        Callback waiting = pending;
+        pending = null;
+        if (ok) {
             locked = false;
             View screen = root == null ? null : root.findViewWithTag("pocketdesk-lock");
             if (screen != null) root.removeView(screen);
             activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
             if (onUnlocked != null) onUnlocked.run();
         }
+        if (waiting != null) waiting.done(ok);
         return true;
     }
 }

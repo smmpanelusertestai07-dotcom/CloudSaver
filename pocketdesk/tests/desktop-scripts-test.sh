@@ -71,6 +71,26 @@ PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" pla
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \
   || fail "an app that is not Chromium-based must be started with no extra flags"
 
+# Every ordinary program lives in the same bin directory. Another program from it having a
+# window (or the wallpaper process carrying the file manager's class) must never make the
+# launcher decide that the program being tapped is "already open".
+cp "$(command -v sleep)" "$WORK/usr/bin/otherish"
+"$WORK/usr/bin/otherish" 300 &
+other=$!
+cat > "$WORK/usr/bin/wmctrl" <<WM
+#!/bin/sh
+case "\$1" in -lp) printf '0x02000004  0 $other phone Other Program\\n' ;; esac
+exit 0
+WM
+chmod +x "$WORK/usr/bin/wmctrl"
+printf '#!/bin/sh\necho 0x02000009\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" plainish >/dev/null 2>&1
+grep -q 'already open' "$HOME/.pocketdesk/logs/plainish.log" \
+  && fail "a plain program must open a new window even when another program from its directory has one"
+grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" || fail "the plain program must actually run"
+kill -9 "$other" 2>/dev/null || true
+rm -f "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/xdotool" "$WORK/usr/bin/otherish"
+
 # A leftover instance with no window still owns the single-instance socket, so a fresh launch
 # hands over its request and exits 0 at once -- "success" -- and nothing appears. The launcher
 # must find that instance by the directory its binary lives in (ChatGPT's launcher path never
@@ -205,7 +225,14 @@ cat > "$WORK/rc-default.xml" <<'RC'
 <openbox_config>
   <font place="ActiveWindow"><name>sans</name><size>8</size></font>
   <theme><titleLayout>NLIMC</titleLayout></theme>
+  <desktops><number>4</number></desktops>
   <keyboard>
+    <keybind key="W-F1">
+      <action name="GoToDesktop"><to>1</to></action>
+    </keybind>
+    <keybind key="W-F4">
+      <action name="GoToDesktop"><to>4</to></action>
+    </keybind>
     <keybind key="A-F4"><action name="Close"/></keybind>
   </keyboard>
   <applications>
@@ -239,6 +266,14 @@ grep -q '<application type="normal"><maximized>yes</maximized><decor>yes</decor>
 grep -q '<size>11</size>' "$rc" || fail "title font must be enlarged for a phone"
 grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"
 grep -q 'key="A-F4"' "$rc" || fail "Openbox's own bindings must be kept"
+# Openbox binds Super+F1..F4 to "go to desktop N" by default: Force close on Super+F4 would also
+# have switched every window out of sight. Those bindings go, and there is one desktop.
+grep -q 'GoToDesktop' "$rc" && fail "the default go-to-desktop bindings must be removed"
+grep -q '<number>1</number>' "$rc" || fail "a phone has one desktop"
+grep -q 'key="W-p".*pcmanfm /home/coder/Phone' "$rc" || fail "Super+P must open the Phone folder"
+phone="$WORK/coder/Desktop/pocketdesk-phone.desktop"
+[ -f "$phone" ] || fail "the desktop must carry a Phone folder icon"
+grep -q '^Exec=pcmanfm /home/coder/Phone$' "$phone" || fail "the Phone icon must open /home/coder/Phone"
 
 # The browser opens links; a sign-in that opened in the browser comes back to the app through
 # the scheme its package declares.

@@ -14,6 +14,9 @@ export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1
 # WebKit (GNOME Web) builds its sandbox on bubblewrap, which needs the same namespaces.
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+# One web process for every page: each new one is a 150 MB program started under PRoot, and
+# starting it was most of the wait before a page appeared.
+export WEBKIT_USE_SINGLE_WEB_PROCESS=1
 export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe
 # Electron and GTK both look for this. Unset, they fall back to slow paths and print warnings
 # that end with an app sitting there having drawn nothing.
@@ -26,7 +29,12 @@ rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
          "$HOME/.config/openbox" "$HOME/.config/pcmanfm/LXDE" "$HOME/.config/libfm" \
          "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
-         "$HOME/Downloads" "$HOME/.pocketdesk/logs"
+         "$HOME/Downloads" "$HOME/Phone" "$HOME/.pocketdesk/logs"
+
+# The left-hand list of every Open and Save dialog (ChatGPT's "attach", the browser's upload,
+# the file manager): the phone's files and the computer's own, side by side.
+printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Downloads Downloads\nfile:///home/coder/Projects Projects\n' \
+  > "$HOME/.config/gtk-3.0/bookmarks"
 
 # Downloads belong somewhere the phone itself can open. /home/coder/Shared is the one folder
 # that is really Android storage, so Downloads becomes a link into it. Nothing is deleted: the

@@ -100,7 +100,13 @@ final class KeyboardInputView extends View {
                 if (event.getAction() != KeyEvent.ACTION_DOWN || listener == null) return true;
                 int special = mapAndroidKey(event.getKeyCode());
                 if (special != 0) {
-                    composing = "";
+                    // Backspace shortens the word the keyboard is still writing; any other
+                    // special key ends it.
+                    if (special == 0xff08 && !composing.isEmpty()) {
+                        composing = composing.substring(0, composing.offsetByCodePoints(composing.length(), -1));
+                    } else if (special != 0xff08) {
+                        composing = "";
+                    }
                     listener.specialKey(special);
                 } else {
                     int unicode = event.getUnicodeChar();

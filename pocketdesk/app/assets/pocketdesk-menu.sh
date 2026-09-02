@@ -252,18 +252,29 @@ fi
 #     maximised window always starts at the left edge of the screen, so those buttons are
 #     always on screen -- at the right edge they vanished whenever an app's smallest allowed
 #     width was wider than a portrait phone screen;
-#   - two keys the phone's toolbar sends: Super+F4 force-closes the window in front (for an
-#     app that stopped answering), Super+Tab lists the open windows. Alt+F4 and Alt+Tab are
-#     Openbox's own defaults and stay.
+#   - one desktop, not four: Openbox's defaults bind Super+F1..F4 to "go to desktop N", so a
+#     window could vanish to a desktop the phone has no way to show. Those bindings go, and
+#     the count becomes one;
+#   - three keys the phone's toolbar sends: Super+F4 force-closes the window in front (for an
+#     app that stopped answering), Super+Tab lists the open windows, Super+P opens the Phone
+#     folder. Alt+F4 and Alt+Tab are Openbox's own defaults and stay.
 OPENBOX_DEFAULT=${POCKETDESK_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
 if [ -f "$OPENBOX_DEFAULT" ]; then
   sed -e 's|<size>[0-9]*</size>|<size>11</size>|g' \
       -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>CIMNL</titleLayout>|' \
+      -e 's|<number>[0-9]*</number>|<number>1</number>|' \
+      -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
       -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>|' \
-      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></keybind>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi
+
+# The phone's own files, as a folder on the desktop. Empty but for a note until the owner turns
+# Phone files on in PocketDesk's Settings; then Download, DCIM and Documents are in it.
+printf '[Desktop Entry]\nType=Application\nName=Phone\nComment=Your phone\047s files, inside the computer\nExec=pcmanfm /home/coder/Phone\nIcon=drive-removable-media\nTerminal=false\n' \
+  > "$DESKTOP_DIR/pocketdesk-phone.desktop"
+chmod +x "$DESKTOP_DIR/pocketdesk-phone.desktop" 2>/dev/null || true
 
 chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
   "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \

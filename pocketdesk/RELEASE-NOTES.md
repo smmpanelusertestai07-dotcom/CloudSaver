@@ -60,6 +60,33 @@ Full screen, move the controls to the top or the bottom) · **Finger/Mouse** (ha
 (Close, **Force close** for a stuck app, Switch, All windows, Minimise all, Paste from the phone).
 Zoom never goes below 100 %, because 100 % is already the whole desktop; − says so.
 
+## Your phone's files, inside the computer
+- **Phone files** (Settings → Permissions, off by default): with Android's All files access
+  allowed, the phone's storage is the **Phone** folder inside the Linux computer. ChatGPT's
+  attach dialog, the browser's upload dialog and Files list **Phone**, **Phone Downloads**,
+  **Phone Photos** and **Phone Documents** in the left-hand list, beside Downloads and Projects:
+  computer files or phone files, the choice is there every time. A Phone icon on the desktop
+  and Super+P open the folder. With it off the computer cannot see a single file on the phone.
+
+## Found by review before release
+- The manifest never declared `USE_BIOMETRIC`, so the fingerprint prompt threw and only the PIN
+  screen could ever appear; and that fallback dropped the caller, so the App lock switch could
+  not be turned on. Both fixed; the switch proves itself with one prompt when turned on.
+- A sign-in link now goes through the launcher: it is handed to the running app, and the
+  browser that carried it closes itself two seconds later, giving the app back the memory.
+- The launcher stays with an AI app until it ends and writes how it ended (Settings → Reports):
+  a kill by the phone for memory is named as such, on screen and in the log.
+- Super+F4 (Force close) clashed with Openbox's own "go to desktop 4": the default desktop keys
+  are removed and there is one desktop. Force close refuses the wallpaper and the panel.
+  Ordinary programs (Browser, Files) are never mistaken for "already open".
+- Smart stopping's battery floor is now enforced at the door: below 15 % on battery the desktop
+  says why it will not open instead of opening and stopping thirty seconds later.
+- The mobile data limit counts mobile bytes only (Wi-Fi never fills the meter); a stop by the
+  monitor keeps its reason; a portrait start is a portrait desktop, not a clamped 800×1200;
+  the compatibility-mode fallback is remembered only when it actually worked and is cleared by
+  Setup; the desktop log keeps both attempts; "Last opened" is written only when the desktop
+  really opened; GNOME Web runs one web process (page opens without a 150 MB process start).
+
 ## Also
 - Sizes in decimal, like Android's Settings; requirements from one set of constants, and the
   tests check the app's minimum Android version against the build's.

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.pocketdesk">
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -15,10 +16,24 @@
     <!-- A one-tap prompt for background battery use. Setup downloads for 10-30 minutes and
          Android's battery saver otherwise kills it; the user is always asked, never forced. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- The app lock's fingerprint prompt. A normal permission, granted at install; without it
+         the prompt throws and only the PIN screen could ever be shown. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Optional, off until the owner turns on "Phone files" in Settings: the phone's storage
+         appears inside the Linux computer as the Phone folder, so an AI app can attach a photo
+         or a document from the phone. Android 11+ grants it on its All files access page;
+         Android 10 uses the ordinary storage permission. Nothing is read without it. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <application
         android:name=".App"
         android:allowBackup="false"
+        android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
         android:fullBackupContent="false"
         android:hardwareAccelerated="true"

@@ -92,8 +92,16 @@ pid=""
 # /usr/bin/chatgpt resolves to a two-line shell script that execs /usr/lib/chatgpt/ChatGPT, so
 # the running process never carries the launcher's name. Everything the app runs lives in its
 # own directory, so that is what to match.
+# A shared directory (/usr/bin) names every program on the system, so there only this exact
+# executable counts -- and the desktop's own "pcmanfm --desktop", started by name rather than
+# by path, is not the file manager window the Files icon opens.
 app_pids() {
-  pgrep -f "$real_dir/" 2>/dev/null | grep -vx "$$" || true
+  case "$real_dir" in
+    */bin|*/sbin|*/games)
+      pgrep -f "^$real( |$)" 2>/dev/null | grep -vx "$$" || true ;;
+    *)
+      pgrep -f "$real_dir/" 2>/dev/null | grep -vx "$$" || true ;;
+  esac
 }
 
 # The id of a window owned by any process of this app, or nothing. Every window carries the
@@ -101,7 +109,7 @@ app_pids() {
 # with the app's class name -- and ChatGPT's window is not classed "chatgpt", so a running,
 # visible ChatGPT counted as "no window": a second tap on its icon then ended it as a leftover,
 # which is exactly what "ChatGPT closes by itself" looked like.
-app_window() {
+app_window() {   # app_window [strict]: strict = a window owned by one of the app's processes only
   local pids p id
   pids=" $(app_pids | tr '\n' ' ') ${pid:-0} "
   if command -v wmctrl >/dev/null 2>&1; then
@@ -112,14 +120,27 @@ app_window() {
 $(wmctrl -lp 2>/dev/null)
 WINDOWS
   fi
+  [ "${1:-}" = strict ] && return 1
   command -v xdotool >/dev/null 2>&1 || return 1
   if [ -n "${pid:-}" ]; then
     id=$(xdotool search --onlyvisible --pid "$pid" 2>/dev/null | head -n 1)
     [ -n "$id" ] && { printf '%s' "$id"; return 0; }
   fi
+  # The class name is the last resort while waiting for a window to appear; it is never used
+  # to decide that an app is already open, because the wallpaper process carries the file
+  # manager's class and would have counted.
   id=$(xdotool search --onlyvisible --class "$name" 2>/dev/null | head -n 1)
   [ -n "$id" ] && { printf '%s' "$id"; return 0; }
   return 1
+}
+
+# The browser that carried a sign-in has done its job once the link is back with the app;
+# left open beside a 1.3 GB AI app it was the next thing the phone ran out of memory over.
+close_browser_windows() {
+  command -v wmctrl >/dev/null 2>&1 || return 0
+  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox/ {print $1}' | while read -r id; do
+    [ -n "$id" ] && wmctrl -ic "$id" 2>/dev/null || true
+  done
 }
 
 has_window() { [ -n "$(app_window)" ]; }
@@ -239,17 +260,23 @@ fi
   echo "launching: $target ${flags[*]:-} $*"
 } > "$log" 2>/dev/null
 
-# Already open: bring its window to the front and stop here. A second copy of a Chromium app
-# only hands its request to the first and exits, so launching again never helps.
-open_id=$(app_window)
+# Already open (a Chromium app, which only ever runs once): bring its window to the front and
+# stop here. A second copy would only hand its request to the first and exit, so launching
+# again never helps. Ordinary programs open as many windows as they are asked for.
+open_id=""
+[ "${#flags[@]}" -gt 0 ] && open_id=$(app_window strict)
 if [ -n "$open_id" ]; then
   echo "already open (window $open_id) · bringing it to the front" >> "$log"
   command -v wmctrl >/dev/null 2>&1 && wmctrl -ia "$open_id" 2>/dev/null
   # A link to deliver (a sign-in coming back from the browser): a second copy started with the
-  # same flags hands it to the running app through the single-instance socket and exits.
+  # same flags hands it to the running app through the single-instance socket and exits. The
+  # browser's part is then over, so its windows are closed to give the app the memory.
   if [ "$#" -gt 0 ]; then
     echo "handing it: $*" >> "$log"
     "$target" ${flags[@]+"${flags[@]}"} "$@" >> "$log" 2>&1
+    sleep 2
+    close_browser_windows
+    echo "sign-in handed back · browser closed" >> "$log"
   fi
   exit 0
 fi
@@ -297,9 +324,29 @@ launch_guarded() {   # launch_guarded <flags...> -- run_attempt, and once more i
   return "$status"
 }
 
+# Stays quietly until the app ends, and writes down how it ended: "closed by itself" is only a
+# mystery while nobody records the exit. 137 is a kill, on a phone nearly always the system
+# taking memory back; anything else is the app's own doing.
+record_end() {
+  local started_at end ran
+  started_at=$(date +%s)
+  wait "$pid" 2>/dev/null
+  end=$?
+  # The launcher we started may have handed over to the real program; wait for that too.
+  while [ -n "$(app_pids)" ]; do sleep 5; done
+  ran=$(( $(date +%s) - started_at ))
+  echo "$(date '+%I:%M:%S %p') $label ended after ${ran}s · exit $end · $(free_mb) MB free" >> "$log"
+  if [ "$end" = 137 ] || [ "$end" = 9 ]; then
+    notify critical "$label was closed by the phone" "Memory ran short. Keep one AI app open at a time and close the browser when you are done with it."
+  fi
+}
+
 launch_guarded ${flags[@]+"${flags[@]}"} "$@"
 status=$?
-[ "$status" = 0 ] && exit 0
+if [ "$status" = 0 ]; then
+  [ "${#flags[@]}" -gt 0 ] && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && record_end
+  exit 0
+fi
 
 # 137 means the app was killed -- by Android for memory, or by the watch above for never
 # drawing anything. Either way one more try with everything in a single process is worth more

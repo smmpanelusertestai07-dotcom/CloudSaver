@@ -21,7 +21,8 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Data and privacy | Daily mobile-data limit with midnight reset (stops downloads and the desktop); Downloads visible to the phone or kept inside Linux; app lock covering the whole app with the phone's fingerprint or PIN; everything local, Android cloud backup off |
 | Home screen | Three tabs on a bottom bar: Home (state, Needs attention, mobile data meter, Your phone is compatible, the questions), Apps, Settings (grouped; a dot only for what Settings can fix) |
 | Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, recognises an already-open app by the process that owns its window and brings it to the front, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
-| Sign-in | The browser hands `chatgpt://`, `codex://` and `claude://` links back to the app that asked (`desktop-file-utils` + a mimeapps table rebuilt on every start) |
+| Sign-in | The browser hands `chatgpt://`, `codex://` and `claude://` links back to the app that asked (`desktop-file-utils` + a mimeapps table rebuilt on every start), through the launcher, which then closes the browser that carried the sign-in |
+| Phone files | Optional: the phone's storage bound in as `/home/coder/Phone`, with Phone, Phone Downloads, Phone Photos and Phone Documents in every GTK file dialog's sidebar |
 
 ## Device requirements
 
@@ -58,9 +59,12 @@ PocketDesk asks for the minimum set, and every one of them is visible in the app
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | Required to keep the Linux process alive while you use it |
 | `VIBRATE` | Right-click and long-press feedback in the desktop viewer |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Shows one yes/no prompt asking to exempt a 10–30 minute setup from battery saver. The user always chooses; nothing is exempted silently |
+| `USE_BIOMETRIC` | The optional App lock's fingerprint prompt (the phone's PIN is the fallback). Granted at install, nothing is read from the sensor by the app |
+| `MANAGE_EXTERNAL_STORAGE` (Android 11+), `READ/WRITE_EXTERNAL_STORAGE` (Android 10) | **Optional, off by default.** Settings → Permissions → Phone files: the phone's storage becomes the Phone folder inside the Linux computer, so an AI app can attach a file from the phone. Nothing on the phone is visible to the computer until the owner allows it |
 
-There is **no** storage, camera, microphone, location, contacts, accessibility or overlay
-permission, and the app never requests device admin.
+There is **no** camera, microphone, location, contacts, accessibility or overlay permission,
+and the app never requests device admin. Storage is reachable only through the optional Phone
+files switch above.
 
 OEM auto-start is *not* a permission — it is a settings page the Permissions card links to. Every
 row in that card shows an ON/OFF pill and states what changes if it is off, and a first-launch

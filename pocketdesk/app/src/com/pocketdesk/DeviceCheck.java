@@ -27,10 +27,16 @@ final class DeviceCheck {
         final boolean compatible;
         final String headline;
         final String detail;
+        /** True when free space is the only thing standing in the way. */
+        final boolean onlySpace;
         Result(boolean compatible, String headline, String detail) {
+            this(compatible, headline, detail, false);
+        }
+        Result(boolean compatible, String headline, String detail, boolean onlySpace) {
             this.compatible = compatible;
             this.headline = headline;
             this.detail = detail;
+            this.onlySpace = onlySpace;
         }
     }
 
@@ -85,7 +91,7 @@ final class DeviceCheck {
             return new Result(false, "Free up space first",
                     facts + "\n\n" + requirements() + "\n\nDelete or move "
                             + DeviceProbe.formatBytes(MIN_FREE_BYTES - freeBytes)
-                            + " and this phone qualifies.");
+                            + " and this phone qualifies.", true);
         }
         String note = ramGb < 6
                 ? "With " + ramGb + " GB of RAM the AI desktop apps open and run; the first open "

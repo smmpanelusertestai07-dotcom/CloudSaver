@@ -63,7 +63,12 @@ EOF
     # answering. Bound to Super+F4 in Openbox and to Force close on the phone's toolbar.
     command -v xdotool >/dev/null 2>&1 || exit 0
     id=$(xdotool getactivewindow 2>/dev/null) || exit 0
-    [ -n "$id" ] && xdotool windowkill "$id" 2>/dev/null || true
+    [ -n "$id" ] || exit 0
+    # A tap on the wallpaper focuses the desktop itself; that, and the panel, are never
+    # "the app in front", so they are refused exactly as the other commands skip them.
+    hex=$(printf '0x%08x' "$id" 2>/dev/null) || exit 0
+    wmctrl -l 2>/dev/null | grep -i "^$hex" | grep -Eqv "$skip" || exit 0
+    xdotool windowkill "$id" 2>/dev/null || true
     ;;
   list|*)
     rows=""

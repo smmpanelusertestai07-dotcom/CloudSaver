@@ -191,6 +191,27 @@ final class ContainerRuntime {
         }
         args.add("-b");
         args.add(guestShared.getAbsolutePath() + ":/home/coder/Shared");
+        // The phone's storage as the Phone folder, only while the owner allows it. Without the
+        // permission the folder holds one note saying where to turn it on; with it, the bind
+        // hides the note behind the real Download, DCIM and Documents folders.
+        File phoneMount = new File(root, "home/coder/Phone");
+        if (!phoneMount.exists()) phoneMount.mkdirs();
+        if (PhoneFiles.allowed(context)) {
+            args.add("-b");
+            args.add(PhoneFiles.root().getAbsolutePath() + ":/home/coder/Phone");
+        } else {
+            File note = new File(phoneMount, "Phone files are off.txt");
+            if (!note.exists()) {
+                try {
+                    writeText(note, "This folder shows your phone's own files once Phone files is on:\n"
+                            + "PocketDesk → Settings → Permissions → Phone files.\n"
+                            + "Then open the desktop again: Download, DCIM (photos) and Documents appear here,\n"
+                            + "and every app's Open dialog lists Phone on the left.\n");
+                } catch (IOException ignored) {
+                    // A missing note costs nothing; the Settings row says the same.
+                }
+            }
+        }
         args.add("-w");
         args.add("/root");
         args.add("/usr/bin/env");
@@ -344,9 +365,22 @@ final class ContainerRuntime {
         return startDesktopCommand(width, height, dpi, true);
     }
 
+    /**
+     * The desktop size actually started: the long side 800-1920, the short side 480-1200, even,
+     * whichever way the phone is held. Clamping width and height separately turned a portrait
+     * 720x1600 into 800x1200 -- the wrong shape -- and the status text then lied about it.
+     */
+    static int[] safeGeometry(int width, int height) {
+        boolean portrait = height > width;
+        int longSide = even(Math.max(800, Math.min(Math.max(width, height), 1920)));
+        int shortSide = even(Math.max(480, Math.min(Math.min(width, height), 1200)));
+        return portrait ? new int[]{shortSide, longSide} : new int[]{longSide, shortSide};
+    }
+
     static String startDesktopCommand(int width, int height, int dpi, boolean shareDownloads) {
-        int safeWidth = even(Math.max(800, Math.min(width, 1920)));
-        int safeHeight = even(Math.max(480, Math.min(height, 1200)));
+        int[] safe = safeGeometry(width, height);
+        int safeWidth = safe[0];
+        int safeHeight = safe[1];
         int safeDpi = Math.max(96, Math.min(dpi, 240));
         return "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1; "
                 + "mkdir -p /tmp/.X11-unix; chmod 1777 /tmp /tmp/.X11-unix; "

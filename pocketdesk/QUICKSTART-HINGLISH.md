@@ -57,7 +57,7 @@ Upar (ya neeche, tumhari marzi) **ek hi bar**:
 | Running | When to stop by itself (Smart · recommended / 1–6 hours / Never), Overheat protection |
 | Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only, Downloads visible to the phone |
 | Privacy and safety | App lock — fingerprint/PIN, home aur desktop dono screen pe; on karte waqt ek baar pooch ke confirm karta hai |
-| Permissions | Notifications, Battery usage (Unrestricted karo), Auto-start, App info |
+| Permissions | Notifications, Battery usage (Unrestricted karo), Auto-start, **Phone files**, App info |
 | Reports | **Why an app didn't open** (app ki log, Share button), Last error report |
 | Storage | Linux computer kitna space le raha hai, **Remove the Linux computer and free space** |
 
@@ -66,9 +66,18 @@ Settings badalne se kabhi kuch delete nahi hota.
 ## 6. Computer apne aap kab band hota hai
 
 - Smart mode: 25 min tak kuch na chhuo, battery 15 % se neeche (charger ke bina), phone bahut garam, ya aaj ka mobile data limit khatam.
+- 15 % se neeche battery pe (charger ke bina) desktop khulega bhi nahi — Home pe likha aayega. Charger lagao, ya Settings me fixed timer / Never stop chuno.
+- Agar koi AI app apne aap band ho jaye: Settings → Reports me likha milega kab aur kyun (phone ne memory wapas li = "closed by the phone"). Ek waqt me ek AI app rakho; sign-in ke baad browser apne aap band ho jata hai.
 - Band hone pe kuch nahi jata — apps signed in rehte hain, files wahin. Home pe likha aata hai kab aur kyun band hua.
 - Apne aap restart kabhi nahi hota — tum **Open desktop** dabate ho.
 - Bina net ke computer chalta hai (desktop, files, browser ke saved pages); AI apps ko net chahiye.
+
+## 6a. Phone ki file ChatGPT/Claude me kaise bheje
+
+1. Settings → Permissions → **Phone files** → Allow (Android "All files access" maangta hai).
+2. Desktop dubara kholo. Ab computer ke andar **Phone** folder hai = tumhara poora phone storage.
+3. ChatGPT me attach (📎) dabao → dialog me left side **Phone**, **Phone Downloads**, **Phone Photos**, **Phone Documents** — wahi se file chuno. Computer ki apni files **Downloads** aur **Projects** me hain. Dono side-by-side.
+4. Phone folder me save karoge to file phone me chali jaati hai. Off karna ho to Android settings me PocketDesk ka All files access hata do.
 
 ## 7. Files kahan jati hain
 
