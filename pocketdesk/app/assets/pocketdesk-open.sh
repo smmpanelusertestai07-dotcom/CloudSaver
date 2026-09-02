@@ -39,7 +39,7 @@ free_mb() {
 # The browsers: they keep their extensions and background work, and they are what gets closed
 # to make room for an AI app, never the other way round.
 is_browser() {
-  case "$name" in brave*|chromium*|google-chrome*|firefox*|epiphany*) return 0 ;; esac
+  case "$name" in google-chrome*|chrome|brave-browser*|brave|chromium|chromium-browser|firefox|epiphany) return 0 ;; esac
   return 1
 }
 
@@ -154,14 +154,14 @@ WINDOWS
 # left open beside a 1.3 GB AI app it was the next thing the phone ran out of memory over.
 close_browser_windows() {
   command -v wmctrl >/dev/null 2>&1 || return 0
-  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave/ {print $1}' | while read -r id; do
+  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave|chrome/ {print $1}' | while read -r id; do
     [ -n "$id" ] && wmctrl -ic "$id" 2>/dev/null || true
   done
 }
 
 browser_windows_open() {
   command -v wmctrl >/dev/null 2>&1 || return 1
-  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave/' | grep -q .
+  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave|chrome/' | grep -q .
 }
 
 has_window() { [ -n "$(app_window)" ]; }

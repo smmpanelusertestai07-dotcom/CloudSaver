@@ -284,7 +284,18 @@ final class Ui {
             statusLp.setMarginEnd(dp(context, 8));
             addView(statusView, statusLp);
 
-            if (trailingIcon != 0) addView(icon(context, trailingIcon, muted(dark), 18));
+            if (trailingIcon != 0) {
+                trailingView = icon(context, trailingIcon, muted(dark), 18);
+                addView(trailingView);
+            }
+        }
+
+        private ImageView trailingView;
+
+        /** Turns the trailing chevron to point down while what it opens is showing. */
+        void setExpanded(boolean expanded) {
+            if (trailingView == null) return;
+            trailingView.animate().rotation(expanded ? 90f : 0f).setDuration(150).start();
         }
 
         void setValue(String value) {

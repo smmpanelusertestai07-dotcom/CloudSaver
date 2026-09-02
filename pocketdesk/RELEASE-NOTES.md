@@ -1,3 +1,53 @@
+# PocketDesk 5.0.0 — the final release: Google Chrome as the computer's browser, and every screen from the device screenshots fixed
+
+Built from a second round of real-device screenshots. Version 5 because it closes the list.
+
+## The browser: Google Chrome, and only Chrome
+Google's own apt repository has published Chrome for Linux **ARM64** since July 2026, so the
+answer to "can it be Chrome?" is now yes. Set-up installs **Google Chrome** (from Google's
+repository, signed by Google) as the computer's one browser; the built-in GNOME Web is gone from
+new set-ups and removed from older ones once Chrome is present. Brave and Firefox are gone from
+the catalogue. Chrome opens every link and sign-in, keeps its extensions and sync, and runs with
+the flags a container needs (`--no-sandbox`, `--no-zygote`, software rendering). Policies: blank
+start page, no background mode, no "make default" prompt, no metrics, no GPU. Its package's own
+amd64 repository line is replaced by the arm64 one. The **Google Chrome** row on the Apps tab
+updates it, or brings it back after a Remove.
+
+## What the screenshots showed, and what changed
+- **The launch screen looked wrong** (a big app tile with a small Tux under it). It is now the
+  app mark and Tux side by side, the same height, settling in with a short animation, on deep
+  blue. The still frame looks right even where the animation does not play.
+- **The chevron kept pointing right on an open answer.** Every question, the compatibility
+  row and the attention rows now turn their chevron down while they are open.
+- **The Apps tab greyed its rows with no explanation while the computer was setting up.** A line
+  at the top now says why: set-up in progress, set up Linux first, an app is installing, or
+  another task is running.
+- **The progress card showed "Preparing … Selecting previously unselected package
+  humanity-icon-theme."** Raw package lines are gone. It reads "Setting up the desktop —
+  Getting packages ready · 6 min so far · usually 10–25 min", and the Set up button hides while
+  work is running.
+- **The AI apps card was a wall of text.** One sentence and one line now; each row carries its
+  own short description ("AI assistant by OpenAI, with the Codex coding agent · 700 MB").
+- **The requirements sentence appeared twice** under Your phone. Once now, inside the detail.
+- **The desktop panel** now shows the phone's own battery, temperature, free memory and network
+  (Wi-Fi or mobile data), read from the phone's kernel every 20 seconds.
+
+## Also in this release
+- **Terms**: ChatGPT and Claude Desktop are AI assistants with their makers' coding agents;
+  Cursor is "the AI code editor"; Antigravity is "Google's agentic development platform: AI
+  agents plan, write, run and test software".
+- **Desktop basics** (the row) now includes Chrome, and its "installed" mark is the sound tools
+  rather than the old browser.
+- Sizes on rows are the download size only; installed sizes are in the confirmation.
+
+## Verified again, unchanged
+Seccomp accelerator off by default (the ChatGPT auto-back root cause), Faster desktop toggle,
+uninstall with Remove, branded dialogs, framed viewer with border, blue Tux wallpaper, sound to
+the phone, installs beside a running desktop, app lock that cannot throw.
+
+## Not possible, permanently
+Windows or macOS on a phone; a microphone into the computer (not carried yet).
+
 # PocketDesk 3.4.0 — the ChatGPT auto-back root cause, one browser, uninstall, and a themed, framed UI
 
 This release starts from real-device evidence: a ChatGPT crash log and screenshots from a Realme

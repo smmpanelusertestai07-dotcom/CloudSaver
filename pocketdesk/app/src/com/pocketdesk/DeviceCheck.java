@@ -98,7 +98,6 @@ final class DeviceCheck {
                         + "takes a minute or two, and one AI app at a time is best."
                 : "Runs well here.";
         return new Result(true, "Your phone is compatible",
-                facts + "\n\n" + note + "\n\n" + requirements() + " This phone runs Android "
-                        + Build.VERSION.RELEASE + ", so everything works.");
+                facts + "\n\n" + note + "\n\nRequirements: " + requirements());
     }
 }

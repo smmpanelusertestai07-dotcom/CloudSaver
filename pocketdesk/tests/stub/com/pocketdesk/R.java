@@ -17,5 +17,6 @@ public final class R {
         public static final int ic_bolt = 12;
         public static final int logo_cursor = 13;
         public static final int logo_brave = 14;
+        public static final int logo_chrome = 15;
     }
 }

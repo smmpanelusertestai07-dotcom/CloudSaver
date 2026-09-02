@@ -333,16 +333,15 @@ public final class LinuxService extends Service {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
 
         final long toolsStartedAt = System.currentTimeMillis();
-        status("Installing desktop tools",
+        status("Setting up the desktop",
                 "The longest step · usually takes 10\u201325 min on mobile data", -1, true, false);
         final long[] lastLine = {0L};
         int code = runTracked(ContainerRuntime.bootstrapCommand(), line -> {
             long now = System.currentTimeMillis();
             if (now - lastLine[0] < 900L) return;
             lastLine[0] = now;
-            status("Installing desktop tools",
-                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 10\u201325 min"
-                            + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
+            status("Setting up the desktop",
+                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 10\u201325 min",
                     -1, true, false);
         });
         if (code != 0) throw new IOException("Ubuntu package setup exited with code " + code + ". Check Wi-Fi and free storage, then retry.");
@@ -398,8 +397,7 @@ public final class LinuxService extends Service {
                 if (now - lastLine[0] < 900L) return;
                 lastLine[0] = now;
                 status("Installing " + app.name,
-                        phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime
-                                + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
+                        phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime,
                         -1, true, false);
             });
         } finally {
@@ -868,7 +866,7 @@ public final class LinuxService extends Service {
         if (value.startsWith("Get:") || value.contains("Fetched")) return "Downloading packages";
         if (value.startsWith("Unpacking") || value.startsWith("Preparing to unpack")) return "Unpacking files";
         if (value.startsWith("Setting up") || value.startsWith("Processing triggers")) return "Finishing set-up";
-        if (value.startsWith("Reading") || value.startsWith("Building") || value.startsWith("Selecting")) return "Preparing";
+        if (value.startsWith("Reading") || value.startsWith("Building") || value.startsWith("Selecting")) return "Getting packages ready";
         if (value.contains("% ") || value.startsWith("#")) return "Downloading";
         if (value.startsWith("Get:") || value.startsWith("Hit:")) return "Downloading packages";
         return "Working";

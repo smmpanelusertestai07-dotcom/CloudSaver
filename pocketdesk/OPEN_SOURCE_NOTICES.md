@@ -31,7 +31,9 @@ property and trademark of its owner.
 | `logo_antigravity.png` | Antigravity (Google) | `antigravity.google` |
 | `logo_vscode.png` | Visual Studio Code (Microsoft) | `code.visualstudio.com` |
 | `logo_firefox.png` | Firefox (Mozilla) | `firefox.com` |
-| `logo_web.png` | GNOME Web / Epiphany | `epiphany-browser-data`, CC BY-SA 4.0, rendered from the shipped SVG |
+| `logo_web.png` | GNOME Web / Epiphany | `epiphany-browser-data`, CC BY-SA 4.0, rendered from the shipped SVG (no longer shown) |
+| `logo_chrome.png` | Google Chrome (Google) | Google's published Chrome icon, via Wikimedia Commons |
+| `logo_brave.png` | Brave (Brave Software) | Brave's published product logo (no longer shown) |
 
 `app/assets/antigravity.png` is the same Antigravity mark, shipped into the container because
 Antigravity is distributed as a tarball that registers no icon of its own.

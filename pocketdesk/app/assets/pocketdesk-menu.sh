@@ -63,11 +63,11 @@ entries() {
   done
 }
 
-# The browser. Brave when it is installed -- a full Chromium with extensions -- else Firefox,
-# else GNOME Web, the light one every container starts with. One browser on the desktop and
+# The browser. Google Chrome, which set-up installs; Brave or GNOME Web only on a computer
+# built by an earlier version that still has one of them. One browser on the desktop and
 # the panel, and the same one answers every link, so a sign-in never opens in a second one.
 BROWSER_ENTRY=""
-for candidate in brave-browser.desktop org.gnome.Epiphany.desktop; do
+for candidate in google-chrome.desktop brave-browser.desktop org.gnome.Epiphany.desktop; do
   [ -f "$APPLICATIONS_DIR/$candidate" ] || continue
   runnable "$APPLICATIONS_DIR/$candidate" || continue
   BROWSER_ENTRY=$candidate
@@ -88,6 +88,7 @@ FAVOURITES="chatgpt claude-desktop cursor antigravity ${BROWSER_BASE:-org.gnome.
 short_name() {   # short_name <base> <name>
   case "$1" in
     org.gnome.Epiphany|epiphany) printf 'Web' ;;
+    google-chrome) printf 'Chrome' ;;
     brave-browser) printf 'Brave' ;;
     firefox) printf 'Firefox' ;;
     pcmanfm) printf 'Files' ;;
@@ -223,7 +224,8 @@ launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop"
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 {
-  echo 'panel_items = LTSC'
+  # L launchers, T open windows, S tray, E the phone's battery/temperature/memory, C clock.
+  echo 'panel_items = LTSEC'
   echo 'panel_size = 100% 58'
   echo 'panel_padding = 6 3 8'
   echo 'background_color = #0f1327 100'
@@ -247,6 +249,18 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
   echo 'launcher_padding = 8 4 8'
   echo 'launcher_icon_theme = Adwaita'
   echo 'launcher_tooltip = 1'
+  # The phone's own numbers, refreshed every 20 seconds (see pocketdesk-status).
+  echo 'execp = new'
+  echo 'execp_command = /usr/local/bin/pocketdesk-status'
+  echo 'execp_interval = 20'
+  echo 'execp_has_icon = 0'
+  echo 'execp_continuous = 0'
+  echo 'execp_markup = 0'
+  echo 'execp_font = Sans 9'
+  echo 'execp_font_color = #c2cae6 100'
+  echo 'execp_padding = 10 0'
+  echo 'execp_centered = 1'
+  echo 'execp_tooltip = Battery, temperature, free memory and network of this phone'
   printf '%s\n' "$launcher_lines"
 } > "$TINT2_DIR/tint2rc"
 

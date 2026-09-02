@@ -80,10 +80,9 @@ final class LinuxApps {
     private static final String ANTIGRAVITY_KEY = "https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg";
     private static final String ANTIGRAVITY_REPO =
             "https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev";
-    /** Brave's official apt repository, signed by Brave, amd64 and arm64. */
-    private static final String BRAVE_KEY =
-            "https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg";
-    private static final String BRAVE_REPO = "https://brave-browser-apt-release.s3.brave.com";
+    /** Google's own apt repository for Chrome; it has published arm64 builds since July 2026. */
+    private static final String CHROME_KEY = "https://dl.google.com/linux/linux_signing_key.pub";
+    private static final String CHROME_REPO = "https://dl.google.com/linux/chrome/deb/";
 
     private static final long GB = 1024L * 1024L * 1024L;
     private static final long MB = 1024L * 1024L;
@@ -96,38 +95,60 @@ final class LinuxApps {
                 + "chmod 0644 '" + path + "'; rm -f /tmp/pocketdesk.key; ";
     }
 
+    /**
+     * Google Chrome from Google's own repository: the computer's browser. Its package adds an
+     * amd64-only repository line of its own on install; that line is replaced with the arm64
+     * one and told not to come back. Policies: a blank start page, no background mode, no
+     * "make me default" prompt (there is nothing else here), no GPU (there is none), no
+     * metrics. Passwords and sign-in stay, in Chrome's basic store (no keyring here).
+     */
+    static final String CHROME_INSTALL =
+            "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+            + fetchKey(CHROME_KEY, "/etc/apt/keyrings/google-chrome.gpg")
+            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
+            + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
+            + "apt-get update; apt-get install -y --no-install-recommends google-chrome-stable; "
+            + "printf 'repo_add_once=\"false\"\nrepo_reenable_on_distupgrade=\"false\"\n' > /etc/default/google-chrome; "
+            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
+            + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
+            + "mkdir -p /etc/opt/chrome/policies/managed; "
+            + "printf '{\"HomepageLocation\": \"about:blank\", \"HomepageIsNewTabPage\": false, "
+            + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
+            + "\"BackgroundModeEnabled\": false, \"DefaultBrowserSettingEnabled\": false, "
+            + "\"MetricsReportingEnabled\": false, \"HardwareAccelerationModeEnabled\": false, "
+            + "\"PromotionalTabsEnabled\": false}\n' > /etc/opt/chrome/policies/managed/pocketdesk.json; "
+            // The old built-in browser goes once Chrome is here: one browser, not two.
+            + "apt-get remove -y epiphany-browser >/dev/null 2>&1 || true";
+
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt. Not removable: it is the computer.
-            new App("essentials", "Browser and desktop basics",
-                    "The built-in browser, sound, terminal, Files, Phone files, icons, the apps menu and "
-                            + "the sign-in hand-back. Comes with setup; tap to bring an older computer up to date.",
-                    R.drawable.ic_network, R.drawable.logo_web, "about 170 MB", 800 * MB,
-                    "2–6 min", null,
-                    "/usr/bin/epiphany",
+            new App("essentials", "Desktop basics",
+                    "Desktop, sound, terminal, Files, Phone files, icons, the apps menu and Google Chrome. "
+                            + "Comes with setup; tap to bring an older computer up to date.",
+                    R.drawable.ic_desktop, 0, "about 320 MB", 1500 * MB,
+                    "5–15 min", null,
+                    "/usr/bin/pactl",
                     "apt-get update; apt-get install -y --no-install-recommends "
                             + "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
                             + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
                             + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils "
                             + "librsvg2-common "
-                            + "epiphany-browser lxterminal pcmanfm tint2 "
+                            + "lxterminal pcmanfm tint2 "
                             + "pulseaudio pulseaudio-utils "
                             + "less file unzip zip wget; "
-                            + "mkdir -p /usr/share/glib-2.0/schemas; "
-                            + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n"
-                            + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n"
-                            + "remember-passwords=false\\n' "
-                            + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
-                            + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                             + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
-                            + "echo 'Asia/Kolkata' > /etc/timezone",
+                            + "echo 'Asia/Kolkata' > /etc/timezone; "
+                            // Chrome as part of the basics; a failure here is not a failure of the
+                            // basics, and the Google Chrome row can always try again.
+                            + "( " + CHROME_INSTALL + " ) || true",
                     null),
 
             new App("chatgpt", "ChatGPT",
-                    "AI assistant by OpenAI, with the Codex coding agent. The official Linux app.",
+                    "AI assistant by OpenAI, with the Codex coding agent.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
-                    "700 MB download, 1.3 GB installed", 4 * GB, "10–25 min",
+                    "700 MB", 4 * GB, "10–25 min",
                     "OpenAI's Linux app is a public preview; that is OpenAI's current scope, and it "
                             + "grows with their updates. Your account's usage limits apply.",
                     "/usr/bin/chatgpt",
@@ -140,8 +161,8 @@ final class LinuxApps {
                     "apt-get remove -y chatgpt"),
 
             new App("claude", "Claude Desktop",
-                    "AI assistant by Anthropic, with the Claude Code coding agent. The official Linux app.",
-                    R.drawable.ic_terminal, R.drawable.logo_claude, "about 600 MB", 3 * GB,
+                    "AI assistant by Anthropic, with the Claude Code coding agent.",
+                    R.drawable.ic_terminal, R.drawable.logo_claude, "600 MB", 3 * GB,
                     "10–20 min",
                     "Anthropic's Linux app is in beta. Cowork's local virtual machine needs hardware "
                             + "virtualisation that a phone does not give apps, so that tab stays "
@@ -158,8 +179,8 @@ final class LinuxApps {
                     "apt-get remove -y claude-desktop; rm -f /etc/apt/sources.list.d/claude-desktop.list"),
 
             new App("cursor", "Cursor",
-                    "The AI code editor, by Anysphere. The official Linux ARM64 build.",
-                    R.drawable.ic_terminal, R.drawable.logo_cursor, "about 700 MB", 2500 * MB,
+                    "The AI code editor, by Anysphere.",
+                    R.drawable.ic_terminal, R.drawable.logo_cursor, "700 MB", 2500 * MB,
                     "5–15 min",
                     "A large editor. Expect it to take a while to open the first time.",
                     "/usr/share/cursor/cursor",
@@ -172,9 +193,8 @@ final class LinuxApps {
                     "apt-get remove -y cursor"),
 
             new App("antigravity", "Antigravity",
-                    "Agentic development platform by Google, where AI agents plan, write, run and test "
-                            + "software. The official Linux ARM64 package.",
-                    R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 230 MB download, 750 MB installed", 3 * GB,
+                    "Google's agentic development platform: AI agents plan, write, run and test software.",
+                    R.drawable.ic_desktop, R.drawable.logo_antigravity, "230 MB", 3 * GB,
                     "5–20 min",
                     "Installed from Google's own apt repository, so a tap on this row updates it in place.",
                     "/usr/share/applications/antigravity.desktop",
@@ -194,34 +214,19 @@ final class LinuxApps {
                             + "> /usr/share/applications/antigravity.desktop; fi",
                     "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list"),
 
-            new App("brave", "Brave browser",
-                    "A full Chromium browser with extensions from the Chrome Web Store. Brave's official ARM64 build.",
-                    R.drawable.ic_network, R.drawable.logo_brave, "about 140 MB download, 500 MB installed", 1500 * MB,
+            new App("chrome", "Google Chrome",
+                    "The web browser, by Google: extensions, sync, the official ARM64 build.",
+                    R.drawable.ic_network, R.drawable.logo_chrome, "135 MB", 1500 * MB,
                     "5–15 min",
-                    "Becomes the computer's browser: links and sign-ins open in it. Brave's Rewards, "
-                            + "Wallet, VPN, news and AI chat are switched off by policy; extensions work.",
-                    "/opt/brave.com/brave/brave",
-                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
-                            + fetchKey(BRAVE_KEY, "/usr/share/keyrings/brave-browser-archive-keyring.gpg")
-                            + "echo 'deb [arch=arm64 signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] "
-                            + BRAVE_REPO + " stable main' > /etc/apt/sources.list.d/brave-browser-release.list; "
-                            + "apt-get update; apt-get install -y --no-install-recommends brave-browser; "
-                            + "mkdir -p /etc/brave/policies/managed; "
-                            + "printf '{\"BraveRewardsDisabled\": true, \"BraveWalletDisabled\": true, "
-                            + "\"BraveVPNDisabled\": true, \"BraveAIChatEnabled\": false, \"BraveNewsDisabled\": true, "
-                            + "\"BraveTalkDisabled\": true, \"TorDisabled\": true, "
-                            + "\"HomepageLocation\": \"about:blank\", \"HomepageIsNewTabPage\": false, "
-                            + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
-                            + "\"PasswordManagerEnabled\": false, \"BackgroundModeEnabled\": false, "
-                            + "\"DefaultBrowserSettingEnabled\": false, \"MetricsReportingEnabled\": false, "
-                            + "\"HardwareAccelerationModeEnabled\": false}\\n' "
-                            + "> /etc/brave/policies/managed/pocketdesk.json",
-                    "apt-get remove -y brave-browser; rm -f /etc/apt/sources.list.d/brave-browser-release.list "
-                            + "/etc/brave/policies/managed/pocketdesk.json"),
+                    "Comes with setup. This row updates it, or installs it again after a Remove.",
+                    "/opt/google/chrome/chrome",
+                    CHROME_INSTALL,
+                    "apt-get remove -y google-chrome-stable; rm -f /etc/apt/sources.list.d/google-chrome.list "
+                            + "/etc/opt/chrome/policies/managed/pocketdesk.json"),
 
             new App("devtools", "Developer tools",
-                    "Compilers (gcc, make), Python 3 with pip and venv, Node.js with npm, Git extras, SSH, jq, htop, vim.",
-                    R.drawable.ic_terminal, 0, "about 400 MB download, 1.2 GB installed", 2500 * MB,
+                    "gcc and make, Python 3 with pip, Node.js with npm, Git, SSH, jq, htop, vim.",
+                    R.drawable.ic_terminal, 0, "400 MB", 2500 * MB,
                     "5–15 min",
                     "For building and running software in the terminal or from Cursor and Antigravity. "
                             + "Ubuntu 24.04's own packages; sudo apt install adds anything else.",

@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v3.4.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v5.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe Tux (Linux ka penguin) dikhega — yahi computer chal raha hai.
@@ -13,7 +13,7 @@
 2. Upar 4 tiles: **Network, Battery, Free space, Temperature**. Neeche *Your phone* card me
    **Your phone is compatible** likha hona chahiye — tap karo to detail wahin niche khulti hai.
 3. **Set up Linux** dabao → confirm karo. Ubuntu 24.04 LTS download hoga (30 MB), phir desktop
-   packages (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
+   packages aur Google Chrome (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
 4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix ya detail khulta hai.
 5. **Linux only, on purpose** card me likha hai computer Linux hi kyun hai — har line tap karo,
    facts (dates ke saath) wahin khulte hain.
@@ -30,10 +30,9 @@
 - Ek waqt me **ek hi AI app** kholo — 4 GB RAM wale phone pe do saath me memory kha jate hain.
 
 ### Computer basics
-- **Browser and desktop basics** — setup ke saath aata hai (ismein halka default browser bhi hai); purane computer ko update karne ke liye tap karo.
-- **Brave browser** — ek hi full browser. Poora Chromium, Chrome Web Store ke extensions. Install
-  karte hi yahi computer ka browser ban jata hai (desktop, panel, har link, har sign-in). AI sign-in
-  pages ke liye sabse compatible.
+- **Desktop basics** — setup ke saath aata hai (Google Chrome bhi isi me); purane computer ko update karne ke liye tap karo.
+- **Google Chrome** — computer ka ek hi browser, Google ke apne ARM64 repo se, setup ke saath install hota hai.
+  Extensions, sync, har link aur sign-in isi me. Yeh row update ya Remove ke baad dobara install ke liye.
 - **Developer tools** — gcc/make, Python 3 (pip, venv), Node.js (npm), git extras, ssh, jq, htop, vim.
   Cursor/Antigravity/Claude Code se software banane ke liye.
 - **App hatana:** installed app (ya Brave) ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.

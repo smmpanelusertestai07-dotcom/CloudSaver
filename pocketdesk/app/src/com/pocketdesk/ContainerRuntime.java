@@ -292,16 +292,10 @@ final class ContainerRuntime {
                 + "printf 'coder ALL=(ALL) NOPASSWD:ALL\\n' > /etc/sudoers.d/coder; chmod 0440 /etc/sudoers.d/coder; "
                 + "mkdir -p /home/coder/Desktop /home/coder/.config /home/coder/Projects "
                 + "/home/coder/Downloads /usr/share/backgrounds; "
-                // A computer with no browser is not much of a computer. GNOME Web is the one
-                // that opens in a couple of seconds on a phone; Firefox is a separate choice in
-                // the app list for anyone who wants it.
-                + "apt-get install -y --no-install-recommends epiphany-browser || true; "
-                // GNOME Web's start page renders live thumbnails, which is the slowest possible
-                // first thing to draw on a phone -- and what put "Page Unresponsive" on screen.
-                + "mkdir -p /usr/share/glib-2.0/schemas; "
-                + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n' "
-                + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
-                + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
+                // The browser is Google Chrome, from Google's own repository (arm64 since July
+                // 2026). Best-effort here: a network hiccup must not fail the whole set-up, and
+                // the Google Chrome row on the Apps tab installs it again.
+                + "( " + LinuxApps.CHROME_INSTALL + " ) || true; "
                 + "chown -R coder:coder /home/coder; "
                 + "apt-get clean; rm -rf /var/lib/apt/lists/*";
     }
@@ -311,6 +305,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
+        copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
@@ -346,6 +341,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
+        copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
@@ -425,13 +421,6 @@ final class ContainerRuntime {
                 // start page (the thumbnail page was the "Page Unresponsive"). Only keys that
                 // exist in GNOME Web 45's schema: an unknown key is ignored with a warning.
                 + "mkdir -p /usr/share/glib-2.0/schemas; "
-                // remember-passwords off: there is no keyring daemon here, so every attempt
-                // to store or look up a password was a D-Bus call that failed slowly.
-                + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n"
-                + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n"
-                + "remember-passwords=false\\n' "
-                + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
-                + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
                 + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                 // The table of which app answers which link scheme, rebuilt from what is
                 // installed now, so a sign-in that opens in the browser finds its way back.

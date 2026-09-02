@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.4.0";
+    static final String VERSION = "5.0.0";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -125,6 +125,7 @@ public final class MainActivity extends Activity {
     private boolean askBatteryAfterNotifications;
 
     private final java.util.Map<String, Ui.Row> appRows = new java.util.LinkedHashMap<>();
+    private TextView appsNote;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     private final Runnable liveRefresh = new Runnable() {
@@ -516,14 +517,14 @@ public final class MainActivity extends Activity {
                 "Android may stop a long setup when the screen turns off. Tap to set Unrestricted.",
                 v -> openBatterySettings(), false);
         attentionSpace = attentionRow(R.drawable.ic_storage, "Free space is low",
-                "", v -> toggleDetail(spaceDetail, "The Linux computer needs "
+                "", v -> toggleDetail(attentionSpace, spaceDetail, "The Linux computer needs "
                         + DeviceProbe.formatBytes(DeviceCheck.MIN_FREE_BYTES) + " free to set up and about "
                         + DeviceProbe.formatBytes(DeviceCheck.LOW_FREE_BYTES) + " free to run comfortably. "
                         + "Delete or move some files on the phone; nothing inside the Linux computer needs to go."), false);
         spaceDetail = detailUnder(attentionCard);
         attentionHeat = attentionRow(R.drawable.ic_temperature, "The phone is hot",
                 "Let it cool before opening the desktop; it stops itself above 49 °C to protect the battery.",
-                v -> toggleDetail(heatDetail, "A warm phone is normal while an AI app runs. "
+                v -> toggleDetail(attentionHeat, heatDetail, "A warm phone is normal while an AI app runs. "
                         + "Above 49 °C, or when Android reports critical heat, the Linux computer stops "
                         + "itself and everything on it is kept. Overheat protection can be turned off in Settings, "
                         + "but there is no good reason to."), false);
@@ -535,7 +536,7 @@ public final class MainActivity extends Activity {
                 "The phone's screen lock was removed. Set one, then turn App lock on again.",
                 v -> { selectTab(TAB_SETTINGS); openSecuritySettings(); }, false);
         attentionCompatible = attentionRow(R.drawable.ic_stop, "This phone does not meet the requirements",
-                "Tap for what is missing.", v -> toggleDetail(compatibleDetail, DeviceCheck.run(this).detail), false);
+                "Tap for what is missing.", v -> toggleDetail(attentionCompatible, compatibleDetail, DeviceCheck.run(this).detail), false);
         compatibleDetail = detailUnder(attentionCard);
         attentionCard.setVisibility(View.GONE);
         return attentionCard;
@@ -556,14 +557,16 @@ public final class MainActivity extends Activity {
         return body;
     }
 
-    private void toggleDetail(TextView body, String text) {
+    private void toggleDetail(Ui.Row row, TextView body, String text) {
         if (body == null) return;
         if (body.getVisibility() == View.VISIBLE) {
             body.setVisibility(View.GONE);
+            if (row != null) row.setExpanded(false);
             return;
         }
         body.setText(text);
         body.setVisibility(View.VISIBLE);
+        if (row != null) row.setExpanded(true);
     }
 
     private Ui.Row attentionRow(int icon, String title, String value, View.OnClickListener onClick, boolean first) {
@@ -613,12 +616,11 @@ public final class MainActivity extends Activity {
         DeviceCheck.Result check = DeviceCheck.run(this);
         compatibleRow = new Ui.Row(this, check.compatible ? R.drawable.ic_check : R.drawable.ic_stop,
                 check.headline, "Tap for the requirements and what this phone has",
-                R.drawable.ic_chevron, dark, v -> toggleDetail(phoneDetail, DeviceCheck.run(this).detail));
+                R.drawable.ic_chevron, dark, v -> toggleDetail(compatibleRow, phoneDetail, DeviceCheck.run(this).detail));
         compatibleRow.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
                 check.compatible ? Ui.SUCCESS : Ui.DANGER);
         card.addView(compatibleRow, Ui.matchWrap(this, 10));
         phoneDetail = detailUnder(card);
-        card.addView(Ui.text(this, DeviceCheck.requirements(), 12.5f, muted), Ui.matchWrap(this, 10));
         return card;
     }
 
@@ -692,19 +694,13 @@ public final class MainActivity extends Activity {
     private View buildAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
-        card.addView(Ui.text(this, "The makers' own official Linux desktop apps — not web pages, "
-                + "not command lines.", 13f, text), Ui.matchWrap(this, 8));
-        card.addView(Ui.text(this,
-                "Two AI assistants and two AI coding environments. ChatGPT (OpenAI) and Claude "
-                        + "Desktop (Anthropic) are the assistants, each with its maker's coding "
-                        + "agent built in: Codex and Claude Code. Cursor (Anysphere) is an AI code "
-                        + "editor and Antigravity (Google) an agentic development platform: both "
-                        + "are full IDEs where AI agents plan, write, run and test software. Each row "
-                        + "installs the maker's own signed Linux package; a tap on an installed row "
-                        + "updates it in place, login kept. The desktop can stay open while an app "
-                        + "installs.", 12.5f, muted), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this, "The makers' own official Linux apps. Tap a row to install; "
+                + "tap an installed row to update or remove it.", 13f, text), Ui.matchWrap(this, 8));
         card.addView(Ui.text(this, "ARM64 · runs locally on your phone · updates from the maker",
-                12f, Ui.accent(dark)), Ui.matchWrap(this, 8));
+                12f, Ui.accent(dark)), Ui.matchWrap(this, 6));
+        appsNote = Ui.text(this, "", 12.5f, Ui.WARNING);
+        appsNote.setVisibility(View.GONE);
+        card.addView(appsNote, Ui.matchWrap(this, 8));
 
         int added = 0;
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -722,12 +718,10 @@ public final class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "Computer basics", R.drawable.ic_desktop, dark));
         card.addView(Ui.text(this,
-                "What a computer is expected to have. The desktop basics come with setup; a "
-                        + "tap on that row brings an older computer up to date. Brave is a full "
-                        + "Chromium browser with extensions from the Chrome Web Store; Firefox is "
-                        + "Mozilla's own build. Whichever is installed becomes the computer's "
-                        + "browser. Developer tools add compilers, Python, Node.js and Git "
-                        + "extras for building software.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "The desktop basics come with setup; tap that row to bring an older computer up "
+                        + "to date. Google Chrome is the computer's browser. Developer tools add "
+                        + "compilers, Python, Node.js and Git for building software.",
+                12.5f, muted), Ui.matchWrap(this, 6));
         int added = 0;
         for (LinuxApps.App app : LinuxApps.CATALOG) {
             if (LinuxApps.isAiApp(app)) continue;
@@ -768,6 +762,16 @@ public final class MainActivity extends Activity {
 
     private void refreshAppRows(boolean linuxInstalled, boolean busy, boolean running) {
         int installed = 0;
+        // Grey rows say why they are grey.
+        if (appsNote != null) {
+            String why = null;
+            if (!linuxInstalled && busy) why = "The Linux computer is being set up. These can be added as soon as it is ready.";
+            else if (!linuxInstalled) why = "Set up the Linux computer on the Home tab first. Then each of these installs with one tap.";
+            else if (LinuxService.isInstalling()) why = "An app is installing. One at a time; the others follow.";
+            else if (busy) why = "Another task is running. These can be added when it finishes.";
+            appsNote.setText(why == null ? "" : why);
+            appsNote.setVisibility(why == null ? View.GONE : View.VISIBLE);
+        }
         for (LinuxApps.App app : LinuxApps.CATALOG) {
             Ui.Row row = appRows.get(app.id);
             if (row == null) continue;
@@ -775,7 +779,7 @@ public final class MainActivity extends Activity {
             if (present && !"essentials".equals(app.id)) installed++;
             row.setStatus(present ? "ADDED" : "ADD", present ? Ui.SUCCESS : Ui.accent(dark));
             row.setValue(present
-                    ? "Installed · tap any time to update to the newest build"
+                    ? "Installed · tap to update" + (app.removable() ? " or remove" : "")
                     : app.summary + " · " + app.approximateSize);
             // An open desktop is no obstacle: the install runs beside it and the new app
             // appears on it. Only a task already running (setup, another install) waits.
@@ -1258,6 +1262,7 @@ public final class MainActivity extends Activity {
         body.setVisibility(index == openAnswer ? View.VISIBLE : View.GONE);
         Ui.Row row = new Ui.Row(this, iconRes, question, null, R.drawable.ic_chevron, dark,
                 v -> toggleAnswer(index));
+        if (index == openAnswer) row.setExpanded(true);
         card.addView(row, Ui.matchWrap(this, first ? 12 : 8));
         card.addView(body, Ui.matchWrap(this, 0));
         answers.add(new View[]{row, body});
@@ -1266,12 +1271,17 @@ public final class MainActivity extends Activity {
     private void toggleAnswer(int index) {
         if (openAnswer == index) {
             answers.get(index)[1].setVisibility(View.GONE);
+            ((Ui.Row) answers.get(index)[0]).setExpanded(false);
             openAnswer = -1;
             return;
         }
-        if (openAnswer >= 0 && openAnswer < answers.size()) answers.get(openAnswer)[1].setVisibility(View.GONE);
+        if (openAnswer >= 0 && openAnswer < answers.size()) {
+            answers.get(openAnswer)[1].setVisibility(View.GONE);
+            ((Ui.Row) answers.get(openAnswer)[0]).setExpanded(false);
+        }
         openAnswer = index;
         answers.get(index)[1].setVisibility(View.VISIBLE);
+        ((Ui.Row) answers.get(index)[0]).setExpanded(true);
     }
 
     // --------------------------------------------------------------- data cap
@@ -1640,7 +1650,7 @@ public final class MainActivity extends Activity {
             statusBadge.setText("Ready");
             statusHeadline.setText("The Linux computer is set up");
             long openedAt = preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L);
-            String note = "Ubuntu 24.04 is on this phone. Open the desktop and tap an app.";
+            String note = "Ubuntu 24.04 LTS is on this phone. Open the desktop and tap an app.";
             if (openedAt > 0) note += " Last opened " + clock(openedAt) + ".";
             String story = stopStory();
             if (story != null) note += "\n\n" + story;
@@ -1658,11 +1668,12 @@ public final class MainActivity extends Activity {
         } else {
             statusBadge.setText("Not set up");
             statusHeadline.setText("Set up the Linux computer once");
-            statusNote.setText("Downloads Ubuntu 24.04 ARM64 and sets up a desktop, files and a browser. "
-                    + "About 30 MB now; 1.5–3 GB when finished. Then add the AI desktop apps from the Apps tab.");
+            statusNote.setText("Downloads Ubuntu 24.04 LTS and sets up the desktop, files, sound and "
+                    + "Google Chrome. About 30 MB now, then packages; 2–3.5 GB when finished. Then add "
+                    + "the AI desktop apps from the Apps tab.");
         }
 
-        setupButton.setVisibility(installed ? View.GONE : View.VISIBLE);
+        setupButton.setVisibility(installed || busy ? View.GONE : View.VISIBLE);
         setupButton.setEnabled(!busy);
         startButton.setVisibility(installed ? View.VISIBLE : View.GONE);
         startButton.setEnabled(installed && !busy);
@@ -1714,9 +1725,9 @@ public final class MainActivity extends Activity {
                 + "turns off — set it to Unrestricted under Settings → Permissions first.";
         dialogBuilder()
                 .setTitle("Set up the Linux computer?")
-                .setMessage("Ubuntu 24.04 ARM64 will be downloaded and set up inside this app.\n\n"
-                        + "• Download: about 30 MB, then desktop packages\n"
-                        + "• Final size: 1.5–3 GB\n"
+                .setMessage("Ubuntu 24.04 LTS will be downloaded and set up inside this app.\n\n"
+                        + "• Download: about 30 MB, then desktop packages and Google Chrome (about 350 MB)\n"
+                        + "• Final size: 2–3.5 GB\n"
                         + "• Wi-Fi or mobile data both work\n"
                         + "• Takes 10–30 minutes depending on your connection"
                         + warning)

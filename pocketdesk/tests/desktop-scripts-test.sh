@@ -282,6 +282,8 @@ grep -q '^Icon=pocketdesk-phone$' "$phone" || fail "the Phone files icon must be
 tint="$WORK/coder/.config/tint2/tint2rc"
 grep -q 'launcher_item_app = .*pocketdesk-phone.desktop' "$tint" || fail "Phone files must be on the panel too"
 grep -q 'launcher_item_app = .*pocketdesk-apps.desktop' "$tint" || fail "the panel must carry the Apps button"
+grep -q '^execp_command = /usr/local/bin/pocketdesk-status$' "$tint" || fail "the panel must show the phone's battery, temperature and memory"
+grep -q '^panel_items = LTSEC$' "$tint" || fail "the panel items must include the executor (E)"
 [ "$(grep 'launcher_item_app' "$tint" | head -n 1 | grep -c pocketdesk-apps.desktop)" = 1 ] \
   || fail "the Apps button must be the first thing on the panel"
 grep -q '^Icon=pocketdesk-linux$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
@@ -357,6 +359,22 @@ grep -q '^Name=Brave$' "$WORK/coder/Desktop/brave-browser.desktop" || fail "the 
 grep -q '^Name=Terminal$' "$WORK/coder/Desktop/lxterminal.desktop" || fail "the terminal icon is labelled Terminal"
 grep -q 'launcher_item_app = .*pocketdesk-lxterminal.desktop' "$tint" || fail "the terminal must be on the panel"
 
+# Google Chrome, when present, is the browser over anything else, and its Exec goes through the launcher.
+cat > "$APPS/google-chrome.desktop" <<ENTRY
+[Desktop Entry]
+Name=Google Chrome
+Exec=$WORK/fakebin/google-chrome-stable %U
+Icon=google-chrome
+Type=Application
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+ENTRY
+printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/google-chrome-stable"; chmod +x "$WORK/fakebin/google-chrome-stable"
+POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
+grep -q '^x-scheme-handler/https=pocketdesk-google-chrome.desktop$' "$mime" || fail "with Chrome installed, links must open in Chrome"
+[ -f "$WORK/coder/Desktop/google-chrome.desktop" ] || fail "Chrome must get the browser's desktop icon"
+grep -q '^Name=Chrome$' "$WORK/coder/Desktop/google-chrome.desktop" || fail "the icon is labelled Chrome"
+[ -f "$WORK/coder/Desktop/brave-browser.desktop" ] && fail "one browser on the desktop: Chrome, not Brave too"
+
 # ---- pocketdesk-open: the memory guard, and a browser keeps its extensions ---------------
 cat > "$WORK/usr/bin/wmctrl" <<WM
 #!/bin/sh
@@ -390,6 +408,15 @@ grep -q -- '--no-sandbox' "$brave_log" || fail "Brave is Chromium and needs the 
 grep -q -- '--disable-extensions' "$brave_log" && fail "a browser must keep its extensions"
 grep -q -- '--disable-background-networking' "$brave_log" && fail "a browser must keep its background updates"
 grep -q 'closing the browser' "$brave_log" && fail "the browser is never closed to make room for itself"
+mkdir -p "$WORK/opt/google/chrome"
+: > "$WORK/opt/google/chrome/chrome_100_percent.pak"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/opt/google/chrome/google-chrome"
+chmod +x "$WORK/opt/google/chrome/google-chrome"
+ln -sf ../../opt/google/chrome/google-chrome "$WORK/usr/bin/google-chrome-stable"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" google-chrome-stable >/dev/null 2>&1 || true
+chrome_log="$HOME/.pocketdesk/logs/google-chrome-stable.log"
+grep -q -- '--no-sandbox' "$chrome_log" || fail "Chrome is Chromium and needs the sandbox flags under PRoot"
+grep -q -- '--disable-extensions' "$chrome_log" && fail "Chrome must keep its extensions"
 rm -f "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/xdotool" "$HOME/.pocketdesk/closed"
 
 # ---- pocketdesk-desktop: what every start sets up ----------------------------------------
