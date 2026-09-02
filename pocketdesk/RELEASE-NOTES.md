@@ -1,4 +1,4 @@
-# PocketDesk 10.0.25 — a set-up that continues, and protection that is on by default
+# PocketDesk 10.0.30 — a set-up that continues, and protection that is on by default
 
 - **Set-up continues where it stopped.** It is now a chain of steps that each record when they
   finish, inside the container. Stop it, run out of battery, lose the network or have Android
@@ -50,7 +50,10 @@
   (a finished step is skipped, a flaky one is retried, a hopeless one gives up and is not
   recorded), the basics are asserted to be non-uninstallable while every AI app is, Chrome's
   protection policies are asserted, and the launcher's busy indicator is checked.
-- Version 10.0.25 (code 125).
+- A set-up is only continued when the unpacking is known to have finished: the recorded
+  step and the unpacked system must agree, or Ubuntu is written out again from the archive
+  already on the phone (no new download).
+- Version 10.0.30 (code 130).
 
 # PocketDesk 10.0.20 — one set-up does it all
 

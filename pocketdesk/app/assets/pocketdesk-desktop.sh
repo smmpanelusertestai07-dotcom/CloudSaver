@@ -41,7 +41,7 @@ printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone 
 
 # Downloads stay inside the computer, where no other app on the phone can read them; the
 # Shared folder is the deliberate way out to the phone's Files app. POCKETDESK_SHARE_DOWNLOADS
-# is 0 from 10.0.25 onwards, and the second branch moves an older computer's shared Downloads
+# is 0 from 10.0.30 onwards, and the second branch moves an older computer's shared Downloads
 # back inside. Nothing is ever deleted, only moved.
 if [ "${POCKETDESK_SHARE_DOWNLOADS:-1}" = "1" ] && [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
   mkdir -p "$HOME/Shared/Downloads"

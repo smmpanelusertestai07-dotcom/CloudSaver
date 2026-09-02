@@ -395,7 +395,7 @@ final class ContainerRuntime {
         return new File(rootfs(context), app.marker.substring(1)).exists();
     }
 
-    /** Removed in 10.0.25; kept so an upgrade can clear the old value. Downloads stay inside. */
+    /** Removed in 10.0.30; kept so an upgrade can clear the old value. Downloads stay inside. */
     static final String KEY_SHARE_DOWNLOADS = "share_downloads";
     static final String KEY_APP_LOCK = "app_lock";
     /** Set when the app lock switched itself off because the phone's own lock was removed. */

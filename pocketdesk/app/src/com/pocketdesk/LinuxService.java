@@ -325,7 +325,10 @@ public final class LinuxService extends Service {
 
         File root = ContainerRuntime.rootfs(this);
         File archive = ContainerRuntime.downloadFile(this);
-        boolean unpacked = new File(root, "usr/bin/apt-get").isFile()
+        // Only a run that finished unpacking may be continued: the marker and the two binaries
+        // have to agree, or a half-written system would be handed to the package steps.
+        boolean unpacked = "unpacked".equals(preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, ""))
+                && new File(root, "usr/bin/apt-get").isFile()
                 && new File(root, "usr/bin/dpkg").isFile();
         if (unpacked) {
             // Everything below this point is repeatable, so the 30 MB download and the unpacking
