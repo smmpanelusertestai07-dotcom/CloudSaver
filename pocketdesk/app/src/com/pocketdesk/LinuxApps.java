@@ -5,7 +5,8 @@ package com.pocketdesk;
  *
  * Every entry installs the newest build each time it runs, so "install" and "update" are the same
  * action: apt repositories upgrade in place, and the direct downloads all resolve a "latest" URL
- * rather than a pinned version.
+ * rather than a pinned version. Every AI app comes from its maker's own apt repository or
+ * download endpoint, never from a third party.
  */
 final class LinuxApps {
 
@@ -63,9 +64,14 @@ final class LinuxApps {
     private static final String CLAUDE_REPO = "https://downloads.claude.ai/claude-desktop/apt/stable";
     /** Published by Anthropic in the Claude Desktop Linux install guide. */
     private static final String CLAUDE_FINGERPRINT = "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE";
-    private static final String VSCODE_LATEST =
-            "https://update.code.visualstudio.com/latest/linux-deb-arm64/stable";
-    private static final String ANTIGRAVITY_PAGE = "https://antigravity.google/download";
+    /** Google's own apt repository for Antigravity; it publishes arm64 builds. */
+    private static final String ANTIGRAVITY_KEY = "https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg";
+    private static final String ANTIGRAVITY_REPO =
+            "https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev";
+    /** Brave's official apt repository, signed by Brave, amd64 and arm64. */
+    private static final String BRAVE_KEY =
+            "https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg";
+    private static final String BRAVE_REPO = "https://brave-browser-apt-release.s3.brave.com";
     // Ubuntu's own "firefox" package is a snap shim that cannot work inside a container, so the
     // real arm64 .deb comes from Mozilla's repository instead.
     private static final String MOZILLA_KEY = "https://packages.mozilla.org/apt/repo-signing-key.gpg";
@@ -74,12 +80,21 @@ final class LinuxApps {
     private static final long GB = 1024L * 1024L * 1024L;
     private static final long MB = 1024L * 1024L;
 
+    /** A signing key fetched into apt's keyring directory, armoured or binary, whichever it is. */
+    private static String fetchKey(String url, String path) {
+        return "mkdir -p /etc/apt/keyrings; curl -fsSLo /tmp/pocketdesk.key '" + url + "'; "
+                + "if grep -q 'BEGIN PGP' /tmp/pocketdesk.key; then gpg --dearmor --yes -o '" + path
+                + "' < /tmp/pocketdesk.key; else cp /tmp/pocketdesk.key '" + path + "'; fi; "
+                + "chmod 0644 '" + path + "'; rm -f /tmp/pocketdesk.key; ";
+    }
+
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt.
             new App("essentials", "Browser and desktop basics",
-                    "Browser, real icons, arrow pointer, Indian time, window controls, sign-in handoff and messages.",
-                    R.drawable.ic_network, R.drawable.logo_web, "about 150 MB", 700 * MB,
+                    "GNOME Web, sound, terminal, Files, Phone files, icons, the apps menu and the "
+                            + "sign-in hand-back. Comes with setup; tap to bring an older computer up to date.",
+                    R.drawable.ic_network, R.drawable.logo_web, "about 170 MB", 800 * MB,
                     "2–6 min", null,
                     "/usr/bin/epiphany",
                     "apt-get update; apt-get install -y --no-install-recommends "
@@ -91,20 +106,30 @@ final class LinuxApps {
                             // Named explicitly: adwaita only Recommends it, and without it every
                             // SVG icon in the theme renders as a generic diamond.
                             + "librsvg2-common "
-                            + "epiphany-browser; "
+                            + "epiphany-browser lxterminal pcmanfm tint2 "
+                            // Sound, streamed to the phone by pocketdesk-desktop.
+                            + "pulseaudio pulseaudio-utils "
+                            // The small tools a computer is expected to have.
+                            + "less file unzip zip wget; "
                             // GNOME Web's start page renders live thumbnails, the slowest possible
                             // first thing to draw here -- that is what showed "Page Unresponsive".
                             + "mkdir -p /usr/share/glib-2.0/schemas; "
-                            + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n' "
+                            + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n"
+                            + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n"
+                            + "remember-passwords=false\\n' "
                             + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
                             + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
+                            + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                             + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                             + "echo 'Asia/Kolkata' > /etc/timezone"),
 
-            new App("chatgpt", "ChatGPT", "Official desktop app by OpenAI. Includes Codex.",
+            new App("chatgpt", "ChatGPT",
+                    "AI assistant by OpenAI, with the Codex coding agent. The official Linux app.",
                     R.drawable.ic_chat, R.drawable.logo_chatgpt,
                     "700 MB download, 1.3 GB installed", 4 * GB, "10–25 min",
-                    "Computer Use is not offered on Linux. Your account's usage limits still apply.",
+                    "OpenAI's Linux app is a public preview. Computer Use outside its own in-app "
+                            + "browser is not offered on Linux at present; that is OpenAI's current "
+                            + "scope, not a limit of the phone. Your account's usage limits apply.",
                     "/usr/bin/chatgpt",
                     // The package registers OpenAI's own apt repository, so once it is on the
                     // system an upgrade is the smaller and faster path than a fresh download.
@@ -115,11 +140,13 @@ final class LinuxApps {
                             + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
                             + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi"),
 
-            new App("claude", "Claude Desktop", "Official desktop app by Anthropic. Includes Claude Code.",
+            new App("claude", "Claude Desktop",
+                    "AI assistant by Anthropic, with the Claude Code coding agent. The official Linux app.",
                     R.drawable.ic_terminal, R.drawable.logo_claude, "about 600 MB", 3 * GB,
                     "10–20 min",
-                    "Linux support is in beta. Cowork needs hardware virtualisation, which a phone "
-                            + "container cannot provide, so that tab stays unavailable.",
+                    "Anthropic's Linux app is in beta. Cowork's local virtual machine needs hardware "
+                            + "virtualisation that a phone does not give apps, so that tab stays "
+                            + "unavailable here. Chat and Claude Code work.",
                     "/usr/bin/claude-desktop",
                     "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
                             + "curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc '" + CLAUDE_KEY + "'; "
@@ -131,9 +158,10 @@ final class LinuxApps {
                             + CLAUDE_REPO + " stable main' > /etc/apt/sources.list.d/claude-desktop.list; "
                             + "apt-get update; apt-get install -y --no-install-recommends claude-desktop"),
 
-            new App("cursor", "Cursor", "Official AI code editor by Anysphere.",
+            new App("cursor", "Cursor",
+                    "AI code editor (IDE) by Anysphere. The official Linux ARM64 build.",
                     R.drawable.ic_terminal, R.drawable.logo_cursor, "about 700 MB", 2500 * MB,
-                    "5\u201315 min",
+                    "5–15 min",
                     "A large editor. Expect it to take a while to open the first time.",
                     "/usr/share/cursor/cursor",
                     "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates; "
@@ -144,34 +172,89 @@ final class LinuxApps {
                             + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
                             + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb"),
 
-            new App("antigravity", "Antigravity", "Official agent-first IDE by Google.",
-                    R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 800 MB", 3 * GB,
+            new App("antigravity", "Antigravity",
+                    "Agentic development platform (IDE) by Google. The official Linux ARM64 package.",
+                    R.drawable.ic_desktop, R.drawable.logo_antigravity, "about 230 MB download, 750 MB installed", 3 * GB,
                     "5–20 min",
-                    "Google ships Antigravity as a tarball, so it updates when you run this again.",
+                    "Installed from Google's own apt repository, so a tap on this row updates it in place.",
                     "/usr/share/applications/antigravity.desktop",
-                    "apt-get update; apt-get install -y --no-install-recommends curl ca-certificates "
+                    // Google publishes an apt repository with arm64 builds; the download page
+                    // itself is drawn by a script and names nothing a shell can read, which is
+                    // why the old download-page scrape found no ARM64 build and gave up.
+                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates "
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "
                             + "libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0; "
-                            // The download page names the current build; never pin a version here.
-                            + "url=$(curl -fsSL '" + ANTIGRAVITY_PAGE + "' "
-                            + "| grep -oE 'https://[^\"]*linux-arm[^\"]*Antigravity\\.tar\\.gz' | head -n 1); "
-                            + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 download on antigravity.google'; exit 1; }; "
-                            + "curl --fail --location --retry 3 \"$url\" -o /tmp/antigravity.tar.gz; "
-                            + "rm -rf /opt/antigravity; mkdir -p /opt/antigravity; "
-                            + "tar -xzf /tmp/antigravity.tar.gz -C /opt/antigravity --strip-components=1; "
-                            + "rm -f /tmp/antigravity.tar.gz; "
-                            + "bin=$(find /opt/antigravity -maxdepth 2 -type f -name 'antigravity*' -perm -u+x | head -n 1); "
-                            + "[ -n \"$bin\" ] || { echo 'The download did not contain a runnable Antigravity binary'; exit 1; }; "
-                            + "ln -sf \"$bin\" /opt/antigravity/antigravity; "
-                            + "chmod -R a+rX /opt/antigravity; "
-                            // A tarball registers nothing, so the desktop would never list it.
-                            + "icon=$(find /opt/antigravity/resources -maxdepth 4 -name '*.png' -path '*linux*' | head -n 1); "
-                            + "[ -n \"$icon\" ] && install -D -m 0644 \"$icon\" /usr/share/pixmaps/antigravity.png; "
-                            + "printf '[Desktop Entry]\\nName=Antigravity\\nComment=Google agent-first IDE\\n"
-                            + "Exec=/opt/antigravity/antigravity\\nIcon=antigravity\\nType=Application\\n"
-                            + "Terminal=false\\nStartupNotify=true\\nCategories=Development;\\n' "
-                            + "> /usr/share/applications/antigravity.desktop"),
+                            + fetchKey(ANTIGRAVITY_KEY, "/etc/apt/keyrings/antigravity-repo-key.gpg")
+                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] "
+                            + ANTIGRAVITY_REPO + " antigravity-debian main' > /etc/apt/sources.list.d/antigravity.list; "
+                            + "apt-get update; apt-get install -y --no-install-recommends antigravity; "
+                            // The package's own entry when it ships one; a written one otherwise.
+                            + "if [ ! -f /usr/share/applications/antigravity.desktop ]; then "
+                            + "bin=$(command -v antigravity || find /usr/share/antigravity /opt/antigravity -maxdepth 2 -type f -name 'antigravity' 2>/dev/null | head -n 1); "
+                            + "[ -n \"$bin\" ] || { echo 'Antigravity installed but no runnable binary was found'; exit 1; }; "
+                            + "printf '[Desktop Entry]\\nName=Antigravity\\nComment=Google agentic development platform\\n"
+                            + "Exec=%s %%U\\nIcon=antigravity\\nType=Application\\nTerminal=false\\n"
+                            + "StartupNotify=true\\nCategories=Development;\\n' \"$bin\" "
+                            + "> /usr/share/applications/antigravity.desktop; fi"),
+
+            new App("brave", "Brave browser",
+                    "Full Chromium browser with extensions from the Chrome Web Store. Brave's official ARM64 build.",
+                    R.drawable.ic_network, R.drawable.logo_brave, "about 140 MB download, 500 MB installed", 1500 * MB,
+                    "5–15 min",
+                    "Becomes the computer's browser: links and sign-ins open in it. Brave's Rewards, "
+                            + "Wallet, VPN, news and AI chat are switched off by policy; extensions work.",
+                    "/opt/brave.com/brave/brave",
+                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+                            + fetchKey(BRAVE_KEY, "/usr/share/keyrings/brave-browser-archive-keyring.gpg")
+                            + "echo 'deb [arch=arm64 signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] "
+                            + BRAVE_REPO + " stable main' > /etc/apt/sources.list.d/brave-browser-release.list; "
+                            + "apt-get update; apt-get install -y --no-install-recommends brave-browser; "
+                            // A browser, not a crypto wallet: the extras off, a blank start page,
+                            // no password prompts (there is no keyring here), no GPU (there is none).
+                            + "mkdir -p /etc/brave/policies/managed; "
+                            + "printf '{\"BraveRewardsDisabled\": true, \"BraveWalletDisabled\": true, "
+                            + "\"BraveVPNDisabled\": true, \"BraveAIChatEnabled\": false, \"BraveNewsDisabled\": true, "
+                            + "\"BraveTalkDisabled\": true, \"TorDisabled\": true, "
+                            + "\"HomepageLocation\": \"about:blank\", \"HomepageIsNewTabPage\": false, "
+                            + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
+                            + "\"PasswordManagerEnabled\": false, \"BackgroundModeEnabled\": false, "
+                            + "\"DefaultBrowserSettingEnabled\": false, \"MetricsReportingEnabled\": false, "
+                            + "\"HardwareAccelerationModeEnabled\": false}\\n' "
+                            + "> /etc/brave/policies/managed/pocketdesk.json"),
+
+            new App("firefox", "Firefox",
+                    "Mozilla's own browser build for ARM64, with extensions from addons.mozilla.org.",
+                    R.drawable.ic_network, R.drawable.logo_firefox, "about 90 MB download, 260 MB installed", 1000 * MB,
+                    "3–10 min",
+                    "Becomes the computer's browser when Brave is not installed.",
+                    "/usr/bin/firefox",
+                    "apt-get update; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+                            + "mkdir -p /etc/apt/keyrings; "
+                            + "curl -fsSLo /etc/apt/keyrings/packages.mozilla.org.asc '" + MOZILLA_KEY + "'; "
+                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] "
+                            + MOZILLA_REPO + " mozilla main' > /etc/apt/sources.list.d/mozilla.list; "
+                            // Mozilla's build must win over Ubuntu's snap shim of the same name.
+                            + "printf 'Package: *\\nPin: origin packages.mozilla.org\\nPin-Priority: 1000\\n' "
+                            + "> /etc/apt/preferences.d/mozilla; "
+                            + "apt-get update; apt-get install -y --no-install-recommends firefox"),
+
+            new App("devtools", "Developer tools",
+                    "Compilers (gcc, make), Python 3 with pip and venv, Node.js with npm, Git extras, SSH, jq, htop, vim.",
+                    R.drawable.ic_terminal, 0, "about 400 MB download, 1.2 GB installed", 2500 * MB,
+                    "5–15 min",
+                    "For building and running software in the terminal or from Cursor and Antigravity. "
+                            + "Ubuntu 24.04's own packages; sudo apt install adds anything else.",
+                    "/usr/bin/gcc",
+                    "apt-get update; apt-get install -y --no-install-recommends "
+                            + "build-essential pkg-config python3 python3-pip python3-venv nodejs npm "
+                            + "git git-lfs openssh-client jq htop tree vim nano rsync ca-certificates curl"),
     };
+
+    /** The four AI apps, as opposed to the computer's own parts (browser, tools, basics). */
+    static boolean isAiApp(App app) {
+        return "chatgpt".equals(app.id) || "claude".equals(app.id)
+                || "cursor".equals(app.id) || "antigravity".equals(app.id);
+    }
 
     static App byId(String id) {
         for (App app : CATALOG) {

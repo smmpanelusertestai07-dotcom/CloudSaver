@@ -58,8 +58,8 @@ final class DeviceCheck {
 
     /** One sentence for the requirements, used wherever they are stated. */
     static String requirements() {
-        return "Needs " + releaseName(MIN_SDK) + " or newer, any brand of phone with a 64-bit ARM "
-                + "processor (ARM64), " + MIN_RAM_GB + " GB of RAM and "
+        return "Works on " + releaseName(MIN_SDK) + " and above, on any brand of phone with a 64-bit "
+                + "ARM processor (ARM64), " + MIN_RAM_GB + " GB of RAM and "
                 + DeviceProbe.formatBytes(MIN_FREE_BYTES) + " free to set up.";
     }
 

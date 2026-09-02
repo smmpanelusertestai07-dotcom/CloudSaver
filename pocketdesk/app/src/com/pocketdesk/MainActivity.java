@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.2.0";
+    static final String VERSION = "3.3.0";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -203,6 +203,7 @@ public final class MainActivity extends Activity {
         super.onResume();
         if (safeMode) return;
         handler.removeCallbacks(liveRefresh);
+        LinuxService.reconcileUncleanStop(this);
         handler.post(liveRefresh);
         if (dataCapRow != null) dataCapRow.setValue(dataCapLabel());
         refreshDeviceCard();
@@ -341,14 +342,15 @@ public final class MainActivity extends Activity {
         page.addView(buildAttentionCard(text, muted));
         page.addView(buildDataCard(text, muted));
         page.addView(buildPhoneCard(text, muted));
+        page.addView(buildWhyLinuxCard(text, muted));
         page.addView(buildQuestionsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
         return page;
     }
 
     private TextView versionLine(int muted) {
-        TextView version = Ui.text(this, "PocketDesk " + VERSION + " · Ubuntu 24.04 LTS · "
-                + DeviceCheck.releaseName(DeviceCheck.MIN_SDK) + " and newer", 12, muted);
+        TextView version = Ui.text(this, "PocketDesk " + VERSION + " · Ubuntu 24.04 LTS · works on "
+                + DeviceCheck.releaseName(DeviceCheck.MIN_SDK) + " and above", 12, muted);
         version.setGravity(Gravity.CENTER);
         return version;
     }
@@ -418,13 +420,28 @@ public final class MainActivity extends Activity {
         cardLp.bottomMargin = Ui.dp(this, 12);
         card.setLayoutParams(cardLp);
 
+        // The state on the left, Tux on the right: the mascot of the system that is running.
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.VERTICAL);
+        top.addView(heading, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        ImageView tux = new ImageView(this);
+        tux.setImageResource(R.drawable.tux);
+        tux.setScaleType(ImageView.ScaleType.FIT_END);
+        tux.setContentDescription("Tux, the Linux mascot");
+        LinearLayout.LayoutParams tuxLp = new LinearLayout.LayoutParams(Ui.dp(this, 62), Ui.dp(this, 74));
+        tuxLp.setMarginStart(Ui.dp(this, 12));
+        top.addView(tux, tuxLp);
+        card.addView(top);
+
         statusBadge = Ui.badge(this, "Checking", Color.WHITE, Color.argb(56, 255, 255, 255));
-        card.addView(statusBadge, new LinearLayout.LayoutParams(
+        heading.addView(statusBadge, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         statusHeadline = Ui.bold(this, "Setting up", 24, Color.WHITE);
         statusHeadline.setLetterSpacing(-0.02f);
-        card.addView(statusHeadline, Ui.matchWrap(this, 12));
+        heading.addView(statusHeadline, Ui.matchWrap(this, 12));
 
         statusNote = Ui.text(this, "", 13.5f, Color.rgb(214, 226, 255));
         card.addView(statusNote, Ui.matchWrap(this, 6));
@@ -498,16 +515,18 @@ public final class MainActivity extends Activity {
                 "Android may stop a long setup when the screen turns off. Tap to set Unrestricted.",
                 v -> openBatterySettings(), false);
         attentionSpace = attentionRow(R.drawable.ic_storage, "Free space is low",
-                "", v -> showMessage("Free space", "The Linux computer needs "
+                "", v -> toggleDetail(spaceDetail, "The Linux computer needs "
                         + DeviceProbe.formatBytes(DeviceCheck.MIN_FREE_BYTES) + " free to set up and about "
                         + DeviceProbe.formatBytes(DeviceCheck.LOW_FREE_BYTES) + " free to run comfortably. "
                         + "Delete or move some files on the phone; nothing inside the Linux computer needs to go."), false);
+        spaceDetail = detailUnder(attentionCard);
         attentionHeat = attentionRow(R.drawable.ic_temperature, "The phone is hot",
                 "Let it cool before opening the desktop; it stops itself above 49 °C to protect the battery.",
-                v -> showMessage("Temperature", "A warm phone is normal while an AI app runs. "
+                v -> toggleDetail(heatDetail, "A warm phone is normal while an AI app runs. "
                         + "Above 49 °C, or when Android reports critical heat, the Linux computer stops "
                         + "itself and everything on it is kept. Overheat protection can be turned off in Settings, "
                         + "but there is no good reason to."), false);
+        heatDetail = detailUnder(attentionCard);
         attentionData = attentionRow(R.drawable.ic_network, "Today's mobile data limit is used up",
                 "Downloads and the desktop wait for Wi-Fi, midnight, or a higher limit. Tap to change it.",
                 v -> { selectTab(TAB_SETTINGS); chooseDataCap(); }, false);
@@ -515,12 +534,35 @@ public final class MainActivity extends Activity {
                 "The phone's screen lock was removed. Set one, then turn App lock on again.",
                 v -> { selectTab(TAB_SETTINGS); openSecuritySettings(); }, false);
         attentionCompatible = attentionRow(R.drawable.ic_stop, "This phone does not meet the requirements",
-                "Tap for what is missing.", v -> {
-                    DeviceCheck.Result check = DeviceCheck.run(this);
-                    showMessage(check.headline, check.detail);
-                }, false);
+                "Tap for what is missing.", v -> toggleDetail(compatibleDetail, DeviceCheck.run(this).detail), false);
+        compatibleDetail = detailUnder(attentionCard);
         attentionCard.setVisibility(View.GONE);
         return attentionCard;
+    }
+
+    private TextView spaceDetail;
+    private TextView heatDetail;
+    private TextView compatibleDetail;
+    private TextView phoneDetail;
+
+    /** A hidden paragraph under a row, for the row's tap to open in place: no dialog to dismiss. */
+    private TextView detailUnder(LinearLayout card) {
+        TextView body = Ui.text(this, "", 12.5f, Ui.muted(dark));
+        body.setPadding(Ui.dp(this, 12), Ui.dp(this, 4), Ui.dp(this, 12), Ui.dp(this, 10));
+        body.setTextIsSelectable(true);
+        body.setVisibility(View.GONE);
+        card.addView(body, Ui.matchWrap(this, 0));
+        return body;
+    }
+
+    private void toggleDetail(TextView body, String text) {
+        if (body == null) return;
+        if (body.getVisibility() == View.VISIBLE) {
+            body.setVisibility(View.GONE);
+            return;
+        }
+        body.setText(text);
+        body.setVisibility(View.VISIBLE);
     }
 
     private Ui.Row attentionRow(int icon, String title, String value, View.OnClickListener onClick, boolean first) {
@@ -570,25 +612,64 @@ public final class MainActivity extends Activity {
         DeviceCheck.Result check = DeviceCheck.run(this);
         compatibleRow = new Ui.Row(this, check.compatible ? R.drawable.ic_check : R.drawable.ic_stop,
                 check.headline, "Tap for the requirements and what this phone has",
-                R.drawable.ic_chevron, dark, v -> {
-                    DeviceCheck.Result now = DeviceCheck.run(this);
-                    showMessage(now.headline, now.detail);
-                });
+                R.drawable.ic_chevron, dark, v -> toggleDetail(phoneDetail, DeviceCheck.run(this).detail));
         compatibleRow.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
                 check.compatible ? Ui.SUCCESS : Ui.DANGER);
         card.addView(compatibleRow, Ui.matchWrap(this, 10));
-        // Measured on this phone, not assumed: the one fact that decides whether a Windows
-        // or macOS virtual machine could ever run here.
-        Virtualisation.Result vm = Virtualisation.check();
-        Ui.Row vmRow = new Ui.Row(this, vm.available ? R.drawable.ic_check : R.drawable.ic_info,
-                vm.headline, "Tap for what this test does and what it means for Windows or macOS",
-                R.drawable.ic_chevron, dark, v -> {
-                    Virtualisation.Result now = Virtualisation.check();
-                    showMessage(now.headline, now.detail);
-                });
-        vmRow.setStatus(vm.available ? "YES" : "NO", vm.available ? Ui.SUCCESS : Ui.muted(dark));
-        card.addView(vmRow, Ui.matchWrap(this, 8));
+        phoneDetail = detailUnder(card);
         card.addView(Ui.text(this, DeviceCheck.requirements(), 12.5f, muted), Ui.matchWrap(this, 10));
+        return card;
+    }
+
+    /**
+     * Why the computer is Linux and only Linux, in checked facts rather than opinion. Every
+     * date and name here was confirmed against the makers' own announcements when this
+     * version was built; nothing that could change next month is stated as permanent.
+     */
+    private View buildWhyLinuxCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Linux only, on purpose", R.drawable.ic_desktop, dark));
+        card.addView(Ui.text(this,
+                "The computer inside this app is Ubuntu 24.04 LTS, running on the phone's own "
+                        + "processor. It is the only kind of computer a phone can run natively, "
+                        + "and it is where every one of these AI desktop apps is officially "
+                        + "published. Tap a line for the facts behind it.", 12.5f, muted),
+                Ui.matchWrap(this, 6));
+        addAnswer(card, R.drawable.ic_check, "Every AI desktop app here ships for Linux",
+                "OpenAI released the ChatGPT desktop app for Linux (with Codex) as a public preview "
+                        + "on 11 August 2026, for Ubuntu 24.04 LTS and 26.04 LTS, Debian 13 and "
+                        + "Fedora, on x64 and ARM64. Anthropic released Claude Desktop for Linux "
+                        + "(with Claude Code) as a beta on 30 June 2026, for Ubuntu and Debian on "
+                        + "x64 and ARM64, from its own apt repository. Cursor publishes Linux ARM64 "
+                        + ".deb and AppImage builds, and Google publishes Antigravity for Linux. "
+                        + "PocketDesk installs exactly those packages, from the makers' own "
+                        + "servers, and each app updates itself the way the makers ship updates.", true);
+        addAnswer(card, R.drawable.ic_phone, "Why not Windows or macOS on the phone",
+                "Windows and macOS can only run inside a virtual machine, and a virtual machine "
+                        + "needs hardware virtualisation that Android does not offer to apps: a "
+                        + "phone's kernel keeps it for itself, and no app, script or setting "
+                        + "changes that. Emulating one instead would run ten to fifty times slower "
+                        + "than the phone, with less memory than either system needs. macOS is "
+                        + "additionally licensed only for Apple's own computers. Wine, which runs "
+                        + "some Windows programs on Linux, can run small native ARM64 Windows "
+                        + "programs, but not the Windows editions of these AI apps, which are the "
+                        + "same programs as their Linux editions in any case. Linux is not the "
+                        + "fallback; it is the one system that runs here as itself.", false);
+        addAnswer(card, R.drawable.ic_shield, "Safe, private, and yours",
+                "Everything lives in this app's private storage on this phone: the system, the "
+                        + "apps, their logins, your files. No PocketDesk account, no server, no "
+                        + "analytics; Android's cloud backup is switched off for this app. Ubuntu "
+                        + "24.04 LTS receives security updates from Canonical until April 2029 "
+                        + "(and to 2034 with Ubuntu Pro), so the base does not go stale, and the "
+                        + "AI apps update from their makers as long as the makers ship them.", false);
+        addAnswer(card, R.drawable.ic_bolt, "Fast for a phone, and built to last",
+                "Nothing is emulated: the apps are ARM64 programs running directly on the "
+                        + "phone's ARM64 processor. What a phone lacks is a graphics card and a "
+                        + "PC's memory, so a heavy app takes a minute or two to open the first "
+                        + "time and one AI app at a time is the comfortable way to work. Linux "
+                        + "runs most of the world's servers and every one of these companies' "
+                        + "own engineering desktops, which is why it is the platform they keep "
+                        + "shipping to first; there is nothing to move to later.", false);
         return card;
     }
 
@@ -599,7 +680,9 @@ public final class MainActivity extends Activity {
         int muted = Ui.muted(dark);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
+        appRows.clear();
         page.addView(buildAppsCard(text, muted));
+        page.addView(buildBasicsCard(text, muted));
         page.addView(buildOtherAppsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
         return page;
@@ -611,26 +694,51 @@ public final class MainActivity extends Activity {
         card.addView(Ui.text(this, "The makers' own official Linux desktop apps — not web pages, "
                 + "not command lines.", 13f, text), Ui.matchWrap(this, 8));
         card.addView(Ui.text(this,
-                "ChatGPT and Claude for everyday questions, writing and work; Cursor and "
-                        + "Antigravity for building software. These four come from the companies "
-                        + "leading AI today, and each installs here as the maker's own signed Linux "
-                        + "package: OpenAI's, Anthropic's, Anysphere's, Google's. Install once; new "
-                        + "features arrive by themselves, and one tap on a row updates the app "
-                        + "itself. Anything else can be installed from the browser inside the "
-                        + "desktop — see below.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "Two AI assistants and two AI coding environments. ChatGPT (OpenAI) and Claude "
+                        + "Desktop (Anthropic) are the assistants, each with its maker's coding "
+                        + "agent built in: Codex and Claude Code. Cursor (Anysphere) is an AI code "
+                        + "editor and Antigravity (Google) an agentic development platform: both "
+                        + "are full IDEs where AI agents write, run and test software. Each row "
+                        + "installs the maker's own signed Linux package; a tap on an installed row "
+                        + "updates it in place, login kept. The desktop can stay open while an app "
+                        + "installs.", 12.5f, muted), Ui.matchWrap(this, 6));
 
-        appRows.clear();
+        int added = 0;
         for (LinuxApps.App app : LinuxApps.CATALOG) {
-            Ui.Row row = new Ui.Row(this, app.displayIcon(), app.logoRes != 0, app.name,
-                    app.summary + " · " + app.approximateSize, R.drawable.ic_download, dark,
-                    v -> confirmApp(app));
-            appRows.put(app.id, row);
-            card.addView(row, Ui.matchWrap(this, appRows.size() == 1 ? 12 : 8));
+            if (!LinuxApps.isAiApp(app)) continue;
+            card.addView(appRow(app), Ui.matchWrap(this, added++ == 0 ? 12 : 8));
         }
         card.addView(Ui.text(this, "Signing in happens in the browser inside the desktop, exactly as "
                 + "on a computer, and the app stays signed in afterwards. Home → Privacy and your "
                 + "questions explains each app's sign-in.", 12.5f, muted), Ui.matchWrap(this, 12));
         return card;
+    }
+
+    /** The computer's own parts: the browser, the developer tools, the desktop basics. */
+    private View buildBasicsCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Computer basics", R.drawable.ic_desktop, dark));
+        card.addView(Ui.text(this,
+                "What a computer is expected to have. The desktop basics come with setup; a "
+                        + "tap on that row brings an older computer up to date. Brave is a full "
+                        + "Chromium browser with extensions from the Chrome Web Store; Firefox is "
+                        + "Mozilla's own build. Whichever is installed becomes the computer's "
+                        + "browser. Developer tools add compilers, Python, Node.js and Git "
+                        + "extras for building software.", 12.5f, muted), Ui.matchWrap(this, 6));
+        int added = 0;
+        for (LinuxApps.App app : LinuxApps.CATALOG) {
+            if (LinuxApps.isAiApp(app)) continue;
+            card.addView(appRow(app), Ui.matchWrap(this, added++ == 0 ? 12 : 8));
+        }
+        return card;
+    }
+
+    private Ui.Row appRow(LinuxApps.App app) {
+        Ui.Row row = new Ui.Row(this, app.displayIcon(), app.logoRes != 0, app.name,
+                app.summary + " · " + app.approximateSize, R.drawable.ic_download, dark,
+                v -> confirmApp(app));
+        appRows.put(app.id, row);
+        return row;
     }
 
     /** What the browser can install and what it cannot, in one card, short. */
@@ -666,7 +774,9 @@ public final class MainActivity extends Activity {
             row.setValue(present
                     ? "Installed · tap any time to update to the newest build"
                     : app.summary + " · " + app.approximateSize);
-            boolean usable = linuxInstalled && !busy && !running;
+            // An open desktop is no obstacle: the install runs beside it and the new app
+            // appears on it. Only a task already running (setup, another install) waits.
+            boolean usable = linuxInstalled && !busy && !LinuxService.isInstalling();
             row.setEnabled(usable);
             row.setAlpha(usable ? 1f : 0.45f);
         }
@@ -689,6 +799,9 @@ public final class MainActivity extends Activity {
         message.append("\n\nDownload size: ").append(app.approximateSize)
                 .append(present ? "" : "\nAlways installs the newest build.");
         if (app.caution != null) message.append("\n\n").append(app.caution);
+        if (LinuxService.isDesktopRunning()) {
+            message.append("\n\nThe desktop keeps running while this installs; the app appears on it when done.");
+        }
         dialogBuilder()
                 .setTitle((present ? "Update " : "Install ") + app.name + "?")
                 .setMessage(message.toString())
@@ -705,6 +818,7 @@ public final class MainActivity extends Activity {
                         showMessage("Could not start", "Android refused to start the background task.");
                     }
                     selectTab(TAB_HOME);
+                    refreshState();
                 })
                 .show();
     }
@@ -804,14 +918,11 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
         autoStartRow.setStatus("CHECK", Ui.muted(dark));
         permissions.addView(autoStartRow, Ui.matchWrap(this, 8));
-        phoneFilesRow = new Ui.Row(this, R.drawable.ic_storage, "Phone files", "Checking…",
+        phoneFilesRow = new Ui.Row(this, R.drawable.ic_phone, "Phone files", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> {
                     if (PhoneFiles.allowed(this)) {
-                        showMessage("Phone files are on", "Your phone's storage appears inside the "
-                                + "Linux computer as the Phone folder: in ChatGPT's attach dialog, the "
-                                + "browser's upload dialog and Files, pick Phone on the left, then "
-                                + "Download, DCIM (photos) or Documents. To turn it off, remove All "
-                                + "files access for PocketDesk in Android settings.");
+                        // Already on: the row says so, and the tap goes straight to the Android
+                        // page where it can be turned off.
                         PhoneFiles.request(this);
                     } else {
                         dialogBuilder()
@@ -858,6 +969,12 @@ public final class MainActivity extends Activity {
                 + "starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
+        TextView credits = Ui.text(this, "Tux, the Linux mascot, by Larry Ewing (lewing@isc.tamu.edu) "
+                + "and The GIMP. Wallpaper: Ubuntu 24.04 LTS, by Canonical and the Ubuntu community, "
+                + "CC BY-SA. Ubuntu is a trademark of Canonical Ltd; app logos belong to their makers.",
+                11.5f, muted);
+        credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
+        page.addView(credits, Ui.matchWrap(this, 10));
         page.addView(versionLine(muted), Ui.matchWrap(this, 14));
         return page;
     }
@@ -890,9 +1007,8 @@ public final class MainActivity extends Activity {
                 preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, true)
                         .putBoolean(ContainerRuntime.KEY_LOCK_NOTICE, false).apply();
                 refreshLockRows();
-                showMessage("App lock is on", "From now on PocketDesk asks for your fingerprint or "
-                        + "PIN whenever it comes to the front — the home screen and the desktop "
-                        + "both. Everything on the Linux computer stays exactly as it was.");
+                android.widget.Toast.makeText(this, "App lock is on: PocketDesk asks for your fingerprint "
+                        + "or PIN whenever it comes to the front", android.widget.Toast.LENGTH_LONG).show();
             } else {
                 appLockToggle.control.setChecked(false);
             }
@@ -991,12 +1107,12 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_check, "Are these real Linux apps, and the best ones?",
                 "Yes. Every app here is the maker's own official Linux build — OpenAI's "
                         + "ChatGPT (with Codex), Anthropic's Claude Desktop (with Claude Code), "
-                        + "Cursor's editor and Google's Antigravity. They are the leading AI "
-                        + "desktop apps of their kind today, from the companies leading AI. Install "
+                        + "Anysphere's Cursor and Google's Antigravity — the leading AI assistants "
+                        + "and AI coding environments, from the companies leading AI. Install "
                         + "them from the Apps tab, not from a browser: each row fetches the maker's "
-                        + "own signed package, so what runs is exactly what they published. Linux "
-                        + "is a first-class platform for all of them, the same one their engineers "
-                        + "use, so as long as they ship for Linux, they run here.", false);
+                        + "own signed package, so what runs is exactly what they published, and a "
+                        + "tap on an installed row updates it. The Linux only, on purpose card "
+                        + "above has the dates and the facts.", false);
 
         addAnswer(card, R.drawable.ic_download, "Do I have to reinstall or update?",
                 "Install once — never again.\n\nNew features arrive by themselves: "
@@ -1027,16 +1143,19 @@ public final class MainActivity extends Activity {
                         + "never restarts on its own — you open it. The Home tab says when and "
                         + "why it last stopped.", false);
 
-        addAnswer(card, R.drawable.ic_stop, "Why did an app close by itself?",
+        addAnswer(card, R.drawable.ic_stop, "Why did an app close by itself, or the desktop go back to Home?",
                 "Almost always memory. The AI desktop apps are full computer programs — "
-                        + "ChatGPT alone is 1.3 GB — and on a 4 GB phone Android ends the biggest "
-                        + "program when memory runs out. Keep one AI app open at a time, close the "
-                        + "browser when you are done with it (Window → Close this window), and "
-                        + "use Window → Force close for an app that has stopped answering. During a "
-                        + "sign-in, the browser closes itself once it has handed the result back.\n\n"
-                        + "PocketDesk itself never closes an app that has a window open, and it "
-                        + "writes down how every app ended: Settings → Reports shows when it "
-                        + "ended and whether the phone took the memory back.", false);
+                        + "ChatGPT alone is 1.3 GB — and on a 4 GB phone the system ends the "
+                        + "biggest program when memory runs out: sometimes the app, sometimes the "
+                        + "whole desktop, which then drops you back on this screen. So: one AI app "
+                        + "at a time, and the browser closed when you are done with it. PocketDesk "
+                        + "now helps: an AI app started while memory is short closes the browser's "
+                        + "windows first, and a sign-in closes the browser once it has handed the "
+                        + "result back.\n\nPocketDesk itself never closes an app that has a window "
+                        + "open, and it writes everything down: the Home tab says when and why the "
+                        + "computer last stopped, and Settings → Reports shows how each app ended "
+                        + "and whether the phone took the memory back. Window → Force close ends "
+                        + "an app that has stopped answering.", false);
 
         addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
                 "No account and no separate password — the Linux computer is yours, "
@@ -1058,6 +1177,11 @@ public final class MainActivity extends Activity {
                         + "Your phone card above says whether this one qualifies, and the app is "
                         + "built for " + DeviceCheck.releaseName(DeviceCheck.TARGET_SDK) + ".", false);
 
+        addAnswer(card, R.drawable.ic_download, "Can I add an app while the desktop is open?",
+                "Yes. Tap the row on the Apps tab; the desktop keeps running while the "
+                        + "package downloads and installs, and the new app's icon appears on it "
+                        + "when it is done. Only one install runs at a time.", false);
+
         addAnswer(card, R.drawable.ic_timer, "Why is an app slow to open, or the desktop slow?",
                 "This phone runs full computer programs with a fraction of a PC's memory and "
                         + "no graphics card, so everything is drawn by the processor. The first "
@@ -1072,24 +1196,29 @@ public final class MainActivity extends Activity {
                         + "to keep into Downloads with “Downloads visible to the phone” on.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can it run Windows or macOS instead?",
-                "Not on this phone, and the Your phone card above measures why: Windows and "
-                        + "macOS can only run inside a virtual machine, a virtual machine needs "
-                        + "hardware virtualisation, and the Hardware virtualisation row says "
-                        + "whether this phone gives apps any. Without it the only way is emulation, "
-                        + "ten to fifty times slower than the phone itself, with less memory than "
-                        + "those systems need. macOS additionally runs only on Apple's own "
-                        + "hardware. Linux is the one system that runs natively on the phone's own "
-                        + "kernel, which is what this app does, and the AI desktop apps are the "
-                        + "same programs on all three systems. For Windows or macOS with their AI "
-                        + "apps, a cloud PC used over remote desktop is the real route.", false);
+                "No, on any phone: Windows and macOS need a virtual machine, and Android keeps "
+                        + "hardware virtualisation away from apps; emulation would be ten to fifty "
+                        + "times slower than the phone, and macOS is licensed only for Apple's own "
+                        + "computers. The Linux only, on purpose card above has the whole answer. "
+                        + "The AI desktop apps are the same programs on all three systems, so "
+                        + "nothing is missing here that a Windows edition would add. For Windows "
+                        + "or macOS itself, a cloud PC used over remote desktop is the real route.", false);
+
+        addAnswer(card, R.drawable.ic_volume, "Does sound work?",
+                "Yes. Whatever the Linux computer plays — a voice reply, a video in the browser, "
+                        + "a notification — comes out of the phone's speaker or headphones while "
+                        + "the desktop screen is open. The volume keys set it, as does Screen → "
+                        + "Volume. Sound into the computer (a microphone) is not carried yet.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
-                "The AI desktop apps are large and run more slowly here than on a PC. Computer "
-                        + "Use is not offered on Linux by OpenAI or Anthropic, and Claude's Cowork "
-                        + "needs hardware virtualisation a phone cannot provide. Your AI accounts' "
+                "These are the permanent ones. A phone has no graphics card and a fraction of "
+                        + "a PC's memory, so the AI desktop apps draw on the processor and open "
+                        + "more slowly than on a PC, and one heavy app at a time is the "
+                        + "comfortable way to work. Windows and macOS cannot run on a phone, and "
+                        + "neither can anything that needs a virtual machine. Your AI accounts' "
                         + "own plans and limits still apply; PocketDesk cannot change them. "
                         + "PocketDesk is provided as is: it is a computer inside an app, not a "
-                        + "backup service.", false);
+                        + "backup service — copy anything precious to Downloads.", false);
         return card;
     }
 
@@ -1318,12 +1447,17 @@ public final class MainActivity extends Activity {
         attentionBattery.setVisibility(health.batteryRestricted ? View.VISIBLE : View.GONE);
         attentionSpace.setVisibility(health.spaceLow ? View.VISIBLE : View.GONE);
         attentionSpace.setValue(DeviceProbe.formatBytes(probe.freeStorage) + " free. Tap for what is needed.");
+        if (!health.spaceLow && spaceDetail != null) spaceDetail.setVisibility(View.GONE);
         attentionHeat.setVisibility(health.hot ? View.VISIBLE : View.GONE);
+        if (!health.hot && heatDetail != null) heatDetail.setVisibility(View.GONE);
         attentionData.setVisibility(health.dataCapReached ? View.VISIBLE : View.GONE);
         attentionLock.setVisibility(health.lockDisabledItself ? View.VISIBLE : View.GONE);
         attentionCompatible.setVisibility(health.notCompatible ? View.VISIBLE : View.GONE);
         // Low free space before setup already makes the phone "not compatible": one row, not two.
         if (health.spaceLow && health.notCompatible && check.onlySpace) attentionCompatible.setVisibility(View.GONE);
+        if (attentionCompatible.getVisibility() != View.VISIBLE && compatibleDetail != null) {
+            compatibleDetail.setVisibility(View.GONE);
+        }
         boolean any = health.notificationsOff || health.batteryRestricted || health.spaceLow
                 || health.hot || health.dataCapReached || health.lockDisabledItself || health.notCompatible;
         attentionCard.setVisibility(any ? View.VISIBLE : View.GONE);
@@ -1388,8 +1522,9 @@ public final class MainActivity extends Activity {
             boolean on = PhoneFiles.allowed(this);
             phoneFilesRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.muted(dark));
             phoneFilesRow.setValue(on
-                    ? "On · the phone's files are the Phone folder inside the computer"
+                    ? "On · your phone's storage is the Phone files folder inside the computer"
                     + (LinuxService.isDesktopRunning() ? " (from the next desktop start)" : "")
+                    + " · tap to change in Android settings"
                     : "Off · turn on so ChatGPT, Claude and the browser can attach a file from the phone");
         }
         if (batteryOptimisationRow != null) {
@@ -1466,7 +1601,9 @@ public final class MainActivity extends Activity {
         if (running) {
             statusBadge.setText("Running");
             statusHeadline.setText("The Linux computer is running");
-            statusNote.setText("Open desktop to go back to it. Stopping keeps everything as it is.");
+            statusNote.setText(LinuxService.isInstalling()
+                    ? "An app is installing beside it; it appears on the desktop when done."
+                    : "Back to desktop to continue. Apps can be added while it runs; stopping keeps everything as it is.");
         } else if (busy) {
             statusBadge.setText("Working");
             statusHeadline.setText("Please wait");
@@ -1536,7 +1673,12 @@ public final class MainActivity extends Activity {
     private void confirmSetup() {
         DeviceCheck.Result check = DeviceCheck.run(this);
         if (!check.compatible) {
-            showMessage(check.headline, check.detail);
+            if (phoneDetail != null) {
+                phoneDetail.setText(check.detail);
+                phoneDetail.setVisibility(View.VISIBLE);
+            }
+            android.widget.Toast.makeText(this, check.headline + " — see Your phone below",
+                    android.widget.Toast.LENGTH_LONG).show();
             return;
         }
         String warning = batteryUnrestricted() ? ""

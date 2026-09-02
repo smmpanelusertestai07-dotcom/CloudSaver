@@ -7,6 +7,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class VncClientProtocolTest {
@@ -59,26 +60,41 @@ public final class VncClientProtocolTest {
                 int[] encodings = new int[encodingCount];
                 boolean rawOffered = false;
                 boolean resizeOffered = false;
+                boolean cursorOffered = false;
                 for (int i = 0; i < encodingCount; i++) {
                     encodings[i] = input.readInt();
                     if (encodings[i] == 0) rawOffered = true;
                     if (encodings[i] == -308) resizeOffered = true;
+                    if (encodings[i] == -239) cursorOffered = true;
                 }
                 require(rawOffered, "Raw encoding must be offered");
                 require(resizeOffered, "ExtendedDesktopSize must be offered so the desktop can resize");
+                // With this the server stops painting its arrow into the picture and sends the
+                // pointer's shape instead, so the viewer can show a hand in Finger mode.
+                require(cursorOffered, "the Cursor pseudo-encoding must be offered");
                 byte[] request = new byte[10];
                 input.readFully(request);
                 require(request[0] == 3 && request[1] == 0, "full framebuffer request missing");
 
+                // One update with two rectangles: the picture, then the pointer's shape.
                 output.writeByte(0);
                 output.writeByte(0);
-                output.writeShort(1);
+                output.writeShort(2);
                 output.writeShort(0);
                 output.writeShort(0);
                 output.writeShort(2);
                 output.writeShort(1);
                 output.writeInt(0);
                 output.write(new byte[]{0, 0, (byte) 255, 0, 0, (byte) 255, 0, 0});
+                // Cursor: hotspot (1,0), 2x1, a red pixel that is part of the cursor and a green
+                // one that the mask leaves out.
+                output.writeShort(1);
+                output.writeShort(0);
+                output.writeShort(2);
+                output.writeShort(1);
+                output.writeInt(-239);
+                output.write(new byte[]{0, 0, (byte) 255, 0, 0, (byte) 255, 0, 0});
+                output.write(new byte[]{(byte) 0x80});
                 output.flush();
 
                 // Two messages follow in either order: the reader thread's next update request
@@ -115,6 +131,10 @@ public final class VncClientProtocolTest {
         CountDownLatch frame = new CountDownLatch(1);
         AtomicReference<Throwable> clientError = new AtomicReference<>();
         AtomicReference<int[]> received = new AtomicReference<>();
+        AtomicReference<int[]> cursor = new AtomicReference<>();
+        AtomicInteger cursorHotspot = new AtomicInteger(-1);
+        AtomicInteger completed = new AtomicInteger();
+        AtomicInteger completedBeforeCursor = new AtomicInteger(-1);
         VncClient[] holder = new VncClient[1];
         holder[0] = new VncClient("127.0.0.1", server.getLocalPort(), new VncClient.Listener() {
             @Override public void onConnected(int width, int height, String name) {
@@ -125,7 +145,15 @@ public final class VncClientProtocolTest {
             @Override public void onResize(int width, int height) {}
             @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
                 received.set(pixels.clone());   // the buffer is reused once this returns
+            }
+            @Override public void onUpdateComplete() {
+                completed.incrementAndGet();
                 frame.countDown();
+            }
+            @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
+                completedBeforeCursor.set(completed.get());
+                cursorHotspot.set(hotX * 100 + hotY);
+                cursor.set(argb == null ? null : argb.clone());
             }
             @Override public void onClipboard(String text) {}
             @Override public void onDisconnected(String reason) {}
@@ -150,7 +178,14 @@ public final class VncClientProtocolTest {
         require(pixels != null && pixels.length == 2, "wrong pixel count");
         require(pixels[0] == 0xffff0000, "first pixel must be red");
         require(pixels[1] == 0xff00ff00, "second pixel must be green");
-        System.out.println("PASS VncClientProtocolTest");
+        int[] shape = cursor.get();
+        require(shape != null && shape.length == 2, "the cursor shape must arrive with the update");
+        require(shape[0] == 0xffff0000, "a masked-in cursor pixel keeps its colour and is opaque");
+        require(shape[1] == 0, "a masked-out cursor pixel is fully transparent");
+        require(cursorHotspot.get() == 100, "the hotspot rides in the rectangle's x and y");
+        require(completedBeforeCursor.get() == 0, "the cursor is delivered before the update is called complete");
+        require(completed.get() == 1, "one update, one completion: " + completed.get());
+        System.out.println("PASS VncClientProtocolTest (raw, cursor shape, update completion)");
     }
 
     private static void require(boolean condition, String message) {

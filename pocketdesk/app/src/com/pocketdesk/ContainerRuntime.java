@@ -259,6 +259,9 @@ final class ContainerRuntime {
                 + "export DEBIAN_FRONTEND=noninteractive; "
                 + "rm -f /etc/resolv.conf; printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf; "
                 + "printf '127.0.0.1 localhost\\n::1 localhost\\n' > /etc/hosts; "
+                // IPv4 first. A phone network that hands out an IPv6 address it cannot route
+                // left every page "loading" until the IPv6 attempt timed out.
+                + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                 + "printf 'Acquire::Retries \"5\";\nAcquire::http::Timeout \"40\";\nAcquire::https::Timeout \"40\";\n' > /etc/apt/apt.conf.d/99pocketdesk; "
                 + "apt-get update; "
                 + "apt-get install -y --no-install-recommends "
@@ -276,7 +279,12 @@ final class ContainerRuntime {
                 // back to the app that asked for it. Without it the login never completes.
                 + "desktop-file-utils "
                 // On-screen toasts and dialogs: an app that fails to start has to be able to say so.
-                + "dunst libnotify-bin zenity xdotool; "
+                + "dunst libnotify-bin zenity xdotool "
+                // Sound: PulseAudio plays into a virtual output that the phone's viewer streams
+                // and plays through the speaker (see pocketdesk-desktop).
+                + "pulseaudio pulseaudio-utils "
+                // The small tools a computer is expected to have from the first minute.
+                + "less file unzip zip wget; "
                 // A desktop clock is only useful in the user's own time.
                 + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
                 + "echo 'Asia/Kolkata' > /etc/timezone; "
@@ -303,11 +311,16 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
-        copyAsset(context, "wallpaper.png", "usr/share/backgrounds/pocketdesk.png");
+        // Ubuntu 24.04's own wallpaper (CC BY-SA, see OPEN_SOURCE_NOTICES.md).
+        copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");
         // A folder that looks like a folder: the theme's file-manager mark reads as a grey box.
         copyAsset(context, "pocketdesk-files.png", "usr/share/pixmaps/pocketdesk-files.png");
+        // The phone with a folder on its screen: the Phone files icon on the desktop and panel.
+        copyAsset(context, "pocketdesk-phone.png", "usr/share/pixmaps/pocketdesk-phone.png");
+        // Tux, the Linux mascot, on the panel's Apps button (Larry Ewing, see the notices).
+        copyAsset(context, "pocketdesk-linux.png", "usr/share/pixmaps/pocketdesk-linux.png");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -354,6 +367,14 @@ final class ContainerRuntime {
     static final String KEY_LAST_STOP_REASON = "last_stop_reason";
     static final String KEY_LAST_OPENED_AT = "last_opened_at";
     /**
+     * Set while the desktop is running and cleared when it ends in any way the service sees.
+     * Still set at the next start, it means Android ended the whole app while the desktop was
+     * open -- the one stop the service itself can never write down at the time.
+     */
+    static final String KEY_DESKTOP_ALIVE = "desktop_alive";
+    /** Stamped every half minute while the desktop runs: the "when" of an unseen stop. */
+    static final String KEY_HEARTBEAT_AT = "desktop_heartbeat_at";
+    /**
      * PRoot's seccomp accelerator cuts the ptrace stops per system call by a large factor,
      * which is most of the difference between a desktop that lags and one that does not. A
      * few Android kernels cannot run it; the first desktop start that dies without a display
@@ -394,10 +415,14 @@ final class ContainerRuntime {
                 // start page (the thumbnail page was the "Page Unresponsive"). Only keys that
                 // exist in GNOME Web 45's schema: an unknown key is ignored with a warning.
                 + "mkdir -p /usr/share/glib-2.0/schemas; "
+                // remember-passwords off: there is no keyring daemon here, so every attempt
+                // to store or look up a password was a D-Bus call that failed slowly.
                 + "printf '[org.gnome.Epiphany]\\nhomepage-url=\\047about:blank\\047\\n"
-                + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n' "
+                + "[org.gnome.Epiphany.web]\\nhardware-acceleration-policy=\\047never\\047\\n"
+                + "remember-passwords=false\\n' "
                 + "> /usr/share/glib-2.0/schemas/99_pocketdesk.gschema.override; "
                 + "glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true; "
+                + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
                 // The table of which app answers which link scheme, rebuilt from what is
                 // installed now, so a sign-in that opens in the browser finds its way back.
                 + "command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database /usr/share/applications >/dev/null 2>&1; "

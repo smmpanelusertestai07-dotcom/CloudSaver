@@ -271,15 +271,32 @@ grep -q 'key="A-F4"' "$rc" || fail "Openbox's own bindings must be kept"
 grep -q 'GoToDesktop' "$rc" && fail "the default go-to-desktop bindings must be removed"
 grep -q '<number>1</number>' "$rc" || fail "a phone has one desktop"
 grep -q 'key="W-p".*pcmanfm /home/coder/Phone' "$rc" || fail "Super+P must open the Phone folder"
+grep -q 'key="W-a".*ShowMenu.*root-menu' "$rc" || fail "Super+A must open the apps menu (the panel's Apps button sends it)"
+grep -q 'key="W-r".*pocketdesk-windows refresh' "$rc" || fail "Super+R must redraw the screen"
 phone="$WORK/coder/Desktop/pocketdesk-phone.desktop"
-[ -f "$phone" ] || fail "the desktop must carry a Phone folder icon"
-grep -q '^Exec=pcmanfm /home/coder/Phone$' "$phone" || fail "the Phone icon must open /home/coder/Phone"
+[ -f "$phone" ] || fail "the desktop must carry a Phone files icon"
+grep -q '^Exec=pcmanfm /home/coder/Phone$' "$phone" || fail "the Phone files icon must open /home/coder/Phone"
+grep -q '^Name=Phone files$' "$phone" || fail "the folder is called Phone files, not Phone"
+grep -q '^Icon=pocketdesk-phone$' "$phone" || fail "the Phone files icon must be the phone-with-a-folder mark"
+tint="$WORK/coder/.config/tint2/tint2rc"
+grep -q 'launcher_item_app = .*pocketdesk-phone.desktop' "$tint" || fail "Phone files must be on the panel too"
+grep -q 'launcher_item_app = .*pocketdesk-apps.desktop' "$tint" || fail "the panel must carry the Apps button"
+[ "$(grep 'launcher_item_app' "$tint" | head -n 1 | grep -c pocketdesk-apps.desktop)" = 1 ] \
+  || fail "the Apps button must be the first thing on the panel"
+grep -q '^Icon=pocketdesk-linux$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
+  || fail "the Apps button wears Tux"
+grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
+  || fail "the Apps button must not list itself in the menu it opens"
+grep -q 'label="Phone files"' "$menu" || fail "the menu must offer Phone files"
+grep -q 'label="Terminal"' "$menu" || fail "the menu must offer the terminal"
+grep -q 'label="Reload screen"' "$menu" || fail "the menu must offer a screen redraw"
 
 # The browser opens links; a sign-in that opened in the browser comes back to the app through
 # the scheme its package declares.
 mime="$WORK/coder/.config/mimeapps.list"
 [ -f "$mime" ] || fail "pocketdesk-menu must write mimeapps.list"
-grep -q '^x-scheme-handler/https=org.gnome.Epiphany.desktop$' "$mime" || fail "https must open in the browser"
+grep -q '^x-scheme-handler/https=pocketdesk-org.gnome.Epiphany.desktop$' "$mime" \
+  || fail "https must open in the browser through its wrapped entry (the sandbox flags ride on it)"
 grep -q '^x-scheme-handler/chatgpt=pocketdesk-chatgpt.desktop$' "$mime" \
   || fail "chatgpt:// links must come back to ChatGPT through the wrapped entry"
 grep -q '^x-scheme-handler/codex=pocketdesk-chatgpt.desktop$' "$mime" || fail "every scheme an app declares must be routed"
@@ -305,4 +322,82 @@ kill -9 "$ghost" 2>/dev/null || true
 rm -f "$WORK/usr/bin/wmctrl"
 grep -c '^x-scheme-handler/http=' "$mime" | grep -qx 1 || fail "http must be routed to the browser exactly once"
 
-echo "PASS DesktopScripts (launcher flags, window detection, menu wiring, window rules, link routing)"
+# ---- The browser choice: Brave, when installed, becomes the one browser everywhere -------
+cat > "$APPS/brave-browser.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=Brave Web Browser
+Exec=/usr/bin/brave-browser-stable %U
+Icon=brave-browser
+Type=Application
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
+ENTRY
+cat > "$APPS/lxterminal.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=LXTerminal
+Exec=lxterminal
+Icon=lxterminal
+Type=Application
+ENTRY
+printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/lxterminal"; chmod +x "$WORK/fakebin/lxterminal"
+sed -e "s#^HOME_DIR=/home/coder#HOME_DIR=$WORK/coder#" \
+    -e "s#/usr/share/applications#$APPS#g" \
+    -e "s#/usr/bin/brave-browser-stable#$WORK/fakebin/brave-browser#g" \
+    -e "s#chown -R coder:coder#true #" \
+    "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" > "$WORK/menu.sh"
+sed -i "s#Exec=/usr/bin/brave-browser-stable#Exec=$WORK/fakebin/brave-browser#" "$APPS/brave-browser.desktop"
+printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/brave-browser"; chmod +x "$WORK/fakebin/brave-browser"
+POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
+grep -q '^x-scheme-handler/https=pocketdesk-brave-browser.desktop$' "$mime" \
+  || fail "with Brave installed, links must open in Brave"
+[ -f "$WORK/coder/Desktop/brave-browser.desktop" ] || fail "Brave must get the browser's desktop icon"
+grep -q '^Name=Brave$' "$WORK/coder/Desktop/brave-browser.desktop" || fail "the icon is labelled Brave"
+[ -f "$WORK/coder/Desktop/org.gnome.Epiphany.desktop" ] && fail "one browser on the desktop, not two"
+[ -f "$WORK/coder/Desktop/lxterminal.desktop" ] || fail "the terminal must have a desktop icon"
+grep -q '^Name=Terminal$' "$WORK/coder/Desktop/lxterminal.desktop" || fail "the terminal icon is labelled Terminal"
+grep -q 'launcher_item_app = .*pocketdesk-lxterminal.desktop' "$tint" || fail "the terminal must be on the panel"
+
+# ---- pocketdesk-open: the memory guard, and a browser keeps its extensions ---------------
+cat > "$WORK/usr/bin/wmctrl" <<WM
+#!/bin/sh
+case "\$1" in
+  -lx) printf '0x02000007  0 epiphany.Epiphany phone Web\\n' ;;
+  -ic) echo "closed \$2" >> "$HOME/.pocketdesk/closed" ;;
+esac
+exit 0
+WM
+chmod +x "$WORK/usr/bin/wmctrl"
+printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/electronish/electronish"
+rm -f "$HOME/.pocketdesk/closed"
+POCKETDESK_FREE_MB=500 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1 || true
+grep -q 'closing the browser to make room' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "an AI app started with 500 MB free must close the browser first"
+grep -q 'closed 0x02000007' "$HOME/.pocketdesk/closed" || fail "the browser window must actually be closed"
+rm -f "$HOME/.pocketdesk/closed"
+POCKETDESK_FREE_MB=2000 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1 || true
+grep -q 'closing the browser' "$HOME/.pocketdesk/logs/electronish.log" \
+  && fail "with 2 GB free the browser must be left alone"
+[ -e "$HOME/.pocketdesk/closed" ] && fail "no window may be closed when memory is plentiful"
+mkdir -p "$WORK/usr/lib/brave-browser"
+: > "$WORK/usr/lib/brave-browser/chrome_100_percent.pak"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/brave-browser/brave-browser"
+chmod +x "$WORK/usr/lib/brave-browser/brave-browser"
+ln -sf ../lib/brave-browser/brave-browser "$WORK/usr/bin/brave-browser"
+POCKETDESK_FREE_MB=500 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" brave-browser >/dev/null 2>&1 || true
+brave_log="$HOME/.pocketdesk/logs/brave-browser.log"
+grep -q -- '--no-sandbox' "$brave_log" || fail "Brave is Chromium and needs the sandbox flags under PRoot"
+grep -q -- '--disable-extensions' "$brave_log" && fail "a browser must keep its extensions"
+grep -q -- '--disable-background-networking' "$brave_log" && fail "a browser must keep its background updates"
+grep -q 'closing the browser' "$brave_log" && fail "the browser is never closed to make room for itself"
+rm -f "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/xdotool" "$HOME/.pocketdesk/closed"
+
+# ---- pocketdesk-desktop: what every start sets up ----------------------------------------
+desktop="$PROJECT_DIR/app/assets/pocketdesk-desktop.sh"
+grep -q 'show_wm_menu=1' "$desktop" || fail "a right-click on the wallpaper must open the apps menu"
+grep -q 'NO_AT_BRIDGE=1' "$desktop" || fail "the accessibility bus must be switched off (every app waited on it)"
+grep -q 'module-simple-protocol-tcp' "$desktop" || fail "sound must be streamed to the phone"
+grep -q 'source=phone.monitor' "$desktop" || fail "the stream must carry the Phone output"
+grep -q 'port=4712' "$desktop" || fail "the sound port must match AudioBridge.PORT"
+grep -q 'backgrounds/pocketdesk.jpg' "$desktop" || fail "the desktop must use the Ubuntu wallpaper"
+
+echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound)"

@@ -18,6 +18,15 @@ final class VncClient {
         void onConnected(int width, int height, String name);
         void onResize(int width, int height);
         void onRectangle(int x, int y, int width, int height, int[] pixels);
+        /** Every rectangle of one framebuffer update has been delivered: put it on screen now. */
+        void onUpdateComplete();
+        /**
+         * The pointer's shape, from the Cursor pseudo-encoding: width*height ARGB pixels, fully
+         * transparent where the cursor's mask is clear, with the hotspot at (hotX, hotY). A
+         * zero-sized cursor means "draw nothing". With this negotiated the server stops painting
+         * its own arrow into the picture, and the viewer draws whatever suits the pointer mode.
+         */
+        void onCursor(int hotX, int hotY, int width, int height, int[] argb);
         void onClipboard(String text);
         void onDisconnected(String reason);
     }
@@ -140,8 +149,9 @@ final class VncClient {
         synchronized (writeLock) {
             output.writeByte(2);
             output.writeByte(0);
-            output.writeShort(4);
+            output.writeShort(5);
             output.writeInt(0);        // Raw
+            output.writeInt(-239);     // Cursor: the pointer's shape comes to us, not into the picture
             output.writeInt(-223);     // DesktopSize
             output.writeInt(-224);     // LastRect
             output.writeInt(-308);     // ExtendedDesktopSize, needed to resize the desktop
@@ -205,13 +215,47 @@ final class VncClient {
                 requestUpdate(false);
             } else if (encoding == -308) {
                 readExtendedDesktopSize(x, y, w, h);
+            } else if (encoding == -239) {
+                readCursor(x, y, w, h);
             } else if (encoding == -224) {
                 break;
             } else {
                 throw new IOException("Unsupported desktop encoding " + encoding);
             }
         }
+        listener.onUpdateComplete();
         requestUpdate(true);
+    }
+
+    /**
+     * A Cursor pseudo-rectangle: the hotspot rides in x and y, then width*height pixels in our
+     * own pixel format, then a one-bit-per-pixel mask, rows padded to whole bytes, most
+     * significant bit first, a set bit meaning the pixel is part of the cursor.
+     */
+    private void readCursor(int hotX, int hotY, int w, int h) throws IOException {
+        if (w < 0 || h < 0 || w > 256 || h > 256) throw new IOException("Invalid cursor size");
+        int count = w * h;
+        if (count == 0) {
+            listener.onCursor(0, 0, 0, 0, null);
+            return;
+        }
+        byte[] pixels = new byte[count * 4];
+        input.readFully(pixels);
+        int maskRow = (w + 7) / 8;
+        byte[] mask = new byte[maskRow * h];
+        input.readFully(mask);
+        int[] argb = new int[count];
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                boolean opaque = (mask[y * maskRow + x / 8] & (0x80 >> (x % 8))) != 0;
+                int base = (y * w + x) * 4;
+                int blue = pixels[base] & 0xff;
+                int green = pixels[base + 1] & 0xff;
+                int red = pixels[base + 2] & 0xff;
+                argb[y * w + x] = opaque ? 0xff000000 | (red << 16) | (green << 8) | blue : 0;
+            }
+        }
+        listener.onCursor(hotX, hotY, w, h, argb);
     }
 
     /**

@@ -13,20 +13,23 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Linux | Ubuntu 24.04.4 LTS ARM64, SHA-256 verified, running under PRoot |
 | Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, dunst notifications, TigerVNC |
 | Viewer | In-app RFB 3.8 client bound to `127.0.0.1:5901`. The desktop is born in the phone's orientation and kept the size of the screen, so the whole desktop always fits at 100 %; pinch or Screen → Zoom to look closer, Fit to come back, Full screen to hide the controls |
-| Controls | One bar, top or bottom: Home · status · Screen ▾ · Finger/Mouse · Keyboard · Keys (Esc, Tab, Ctrl, Alt, Super, arrows, on demand) · Window ▾ (Close, Force close, Switch, All windows, Minimise all, Paste) |
-| Input | Finger mode (tap where you touch, swipe to scroll, hold to right-click) and Mouse mode (drag the arrow, two fingers scroll, tap-then-drag), USB and Bluetooth mouse, hardware keyboard, composing-aware phone keyboard, Android clipboard bridge |
-| Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt` — install anything else yourself |
-| Browser | GNOME Web (Epiphany) is installed by default because it opens in a second or two; Firefox is a one-tap extra. Downloads land in `~/Downloads` inside Linux |
-| Apps | One-tap installs of the makers' own official Linux builds: ChatGPT (with Codex), Claude Desktop (with Claude Code), Cursor and Antigravity. Install once; the same row updates in place |
+| Controls | One bar, bottom by default (or top): Home · status · Screen ▾ (Fit, Zoom, Rotate, Full screen, bar position, Volume) · Finger/Mouse · Keyboard · Keys (Esc, Tab, Ctrl, Alt, Super, arrows, on demand) · Window ▾ (Close, Force close, Switch, All windows, Minimise all, Paste, Apps menu, Phone files, Reload the screen) |
+| Input | Finger mode (tap where you touch, swipe to scroll with a fling, hold to right-click, a hand at the pointer) and Mouse mode (drag the pointer, which is the shape the desktop reports; two fingers scroll; tap-then-drag), USB and Bluetooth mouse, hardware keyboard, composing-aware phone keyboard, Android clipboard bridge |
+| Viewer internals | Cursor pseudo-encoding (the desktop does not paint its pointer into the picture), double-buffered updates (an RFB update is blitted to the screen only when complete, so frames never tear) |
+| Sound | PulseAudio inside Linux plays into a virtual output whose PCM is streamed on `127.0.0.1:4712` (module-simple-protocol-tcp) and played by the app through AudioTrack while the desktop screen is open; the volume keys set it. No microphone yet |
+| Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt`, `wget`, `zip`/`unzip`, `less`, `file`, LXTerminal on the desktop; a **Developer tools** row adds compilers, Python 3, Node.js, Git extras, SSH, jq, htop, vim |
+| Browser | GNOME Web (Epiphany) by default because it opens in a second or two. **Brave** (Chromium, Chrome Web Store extensions, official arm64 apt repo, Rewards/Wallet/VPN/AI off by policy) and **Firefox** (Mozilla's arm64 apt repo) are one-tap rows; whichever is installed becomes the browser everywhere (desktop, panel, every link and sign-in). Downloads land in `~/Downloads` inside Linux |
+| Apps | One-tap installs of the makers' own official Linux builds: ChatGPT (AI assistant, with Codex), Claude Desktop (AI assistant, with Claude Code), Cursor (AI code editor) and Antigravity (agentic development platform, from Google's apt repository). Install once; the same row updates in place, and an install runs beside an open desktop |
 | Data and privacy | Daily mobile-data limit with midnight reset (stops downloads and the desktop); Downloads visible to the phone or kept inside Linux; app lock covering the whole app with the phone's fingerprint or PIN; everything local, Android cloud backup off |
-| Home screen | Three tabs on a bottom bar: Home (state, Needs attention, mobile data meter, Your phone is compatible, the questions), Apps, Settings (grouped; a dot only for what Settings can fix) |
+| Home screen | Three tabs on a bottom bar: Home (state with Tux, Needs attention, mobile data meter, Your phone is compatible, **Linux only, on purpose** with the checked facts, the questions, every detail opening in place), Apps (AI desktop apps, Computer basics, what the browser can install), Settings (grouped; a dot only for what Settings can fix) |
 | Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, recognises an already-open app by the process that owns its window and brings it to the front, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
 | Sign-in | The browser hands `chatgpt://`, `codex://` and `claude://` links back to the app that asked (`desktop-file-utils` + a mimeapps table rebuilt on every start), through the launcher, which then closes the browser that carried the sign-in |
-| Phone files | Optional: the phone's storage bound in as `/home/coder/Phone`, with Phone, Phone Downloads, Phone Photos and Phone Documents in every GTK file dialog's sidebar |
+| Phone files | Optional: the phone's storage bound in as `/home/coder/Phone`, shown as **Phone files** on the desktop, the panel, the menu and Super+P, with Phone, Phone Downloads, Phone Photos and Phone Documents in every GTK file dialog's sidebar |
+| Desktop | Ubuntu 24.04's wallpaper, an **Apps** button wearing Tux on the panel (the full app list; also Super+A and a right-click or long press on the wallpaper), Terminal, Files, Phone files and the browser on the panel; a memory guard that closes the browser's windows before starting an AI app when under 900 MB is free; an unclean stop (Android ending the app, or the display dying) is written down with the time and shown on the Home tab |
 
 ## Device requirements
 
-- Android 10 (API 29) and every version after it, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
+- Android 10 (API 29) and above, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
 - 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
 - At least 4 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 1.5–3 GB
 - Reference device: Realme C25s, Android 13, 4 GB RAM
@@ -95,9 +98,10 @@ The app is tuned so daily multi-hour use does not damage the phone.
 - VNC has no password because it binds to `127.0.0.1` only and is never exposed to a network.
 - Chromium and Electron apps run with `--no-sandbox`, because their normal Linux sandbox cannot work
   under PRoot. That weakens isolation inside the container.
-- The AI desktop apps are previews on Linux. **Computer Use** is not offered on Linux by either
-  OpenAI or Anthropic, and this app cannot change anyone's plan or usage limits. Claude Desktop's
-  Cowork tab needs hardware virtualisation (KVM), which a phone container cannot provide.
+- The AI desktop apps are, at the time of writing, a preview (ChatGPT) and a beta (Claude) on
+  Linux; that is their makers' current scope and changes with their updates. Claude Desktop's
+  Cowork tab needs hardware virtualisation (KVM), which a phone container cannot provide. This
+  app cannot change anyone's plan or usage limits.
 - A self-signed sideload can still show an Android or Play Protect warning. Only distribution through
   Play review removes that reliably.
 - x86 emulation is not included, so amd64-only Linux software will not run.
@@ -109,7 +113,9 @@ The app is tuned so daily multi-hour use does not damage the phone.
 - ChatGPT for Linux ARM64 — `https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_arm64.deb`
 - Claude Desktop — Anthropic's apt repository, accepted only when the signing key matches the
   fingerprint `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE` that Anthropic publishes
-- Firefox — Mozilla's own apt repository, because Ubuntu's `firefox` package is a snap shim
+- Antigravity — Google's own apt repository (`us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev`, suite `antigravity-debian`), which publishes arm64 builds
+- Brave — Brave's own apt repository (`brave-browser-apt-release.s3.brave.com`), amd64 and arm64
+- Firefox — Mozilla's own apt repository (`packages.mozilla.org/apt`), because Ubuntu's `firefox` package is a snap shim
 
 Downloads resume after a dropped connection and fail over to a second Ubuntu mirror. Every archive is
 checked against the SHA-256 above before it is unpacked.

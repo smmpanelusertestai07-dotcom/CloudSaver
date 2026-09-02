@@ -5,7 +5,7 @@
 # than the exception -- which makes "show me what is open" and "close everything" ordinary
 # things to want, not power-user extras.
 #
-# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|count
+# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|count|menu|refresh
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
@@ -20,6 +20,16 @@ open_windows() {
 case "${1:-list}" in
   count)
     open_windows | wc -l
+    ;;
+  menu)
+    # The apps menu, from the panel's Apps button and the phone's Window menu. Openbox shows
+    # its menu on Super+A (bound by pocketdesk-menu); a synthetic key press is the one way a
+    # program can ask for it, so the menu opens where the pointer is.
+    command -v xdotool >/dev/null 2>&1 && xdotool key --clearmodifiers super+a 2>/dev/null
+    ;;
+  refresh)
+    # Redraws every window: the fix for a screen left with stale pieces after a heavy app.
+    command -v xrefresh >/dev/null 2>&1 && xrefresh 2>/dev/null
     ;;
   minimise-all)
     # Openbox's own show-desktop toggle does this without touching each window.
