@@ -124,8 +124,8 @@ final class LinuxApps {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt. Not removable: it is the computer.
             new App("essentials", "Desktop basics",
-                    "Desktop, sound, terminal, Files, Phone files, icons, the apps menu and Google Chrome. "
-                            + "Comes with setup; tap to bring an older computer up to date.",
+                    "Browser: Google Chrome, latest official ARM64 build. Plus sound, terminal, Files, "
+                            + "Phone files, icons and the apps menu. Comes with setup; tap to update.",
                     R.drawable.ic_desktop, 0, "about 320 MB", 1500 * MB,
                     "5–15 min", null,
                     "/usr/bin/pactl",
@@ -213,16 +213,6 @@ final class LinuxApps {
                             + "StartupNotify=true\\nCategories=Development;\\n' \"$bin\" "
                             + "> /usr/share/applications/antigravity.desktop; fi",
                     "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list"),
-
-            new App("chrome", "Google Chrome",
-                    "The web browser, by Google: extensions, sync, the official ARM64 build.",
-                    R.drawable.ic_network, R.drawable.logo_chrome, "135 MB", 1500 * MB,
-                    "5–15 min",
-                    "Comes with setup. This row updates it, or installs it again after a Remove.",
-                    "/opt/google/chrome/chrome",
-                    CHROME_INSTALL,
-                    "apt-get remove -y google-chrome-stable; rm -f /etc/apt/sources.list.d/google-chrome.list "
-                            + "/etc/opt/chrome/policies/managed/pocketdesk.json"),
 
             new App("devtools", "Developer tools",
                     "gcc and make, Python 3 with pip, Node.js with npm, Git, SSH, jq, htop, vim.",

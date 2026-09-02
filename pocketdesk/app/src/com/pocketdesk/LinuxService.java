@@ -470,7 +470,7 @@ public final class LinuxService extends Service {
         // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
         // KEY_FAST_DESKTOP). The owner can turn Faster desktop on to try it; if that start
         // never draws a display, the next attempt drops back to the reliable path.
-        boolean accelerated = prefs.getBoolean(ContainerRuntime.KEY_FAST_DESKTOP, false);
+        boolean accelerated = false;   // never: it breaks every Chromium app (see KEY_FAST_DESKTOP)
         boolean fellBack = false;
         File sessionLog = new File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/logs/desktop-session.log");
         File logParent = sessionLog.getParentFile();

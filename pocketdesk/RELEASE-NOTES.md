@@ -1,3 +1,40 @@
+# PocketDesk 10.0.0 — the last release
+
+Everything from the final round of device screenshots, and nothing left that was there only for
+testing. This is the version to keep.
+
+## What changed
+- **The opening.** The app's mark and name first, then Tux with "Powered by Linux · Ubuntu
+  24.04 LTS" for a moment, then Home; about three seconds, on a cold start only. The system's
+  own launch screen shows the app mark on the same deep blue, so the two read as one.
+- **Google Chrome lives in Desktop basics only.** The browser is part of the computer, installed
+  by set-up from Google's own ARM64 repository, updated by the Desktop basics row; it is no
+  longer a second row of its own. Computer basics is now two rows: Desktop basics and
+  Developer tools.
+- **The phone's battery controls, in the phone's own words.** Settings → Permissions now has
+  Notifications, Battery usage (Unrestricted), **Background activity** (Allow foreground
+  activity and Allow background activity, on the phone's battery page for PocketDesk),
+  **Auto-launch** (some phones call it Auto-start), Phone files and App info. The first-launch
+  prompt asks for all three battery-related settings. The Background activity row opens the
+  ColorOS battery page directly where the phone offers it, else App info.
+- **No Faster desktop switch.** The seccomp accelerator is never used now: it is what broke
+  every Chromium app, so there is no setting that can bring that back.
+- **No Reports group.** The "Why an app didn't open" and "Last error report" rows are gone, as
+  asked; the desktop itself still says on screen when an app is closed by the phone, and the
+  Home tab still says when and why the computer last stopped.
+- Every download endpoint was checked live while building this release: Ubuntu base, ChatGPT's
+  arm64 .deb, Claude's key and arm64 index, Cursor's arm64 .deb, Antigravity's arm64 index,
+  Chrome stable arm64 (152.0.7977.75).
+
+## Verified again, unchanged
+ChatGPT and every Chromium app start with the accelerator off and `--no-zygote` (the auto-back
+root cause), uninstall with Remove, branded dialogs, chevrons that turn while open, the Apps tab
+line that says why rows are grey, clear progress text, the framed viewer, the blue Tux
+wallpaper, sound to the phone, the phone's battery and memory on the desktop panel.
+
+## Permanent limits
+Windows or macOS cannot run on a phone. A microphone into the computer is not carried.
+
 # PocketDesk 5.0.0 — the final release: Google Chrome as the computer's browser, and every screen from the device screenshots fixed
 
 Built from a second round of real-device screenshots. Version 5 because it closes the list.

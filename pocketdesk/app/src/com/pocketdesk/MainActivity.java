@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "5.0.0";
+    static final String VERSION = "10.0.0";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -165,10 +165,74 @@ public final class MainActivity extends Activity {
             setContentView(content);
             configureSystemBars();
             applySystemInsets();
+            if (state == null && !AppLock.isLocked(this)) showIntro();
         } catch (Throwable error) {
             Crash.save(this, error);
             showSafeScreen(error);
         }
+    }
+
+    /**
+     * The opening: the app's mark and name, then Tux with the system it runs, then the home
+     * screen. Only on a cold start; a rotation or a return from another app skips it.
+     */
+    private void showIntro() {
+        final FrameLayout intro = new FrameLayout(this);
+        intro.setBackgroundColor(Color.rgb(13, 27, 62));
+        intro.setClickable(true);
+        intro.setElevation(Ui.dp(this, 20));
+
+        final LinearLayout first = introColumn();
+        ImageView mark = new ImageView(this);
+        mark.setImageResource(R.drawable.icon_in_app);
+        mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        first.addView(mark, new LinearLayout.LayoutParams(Ui.dp(this, 104), Ui.dp(this, 104)));
+        TextView name = Ui.bold(this, "PocketDesk", 30, Color.WHITE);
+        name.setGravity(Gravity.CENTER);
+        name.setLetterSpacing(-0.02f);
+        first.addView(name, Ui.matchWrap(this, 18));
+        TextView line = Ui.text(this, "A Linux computer that runs locally on your phone", 14.5f, Color.rgb(190, 204, 240));
+        line.setGravity(Gravity.CENTER);
+        first.addView(line, Ui.matchWrap(this, 6));
+
+        final LinearLayout second = introColumn();
+        ImageView tux = new ImageView(this);
+        tux.setImageResource(R.drawable.tux);
+        tux.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tux.setContentDescription("Tux, the Linux mascot");
+        second.addView(tux, new LinearLayout.LayoutParams(Ui.dp(this, 132), Ui.dp(this, 156)));
+        TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
+        powered.setGravity(Gravity.CENTER);
+        second.addView(powered, Ui.matchWrap(this, 18));
+        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · the makers' own AI desktop apps · everything on this phone",
+                14f, Color.rgb(190, 204, 240));
+        system.setGravity(Gravity.CENTER);
+        system.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), 0);
+        second.addView(system, Ui.matchWrap(this, 6));
+        second.setAlpha(0f);
+
+        FrameLayout.LayoutParams centre = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        intro.addView(first, centre);
+        intro.addView(second, new FrameLayout.LayoutParams(centre));
+        shell.addView(intro, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        mark.setScaleX(0.9f); mark.setScaleY(0.9f);
+        mark.animate().scaleX(1f).scaleY(1f).setDuration(420).start();
+        handler.postDelayed(() -> {
+            first.animate().alpha(0f).setDuration(260).start();
+            second.animate().alpha(1f).setDuration(420).start();
+        }, 1300L);
+        handler.postDelayed(() -> intro.animate().alpha(0f).setDuration(360)
+                .withEndAction(() -> shell.removeView(intro)).start(), 3100L);
+    }
+
+    private LinearLayout introColumn() {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setGravity(Gravity.CENTER_HORIZONTAL);
+        return column;
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -718,9 +782,9 @@ public final class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "Computer basics", R.drawable.ic_desktop, dark));
         card.addView(Ui.text(this,
-                "The desktop basics come with setup; tap that row to bring an older computer up "
-                        + "to date. Google Chrome is the computer's browser. Developer tools add "
-                        + "compilers, Python, Node.js and Git for building software.",
+                "Desktop basics come with setup and include the browser, Google Chrome; tap the "
+                        + "row to bring an older computer up to date. Developer tools add compilers, "
+                        + "Python, Node.js and Git for building software.",
                 12.5f, muted), Ui.matchWrap(this, 6));
         int added = 0;
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -889,13 +953,6 @@ public final class MainActivity extends Activity {
         guard.control.setOnCheckedChangeListener((button, checked) ->
                 preferences.edit().putBoolean(ContainerRuntime.KEY_THERMAL_GUARD, checked).apply());
         running.addView(guard, Ui.matchWrap(this, 8));
-        Ui.Toggle fast = new Ui.Toggle(this, R.drawable.ic_bolt, "Faster desktop (experimental)",
-                "Off is best: every app runs. On uses a speed-up that ChatGPT, Claude, Cursor, "
-                        + "Antigravity and Brave can crash on. Applies at the next desktop start.",
-                preferences.getBoolean(ContainerRuntime.KEY_FAST_DESKTOP, false), dark);
-        fast.control.setOnCheckedChangeListener((button, checked) ->
-                preferences.edit().putBoolean(ContainerRuntime.KEY_FAST_DESKTOP, checked).apply());
-        running.addView(fast, Ui.matchWrap(this, 8));
 
         // Data and files
         LinearLayout data = group(page, "Data and files");
@@ -945,8 +1002,15 @@ public final class MainActivity extends Activity {
         batteryOptimisationRow = new Ui.Row(this, R.drawable.ic_bolt, "Battery usage", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> openBatterySettings());
         permissions.addView(batteryOptimisationRow, Ui.matchWrap(this, 8));
-        autoStartRow = new Ui.Row(this, R.drawable.ic_power, "Auto-start",
-                "Turn this ON in the list that opens, so the desktop keeps running with the screen off",
+        Ui.Row backgroundRow = new Ui.Row(this, R.drawable.ic_auto_mode, "Background activity",
+                "On the phone's battery page for PocketDesk, turn ON Allow foreground activity and "
+                        + "Allow background activity, so the computer keeps running with the screen off",
+                R.drawable.ic_open_in_new, dark, v -> openBackgroundActivitySettings());
+        backgroundRow.setStatus("CHECK", Ui.muted(dark));
+        permissions.addView(backgroundRow, Ui.matchWrap(this, 8));
+        autoStartRow = new Ui.Row(this, R.drawable.ic_power, "Auto-launch",
+                "Turn ON Allow auto-launch (some phones call it Auto-start), so a long set-up can "
+                        + "continue after the phone restarts",
                 R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
         autoStartRow.setStatus("CHECK", Ui.muted(dark));
         permissions.addView(autoStartRow, Ui.matchWrap(this, 8));
@@ -974,19 +1038,6 @@ public final class MainActivity extends Activity {
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
-
-        // Reports
-        LinearLayout reports = group(page, "Reports");
-        appLogRow = new Ui.Row(this, R.drawable.ic_terminal, "Why an app didn't open",
-                "The report Linux wrote the last time you tapped an app.",
-                R.drawable.ic_chevron, dark, v -> showAppLogs());
-        reports.addView(appLogRow, Ui.matchWrap(this, 0));
-        crashRow = new Ui.Row(this, R.drawable.ic_help, "Last error report",
-                "Something went wrong earlier. Tap to view or share it.",
-                R.drawable.ic_chevron, dark, v -> showCrashReport());
-        crashRow.setStatus("NEW", Ui.WARNING);
-        crashRow.setVisibility(Crash.read(this).isEmpty() ? View.GONE : View.VISIBLE);
-        reports.addView(crashRow, Ui.matchWrap(this, 8));
 
         // Storage
         LinearLayout storage = group(page, "Storage");
@@ -1184,9 +1235,8 @@ public final class MainActivity extends Activity {
                         + "now helps: an AI app started while memory is short closes the browser's "
                         + "windows first, and a sign-in closes the browser once it has handed the "
                         + "result back.\n\nPocketDesk itself never closes an app that has a window "
-                        + "open, and it writes everything down: the Home tab says when and why the "
-                        + "computer last stopped, and Settings → Reports shows how each app ended "
-                        + "and whether the phone took the memory back. Window → Force close ends "
+                        + "open. The Home tab says when and why the computer last stopped, and an app "
+                        + "that the phone closed says so on the desktop. Window → Force close ends "
                         + "an app that has stopped answering.", false);
 
         addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
@@ -1218,9 +1268,8 @@ public final class MainActivity extends Activity {
                 "This phone runs full computer programs with a fraction of a PC's memory and "
                         + "no graphics card, so everything is drawn by the processor. The first "
                         + "open after installing is the slowest. If one fails, the reason appears "
-                        + "on screen and in Settings → Reports. For speed: one AI app at a "
-                        + "time, close the browser when done, Desktop text size Compact, and keep "
-                        + "the phone cool.", false);
+                        + "on the desktop screen. For speed: one AI app at a time, close the "
+                        + "browser when done, Desktop text size Compact, and keep the phone cool.", false);
 
         addAnswer(card, R.drawable.ic_delete, "What if I uninstall?",
                 "Android deletes the whole Linux computer with the app — system, apps, "
@@ -1580,13 +1629,15 @@ public final class MainActivity extends Activity {
         preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
         if (notificationsAllowed() && batteryUnrestricted()) return;
         dialogBuilder()
-                .setTitle("Allow two things first")
+                .setTitle("Allow three things first")
                 .setMessage("Setting up the Linux computer downloads for 10–30 minutes in the background. "
-                        + "Without these, Android stops it half way.\n\n"
+                        + "Without these, the phone stops it half way.\n\n"
                         + "1. Notifications — ON, so you can watch progress and stop it any time.\n\n"
                         + "2. Battery usage — Unrestricted, so the download is not killed when the "
                         + "screen turns off.\n\n"
-                        + "Nothing else is requested. You can change both later under Settings → Permissions.")
+                        + "3. Background activity and Auto-launch — ON, on the phone's battery page for "
+                        + "PocketDesk (Settings → Permissions opens it).\n\n"
+                        + "Nothing else is requested. All three can be changed later under Settings → Permissions.")
                 .setNegativeButton("Later", null)
                 .setPositiveButton("Allow", (dialog, which) -> startPermissionFlow())
                 .show();
@@ -1799,7 +1850,31 @@ public final class MainActivity extends Activity {
         if (!launch(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))) openAppInfo();
     }
 
-    /** Realme, OPPO, Xiaomi, vivo and Huawei each hide auto-start in their own security app. */
+    /**
+     * The phone's battery page for this app, where Realme/OPPO (ColorOS) keep "Allow foreground
+     * activity" and "Allow background activity". The page has no public intent, so the known
+     * ColorOS activities are tried and App info (whose Battery usage row leads there) is the
+     * fallback every phone has.
+     */
+    private void openBackgroundActivitySettings() {
+        String[][] targets = {
+                {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"},
+                {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"},
+                {"com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"},
+        };
+        for (String[] target : targets) {
+            Intent intent = new Intent().setComponent(new ComponentName(target[0], target[1]));
+            intent.putExtra("package_name", getPackageName());
+            intent.putExtra("packageName", getPackageName());
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (launch(intent)) return;
+        }
+        android.widget.Toast.makeText(this, "Open Battery usage on this page, then turn on foreground and background activity",
+                android.widget.Toast.LENGTH_LONG).show();
+        openAppInfo();
+    }
+
+    /** Realme, OPPO, Xiaomi, vivo and Huawei each hide auto-launch in their own security app. */
     private void openAutoStartSettings() {
         String[][] targets = {
                 {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
@@ -1815,8 +1890,8 @@ public final class MainActivity extends Activity {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (launch(intent)) return;
         }
-        showMessage("Auto-start", "This phone does not expose an auto-start page to other apps. "
-                + "Open App info, then Battery, and allow background activity.");
+        showMessage("Auto-launch", "This phone does not expose an auto-launch page to other apps. "
+                + "Open App info, then Battery usage, and turn on Allow auto-launch.");
         openAppInfo();
     }
 
@@ -1845,9 +1920,7 @@ public final class MainActivity extends Activity {
         long recordedAt = Crash.recordedAt(this);
         crashRow.setVisibility(recordedAt == 0 ? View.GONE : View.VISIBLE);
         if (recordedAt == 0) return;
-        if (preferences.getLong(ContainerRuntime.KEY_CRASH_SEEN, 0L) == recordedAt) return;
         preferences.edit().putLong(ContainerRuntime.KEY_CRASH_SEEN, recordedAt).apply();
-        showCrashReport();
     }
 
     /**

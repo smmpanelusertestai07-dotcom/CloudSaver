@@ -10,8 +10,7 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowSplashScreenBackground">#0D1B3E</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_animation</item>
-        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_foreground_art</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#0D1B3E</item>
         <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
              landscape and paint a black band down one side; both screens pad for the cutout
@@ -28,8 +27,7 @@
         <item name="android:navigationBarColor">#080D1A</item>
         <item name="android:statusBarColor">#080D1A</item>
         <item name="android:windowSplashScreenBackground">#0D1B3E</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_animation</item>
-        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/icon_foreground_art</item>
         <item name="android:windowSplashScreenIconBackgroundColor">#0D1B3E</item>
         <!-- Android 10-14 otherwise keep an edge-to-edge window clear of a side notch in
              landscape and paint a black band down one side; both screens pad for the cutout

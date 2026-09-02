@@ -2,10 +2,10 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v5.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
-   Opening pe Tux (Linux ka penguin) dikhega — yahi computer chal raha hai.
+   Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
 
 ## 2. Home tab: pehli baar setup
 
@@ -30,9 +30,8 @@
 - Ek waqt me **ek hi AI app** kholo — 4 GB RAM wale phone pe do saath me memory kha jate hain.
 
 ### Computer basics
-- **Desktop basics** — setup ke saath aata hai (Google Chrome bhi isi me); purane computer ko update karne ke liye tap karo.
-- **Google Chrome** — computer ka ek hi browser, Google ke apne ARM64 repo se, setup ke saath install hota hai.
-  Extensions, sync, har link aur sign-in isi me. Yeh row update ya Remove ke baad dobara install ke liye.
+- **Desktop basics** — setup ke saath aata hai, aur isi me browser hai: **Google Chrome**, Google ke apne ARM64 repo se, latest.
+  Extensions, sync, har link aur sign-in Chrome me. Purane computer ko update karne ke liye yeh row tap karo.
 - **Developer tools** — gcc/make, Python 3 (pip, venv), Node.js (npm), git extras, ssh, jq, htop, vim.
   Cursor/Antigravity/Claude Code se software banane ke liye.
 - **App hatana:** installed app (ya Brave) ki row tap karo → **Remove**. Space wapas, baaki sab waisa hi.
@@ -71,11 +70,10 @@ Neeche (ya upar, tumhari marzi) **ek hi bar**:
 | Group | Options |
 | --- | --- |
 | Appearance | Theme (Match phone / Light / Dark), Screen rotation, Desktop text size (Compact / Normal / Large) |
-| Running | When to stop by itself (Smart · recommended / 1–6 hours / Never), Overheat protection, **Faster desktop (experimental)** — OFF hi best rakho, tab har app chalta hai |
+| Running | When to stop by itself (Smart · recommended / 1–6 hours / Never), Overheat protection |
 | Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only, Downloads visible to the phone |
 | Privacy and safety | App lock — fingerprint/PIN, home aur desktop dono screen pe; on karte waqt ek baar pooch ke confirm karta hai |
-| Permissions | Notifications, Battery usage (Unrestricted karo), Auto-start, **Phone files**, App info |
-| Reports | **Why an app didn't open** (app ki log, Share button), Last error report |
+| Permissions | Notifications, Battery usage (Unrestricted), **Background activity** (phone ki battery page pe Allow foreground + Allow background activity ON), **Auto-launch** (Allow auto-launch ON), **Phone files**, App info |
 | Storage | Linux computer kitna space le raha hai, **Remove the Linux computer and free space** |
 
 Settings badalne se kabhi kuch delete nahi hota.
@@ -84,7 +82,7 @@ Settings badalne se kabhi kuch delete nahi hota.
 
 - Smart mode: 25 min tak kuch na chhuo, battery 15 % se neeche (charger ke bina), phone bahut garam, ya aaj ka mobile data limit khatam.
 - 15 % se neeche battery pe (charger ke bina) desktop khulega bhi nahi — Home pe likha aayega. Charger lagao, ya Settings me fixed timer / Never stop chuno.
-- **ChatGPT ya desktop apne aap "back" ho jaye:** iska asli kaaran mil gaya aur fix ho gaya — desktop ab bina "seccomp accelerator" ke chalta hai (Chromium apps usme crash hote the). Settings → Running me "Faster desktop" band hi rakho. Baaki: memory 900 MB se kam ho to AI app kholte waqt browser windows pehle band; Android ne desktop maara ho to Home pe time ke saath likha; app kaise band hua Settings → Reports me.
+- **ChatGPT ya desktop apne aap "back" ho jaye:** iska asli kaaran mil gaya aur fix ho gaya — desktop ab hamesha bina "seccomp accelerator" ke chalta hai (Chromium apps usme crash hote the). Baaki: memory 900 MB se kam ho to AI app kholte waqt browser windows pehle band; phone ne desktop band kiya ho to Home pe time ke saath likha aata hai.
 - Band hone pe kuch nahi jata — apps signed in rehte hain, files wahin.
 - Apne aap restart kabhi nahi hota — tum **Open desktop** dabate ho.
 - Bina net ke computer chalta hai (desktop, files, browser ke saved pages); AI apps ko net chahiye.
