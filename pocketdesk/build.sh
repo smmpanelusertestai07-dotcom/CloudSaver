@@ -7,8 +7,8 @@ BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
 ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_BASENAME="PocketDesk"
-VERSION_NAME="3.0.7"
-VERSION_CODE="33"
+VERSION_NAME="3.1.0"
+VERSION_CODE="34"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2
@@ -69,9 +69,9 @@ fi
   --ks-key-alias pocketdesk \
   --min-sdk-version 29 --max-sdk-version 35 \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-  --out "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME-arm64.apk" \
+  --out "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME.apk" \
   "$BUILD_DIR/$APP_BASENAME-aligned.apk"
-"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME-arm64.apk"
-"$BUILD_TOOLS/aapt2" dump badging "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME-arm64.apk"
+"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME.apk"
+"$BUILD_TOOLS/aapt2" dump badging "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME.apk"
 
-echo "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME-arm64.apk"
+echo "$BUILD_DIR/$APP_BASENAME-$VERSION_NAME.apk"

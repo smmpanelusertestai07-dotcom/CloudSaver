@@ -37,7 +37,7 @@ import android.widget.TextView;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    static final String VERSION = "3.0.7";
+    static final String VERSION = "3.1.0";
 
     private SharedPreferences preferences;
     private boolean dark;
@@ -75,6 +75,8 @@ public final class MainActivity extends Activity {
     private Ui.Row autoStartRow;
     private Ui.Row crashRow;
     private Ui.Row appLogRow;
+    private Ui.Row dataCapRow;
+    private long unlockedAt;
     private boolean askBatteryAfterNotifications;
 
     private final java.util.Map<String, Ui.Row> appRows = new java.util.LinkedHashMap<>();
@@ -137,6 +139,8 @@ public final class MainActivity extends Activity {
         if (safeMode) return;
         handler.removeCallbacks(liveRefresh);
         handler.post(liveRefresh);
+        enforceAppLock();
+        if (dataCapRow != null) dataCapRow.setValue(dataCapLabel());
         refreshDeviceCard();
         refreshPermissionRows();
         measureLinuxSize();
@@ -328,12 +332,13 @@ public final class MainActivity extends Activity {
 
     private View buildAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.sectionTitle(this, "AI desktop apps", R.drawable.ic_apps, dark));
+        card.addView(Ui.sectionTitle(this, "AI coding & desktop apps", R.drawable.ic_apps, dark));
         card.addView(Ui.text(this,
-                "Official desktop apps, installed from here \u2014 not from a browser. Each row "
-                        + "fetches the maker's own signed Linux package: OpenAI's, Anthropic's, "
-                        + "Anysphere's, Google's. Install once; new features arrive by themselves, "
-                        + "and one tap on a row updates the app itself whenever you like.", 12.5f, muted), Ui.matchWrap(this, 6));
+                "The industry's leading AI coding and desktop apps, installed from here \u2014 not "
+                        + "from a browser. Each row fetches the maker's own signed Linux package: "
+                        + "OpenAI's, Anthropic's, Anysphere's, Google's. Install once; new features "
+                        + "arrive by themselves, and one tap on a row updates the app itself. You can "
+                        + "also install any other Linux app yourself from the browser inside the desktop.", 12.5f, muted), Ui.matchWrap(this, 6));
 
         appRows.clear();
         for (LinuxApps.App app : LinuxApps.CATALOG) {
@@ -403,6 +408,14 @@ public final class MainActivity extends Activity {
         deviceDetails.setLineSpacing(Ui.dp(this, 5), 1f);
         card.addView(deviceDetails, Ui.matchWrap(this, 12));
 
+        DeviceCheck.Result check = DeviceCheck.run(this);
+        Ui.Row compatible = new Ui.Row(this, check.compatible ? R.drawable.ic_check : R.drawable.ic_stop,
+                check.headline, "Tap for the requirements and what this phone has",
+                R.drawable.ic_chevron, dark, v -> showMessage(check.headline, check.detail));
+        compatible.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
+                check.compatible ? Ui.SUCCESS : Ui.DANGER);
+        card.addView(compatible, Ui.matchWrap(this, 10));
+
         linuxSize = Ui.text(this, "", 12.5f, muted);
         card.addView(linuxSize, Ui.matchWrap(this, 10));
 
@@ -441,6 +454,34 @@ public final class MainActivity extends Activity {
                         preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE)),
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         card.addView(desktopScaleRow, Ui.matchWrap(this, 8));
+
+        dataCapRow = new Ui.Row(this, R.drawable.ic_network, "Mobile data limit per day",
+                dataCapLabel(), R.drawable.ic_chevron, dark, v -> chooseDataCap());
+        card.addView(dataCapRow, Ui.matchWrap(this, 8));
+
+        Ui.Toggle shareDownloads = new Ui.Toggle(this, R.drawable.ic_storage, "Downloads visible to the phone",
+                "On: Downloads also appears in your phone's Files app. Off: it stays inside the "
+                        + "Linux computer only. Takes effect at the next desktop start; files are moved, never deleted.",
+                preferences.getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true), dark);
+        shareDownloads.control.setOnCheckedChangeListener((b, checked) ->
+                preferences.edit().putBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, checked).apply());
+        card.addView(shareDownloads, Ui.matchWrap(this, 8));
+
+        Ui.Toggle appLock = new Ui.Toggle(this, R.drawable.ic_lock, "App lock",
+                "Ask for your fingerprint or phone PIN when PocketDesk opens. Uses the phone's own "
+                        + "screen lock \u2014 there is no separate password to remember.",
+                preferences.getBoolean(ContainerRuntime.KEY_APP_LOCK, false), dark);
+        appLock.control.setOnCheckedChangeListener((b, checked) -> {
+            if (checked && !hasScreenLock()) {
+                appLock.control.setChecked(false);
+                showMessage("Set a screen lock first",
+                        "The app lock uses the phone's own fingerprint or PIN. Set one in Android "
+                                + "settings, then turn this on.");
+                return;
+            }
+            preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, checked).apply();
+        });
+        card.addView(appLock, Ui.matchWrap(this, 8));
 
         Ui.Toggle wifiOnly = new Ui.Toggle(this, R.drawable.ic_wifi, "Download on Wi-Fi only",
                 "Off means mobile data is allowed", preferences.getBoolean(ContainerRuntime.KEY_WIFI_ONLY, false), dark);
@@ -563,6 +604,55 @@ public final class MainActivity extends Activity {
                         + "here.",
                 false);
 
+        addAnswer(card, R.drawable.ic_wifi, "Does it work without internet?",
+                "The Linux computer itself runs fully offline \u2014 desktop, files, browser for "
+                        + "saved pages, and any app that does not need the internet. The AI apps "
+                        + "need the internet to talk to ChatGPT, Claude and the others, exactly as "
+                        + "on any computer. Installing and updating apps needs the internet too.",
+                false);
+
+        addAnswer(card, R.drawable.ic_download, "What can I install from the browser?",
+                "Works: Linux packages built for Ubuntu on ARM64 \u2014 .deb files marked arm64 "
+                        + "or aarch64, AppImages for aarch64, and .tar.gz builds for arm64. Open the "
+                        + "download in Files and install a .deb with a right-click, or from Terminal: "
+                        + "sudo apt install ./name.deb\n\nDoes not work: anything built only for "
+                        + "amd64/x86, Snap or Flatpak packages, Windows .exe files, Android .apk "
+                        + "files, and apps that need a real graphics card or hardware virtualisation.",
+                false);
+
+        addAnswer(card, R.drawable.ic_auto_mode, "When does the computer stop by itself?",
+                "Only when you let it: with Smart stopping (the default) it closes after 25 minutes "
+                        + "of nothing being touched, or when the battery drops under 15 % off the "
+                        + "charger, or if the phone gets dangerously hot. A fixed timer or Never stop "
+                        + "can be chosen in Settings.\n\nStopping never logs you out or loses "
+                        + "anything: the whole computer is kept exactly as it was, and the next Open "
+                        + "desktop continues from there.",
+                false);
+
+        addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
+                "No account and no separate password \u2014 the Linux computer is yours, "
+                        + "protected by the phone itself. If you want a lock, turn on App lock in "
+                        + "Settings: it asks for the phone's own fingerprint or PIN when PocketDesk "
+                        + "opens. Inside Linux the user is \u2018coder\u2019 with no password, which "
+                        + "is fine because nothing outside this app can reach it.",
+                false);
+
+        addAnswer(card, R.drawable.ic_network, "Can I limit mobile data?",
+                "Yes. Settings \u2192 Mobile data limit per day. Downloads and installs stop when "
+                        + "today's use reaches the limit on mobile data, and it resets at midnight, "
+                        + "the same time most daily SIM allowances do. Wi-Fi is never limited. The "
+                        + "count includes everything this app and the Linux computer send and "
+                        + "receive.",
+                false);
+
+        addAnswer(card, R.drawable.ic_phone, "Which phones and Android versions?",
+                "Any brand with a 64-bit ARM processor (ARM64), which is nearly every phone made "
+                        + "since 2017, on Android 10 and every version after it. 3 GB of RAM is the "
+                        + "minimum for the desktop; 4 GB or more for the AI desktop apps; 4 GB of "
+                        + "free space to set up. The Your phone card above says whether this phone "
+                        + "qualifies.",
+                false);
+
         addAnswer(card, R.drawable.ic_timer, "Why is an app slow to open?",
                 "The AI desktop apps are full computer programs \u2014 ChatGPT alone is 1.3 GB "
                         + "\u2014 and this phone runs them with a fraction of a PC's memory. The "
@@ -575,6 +665,75 @@ public final class MainActivity extends Activity {
                            boolean first) {
         card.addView(new Ui.Row(this, iconRes, question, null, R.drawable.ic_chevron, dark,
                 v -> showMessage(question, answer)), Ui.matchWrap(this, first ? 12 : 8));
+    }
+
+    // --------------------------------------------------------------- data cap & lock
+
+    private static final String[] CAP_LABELS = {"No limit", "250 MB", "500 MB", "1 GB", "2 GB", "5 GB"};
+    private static final int[] CAP_VALUES = {0, 250, 500, 1024, 2048, 5120};
+
+    private String dataCapLabel() {
+        int cap = DataBudget.capMb(preferences);
+        String label = labelOfInt(CAP_LABELS, CAP_VALUES, cap);
+        long used = DataBudget.usedToday(this);
+        String usedText = used < 0 ? "" : " \u00b7 used today " + DeviceProbe.formatBytes(used);
+        return label + usedText + " \u00b7 resets at midnight";
+    }
+
+    private void chooseDataCap() {
+        int current = DataBudget.capMb(preferences);
+        int selected = 0;
+        for (int i = 0; i < CAP_VALUES.length; i++) if (CAP_VALUES[i] == current) selected = i;
+        int[] icons = new int[CAP_LABELS.length];
+        for (int i = 0; i < icons.length; i++) icons[i] = R.drawable.ic_network;
+        icons[0] = R.drawable.ic_power;
+        showChooser("Mobile data limit per day", CAP_LABELS, icons, selected, index -> {
+            preferences.edit().putInt(DataBudget.KEY_CAP_MB, CAP_VALUES[index]).apply();
+            dataCapRow.setValue(dataCapLabel());
+        });
+    }
+
+    private boolean hasScreenLock() {
+        android.app.KeyguardManager keyguard =
+                (android.app.KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+        return keyguard != null && keyguard.isDeviceSecure();
+    }
+
+    /**
+     * The app lock, when on: the phone's own fingerprint or PIN, asked once per opening.
+     * Unlocking is remembered for two minutes so a quick switch to another app and back does
+     * not ask again.
+     */
+    private void enforceAppLock() {
+        if (!preferences.getBoolean(ContainerRuntime.KEY_APP_LOCK, false)) return;
+        if (!hasScreenLock()) {
+            preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, false).apply();
+            return;
+        }
+        if (android.os.SystemClock.elapsedRealtime() - unlockedAt < 120_000L) return;
+        android.hardware.biometrics.BiometricPrompt.Builder builder =
+                new android.hardware.biometrics.BiometricPrompt.Builder(this)
+                        .setTitle("PocketDesk is locked")
+                        .setSubtitle("Unlock with fingerprint or PIN");
+        if (Build.VERSION.SDK_INT >= 30) {
+            builder.setAllowedAuthenticators(
+                    android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK
+                            | android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+        } else {
+            builder.setDeviceCredentialAllowed(true);
+        }
+        android.os.CancellationSignal cancel = new android.os.CancellationSignal();
+        builder.build().authenticate(cancel, getMainExecutor(),
+                new android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    @Override public void onAuthenticationSucceeded(
+                            android.hardware.biometrics.BiometricPrompt.AuthenticationResult result) {
+                        unlockedAt = android.os.SystemClock.elapsedRealtime();
+                    }
+                    @Override public void onAuthenticationError(int code, CharSequence message) {
+                        // Cancelled or failed: the app closes rather than staying open unlocked.
+                        finish();
+                    }
+                });
     }
 
     private View buildAboutCard(int text, int muted) {

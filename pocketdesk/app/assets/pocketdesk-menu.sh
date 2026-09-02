@@ -179,14 +179,14 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 {
   echo 'panel_items = LTSC'
-  echo 'panel_size = 100% 46'
+  echo 'panel_size = 100% 52'
   echo 'panel_padding = 6 3 8'
   echo 'background_color = #0f1327 100'
   echo 'border_width = 0'
   echo 'taskbar_name = 0'
   echo 'task_font = Sans 10'
   echo 'task_font_color = #e6ecf7 100'
-  echo 'task_maximum_size = 240 40'
+  echo 'task_maximum_size = 240 46'
   echo 'task_padding = 8 3 6'
   # 12-hour clock, so 18:06 reads as 06:06 pm.
   echo 'time1_format = %I:%M %P'
@@ -198,7 +198,7 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
   echo 'time_tooltip_format = %A %d %B %Y, %I:%M %P'
   echo 'systray_padding = 6 2 6'
   echo 'systray_icon_size = 22'
-  echo 'launcher_icon_size = 30'
+  echo 'launcher_icon_size = 36'
   echo 'launcher_padding = 8 4 8'
   echo 'launcher_icon_theme = Adwaita'
   echo 'launcher_tooltip = 1'

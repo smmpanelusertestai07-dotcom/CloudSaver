@@ -16,12 +16,13 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Input | Touchpad and direct-touch modes, left/right click, two-finger scroll, USB and Bluetooth mouse, hardware keyboard, on-screen coding key row, Android clipboard bridge |
 | Tools | `bash`, `git`, `curl`, `nano`, `sudo`, `apt` — install anything else yourself |
 | Browser | GNOME Web (Epiphany) is installed by default because it opens in a second or two; Firefox is a one-tap extra. Downloads land in `~/Downloads` inside Linux |
-| Apps | One-tap installs for ChatGPT (with Codex), Claude Desktop, Antigravity, VS Code, Firefox and developer tools. Each install fetches the newest build, so the same button also updates |
+| Apps | One-tap installs of the makers' own official Linux builds: ChatGPT (with Codex), Claude Desktop (with Claude Code), Cursor and Antigravity. Install once; the same row updates in place |
+| Data and privacy | Daily mobile-data limit with midnight reset; Downloads visible to the phone or kept inside Linux; optional app lock using the phone's fingerprint or PIN; everything local |
 | Launching | Every launcher runs through `pocketdesk-open`, which adds the sandbox flags a Chromium-based app needs in a container, and shows the reason on screen if the app dies. Reports are kept in `~/.pocketdesk/logs/` |
 
 ## Device requirements
 
-- Android 10 (API 29) or newer, ARM64
+- Android 10 (API 29) and every version after it, on any brand of phone with an ARM64 processor — checked live on the home screen
 - 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
 - At least 4 GB free storage before setup; the finished system uses 1.5–3 GB
 - Reference device: Realme C25s, Android 13, 4 GB RAM

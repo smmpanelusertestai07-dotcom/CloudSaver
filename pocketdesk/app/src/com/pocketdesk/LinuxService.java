@@ -309,8 +309,10 @@ public final class LinuxService extends Service {
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         int dpi = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
                 .getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        boolean shareDownloads = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
+                .getBoolean(ContainerRuntime.KEY_SHARE_DOWNLOADS, true);
         activeProcess = ContainerRuntime.startContainer(this,
-                ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi));
+                ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, shareDownloads));
         sessionStartedAt = System.currentTimeMillis();
 
         Thread output = new Thread(() -> {
@@ -404,6 +406,12 @@ public final class LinuxService extends Service {
             if (!DeviceProbe.hasInternet(this)) throw new IOException("Connect to the internet first.");
             boolean wifiOnly = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE)
                     .getBoolean(ContainerRuntime.KEY_WIFI_ONLY, false);
+            if (DataBudget.exhausted(this)) {
+                int cap = DataBudget.capMb(getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE));
+                throw new IOException("Today's mobile data limit (" + DeviceProbe.formatBytes(cap * 1024L * 1024L)
+                        + ") is used up. Connect to Wi-Fi, raise the limit in Settings, or wait "
+                        + "for midnight when it resets.");
+            }
             if (wifiOnly && !DeviceProbe.isWifi(this)) {
                 throw new IOException("Wi-Fi-only download is enabled. Connect to Wi-Fi or change Phone care settings.");
             }

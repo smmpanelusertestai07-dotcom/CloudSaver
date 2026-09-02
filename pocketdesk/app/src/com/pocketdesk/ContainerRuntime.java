@@ -306,7 +306,14 @@ final class ContainerRuntime {
         return new File(rootfs(context), app.marker.substring(1)).exists();
     }
 
+    static final String KEY_SHARE_DOWNLOADS = "share_downloads";
+    static final String KEY_APP_LOCK = "app_lock";
+
     static String startDesktopCommand(int width, int height, int dpi) {
+        return startDesktopCommand(width, height, dpi, true);
+    }
+
+    static String startDesktopCommand(int width, int height, int dpi, boolean shareDownloads) {
         int safeWidth = even(Math.max(800, Math.min(width, 1920)));
         int safeHeight = even(Math.max(480, Math.min(height, 1200)));
         int safeDpi = Math.max(96, Math.min(dpi, 240));
@@ -317,7 +324,9 @@ final class ContainerRuntime {
                 + "for gid in $(id -G 2>/dev/null); do "
                 + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
                 + "chown -R coder:coder /home/coder 2>/dev/null || true; "
-                + "exec su - coder -c '/usr/local/bin/pocketdesk-desktop "
+                + "export POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0) + "; "
+                + "exec su - coder -c 'POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0)
+                + " /usr/local/bin/pocketdesk-desktop "
                 + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
     }
 

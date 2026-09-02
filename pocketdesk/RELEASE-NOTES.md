@@ -1,3 +1,43 @@
+# PocketDesk 3.1.0 — ChatGPT opens; the finishing release
+
+**ChatGPT's desktop app opens on the Realme C25s** — `window ready-to-show`, Codex CLI initialised,
+the sign-in screen on the phone. The last fault was the GPU: on this Chromium, `--disable-gpu` alone
+makes GPU access "denied", and ChatGPT's error reporter turns that into a fatal unhandled rejection
+before any window exists. ChatGPT now gets SwiftShader — the software GPU its own package ships —
+via `--use-gl=angle --use-angle=swiftshader`, so access stays allowed and rendering runs on the CPU.
+Claude, which never asks, keeps its proven flags.
+
+## The keyboard no longer wrecks the desktop
+Opening the keyboard shrank the window, the Linux desktop was resized to the sliver above it, every
+app relaid out, and a tap on a text field landed elsewhere — then it all reversed on close. The
+viewer window now keeps its size (`adjustNothing`); the view slides up just enough to keep the
+pointer above the keys, as a phone screen scrolls to a text field, and slides back on close.
+
+## Touch and mouse
+- Two fingers scroll unless the view is clearly zoomed in (a hair of overflow used to turn every
+  scroll into a pan — the reason landscape "would not scroll"); lighter scroll steps.
+- A ring marks where a finger tap landed; rotation returns to 100 % and re-centres.
+- Toolbar grouped and named: **View** (− % + · Fit/Fill screen · Rotate · Full screen) and
+  **Input** (Mouse/Finger · Keyboard · Paste). Fit and Fill say what they do when toggled.
+- Desktop icons larger (64 px), panel launchers larger.
+
+## New in the app
+- **Your phone is compatible** — a live check on the home screen: ARM64, Android version, RAM,
+  free space, with the requirements in words. Android 10 and every version after, any brand.
+- **Mobile data limit per day** — No limit / 250 MB / 500 MB / 1 GB / 2 GB / 5 GB; downloads and
+  installs stop at the limit on mobile data; resets at midnight; Wi-Fi never limited; today's use
+  shown on the row.
+- **Downloads visible to the phone** — on (Files app can see them) or off (kept inside the Linux
+  computer only); files are moved, never deleted.
+- **App lock** — the phone's own fingerprint or PIN when PocketDesk opens; no separate password.
+- Six more answers in the app: offline use, what installs from the browser and what does not, when
+  the computer stops by itself and what is kept, accounts and locks, data limits, which phones.
+- The card is **AI coding & desktop apps**, described as the industry's leading tools installed the
+  official way, with a note that anything else can be installed from the browser inside Linux.
+- The APK is simply `PocketDesk-<version>.apk`; ARM64 is checked in the app instead.
+
+---
+
 # PocketDesk 3.0.0 — final
 
 The finished app: an Ubuntu desktop on the phone, the AI desktop apps on it, and an honest

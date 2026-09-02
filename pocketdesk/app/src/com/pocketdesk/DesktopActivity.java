@@ -116,6 +116,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         statusLp.setMarginEnd(Ui.dp(this, 8));
         toolbarRow.addView(status, statusLp);
 
+        toolbarRow.addView(toolCaption("View"), captionLayout());
         Button zoomOut = toolButton("−");
         zoomOut.setTextSize(19);
         zoomOut.setContentDescription("Zoom out");
@@ -133,13 +134,19 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         zoomIn.setOnClickListener(v -> desktop.zoomBy(1.25f));
         toolbarRow.addView(zoomIn, barItem(46));
 
-        fitButton = toolButton("Fill", R.drawable.ic_fullscreen);
+        fitButton = toolButton("Fill screen", R.drawable.ic_fullscreen);
         fitButton.setOnClickListener(v -> {
             desktop.setFillMode(!desktop.isFillMode());
-            fitButton.setText(desktop.isFillMode() ? "Fill" : "Fit");
+            boolean fill = desktop.isFillMode();
+            fitButton.setText(fill ? "Fill screen" : "Fit screen");
+            android.widget.Toast.makeText(this, fill
+                    ? "Fill screen: edge to edge, the far edges may be cropped"
+                    : "Fit screen: the whole desktop stays visible",
+                    android.widget.Toast.LENGTH_SHORT).show();
         });
         toolbarRow.addView(fitButton, barItem(96));
 
+        toolbarRow.addView(toolCaption("Input"), captionLayout());
         pointerMode = toolButton("Mouse", R.drawable.ic_mouse);
         pointerMode.setOnClickListener(v -> togglePointerMode());
         toolbarRow.addView(pointerMode, barItem(124));
@@ -206,7 +213,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
         desktop.setZoomListener((percent, fill) -> {
             zoomLabel.setText(percent + "%");
-            fitButton.setText(fill ? "Fill" : "Fit");
+            fitButton.setText(fill ? "Fill screen" : "Fit screen");
         });
 
         // A floating chip is the only thing left on screen in full-screen mode, so the bars can
@@ -320,7 +327,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void connectWithRetry() {
         connectionThread = new Thread(() -> {
-            String lastError = "The desktop did not come up. Go back and open it again.";
+            String lastError = "The Linux computer did not come up. Go back and open it again.";
             long startedAt = SystemClock.elapsedRealtime();
             for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
                 if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
@@ -331,8 +338,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     if (attempt % 8 == 0) {
                         long seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000L;
                         desktop.onDisconnected(seconds < 25
-                                ? "Starting your Linux desktop… " + seconds + "s"
-                                : "Starting your Linux desktop… " + seconds
+                                ? "Starting your Linux computer… " + seconds + "s"
+                                : "Starting your Linux computer… " + seconds
                                         + "s. The first start after an update is the slow one — "
                                         + "please keep waiting.");
                     }
@@ -514,6 +521,24 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return toolButton(label, 0);
     }
 
+    /** A small, unclickable group name in the toolbar, so the buttons read as categories. */
+    private TextView toolCaption(String label) {
+        TextView caption = Ui.text(this, label.toUpperCase(java.util.Locale.ROOT), 10f,
+                Color.rgb(150, 170, 230));
+        caption.setLetterSpacing(0.08f);
+        caption.setGravity(Gravity.CENTER);
+        caption.setPadding(Ui.dp(this, 6), 0, Ui.dp(this, 2), 0);
+        return caption;
+    }
+
+    private LinearLayout.LayoutParams captionLayout() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMarginStart(Ui.dp(this, 4));
+        lp.setMarginEnd(Ui.dp(this, 2));
+        return lp;
+    }
+
     /** Toolbar button with an icon in front of its word, matching the rest of the app. */
     private Button toolButton(String label, int iconRes) {
         Button button = new Button(this);
@@ -566,6 +591,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** Keeps the toolbar clear of the status bar and the key row clear of the gesture bar. */
     private void applySystemInsets(View root) {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
+            // The keyboard's height goes to the viewer, which slides up under it; it never
+            // reaches the layout, so the Linux desktop is never resized for it.
+            if (Build.VERSION.SDK_INT >= 30 && desktop != null) {
+                desktop.setKeyboardInset(insets.getInsets(android.view.WindowInsets.Type.ime()).bottom);
+            }
             int top;
             int bottom;
             int left;

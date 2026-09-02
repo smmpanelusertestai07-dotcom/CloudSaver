@@ -31,7 +31,10 @@ mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2
 # Downloads belong somewhere the phone itself can open. /home/coder/Shared is the one folder
 # that is really Android storage, so Downloads becomes a link into it. Nothing is deleted: the
 # old folder is only replaced if it empties cleanly.
-if [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
+# The owner chooses (Settings: Downloads visible to the phone). On: Downloads is a link into
+# Shared, which is real Android storage. Off: Downloads is an ordinary folder inside the
+# computer that no other app can see. Switching moves the files, never deletes them.
+if [ "${POCKETDESK_SHARE_DOWNLOADS:-1}" = "1" ] && [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
   mkdir -p "$HOME/Shared/Downloads"
   if [ -d "$HOME/Downloads" ] && [ ! -L "$HOME/Downloads" ]; then
     mv "$HOME/Downloads"/* "$HOME/Shared/Downloads"/ 2>/dev/null || true
@@ -39,6 +42,10 @@ if [ -d "$HOME/Shared" ] && [ -w "$HOME/Shared" ]; then
   elif [ ! -e "$HOME/Downloads" ]; then
     ln -s "$HOME/Shared/Downloads" "$HOME/Downloads"
   fi
+elif [ "${POCKETDESK_SHARE_DOWNLOADS:-1}" = "0" ] && [ -L "$HOME/Downloads" ]; then
+  rm -f "$HOME/Downloads"
+  mkdir -p "$HOME/Downloads"
+  mv "$HOME/Shared/Downloads"/* "$HOME/Downloads"/ 2>/dev/null || true
 fi
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
@@ -58,7 +65,7 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
 # script - what do you want to do with it?" prompt instead of just launching the app.
-printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n' \
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=64\nsmall_icon_size=24\nthumbnail_size=128\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
 printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.png\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \

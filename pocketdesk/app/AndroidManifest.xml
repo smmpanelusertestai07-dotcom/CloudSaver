@@ -35,6 +35,7 @@
         <activity
             android:name=".DesktopActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
+            android:windowSoftInputMode="adjustNothing"
             android:screenOrientation="fullUser"
             android:theme="@style/Theme.PocketDesk.Desktop" />
 

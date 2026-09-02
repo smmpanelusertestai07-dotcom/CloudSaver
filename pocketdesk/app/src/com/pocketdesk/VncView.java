@@ -32,6 +32,8 @@ final class VncView extends View implements VncClient.Listener {
 
     private final Object pixelLock = new Object();
     private final RectF spinnerBounds = new RectF();
+    private float ringX, ringY;
+    private long ringAt = -10_000L;
     private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF destination = new RectF();
@@ -111,11 +113,42 @@ final class VncView extends View implements VncClient.Listener {
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
-        // A rotation changes what "fills the screen" means, so re-centre instead of keeping a
-        // pan that was clamped against the old size.
+        // A rotation changes what "fills the screen" means: back to 100 % (which, with the
+        // desktop matched to the view, is exactly "fits the screen") and re-centred, rather
+        // than keeping a zoom or pan that was right for the other orientation.
+        zoom = 1f;
         centreOnNextLayout = true;
+        notifyZoom();
         matchDesktopToScreen();
     }
+
+    /** Height of the on-screen keyboard covering the bottom of this view, 0 when hidden. */
+    private int keyboardInset;
+
+    /**
+     * The keyboard must never resize the Linux desktop. When it opened, the window shrank, the
+     * desktop was resized to the sliver above it, every app relaid out, and a tap on a text
+     * field landed somewhere else -- then it all happened again in reverse when it closed. The
+     * window keeps its size now, and the view slides up just enough to keep the pointer above
+     * the keys, exactly as a phone screen scrolls to a text field.
+     */
+    void setKeyboardInset(int pixels) {
+        if (pixels == keyboardInset) return;
+        keyboardInset = Math.max(0, pixels);
+        Bitmap current = bitmap;
+        if (current == null) { invalidate(); return; }
+        if (keyboardInset > 0) {
+            float scale = destination.width() / current.getWidth();
+            float pointerScreenY = destination.top + pointerY * scale;
+            float visibleBottom = getHeight() - keyboardInset - Ui.dp(getContext(), 72);
+            if (pointerScreenY > visibleBottom) panY -= (pointerScreenY - visibleBottom);
+        } else {
+            centreOnNextLayout = true;
+        }
+        invalidate();
+    }
+
+    boolean isKeyboardShowing() { return keyboardInset > 0; }
 
     /**
      * Asks the Linux desktop to become exactly the size of this view.
@@ -206,12 +239,17 @@ final class VncView extends View implements VncClient.Listener {
         }
 
         // Centre whatever is smaller than the screen; otherwise keep the edges flush with it.
+        // While the keyboard is up the view may also sit higher by up to the keyboard's height,
+        // so the field being typed into can be brought out from under it.
         panX = shownWidth <= getWidth()
                 ? (getWidth() - shownWidth) / 2f
                 : Math.max(getWidth() - shownWidth, Math.min(panX, 0f));
-        panY = shownHeight <= getHeight()
-                ? (getHeight() - shownHeight) / 2f
-                : Math.max(getHeight() - shownHeight, Math.min(panY, 0f));
+        if (shownHeight <= getHeight()) {
+            float centred = (getHeight() - shownHeight) / 2f;
+            panY = keyboardInset > 0 ? Math.max(centred - keyboardInset, Math.min(panY, centred)) : centred;
+        } else {
+            panY = Math.max(getHeight() - shownHeight - keyboardInset, Math.min(panY, 0f));
+        }
         destination.set(panX, panY, panX + shownWidth, panY + shownHeight);
     }
 
@@ -237,6 +275,19 @@ final class VncView extends View implements VncClient.Listener {
         if (pointerMode == PointerMode.TOUCHPAD) {
             float scale = destination.width() / current.getWidth();
             drawPointer(canvas, destination.left + pointerX * scale, destination.top + pointerY * scale);
+        } else {
+            // Finger mode: a ring where the tap landed, fading over a third of a second, so a
+            // tap on a small control visibly went where it was meant to.
+            long age = SystemClock.elapsedRealtime() - ringAt;
+            if (age < 320) {
+                float t = age / 320f;
+                overlayPaint.setStyle(Paint.Style.STROKE);
+                overlayPaint.setStrokeWidth(Ui.dp(getContext(), 2));
+                overlayPaint.setColor(Color.argb((int) (200 * (1 - t)), 122, 155, 255));
+                canvas.drawCircle(ringX, ringY, Ui.dp(getContext(), 14 + 22 * t), overlayPaint);
+                overlayPaint.setStyle(Paint.Style.FILL);
+                postInvalidateOnAnimation();
+            }
         }
     }
 
@@ -276,13 +327,13 @@ final class VncView extends View implements VncClient.Listener {
             } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
                 float x = averageX(event);
                 float y = averageY(event);
-                if (canPan()) {
+                if (zoomedIn()) {
                     panX += x - twoFingerX;
                     panY += y - twoFingerY;
                     twoFingerX = x;
                     twoFingerY = y;
                     invalidate();
-                } else if (Math.abs(y - twoFingerY) > Ui.dp(getContext(), 18)) {
+                } else if (Math.abs(y - twoFingerY) > Ui.dp(getContext(), 14)) {
                     int mask = y - twoFingerY < 0 ? 8 : 16;
                     active.sendPointer(pointerX, pointerY, mask);
                     active.sendPointer(pointerX, pointerY, 0);
@@ -415,7 +466,7 @@ final class VncView extends View implements VncClient.Listener {
                 if (!moved) return true;
                 // A swipe is a scroll, in the direction the content moves on any phone screen.
                 float travelled = event.getY() - lastY;
-                int notch = Ui.dp(getContext(), 26);
+                int notch = Ui.dp(getContext(), 16);
                 while (travelled <= -notch) {
                     active.sendPointer(pointerX, pointerY, 16);
                     active.sendPointer(pointerX, pointerY, 0);
@@ -437,6 +488,8 @@ final class VncView extends View implements VncClient.Listener {
                     int button = System.currentTimeMillis() - downAt >= 500 ? 4 : 1;
                     active.sendPointer(pointerX, pointerY, button);
                     active.sendPointer(pointerX, pointerY, 0);
+                    ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
+                    postInvalidateOnAnimation();
                     performClick();
                 }
                 return true;
@@ -607,6 +660,11 @@ final class VncView extends View implements VncClient.Listener {
     /** True once the picture is larger than the screen, so dragging it has somewhere to go. */
     private boolean canPan() {
         return destination.width() > getWidth() + 1f || destination.height() > getHeight() + 1f;
+    }
+
+    /** Clearly zoomed in, not merely a few pixels over: only then do two fingers pan. */
+    private boolean zoomedIn() {
+        return destination.width() > getWidth() * 1.15f || destination.height() > getHeight() * 1.15f;
     }
 
     private static float averageX(MotionEvent event) {
