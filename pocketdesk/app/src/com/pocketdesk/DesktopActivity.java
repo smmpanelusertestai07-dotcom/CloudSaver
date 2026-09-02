@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -43,8 +44,10 @@ import java.io.IOException;
  */
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
     private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
-            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11,
-            MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13, MENU_MINIMISE_ALL = 14, MENU_PASTE = 15;
+            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
+            MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
+            MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
+            MENU_RELOAD = 18;
 
     private SharedPreferences preferences;
     private FrameLayout outer;
@@ -67,14 +70,20 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private boolean superKey;
     private boolean controlsAtTop;
     private boolean keyRowShown;
+    /** The Linux computer's sound, streamed to the phone's speaker while this screen is open. */
+    private final AudioBridge audio = new AudioBridge();
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         try {
             preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
-            controlsAtTop = !"bottom".equals(preferences.getString(ContainerRuntime.KEY_CONTROLS_AT, "top"));
+            // The bar sits at the bottom unless the owner moved it: that is where a thumb is.
+            controlsAtTop = "top".equals(preferences.getString(ContainerRuntime.KEY_CONTROLS_AT, "bottom"));
             keyRowShown = preferences.getBoolean(ContainerRuntime.KEY_KEY_ROW, false);
             applyOrientation();
+            // The volume keys change the media volume here, which is what the desktop's sound
+            // plays at. Without this they did nothing on this screen.
+            setVolumeControlStream(AudioManager.STREAM_MUSIC);
             // The phone's own clock, battery and signal stay visible: hiding them was hiding
             // exactly the information this app is otherwise careful to show.
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -88,6 +97,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             setContentView(content);
             applySystemInsets(content);
             connectWithRetry();
+            audio.start();
         } catch (Throwable error) {
             // Going back to the home screen with the reason recorded beats a crash loop.
             Crash.save(this, error);
@@ -121,6 +131,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onDestroy() {
         finished = true;
+        audio.stop();
         if (desktop != null && desktop.getClient() != null) desktop.getClient().close();
         if (connectionThread != null) connectionThread.interrupt();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -301,6 +312,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
                 .setIcon(R.drawable.ic_settings);
+        items.add(0, MENU_VOLUME_UP, 6, "Volume up").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_VOLUME_DOWN, 7, "Volume down").setIcon(R.drawable.ic_volume);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -320,6 +333,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     preferences.edit().putString(ContainerRuntime.KEY_CONTROLS_AT, controlsAtTop ? "top" : "bottom").apply();
                     layoutBars();
                     return true;
+                case MENU_VOLUME_UP: adjustVolume(AudioManager.ADJUST_RAISE); return true;
+                case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
                 default: return false;
             }
         });
@@ -336,36 +351,51 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_ALL_WINDOWS, 3, "All open windows").setIcon(R.drawable.ic_apps);
         items.add(0, MENU_MINIMISE_ALL, 4, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_PASTE, 5, "Paste from the phone").setIcon(R.drawable.ic_download);
+        items.add(0, MENU_APPS, 6, "Apps menu: every installed app").setIcon(R.drawable.ic_apps);
+        items.add(0, MENU_PHONE_FILES, 7, "Phone files").setIcon(R.drawable.ic_phone);
+        items.add(0, MENU_RELOAD, 8, "Reload the screen").setIcon(R.drawable.ic_rotate);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
-                // Alt+F4 and Alt+Tab are Openbox's own bindings; Super+F4, Super+Tab and Super+D
-                // are set up by pocketdesk-menu.
+                // Alt+F4 and Alt+Tab are Openbox's own bindings; Super+F4, Super+Tab, Super+D,
+                // Super+A, Super+P and Super+R are set up by pocketdesk-menu.
                 case MENU_CLOSE: chord(0xffe9, 0xffc1); return true;
                 case MENU_FORCE_CLOSE: chord(0xffeb, 0xffc1); return true;
                 case MENU_SWITCH: chord(0xffe9, 0xff09); return true;
                 case MENU_ALL_WINDOWS: chord(0xffeb, 0xff09); return true;
                 case MENU_MINIMISE_ALL: chord(0xffeb, 'd'); return true;
                 case MENU_PASTE: pasteClipboard(); return true;
+                case MENU_APPS: chord(0xffeb, 'a'); return true;
+                case MENU_PHONE_FILES: chord(0xffeb, 'p'); return true;
+                case MENU_RELOAD: chord(0xffeb, 'r'); return true;
                 default: return false;
             }
         });
         menu.show();
     }
 
+    /** Media volume, one step, with the phone's own volume panel so the level is visible. */
+    private void adjustVolume(int direction) {
+        AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (manager != null) manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+    }
+
     /** What the status label opens: the plain facts about this session and how to drive it. */
     private void showDetails() {
         boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
-        String text = "Linux computer: Ubuntu 24.04, running on this phone.\n\n"
+        String text = "Linux computer: Ubuntu 24.04 LTS, running on this phone.\n\n"
                 + "Screen: " + desktop.desktopSize() + " pixels, the size of this display, so "
                 + "the whole desktop fits at 100 %. Zoom " + desktop.zoomPercent() + " %. Pinch, "
                 + "or Screen → Zoom, to look closer; Fit brings it all back.\n\n"
                 + "Pointer: " + (mouse ? "Mouse" : "Finger") + ".\n"
-                + "Finger — tap where you touch, swipe to scroll, hold for a right-click.\n"
+                + "Finger — tap where you touch, swipe to scroll (a fast swipe keeps going), "
+                + "hold for a right-click; the hand shows where the pointer is.\n"
                 + "Mouse — drag anywhere to move the arrow, tap to click, hold to right-click, "
                 + "two fingers to scroll, tap then press-and-move to drag.\n\n"
                 + "Keyboard opens the phone keyboard; Keys adds Esc, Tab, Ctrl, arrows and more. "
-                + "Window closes, force-closes or switches the window in front, and pastes "
-                + "from the phone.\n\n"
+                + "Window closes, force-closes or switches the window in front, opens the apps "
+                + "menu or Phone files, and pastes from the phone.\n\n"
+                + "Sound plays through the phone's speaker; the volume keys and Screen → Volume "
+                + "set it.\n\n"
                 + "Stopping the computer keeps everything: apps stay signed in and files stay "
                 + "where they are, so the next open continues from here.";
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)

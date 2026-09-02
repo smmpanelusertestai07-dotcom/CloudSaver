@@ -15,13 +15,9 @@ DESKTOP_DIR="$HOME_DIR/Desktop"
 LOCAL_APPS="$HOME_DIR/.local/share/applications"
 APPLICATIONS_DIR=/usr/share/applications
 OPEN=/usr/local/bin/pocketdesk-open
+WINDOWS=/usr/local/bin/pocketdesk-windows
 mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
-         "$HOME_DIR/Projects" "$HOME_DIR/Downloads"
-
-# What gets a desktop icon and a panel slot: the AI apps, the browser, the files. Everything
-# else that is installed -- the terminal included -- stays one right-click away instead of
-# taking up room on a phone-sized screen.
-FAVOURITES="chatgpt claude-desktop cursor antigravity epiphany firefox pcmanfm"
+         "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone"
 
 field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
   awk -F= -v key="$2" '
@@ -29,6 +25,17 @@ field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group s
     group > 1 { exit }
     $1 == key { sub(/^[^=]*=/, ""); print; exit }
   ' "$1"
+}
+
+runnable() {   # runnable <desktop file>: its Exec names a program that exists
+  local exec_line binary
+  exec_line=$(field "$1" Exec)
+  [ -n "$exec_line" ] || return 1
+  binary=$(printf '%s' "$exec_line" | awk '{print $1}')
+  case "$binary" in
+    /*) [ -x "$binary" ] ;;
+    *) command -v "$binary" >/dev/null 2>&1 ;;
+  esac
 }
 
 is_visible() {
@@ -51,16 +58,27 @@ entries() {
   for desktop in "$APPLICATIONS_DIR"/*.desktop; do
     [ -f "$desktop" ] || continue
     is_visible "$desktop" || continue
-    exec_line=$(field "$desktop" Exec)
-    [ -n "$exec_line" ] || continue
-    binary=$(printf '%s' "$exec_line" | awk '{print $1}')
-    case "$binary" in
-      /*) [ -x "$binary" ] || continue ;;
-      *) command -v "$binary" >/dev/null 2>&1 || continue ;;
-    esac
+    runnable "$desktop" || continue
     echo "$desktop"
   done
 }
+
+# The browser. Brave when it is installed -- a full Chromium with extensions -- else Firefox,
+# else GNOME Web, the light one every container starts with. One browser on the desktop and
+# the panel, and the same one answers every link, so a sign-in never opens in a second one.
+BROWSER_ENTRY=""
+for candidate in brave-browser.desktop firefox.desktop org.gnome.Epiphany.desktop; do
+  [ -f "$APPLICATIONS_DIR/$candidate" ] || continue
+  runnable "$APPLICATIONS_DIR/$candidate" || continue
+  BROWSER_ENTRY=$candidate
+  break
+done
+BROWSER_BASE=${BROWSER_ENTRY%.desktop}
+
+# What gets a desktop icon and a panel slot: the AI apps, the browser, the files, the terminal.
+# Everything else that is installed stays one right-click (or one tap on Apps) away instead of
+# taking up room on a phone-sized screen.
+FAVOURITES="chatgpt claude-desktop cursor antigravity ${BROWSER_BASE:-org.gnome.Epiphany} pcmanfm lxterminal"
 
 # A copy of the package's own entry with the launch command routed through pocketdesk-open.
 # DBusActivatable would let a file manager start the app behind our back, and extra action groups
@@ -69,7 +87,9 @@ entries() {
 # "Web" says nothing and "File Manager PCManFM" does not fit under an icon on a phone.
 short_name() {   # short_name <base> <name>
   case "$1" in
-    org.gnome.Epiphany|epiphany) printf 'Browser' ;;
+    org.gnome.Epiphany|epiphany) printf 'Web' ;;
+    brave-browser) printf 'Brave' ;;
+    firefox) printf 'Firefox' ;;
     pcmanfm) printf 'Files' ;;
     lxterminal) printf 'Terminal' ;;
     *) printf '%s' "$2" ;;
@@ -100,7 +120,9 @@ write_entry() {   # write_entry <source> <target> <label> <command>
   chmod 755 "$2"
 }
 
-# ---- Openbox right-click menu: every installed app ----------------------------------
+# ---- Openbox menu: every installed app, the folders, the window commands ---------------
+# Opened by a right-click on the wallpaper (a long press in Finger mode), the Apps button on
+# the panel, Super+A, or Window -> Apps menu on the phone.
 {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
   echo '<openbox_menu xmlns="http://openbox.org/3.4/menu">'
@@ -123,16 +145,19 @@ write_entry() {   # write_entry <source> <target> <label> <command>
 $(entries)
 EOF
   [ "$found" = 1 ] || echo '  <item label="No apps yet"><action name="Execute"><command>true</command></action></item>'
-  echo '  <separator/>'
-  echo '  <item label="Files"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <separator label="Folders"/>'
+  echo '  <item label="Phone files"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
+  echo '  <item label="Projects"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   echo '  <item label="Downloads"><action name="Execute"><command>pcmanfm /home/coder/Downloads</command></action></item>'
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
-  echo '  <item label="Open windows"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></item>'
+  echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
   echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
-  echo '  <item label="Close all"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows close-all</command></action></item>'
+  echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
+  echo '  <separator label="Desktop"/>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
-  echo '  <item label="Refresh desktop"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
+  echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
+  echo '  <item label="Refresh app list"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
   echo '</menu>'
   echo '</openbox_menu>'
 } > "$OPENBOX_DIR/menu.xml"
@@ -140,7 +165,15 @@ EOF
 # ---- Desktop icons and panel launchers: the favourites, using their own entries -----
 find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -delete 2>/dev/null || true
 find "$LOCAL_APPS" -maxdepth 1 -name 'pocketdesk-*.desktop' -delete 2>/dev/null || true
-launcher_lines=""
+
+# The panel's first button: the apps menu, behind the Linux mascot. Hidden from the menu it
+# opens, or it would list itself.
+printf '[Desktop Entry]\nType=Application\nName=Apps\nComment=Every installed app\nExec=%s menu\nIcon=pocketdesk-linux\nTerminal=false\nNoDisplay=true\nX-PocketDesk=1\n' \
+  "$WINDOWS" > "$LOCAL_APPS/pocketdesk-apps.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-apps.desktop"
+launcher_lines="
+launcher_item_app = $LOCAL_APPS/pocketdesk-apps.desktop"
+
 add_favourite() {   # add_favourite <desktop file>
   base=$(basename "$1" .desktop)
   exec_line=$(field "$1" Exec)
@@ -177,6 +210,16 @@ EOF
   done
   [ -n "$match" ] && add_favourite "$match"
 done
+
+# The phone's own files, as a folder on the desktop and a button on the panel. Empty but for a
+# note until the owner turns Phone files on in PocketDesk's Settings; then Download, DCIM and
+# Documents are in it. Super+P opens it too.
+printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\047s storage, inside the computer\nExec=pcmanfm /home/coder/Phone\nIcon=pocketdesk-phone\nTerminal=false\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-phone.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-phone.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-phone.desktop" "$DESKTOP_DIR/pocketdesk-phone.desktop"
+launcher_lines="$launcher_lines
+launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop"
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 {
@@ -211,19 +254,19 @@ printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG
   > "$HOME_DIR/.config/user-dirs.dirs"
 
 # ---- Which app answers which kind of link -------------------------------------------
-# http and https go to the browser. A sign-in that opens in the browser comes back to the app
-# that asked for it through the app's own link scheme (chatgpt://, claude://, cursor://...),
-# which each package declares in its .desktop file; those are copied here so the browser can
-# find them. Without this table the login page said "done" and the app never heard.
-BROWSER_ENTRY=""
-for candidate in org.gnome.Epiphany.desktop firefox.desktop; do
-  [ -f "$APPLICATIONS_DIR/$candidate" ] && { BROWSER_ENTRY=$candidate; break; }
-done
+# http and https go to the browser -- through its wrapped entry, so Brave gets the sandbox
+# flags a link needs just as a tap on its icon does. A sign-in that opens in the browser comes
+# back to the app that asked for it through the app's own link scheme (chatgpt://, claude://,
+# cursor://...), which each package declares in its .desktop file; those are copied here so
+# the browser can find them. Without this table the login page said "done" and the app never
+# heard.
+browser_handler=$BROWSER_ENTRY
+[ -n "$BROWSER_ENTRY" ] && [ -f "$LOCAL_APPS/pocketdesk-$BROWSER_ENTRY" ] && browser_handler="pocketdesk-$BROWSER_ENTRY"
 {
   echo '[Default Applications]'
-  if [ -n "$BROWSER_ENTRY" ]; then
+  if [ -n "$browser_handler" ]; then
     printf 'x-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
-      "$BROWSER_ENTRY" "$BROWSER_ENTRY" "$BROWSER_ENTRY"
+      "$browser_handler" "$browser_handler" "$browser_handler"
   fi
   for desktop in "$APPLICATIONS_DIR"/*.desktop; do
     [ -f "$desktop" ] || continue
@@ -238,8 +281,9 @@ done
     done
   done
 } > "$HOME_DIR/.config/mimeapps.list"
-if command -v update-desktop-database >/dev/null 2>&1 && [ -w "$APPLICATIONS_DIR" ]; then
-  update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+if command -v update-desktop-database >/dev/null 2>&1; then
+  [ -w "$APPLICATIONS_DIR" ] && update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1
+  update-desktop-database "$LOCAL_APPS" >/dev/null 2>&1 || true
 fi
 
 # ---- Window manager: Openbox's defaults, adjusted for a phone-sized screen ------------
@@ -255,9 +299,10 @@ fi
 #   - one desktop, not four: Openbox's defaults bind Super+F1..F4 to "go to desktop N", so a
 #     window could vanish to a desktop the phone has no way to show. Those bindings go, and
 #     the count becomes one;
-#   - three keys the phone's toolbar sends: Super+F4 force-closes the window in front (for an
-#     app that stopped answering), Super+Tab lists the open windows, Super+P opens the Phone
-#     folder. Alt+F4 and Alt+Tab are Openbox's own defaults and stay.
+#   - the keys the phone's toolbar and the panel send: Super+F4 force-closes the window in
+#     front (for an app that stopped answering), Super+Tab lists the open windows, Super+P
+#     opens Phone files, Super+A opens the apps menu, Super+R redraws the screen. Alt+F4 and
+#     Alt+Tab are Openbox's own defaults and stay.
 OPENBOX_DEFAULT=${POCKETDESK_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
 if [ -f "$OPENBOX_DEFAULT" ]; then
   sed -e 's|<size>[0-9]*</size>|<size>11</size>|g' \
@@ -265,26 +310,27 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
       -e 's|<number>[0-9]*</number>|<number>1</number>|' \
       -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
       -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>|' \
-      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>/usr/local/bin/pocketdesk-windows list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi
 
-# The phone's own files, as a folder on the desktop. Empty but for a note until the owner turns
-# Phone files on in PocketDesk's Settings; then Download, DCIM and Documents are in it.
-printf '[Desktop Entry]\nType=Application\nName=Phone\nComment=Your phone\047s files, inside the computer\nExec=pcmanfm /home/coder/Phone\nIcon=drive-removable-media\nTerminal=false\n' \
-  > "$DESKTOP_DIR/pocketdesk-phone.desktop"
-chmod +x "$DESKTOP_DIR/pocketdesk-phone.desktop" 2>/dev/null || true
-
 chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
   "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \
-  "$HOME_DIR/Projects" "$HOME_DIR/Downloads" 2>/dev/null || true
+  "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone" 2>/dev/null || true
 
+# A desktop that is open right now gets the new list at once. This also runs as root from an
+# install that happens while the desktop is open, so the panel is restarted as the desktop's
+# own user: started as root it would read root's (empty) settings and come up blank.
 if [ -S /tmp/.X11-unix/X1 ]; then
   DISPLAY=:1 openbox --reconfigure 2>/dev/null || true
   if pgrep -x tint2 >/dev/null 2>&1; then
     pkill -x tint2 2>/dev/null || true
     sleep 1
-    DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
+    if [ "$(id -u)" = 0 ] && command -v su >/dev/null 2>&1; then
+      su coder -c 'DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &' 2>/dev/null || true
+    else
+      DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
+    fi
   fi
 fi

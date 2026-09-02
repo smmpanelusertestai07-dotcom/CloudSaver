@@ -35,3 +35,24 @@ property and trademark of its owner.
 
 `app/assets/antigravity.png` is the same Antigravity mark, shipped into the container because
 Antigravity is distributed as a tarball that registers no icon of its own.
+
+## Tux, the Linux mascot
+
+`app/res/drawable-nodpi/tux.png` (the home screen, the launch screen) and
+`app/assets/pocketdesk-linux.png` (the desktop panel's Apps button) are Tux, the Linux mascot,
+created by Larry Ewing with The GIMP, in the vector rendering by Larry Ewing, Simon Budig and
+Garrett LeSage published on Wikimedia Commons (`Tux.svg`). Its licence: permission to use and/or
+modify the image is granted provided Larry Ewing (lewing@isc.tamu.edu) and The GIMP are
+acknowledged, which the app's Settings tab does. Tux is not a PocketDesk mark.
+
+## Ubuntu wallpaper
+
+`app/assets/wallpaper.jpg` is the Ubuntu 24.04 LTS default wallpaper (`warty-final-ubuntu.png`
+from the `ubuntu-wallpapers` package, version 24.04.2), scaled to 1920×1080. Copyright Canonical
+Ltd and the Ubuntu community contributors, licensed CC-BY-SA-3.0. "Ubuntu" is a trademark of
+Canonical Ltd; PocketDesk is not affiliated with or endorsed by Canonical.
+
+## Icons
+
+The line icons under `app/res/drawable/` (`ic_*.xml`) are Material Design icons by Google,
+Apache License 2.0.

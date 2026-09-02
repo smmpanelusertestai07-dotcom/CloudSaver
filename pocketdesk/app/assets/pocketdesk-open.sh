@@ -30,7 +30,18 @@ target=$(command -v "$command_name" 2>/dev/null || printf '%s' "$command_name")
 real=$(readlink -f "$target" 2>/dev/null || printf '%s' "$target")
 real_dir=$(dirname "$real")
 
-free_mb() { awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null; }
+free_mb() {
+  # Tests set this; on the phone it is what the kernel says is still available.
+  [ -n "${POCKETDESK_FREE_MB:-}" ] && { printf '%s' "$POCKETDESK_FREE_MB"; return 0; }
+  awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null
+}
+
+# The browsers: they keep their extensions and background work, and they are what gets closed
+# to make room for an AI app, never the other way round.
+is_browser() {
+  case "$name" in brave*|chromium*|google-chrome*|firefox*|epiphany*) return 0 ;; esac
+  return 1
+}
 
 notify() {   # notify <urgency> <summary> <body>
   command -v notify-send >/dev/null 2>&1 || return 0
@@ -138,9 +149,14 @@ WINDOWS
 # left open beside a 1.3 GB AI app it was the next thing the phone ran out of memory over.
 close_browser_windows() {
   command -v wmctrl >/dev/null 2>&1 || return 0
-  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox/ {print $1}' | while read -r id; do
+  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave/ {print $1}' | while read -r id; do
     [ -n "$id" ] && wmctrl -ic "$id" 2>/dev/null || true
   done
+}
+
+browser_windows_open() {
+  command -v wmctrl >/dev/null 2>&1 || return 1
+  wmctrl -lx 2>/dev/null | awk 'tolower($3) ~ /epiphany|firefox|brave/' | grep -q .
 }
 
 has_window() { [ -n "$(app_window)" ]; }
@@ -235,6 +251,16 @@ clean_stale_locks() {
 flags=()
 is_chromium && flags=("${base_flags[@]}")
 
+# A browser is the one Chromium program here that must keep its extensions and its background
+# work (extension and safe-browsing updates). For an AI app both are only memory.
+if is_browser && [ "${#flags[@]}" -gt 0 ]; then
+  kept=()
+  for flag in "${flags[@]}"; do
+    case "$flag" in --disable-extensions|--disable-background-networking) ;; *) kept+=("$flag") ;; esac
+  done
+  flags=("${kept[@]}")
+fi
+
 
 # ChatGPT honours this officially; setting it to its own default keeps the login while turning
 # off the app's silent exit-if-second-instance path. The C++ lock below is handled separately.
@@ -296,6 +322,21 @@ if [ "${#flags[@]}" -gt 0 ]; then
 fi
 
 [ "${#flags[@]}" -gt 0 ] && clean_stale_locks
+
+# Memory guard. A browser and a 1.3 GB AI app do not both fit in what a 4 GB phone has left,
+# and when they were both open it was the AI app that Android took the memory back from --
+# which read as "ChatGPT closed by itself". So an AI app started while memory is short first
+# closes the browser's windows (the browser only; nothing unsaved lives in a browser tab that
+# a sign-in or a search needs), and says so.
+if [ "${#flags[@]}" -gt 0 ] && ! is_browser; then
+  free_now=$(free_mb)
+  if [ -n "$free_now" ] && [ "$free_now" -lt 900 ] 2>/dev/null && browser_windows_open; then
+    echo "only ${free_now} MB free · closing the browser to make room for $label" >> "$log"
+    notify normal "Closing the browser" "Making room for $label: only ${free_now} MB free."
+    close_browser_windows
+    sleep 2
+  fi
+fi
 
 notify normal "Opening $label" "The first start can take a minute or two."
 

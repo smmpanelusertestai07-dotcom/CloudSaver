@@ -2,28 +2,39 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-3.2.0.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v3.3.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
+   Opening pe Tux (Linux ka penguin) dikhega — yahi computer chal raha hai.
 
 ## 2. Home tab: pehli baar setup
 
 1. App kholo. Neeche 3 tabs: **Home · Apps · Settings**.
 2. Upar 4 tiles: **Network, Battery, Free space, Temperature**. Neeche *Your phone* card me
-   **Your phone is compatible** likha hona chahiye — nahi to tap karke dekho kya kam hai.
-3. **Set up Linux** dabao → confirm karo. Ubuntu download hoga (30 MB), phir desktop packages
-   (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
-4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix khulta hai.
+   **Your phone is compatible** likha hona chahiye — tap karo to detail wahin niche khulti hai.
+3. **Set up Linux** dabao → confirm karo. Ubuntu 24.04 LTS download hoga (30 MB), phir desktop
+   packages (10–30 min). Beech me net kat jaye to wahi se resume hota hai.
+4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix ya detail khulta hai.
+5. **Linux only, on purpose** card me likha hai computer Linux hi kyun hai — har line tap karo,
+   facts (dates ke saath) wahin khulte hain.
 
-## 3. Apps tab: AI desktop apps
+## 3. Apps tab
 
-- **ChatGPT** (Codex ke saath), **Claude Desktop** (Claude Code ke saath), **Cursor**, **Antigravity**.
-  ChatGPT aur Claude roz ke sawaal, likhna, kaam ke liye; Cursor aur Antigravity software banane ke liye.
-- Chaaron **maker ke apne official Linux desktop app** hain — web page nahi, command line nahi.
-  Row tap → install. Ek baar install; naye features apne aap; row dubara tap = update, login waise ka waisa.
+### AI desktop apps
+- **ChatGPT** (AI assistant + Codex coding agent), **Claude Desktop** (AI assistant + Claude Code),
+  **Cursor** (AI code editor / IDE), **Antigravity** (Google ka agentic development platform / IDE).
+- Chaaron **maker ke apne official Linux app** hain — web page nahi, command line nahi.
+  Row tap → install. Ek baar install; row dubara tap = update, login waise ka waisa.
+- **Desktop khula ho tab bhi install ho jata hai** — computer chalta rehta hai, app ready hone pe
+  uska icon desktop pe aa jata hai.
 - Ek waqt me **ek hi AI app** kholo — 4 GB RAM wale phone pe do saath me memory kha jate hain.
-- Koi aur Linux app chahiye to desktop ke browser se khud install kar sakte ho — *Anything else,
-  from the browser* card me likha hai kya chalega (arm64 .deb, aarch64 AppImage) aur kya nahi (amd64, snap, .exe, .apk).
+
+### Computer basics
+- **Browser and desktop basics** — setup ke saath aata hai; purane computer ko update karne ke liye tap karo.
+- **Brave browser** — poora Chromium browser, Chrome Web Store ke extensions chalte hain. Install
+  karte hi yahi computer ka browser ban jata hai (desktop, panel, har link, har sign-in).
+- **Firefox** — Mozilla ka apna ARM64 build; Brave na ho to yahi browser banta hai.
+- **Developer tools** — gcc/make, Python 3 (pip, venv), Node.js (npm), git extras, ssh, jq, htop, vim.
 
 ### Sign in kaise hoga
 - **ChatGPT:** email daalo. Account Google se bana hai to Google ka sign-in page khulega — normal hai, wahi complete karo. Browser apne aap app me wapas bhej deta hai.
@@ -32,21 +43,26 @@
 
 ## 4. Open desktop: Linux computer ki screen
 
-Upar (ya neeche, tumhari marzi) **ek hi bar**:
+Neeche (ya upar, tumhari marzi) **ek hi bar**:
 
 | Button | Kya karta hai |
 | --- | --- |
 | Home | PocketDesk home pe wapas (computer chalta rehta hai) |
 | **Linux computer** | status; tap karo to details |
-| **Screen ▾** | Fit (poora desktop), Zoom in/out, Rotate, Full screen, controls upar/neeche |
-| **Finger / Mouse** | Finger = jahan chhuo wahi click, swipe = scroll, hold = right-click. Mouse = arrow ghumao, tap = click, do ungli = scroll, tap-then-drag = drag |
+| **Screen ▾** | Fit, Zoom in/out, Rotate, Full screen, controls upar/neeche, **Volume up/down** |
+| **Finger / Mouse** | Finger = jahan chhuo wahi click, swipe = scroll (tez swipe = aage bhi scroll hota rehta hai), hold = right-click, pointer haath jaisa. Mouse = arrow ghumao, tap = click, do ungli = scroll, tap-then-drag = drag; pointer wahi shape jo desktop dikhata hai (text pe I-beam, link pe haath) |
 | **Keyboard** | phone ka keyboard |
 | **Keys** | Esc, Tab, Ctrl, Alt, Super, arrows, Enter, Del, Home, End, PgUp, PgDn ki row on/off |
-| **Window ▾** | Close, **Force close** (atka hua app), Switch, All windows, Minimise all, Paste from phone |
+| **Window ▾** | Close, **Force close** (atka hua app), Switch, All windows, Minimise all, Paste from phone, **Apps menu**, **Phone files**, **Reload the screen** |
 
+- Desktop ke panel me sabse pehle **Apps** button (Tux) — saare installed apps ki list. Wahi list
+  wallpaper pe right-click (Finger mode me long press) se bhi khulti hai, Super+A se bhi.
+- Panel pe: Apps · AI apps · browser · Files · Terminal · **Phone files**. Khule hue windows bhi wahi dikhte hain.
 - Zoom 100 % se neeche nahi jata — 100 % matlab poora desktop pehle se screen pe hai.
 - Full screen me sirf ek **Controls** chip bachta hai; use kahin bhi drag karo, tap karo to bar wapas.
-- Desktop ke andar har window ka close/minimise/maximise **left** side title bar me hai, taki portrait me bhi hamesha dikhe.
+- Desktop ke andar har window ka close/minimise/maximise **left** side title bar me hai. Koi app
+  cross dabane pe band na ho (hang) to Window ▾ → **Force close**.
+- **Sound** phone ke speaker se aata hai jab desktop screen khuli ho; phone ke volume buttons ab kaam karte hain.
 - Copy sirf Ctrl+C se hota hai; sirf text select karne se phone pe "Copied" nahi aayega.
 
 ## 5. Settings tab
@@ -67,17 +83,17 @@ Settings badalne se kabhi kuch delete nahi hota.
 
 - Smart mode: 25 min tak kuch na chhuo, battery 15 % se neeche (charger ke bina), phone bahut garam, ya aaj ka mobile data limit khatam.
 - 15 % se neeche battery pe (charger ke bina) desktop khulega bhi nahi — Home pe likha aayega. Charger lagao, ya Settings me fixed timer / Never stop chuno.
-- Agar koi AI app apne aap band ho jaye: Settings → Reports me likha milega kab aur kyun (phone ne memory wapas li = "closed by the phone"). Ek waqt me ek AI app rakho; sign-in ke baad browser apne aap band ho jata hai.
-- Band hone pe kuch nahi jata — apps signed in rehte hain, files wahin. Home pe likha aata hai kab aur kyun band hua.
+- **ChatGPT ya desktop apne aap "back" ho jaye:** lagbhag hamesha memory. Ab app khud madad karta hai — memory 900 MB se kam ho to AI app kholte waqt browser ki windows pehle band hoti hain (screen pe likha aata hai); Android ne poora desktop band kiya ho to agli baar Home pe time ke saath likha milta hai; app kaise band hua Settings → Reports me hai.
+- Band hone pe kuch nahi jata — apps signed in rehte hain, files wahin.
 - Apne aap restart kabhi nahi hota — tum **Open desktop** dabate ho.
 - Bina net ke computer chalta hai (desktop, files, browser ke saved pages); AI apps ko net chahiye.
 
 ## 6a. Phone ki file ChatGPT/Claude me kaise bheje
 
 1. Settings → Permissions → **Phone files** → Allow (Android "All files access" maangta hai).
-2. Desktop dubara kholo. Ab computer ke andar **Phone** folder hai = tumhara poora phone storage.
-3. ChatGPT me attach (📎) dabao → dialog me left side **Phone**, **Phone Downloads**, **Phone Photos**, **Phone Documents** — wahi se file chuno. Computer ki apni files **Downloads** aur **Projects** me hain. Dono side-by-side.
-4. Phone folder me save karoge to file phone me chali jaati hai. Off karna ho to Android settings me PocketDesk ka All files access hata do.
+2. Desktop dubara kholo. Ab computer ke andar **Phone files** folder hai (desktop icon, panel button, Super+P) = tumhara poora phone storage.
+3. ChatGPT me attach (📎) dabao → dialog me left side **Phone**, **Phone Downloads**, **Phone Photos**, **Phone Documents** — wahi se file chuno. Computer ki apni files **Downloads** aur **Projects** me hain.
+4. Phone folder me save karoge to file phone me chali jaati hai. Off karna ho to Settings → Permissions → Phone files tap karo, Android ki page me All files access hata do.
 
 ## 7. Files kahan jati hain
 
@@ -85,9 +101,9 @@ Settings badalne se kabhi kuch delete nahi hota.
 - Downloads: `/home/coder/Downloads`. **Downloads visible to the phone** on ho (default) to phone ke Files app me `Android/data/com.pocketdesk/files/Shared/Downloads` me bhi dikhta hai; off ho to sirf computer ke andar.
 - Uninstall karne se poora computer delete ho jata hai — pehle Downloads me copy kar lo.
 
-## Kya kaam nahi karega
+## Kya kaam nahi karega (permanent)
 
-- Windows ya macOS — yeh Linux container hai, hardware VM nahi.
+- Windows ya macOS — phone pe koi app virtual machine nahi bana sakta; macOS sirf Apple ke computer pe. Wine se chhote ARM64 Windows programs chal sakte hain, Windows wale AI apps nahi — aur wo Linux wale jaise hi hain.
 - Docker, KVM, kernel modules — Android ka kernel share hota hai.
 - amd64-only software, snap, flatpak — sirf ARM64 .deb / AppImage chalega.
-- ChatGPT ka Computer Use, Claude ka Cowork — Linux/phone pe maker deta hi nahi.
+- Microphone computer ke andar abhi nahi jata (sound sirf bahar aata hai).

@@ -51,7 +51,11 @@ public final class LinuxService extends Service {
     private static final float STOP_TEMPERATURE_C = 49f;
     private static final String CHANNEL_ID = "pocketdesk_linux";
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
+    /** An app install running beside an open desktop, which BUSY (the desktop's own task) is not. */
+    private static final AtomicBoolean INSTALLING = new AtomicBoolean(false);
     private static volatile boolean desktopRunning;
+    /** The container process of an app install, separate from the desktop's own. */
+    private static volatile Process installProcess;
     private static volatile String lastMessage;
     private static volatile String lastDetail;
     private static volatile int lastProgress = -1;
@@ -59,6 +63,8 @@ public final class LinuxService extends Service {
     private static volatile Process activeProcess;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    /** Installs run here while the desktop holds the main executor for as long as it is open. */
+    private final ExecutorService installExecutor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Future<?> currentTask;
     private volatile Thread workerThread;
@@ -66,11 +72,14 @@ public final class LinuxService extends Service {
     private long sessionStartedAt;
     /** Set while the monitor is ending a session for a reason it has already announced. */
     private volatile boolean stoppedForReason;
+    /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
+    private volatile boolean stopRequested;
 
     private final Runnable safetyMonitor = new Runnable() {
         @Override public void run() {
             if (!desktopRunning) return;
             SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+            prefs.edit().putLong(ContainerRuntime.KEY_HEARTBEAT_AT, System.currentTimeMillis()).apply();
             int minutes = prefs.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
                     ContainerRuntime.SESSION_SMART);
             long elapsed = System.currentTimeMillis() - sessionStartedAt;
@@ -189,6 +198,30 @@ public final class LinuxService extends Service {
             return START_NOT_STICKY;
         }
         if (action == null) return START_NOT_STICKY;
+        reconcileUncleanStop(this);
+        // An install while the desktop is open: the desktop keeps its executor and its
+        // process, the install gets its own of each, and the new app appears on the running
+        // desktop when it is done. Waiting for the desktop to be stopped first was the reason
+        // the Apps tab went grey whenever the computer was on.
+        if (ACTION_INSTALL_APP.equals(action) && isDesktopRunning()) {
+            if (!INSTALLING.compareAndSet(false, true)) {
+                status("PocketDesk is busy", "An install is already running; wait for it to finish.", -1, true, false);
+                return START_NOT_STICKY;
+            }
+            installExecutor.submit(() -> {
+                try {
+                    installApp(appId);
+                } catch (InterruptedException cancelled) {
+                    Thread.currentThread().interrupt();
+                    status("Install cancelled", "The desktop is still running.", -1, false, false);
+                } catch (Exception error) {
+                    status("Could not complete task", cleanError(error), -1, false, true);
+                } finally {
+                    INSTALLING.set(false);
+                }
+            });
+            return START_NOT_STICKY;
+        }
         if (!BUSY.compareAndSet(false, true)) {
             status("PocketDesk is busy", desktopRunning ? "Desktop is already running." : "Wait for the current task to finish.", -1, true, false);
             return START_NOT_STICKY;
@@ -236,9 +269,36 @@ public final class LinuxService extends Service {
 
     static boolean isBusy() { return BUSY.get(); }
 
+    /** True while an app is being installed, beside an open desktop or not. */
+    static boolean isInstalling() { return INSTALLING.get() || (BUSY.get() && installingNow); }
+
+    private static volatile boolean installingNow;
+
     static boolean isDesktopRunning() {
         Process process = activeProcess;
         return desktopRunning && process != null && process.isAlive();
+    }
+
+    /**
+     * Notices a desktop that ended without the service seeing it end: the alive flag is still
+     * set while nothing is running. That is Android ending the whole app while the desktop
+     * was open, nearly always to take its memory back for another app; the heartbeat says
+     * when. Written down as the last stop, so the home screen can say so instead of nothing.
+     */
+    static void reconcileUncleanStop(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(ContainerRuntime.PREFS, Context.MODE_PRIVATE);
+        if (!prefs.getBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false)) return;
+        if (isDesktopRunning() || BUSY.get()) return;
+        long at = prefs.getLong(ContainerRuntime.KEY_HEARTBEAT_AT, 0L);
+        if (at == 0L) at = System.currentTimeMillis();
+        prefs.edit()
+                .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false)
+                .putLong(ContainerRuntime.KEY_LAST_STOP_AT, at)
+                .putString(ContainerRuntime.KEY_LAST_STOP_REASON,
+                        "Android ended PocketDesk while the desktop was open, which it does to take "
+                                + "memory back when the phone runs short. Nothing was lost. Keep one AI "
+                                + "app open at a time, and close the browser when you are done with it.")
+                .apply();
     }
 
     private void setupUbuntu() throws Exception {
@@ -305,29 +365,58 @@ public final class LinuxService extends Service {
         status("Installing " + app.name,
                 "Fetching the newest build · usually takes " + app.typicalTime, -1, true, false);
         final long[] lastLine = {0L};
-        int code = runTracked(app.installCommand(), line -> {
-            long now = System.currentTimeMillis();
-            if (now - lastLine[0] < 900L) return;
-            lastLine[0] = now;
-            status("Installing " + app.name,
-                    phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime
-                            + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
-                    -1, true, false);
-        });
+        installingNow = true;
+        int code;
+        try {
+            code = runInstall(app.installCommand(), line -> {
+                long now = System.currentTimeMillis();
+                if (now - lastLine[0] < 900L) return;
+                lastLine[0] = now;
+                status("Installing " + app.name,
+                        phaseFor(line) + " · " + elapsedText(startedAt) + " · usually " + app.typicalTime
+                                + (isTransferNoise(line) ? "" : "\n" + shortText(line)),
+                        -1, true, false);
+            });
+        } finally {
+            installingNow = false;
+        }
         if (code != 0) {
             throw new IOException(app.name + " did not install (exit " + code
                     + "). Check the connection and free space, then try again.");
         }
         ContainerRuntime.refreshDesktopEntries(this);
-        // Refresh the desktop's own menu so the new app is there without a restart.
+        // Refresh the desktop's own menu, panel and icons so the new app is there at once --
+        // on a desktop that is open right now as well as at the next start.
         try {
-            runTracked("/usr/local/bin/pocketdesk-menu || true", null);
+            runInstall("/usr/local/bin/pocketdesk-menu || true", null);
         } catch (Exception ignored) {
             // The menu is rebuilt at the next desktop start anyway.
         }
-        status(app.name + " is ready",
-                "Open the desktop, then tap its icon or right-click the background for the menu.",
+        status(app.name + " is ready", isDesktopRunning()
+                        ? "It is on the desktop now: tap its icon, or open the Apps menu."
+                        : "Open the desktop, then tap its icon or open the Apps menu.",
                 100, false, false);
+    }
+
+    /** A container command for an install: its own process, so the desktop's is untouched. */
+    private int runInstall(String command, ContainerRuntime.OutputListener listener)
+            throws IOException, InterruptedException {
+        Process process = ContainerRuntime.startContainer(this, command);
+        installProcess = process;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (listener != null && !line.trim().isEmpty()) listener.line(line);
+                if (Thread.currentThread().isInterrupted()) {
+                    process.destroyForcibly();
+                    throw new InterruptedException();
+                }
+            }
+        } finally {
+            if (Thread.currentThread().isInterrupted() && process.isAlive()) process.destroyForcibly();
+            installProcess = null;
+        }
+        return process.waitFor();
     }
 
     private void startDesktop() throws Exception {
@@ -341,6 +430,7 @@ public final class LinuxService extends Service {
         SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
         prefs.edit().remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
         stoppedForReason = false;
+        stopRequested = false;
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         // The desktop is born the way the phone is held. It used to start landscape whatever
         // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
@@ -395,7 +485,9 @@ public final class LinuxService extends Service {
                     + ". Open the desktop again; if it repeats, run Setup once more.");
         }
         if (fellBack) prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
-        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis()).apply();
+        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis())
+                .putLong(ContainerRuntime.KEY_HEARTBEAT_AT, System.currentTimeMillis())
+                .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, true).apply();
         desktopRunning = true;
         BUSY.set(false);
         releaseWakeLock();
@@ -409,6 +501,15 @@ public final class LinuxService extends Service {
         activeProcess = null;
         desktopRunning = false;
         handler.removeCallbacks(safetyMonitor);
+        prefs.edit().putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
+        // Nobody asked for this stop and no rule announced it: the display server itself ended.
+        // On a phone that is nearly always the kernel taking memory back from the largest
+        // program it can find, which was the display's own process.
+        if (!stopRequested && !stoppedForReason) {
+            recordStop("The desktop's display ended by itself (exit " + exitCode + "), which on a "
+                    + "phone nearly always means memory ran out. Nothing was lost. Keep one AI app "
+                    + "open at a time, and close the browser when you are done with it.");
+        }
         status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
     }
 
@@ -627,6 +728,7 @@ public final class LinuxService extends Service {
     }
 
     private void stopEverything(boolean userRequested) {
+        stopRequested = true;
         handler.removeCallbacks(safetyMonitor);
         Future<?> task = currentTask;
         if (task != null) task.cancel(true);
@@ -637,9 +739,17 @@ public final class LinuxService extends Service {
             process.destroy();
             if (process.isAlive()) process.destroyForcibly();
         }
+        Process install = installProcess;
+        if (install != null) {
+            install.destroy();
+            if (install.isAlive()) install.destroyForcibly();
+        }
         activeProcess = null;
+        installProcess = null;
         desktopRunning = false;
         BUSY.set(false);
+        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+                .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
         releaseWakeLock();
         if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
         stopForeground(STOP_FOREGROUND_REMOVE);

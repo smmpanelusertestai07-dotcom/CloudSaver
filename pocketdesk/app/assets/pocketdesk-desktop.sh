@@ -13,6 +13,9 @@ export MOZ_DISABLE_RDD_SANDBOX=1 MOZ_DISABLE_SOCKET_PROCESS=1 MOZ_ENABLE_WAYLAND
 export ELECTRON_DISABLE_SANDBOX=1 ELECTRON_DISABLE_SECURITY_WARNINGS=1
 # WebKit (GNOME Web) builds its sandbox on bubblewrap, which needs the same namespaces.
 export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
+# No screen reader will ever run here, yet every GTK program and web page tried to reach the
+# accessibility bus first and logged "Could not connect to accessibility bus" while it waited.
+export NO_AT_BRIDGE=1 GTK_A11Y=none
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 # One web process for every page: each new one is a 150 MB program started under PRoot, and
 # starting it was most of the wait before a page appeared.
@@ -76,7 +79,10 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=64\nsmall_icon_size=24\nthumbnail_size=128\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
-printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.png\ndesktop_bg=#101828\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\ndesktop_font=Sans 11\n' \
+# Ubuntu 24.04's own wallpaper; a right-click (a long press, in Finger mode) on it opens the
+# window manager's menu, which lists every installed app, Phone files, the terminal and the
+# window commands, rather than the file manager's own short one.
+printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\ndesktop_bg=#2c001e\ndesktop_fg=#ffffff\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
@@ -118,6 +124,24 @@ PREFS
 fi
 
 /usr/local/bin/pocketdesk-menu || true
+
+# Sound. There is no sound card a container can reach, so PulseAudio plays into a virtual
+# output called Phone, and everything written to it is streamed as plain PCM on a local port
+# that PocketDesk's viewer reads and plays through the phone's own speaker. Every app that
+# speaks PulseAudio (Electron apps, GNOME Web, Firefox, Brave) simply finds a working output.
+if command -v pulseaudio >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/pulse"
+  printf 'exit-idle-time = -1\ndefault-sample-rate = 44100\nflat-volumes = no\nenable-shm = no\n' \
+    > "$HOME/.config/pulse/daemon.conf"
+  printf 'autospawn = no\nenable-shm = no\n' > "$HOME/.config/pulse/client.conf"
+  pulseaudio --kill >/dev/null 2>&1 || true
+  pulseaudio --daemonize=yes --exit-idle-time=-1 --disable-shm=yes >/tmp/pocketdesk-pulse.log 2>&1 || true
+  for n in 1 2 3 4 5 6; do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
+  pactl load-module module-null-sink sink_name=phone sink_properties=device.description=Phone >/dev/null 2>&1 || true
+  pactl set-default-sink phone >/dev/null 2>&1 || true
+  pactl load-module module-simple-protocol-tcp rate=44100 format=s16le channels=2 \
+    source=phone.monitor record=true playback=false listen=127.0.0.1 port=4712 >/dev/null 2>&1 || true
+fi
 
 # SendPrimary off: X11 treats any highlighted text as a selection, and the display server was
 # forwarding every one of them to the phone as a copy -- so the phone showed "Copied" whenever

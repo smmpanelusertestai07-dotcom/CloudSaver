@@ -1,3 +1,90 @@
+# PocketDesk 3.3.0 — Linux only, on purpose; sound; a browser with extensions; installs beside a running desktop
+
+The virtualisation test is gone from the home screen, and in its place the app says, in checked
+facts, why the computer is Linux and only Linux. Everything else in this release is what the
+final list asked for, plus what a computer is expected to have and did not yet: sound, a real
+browser choice, a terminal on the desktop, app installs that do not wait for the desktop to be
+stopped, and a viewer that no longer tears.
+
+## Linux only, on purpose (the facts, confirmed 2 September 2026)
+- **Every AI desktop app here ships for Linux.** OpenAI released the ChatGPT desktop app for
+  Linux (with Codex) as a public preview on 11 August 2026 for Ubuntu 24.04 LTS and 26.04 LTS,
+  Debian 13 and Fedora, on x64 and ARM64. Anthropic released Claude Desktop for Linux (with
+  Claude Code) as a beta on 30 June 2026 for Ubuntu and Debian, x64 and ARM64, from its own apt
+  repository. Cursor publishes Linux ARM64 .deb and AppImage builds. Google publishes Antigravity
+  for Linux from its own apt repository, arm64 included.
+- **Why not Windows or macOS:** both need a virtual machine, and Android keeps hardware
+  virtualisation away from apps; emulation would be ten to fifty times slower; macOS is licensed
+  only for Apple hardware. Wine can run small native ARM64 Windows programs on Linux, not the
+  Windows editions of these AI apps, which are the same programs as their Linux editions anyway.
+- **Ubuntu 24.04 LTS** is supported by Canonical until April 2029 (2034 with Ubuntu Pro).
+- Written in a new Home card, **Linux only, on purpose**, with the answers opening in place; the
+  Windows/macOS question and the honest limits were rewritten to hold only what is permanent.
+
+## What was wrong, and what changed
+- **Antigravity did not install.** The installer scraped Google's download page for an ARM64
+  link; the page is drawn by a script and names none. Google runs an apt repository that
+  publishes arm64 builds (1.23.2 at the time of writing); Antigravity installs from it now and
+  updates in place like the others.
+- **The Apps tab went grey while the desktop was open.** Installs waited for the desktop to be
+  stopped because both shared one worker. An install now runs beside an open desktop in its own
+  process and the new app appears on the running desktop when it is done.
+- **The screen tore.** The viewer painted while an update was still landing. Updates now land
+  in a back copy and are blitted to the screen copy in one go when complete (the RFB update
+  boundary is now a callback), so a frame is never half old and half new.
+- **The arrow in Finger mode.** The desktop no longer paints its own pointer into the picture
+  (Cursor pseudo-encoding negotiated); Finger mode draws a hand at the pointer, Mouse mode draws
+  the pointer the desktop reports (I-beam over text, hand over a link) or an arrow.
+- **Finger scrolling stopped when the finger did.** A fast swipe now keeps scrolling and slows
+  down, the way a phone page does.
+- **No sound, and the volume keys did nothing.** PulseAudio plays into a virtual output and
+  streams it to the phone, which plays it through the speaker while the desktop screen is open.
+  The volume keys set the media volume there now, and Screen ▾ has Volume up / down.
+- **"ChatGPT goes back by itself."** Nearly always the phone taking memory back. An AI app
+  started with under 900 MB free now closes the browser's windows first and says so; a desktop
+  that Android ended is noticed at the next open and written down on the Home tab with the time
+  (a heartbeat while it runs); a display that ended on its own is written down with its exit
+  code. Settings → Reports still shows how each app ended.
+- **Every GTK app and web page waited on the accessibility bus** and logged it; switched off.
+  GNOME Web no longer tries to save passwords through a keyring that does not exist. IPv4 is
+  preferred, so a phone network with an unroutable IPv6 address no longer leaves pages loading.
+- **"Android 10 and newer" read as gibberish** on the home screen; every requirement sentence
+  now says "works on Android 10 and above".
+- **Open dialogs with an OK button** for the compatibility detail, free space and heat are gone:
+  the text opens under the row, like the questions.
+
+## The desktop
+- **Controls at the bottom by default** (Screen ▾ moves them). Window ▾ gains **Apps menu**,
+  **Phone files** and **Reload the screen**.
+- **Ubuntu 24.04's own wallpaper**, Tux on the panel's new **Apps** button (the whole app list,
+  also on Super+A and on a right-click or long press on the wallpaper), **Phone files** with a
+  phone-with-a-folder icon on the desktop and the panel, **Terminal** on the desktop and the
+  panel, and the window commands, Reload screen and Refresh app list in the menu.
+- **Browser choice:** Brave (Chromium with Chrome Web Store extensions, Brave's official arm64
+  build, its Rewards/Wallet/VPN/AI switched off by policy) and Firefox (Mozilla's own arm64
+  build) are one-tap installs on the Apps tab under **Computer basics**; whichever is installed
+  becomes the computer's browser, on the desktop, the panel and for every link and sign-in,
+  through the launcher so it gets the sandbox flags a container needs. GNOME Web stays as the
+  light default. **Developer tools** (compilers, Python, Node.js, Git extras, SSH, vim, htop) is
+  a row too.
+- The launcher leaves a browser its extensions and background updates, and never closes a
+  browser to make room for itself.
+
+## The home screen
+- Tux on the computer card and on the launch screen (Android 12 and up), with Larry Ewing's
+  credit in Settings and the notices.
+- The Apps tab names things by what they are: two AI assistants (ChatGPT with Codex, Claude
+  Desktop with Claude Code) and two AI coding environments (Cursor, an AI code editor; Antigravity,
+  Google's agentic development platform), then Computer basics.
+- The APK is named like CloudSaver's: `PocketDesk-v3.3.0-release.apk`.
+
+## Not done, and why
+- **Windows or macOS on the phone:** not possible; the plan file's Wine/Hangover route runs
+  small native ARM64 Windows programs, not Electron-based AI apps, and there is no route to macOS.
+- **A microphone into the computer** (voice input): not carried yet; sound out only.
+- **Kotlin:** the app stays in plain Java. A rewrite changes nothing the phone can see and would
+  cost every tested behaviour its history; the build stays Gradle-free and reproducible.
+
 # PocketDesk 3.2.0 — the last update: every item of the final prompt, done
 
 The release that closes the list. The home screen is three tabs on a bottom bar, the desktop

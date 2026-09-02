@@ -12,6 +12,7 @@ import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
+import android.view.VelocityTracker;
 import android.view.View;
 
 import java.util.ArrayList;
@@ -29,8 +30,32 @@ final class VncView extends View implements VncClient.Listener {
      */
     static volatile long lastInteractionAt;
 
-    /** Guards the framebuffer between the network reader and the drawing pass. */
+    /** Guards the front bitmap between the blit at the end of an update and the drawing pass. */
     private final Object pixelLock = new Object();
+    /** Guards the back bitmap, which only the network thread writes, against a resize. */
+    private final Object backLock = new Object();
+    /**
+     * Two copies of the desktop. The network thread writes each strip of an update into the
+     * back one; when the whole update has arrived it is copied, in one go, to the front one
+     * that onDraw paints. Painting used to happen while strips were still landing, so a frame
+     * on screen was half old and half new -- the tearing seen whenever something scrolled.
+     */
+    private Bitmap back;
+    private Canvas frontCanvas;
+    private final android.graphics.Rect dirty = new android.graphics.Rect();
+    private boolean anyDirty;
+    /** The pointer's own shape, as the desktop reports it; null until it sends one. */
+    private Bitmap cursorBitmap;
+    private int cursorHotX;
+    private int cursorHotY;
+    private android.graphics.drawable.Drawable handGlyph;
+    private final android.graphics.Rect cursorSource = new android.graphics.Rect();
+    private final RectF cursorTarget = new RectF();
+    // Finger mode: a fast swipe keeps scrolling after the finger lifts, as every phone page
+    // does, by sending wheel notches while a decaying velocity runs down.
+    private VelocityTracker velocity;
+    private float flingVelocity;
+    private float flingTravel;
     private final RectF spinnerBounds = new RectF();
     private float ringX, ringY;
     private long ringAt = -10_000L;
@@ -246,7 +271,7 @@ final class VncView extends View implements VncClient.Listener {
     void setClient(VncClient client) { this.client = client; }
     VncClient getClient() { return client; }
     void setStateListener(StateListener listener) { this.stateListener = listener; }
-    void setPointerMode(PointerMode mode) { pointerMode = mode; invalidate(); }
+    void setPointerMode(PointerMode mode) { pointerMode = mode; stopFling(); invalidate(); }
     PointerMode getPointerMode() { return pointerMode; }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -262,12 +287,27 @@ final class VncView extends View implements VncClient.Listener {
             canvas.drawBitmap(current, null, destination, paint);
         }
 
+        float scale = destination.width() / current.getWidth();
+        float px = destination.left + pointerX * scale;
+        float py = destination.top + pointerY * scale;
         if (pointerMode == PointerMode.TOUCHPAD) {
-            float scale = destination.width() / current.getWidth();
-            drawPointer(canvas, destination.left + pointerX * scale, destination.top + pointerY * scale);
+            // Mouse mode shows the pointer the desktop itself is showing -- an I-beam over text,
+            // a hand over a link, a resize arrow at an edge -- and an arrow until it says.
+            Bitmap shape = cursorBitmap;
+            if (shape != null && !shape.isRecycled()) {
+                float grow = Math.max(scale, 1f);
+                cursorSource.set(0, 0, shape.getWidth(), shape.getHeight());
+                cursorTarget.set(px - cursorHotX * grow, py - cursorHotY * grow,
+                        px + (shape.getWidth() - cursorHotX) * grow, py + (shape.getHeight() - cursorHotY) * grow);
+                canvas.drawBitmap(shape, cursorSource, cursorTarget, paint);
+            } else {
+                drawPointer(canvas, px, py);
+            }
         } else {
-            // Finger mode: a ring where the tap landed, fading over a third of a second, so a
-            // tap on a small control visibly went where it was meant to.
+            // Finger mode: a hand where the pointer is, so what the desktop thinks is "under
+            // the pointer" is visible; and a ring where the tap landed, fading over a third
+            // of a second, so a tap on a small control visibly went where it was meant to.
+            drawHand(canvas, px, py);
             long age = SystemClock.elapsedRealtime() - ringAt;
             if (age < 320) {
                 float t = age / 320f;
@@ -279,6 +319,25 @@ final class VncView extends View implements VncClient.Listener {
                 postInvalidateOnAnimation();
             }
         }
+    }
+
+    /** The hand from the toolbar's Finger button, its fingertip on the pointer, dark-edged. */
+    private void drawHand(Canvas canvas, float x, float y) {
+        if (handGlyph == null) {
+            android.graphics.drawable.Drawable glyph = getContext().getDrawable(R.drawable.ic_touch);
+            if (glyph == null) return;
+            handGlyph = glyph.mutate();
+        }
+        int size = Ui.dp(getContext(), 28);
+        int edge = Math.max(1, Ui.dp(getContext(), 1.5f));
+        int left = Math.round(x - size * 0.48f);
+        int top = Math.round(y - size * 0.1f);
+        handGlyph.setTint(Color.argb(170, 0, 0, 0));
+        handGlyph.setBounds(left - edge, top - edge, left + size + edge, top + size + edge);
+        handGlyph.draw(canvas);
+        handGlyph.setTint(Color.WHITE);
+        handGlyph.setBounds(left, top, left + size, top + size);
+        handGlyph.draw(canvas);
     }
 
     /** A real arrow, outlined in dark so it stays visible against any wallpaper. */
@@ -501,6 +560,10 @@ final class VncView extends View implements VncClient.Listener {
     private boolean directTouch(MotionEvent event, int action, VncClient active) {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
+                stopFling();
+                if (velocity == null) velocity = VelocityTracker.obtain();
+                velocity.clear();
+                velocity.addMovement(event);
                 downX = lastX = event.getX();
                 downY = lastY = event.getY();
                 downAt = System.currentTimeMillis();
@@ -511,6 +574,7 @@ final class VncView extends View implements VncClient.Listener {
                 invalidate();
                 return true;
             case MotionEvent.ACTION_MOVE: {
+                if (velocity != null) velocity.addMovement(event);
                 if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
                         > Ui.dp(getContext(), 10)) {
                     moved = true;
@@ -541,12 +605,46 @@ final class VncView extends View implements VncClient.Listener {
                     ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
                     postInvalidateOnAnimation();
                     performClick();
+                } else if (moved && action == MotionEvent.ACTION_UP && velocity != null) {
+                    velocity.addMovement(event);
+                    velocity.computeCurrentVelocity(1000);
+                    float speed = velocity.getYVelocity();
+                    if (Math.abs(speed) > Ui.dp(getContext(), 600)) startFling(speed);
                 }
                 return true;
             default:
                 return true;
         }
     }
+
+    /** Keeps a fast swipe scrolling after the finger lifts, slowing down as a phone page does. */
+    private void startFling(float pixelsPerSecond) {
+        flingVelocity = pixelsPerSecond;
+        flingTravel = 0f;
+        main.removeCallbacks(flingStep);
+        main.postDelayed(flingStep, 16L);
+    }
+
+    private void stopFling() {
+        flingVelocity = 0f;
+        flingTravel = 0f;
+        main.removeCallbacks(flingStep);
+    }
+
+    private final Runnable flingStep = new Runnable() {
+        @Override public void run() {
+            VncClient active = client;
+            if (active == null || pointerMode != PointerMode.DIRECT) { stopFling(); return; }
+            flingTravel += flingVelocity * 0.016f;
+            flingVelocity *= 0.94f;
+            int notch = Ui.dp(getContext(), 16);
+            // Finger moving down carried the content down: wheel up. And the reverse.
+            while (flingTravel >= notch) { wheel(active, 8); flingTravel -= notch; }
+            while (flingTravel <= -notch) { wheel(active, 16); flingTravel += notch; }
+            if (Math.abs(flingVelocity) < Ui.dp(getContext(), 40)) { stopFling(); return; }
+            main.postDelayed(this, 16L);
+        }
+    };
 
     @Override public boolean performClick() {
         super.performClick();
@@ -590,20 +688,49 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
-        // Written straight from the network thread under the same lock onDraw holds. The previous
-        // version posted a shared buffer to the main thread and waited up to a second for it,
-        // which both stalled the reader and let the next strip overwrite the pending one.
-        synchronized (pixelLock) {
-            Bitmap current = bitmap;
-            if (current == null || current.isRecycled()) return;
-            int safeWidth = Math.min(width, current.getWidth() - x);
-            int safeHeight = Math.min(height, current.getHeight() - y);
+        // Written straight from the network thread into the back copy; nothing is shown until
+        // onUpdateComplete says the whole update has landed.
+        synchronized (backLock) {
+            Bitmap target = back;
+            if (target == null || target.isRecycled()) return;
+            int safeWidth = Math.min(width, target.getWidth() - x);
+            int safeHeight = Math.min(height, target.getHeight() - y);
             if (x < 0 || y < 0 || safeWidth <= 0 || safeHeight <= 0) return;
             long needed = (long) (safeHeight - 1) * width + safeWidth;
             if (needed > pixels.length) return;
-            current.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
+            target.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
+            if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
+            else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
+        }
+    }
+
+    @Override public void onUpdateComplete() {
+        synchronized (backLock) {
+            if (!anyDirty) return;
+            anyDirty = false;
+            Bitmap source = back;
+            synchronized (pixelLock) {
+                Bitmap front = bitmap;
+                if (front == null || source == null || front.isRecycled() || source.isRecycled()) return;
+                if (frontCanvas == null) frontCanvas = new Canvas(front);
+                // One blit of the changed area: the front copy is never half an update.
+                frontCanvas.drawBitmap(source, dirty, dirty, null);
+            }
         }
         postInvalidate();
+    }
+
+    @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
+        final Bitmap shape = width > 0 && height > 0 && argb != null
+                ? Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888) : null;
+        main.post(() -> {
+            Bitmap old = cursorBitmap;
+            cursorBitmap = shape;
+            cursorHotX = hotX;
+            cursorHotY = hotY;
+            if (old != null) old.recycle();
+            invalidate();
+        });
     }
 
     /**
@@ -705,10 +832,17 @@ final class VncView extends View implements VncClient.Listener {
         // The middle is where a mouse pointer belongs when a screen first appears.
         pointerX = width / 2;
         pointerY = height / 2;
-        synchronized (pixelLock) {
-            Bitmap old = bitmap;
-            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            if (old != null) old.recycle();
+        synchronized (backLock) {
+            synchronized (pixelLock) {
+                Bitmap oldFront = bitmap;
+                Bitmap oldBack = back;
+                bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                back = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                frontCanvas = null;
+                anyDirty = false;
+                if (oldFront != null) oldFront.recycle();
+                if (oldBack != null) oldBack.recycle();
+            }
         }
     }
 
