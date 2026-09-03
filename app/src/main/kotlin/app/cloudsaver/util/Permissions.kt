@@ -68,10 +68,23 @@ object Permissions {
     fun mediaPermissionsToRequest(): Array<String> = if (Build.VERSION.SDK_INT >= 33) {
         arrayOf(
             Manifest.permission.READ_MEDIA_IMAGES,
-            Manifest.permission.READ_MEDIA_VIDEO
+            Manifest.permission.READ_MEDIA_VIDEO,
+            // Without this, every copy loses its GPS location - silently.
+            //
+            // ACCESS_MEDIA_LOCATION is a runtime permission from API 29, not a
+            // manifest declaration that grants itself. It was declared and
+            // never asked for, so MediaStore.setRequireOriginal threw, the
+            // fallback opened the REDACTED stream, and the location was
+            // stripped from every photo the app ever copied - while FAQ 5 said
+            // "Every copy carries the original's ... GPS location". Refusing it
+            // still works: the same fallback runs, and the FAQ now says so.
+            Manifest.permission.ACCESS_MEDIA_LOCATION
         )
     } else {
-        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        arrayOf(
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.ACCESS_MEDIA_LOCATION
+        )
     }
 
     fun hasNotifications(context: Context): Boolean =

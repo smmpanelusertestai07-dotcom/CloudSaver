@@ -1222,6 +1222,13 @@ private fun statusLine(
     // "Everything is backed up" is a claim about work that happened. A run
     // that found nothing to do has not backed anything up, so an empty queue
     // with an empty history says so plainly instead.
+    // And "backed up" is a claim about the CLOUD holding them. A copy still
+    // sitting in the upload folder has been made, not backed up - and with no
+    // cloud app installed it never will be. Saying so is the difference
+    // between a status line and a reassurance.
+    if (options.lastRunAt > 0 && processed > 0 && inFolder > 0) {
+        return pluralStringResource(R.plurals.status_in_folder, inFolder, inFolder)
+    }
     return if (options.lastRunAt > 0 && processed > 0) {
         stringResource(R.string.status_idle)
     } else {

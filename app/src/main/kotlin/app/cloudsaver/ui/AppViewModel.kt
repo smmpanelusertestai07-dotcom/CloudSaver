@@ -910,9 +910,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     state = ItemState.NEW.name,
                     skipReason = null,
                     attempts = 0,
-                    // The queue is ordered by capture date, so "next" means
-                    // looking like the newest thing in the gallery.
-                    captureAt = now,
+                    // Ask for the jump, do not fake the date. captureAt is
+                    // what the camera recorded: it is shown in the details
+                    // dialog, stamped onto the copy so the cloud files it
+                    // chronologically, and used by the Newest sort. Writing
+                    // `now` into it bought one run's queue position at the
+                    // cost of the file's real date, for good.
+                    priorityAt = now,
                     updatedAt = now
                 )
             )

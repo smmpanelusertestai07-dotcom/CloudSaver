@@ -78,6 +78,19 @@ class MigrationTest {
         )
         assertEquals(16_000_000L, db.items().all().first().outPixels)
 
+        // v7's priority column, and the reason it exists: an upgraded row
+        // must carry 0 - "no jump asked for" - and its captureAt must be
+        // untouched, because that is the file's real shooting date. Before v7
+        // the queue-jump wrote `now` into captureAt, so asking for one file
+        // first rewrote its date in the details dialog, in the Newest sort,
+        // and on the copy handed to the cloud.
+        assertEquals("an upgraded row has asked for nothing", 0L, carried.first().priorityAt)
+        val realDate = carried.first().captureAt
+        db.items().update(carried.first().copy(priorityAt = 1_700_000_000_000L))
+        val bumped = db.items().all().first()
+        assertEquals(1_700_000_000_000L, bumped.priorityAt)
+        assertEquals("jumping the queue must not touch the shooting date", realDate, bumped.captureAt)
+
         // v6's indices: proven by asking SQLite, not assumed. Room validates
         // entity indices at open, but only for entities it knows - a typo in
         // the migration SQL would surface here first.

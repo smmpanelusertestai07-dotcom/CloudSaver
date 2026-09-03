@@ -241,6 +241,43 @@ class HelpContentTest {
     }
 
     @Test
+    fun `a runtime permission the app depends on is actually asked for`() {
+        // Declaring a dangerous permission grants nothing. ACCESS_MEDIA_LOCATION
+        // sat in the manifest and never in the request array, so
+        // MediaStore.setRequireOriginal threw on every photo, the fallback
+        // opened the redacted stream, and the GPS location was stripped from
+        // every copy the app has ever made - while FAQ 5 promised "Every copy
+        // carries the original's ... GPS location". Nothing failed: the catch
+        // swallowed it and the copy looked fine.
+        //
+        // So: if the code relies on a dangerous permission, the request array
+        // has to contain it.
+        val root = File(System.getProperty("user.dir").orEmpty()).absoluteFile
+        val manifest = File(root, "src/main/AndroidManifest.xml").readText()
+        val permissions = File(root, "src/main/kotlin/app/cloudsaver/util/Permissions.kt").readText()
+        val sources = File(root, "src/main/kotlin").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .joinToString("\n") { it.readText() }
+
+        // Each dangerous permission, and the call that gives it away.
+        val dependsOn = mapOf(
+            "ACCESS_MEDIA_LOCATION" to "setRequireOriginal",
+            "READ_MEDIA_IMAGES" to "MediaStore.Images",
+            "POST_NOTIFICATIONS" to "NotificationManagerCompat"
+        )
+        val offenders = dependsOn.filter { (perm, marker) ->
+            manifest.contains("android.permission.$perm") &&
+                sources.contains(marker) &&
+                !permissions.contains("permission.$perm")
+        }.keys
+        assertTrue(
+            "these are declared and relied on but never requested at runtime, " +
+                "so the call that needs them fails and the fallback hides it: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    @Test
     fun `no help sentence runs past about fifteen words`() {
         assumeTrue("strings.xml not found", strings() != null)
         // R4: short sentences, everywhere someone is being explained something.

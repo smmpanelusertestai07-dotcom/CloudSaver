@@ -66,6 +66,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -1085,9 +1086,18 @@ private fun CloudPickRow(
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        // The whole row picks the app, and says which one is picked. Before,
+        // only the dot was tappable and it carried no label, so the name -
+        // the one thing identifying the choice - was not part of the control.
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = app.id == current,
+                role = Role.RadioButton,
+                onClick = { onPick(app.id) }
+            )
     ) {
-        RadioButton(selected = app.id == current, onClick = { onPick(app.id) })
+        RadioButton(selected = app.id == current, onClick = null)
         Column(Modifier.weight(1f)) {
             // The tag has no weight and the name is arbitrarily long, so in a
             // Row the name took the whole line and "Recommended" was measured
