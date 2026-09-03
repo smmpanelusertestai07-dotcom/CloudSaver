@@ -1,4 +1,4 @@
-# PocketDesk 10.0.35 — install an app you downloaded, the way a phone does it
+# PocketDesk 10.0.40 — install an app you downloaded, the way a phone does it
 
 - **An installer for apps you download yourself.** Downloading a .deb in Chrome inside the
   desktop and tapping it used to do nothing at all; the advice was a terminal command. Now it
@@ -33,7 +33,14 @@
   package installs with a warning, an amd64 one is blocked naming the processor, one larger
   than the free space is blocked, a hand-downloaded copy of a published app points at the Apps
   tab, and a non-package and an AppImage are refused with their own reasons.
-- Version 10.0.35 (code 135).
+- **How far a bad app could get, answered honestly.** A new question sets out the boundary:
+  everything in the computer runs as PocketDesk's own Android user inside its private storage,
+  so it cannot read another app's data, change the phone's system or become root; what it
+  could reach is what is inside the computer, plus the phone folders shared in while Phone
+  files is on — which is why that is off until you turn it on; and what it can never reach is
+  the camera, microphone, location, contacts, messages or your other apps, because PocketDesk
+  holds no permission for any of them.
+- Version 10.0.40 (code 140).
 
 # PocketDesk 10.0.30 — a set-up that continues, and protection that is on by default
 

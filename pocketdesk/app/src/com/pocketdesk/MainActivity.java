@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.35";
+    static final String VERSION = "10.0.40";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -1295,6 +1295,28 @@ public final class MainActivity extends Activity {
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
                         + "need, to look for Windows viruses that cannot run here anyway.", false);
+
+        addAnswer(card, R.drawable.ic_lock, "If something bad got in, how far could it get?",
+                "Worth knowing exactly, because the honest answer is what makes the rules above "
+                        + "worth following.\n\n"
+                        + "Everything in the Linux computer runs as PocketDesk's own Android user, "
+                        + "inside PocketDesk's private storage. Android gives every app its own user "
+                        + "id and keeps them apart, so nothing in there can read another app's data, "
+                        + "change the phone's system, or become root on the phone. There is no way "
+                        + "out of that box, and uninstalling PocketDesk takes all of it with you.\n\n"
+                        + "What a bad Linux app could reach: what is inside the computer — your files "
+                        + "there and the sign-ins of the AI apps installed there, which are files in "
+                        + "the same home folder — and, only while Phone files is on, the phone "
+                        + "folders shared in (Download, DCIM, Documents). That is exactly why Phone "
+                        + "files is off until you turn it on.\n\n"
+                        + "What it cannot reach, at all: your other apps and their data, your "
+                        + "messages, your photos outside those shared folders, the camera, the "
+                        + "microphone, your location or your contacts. PocketDesk holds no permission "
+                        + "for any of them, so nothing inside can ask for one.\n\n"
+                        + "So the whole risk is what you install. Apps from the Apps tab come signed "
+                        + "by their publishers; anything you download yourself, treat like an APK "
+                        + "from a website — read what the installer says before you tap Install "
+                        + "anyway, and turn Phone files off when you are not using it.", false);
 
         addAnswer(card, R.drawable.ic_download, "Can I install an app I downloaded myself?",
                 "Yes — it works like tapping an APK from a website on Android, and PocketDesk "
