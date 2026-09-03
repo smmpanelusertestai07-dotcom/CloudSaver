@@ -622,7 +622,7 @@
     <string name="cl_dropbox_no">Not supported: the mobile app backs up the camera roll only - no custom folder.</string>
 
     <!-- onboarding -->
-    <string name="app_tagline">Save your cloud space \u2014 smaller copies, untouched originals.</string>
+    <string name="app_tagline">Save your cloud space \u2014 light copies, untouched originals.</string>
     <string name="onb_albums_title">Which albums?</string>
     <string name="onb_albums_text">Only the albums you tick get a smaller copy. Everything else is left completely alone.</string>
     <string name="onb_albums_confirm">These are right</string>
