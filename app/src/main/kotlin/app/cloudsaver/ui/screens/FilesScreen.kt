@@ -252,8 +252,16 @@ fun FilesScreen(vm: AppViewModel) {
                             // frees = false: this bar's action optimises. It writes a
                             // smaller copy and leaves the original where it is, so
                             // nothing is freed here.
+                            // Counted over the rows this bar can actually act
+                            // on, not over the whole selection. A tick survives
+                            // a filter change, so selecting ten and then
+                            // narrowing the list left the bar saying "10
+                            // selected" beside the size of six, above a button
+                            // that optimised six. The count, the size and the
+                            // action now describe one set, and the note says
+                            // what the filter is holding back.
                             summary = selectionSummary(
-                                selection.size, Formats.bytes(selectedBytes), frees = false
+                                chosen.size, Formats.bytes(selectedBytes), frees = false
                             ),
                             actionLabel = if (split.skipped > 0) {
                                 stringResource(
@@ -265,6 +273,12 @@ fun FilesScreen(vm: AppViewModel) {
                             note = if (split.skipped > 0) {
                                 pluralStringResource(
                                     R.plurals.bulk_skipped_note, split.skipped, split.skipped
+                                )
+                            } else if (selection.size > chosen.size) {
+                                pluralStringResource(
+                                    R.plurals.bulk_hidden_note,
+                                    selection.size - chosen.size,
+                                    selection.size - chosen.size
                                 )
                             } else {
                                 null

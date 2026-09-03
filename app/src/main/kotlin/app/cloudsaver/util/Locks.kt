@@ -21,4 +21,18 @@ object Locks {
 
     /** Ledger writes: recording deliveries and merging snapshots. */
     val ledger = Mutex()
+
+    /**
+     * The maintenance pass: evidence, self-heal, snapshots, clean-up.
+     *
+     * It had no lock of any kind, and two paths start it - the hourly
+     * MaintainWorker, and CompressWorker at the end of every compression run.
+     * Those are different unique work names, so WorkManager does not serialise
+     * them, and the UI can ask for a confirm pass on top. Two passes over the
+     * same rows is how self-heal reverts an item another pass has just
+     * released: back to NEW, staged file forgotten, and sent to the cloud a
+     * second time. This engine takes none of the three locks above, so holding
+     * this one at its entry points cannot deadlock against them.
+     */
+    val maintain = Mutex()
 }

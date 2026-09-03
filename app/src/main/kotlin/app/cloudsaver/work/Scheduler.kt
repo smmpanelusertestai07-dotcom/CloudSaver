@@ -112,17 +112,25 @@ object Scheduler {
     }
 
     /**
-     * True while a compression run is executing, either the periodic one or
-     * one the user started. Home shows progress instead of an action then -
-     * offering "Optimise now" during a run invites a tap that does nothing.
+     * True while a compression run is executing, whichever of the three
+     * started it. Home shows progress instead of an action then - offering
+     * "Optimise now" during a run invites a tap that does nothing.
+     *
+     * All three: the half-hourly one, the one the user asked for, AND the one
+     * a new photo triggers. The trigger runs the same CompressWorker and holds
+     * the same lock, but it was not watched - so through the whole of a run
+     * started by taking a photo, Home offered a button whose work the running
+     * one would refuse. The name is the only thing that differed.
      */
     fun runningFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> {
         val wm = WorkManager.getInstance(context)
         return kotlinx.coroutines.flow.combine(
             wm.getWorkInfosForUniqueWorkFlow(W_COMPRESS),
-            wm.getWorkInfosForUniqueWorkFlow(W_NOW)
-        ) { periodic, manual ->
-            (periodic + manual).any { it.state == androidx.work.WorkInfo.State.RUNNING }
+            wm.getWorkInfosForUniqueWorkFlow(W_NOW),
+            wm.getWorkInfosForUniqueWorkFlow(W_TRIGGER)
+        ) { periodic, manual, triggered ->
+            (periodic + manual + triggered)
+                .any { it.state == androidx.work.WorkInfo.State.RUNNING }
         }
     }
 

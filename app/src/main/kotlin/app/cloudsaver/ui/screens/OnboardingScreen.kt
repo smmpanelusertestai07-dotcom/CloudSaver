@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -223,6 +224,12 @@ fun OnboardingScreen(vm: AppViewModel) {
     }
 
     val transferMessage by vm.transferMessage.collectAsStateWithLifecycle()
+    // The message belongs to the screen that caused it. Nothing ever called
+    // dismissTransferMessage(), so a backup result set in Settings stayed in
+    // the shared view model for the rest of the session and was rendered again
+    // by setup - a screen that did nothing to produce it - with no way to make
+    // it go away.
+    DisposableEffect(Unit) { onDispose { vm.dismissTransferMessage() } }
     val testItems by vm.testRun.collectAsStateWithLifecycle()
     val testRunning by vm.testRunning.collectAsStateWithLifecycle()
     val trialSize by vm.trialSize.collectAsStateWithLifecycle()

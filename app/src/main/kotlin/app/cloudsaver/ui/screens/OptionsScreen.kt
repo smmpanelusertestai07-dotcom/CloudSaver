@@ -59,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -124,6 +125,12 @@ private val FolderListMaxHeight = 300.dp
 fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val o by vm.options.collectAsStateWithLifecycle()
     val transferMessage by vm.transferMessage.collectAsStateWithLifecycle()
+    // The message belongs to the screen that caused it. Nothing ever called
+    // dismissTransferMessage(), so a backup result set in Settings stayed in
+    // the shared view model for the rest of the session and was rendered again
+    // by setup - a screen that did nothing to produce it - with no way to make
+    // it go away.
+    DisposableEffect(Unit) { onDispose { vm.dismissTransferMessage() } }
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val writableVolumes by vm.writableVolumes.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current

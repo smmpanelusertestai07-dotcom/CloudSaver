@@ -162,8 +162,13 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
     // gallery with a few thousand duplicates walked every group again on
     // every recomposition, including on each tick of a selection.
     val allExtras = remember(shown) { shown.flatMap { it.second } }
-    val selectedBytes = remember(allExtras, selection.ids) {
-        allExtras.filter { it.id in selection }.sumOf { it.sizeBytes }
+    // Summed over every extra, not just the ones the filters are showing.
+    // A tick survives a filter change and the removal re-scans the whole
+    // gallery, so narrowing the list left the confirmation understating how
+    // much it was about to remove - the count was right and the size was not.
+    val everyExtra = remember(groups) { groups.flatMap { it.extras } }
+    val selectedBytes = remember(everyExtra, selection.ids) {
+        everyExtra.filter { it.id in selection }.sumOf { it.sizeBytes }
     }
     val albums = remember(groups) {
         ListFilters.albumCounts(groups.flatMap { it.extras }.map { it.toCandidate() })
@@ -652,8 +657,10 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
                     // frees = false: the action here optimises. Removing from
                     // the phone is a separate choice, made later through
                     // Android's own dialog.
+                    // Counted over the rows the button can reach, matching
+                    // the size beside it and the action below it.
                     summary = selectionSummary(
-                        selection.size, Formats.bytes(selectedBytes), frees = false
+                        chosen.size, Formats.bytes(selectedBytes), frees = false
                     ),
                     actionLabel = if (split.skipped > 0 && split.eligible > 0) {
                         stringResource(R.string.bulk_optimise_of, split.eligible, chosen.size)

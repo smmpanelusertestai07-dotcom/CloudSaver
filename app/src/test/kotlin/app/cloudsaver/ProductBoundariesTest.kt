@@ -165,4 +165,172 @@ class ProductBoundariesTest {
             offenders.isEmpty()
         )
     }
+
+    @Test
+    fun `every name that runs the compressor is one runningFlow watches`() {
+        // Home hides "Optimise now" while a run is going, because the running
+        // one holds the lock and a second would do nothing. That decision is
+        // runningFlow's, and it watched two of the three names that start a
+        // CompressWorker - so through a run triggered by taking a photo the
+        // button was offered and the tap was swallowed.
+        //
+        // Resolved through the request VARIABLE each call is handed, per
+        // function. Nothing coarser works: one function enqueues the
+        // compressor and the maintenance pass side by side, and "the text near
+        // the call" is fooled by a comment that merely names CompressWorker.
+        val src = withoutComments(
+            File("src/main/kotlin/app/cloudsaver/work/Scheduler.kt").readText()
+        )
+        val enqueue = Regex(
+            """enqueueUnique(?:Periodic)?Work\(\s*(W_[A-Z_]+)\s*,[^,]+,\s*(\w+)\s*\)"""
+        )
+        val starters = src.split(Regex("""\n    (?:private )?fun """))
+            .flatMap { fn ->
+                enqueue.findAll(fn).filter { call ->
+                    val request = call.groupValues[2]
+                    Regex("""val $request = [^\n]*WorkRequestBuilder<CompressWorker>""")
+                        .containsMatchIn(fn)
+                }.map { it.groupValues[1] }
+            }
+            .toSet()
+        assertTrue("no compression work found - has Scheduler moved?", starters.size >= 2)
+
+        val watched = src.split(Regex("""\n    (?:private )?fun """))
+            .single { it.startsWith("runningFlow(") }
+        val unwatched = starters.filterNot { watched.contains(it) }
+        assertTrue(
+            "these start a compression run but runningFlow cannot see them, " +
+                "so Home offers a button the running one will refuse: $unwatched",
+            unwatched.isEmpty()
+        )
+    }
+
+    @Test
+    fun `a selection bar counts the same set it sizes`() {
+        // Three screens made the same mistake: the count came from the whole
+        // selection and the size from the rows the filters happened to be
+        // showing. A tick survives a filter change, so narrowing the list left
+        // "10 selected" beside the size of six, above a button that acted on
+        // six - and on the duplicates screen the same split understated how
+        // much was about to be removed, because that removal re-scans
+        // everything.
+        //
+        // Whatever a bar counts, it must size, and its action must reach the
+        // same set. `selection.size` beside a `selectedBytes` computed from a
+        // filtered list is the shape that keeps coming back.
+        val screens = File("src/main/kotlin/app/cloudsaver/ui/screens")
+            .walkTopDown().filter { it.isFile && it.extension == "kt" }
+        val offenders = mutableListOf<String>()
+        for (f in screens) {
+            val text = withoutComments(f.readText())
+            Regex("""selectionSummary\(\s*([A-Za-z.]+)\s*,\s*Formats\.bytes\((\w+)\)""")
+                .findAll(text)
+                .forEach { m ->
+                    val counted = m.groupValues[1]
+                    // The size is derived from some list; find which.
+                    val sizeFrom = Regex("""val ${m.groupValues[2]} = remember\((\w+)""")
+                        .find(text)?.groupValues?.get(1)
+                    // Only the mismatch that misleads: a whole-selection
+                    // count beside a size summed over the rows the filters
+                    // happen to be showing. Summing the selection over the
+                    // FULL list is right - that is what the duplicates dialog
+                    // does, because its removal re-scans everything.
+                    //
+                    // These four names are what a filtered list is called in
+                    // this codebase; a new one has to be added here, which is
+                    // the point at which someone re-reads this rule.
+                    val filtered = setOf("shown", "rows", "chosen", "visible")
+                    if (counted == "selection.size" && sizeFrom in filtered) {
+                        offenders += "${f.name}: counts $counted but sizes over the filtered $sizeFrom"
+                    }
+                }
+        }
+        assertTrue(
+            "a bar must count the set it sizes and acts on: $offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    @Test
+    fun `a modified build cannot remove anything`() {
+        // TamperCheck's contract says a mismatched signing certificate
+        // "disables the Free-up tool and all deletions", and the banner on Home
+        // tells the user deleting is turned off and stays off. Neither was
+        // true. The flag reached a banner and one hidden button; every path
+        // that removes a file ran exactly as before - originals, duplicate
+        // extras, restores from the trash, leftover work files.
+        //
+        // This matters more than an unkept promise. That banner appears when
+        // the signing certificate does not match, which is what an APK signed
+        // with someone else's key looks like - and the private key really was
+        // published for eleven releases. The one moment the check exists for is
+        // the one where it did nothing.
+        val vms = File("src/main/kotlin/app/cloudsaver/ui")
+        val entryPoints = mapOf(
+            "ReclaimViewModel.kt" to listOf(
+                "fun start(permanent: Boolean) {",
+                "fun removeDuplicateExtras(chosen: Set<Long>) {",
+                "fun restore(items: List<ReclaimItemRow>) {"
+            ),
+            "AppViewModel.kt" to listOf(
+                "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {"
+            )
+        )
+        val ungated = mutableListOf<String>()
+        for ((file, signatures) in entryPoints) {
+            val text = File(vms, file).readText()
+            for (sig in signatures) {
+                val body = text.substringAfter(sig, "")
+                assertTrue("$file no longer has `$sig`", body.isNotEmpty())
+                // The refusal has to be the first thing the function does, not
+                // a check somewhere after the work has started.
+                if (!body.take(700).contains("TamperCheck.isModified")) {
+                    ungated += "$file: ${sig.substringBefore('(')}"
+                }
+            }
+        }
+        assertTrue(
+            "these remove files without checking the signature first, while the " +
+                "app tells the user deleting is turned off: $ungated",
+            ungated.isEmpty()
+        )
+    }
+
+    @Test
+    fun `the maintenance pass runs one at a time`() {
+        // Locks exists because "WorkManager's unique names stop two workers
+        // racing, but the UI can start a trial run, an Optimise now, or a
+        // removal while a scheduled run is mid-way" - its own words. The
+        // maintenance pass took none of them, and TWO paths start it: the
+        // hourly MaintainWorker, and CompressWorker at the end of every
+        // compression run. Different unique names, so nothing serialised them,
+        // with the UI able to ask for a confirm pass on top.
+        //
+        // Two passes over the same rows is how self-heal reverts an item
+        // another pass has just released - back to NEW, staged file forgotten -
+        // and the cloud receives it a second time.
+        val engine = File("src/main/kotlin/app/cloudsaver/engine/MaintainEngine.kt").readText()
+        val entries = listOf("run()", "confirmPass()", "snapshotNow()")
+        val ungated = entries.filterNot { entry ->
+            Regex(
+                """suspend fun ${Regex.escape(entry.dropLast(2))}\([^)]*\)[^\n]*""" +
+                    """Locks\.maintain\.withLock"""
+            ).containsMatchIn(engine)
+        }
+        assertTrue(
+            "these start a maintenance pass without taking Locks.maintain, so " +
+                "two passes can write the same rows: $ungated",
+            ungated.isEmpty()
+        )
+        // And it must not take the other three, or holding this one could
+        // deadlock against a release or a removal already in flight.
+        val body = engine.substringAfter("private suspend fun runLocked")
+        for (other in listOf("Locks.release", "Locks.reclaim", "Locks.ledger")) {
+            assertFalse(
+                "the maintenance pass must not also take $other while holding " +
+                    "Locks.maintain - that is a deadlock waiting for a busy phone",
+                body.contains("$other.withLock")
+            )
+        }
+    }
 }

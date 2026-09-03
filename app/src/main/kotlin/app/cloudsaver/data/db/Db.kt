@@ -506,10 +506,20 @@ interface ItemDao {
     )
     suspend fun savedBytesSince(fromMs: Long): Long
 
-    /** Skip reasons with counts, most common first. */
+    /**
+     * Skip reasons with counts, most common first - and only for the skips
+     * Home calls problems.
+     *
+     * `duplicateOf IS NULL` is the same clause [problemSkippedCountFlow] uses
+     * for the tile these rows sit under. Without it the rows counted every
+     * SKIP including the duplicates the tile deliberately leaves out, so a
+     * tile reading three sat above rows adding to eleven - and a reader who
+     * adds them up is right and the screen is wrong. A duplicate was handled
+     * under its twin, which is the app working, not a reason to explain.
+     */
     @Query(
         "SELECT skipReason AS state, COUNT(*) AS cnt FROM items " +
-            "WHERE state = 'SKIP' AND skipReason IS NOT NULL " +
+            "WHERE state = 'SKIP' AND skipReason IS NOT NULL AND duplicateOf IS NULL " +
             "GROUP BY skipReason ORDER BY cnt DESC LIMIT 6"
     )
     suspend fun skipReasons(): List<StateCount>

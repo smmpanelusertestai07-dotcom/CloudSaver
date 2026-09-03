@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 #
+# A step that fails must stop the run, and a failure inside a pipe must count.
+#
+# Without pipefail, `pm install ... | grep -q Success` reports the exit status
+# of grep and an install that never happened reads as fine; without -e the
+# script carries on to instrument a device with no app on it. Both matter here
+# because this script exists to be trusted when the emulator misbehaves, which
+# under software emulation it regularly does.
+set -euo pipefail
+#
 # The whole instrumented suite on a locally booted emulator, one command:
 #
 #   scripts/local-e2e.sh                     # boot (or reuse) the AVD, run all

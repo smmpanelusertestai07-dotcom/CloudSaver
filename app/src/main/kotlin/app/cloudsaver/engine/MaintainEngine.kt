@@ -24,9 +24,11 @@ import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.Locks
 import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Storage
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /**
@@ -65,7 +67,17 @@ class MaintainEngine(private val context: Context) {
         var healed: Int = 0
     )
 
-    suspend fun run(): Summary {
+    /**
+     * One maintenance pass at a time.
+     *
+     * Two paths start this - the hourly worker and the end of every
+     * compression run - under different unique work names, so nothing was
+     * serialising them, and the UI could ask for a confirm pass on top. Two
+     * passes over the same rows is how self-heal sends a file twice.
+     */
+    suspend fun run(): Summary = Locks.maintain.withLock { runLocked() }
+
+    private suspend fun runLocked(): Summary {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
@@ -162,7 +174,9 @@ class MaintainEngine(private val context: Context) {
     }
 
     /** Quick pass used by the in-app "Verify backup" flow; returns confirmed count. */
-    suspend fun confirmPass(): Int {
+    suspend fun confirmPass(): Int = Locks.maintain.withLock { confirmPassLocked() }
+
+    private suspend fun confirmPassLocked(): Int {
         val o = repo.current()
         val now = System.currentTimeMillis()
         val summary = Summary()
@@ -846,7 +860,9 @@ class MaintainEngine(private val context: Context) {
      * where the state just changed in a way that cannot be reconstructed:
      * the originals it recorded are gone.
      */
-    suspend fun snapshotNow() {
+    suspend fun snapshotNow() = Locks.maintain.withLock { snapshotNowLocked() }
+
+    private suspend fun snapshotNowLocked() {
         if (snapshots.writeSafetySnapshot()) {
             repo.setString(
                 OptionsRepo.K.LAST_SNAPSHOT_DAY,

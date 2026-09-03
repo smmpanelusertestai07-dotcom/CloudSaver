@@ -753,7 +753,8 @@
     <string name="quality_originals_safe">Whatever the setting, your originals are never edited, moved or deleted by this.</string>
     <string name="quality_codec_title">H.264 or HEVC?</string>
     <string name="quality_codec_text" formatted="false">Two ways of packing a video. H.264 plays on everything, including old phones and TVs. HEVC makes files about a third smaller for the same picture, but some older devices cannot play it. If you are unsure, keep H.264.</string>
-    <string name="quality_table_title">What to expect</string>
+    <string name="quality_table_title">What to expect on Storage saver</string>
+    <string name="quality_table_note">These figures are for Storage saver. The other presets keep more detail and save less \u2014 the summary above changes with your choice, this table does not.</string>
     <string name="quality_row1_k">1080p video</string>
     <string name="quality_row1_v" formatted="false">60-75% smaller, looks the same</string>
     <string name="quality_row2_k">4K video saved as 1080p</string>
@@ -803,6 +804,10 @@
     <string name="biggest_after">about %1$s after</string>
     <string name="list_optimise_these_first">Optimise these first</string>
     <string name="bulk_optimise_of">Optimise %1$d of %2$d selected</string>
+    <plurals name="bulk_hidden_note">
+        <item quantity="one">%1$d more is still ticked but hidden by the filters above.</item>
+        <item quantity="other">%1$d more are still ticked but hidden by the filters above.</item>
+    </plurals>
     <plurals name="bulk_skipped_note">
         <item quantity="one">%1$d already optimised \u2014 skipped</item>
         <item quantity="other">%1$d already optimised \u2014 skipped</item>

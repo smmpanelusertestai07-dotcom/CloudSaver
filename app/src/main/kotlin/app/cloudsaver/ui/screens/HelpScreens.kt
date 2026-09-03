@@ -469,6 +469,16 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
                     modifier = Modifier.weight(1f)
                 )
             }
+            // Said once, under the heading: the numbers below are one
+            // preset's, and a preset switcher sits three lines above them.
+            // A reader who changes the preset and watches this table not move
+            // is entitled to think one of the two is broken.
+            Text(
+                stringResource(R.string.quality_table_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 6.dp)
+            )
             KeyValueRow(
                 stringResource(R.string.quality_row1_k),
                 stringResource(R.string.quality_row1_v)

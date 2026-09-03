@@ -113,6 +113,7 @@ class ScopeQueriesTest {
      */
     @Test
     fun theWaitingListIsNotEmptiedByRowsItDidNotAskFor() = runBlocking {
+        val setUpInScopeNew = db.items().newInScopeCount(everythingButScreenshots)
         val done = 500
         val waiting = 600
         for (i in 0 until done) {
@@ -136,8 +137,14 @@ class ScopeQueriesTest {
             excludedBuckets = everythingButScreenshots, sortKey = 0, limit = 500
         ).first()
 
-        // The counter sees every waiting row (plus the one from setUp).
-        assertEquals(waiting + 1, counter)
+        // The counter sees every waiting row, plus whatever setUp left in
+        // scope - measured, not assumed. setUp puts two NEW rows inside the
+        // scope, not one: shot1.jpg in the ticked album, and nobucket.jpg,
+        // which has no album at all and so is never excluded by an album tick.
+        // Writing "+ 1" here turned eight emulator jobs red for a fault that
+        // was in this line and nowhere else.
+        assertEquals("in-scope NEW rows from setUp", 2, setUpInScopeNew)
+        assertEquals(waiting + setUpInScopeNew, counter)
         // The list is capped, but it is capped on the answer - so it is full
         // of the rows the chip asked for, not empty of them.
         assertEquals(500, listed.size)
