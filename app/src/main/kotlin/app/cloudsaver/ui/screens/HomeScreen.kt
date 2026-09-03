@@ -809,7 +809,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // scanned yet can still try it - and a phone with no album chosen is
         // told that, here, rather than being shown a button that would do
         // nothing.
-        if (processed == 0) {
+        // Still shown while the trial is running, and once it has something to
+        // report.
+        //
+        // The trial optimises three photos, so the FIRST of them made
+        // `processed` 1 and unmounted this card mid-run - taking the
+        // before-and-after sizes with it. The one thing the trial exists to
+        // show was destroyed by the trial succeeding.
+        if (processed == 0 || testRunning || !testItems.isNullOrEmpty()) {
             // Reading the album list means enumerating the gallery, so it is
             // done here - once, and only while the trial card can appear -
             // rather than on every visit to Home.

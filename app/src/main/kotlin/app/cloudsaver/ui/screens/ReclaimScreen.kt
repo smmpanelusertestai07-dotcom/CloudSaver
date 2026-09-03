@@ -150,6 +150,14 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     // list kept the rows it already had until something else happened to
     // change. Every input the two functions read is listed here.
     val visible = remember(entries, shared, suggestion, sort, grouping) { rvm.visible() }
+    // How many ticked rows this screen's buttons can actually reach.
+    //
+    // Every action runs over selectedEntries(), which is visible() filtered by
+    // the selection - so a tick that survived a filter change is counted by
+    // `selected` and touched by nothing. The buttons were enabled on `selected`
+    // and could be tapped with no reachable row at all, doing nothing and
+    // saying nothing.
+    val actionable = remember(visible, selected) { visible.count { it.id in selected } }
     val groups = remember(entries, shared, suggestion, sort, grouping) { rvm.groups() }
     val selectedEntries = remember(visible, selected) {
         visible.filter { it.id in selected }
@@ -438,7 +446,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                     ) {
                         OutlinedButton(
                             onClick = { rvm.previewResult() },
-                            enabled = selected.isNotEmpty()
+                            enabled = actionable > 0
                         ) {
                             Text(
                                 stringResource(R.string.reclaim_preview),
@@ -448,7 +456,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         }
                         OutlinedButton(
                             onClick = { exportLauncher.launch("cloudsaver-reclaim.csv") },
-                            enabled = selected.isNotEmpty()
+                            enabled = actionable > 0
                         ) {
                             Text(
                                 stringResource(R.string.reclaim_export),
@@ -481,7 +489,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                                     rvm.start(permanent = false)
                                 }
                             },
-                            enabled = selected.isNotEmpty() && understood
+                            enabled = actionable > 0 && understood
                         ) {
                             // On a phone with no trash this button deletes for good,
                             // so it says so rather than promising a recovery that
@@ -503,7 +511,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                         if (mode != ReclaimRules.Mode.COPIES_ONLY && rvm.canUndoRemoval) {
                             TextButton(
                                 onClick = { confirmBig = true },
-                                enabled = selected.isNotEmpty() && understood
+                                enabled = actionable > 0 && understood
                             ) {
                                 Text(
                                     stringResource(R.string.reclaim_delete),
