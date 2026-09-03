@@ -163,8 +163,8 @@ fun FileRow(
                     // in a list of them is announced as "checkbox, not ticked"
                     // over and over, with nothing to say which file it means.
                     Checkbox(
-                        checked = selected!!,
-                        onCheckedChange = onSelectedChange!!,
+                        checked = selected,
+                        onCheckedChange = onSelectedChange,
                         modifier = Modifier.semantics { contentDescription = name }
                     )
                     Spacer(Modifier.width(4.dp))

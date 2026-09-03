@@ -264,7 +264,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         // card - retries once on the primary volume with the reason recorded,
         // instead of leaving the item staged forever.
         if (itemUri != null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
-            val actual = runCatching { MediaStore.getVolumeName(itemUri!!) }.getOrNull()
+            val actual = runCatching { MediaStore.getVolumeName(itemUri) }.getOrNull()
             if (actual != null && !actual.equals(effectiveVolume, ignoreCase = true)) {
                 AppLog.log(
                     context, "release",

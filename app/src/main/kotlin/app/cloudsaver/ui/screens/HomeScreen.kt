@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -85,7 +86,6 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.TrendingUp
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandFaint
@@ -480,7 +480,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 // level with nothing in particular.
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(
-                        Icons.Outlined.TrendingUp,
+                        Icons.AutoMirrored.Outlined.TrendingUp,
                         contentDescription = null,
                         tint = OnBrandMuted,
                         modifier = Modifier.size(16.dp)
