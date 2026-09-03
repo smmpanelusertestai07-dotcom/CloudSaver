@@ -100,6 +100,27 @@ object Routes {
 
     /** The four bottom-bar destinations. */
     val TABS = setOf(HOME, FILES, STORAGE, OPTIONS)
+
+    /**
+     * Every screen the graph actually has.
+     *
+     * The launcher activity is exported - it has to be, it is the launcher -
+     * so any app on the phone can start it with whatever route string it
+     * likes. Navigating to a route the graph does not contain throws, which
+     * meant a one-line intent from anywhere could crash this app on launch,
+     * over and over. Nothing here is privileged, so the list is simply the
+     * graph itself: a name that is in it opens a screen, and a name that is
+     * not is dropped.
+     */
+    val ALL: Set<String> = setOf(
+        HOME, FILES, STORAGE, OPTIONS, FREE_UP, FREE_SPACE_HUB, ACTIVITY,
+        RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT, CALCULATOR, HELP,
+        HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_LOGS, HELP_CLOUD,
+        HELP_PRIVACY, HELP_LICENSES, HELP_ABOUT
+    )
+
+    /** True only for a route this app can be asked to open from outside. */
+    fun isKnown(route: String?): Boolean = route != null && route in ALL
 }
 
 /**

@@ -32,6 +32,7 @@ import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
+import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PathLine
@@ -94,8 +95,8 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
         // 1. Your phone.
         // BB1.3: totals below come from the last full scan; nothing new
         // arrives until access is full again, and the screen says so.
-        if (mediaAccess == app.cloudsaver.util.Permissions.MediaAccess.PARTIAL) {
-            WarningNote(stringResource(R.string.partial_waiting))
+        if (AccessNotice.isLimited(mediaAccess)) {
+            WarningNote(stringResource(AccessNotice.waiting(mediaAccess)))
         }
         SectionHeader(stringResource(R.string.storage_group_phone))
         AppCard {

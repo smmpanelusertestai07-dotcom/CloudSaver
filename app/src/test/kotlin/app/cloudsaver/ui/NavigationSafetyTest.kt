@@ -1,5 +1,6 @@
 package app.cloudsaver.ui
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -97,5 +98,54 @@ class NavigationSafetyTest {
             }
             .map { it.second }
         assertTrue("these screens have no way back: $offenders", offenders.isEmpty())
+    }
+
+    /**
+     * The launcher activity is exported, so the route on its intent is a
+     * string from another app. Handing an unknown one to the navigator throws
+     * and takes the app down on launch, which any app on the phone could do
+     * in one line and repeat forever.
+     */
+    @Test
+    fun aRouteFromOutsideIsCheckedBeforeItIsNavigatedTo() {
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        val fn = vm.substringAfter("fun consumeDeepLink(", "")
+        assertTrue("consumeDeepLink is gone; the rule below has nothing to guard", fn.isNotEmpty())
+        assertTrue(
+            "the route arriving on an exported activity's intent is stored without " +
+                "checking it is a screen this app has, so an unknown one reaches " +
+                "the navigator and throws",
+            fn.take(400).contains("Routes.isKnown(")
+        )
+    }
+
+    /**
+     * The allow-list has to be the graph, not a copy of it that drifts. A
+     * route missing from it is a notification that opens nothing; a route in
+     * it that the graph lacks is the crash the check exists to stop.
+     */
+    @Test
+    fun theAllowedRoutesAreExactlyTheScreensTheGraphHas() {
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        val listed = app.substringAfter("val ALL: Set<String> = setOf(")
+            .substringBefore(")")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+        val inGraph = Regex("""composable\(Routes\.([A-Z_]+)\)""")
+            .findAll(app)
+            .map { it.groupValues[1] }
+            .toSet()
+        assertTrue("no routes were found in App.kt; the parser is broken", inGraph.size > 10)
+        assertEquals(
+            "a screen the graph has is not reachable from an alert or a shortcut",
+            emptySet<String>(), inGraph - listed
+        )
+        assertEquals(
+            "these are allowed in but the graph has no such screen, so navigating " +
+                "to one throws",
+            emptySet<String>(), listed - inGraph
+        )
     }
 }

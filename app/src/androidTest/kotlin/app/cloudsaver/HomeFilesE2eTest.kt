@@ -944,13 +944,19 @@ class HomeFilesE2eTest {
         assertShown(s(R.string.list_selected_count, 4), "the whole-list selection bar")
         assertShown(s(R.string.bulk_optimise_of, 2, 4), "the \"2 of 4\" action label")
 
-        val before = row(SMALL).captureAt
+        val before = row(SMALL).priorityAt
+        val takenOn = row(SMALL).captureAt
         compose.onNodeWithText(s(R.string.bulk_optimise_of, 2, 4)).performClick()
         // The action brings the eligible files to the front of the queue and
-        // clears the selection.
+        // clears the selection. The jump is asked for on its own column: the
+        // date the camera recorded is not overwritten to buy a queue place.
         awaitDb("the bulk action never reached the queued files") {
-            row(SMALL).captureAt > before && row(CLIP).state == ItemState.NEW.name
+            row(SMALL).priorityAt > before && row(CLIP).state == ItemState.NEW.name
         }
+        assertEquals(
+            "the date the camera recorded must survive a queue jump",
+            takenOn, row(SMALL).captureAt
+        )
         assertAbsent(
             s(R.string.list_selected_count, 4),
             "acting on the selection must end it"

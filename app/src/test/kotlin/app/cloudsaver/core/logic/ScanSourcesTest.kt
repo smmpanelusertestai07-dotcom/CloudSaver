@@ -145,6 +145,18 @@ class ScanSourcesTest {
     }
 
     @Test
+    fun theKeepPlaceholderIsRecognisedByItsName() {
+        assertTrue(ScanSources.isKeepPlaceholderName("_ente_keep.jpg"))
+        assertTrue(ScanSources.isKeepPlaceholderName("cloudsaver_keep.jpg"))
+        assertTrue(ScanSources.isKeepPlaceholderName("_KEEP.JPG"))
+        // A real photograph is never mistaken for one.
+        assertFalse(ScanSources.isKeepPlaceholderName("IMG_2043__0123456789abcdef.jpg"))
+        assertFalse(ScanSources.isKeepPlaceholderName("keep.jpg"))
+        assertFalse(ScanSources.isKeepPlaceholderName("_keep.jpg.bak"))
+        assertFalse(ScanSources.isKeepPlaceholderName(null))
+    }
+
+    @Test
     fun contentHeuristicExcludesAnOtherwiseOrdinaryFolder() {
         assertEquals(
             ScanSources.Reason.LOOKS_LIKE_OUTPUT,

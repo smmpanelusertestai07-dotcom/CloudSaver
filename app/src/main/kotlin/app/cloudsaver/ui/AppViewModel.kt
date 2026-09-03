@@ -47,6 +47,7 @@ import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
+import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
@@ -590,11 +591,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val free = Storage.freeBytes(ctx)
             val access = Permissions.mediaAccess(ctx)
             crashPending.value = app.cloudsaver.util.CrashLog.crashPending(ctx)
-            val hadPartial = mediaAccess.value == Permissions.MediaAccess.PARTIAL
+            // Anything short of full access is what the screens are waiting
+            // on - a handful of picked photos and no access at all alike. The
+            // old test asked only about the handful, so someone who switched
+            // the permission off and back on again went on being told the app
+            // was waiting until the next scheduled run came round.
+            val wasLimited = AccessNotice.isLimited(mediaAccess.value)
             mediaAccess.value = access
             // Access became full again: recompute without waiting for the
             // next scheduled run, so the screens stop saying "waiting".
-            if (hadPartial && access == Permissions.MediaAccess.FULL) {
+            if (wasLimited && access == Permissions.MediaAccess.FULL) {
                 refreshCalculator()
                 refreshProjection()
             }
@@ -890,17 +896,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         withContext(Dispatchers.IO) { runCatching { db.items().byId(id) }.getOrNull() }
 
     fun clearNeverOptimise() {
-        viewModelScope.launch(Dispatchers.IO) { db.items().clearNeverOptimise() }
+        viewModelScope.launch(Dispatchers.IO) {
+            db.items().clearNeverOptimise(System.currentTimeMillis())
+        }
     }
 
     // ---- per-item controls (v2.2 B) -----------------------------------------
 
-    /** Bring one file to the front of the queue. */
     /** The same jump-the-queue action for a whole selection. */
     fun optimiseNow(ids: List<Long>) {
         for (id in ids) optimiseNow(id)
     }
 
+    /** Bring one file to the front of the queue. */
     fun optimiseNow(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val row = db.items().byId(id) ?: return@launch
@@ -1193,8 +1201,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Route an alert asked for, consumed once by the navigation host. */
     val deepLink = MutableStateFlow<String?>(null)
 
+    /**
+     * The route an alert or a launcher shortcut asked for.
+     *
+     * It arrives on an intent to an exported activity, so it is a string from
+     * outside this app and is treated as one: anything the graph does not
+     * contain is dropped here rather than handed to the navigator, which
+     * would throw and take the app down on launch.
+     */
     fun consumeDeepLink(route: String?) {
-        if (!route.isNullOrEmpty()) deepLink.value = route
+        if (Routes.isKnown(route)) deepLink.value = route
     }
 
     fun clearDeepLink() {

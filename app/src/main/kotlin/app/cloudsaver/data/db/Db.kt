@@ -548,8 +548,27 @@ interface ItemDao {
     @Query("SELECT COUNT(*) FROM items WHERE neverOptimise = 1")
     fun neverOptimiseCountFlow(): Flow<Int>
 
-    @Query("UPDATE items SET neverOptimise = 0 WHERE neverOptimise = 1")
-    suspend fun clearNeverOptimise()
+    /**
+     * "Clear the list" has to undo what excluding a file did, not just the
+     * flag that named it. Excluding parks the row in SKIP with the reason
+     * `user_excluded`; clearing only the flag left every one of those rows
+     * sitting in SKIP, so the setting said the files were back in the queue
+     * and not one of them was.
+     *
+     * The CASE arms read the row as it was before this statement - SQLite
+     * evaluates every SET expression against the old values - so the state
+     * and the reason are decided together, and a row parked for some other
+     * reason, or whose original has since gone, keeps the state it has.
+     */
+    @Query(
+        "UPDATE items SET neverOptimise = 0, " +
+            "state = CASE WHEN state = 'SKIP' AND skipReason = 'user_excluded' " +
+            "  AND originalMissing = 0 THEN 'NEW' ELSE state END, " +
+            "skipReason = CASE WHEN state = 'SKIP' AND skipReason = 'user_excluded' " +
+            "  AND originalMissing = 0 THEN NULL ELSE skipReason END, " +
+            "updatedAt = :now WHERE neverOptimise = 1"
+    )
+    suspend fun clearNeverOptimise(now: Long): Int
 
     /** The largest originals, for the "biggest space users" list. */
     @Query(

@@ -161,6 +161,13 @@ class UiWalkthroughTest {
         val repo = OptionsRepo.get(target)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, done)
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
+        // Settings survive a test, because they are meant to survive a
+        // restart: one class earlier in the run leaves an album unticked on
+        // purpose, and the Files list shows only what a run would touch. The
+        // tour photographs screens, so its own gallery has to be in scope -
+        // otherwise it opens a Files tab with nothing in it and the failure
+        // reads as a missing row rather than as a setting left behind.
+        repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
     }
 
     private fun setTheme(mode: String) = runBlocking {

@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **505 unit tests** on the JVM, covering the pure rules and auditing the
+- **512 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **108 instrumented tests across 16 classes**, run on real emulators against a
+- **109 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -276,6 +276,43 @@ source for this release, including the rows that were already marked Done.
   lazy and runs when the folder needs room; and Home called copies "backed up"
   while they were still sitting in the upload folder waiting for a cloud app
   that may not even be installed.
+
+- **Whether a query that never matches anything looks any different from one
+  that does.** The startup cleanup for the placeholder file earlier builds
+  parked in the output folder asked MediaStore for a name `LIKE '%\\_keep.jpg'`.
+  Without an `ESCAPE` clause the backslash is a backslash and the underscore is
+  still a wildcard, so the pattern asks for a file name containing a backslash;
+  no file has one, so from the day it was written it matched nothing at all,
+  threw nothing and logged nothing. The name is now judged in Kotlin, where it
+  can be unit-tested, and `QueryRulesTest` refuses an escaped LIKE wildcard
+  anywhere the query does not name an escape character - proved by putting the
+  original line back and watching it fail.
+- **Whether "Clear the list" clears the list.** Excluding a file parks its row
+  in SKIP with the reason `user_excluded`; the setting's own hint says
+  clearing puts those files back in the queue. The clear only unset the flag,
+  so every one of them stayed in SKIP and none went back in the queue. It now
+  lifts the state and the reason together, in one statement, and leaves alone a
+  row parked for some other reason or whose original has since left the
+  gallery - all three cases pinned by an instrumented test against a real
+  database.
+- **Whether an exported activity trusts what it is handed.** The launcher
+  activity is exported, as a launcher must be, and read a route string
+  straight off the intent into the navigator. Any app on the phone could send
+  a route the graph does not have and crash this one on launch, in one line,
+  as often as it liked. Routes are now checked against the graph before they
+  reach the navigator, and `NavigationSafetyTest` holds the allow-list to
+  being exactly the screens the `NavHost` declares - a screen missing from it
+  is an alert that opens nothing, a name in it that the graph lacks is the
+  crash the check exists to stop.
+- **Whether losing access entirely says anything at all.** There are two ways
+  to lose sight of the gallery and only one of them had words. Every screen
+  asked "is access partial?", so someone who finished setup and later switched
+  the permission off came back to a blank Home, a Files list reading as an
+  empty gallery, and a calculator printing a total from a database nothing was
+  refreshing - a number about photographs the app could no longer see. Screens
+  now ask whether access is *full*, `AccessNotice` chooses wording for the case
+  at hand, and regaining access from either state refreshes at once rather than
+  waiting for the next scheduled run.
 
 **Not done, and why**
 

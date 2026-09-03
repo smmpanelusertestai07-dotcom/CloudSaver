@@ -178,4 +178,46 @@ class ScopeQueriesTest {
         ).first()
         assertEquals("the biggest file on the phone must head the list", "old_whale.mp4", bySize.first().displayName)
     }
+
+    /**
+     * "Clear the list" says, in the setting's own words, that the files go
+     * back in the queue. Excluding one parks it in SKIP, so clearing has to
+     * lift it out of SKIP too - not just drop the flag and leave it there.
+     */
+    @Test
+    fun clearingTheExcludedListPutsThoseFilesBackInTheQueue() = runBlocking {
+        val excluded = photo("excluded.jpg", "Screenshots", 9_000).copy(
+            fingerprint = "fp-excluded", state = "SKIP",
+            skipReason = "user_excluded", neverOptimise = true
+        )
+        // Parked for a reason of the app's own, and also excluded: clearing
+        // the flag must not pretend the other reason went away.
+        val tooSmall = photo("tiny.jpg", "Screenshots", 8_000).copy(
+            fingerprint = "fp-tiny", state = "SKIP",
+            skipReason = "too_small", neverOptimise = true
+        )
+        // Excluded, and the original has since left the gallery: nothing to
+        // queue, so it stays where it is.
+        val gone = photo("gone.jpg", "Screenshots", 7_000).copy(
+            fingerprint = "fp-gone", state = "SKIP", skipReason = "user_excluded",
+            neverOptimise = true, originalMissing = true
+        )
+        db.items().insert(excluded)
+        db.items().insert(tooSmall)
+        db.items().insert(gone)
+
+        assertEquals(3, db.items().neverOptimiseCountFlow().first())
+        db.items().clearNeverOptimise(1_234L)
+        assertEquals("nothing may still be excluded", 0, db.items().neverOptimiseCountFlow().first())
+
+        val rows = db.items().searchFlow(
+            q = "", states = emptyList(), anyState = 1,
+            excludedBuckets = everythingButScreenshots, sortKey = 0, limit = 500
+        ).first().associateBy { it.displayName }
+        assertEquals("NEW", rows.getValue("excluded.jpg").state)
+        assertEquals(null, rows.getValue("excluded.jpg").skipReason)
+        assertEquals("SKIP", rows.getValue("tiny.jpg").state)
+        assertEquals("too_small", rows.getValue("tiny.jpg").skipReason)
+        assertEquals("SKIP", rows.getValue("gone.jpg").state)
+    }
 }

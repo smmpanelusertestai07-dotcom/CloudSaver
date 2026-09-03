@@ -307,9 +307,17 @@ class SettingsE2eTest {
         val order = CloudApps.SELECTABLE.filter { it.e2ee } + CloudApps.SELECTABLE.filter { !it.e2ee }
         val row = order.indexOfFirst { it.id == to.id }
         assertTrue("${to.id} is missing from the cloud picker", row >= 0)
-        compose.onAllNodes(isRadioButton)[row].performScrollTo().performClick()
+        // Matched by the name on the row, not by its position among every
+        // radio button the app has. The settings screen behind this dialog
+        // carries nine segmented choices, and each of their options reports
+        // itself as a radio button so a screen reader can say which one is
+        // on - so an index into "all radio buttons" stopped meaning the
+        // picker's rows and started meaning whichever control happened to
+        // come first in the tree.
+        val pick = isRadioButton and hasText(to.label)
+        compose.onNode(pick).performScrollTo().performClick()
         awaitOption("cloud app") { it.cloudSingle == to.id }
-        compose.onAllNodes(isRadioButton)[row].assertIsSelected()
+        compose.onNode(pick).assertIsSelected()
 
         compose.onNodeWithText(s(R.string.ok)).performClick()
         awaitNodeGone(hasText(s(R.string.cloud_section_e2ee)), "the cloud picker stayed up")

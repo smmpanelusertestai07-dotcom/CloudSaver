@@ -53,6 +53,19 @@ object ScanSources {
         bucketName != null && LEGACY_OUTPUT_NAMES.any { it.equals(bucketName, ignoreCase = true) }
 
     /**
+     * True for the empty image a folder is given so it does not disappear -
+     * `_ente_keep.jpg` and the one earlier versions of this app left behind.
+     *
+     * The name is decided here, in Kotlin, and deliberately not in SQL. A
+     * `LIKE '%\_keep.jpg'` pattern needs an `ESCAPE` clause before the
+     * underscore is a literal underscore; without one the pattern asks for a
+     * backslash in the file name, which no file has, so it matches nothing at
+     * all. That is exactly what the cleanup query used to ask for.
+     */
+    fun isKeepPlaceholderName(name: String?): Boolean =
+        name != null && name.endsWith("_keep.jpg", ignoreCase = true)
+
+    /**
      * The reason a folder is off limits, or null when it may be scanned.
      * Everything the scanner and the picker refuse goes through here, so the
      * two can never disagree about what is eligible.

@@ -70,6 +70,11 @@
     <string name="partial_action">Allow all photos</string>
     <string name="partial_chip">Only selected photos visible</string>
     <string name="partial_waiting">Waiting for full photo access</string>
+    <string name="no_access_title">CloudSaver cannot see your photos</string>
+    <string name="no_access_body">Photo and video access is switched off, so nothing is scanned and no total is shown. Your files are exactly where you left them.</string>
+    <string name="no_access_action">Turn photo access back on</string>
+    <string name="no_access_chip">No photo access</string>
+    <string name="no_access_waiting">Waiting for photo access</string>
     <string name="crash_title">CloudSaver stopped unexpectedly last time</string>
     <string name="crash_body">Nothing was lost. A record of what happened is in the log.</string>
     <string name="crash_share">Share log</string>
