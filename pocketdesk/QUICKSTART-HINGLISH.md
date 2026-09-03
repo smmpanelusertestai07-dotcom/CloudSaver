@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.40-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.45-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -75,7 +75,7 @@ Neeche (ya upar, tumhari marzi) **ek hi bar**:
 | Data and files | Mobile data limit per day (midnight reset; limit pe downloads aur desktop dono rukte hain), Download on Wi-Fi only |
 | Privacy and safety | App lock — fingerprint/PIN, home aur desktop dono screen pe; on karte waqt ek baar pooch ke confirm karta hai |
 | Permissions | Notifications, Battery usage (Unrestricted), **Background activity** (phone ki battery page pe Allow foreground + Allow background activity ON), **Auto-launch** (Allow auto-launch ON), **Phone files**, App info |
-| Storage | Linux computer kitna space le raha hai, **Update the computer's basics** (sirf tab dikhta hai jab is version me kuch naya ho — Ubuntu ke security updates ke saath), **Delete the Linux computer and free space** |
+| Storage | Linux computer kitna space le raha hai, **Open-source notices** (APK ke andar hi hain), **Update the computer's basics** (sirf tab dikhta hai jab is version me kuch naya ho — Ubuntu ke security updates ke saath), **Delete the Linux computer and free space** |
 
 Settings badalne se kabhi kuch delete nahi hota.
 
@@ -100,7 +100,13 @@ Settings badalne se kabhi kuch delete nahi hota.
 - Kaam: `/home/coder/Projects` (computer ke andar).
 - Downloads: `/home/coder/Downloads` — computer ke andar hi rehta hai, phone ka koi dusra app nahi padh sakta.
 - Shared: `/home/coder/Shared` — bahar nikalne ka rasta. Yehi ek folder phone ke Files app me `Android/data/com.pocketdesk/files/Shared` par dikhta hai. File manager me bhi bookmark hai.
-- Uninstall karne se poora computer delete ho jata hai — pehle Downloads me copy kar lo.
+- Uninstall karne se poora computer delete ho jata hai — aur `Downloads` aur `Shared` dono app ke hi andar hain, wo bhi jaate hain. Rakhna hai to file **phone ke apne folder** me le jao: Settings → Permissions → **Phone files** ON karke seedha phone ke `Download`/`Documents` me save karo, ya `Shared` me daal kar phone ke Files app se (`Android/data/com.pocketdesk/files/Shared`) apne `Download` me copy kar lo.
+
+## Privacy — chhoti si baat
+
+- Desktop ki screen aur uski awaaz ab **private socket** se aati hai (app ke apne storage ke andar), koi network port khula nahi rehta — phone ka koi dusra app na dekh sakta hai na sun sakta hai.
+- App lock ON ho to recents me bhi app ka screenshot nahi dikhega.
+- Setup beech me ruk gaya ya computer ka koi hissa gayab ho gaya to app usse **repair** karta hai, delete nahi — delete sirf Settings se, warning ke saath.
 
 ## Kya kaam nahi karega (permanent)
 

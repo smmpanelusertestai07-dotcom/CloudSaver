@@ -54,6 +54,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private LinearLayout column;
     private HorizontalScrollView bar;
     private HorizontalScrollView keyRow;
+    /** The line between the desktop and the bar; it lifts with the bar when the keyboard opens. */
+    private View barDivider;
     private VncView desktop;
     private TextView status;
     private Button pointerButton;
@@ -97,6 +99,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             setContentView(content);
             applySystemInsets(content);
             connectWithRetry();
+            AppLock.applyWindowSecurity(this);
+            audio.setSocketPath(new java.io.File(ContainerRuntime.rootfs(this),
+                    "home/coder/.pocketdesk/audio.sock").getAbsolutePath());
             audio.start();
         } catch (Throwable error) {
             // Going back to the home screen with the reason recorded beats a crash loop.
@@ -107,6 +112,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onStart() {
         super.onStart();
+        AppLock.applyWindowSecurity(this);
         // The lock covers this screen too: the desktop, with every AI app signed in, is the
         // one screen that matters most.
         if (outer != null && AppLock.isLocked(this)) {
@@ -276,15 +282,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         LinearLayout.LayoutParams desktopLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         keyRow.setVisibility(keyRowShown ? View.VISIBLE : View.GONE);
+        barDivider = hairline();
         if (controlsAtTop) {
             column.addView(bar, stripLp);
-            column.addView(hairline(), dividerLp());
+            column.addView(barDivider, dividerLp());
             column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
             column.addView(desktop, desktopLp);
         } else {
             column.addView(desktop, desktopLp);
             column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
-            column.addView(hairline(), dividerLp());
+            column.addView(barDivider, dividerLp());
             column.addView(bar, stripLp);
         }
         styleToggle(keysButton, keyRowShown);
@@ -507,7 +514,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             String lastError = "The Linux computer did not come up. Go back and open it again.";
             long startedAt = SystemClock.elapsedRealtime();
             for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
-                if (!VncClient.canConnect("127.0.0.1", 5901, 250)) {
+                if (!VncClient.canConnect(vncSocketPath()) && !VncClient.canConnect("127.0.0.1", 5901, 250)) {
                     // The service's "running" flag is set late and cleared early, so it is not a
                     // reliable failure signal while starting up: reading it as one is what put
                     // "Desktop stopped" on a desktop that was still on its way. The wait simply
@@ -523,7 +530,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     SystemClock.sleep(250);
                     continue;
                 }
-                VncClient client = new VncClient("127.0.0.1", 5901, desktop);
+                VncClient client = new VncClient("127.0.0.1", 5901, vncSocketPath(), desktop);
                 desktop.setClient(client);
                 try {
                     client.connectAndRun();
@@ -544,6 +551,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             if (!finished) desktop.onDisconnected(lastError);
         }, "pocketdesk-vnc-client");
         connectionThread.start();
+    }
+
+    /**
+     * Where the desktop's private socket lives, inside this app's own storage. The desktop
+     * script creates it there; nothing outside this app can open it. Null is never returned --
+     * when the socket is absent the client falls back to the old local port by itself.
+     */
+    private String vncSocketPath() {
+        return new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/vnc.sock")
+                .getAbsolutePath();
     }
 
     private void togglePointerMode() {
@@ -708,6 +725,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private void sendKey(int keysym, boolean down) {
+        // Every key the owner presses -- the on-screen keyboard, the toolbar row, a paired
+        // Bluetooth keyboard through dispatchKeyEvent -- is the owner being here. Without this
+        // stamp, Smart stopping counted a two-hour typing session as idle and closed it.
+        VncView.lastInteractionAt = System.currentTimeMillis();
         VncClient client = desktop.getClient();
         if (client != null) client.sendKey(keysym, down);
     }
@@ -787,9 +808,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         root.setOnApplyWindowInsetsListener((view, insets) -> {
             // The keyboard's height goes to the viewer, which slides up under it; it never
             // reaches the layout, so the Linux desktop is never resized for it.
-            if (Build.VERSION.SDK_INT >= 30 && desktop != null) {
-                desktop.setKeyboardInset(insets.getInsets(android.view.WindowInsets.Type.ime()).bottom);
-            }
+            int ime = Build.VERSION.SDK_INT >= 30
+                    ? insets.getInsets(android.view.WindowInsets.Type.ime()).bottom : 0;
+            if (desktop != null) desktop.setKeyboardInset(ime);
+            // The controls ride above the keyboard instead of hiding under it. A translation,
+            // not a layout change: resizing this window would resize the Linux desktop itself,
+            // which is the very thing adjustNothing is here to prevent.
+            float lift = controlsAtTop ? 0f : -ime;
+            if (bar != null) bar.setTranslationY(lift);
+            if (keyRow != null) keyRow.setTranslationY(lift);
+            if (barDivider != null) barDivider.setTranslationY(lift);
             int top;
             int bottom;
             int left;

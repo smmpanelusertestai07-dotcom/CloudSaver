@@ -40,8 +40,8 @@ say() {   # say <kind: error|info|warn> <title> <body>
     return 0
   fi
   case "$1" in
-    error) zenity --error --width=380 --title="$2" --text="$3" >/dev/null 2>&1 ;;
-    *)     zenity --info  --width=380 --title="$2" --text="$3" >/dev/null 2>&1 ;;
+    error) zenity --error --width=380 --no-markup --title="$2" --text="$3" >/dev/null 2>&1 ;;
+    *)     zenity --info  --width=380 --no-markup --title="$2" --text="$3" >/dev/null 2>&1 ;;
   esac
 }
 
@@ -170,6 +170,13 @@ if [ "${POCKETDESK_SIMULATE:-1}" = "1" ] && have apt-get && have sudo; then
     else
       block "The computer cannot work out how to install it. It may be built for a different version of Ubuntu."
     fi
+  else
+    # apt prints one machine-readable line per action. A package that declares Conflicts or
+    # Replaces can take the desktop itself away, and "Install demoapp?" would never have said so.
+    removals=$(awk '/^Remv /{print $2}' "$sim_log" | sort -u | tr '\n' ' ')
+    if [ -n "$removals" ]; then
+      block "Installing this would delete software already on the computer: $removals"
+    fi
   fi
 fi
 rm -f "$sim_log" 2>/dev/null || true
@@ -177,7 +184,8 @@ rm -f "$sim_log" 2>/dev/null || true
 # 5. Setup commands. Nearly every package has them and they are not suspicious by themselves,
 #    but they run as administrator inside the computer and the owner deserves to know.
 scripts=""
-if dpkg-deb --ctrl-tarfile "$FILE" 2>/dev/null | tar -t 2>/dev/null | grep -qE '\./(pre|post)(inst|rm)$'; then
+if dpkg-deb --ctrl-tarfile "$FILE" 2>/dev/null | tar -t 2>/dev/null \
+     | grep -qE '^(\./)?((pre|post)(inst|rm)|config)$'; then
   scripts="yes"
 fi
 
@@ -222,7 +230,10 @@ Install ${PACKAGE:-this app} on the Linux computer?"
 # built before they were part of set-up), a terminal asks; with neither, it stops rather than
 # installing something nobody agreed to.
 if have zenity; then
-  zenity --question --width=430 --title="Install an app" --text="$question" \
+  # --no-markup: every package's Maintainer field looks like "Name <mail@host>", which Pango
+  # cannot parse, and GTK then shows a dialog with no body at all -- no name, no size, no
+  # warnings, just two buttons. It also stops a hostile package forging the text.
+  zenity --question --width=430 --no-markup --title="Install an app" --text="$question" \
     --ok-label="Install anyway" --cancel-label="Cancel" >/dev/null 2>&1 || exit 0
 elif [ -t 0 ]; then
   printf '%s\n\nType yes to install: ' "$question"
@@ -269,9 +280,14 @@ if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$FILE" >> "$log" 2>&1
 To remove it later: open the terminal and run  sudo apt-get remove ${PACKAGE:-the-app}"
 else
   finish_progress
+  # An install fails most often part way through unpacking, which leaves dpkg half-applied and
+  # every later install refusing to run. Put that right here rather than leaving it for the
+  # owner to meet as a mystery next week.
+  sudo dpkg --configure -a >> "$log" 2>&1 || true
+  sudo apt-get -y -f install >> "$log" 2>&1 || true
   say error "${PACKAGE:-The app} did not install" \
 "The computer could not finish installing it. The usual reasons are a package built for a different version of Ubuntu, or software it needs that is not available here.
 
-Nothing was changed. The details are in the Apps menu → App reports → install.log."
+The computer was put back in working order, and anything half-installed was cleaned up. The details are in the Apps menu → App reports → install.log."
   exit 1
 fi

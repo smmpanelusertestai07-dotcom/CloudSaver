@@ -9,12 +9,23 @@
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
-# tint2's own launchers and the desktop itself are not windows the user opened.
-skip='pocketdesk-panel|tint2|pcmanfm.*--desktop|Desktop'
+# The desktop's own root window and the panel are not windows the owner opened. They are told
+# apart by what they ARE (their EWMH window type), not by what their title happens to contain:
+# matching the word "Desktop" also skipped a real window whose title mentioned it, so Close all
+# and Force close silently ignored, say, a Claude conversation called "Desktop setup".
+is_own_furniture() {   # is_own_furniture <window id>
+  command -v xprop >/dev/null 2>&1 || return 1
+  xprop -id "$1" _NET_WM_WINDOW_TYPE 2>/dev/null \
+    | grep -qE '_NET_WM_WINDOW_TYPE_(DESKTOP|DOCK)'
+}
 
 open_windows() {
   command -v wmctrl >/dev/null 2>&1 || return 0
-  wmctrl -l | grep -Ev "$skip" || true
+  wmctrl -l 2>/dev/null | while read -r id rest; do
+    [ -n "$id" ] || continue
+    is_own_furniture "$id" && continue
+    printf '%s %s\n' "$id" "$rest"
+  done
 }
 
 case "${1:-list}" in

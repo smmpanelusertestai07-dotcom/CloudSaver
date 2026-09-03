@@ -20,10 +20,15 @@ if [ -n "$battery" ]; then
     out="Battery ${cap}%"
     case "$status" in Charging|Full) out="$out charging" ;; esac
   fi
-  # Android reports tenths of a degree; a few kernels report whole degrees.
+  # power_supply reports tenths of a degree (195 = 19.5 C); a few kernels report whole degrees
+  # and a few thousandths. Decide by magnitude in both directions, and print nothing at all
+  # rather than a number that is obviously wrong -- 2500 C was reaching the panel.
   if [ -n "$temp" ] && [ "$temp" -eq "$temp" ] 2>/dev/null; then
-    if [ "$temp" -gt 200 ]; then temp=$((temp / 10)); fi
-    out="${out:+$out · }${temp}°C"
+    if [ "$temp" -gt 1000 ]; then temp=$((temp / 100));
+    elif [ "$temp" -gt 100 ]; then temp=$((temp / 10)); fi
+    if [ "$temp" -ge 0 ] && [ "$temp" -le 80 ]; then
+      out="${out:+$out · }${temp}°C"
+    fi
   fi
 fi
 mem=$(awk '/MemAvailable/ { printf "%.1f", $2 / 1048576 }' /proc/meminfo 2>/dev/null || true)

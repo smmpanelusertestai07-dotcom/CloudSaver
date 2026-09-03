@@ -33,6 +33,11 @@ final class AudioBridge {
     private Thread thread;
     /** The live connection, closed by stop(): a blocking read cannot be interrupted any other way. */
     private volatile Socket socket;
+    private volatile android.net.LocalSocket localSocket;
+    /** The desktop's private audio socket inside this app's storage, or null to use the port. */
+    private volatile String socketPath;
+
+    void setSocketPath(String path) { socketPath = path; }
 
     synchronized void start() {
         if (running) return;
@@ -52,20 +57,49 @@ final class AudioBridge {
         if (open != null) {
             try { open.close(); } catch (IOException ignored) {}
         }
+        android.net.LocalSocket openLocal = localSocket;
+        localSocket = null;
+        if (openLocal != null) {
+            try { openLocal.close(); } catch (IOException ignored) {}
+        }
     }
 
     private void run() {
         while (running) {
-            try (Socket connection = new Socket()) {
-                socket = connection;
-                if (!running) return;
-                connection.connect(new InetSocketAddress("127.0.0.1", PORT), 1500);
-                connection.setReceiveBufferSize(64 * 1024);
-                play(new DataInputStream(connection.getInputStream()));
-            } catch (Exception ignored) {
-                // The desktop is still starting, or has no PulseAudio yet: try again shortly.
-            } finally {
-                socket = null;
+            // The private socket first: on Android any other app could open a loopback port,
+            // and desktop sound is the owner's conversations read aloud. The port is only used
+            // by a container whose PulseAudio has no unix module.
+            boolean playedLocally = false;
+            if (socketPath != null && new java.io.File(socketPath).exists()) {
+                android.net.LocalSocket local = new android.net.LocalSocket();
+                try {
+                    localSocket = local;
+                    if (!running) return;
+                    local.connect(new android.net.LocalSocketAddress(socketPath,
+                            android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+                    local.setReceiveBufferSize(64 * 1024);
+                    playedLocally = true;
+                    play(new DataInputStream(local.getInputStream()));
+                } catch (Exception ignored) {
+                    // Not up yet, or a socket file left behind by a session that died: the port
+                    // is tried in the same turn rather than leaving the owner with no sound.
+                } finally {
+                    localSocket = null;
+                    try { local.close(); } catch (IOException ignored) {}
+                }
+            }
+            if (!playedLocally) {
+                try (Socket connection = new Socket()) {
+                    socket = connection;
+                    if (!running) return;
+                    connection.connect(new InetSocketAddress("127.0.0.1", PORT), 1500);
+                    connection.setReceiveBufferSize(64 * 1024);
+                    play(new DataInputStream(connection.getInputStream()));
+                } catch (Exception ignored) {
+                    // The desktop is still starting, or has no PulseAudio yet: try again shortly.
+                } finally {
+                    socket = null;
+                }
             }
             if (!running) return;
             try { Thread.sleep(3000L); } catch (InterruptedException ended) { return; }

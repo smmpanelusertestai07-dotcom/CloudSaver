@@ -7,8 +7,8 @@ BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
 ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_BASENAME="PocketDesk"
-VERSION_NAME="10.0.40"
-VERSION_CODE="140"
+VERSION_NAME="10.0.45"
+VERSION_CODE="145"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2
@@ -17,6 +17,10 @@ fi
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$BUILD_DIR/gen"
+
+# The GPL-2.0 notice for the bundled PRoot has to reach whoever receives the APK, and the APK
+# is the only thing they receive. Settings -> "Open-source notices" reads this copy.
+cp "$PROJECT_DIR/OPEN_SOURCE_NOTICES.md" "$PROJECT_DIR/app/assets/open-source-notices.md"
 
 "$BUILD_TOOLS/aapt2" compile --dir "$PROJECT_DIR/app/res" -o "$BUILD_DIR/compiled.zip"
 "$BUILD_TOOLS/aapt2" link \
@@ -55,6 +59,18 @@ zip -q -j "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/dex/classes.dex"
 KEYSTORE="${POCKETDESK_KEYSTORE:-$PROJECT_DIR/.signing/pocketdesk-local.jks}"
 STORE_PASS="${POCKETDESK_STORE_PASS:-pocketdesk-local}"
 KEY_PASS="${POCKETDESK_KEY_PASS:-$STORE_PASS}"
+# Android refuses an update signed with a different key, and the only way to take it would be
+# to uninstall -- which deletes the whole Ubuntu container, its apps and their sign-ins. So the
+# key that signed every previous release lives in the repository, and a build that has to mint
+# a new one says so loudly and names its APK differently, so it can never be handed over as the
+# release by mistake.
+SUFFIX=""
+if [[ ! -f "$KEYSTORE" ]]; then
+  SUFFIX="-devkey"
+  echo "WARNING: $KEYSTORE is missing, so this build is signed with a throwaway key." >&2
+  echo "         It CANNOT be installed over an existing PocketDesk; restore the keystore" >&2
+  echo "         (pocketdesk/.signing/) or set POCKETDESK_KEYSTORE before a real release." >&2
+fi
 if [[ ! -f "$KEYSTORE" ]]; then
   mkdir -p "$(dirname "$KEYSTORE")"
   keytool -genkeypair -noprompt \
@@ -69,9 +85,9 @@ fi
   --ks-key-alias pocketdesk \
   --min-sdk-version 29 --max-sdk-version 35 \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-  --out "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME-release.apk" \
+  --out "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk" \
   "$BUILD_DIR/$APP_BASENAME-aligned.apk"
-"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME-release.apk"
-"$BUILD_TOOLS/aapt2" dump badging "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME-release.apk"
+"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
+"$BUILD_TOOLS/aapt2" dump badging "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
 
-echo "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME-release.apk"
+echo "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"

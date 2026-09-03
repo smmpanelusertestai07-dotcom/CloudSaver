@@ -27,11 +27,22 @@ field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group s
   ' "$1"
 }
 
+# The first token of an Exec line. The desktop-entry spec allows a quoted path, so splitting
+# on whitespace returned "\"/opt/My" for anything installed in a directory with a space in it,
+# and the app then vanished from the menu, the desktop and the panel.
+exec_binary() {   # exec_binary <exec line>
+  case "$1" in
+    \"*) printf '%s' "${1#\"}" | cut -d'"' -f1 ;;
+    "'"*) printf '%s' "${1#\'}" | cut -d"'" -f1 ;;
+    *) printf '%s' "$1" | awk '{print $1}' ;;
+  esac
+}
+
 runnable() {   # runnable <desktop file>: its Exec names a program that exists
   local exec_line binary
   exec_line=$(field "$1" Exec)
   [ -n "$exec_line" ] || return 1
-  binary=$(printf '%s' "$exec_line" | awk '{print $1}')
+  binary=$(exec_binary "$exec_line")
   case "$binary" in
     /*) [ -x "$binary" ] ;;
     *) command -v "$binary" >/dev/null 2>&1 ;;
@@ -165,7 +176,12 @@ EOF
 } > "$OPENBOX_DIR/menu.xml"
 
 # ---- Desktop icons and panel launchers: the favourites, using their own entries -----
-find "$DESKTOP_DIR" -maxdepth 1 -name '*.desktop' -delete 2>/dev/null || true
+# Only the entries this script wrote (they all carry X-PocketDesk=1). A blanket delete took
+# away anything the owner had put on their own desktop, every time an app was installed.
+for stale in "$DESKTOP_DIR"/*.desktop; do
+  [ -f "$stale" ] || continue
+  grep -q '^X-PocketDesk=1' "$stale" 2>/dev/null && rm -f "$stale"
+done
 find "$LOCAL_APPS" -maxdepth 1 -name 'pocketdesk-*.desktop' -delete 2>/dev/null || true
 
 # The panel's first button: the apps menu, behind the Linux mascot. Hidden from the menu it
@@ -349,15 +365,25 @@ chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
 # A desktop that is open right now gets the new list at once. This also runs as root from an
 # install that happens while the desktop is open, so the panel is restarted as the desktop's
 # own user: started as root it would read root's (empty) settings and come up blank.
-if [ -S /tmp/.X11-unix/X1 ]; then
+# The desktop's own X server must be answering -- a stale socket outlives an unclean stop, and
+# starting anything against it hangs. xdpyinfo is in x11-utils, which set-up installs.
+display_live() {
+  [ -S /tmp/.X11-unix/X1 ] || return 1
+  command -v xdpyinfo >/dev/null 2>&1 || return 0
+  DISPLAY=:1 xdpyinfo >/dev/null 2>&1
+}
+
+if display_live; then
   DISPLAY=:1 openbox --reconfigure 2>/dev/null || true
   if pgrep -x tint2 >/dev/null 2>&1; then
-    pkill -x tint2 2>/dev/null || true
-    sleep 1
-    if [ "$(id -u)" = 0 ] && command -v su >/dev/null 2>&1; then
-      su coder -c 'DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &' 2>/dev/null || true
-    else
-      DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
-    fi
+    # tint2 re-reads its settings on SIGUSR1. It is never restarted from here: when this script
+    # runs from an app install it is inside that install's own short-lived container, started
+    # with --kill-on-exit, so a panel started here would be killed the moment the install
+    # finished -- and the desktop would sit with no panel until it was closed and opened again.
+    pkill -USR1 -x tint2 2>/dev/null || true
+  elif [ "$(id -u)" != 0 ]; then
+    # No panel at all (it crashed, or the phone killed it for memory) and we are the desktop's
+    # own user, so a replacement started here belongs to the session and survives.
+    DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
   fi
 fi

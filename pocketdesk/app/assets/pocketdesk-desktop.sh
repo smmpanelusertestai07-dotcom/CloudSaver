@@ -124,9 +124,14 @@ fi
 /usr/local/bin/pocketdesk-menu || true
 
 # Sound. There is no sound card a container can reach, so PulseAudio plays into a virtual
-# output called Phone, and everything written to it is streamed as plain PCM on a local port
-# that PocketDesk's viewer reads and plays through the phone's own speaker. Every app that
-# speaks PulseAudio (Electron apps, GNOME Web, Firefox, Brave) simply finds a working output.
+# output called Phone, and everything written to it is streamed as plain PCM to PocketDesk's
+# viewer, which plays it through the phone's own speaker. Every app that speaks PulseAudio
+# (Electron apps, Chrome) simply finds a working output.
+#
+# The stream goes over a unix socket inside this app's private storage, not a TCP port:
+# Android shares loopback between apps, so a port here could be read by any other app on the
+# phone that holds the internet permission. The TCP module stays only as a fallback for a
+# PulseAudio too old to have the unix one, so sound never simply stops working.
 if command -v pulseaudio >/dev/null 2>&1; then
   mkdir -p "$HOME/.config/pulse"
   printf 'exit-idle-time = -1\ndefault-sample-rate = 44100\nflat-volumes = no\nenable-shm = no\n' \
@@ -137,18 +142,67 @@ if command -v pulseaudio >/dev/null 2>&1; then
   for n in 1 2 3 4 5 6; do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
   pactl load-module module-null-sink sink_name=phone sink_properties=device.description=Phone >/dev/null 2>&1 || true
   pactl set-default-sink phone >/dev/null 2>&1 || true
-  pactl load-module module-simple-protocol-tcp rate=44100 format=s16le channels=2 \
-    source=phone.monitor record=true playback=false listen=127.0.0.1 port=4712 >/dev/null 2>&1 || true
+  mkdir -p "$HOME/.pocketdesk"
+  chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
+  rm -f "$HOME/.pocketdesk/audio.sock"
+  if pactl load-module module-simple-protocol-unix rate=44100 format=s16le channels=2 \
+      source=phone.monitor record=true playback=false \
+      socket="$HOME/.pocketdesk/audio.sock" >/dev/null 2>&1; then
+    chmod 600 "$HOME/.pocketdesk/audio.sock" 2>/dev/null || true
+    echo "sound: private socket" >> /tmp/pocketdesk-pulse.log
+  else
+    echo "sound: falling back to the local port" >> /tmp/pocketdesk-pulse.log
+    pactl load-module module-simple-protocol-tcp rate=44100 format=s16le channels=2 \
+      source=phone.monitor record=true playback=false listen=127.0.0.1 port=4712 >/dev/null 2>&1 || true
+  fi
 fi
 
 # SendPrimary off: X11 treats any highlighted text as a selection, and the display server was
 # forwarding every one of them to the phone as a copy -- so the phone showed "Copied" whenever
 # a word was selected, and its clipboard was overwritten. Only a real copy (Ctrl+C, or the
 # menu) reaches the phone now.
-/usr/bin/Xtigervnc :1 -rfbport 5901 -localhost yes -SecurityTypes None -ac -AlwaysShared \
-  -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' &
-VNC_PID=$!
-for n in 1 2 3 4 5 6 7 8; do [ -S /tmp/.X11-unix/X1 ] && break; sleep 0.5; done
+# The display server listens on a unix socket in this app's private storage, which no other
+# app on the phone can open, instead of a TCP port on loopback, which any of them could:
+# Android does not keep loopback apart between apps, and this session has no password on it.
+# If this build of Xtigervnc has no -rfbunixpath, the old port is used instead so the desktop
+# still comes up -- PocketDesk's viewer tries the socket first and the port second.
+mkdir -p "$HOME/.pocketdesk"
+chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
+rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
+
+start_display() {   # start_display <extra args...>
+  /usr/bin/Xtigervnc :1 "$@" -SecurityTypes None -ac -AlwaysShared \
+    -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' \
+    >>/tmp/pocketdesk-vnc.log 2>&1 &
+  VNC_PID=$!
+}
+
+display_ready() {
+  [ -S /tmp/.X11-unix/X1 ] || return 1
+  command -v xdpyinfo >/dev/null 2>&1 || return 0
+  DISPLAY=:1 xdpyinfo >/dev/null 2>&1
+}
+
+# Up to two minutes, not four seconds: on a cold, ptraced container the server can take far
+# longer than that to answer, and starting the panel and the file manager against a display
+# that is not there yet was a desktop with no wallpaper, no panel and no icons.
+wait_for_display() {
+  for n in $(seq 1 240); do
+    display_ready && return 0
+    kill -0 "$VNC_PID" 2>/dev/null || return 1
+    sleep 0.5
+  done
+  return 1
+}
+
+start_display -rfbunixpath "$HOME/.pocketdesk/vnc.sock" -rfbunixmode 0600 -rfbport -1
+if ! wait_for_display; then
+  echo "display: unix socket did not come up, using the local port" >> /tmp/pocketdesk-vnc.log
+  kill "$VNC_PID" 2>/dev/null || true
+  rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
+  start_display -rfbport 5901 -localhost yes
+  wait_for_display || echo "display: did not start" >> /tmp/pocketdesk-vnc.log
+fi
 
 xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true

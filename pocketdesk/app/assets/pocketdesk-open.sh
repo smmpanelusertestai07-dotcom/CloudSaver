@@ -91,6 +91,13 @@ spin_glyph() {
 }
 spinner_text() {   # spinner_text <line>
   [ "$spinner_open" = "1" ] || return 0
+  # If the owner closed the pulsing window, nothing is reading the pipe: it fills, and a write
+  # would block this script -- and the app it is opening -- for ever. Check the reader first,
+  # and close the whole thing down the moment it is gone.
+  if ! kill -0 "$spinner_pid" 2>/dev/null; then
+    spinner_stop
+    return 0
+  fi
   printf '# %s\n' "$1" >&9 2>/dev/null || true
 }
 spinner_stop() {
@@ -349,7 +356,7 @@ fi
 {
   echo "--- $(date '+%Y-%m-%d %I:%M:%S %p') ---"
   echo "free memory at launch: $(free_mb) MB"
-  echo "launching: $target ${flags[*]:-} $*"
+  echo "launching: $target ${flags[*]:-}"
 } > "$log" 2>/dev/null
 
 # Already open (a Chromium app, which only ever runs once): bring its window to the front and
@@ -364,7 +371,9 @@ if [ -n "$open_id" ]; then
   # same flags hands it to the running app through the single-instance socket and exits. The
   # browser's part is then over, so its windows are closed to give the app the memory.
   if [ "$#" -gt 0 ]; then
-    echo "handing it: $*" >> "$log"
+    # The scheme only. A sign-in callback (chatgpt://auth/callback?code=...) carries the code
+    # that would let anyone who read this file into the account.
+    echo "handing it: ${1%%:*} link" >> "$log"
     "$target" ${flags[@]+"${flags[@]}"} "$@" >> "$log" 2>&1
     sleep 2
     close_browser_windows

@@ -71,6 +71,21 @@ final class AppLock {
      * Shows the locked screen over {@code root} and asks the phone at once. The overlay is
      * removed only when the phone says yes; Cancel leaves it, with its Unlock button.
      */
+    /**
+     * Hide the window from the recents list whenever App lock is on -- not only while the lock
+     * screen is up. Android takes the task snapshot as a screen goes to the background, which
+     * is before the lock is raised on the way back: the whole desktop, with whatever was open
+     * on it, was sitting in the recents thumbnail of a locked app.
+     */
+    static void applyWindowSecurity(Activity activity) {
+        if (activity == null) return;
+        if (enabled(activity)) {
+            activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        } else {
+            activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
+    }
+
     static View show(Activity activity, FrameLayout root, Runnable onUnlocked) {
         View existing = root.findViewWithTag("pocketdesk-lock");
         if (existing != null) return existing;
@@ -113,7 +128,7 @@ final class AppLock {
                 locked = false;
                 if (screen.getParent() == root) {
                     root.removeView(screen);
-                    activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+                    applyWindowSecurity(activity);
                     if (onUnlocked != null) onUnlocked.run();
                 }
             } else {
@@ -215,7 +230,7 @@ final class AppLock {
             locked = false;
             View screen = root == null ? null : root.findViewWithTag("pocketdesk-lock");
             if (screen != null) root.removeView(screen);
-            activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            applyWindowSecurity(activity);
             if (onUnlocked != null) onUnlocked.run();
         }
         if (waiting != null) waiting.done(ok);
