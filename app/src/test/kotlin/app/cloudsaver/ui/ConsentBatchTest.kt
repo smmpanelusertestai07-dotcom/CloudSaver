@@ -81,7 +81,15 @@ class ConsentBatchTest {
             val source = File(ui, fileName).readText()
             val body = source.substringAfter("fun $function(", "")
             assertTrue("$fileName has no $function() any more", body.isNotEmpty())
-            val head = body.take(1400)
+            // Code, not prose. The window exists to say "the split happens
+            // early, before anything is confirmed" - counting comment
+            // characters towards it means a maintainer who documents the rule
+            // breaks it, which is how this fired on a three-line comment while
+            // ReclaimRules.batches() sat right where it always had.
+            val head = body.lineSequence()
+                .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+                .joinToString("\n")
+                .take(1400)
             assertTrue(
                 "$what is confirmed without being split first ($function)",
                 head.contains("ReclaimRules.batches(")

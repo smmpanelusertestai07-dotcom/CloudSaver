@@ -619,6 +619,22 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 )
                             }
                         }
+                    } else if (detection.needsChoice) {
+                        // More than one is installed and nothing is chosen
+                        // yet, so `chosen` is still the stored default - an
+                        // app that may not be on this phone at all. Saying
+                        // "Found: MEGA" to someone running Ente and Filen is
+                        // worse than saying nothing: it is a detection result
+                        // that was never detected.
+                        Text(
+                            pluralStringResource(
+                                R.plurals.onb5_found_several,
+                                detection.installed.size,
+                                detection.installed.size
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
                     } else {
                         Text(
                             stringResource(R.string.onb5_found, chosen.label),

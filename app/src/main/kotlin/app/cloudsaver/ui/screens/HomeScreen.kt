@@ -963,9 +963,15 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                                             R.string.optimise_now_override_charger
                                         RunDecider.Wait.SCREEN_ON ->
                                             R.string.optimise_now_override_screen
-                                        RunDecider.Wait.BATTERY_LOW,
-                                        RunDecider.Wait.BATTERY_SAVER ->
+                                        RunDecider.Wait.BATTERY_LOW ->
                                             R.string.optimise_now_override_battery
+                                        // Battery Saver is a switch the user
+                                        // turned on, not a low battery. Saying
+                                        // "even though the battery is low"
+                                        // contradicted the status line right
+                                        // above it, which said Battery Saver.
+                                        RunDecider.Wait.BATTERY_SAVER ->
+                                            R.string.optimise_now_override_saver
                                         else -> R.string.optimise_now_hint_override
                                     }
                                 )

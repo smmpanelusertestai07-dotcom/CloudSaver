@@ -344,7 +344,14 @@ private fun ActivityCard(row: ActivityRow, nav: NavHostController, vm: AppViewMo
 @Composable
 private fun headline(kind: ActivityLog.Kind, row: ActivityRow): String = when (kind) {
     ActivityLog.Kind.OPTIMISED ->
-        stringResource(R.string.activity_optimised, Formats.count(row.count), Formats.bytes(row.bytes))
+        // A run that found nothing did not optimise zero files - it had
+        // nothing to do. "Optimised 0 files, saving 0 MB" reads as a
+        // failure and is really the ordinary quiet case.
+        if (row.count == 0) {
+            stringResource(R.string.activity_optimised_none)
+        } else {
+            stringResource(R.string.activity_optimised, Formats.count(row.count), Formats.bytes(row.bytes))
+        }
     ActivityLog.Kind.RELEASED ->
         stringResource(R.string.activity_released, Formats.count(row.count))
     ActivityLog.Kind.BACKED_UP ->

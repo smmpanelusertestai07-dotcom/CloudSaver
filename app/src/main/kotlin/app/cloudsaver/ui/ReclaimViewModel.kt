@@ -710,7 +710,7 @@ class ReclaimViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             duplicatesLoading.value = true
             try {
-                duplicateGroups.value = DuplicateScanner(ctx).groups()
+                duplicateGroups.value = withChosenKeepers(DuplicateScanner(ctx).groups())
             } finally {
                 duplicatesLoading.value = false
             }
@@ -726,12 +726,31 @@ class ReclaimViewModel(
      * around the new keeper and the old keeper becomes a removable extra.
      */
     fun keepInstead(sha256: String, id: Long) {
-        duplicateGroups.value = duplicateGroups.value.map { group ->
-            if (group.sha256 != sha256) return@map group
-            val next = group.all.firstOrNull { it.id == id } ?: return@map group
+        keeperChoice[sha256] = id
+        duplicateGroups.value = withChosenKeepers(duplicateGroups.value)
+    }
+
+    /**
+     * The keeper the user picked per group, by content hash.
+     *
+     * Held apart from the group list because that list is rebuilt from a fresh
+     * scan the moment anything is removed - and the rebuild used to throw the
+     * choice away. Someone who swapped the keeper and ticked the old one then
+     * confirmed a removal that quietly did nothing: the fresh scan had put the
+     * automatic keeper back, so the file they ticked was no longer an extra
+     * and was filtered out. The control looked like it worked and did not.
+     *
+     * The hash is the group's identity and does not change, so the choice
+     * survives every rescan. It is per screen, like the swap itself.
+     */
+    private val keeperChoice = mutableMapOf<String, Long>()
+
+    private fun withChosenKeepers(groups: List<DuplicateRules.Group>): List<DuplicateRules.Group> =
+        groups.map { group ->
+            val wanted = keeperChoice[group.sha256] ?: return@map group
+            val next = group.all.firstOrNull { it.id == wanted } ?: return@map group
             group.copy(keeper = next, extras = group.all.filter { it.id != next.id })
         }
-    }
 
     /**
      * Moves the ticked extras to the gallery trash.
@@ -749,7 +768,10 @@ class ReclaimViewModel(
             try {
                 // Re-read now, not when the list was drawn: a file can be gone
                 // or a group can have changed between the tap and the action.
-                val fresh = DuplicateScanner(ctx).groups()
+                // Re-applied, not discarded: the user may have chosen which
+                // copy stays, and a rescan must not silently put the automatic
+                // one back and drop the file they ticked.
+                val fresh = withChosenKeepers(DuplicateScanner(ctx).groups())
                 duplicateGroups.value = fresh
                 val stillExtras = fresh.flatMap { g -> g.extras }
                     .filter { it.id in chosen }

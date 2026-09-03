@@ -115,7 +115,7 @@
         <item quantity="one">%1$d file kept unchanged</item>
         <item quantity="other">%1$d files kept unchanged</item>
     </plurals>
-    <string name="asis_card_body">Optimising these would have damaged something, so the original was copied instead.</string>
+    <string name="asis_card_body">Each of these holds something a smaller copy cannot carry, so the original was copied across whole instead. Nothing was lost \u2014 the reason is listed beside each one.</string>
     <string name="asis_card_line">%1$d · %2$s</string>
     <string name="section_attention">Needs attention</string>
     <string name="section_progress">Backup progress</string>
@@ -219,6 +219,7 @@
     <string name="activity_empty_group_title">Nothing in this group</string>
     <string name="activity_empty_group_body">Your history is not empty. Choose All to see everything CloudSaver has done.</string>
     <string name="activity_optimised">Optimised %1$s files, saving %2$s</string>
+    <string name="activity_optimised_none">Ran, and found nothing waiting to optimise</string>
     <string name="activity_released">Added %1$s files to the upload folder</string>
     <string name="activity_backed_up">%1$s files confirmed backed up</string>
     <string name="activity_reclaimed">Freed up %1$s originals, recovering %2$s</string>
@@ -679,6 +680,10 @@
 
     <!-- setup: cloud step, power, folders, promises -->
     <string name="onb5_found">Found: %1$s</string>
+    <plurals name="onb5_found_several">
+        <item quantity="one">Found %1$d cloud app \u2014 pick which one to use below.</item>
+        <item quantity="other">Found %1$d cloud apps \u2014 pick which one to use below.</item>
+    </plurals>
     <string name="onb5_several">More than one cloud app is installed, so nothing was chosen for you. Pick the one you want to use.</string>
     <string name="onb5_check">Check the connection</string>
     <string name="cloud_use_different">Use a different app</string>
@@ -835,6 +840,7 @@
     <string name="optimise_now_override_charger">Runs now, even though the phone is not charging.</string>
     <string name="optimise_now_override_screen">Runs now, even though the screen is on.</string>
     <string name="optimise_now_override_battery">Runs now, even though the battery is low.</string>
+    <string name="optimise_now_override_saver">Runs now, even though Battery Saver is on.</string>
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
