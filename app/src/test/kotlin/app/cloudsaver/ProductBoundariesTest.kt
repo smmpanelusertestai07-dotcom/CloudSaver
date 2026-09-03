@@ -165,4 +165,43 @@ class ProductBoundariesTest {
             offenders.isEmpty()
         )
     }
+
+    @Test
+    fun `every name that runs the compressor is one runningFlow watches`() {
+        // Home hides "Optimise now" while a run is going, because the running
+        // one holds the lock and a second would do nothing. That decision is
+        // runningFlow's, and it watched two of the three names that start a
+        // CompressWorker - so through a run triggered by taking a photo the
+        // button was offered and the tap was swallowed.
+        //
+        // Resolved through the request VARIABLE each call is handed, per
+        // function. Nothing coarser works: one function enqueues the
+        // compressor and the maintenance pass side by side, and "the text near
+        // the call" is fooled by a comment that merely names CompressWorker.
+        val src = withoutComments(
+            File("src/main/kotlin/app/cloudsaver/work/Scheduler.kt").readText()
+        )
+        val enqueue = Regex(
+            """enqueueUnique(?:Periodic)?Work\(\s*(W_[A-Z_]+)\s*,[^,]+,\s*(\w+)\s*\)"""
+        )
+        val starters = src.split(Regex("""\n    (?:private )?fun """))
+            .flatMap { fn ->
+                enqueue.findAll(fn).filter { call ->
+                    val request = call.groupValues[2]
+                    Regex("""val $request = [^\n]*WorkRequestBuilder<CompressWorker>""")
+                        .containsMatchIn(fn)
+                }.map { it.groupValues[1] }
+            }
+            .toSet()
+        assertTrue("no compression work found - has Scheduler moved?", starters.size >= 2)
+
+        val watched = src.split(Regex("""\n    (?:private )?fun """))
+            .single { it.startsWith("runningFlow(") }
+        val unwatched = starters.filterNot { watched.contains(it) }
+        assertTrue(
+            "these start a compression run but runningFlow cannot see them, " +
+                "so Home offers a button the running one will refuse: $unwatched",
+            unwatched.isEmpty()
+        )
+    }
 }
