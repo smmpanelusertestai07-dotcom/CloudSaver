@@ -204,4 +204,50 @@ class ProductBoundariesTest {
             unwatched.isEmpty()
         )
     }
+
+    @Test
+    fun `a selection bar counts the same set it sizes`() {
+        // Three screens made the same mistake: the count came from the whole
+        // selection and the size from the rows the filters happened to be
+        // showing. A tick survives a filter change, so narrowing the list left
+        // "10 selected" beside the size of six, above a button that acted on
+        // six - and on the duplicates screen the same split understated how
+        // much was about to be removed, because that removal re-scans
+        // everything.
+        //
+        // Whatever a bar counts, it must size, and its action must reach the
+        // same set. `selection.size` beside a `selectedBytes` computed from a
+        // filtered list is the shape that keeps coming back.
+        val screens = File("src/main/kotlin/app/cloudsaver/ui/screens")
+            .walkTopDown().filter { it.isFile && it.extension == "kt" }
+        val offenders = mutableListOf<String>()
+        for (f in screens) {
+            val text = withoutComments(f.readText())
+            Regex("""selectionSummary\(\s*([A-Za-z.]+)\s*,\s*Formats\.bytes\((\w+)\)""")
+                .findAll(text)
+                .forEach { m ->
+                    val counted = m.groupValues[1]
+                    // The size is derived from some list; find which.
+                    val sizeFrom = Regex("""val ${m.groupValues[2]} = remember\((\w+)""")
+                        .find(text)?.groupValues?.get(1)
+                    // Only the mismatch that misleads: a whole-selection
+                    // count beside a size summed over the rows the filters
+                    // happen to be showing. Summing the selection over the
+                    // FULL list is right - that is what the duplicates dialog
+                    // does, because its removal re-scans everything.
+                    //
+                    // These four names are what a filtered list is called in
+                    // this codebase; a new one has to be added here, which is
+                    // the point at which someone re-reads this rule.
+                    val filtered = setOf("shown", "rows", "chosen", "visible")
+                    if (counted == "selection.size" && sizeFrom in filtered) {
+                        offenders += "${f.name}: counts $counted but sizes over the filtered $sizeFrom"
+                    }
+                }
+        }
+        assertTrue(
+            "a bar must count the set it sizes and acts on: $offenders",
+            offenders.isEmpty()
+        )
+    }
 }

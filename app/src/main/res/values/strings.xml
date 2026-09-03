@@ -803,6 +803,10 @@
     <string name="biggest_after">about %1$s after</string>
     <string name="list_optimise_these_first">Optimise these first</string>
     <string name="bulk_optimise_of">Optimise %1$d of %2$d selected</string>
+    <plurals name="bulk_hidden_note">
+        <item quantity="one">%1$d more is still ticked but hidden by the filters above.</item>
+        <item quantity="other">%1$d more are still ticked but hidden by the filters above.</item>
+    </plurals>
     <plurals name="bulk_skipped_note">
         <item quantity="one">%1$d already optimised \u2014 skipped</item>
         <item quantity="other">%1$d already optimised \u2014 skipped</item>
