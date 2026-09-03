@@ -323,7 +323,10 @@ final class ContainerRuntime {
                 + "chown coder:coder /home/coder 2>/dev/null || true; "
                 + "find /home/coder -mindepth 1 -maxdepth 1 ! -name Phone ! -name Shared "
                 + "-exec chown -R coder:coder {} + 2>/dev/null || true; " 
-                + "apt-get clean; rm -rf /var/lib/apt/lists/*";
+                // The .deb files are gone (about 550 MB reclaimed) but the package LISTS stay.
+                // Deleting them saved 60 MB of storage and then cost 40 MB of mobile data on
+                // every later install, because apt had to fetch the whole list again.
+                + "apt-get clean";
     }
 
     /** What a bootstrap exit code means, in the owner's words. Null when it is not one of ours. */
@@ -373,6 +376,8 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
         // Storage, and a screenshot, from inside the computer.
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
+        copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -415,6 +420,8 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
+        copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }

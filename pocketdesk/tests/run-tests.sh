@@ -102,8 +102,30 @@ echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
 # that runs after each app install, or a computer built by an earlier version never gets it.
-for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png; do
+for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh; do
   n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" || true)
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done
 echo "PASS AssetCopySites"
+
+# The desktop's MCP server is what gives an agent eyes and hands, so it is checked the way an
+# agent will meet it: a real initialize and tools/list over stdin, answered on stdout.
+python3 -c "import ast,sys; ast.parse(open('$PROJECT_DIR/app/assets/pocketdesk-mcp.py').read())" \
+  || { echo "FAIL McpServer: pocketdesk-mcp.py does not parse"; exit 1; }
+mcp_out=$(printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  | python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py")
+echo "$mcp_out" | grep -q '"protocolVersion"' \
+  || { echo "FAIL McpServer: initialize did not answer with a protocol version"; exit 1; }
+for pd_tool in appshot screenshot list_windows click type_text press_key scroll; do
+  echo "$mcp_out" | grep -q "\"$pd_tool\"" \
+    || { echo "FAIL McpServer: the $pd_tool tool is not offered"; exit 1; }
+done
+echo "$mcp_out" | grep -q '"id": 2' \
+  || { echo "FAIL McpServer: tools/list did not answer the request it was asked"; exit 1; }
+# An unknown method must be an error, not a crash that takes the agent's session with it.
+echo '{"jsonrpc":"2.0","id":3,"method":"nonsense"}' \
+  | python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" | grep -q '"error"' \
+  || { echo "FAIL McpServer: an unknown method must answer with an error"; exit 1; }
+echo "PASS McpServer ($(python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" --selftest | grep -o '"' | wc -l | awk '{print $1/2}') tools)"

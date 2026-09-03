@@ -67,7 +67,9 @@ final class LinuxApps {
             // every later apt command fails until it is finished.
             return "set -eu; " + APT_HELPERS + "pd_repair; "
                     + command
-                    + "; apt-get clean; rm -rf /var/lib/apt/lists/*";
+                    // The .deb files go; the package lists stay. Removing the lists here is
+                    // what made the NEXT install fetch 40 MB of index before it could start.
+                    + "; apt-get clean";
         }
 
         String uninstallCommand() {
@@ -97,6 +99,13 @@ final class LinuxApps {
             + "mkdir -p \"$PD_STATE/stage\" \"$PD_ROOT/etc/apt/apt.conf.d\" \"$PD_ROOT/etc/dpkg/dpkg.cfg.d\"; "
             + "printf 'Acquire::Retries \"5\";\nAcquire::http::Timeout \"40\";\n"
             + "Acquire::https::Timeout \"40\";\nAcquire::Languages \"none\";\n"
+            // A phone network that advertises IPv6 it cannot route made every fetch wait for the
+            // v6 attempt to time out first; apt has its own switch for this, separate from
+            // /etc/gai.conf. And carrier proxies mangle pipelined requests, which apt sees as a
+            // hash mismatch and answers by downloading the same package again -- the exact way
+            // mobile data was being spent twice. One request at a time is slightly slower per
+            // package and very much cheaper overall.
+            + "Acquire::ForceIPv4 \"true\";\nAcquire::http::Pipeline-Depth \"0\";\n"
             + "APT::Install-Suggests \"false\";\nquiet \"1\";\n"
             + "Dpkg::Options {\"--force-confdef\";\"--force-confold\";};\n' "
             + "> \"$PD_ROOT/etc/apt/apt.conf.d/99pocketdesk\"; "
@@ -115,7 +124,20 @@ final class LinuxApps {
             + "echo 'man-db man-db/auto-update boolean false' | debconf-set-selections 2>/dev/null || true; "
             + "pd_repair() { dpkg --configure -a >/dev/null 2>&1 || true; "
             + "apt-get -y -f install >/dev/null 2>&1 || true; }; "
-            + "pd_update() { pd_u=1; while [ $pd_u -le 3 ]; do "
+            // Fetching the package lists costs about 40 MB of mobile data, and it used to run
+            // again at the start of every single install. Lists that are only hours old describe
+            // the same packages, so a fresh set is reused and the download is skipped entirely.
+            // "pd_update force" always fetches, for the basics update that is meant to find new
+            // versions. POCKETDESK_LIST_HOURS makes the window testable.
+            + "pd_fresh() { pd_h=\"${POCKETDESK_LIST_HOURS:-12}\"; "
+            + "[ -f \"$PD_ROOT/var/lib/apt/lists/lock\" ] || return 1; "
+            + "pd_n=$(find \"$PD_ROOT/var/lib/apt/lists\" -maxdepth 1 -name '*_Packages*' "
+            + "-newermt \"-$pd_h hours\" 2>/dev/null | wc -l); "
+            + "[ \"${pd_n:-0}\" -gt 0 ]; }; "
+            + "pd_update() { "
+            + "if [ \"${1:-}\" != force ] && pd_fresh; then "
+            + "echo 'PocketDesk: the package list is up to date; nothing to download'; return 0; fi; "
+            + "pd_u=1; while [ $pd_u -le 3 ]; do "
             + "apt-get update 2>\"$PD_STATE/apt-update.err\" && return 0; "
             + "echo \"PocketDesk: package list attempt $pd_u did not finish\"; "
             // One unreachable vendor repository fails the whole update, and then every install
@@ -230,7 +252,11 @@ final class LinuxApps {
      */
     static final String TOOL_PACKAGES =
             "mousepad xarchiver 7zip gpicview galculator lxtask lxappearance pavucontrol "
-            + "scrot xclip xsel ripgrep man-db manpages";
+            + "scrot xclip xsel ripgrep man-db manpages tmux "
+            // The words on the screen, for PocketDesk's own Appshot: an agent gets the text of a
+            // window as well as its picture. About 35 MB with the English data, and it only runs
+            // when an agent actually asks for a reading.
+            + "tesseract-ocr tesseract-ocr-eng";
     /** The developer tools an agentic development environment needs from the first minute. */
     static final String DEVELOPER_PACKAGES =
             "build-essential pkg-config python3 python3-pip python3-venv python3-dev nodejs npm "
