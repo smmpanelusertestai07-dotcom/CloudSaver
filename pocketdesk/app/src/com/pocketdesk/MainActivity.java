@@ -1490,8 +1490,12 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_volume, "Does sound work?",
                 "Yes. Whatever the Linux computer plays — a voice reply, a video in the browser, "
                         + "a notification — comes out of the phone's speaker or headphones while "
-                        + "the desktop screen is open. The volume keys set it, as does Screen → "
-                        + "Volume. Sound into the computer (a microphone) is not carried yet.", false);
+                        + "the desktop screen is open.\n\nIt arrives as media audio, which is the "
+                        + "only kind this app carries: there is no call, ring or alarm sound "
+                        + "involved. The phone's volume keys set it while the desktop is open and "
+                        + "show the level on screen — \u201cMedia volume · 60%\u201d — and Screen → "
+                        + "Media volume does the same from the menu. Sound INTO the computer (a "
+                        + "microphone) is not carried yet.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
                 "These are the permanent ones. This is an agentic development environment, "
@@ -1779,7 +1783,11 @@ public final class MainActivity extends Activity {
         if (linuxSize == null) return;
         final boolean installed = ContainerRuntime.isInstalled(this);
         if (removeButton != null) {
-            removeButton.setVisibility(installed ? View.VISIBLE : View.GONE);
+            // Also when Ubuntu is on the phone but not usable: that is exactly when the owner
+            // needs a way out, and set-up no longer deletes anything by itself.
+            boolean present = installed
+                    || new java.io.File(ContainerRuntime.rootfs(this), "etc/os-release").isFile();
+            removeButton.setVisibility(present ? View.VISIBLE : View.GONE);
         }
         final boolean updateDue = ContainerRuntime.basicsUpdateDue(this);
         if (basicsUpdateRow != null) {

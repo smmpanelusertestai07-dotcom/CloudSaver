@@ -154,14 +154,13 @@ final class VncView extends View implements VncClient.Listener {
         // used to resize the whole Linux desktop and throw away the owner's zoom mid-task. Only
         // a genuine change of screen shape does that; a bar is just less of the same screen.
         boolean firstLayout = matchedWidth == 0 || matchedHeight == 0;
-        int longSide = Math.max(width, height);
-        int shortSide = Math.min(width, height);
-        int wasLong = Math.max(matchedWidth, matchedHeight);
-        int wasShort = Math.min(matchedWidth, matchedHeight);
-        // A rotation swaps the sides or changes the wider one; a bar only shortens one of them.
+        // A rotation changes the WIDTH (and swaps which side is longer). A bar or the key row
+        // only ever changes the height, by 56 dp each. Comparing the longer and shorter sides
+        // was blind to a rotation, because 720x1600 and 1600x720 have the same pair.
+        int barsHeight = Ui.dp(getContext(), 56 + 56 + 8);
         boolean shapeChanged = firstLayout
-                || Math.abs(longSide - wasLong) > Ui.dp(getContext(), 80)
-                || Math.abs(shortSide - wasShort) > Ui.dp(getContext(), 80);
+                || width != matchedWidth
+                || Math.abs(height - matchedHeight) > barsHeight;
         if (!shapeChanged) {
             centreOnNextLayout = false;
             invalidate();               // same desktop, less room: just redraw where it fits
@@ -314,7 +313,7 @@ final class VncView extends View implements VncClient.Listener {
         }
         // A session that has ended keeps its last frame on screen, which looked exactly like a
         // working desktop that had stopped answering. Dim it and say so.
-        if (!live) {
+        if (!live && everConnected) {
             overlayPaint.setStyle(Paint.Style.FILL);
             overlayPaint.setColor(Color.argb(175, 6, 9, 20));
             canvas.drawRect(destination, overlayPaint);
@@ -710,6 +709,7 @@ final class VncView extends View implements VncClient.Listener {
     @Override public void onConnected(int width, int height, String name) {
         main.post(() -> {
             live = true;
+            everConnected = true;
             replaceBitmap(width, height);
             pointerX = width / 2;
             pointerY = height / 2;
@@ -819,6 +819,8 @@ final class VncView extends View implements VncClient.Listener {
 
     /** True while frames are still arriving. A dead session must not look like a live one. */
     private boolean live;
+    /** Set once a session has really connected: before that, "stopped" would be wrong. */
+    private boolean everConnected;
 
     /**
      * The screen shown while the desktop is still coming up.

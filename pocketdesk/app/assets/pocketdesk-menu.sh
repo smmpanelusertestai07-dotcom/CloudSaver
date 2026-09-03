@@ -215,7 +215,7 @@ for wanted in $FAVOURITES; do
       case " $taken " in *" $(basename "$desktop" .desktop) "*) continue ;; esac
       case "$pass" in
         base) candidate=$(basename "$desktop" .desktop) ;;
-        binary) candidate=$(basename "$(printf '%s' "$(field "$desktop" Exec)" | awk '{print $1}')") ;;
+        binary) candidate=$(basename "$(exec_binary "$(field "$desktop" Exec)")") ;;
       esac
       if [ "$candidate" = "$wanted" ]; then
         match=$desktop

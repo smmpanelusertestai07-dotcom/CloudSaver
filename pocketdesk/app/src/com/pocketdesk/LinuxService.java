@@ -422,6 +422,10 @@ public final class LinuxService extends Service {
     private void setupUbuntu() throws Exception {
         preflight(true, 10);
         SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        // Read before stamping: apply() updates the in-memory map straight away, so reading it
+        // afterwards always saw "started" and the whole resume path was dead code.
+        String previousStage = preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, "");
+        boolean finishedBefore = preferences.getBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false);
         preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "started").apply();
         status("Preparing Linux", "Getting the local Linux system ready…", 2, true, false);
         ContainerRuntime.installRuntime(this);
@@ -430,23 +434,32 @@ public final class LinuxService extends Service {
         File archive = ContainerRuntime.downloadFile(this);
         // Only a run that finished unpacking may be continued: the marker and the two binaries
         // have to agree, or a half-written system would be handed to the package steps.
-        // Only a run that finished unpacking may be continued: the marker and the two binaries
-        // have to agree, or a half-written system would be handed to the package steps.
-        boolean unpacked = "unpacked".equals(preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, ""))
+        boolean unpacked = "unpacked".equals(previousStage)
                 && new File(root, "usr/bin/apt-get").isFile()
                 && new File(root, "usr/bin/dpkg").isFile();
-        // A container that was once finished is never wiped by set-up. If the proof file
-        // (usr/bin/Xtigervnc) was lost -- an apt removal, an interrupted upgrade -- the computer
-        // reads as "not set up", and starting again here would delete every app, sign-in and
-        // file with it. The staged bootstrap repairs it instead. Deleting stays where the owner
-        // asks for it, in Settings, behind a dialog that says it cannot be undone.
-        boolean established = new File(root, "etc/os-release").isFile()
+        // A container that once finished set-up is never wiped by starting set-up again: if the
+        // proof file (usr/bin/Xtigervnc) is lost to an apt removal or an interrupted upgrade,
+        // the computer reads as "not set up", and starting over would delete every app, sign-in
+        // and file with it. The staged bootstrap repairs it instead.
+        //
+        // Those three files cannot be the proof on their own -- they all land early in the base
+        // archive, so a half-finished extraction has them while /usr/lib is still missing. The
+        // proof is a finished unpacking, or a set-up that once completed.
+        boolean established = (unpacked || finishedBefore)
+                && new File(root, "etc/os-release").isFile()
                 && new File(root, "usr/bin/apt-get").isFile()
                 && new File(root, "usr/bin/dpkg").isFile();
         if (established && !unpacked) {
             status("Repairing the computer",
                     "Ubuntu is already on this phone. The missing parts are being installed; "
                             + "nothing of yours is deleted.", 38, true, false);
+            // A finished-step mark is a promise, not proof: the package steps return early on
+            // the mark alone. Where the proof is gone, the mark goes with it, so the step that
+            // installs the display server really runs again.
+            if (!new File(root, "usr/bin/Xtigervnc").isFile()) {
+                new File(root, "var/lib/pocketdesk/stage/desktop").delete();
+                new File(root, "var/lib/pocketdesk/stage/extras").delete();
+            }
         } else if (unpacked) {
             // Everything below this point is repeatable, so the 30 MB download and the unpacking
             // are simply skipped: this is what makes "Continue set-up" continue.
@@ -493,6 +506,23 @@ public final class LinuxService extends Service {
                     : "Set-up stopped while installing packages (code " + code + "). Check the "
                     + "internet connection and free space, then tap Continue set-up — it carries "
                     + "on from where it stopped.");
+        }
+        File proof = new File(root, "usr/bin/Xtigervnc");
+        if (!proof.isFile()) {
+            // dpkg can still record the package as installed while its files are gone, and apt
+            // then says "already the newest version" and does nothing. Only --reinstall puts it
+            // back -- and if even that fails, saying "Linux is ready" would be a lie that leaves
+            // the owner tapping Set up for ever.
+            status("Repairing the computer", "Putting the desktop's display back…", 92, true, false);
+            runTracked("set -eu; export DEBIAN_FRONTEND=noninteractive; apt-get update; "
+                    + "apt-get install -y --reinstall --no-install-recommends "
+                    + "tigervnc-standalone-server openbox tint2", line -> {});
+            if (!proof.isFile()) {
+                throw new IOException("The desktop's display server could not be put back. Nothing "
+                        + "of yours was deleted — your apps, sign-ins and files are still inside "
+                        + "the computer. Try again on a better connection; if it keeps failing, "
+                        + "Settings → Storage → Delete the Linux computer and set it up again.");
+            }
         }
         ContainerRuntime.writeDesktopScripts(this);
         ContainerRuntime.invalidateSize();

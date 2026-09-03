@@ -523,11 +523,18 @@ final class ContainerRuntime {
     private static volatile long cachedAt = 0L;
     private static final long SIZE_TTL_MS = 60_000L;
 
-    /** Forget the measured size: the container changed on disk and the old number would lie. */
+    /**
+     * Forget the measured size: the container changed on disk and the old number would lie.
+     * The generation counter also disowns a walk that is already running, so its result cannot
+     * land in the cache after the install that made it stale.
+     */
     static void invalidateSize() {
         cachedSize = -1L;
         cachedAt = 0L;
+        sizeGeneration++;
     }
+
+    private static volatile int sizeGeneration;
 
     static boolean hasFreshSize() {
         return cachedSize >= 0 && android.os.SystemClock.elapsedRealtime() - cachedAt < SIZE_TTL_MS;
@@ -547,6 +554,7 @@ final class ContainerRuntime {
             return;
         }
         if (!SIZE_RUNNING.compareAndSet(false, true)) return;   // one walk at a time, ever
+        final int generation = sizeGeneration;
         new Thread(() -> {
             long bytes = -1L;
             try {
@@ -556,11 +564,11 @@ final class ContainerRuntime {
             } finally {
                 SIZE_RUNNING.set(false);
             }
-            if (bytes >= 0) {
+            if (bytes >= 0 && generation == sizeGeneration) {
                 cachedSize = bytes;
                 cachedAt = android.os.SystemClock.elapsedRealtime();
             }
-            final long result = bytes;
+            final long result = generation == sizeGeneration ? bytes : -1L;
             if (result >= 0 && (cancelled == null || !cancelled.get())) {
                 main.post(() -> onDone.size(result));
             }

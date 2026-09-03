@@ -24,7 +24,7 @@ if [ -n "$battery" ]; then
   # and a few thousandths. Decide by magnitude in both directions, and print nothing at all
   # rather than a number that is obviously wrong -- 2500 C was reaching the panel.
   if [ -n "$temp" ] && [ "$temp" -eq "$temp" ] 2>/dev/null; then
-    if [ "$temp" -gt 1000 ]; then temp=$((temp / 100));
+    if [ "$temp" -gt 1000 ]; then temp=$((temp / 1000));
     elif [ "$temp" -gt 100 ]; then temp=$((temp / 10)); fi
     if [ "$temp" -ge 0 ] && [ "$temp" -le 80 ]; then
       out="${out:+$out · }${temp}°C"

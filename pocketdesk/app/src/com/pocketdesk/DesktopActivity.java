@@ -27,6 +27,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -242,6 +243,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         FrameLayout overlay = new FrameLayout(this);
         overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
         outer.addView(overlay, new FrameLayout.LayoutParams(1, 1));
+        FrameLayout.LayoutParams volumeLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        volumeLp.topMargin = Ui.dp(this, 74);
+        outer.addView(buildVolumePanel(), volumeLp);
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
         restoreBars.setVisibility(View.GONE);
         // Solid rather than see-through: while the bar is hidden this chip is the only way
@@ -332,8 +338,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
                 .setIcon(R.drawable.ic_settings);
-        items.add(0, MENU_VOLUME_UP, 6, "Volume up").setIcon(R.drawable.ic_volume);
-        items.add(0, MENU_VOLUME_DOWN, 7, "Volume down").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_VOLUME_UP, 6, "Media volume up").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_VOLUME_DOWN, 7, "Media volume down").setIcon(R.drawable.ic_volume);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -393,10 +399,60 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         menu.show();
     }
 
-    /** Media volume, one step, with the phone's own volume panel so the level is visible. */
+    /**
+     * Media volume, one step, with the level shown on the desktop itself.
+     *
+     * Everything the Linux computer plays arrives on the phone as media audio -- there is no
+     * call, ring or alarm stream in this app at all -- so this is the one volume that matters,
+     * and the indicator says so rather than leaving the owner guessing which slider moved.
+     */
     private void adjustVolume(int direction) {
         AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
-        if (manager != null) manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+        if (manager == null) return;
+        manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+        showVolume(manager);
+    }
+
+    private TextView volumeChip;
+    private ProgressBar volumeBar;
+    private LinearLayout volumePanel;
+    private final Runnable hideVolume = () -> {
+        if (volumePanel != null) volumePanel.animate().alpha(0f).setDuration(220)
+                .withEndAction(() -> { if (volumePanel != null) volumePanel.setVisibility(View.GONE); }).start();
+    };
+
+    /** "Media volume 60%" with a bar, on the desktop, for a second and a half. */
+    private void showVolume(AudioManager manager) {
+        int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        int now = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int percent = Math.round(now * 100f / max);
+        if (volumePanel == null || outer == null) return;
+        volumeChip.setText(percent == 0 ? "Media volume · muted" : "Media volume · " + percent + "%");
+        volumeBar.setProgress(percent);
+        volumePanel.setVisibility(View.VISIBLE);
+        volumePanel.animate().cancel();
+        volumePanel.setAlpha(1f);
+        volumePanel.removeCallbacks(hideVolume);
+        volumePanel.postDelayed(hideVolume, 1500L);
+    }
+
+    /** The indicator itself: built once, hidden until a volume key is pressed. */
+    private View buildVolumePanel() {
+        volumePanel = new LinearLayout(this);
+        volumePanel.setOrientation(LinearLayout.VERTICAL);
+        volumePanel.setBackground(Ui.background(Color.argb(238, 15, 21, 44), 14, this));
+        int pad = Ui.dp(this, 12);
+        volumePanel.setPadding(pad, Ui.dp(this, 9), pad, Ui.dp(this, 11));
+        volumeChip = Ui.bold(this, "Media volume", 13, Color.rgb(226, 232, 248));
+        volumePanel.addView(volumeChip, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        volumeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        volumeBar.setMax(100);
+        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(Ui.dp(this, 168), Ui.dp(this, 6));
+        barLp.topMargin = Ui.dp(this, 8);
+        volumePanel.addView(volumeBar, barLp);
+        volumePanel.setVisibility(View.GONE);
+        return volumePanel;
     }
 
     /** What the status label opens: the plain facts about this session and how to drive it. */
@@ -659,6 +715,27 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         sendKey(keysym, true);
         sendKey(keysym, false);
         releaseModifiers();
+    }
+
+    @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Taken before the window's own volume handling so the desktop can show the level and
+        // name the stream. Long-press repeats arrive here too, so holding the key still ramps.
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            adjustVolume(AudioManager.ADJUST_RAISE);
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            adjustVolume(AudioManager.ADJUST_LOWER);
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            return true;                        // swallow the pair, or the system panel appears
+        }
+        return super.onKeyUp(keyCode, event);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

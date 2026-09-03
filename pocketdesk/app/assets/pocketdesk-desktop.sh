@@ -171,37 +171,49 @@ chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
 rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
 
 start_display() {   # start_display <extra args...>
+  # Output stays on this script's stdout, which PocketDesk records for the session: a display
+  # that refuses to start has to be able to say why where the phone can read it.
   /usr/bin/Xtigervnc :1 "$@" -SecurityTypes None -ac -AlwaysShared \
-    -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' \
-    >>/tmp/pocketdesk-vnc.log 2>&1 &
+    -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketDesk' &
   VNC_PID=$!
 }
 
 display_ready() {
   [ -S /tmp/.X11-unix/X1 ] || return 1
   command -v xdpyinfo >/dev/null 2>&1 || return 0
-  DISPLAY=:1 xdpyinfo >/dev/null 2>&1
+  # timeout, because a server wedged mid-start leaves xdpyinfo waiting for ever and the whole
+  # start would hang here instead of falling back.
+  if command -v timeout >/dev/null 2>&1; then
+    DISPLAY=:1 timeout 5 xdpyinfo >/dev/null 2>&1
+  else
+    DISPLAY=:1 xdpyinfo >/dev/null 2>&1
+  fi
 }
 
-# Up to two minutes, not four seconds: on a cold, ptraced container the server can take far
-# longer than that to answer, and starting the panel and the file manager against a display
-# that is not there yet was a desktop with no wallpaper, no panel and no icons.
-wait_for_display() {
-  for n in $(seq 1 240); do
+# Far longer than the four seconds this used to allow -- on a cold, ptraced container the server
+# can take a minute to answer, and starting the panel against a display that is not there was a
+# desktop with no wallpaper, no panel and no icons. The two waits together (40 s for the private
+# socket, then 90 s for the fallback) still finish inside the 150 s the phone waits before it
+# gives up on the session.
+wait_for_display() {   # wait_for_display <half-second attempts>
+  n=0
+  while [ "$n" -lt "$1" ]; do
     display_ready && return 0
     kill -0 "$VNC_PID" 2>/dev/null || return 1
+    n=$((n + 1))
     sleep 0.5
   done
   return 1
 }
 
 start_display -rfbunixpath "$HOME/.pocketdesk/vnc.sock" -rfbunixmode 0600 -rfbport -1
-if ! wait_for_display; then
-  echo "display: unix socket did not come up, using the local port" >> /tmp/pocketdesk-vnc.log
+if ! wait_for_display 80; then
+  echo "display: the private socket did not come up; using the local port instead"
   kill "$VNC_PID" 2>/dev/null || true
-  rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
+  wait "$VNC_PID" 2>/dev/null || true
+  rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X11-unix/X1-lock /tmp/.X1-lock 2>/dev/null || true
   start_display -rfbport 5901 -localhost yes
-  wait_for_display || echo "display: did not start" >> /tmp/pocketdesk-vnc.log
+  wait_for_display 180 || echo "display: did not start"
 fi
 
 xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
