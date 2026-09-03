@@ -18,7 +18,13 @@ final class Crash {
 
     private Crash() {}
 
+    /** Chained once per process: MainActivity and App both call this, and a chain of handlers
+     *  grew one link deeper on every screen creation. */
+    private static boolean installed;
+
     static void install(final Context context) {
+        if (installed) return;
+        installed = true;
         final Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
             save(context, error);

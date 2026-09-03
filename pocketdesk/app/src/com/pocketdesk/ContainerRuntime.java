@@ -227,6 +227,9 @@ final class ContainerRuntime {
         // Written into /var/lib/pocketdesk/basics-version, so Settings can offer the basics
         // update only when this version has something newer to install.
         args.add("POCKETDESK_APP_VERSION=" + MainActivity.VERSION);
+        // The desktop clock, file times and git commits should be the owner's own time, wherever
+        // they are. Read at every start, so it follows the phone across a time zone.
+        args.add("POCKETDESK_TZ=" + java.util.TimeZone.getDefault().getID());
         args.add("/bin/bash");
         args.add("-lc");
         args.add(command);
@@ -291,8 +294,7 @@ final class ContainerRuntime {
                 // minute: a compiler, Python, Node.js, Git and SSH. One set-up, nothing to add.
                 + "pd_step devtools " + LinuxApps.DEVELOPER_PACKAGES + " || exit 14; "
                 // A desktop clock is only useful in the owner's own time.
-                + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
-                + "echo 'Asia/Kolkata' > /etc/timezone; "
+                + LinuxApps.PD_TIMEZONE
                 + "id coder >/dev/null 2>&1 || useradd -m -s /bin/bash coder; "
                 + "printf 'coder ALL=(ALL) NOPASSWD:ALL\\n' > /etc/sudoers.d/coder; chmod 0440 /etc/sudoers.d/coder; "
                 + "mkdir -p /home/coder/Desktop /home/coder/.config /home/coder/Projects "
@@ -309,7 +311,12 @@ final class ContainerRuntime {
                 // Which app version built these basics, so the phone can offer an update only
                 // when there is one to make.
                 + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"; "
-                + "chown -R coder:coder /home/coder; "
+                // Not "chown -R /home/coder": Phone and Shared are bind mounts of the phone's own
+                // storage, and Android 11+ refuses to list /Android/data even to this app -- chown
+                // then exits 1 and set -e threw away a finished 40-minute set-up.
+                + "chown coder:coder /home/coder 2>/dev/null || true; "
+                + "find /home/coder -mindepth 1 -maxdepth 1 ! -name Phone ! -name Shared "
+                + "-exec chown -R coder:coder {} + 2>/dev/null || true; " 
                 + "apt-get clean; rm -rf /var/lib/apt/lists/*";
     }
 
@@ -324,6 +331,9 @@ final class ContainerRuntime {
                     + "Continue set-up to finish that step; nothing already done is repeated.";
             case 14: return "The developer tools did not finish installing. Tap Continue set-up to "
                     + "finish that step; nothing already done is repeated.";
+            case 15: return "One of the app repositories did not answer, so it was removed again "
+                    + "rather than left to break later installs. Check the internet connection and "
+                    + "try again; everything else that was installed is kept.";
             default: return null;
         }
     }
@@ -466,13 +476,19 @@ final class ContainerRuntime {
                 // Naming them stops every login shell printing "groups: cannot find name for group ID".
                 + "for gid in $(id -G 2>/dev/null); do "
                 + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
-                + "chown -R coder:coder /home/coder 2>/dev/null || true; "
+                // Same rule as the bootstrap: never walk into the two bind mounts.
+                + "chown coder:coder /home/coder 2>/dev/null || true; "
+                + "find /home/coder -mindepth 1 -maxdepth 1 ! -name Phone ! -name Shared "
+                + "-exec chown -R coder:coder {} + 2>/dev/null || true; " 
                 // The browser on a phone with no graphics driver: hardware acceleration
                 // never (the compositor path stalled for seconds per page here) and a blank
                 // start page (the thumbnail page was the "Page Unresponsive"). Only keys that
                 // exist in GNOME Web 45's schema: an unknown key is ignored with a warning.
                 + "mkdir -p /usr/share/glib-2.0/schemas; "
                 + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
+                // The phone's own time zone, re-read at every start so the desktop clock and
+                // every file time follow the owner when they travel.
+                + LinuxApps.PD_TIMEZONE
                 // The table of which app answers which link scheme, rebuilt from what is
                 // installed now, so a sign-in that opens in the browser finds its way back.
                 + "command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database /usr/share/applications >/dev/null 2>&1; "
@@ -501,6 +517,66 @@ final class ContainerRuntime {
     }
 
     /** Recursive on-disk size, used to show how much space Linux is really taking. */
+    private static final java.util.concurrent.atomic.AtomicBoolean SIZE_RUNNING =
+            new java.util.concurrent.atomic.AtomicBoolean();
+    private static volatile long cachedSize = -1L;
+    private static volatile long cachedAt = 0L;
+    private static final long SIZE_TTL_MS = 60_000L;
+
+    /**
+     * Forget the measured size: the container changed on disk and the old number would lie.
+     * The generation counter also disowns a walk that is already running, so its result cannot
+     * land in the cache after the install that made it stale.
+     */
+    static void invalidateSize() {
+        cachedSize = -1L;
+        cachedAt = 0L;
+        sizeGeneration++;
+    }
+
+    private static volatile int sizeGeneration;
+
+    static boolean hasFreshSize() {
+        return cachedSize >= 0 && android.os.SystemClock.elapsedRealtime() - cachedAt < SIZE_TTL_MS;
+    }
+
+    /**
+     * The size of the container, measured at most once a minute and never twice at once.
+     *
+     * Walking 4.5 GB of Ubuntu is minutes of disk on a phone; it used to start again on every
+     * return to the home screen, three walks racing each other while the desktop wanted the same
+     * disk. Nothing here holds the screen it came from: the caller passes the handler.
+     */
+    static void measureSize(File root, android.os.Handler main, java.util.concurrent.atomic.AtomicBoolean cancelled,
+                            SizeListener onDone) {
+        if (hasFreshSize()) {
+            onDone.size(cachedSize);
+            return;
+        }
+        if (!SIZE_RUNNING.compareAndSet(false, true)) return;   // one walk at a time, ever
+        final int generation = sizeGeneration;
+        new Thread(() -> {
+            long bytes = -1L;
+            try {
+                bytes = directorySize(root);
+            } catch (Throwable ignored) {
+                // A container being deleted underneath the walk is not worth a crash.
+            } finally {
+                SIZE_RUNNING.set(false);
+            }
+            if (bytes >= 0 && generation == sizeGeneration) {
+                cachedSize = bytes;
+                cachedAt = android.os.SystemClock.elapsedRealtime();
+            }
+            final long result = generation == sizeGeneration ? bytes : -1L;
+            if (result >= 0 && (cancelled == null || !cancelled.get())) {
+                main.post(() -> onDone.size(result));
+            }
+        }, "pocketdesk-size").start();
+    }
+
+    interface SizeListener { void size(long bytes); }
+
     static long directorySize(File root) {
         return Trees.size(root);
     }

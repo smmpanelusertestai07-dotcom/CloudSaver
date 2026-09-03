@@ -425,7 +425,13 @@ grep -q 'show_wm_menu=1' "$desktop" || fail "a right-click on the wallpaper must
 grep -q 'NO_AT_BRIDGE=1' "$desktop" || fail "the accessibility bus must be switched off (every app waited on it)"
 grep -q 'module-simple-protocol-tcp' "$desktop" || fail "sound must be streamed to the phone"
 grep -q 'source=phone.monitor' "$desktop" || fail "the stream must carry the Phone output"
-grep -q 'port=4712' "$desktop" || fail "the sound port must match AudioBridge.PORT"
+audio_port=$(grep -oE 'PORT *= *[0-9]+' "$PROJECT_DIR/app/src/com/pocketdesk/AudioBridge.java" \
+  | head -n 1 | grep -oE '[0-9]+' || true)
+[ -n "$audio_port" ] || fail "AudioBridge.PORT could not be read"
+grep -q "port=$audio_port" "$desktop" || fail "the sound fallback port must match AudioBridge.PORT ($audio_port)"
+grep -q 'module-simple-protocol-unix' "$desktop" || fail "sound must go over a private socket first"
+grep -q 'rfbunixpath' "$desktop" || fail "the desktop must be served over a private socket first"
+grep -q 'rfbport -1' "$desktop" || fail "the TCP display port must be off when the socket is used"
 grep -q 'backgrounds/pocketdesk.jpg' "$desktop" || fail "the desktop must use the Ubuntu wallpaper"
 
 # An app that takes a minute to open has to look like it is opening: the round watch pointer and

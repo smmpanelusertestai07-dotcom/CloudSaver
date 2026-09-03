@@ -140,12 +140,18 @@ final class KeyboardInputView extends View {
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (listener == null) return super.onKeyDown(keyCode, event);
         int special = mapAndroidKey(keyCode);
-        if (special != 0) listener.specialKey(special);
-        else {
-            int unicode = event.getUnicodeChar();
-            if (unicode != 0) listener.typeCodePoint(unicode);
+        if (special != 0) {
+            listener.specialKey(special);
+            return true;
         }
-        return true;
+        int unicode = event.getUnicodeChar();
+        if (unicode != 0) {
+            listener.typeCodePoint(unicode);
+            return true;
+        }
+        // Anything this field cannot type is the phone's: the volume rocker especially, which
+        // this view used to swallow the moment the keyboard button was tapped.
+        return super.onKeyDown(keyCode, event);
     }
 
     private void sendText(CharSequence text) {

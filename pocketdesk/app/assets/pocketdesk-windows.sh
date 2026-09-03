@@ -9,12 +9,31 @@
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
-# tint2's own launchers and the desktop itself are not windows the user opened.
-skip='pocketdesk-panel|tint2|pcmanfm.*--desktop|Desktop'
+# The desktop's own root window and the panel are not windows the owner opened. They are told
+# apart by what they ARE (their EWMH window type), not by what their title happens to contain:
+# matching the word "Desktop" also skipped a real window whose title mentioned it, so Close all
+# and Force close silently ignored, say, a Claude conversation called "Desktop setup".
+is_own_furniture() {   # is_own_furniture <window id>
+  if command -v xprop >/dev/null 2>&1; then
+    xprop -id "$1" _NET_WM_WINDOW_TYPE 2>/dev/null \
+      | grep -qE '_NET_WM_WINDOW_TYPE_(DESKTOP|DOCK)' && return 0
+    return 1
+  fi
+  # No xprop (a container built before it was installed): fall back to the window class, which
+  # names the program rather than whatever the window is called. Failing open here would let
+  # Close all close the wallpaper and the panel.
+  command -v wmctrl >/dev/null 2>&1 || return 1
+  wmctrl -lx 2>/dev/null | grep -i "^$1" \
+    | awk '{print $3}' | grep -qiE '^(tint2|pcmanfm)\.'
+}
 
 open_windows() {
   command -v wmctrl >/dev/null 2>&1 || return 0
-  wmctrl -l | grep -Ev "$skip" || true
+  wmctrl -l 2>/dev/null | while read -r id rest; do
+    [ -n "$id" ] || continue
+    is_own_furniture "$id" && continue
+    printf '%s %s\n' "$id" "$rest"
+  done
 }
 
 case "${1:-list}" in
@@ -77,7 +96,9 @@ EOF
     # A tap on the wallpaper focuses the desktop itself; that, and the panel, are never
     # "the app in front", so they are refused exactly as the other commands skip them.
     hex=$(printf '0x%08x' "$id" 2>/dev/null) || exit 0
-    wmctrl -l 2>/dev/null | grep -i "^$hex" | grep -Eqv "$skip" || exit 0
+    # The desktop root window and the panel are never "the app in front": the same test the
+    # listing uses, because $skip (a title match) is gone.
+    is_own_furniture "$hex" && exit 0
     xdotool windowkill "$id" 2>/dev/null || true
     ;;
   list|*)

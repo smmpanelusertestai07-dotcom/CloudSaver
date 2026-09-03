@@ -29,10 +29,17 @@ final class LinuxApps {
         private final String command;
         /** How to remove it, or null for parts that come with the computer and are not removable. */
         private final String uninstall;
+        /**
+         * True when the package comes from an apt repository, where apt refuses anything whose
+         * signature does not match the publisher's key. False for the two that publish a plain
+         * .deb download instead -- their protection is HTTPS to the publisher's own domain, and
+         * the app must say exactly that rather than promise a signature check it does not do.
+         */
+        final boolean repoSigned;
 
         App(String id, String name, String summary, int iconRes, int logoRes, String approximateSize,
             long needsBytes, String typicalTime, String caution, String marker, String command,
-            String uninstall) {
+            String uninstall, boolean repoSigned) {
             this.id = id;
             this.name = name;
             this.summary = summary;
@@ -45,6 +52,7 @@ final class LinuxApps {
             this.marker = marker;
             this.command = command;
             this.uninstall = uninstall;
+            this.repoSigned = repoSigned;
         }
 
         /** What the row should show: the real logo when there is one, the line-art otherwise. */
@@ -102,9 +110,27 @@ final class LinuxApps {
             + "path-exclude=/usr/share/info/*\n' > \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketdesk\"; "
             + "pd_repair() { dpkg --configure -a >/dev/null 2>&1 || true; "
             + "apt-get -y -f install >/dev/null 2>&1 || true; }; "
-            + "pd_update() { pd_u=1; while [ $pd_u -le 3 ]; do apt-get update && return 0; "
+            + "pd_update() { pd_u=1; while [ $pd_u -le 3 ]; do "
+            + "apt-get update 2>\"$PD_STATE/apt-update.err\" && return 0; "
             + "echo \"PocketDesk: package list attempt $pd_u did not finish\"; "
+            // One unreachable vendor repository fails the whole update, and then every install
+            // and the basics update after it -- for as long as the container exists. From the
+            // second attempt, a source named in apt's own error is set aside so the computer
+            // keeps working with the ones that do answer.
+            + "if [ $pd_u -ge 2 ]; then for pd_l in /etc/apt/sources.list.d/*.list; do "
+            + "[ -f \"$pd_l\" ] || continue; "
+            + "pd_url=$(awk '{for (i=1; i<=NF; i++) if ($i ~ /^https?:/) { print $i; exit }}' \"$pd_l\"); "
+            + "[ -n \"$pd_url\" ] || continue; "
+            + "if grep -qF \"$pd_url\" \"$PD_STATE/apt-update.err\" 2>/dev/null; then "
+            + "echo \"PocketDesk: $(basename \\\"$pd_l\\\") is not answering and was set aside\"; "
+            + "mv \"$pd_l\" \"$pd_l.unreachable\"; fi; done; fi; "
             + "sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; pd_u=$((pd_u+1)); done; return 1; }; "
+            // A repository is written, proved, and rolled back if it does not answer: an
+            // unproven source must never be left behind to break every later install.
+            + "pd_repo() { pd_f=\"/etc/apt/sources.list.d/$1\"; printf '%s\n' \"$2\" > \"$pd_f\"; "
+            + "if pd_update; then return 0; fi; "
+            + "echo \"PocketDesk: the $1 repository did not answer; removing it again\"; "
+            + "rm -f \"$pd_f\"; pd_update || true; return 1; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketDesk: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -112,6 +138,16 @@ final class LinuxApps {
             + "echo \"PocketDesk: $pd_stage attempt $pd_try did not finish, repairing and trying again\"; "
             + "pd_repair; pd_update || true; sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; "
             + "pd_try=$((pd_try+1)); done; return 1; }; ";
+
+    /**
+     * The container's time zone, taken from the phone at every start rather than fixed at
+     * build time: a desktop whose clock is hours out dates every file and commit wrongly.
+     */
+    static final String PD_TIMEZONE =
+            "pd_tz=\"${POCKETDESK_TZ:-}\"; "
+            + "if [ -n \"$pd_tz\" ] && [ -f \"/usr/share/zoneinfo/$pd_tz\" ]; then "
+            + "ln -sf \"/usr/share/zoneinfo/$pd_tz\" /etc/localtime; printf '%s\\n' \"$pd_tz\" > /etc/timezone; "
+            + "elif [ ! -e /etc/localtime ]; then ln -sf /usr/share/zoneinfo/UTC /etc/localtime; fi; ";
 
     /** Where the container records which app version last brought its basics up to date. */
     static final String BASICS_VERSION_FILE = "var/lib/pocketdesk/basics-version";
@@ -155,9 +191,9 @@ final class LinuxApps {
     static final String CHROME_INSTALL =
             "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
             + fetchKey(CHROME_KEY, "/etc/apt/keyrings/google-chrome.gpg")
-            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
-            + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
-            + "pd_update || exit 11; apt-get install -y --no-install-recommends google-chrome-stable; "
+            + "pd_repo google-chrome.list 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] "
+            + CHROME_REPO + " stable main' || exit 15; "
+            + "apt-get install -y --no-install-recommends google-chrome-stable; "
             + "printf 'repo_add_once=\"false\"\nrepo_reenable_on_distupgrade=\"false\"\n' > /etc/default/google-chrome; "
             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
             + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
@@ -205,12 +241,11 @@ final class LinuxApps {
                             // Ubuntu's own security updates for everything already installed.
                             + "apt-get -y upgrade || pd_repair; "
                             + "printf 'precedence ::ffff:0:0/96  100\\n' > /etc/gai.conf; "
-                            + "ln -sf /usr/share/zoneinfo/Asia/Kolkata /etc/localtime; "
-                            + "echo 'Asia/Kolkata' > /etc/timezone; "
+                            + PD_TIMEZONE
                             + "( " + CHROME_INSTALL + " ) || true; "
                             + "[ -x /usr/bin/google-chrome-stable ] && : > \"$PD_STATE/stage/chrome\" || true; "
                             + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
-                    null),
+                    null, true),
 
             new App("chatgpt", "ChatGPT",
                     "AI assistant by OpenAI, with the Codex coding agent.",
@@ -225,7 +260,7 @@ final class LinuxApps {
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
                             + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
                             + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi",
-                    "apt-get remove -y chatgpt"),
+                    "apt-get remove -y chatgpt", false),
 
             new App("claude", "Claude Desktop",
                     "AI assistant by Anthropic, with the Claude Code coding agent.",
@@ -235,15 +270,18 @@ final class LinuxApps {
                             + "virtualisation that a phone does not give apps, so that tab stays "
                             + "unavailable here. Chat and Claude Code work.",
                     "/usr/bin/claude-desktop",
-                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
+                    // libglib2.0-bin satisfies claude-desktop's "kde-cli-tools | ... | gvfs" choice with
+                    // one 200 KB package; without it apt takes the first name on that list and pulls in
+                    // 149 KDE and Qt5 packages, about 154 MB, onto a phone.
+                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates libglib2.0-bin; "
                             + "curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc '" + CLAUDE_KEY + "'; "
                             + "gpg --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc "
                             + "| grep -q '" + CLAUDE_FINGERPRINT + "' "
                             + "|| { echo 'Claude signing key did not match the published fingerprint'; exit 1; }; "
-                            + "echo 'deb [arch=arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] "
-                            + CLAUDE_REPO + " stable main' > /etc/apt/sources.list.d/claude-desktop.list; "
-                            + "pd_update || exit 11; apt-get install -y --no-install-recommends claude-desktop",
-                    "apt-get remove -y claude-desktop; rm -f /etc/apt/sources.list.d/claude-desktop.list"),
+                            + "pd_repo claude-desktop.list 'deb [arch=arm64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.asc] "
+                            + CLAUDE_REPO + " stable main' || exit 15; "
+                            + "apt-get install -y --no-install-recommends claude-desktop",
+                    "apt-get remove -y claude-desktop; rm -f /etc/apt/sources.list.d/claude-desktop.list", true),
 
             new App("cursor", "Cursor",
                     "The AI code editor, by Anysphere.",
@@ -257,7 +295,7 @@ final class LinuxApps {
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
                             + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
                             + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb",
-                    "apt-get remove -y cursor"),
+                    "apt-get remove -y cursor", false),
 
             new App("antigravity", "Antigravity",
                     "Google's agentic development platform: AI agents plan, write, run and test software.",
@@ -269,9 +307,9 @@ final class LinuxApps {
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "
                             + "libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0; "
                             + fetchKey(ANTIGRAVITY_KEY, "/etc/apt/keyrings/antigravity-repo-key.gpg")
-                            + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] "
-                            + ANTIGRAVITY_REPO + " antigravity-debian main' > /etc/apt/sources.list.d/antigravity.list; "
-                            + "pd_update || exit 11; apt-get install -y --no-install-recommends antigravity; "
+                            + "pd_repo antigravity.list 'deb [arch=arm64 signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] "
+                            + ANTIGRAVITY_REPO + " antigravity-debian main' || exit 15; "
+                            + "apt-get install -y --no-install-recommends antigravity; "
                             + "if [ ! -f /usr/share/applications/antigravity.desktop ]; then "
                             + "bin=$(command -v antigravity || find /usr/share/antigravity /opt/antigravity -maxdepth 2 -type f -name 'antigravity' 2>/dev/null | head -n 1); "
                             + "[ -n \"$bin\" ] || { echo 'Antigravity installed but no runnable binary was found'; exit 1; }; "
@@ -279,7 +317,7 @@ final class LinuxApps {
                             + "Exec=%s %%U\\nIcon=antigravity\\nType=Application\\nTerminal=false\\n"
                             + "StartupNotify=true\\nCategories=Development;\\n' \"$bin\" "
                             + "> /usr/share/applications/antigravity.desktop; fi",
-                    "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list"),
+                    "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list", true),
 
     };
 

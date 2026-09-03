@@ -68,13 +68,65 @@ public final class LinuxService extends Service {
     private final ExecutorService installExecutor = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Future<?> currentTask;
+    private volatile Future<?> installTask;
     private volatile Thread workerThread;
-    private PowerManager.WakeLock wakeLock;
+    private volatile PowerManager.WakeLock taskWakeLock;
+    private volatile PowerManager.WakeLock installWakeLock;
     private long sessionStartedAt;
     /** Set while the monitor is ending a session for a reason it has already announced. */
     private volatile boolean stoppedForReason;
     /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
     private volatile boolean stopRequested;
+
+    /**
+     * The safety stops that apply to a background job -- set-up or an app install -- which is
+     * the longest, hottest, most data-hungry thing this app ever does and used to run with no
+     * guard at all: no idle or session timer (those belong to a desktop session), but heat, a
+     * flat battery and today's mobile-data limit all still stop it, and it can be continued.
+     */
+    private final Runnable jobMonitor = new Runnable() {
+        @Override public void run() {
+            if (!BUSY.get() && !INSTALLING.get()) return;   // nothing to guard any more
+            SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+            DeviceProbe probe = DeviceProbe.read(LinuxService.this);
+            String reason = null;
+            if (probe.batteryPercent >= 0 && probe.batteryPercent <= 3
+                    && !DeviceProbe.isCharging(LinuxService.this)) {
+                reason = "Battery reached 3%, so the download was stopped. Charge the phone, then "
+                        + "start it again — nothing already installed is downloaded twice.";
+            } else if (prefs.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true)
+                    && (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
+                        || (probe.batteryTempC > 0 && probe.batteryTempC >= STOP_TEMPERATURE_C))) {
+                reason = "The phone got too hot, so the download was stopped. Let it cool for a few "
+                        + "minutes, then start it again — it carries on from where it stopped.";
+            } else if (DataBudget.exhausted(LinuxService.this)) {
+                reason = "Today's mobile data limit is used up, so the download was stopped. It "
+                        + "carries on over Wi-Fi, after midnight, or with a higher limit in Settings.";
+            }
+            if (reason != null) {
+                status("Stopped to protect the phone", reason, -1, false, true);
+                recordStop(reason);
+                cancelJobs();
+                return;
+            }
+            handler.postDelayed(this, 30_000L);
+        }
+    };
+
+    /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
+    private void cancelJobs() {
+        stopRequested = true;
+        Thread worker = workerThread;
+        if (worker != null) worker.interrupt();
+        Future<?> task = currentTask;
+        if (task != null) task.cancel(true);
+        Future<?> install = installTask;
+        if (install != null) install.cancel(true);
+        Process active = activeProcess;
+        if (active != null) active.destroy();
+        Process installing = installProcess;
+        if (installing != null) installing.destroy();
+    }
 
     private final Runnable safetyMonitor = new Runnable() {
         @Override public void run() {
@@ -108,32 +160,41 @@ public final class LinuxService extends Service {
                 stopEverything(false);
                 return;
             }
+            DeviceProbe probe = DeviceProbe.read(LinuxService.this);
             if (prefs.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true)) {
-                DeviceProbe probe = DeviceProbe.read(LinuxService.this);
                 // Android throttles hard at SEVERE; the session is only ended at CRITICAL or a
                 // genuinely hot battery, so ordinary warm-phone coding is never interrupted.
-                if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
-                        || probe.batteryTempC >= STOP_TEMPERATURE_C) {
-                    String reason = String.format(Locale.ROOT,
-                            "The phone reached %.0f°C, so the Linux computer was closed to protect the battery. "
-                                    + "Let it cool for a few minutes, then open it again.", probe.batteryTempC);
+                // Each limb names its own sensor: quoting the battery temperature for a hot
+                // processor told the owner "the phone reached 38°C", which reads like a bug.
+                boolean batteryHot = probe.batteryTempC > 0 && probe.batteryTempC >= STOP_TEMPERATURE_C;
+                if (batteryHot || probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL) {
+                    String reason = batteryHot
+                            ? String.format(Locale.ROOT,
+                                    "The battery reached %.0f°C, so the Linux computer was closed to protect "
+                                            + "it. Let the phone cool for a few minutes, then open it again.",
+                                    probe.batteryTempC)
+                            : "The phone's processor reached its safety limit, so the Linux computer was "
+                                    + "closed before the phone throttled itself further. Let it cool for a "
+                                    + "few minutes, then open it again.";
                     status("Stopped to cool down", reason, -1, false, true);
                     recordStop(reason);
                     stopEverything(false);
                     return;
                 }
                 if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_SEVERE
-                        || probe.batteryTempC >= WARN_TEMPERATURE_C) {
+                        || (probe.batteryTempC > 0 && probe.batteryTempC >= WARN_TEMPERATURE_C)) {
                     updateNotification("Phone is warm", "Linux is still running. Take a short break if it gets hotter.", -1);
                 }
-                if (probe.batteryPercent >= 0 && probe.batteryPercent <= 3
-                        && !DeviceProbe.isCharging(LinuxService.this)) {
-                    String reason = "Battery reached 3%. Charge the phone, then open the desktop again.";
-                    status("Stopped at 3% battery", reason, -1, false, true);
-                    recordStop(reason);
-                    stopEverything(false);
-                    return;
-                }
+            }
+            // Never behind the heat switch: a flat battery is not a comfort setting, and turning
+            // off Overheat protection used to turn this off with it.
+            if (probe.batteryPercent >= 0 && probe.batteryPercent <= 3
+                    && !DeviceProbe.isCharging(LinuxService.this)) {
+                String reason = "Battery reached 3%. Charge the phone, then open the desktop again.";
+                status("Stopped at 3% battery", reason, -1, false, true);
+                recordStop(reason);
+                stopEverything(false);
+                return;
             }
             handler.postDelayed(this, 30_000L);
         }
@@ -212,8 +273,11 @@ public final class LinuxService extends Service {
             }
             // A running desktop holds no wake lock of its own (the screen does, while it is on),
             // so the download takes one, or a 700 MB fetch would stall with the screen off.
-            acquireWakeLock();
-            installExecutor.submit(() -> {
+            acquireInstallWakeLock();
+            stopRequested = false;
+            handler.removeCallbacks(jobMonitor);
+            handler.postDelayed(jobMonitor, 30_000L);
+            installTask = installExecutor.submit(() -> {
                 try {
                     if (removing) uninstallApp(appId); else installApp(appId);
                 } catch (InterruptedException cancelled) {
@@ -223,16 +287,46 @@ public final class LinuxService extends Service {
                     status("Could not complete task", cleanError(error), -1, false, true);
                 } finally {
                     INSTALLING.set(false);
-                    releaseWakeLock();
+                    releaseInstallWakeLock();
+                    if (!desktopRunning && !BUSY.get()) {
+                        stopForeground(STOP_FOREGROUND_REMOVE);
+                        stopSelf();
+                    }
                 }
             });
+            return START_NOT_STICKY;
+        }
+        // Deleting or setting up needs the computer closed. Queueing either behind an open
+        // desktop session left BUSY true for the whole session: every button went grey, the
+        // Apps tab stopped working, and the delete ran hours later when the desktop ended.
+        if ((ACTION_REMOVE.equals(action) || ACTION_SETUP.equals(action)) && isDesktopRunning()) {
+            status("Stop the Linux computer first",
+                    ACTION_REMOVE.equals(action)
+                            ? "Deleting needs the computer closed. Tap Stop, then Delete."
+                            : "Set-up needs the computer closed. Tap Stop, then try again.",
+                    -1, false, true);
+            return START_NOT_STICKY;
+        }
+        if (ACTION_START_DESKTOP.equals(action) && isDesktopRunning()) {
+            // Already open: say so instead of queueing a second session behind the first.
+            status("The desktop is running", "Tap Back to desktop to return to it.", -1, false, false);
+            return START_NOT_STICKY;
+        }
+        if (ACTION_REMOVE.equals(action) && isInstalling()) {
+            status("An app is installing", "Wait for it to finish, then delete the computer.", -1, false, true);
             return START_NOT_STICKY;
         }
         if (!BUSY.compareAndSet(false, true)) {
             status("PocketDesk is busy", desktopRunning ? "Desktop is already running." : "Wait for the current task to finish.", -1, true, false);
             return START_NOT_STICKY;
         }
-        acquireWakeLock();
+        acquireTaskWakeLock();
+        stopRequested = false;
+        if (!ACTION_START_DESKTOP.equals(action)) {
+            // A desktop session has its own monitor; a download does not, and needs one.
+            handler.removeCallbacks(jobMonitor);
+            handler.postDelayed(jobMonitor, 30_000L);
+        }
         currentTask = executor.submit(() -> {
             workerThread = Thread.currentThread();
             try {
@@ -244,11 +338,16 @@ public final class LinuxService extends Service {
                 else status("Unknown action", "Nothing was changed.", -1, false, true);
             } catch (InterruptedException cancelled) {
                 Thread.currentThread().interrupt();
-                // The monitor already said why it ended the session; that reason stays.
-                if (!stoppedForReason) status("Task cancelled", "No background task is running.", -1, false, false);
+                // The monitor or the Stop button already said why it ended; that reason stays,
+                // and this must not overwrite it with "Task cancelled" a moment later.
+                if (!stoppedForReason && !stopRequested) {
+                    status("Task cancelled", "No background task is running.", -1, false, false);
+                }
             } catch (Exception error) {
                 if (Thread.currentThread().isInterrupted()) {
-                    if (!stoppedForReason) status("Task cancelled", "No background task is running.", -1, false, false);
+                    if (!stoppedForReason && !stopRequested) {
+                        status("Task cancelled", "No background task is running.", -1, false, false);
+                    }
                 } else {
                     String message = cleanError(error);
                     status("Could not complete task", message, -1, false, true);
@@ -256,8 +355,10 @@ public final class LinuxService extends Service {
             } finally {
                 workerThread = null;
                 BUSY.set(false);
-                if (!desktopRunning) {
-                    releaseWakeLock();
+                releaseTaskWakeLock();
+                // Only the last one out turns off the lights: an install running beside a desktop
+                // that just died still needs the service, its notification and its wake lock.
+                if (!desktopRunning && !INSTALLING.get()) {
                     stopForeground(STOP_FOREGROUND_REMOVE);
                     stopSelf();
                 }
@@ -268,7 +369,9 @@ public final class LinuxService extends Service {
 
     @Override public void onDestroy() {
         handler.removeCallbacks(safetyMonitor);
-        releaseWakeLock();
+        handler.removeCallbacks(jobMonitor);
+        releaseTaskWakeLock();
+        releaseInstallWakeLock();
         super.onDestroy();
     }
 
@@ -319,6 +422,10 @@ public final class LinuxService extends Service {
     private void setupUbuntu() throws Exception {
         preflight(true, 10);
         SharedPreferences preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
+        // Read before stamping: apply() updates the in-memory map straight away, so reading it
+        // afterwards always saw "started" and the whole resume path was dead code.
+        String previousStage = preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, "");
+        boolean finishedBefore = preferences.getBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false);
         preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "started").apply();
         status("Preparing Linux", "Getting the local Linux system ready…", 2, true, false);
         ContainerRuntime.installRuntime(this);
@@ -327,10 +434,33 @@ public final class LinuxService extends Service {
         File archive = ContainerRuntime.downloadFile(this);
         // Only a run that finished unpacking may be continued: the marker and the two binaries
         // have to agree, or a half-written system would be handed to the package steps.
-        boolean unpacked = "unpacked".equals(preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, ""))
+        boolean unpacked = "unpacked".equals(previousStage)
                 && new File(root, "usr/bin/apt-get").isFile()
                 && new File(root, "usr/bin/dpkg").isFile();
-        if (unpacked) {
+        // A container that once finished set-up is never wiped by starting set-up again: if the
+        // proof file (usr/bin/Xtigervnc) is lost to an apt removal or an interrupted upgrade,
+        // the computer reads as "not set up", and starting over would delete every app, sign-in
+        // and file with it. The staged bootstrap repairs it instead.
+        //
+        // Those three files cannot be the proof on their own -- they all land early in the base
+        // archive, so a half-finished extraction has them while /usr/lib is still missing. The
+        // proof is a finished unpacking, or a set-up that once completed.
+        boolean established = (unpacked || finishedBefore)
+                && new File(root, "etc/os-release").isFile()
+                && new File(root, "usr/bin/apt-get").isFile()
+                && new File(root, "usr/bin/dpkg").isFile();
+        if (established && !unpacked) {
+            status("Repairing the computer",
+                    "Ubuntu is already on this phone. The missing parts are being installed; "
+                            + "nothing of yours is deleted.", 38, true, false);
+            // A finished-step mark is a promise, not proof: the package steps return early on
+            // the mark alone. Where the proof is gone, the mark goes with it, so the step that
+            // installs the display server really runs again.
+            if (!new File(root, "usr/bin/Xtigervnc").isFile()) {
+                new File(root, "var/lib/pocketdesk/stage/desktop").delete();
+                new File(root, "var/lib/pocketdesk/stage/extras").delete();
+            }
+        } else if (unpacked) {
             // Everything below this point is repeatable, so the 30 MB download and the unpacking
             // are simply skipped: this is what makes "Continue set-up" continue.
             status("Continuing set-up", "Ubuntu is already on the phone; carrying on from where "
@@ -355,8 +485,8 @@ public final class LinuxService extends Service {
                 });
             }
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
-            preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "unpacked").apply();
         }
+        preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "unpacked").apply();
 
         final long toolsStartedAt = System.currentTimeMillis();
         status("Setting up the desktop",
@@ -377,7 +507,25 @@ public final class LinuxService extends Service {
                     + "internet connection and free space, then tap Continue set-up — it carries "
                     + "on from where it stopped.");
         }
+        File proof = new File(root, "usr/bin/Xtigervnc");
+        if (!proof.isFile()) {
+            // dpkg can still record the package as installed while its files are gone, and apt
+            // then says "already the newest version" and does nothing. Only --reinstall puts it
+            // back -- and if even that fails, saying "Linux is ready" would be a lie that leaves
+            // the owner tapping Set up for ever.
+            status("Repairing the computer", "Putting the desktop's display back…", 92, true, false);
+            runTracked("set -eu; export DEBIAN_FRONTEND=noninteractive; apt-get update; "
+                    + "apt-get install -y --reinstall --no-install-recommends "
+                    + "tigervnc-standalone-server openbox tint2", line -> {});
+            if (!proof.isFile()) {
+                throw new IOException("The desktop's display server could not be put back. Nothing "
+                        + "of yours was deleted — your apps, sign-ins and files are still inside "
+                        + "the computer. Try again on a better connection; if it keeps failing, "
+                        + "Settings → Storage → Delete the Linux computer and set it up again.");
+            }
+        }
         ContainerRuntime.writeDesktopScripts(this);
+        ContainerRuntime.invalidateSize();
         preferences.edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, true)
                 .remove(ContainerRuntime.KEY_SETUP_STAGE)
@@ -406,6 +554,7 @@ public final class LinuxService extends Service {
         }
         ContainerRuntime.refreshDesktopEntries(this);
         try { runInstall("/usr/local/bin/pocketdesk-menu || true", null); } catch (Exception ignored) {}
+        ContainerRuntime.invalidateSize();
         status(app.name + " was uninstalled",
                 "Its space is freed. Install it again any time from the Apps tab.", 100, false, false);
     }
@@ -453,6 +602,7 @@ public final class LinuxService extends Service {
         } catch (Exception ignored) {
             // The menu is rebuilt at the next desktop start anyway.
         }
+        ContainerRuntime.invalidateSize();
         status(app.name + " is ready", isDesktopRunning()
                         ? "It is on the desktop now: tap its icon, or open the Apps menu."
                         : "Open the desktop, then tap its icon or open the Apps menu.",
@@ -526,7 +676,12 @@ public final class LinuxService extends Service {
             // does, and say how it is going.
             boolean ready = false;
             for (int i = 0; i < 600 && activeProcess.isAlive(); i++) {
-                if (VncClient.canConnect("127.0.0.1", 5901, 250)) { ready = true; break; }
+                if (VncClient.canConnect(new File(ContainerRuntime.rootfs(this),
+                                "home/coder/.pocketdesk/vnc.sock").getAbsolutePath())
+                        || VncClient.canConnect("127.0.0.1", 5901, 250)) {
+                    ready = true;
+                    break;
+                }
                 if (i > 0 && i % 20 == 0) {
                     status("Opening the desktop", "Starting the display… " + (i / 4) + "s", -1, true, false);
                 }
@@ -556,7 +711,7 @@ public final class LinuxService extends Service {
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, true).apply();
         desktopRunning = true;
         BUSY.set(false);
-        releaseWakeLock();
+        releaseTaskWakeLock();
         status("The Linux computer is running",
                 "Desktop " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
         updateNotification("The Linux computer is running", "Tap to return · phone protection is active", 100);
@@ -780,6 +935,7 @@ public final class LinuxService extends Service {
                 .remove(ContainerRuntime.KEY_SETUP_STAGE)
                 .remove(ContainerRuntime.KEY_PROOT_NO_SECCOMP)
                 .apply();
+        ContainerRuntime.invalidateSize();
         status("Linux deleted", "The storage it was using is free again.", 100, false, false);
     }
 
@@ -818,10 +974,13 @@ public final class LinuxService extends Service {
         BUSY.set(false);
         getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
-        releaseWakeLock();
+        releaseTaskWakeLock();
         if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
-        stopForeground(STOP_FOREGROUND_REMOVE);
-        stopSelf();
+        // An install running beside the desktop keeps the service and its own lock alive.
+        if (!INSTALLING.get()) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+            stopSelf();
+        }
     }
 
     static String lastMessage() { return lastMessage; }
@@ -888,18 +1047,43 @@ public final class LinuxService extends Service {
         ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
     }
 
-    private void acquireWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) return;
+    /**
+     * One lock per job, never one shared between them.
+     *
+     * A single field was acquired by an install and released by the desktop task finishing --
+     * so a 700 MB download continued with the screen off and no lock, and Android suspended it
+     * half way. Both fields are volatile: they are written from the main thread and from two
+     * worker threads.
+     */
+    private PowerManager.WakeLock newWakeLock(String tag) {
         PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-        if (power == null) return;
-        wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PocketDeskLinux:setup");
-        wakeLock.setReferenceCounted(false);
-        wakeLock.acquire(2 * 60 * 60 * 1000L);
+        if (power == null) return null;
+        PowerManager.WakeLock lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag);
+        lock.setReferenceCounted(false);
+        lock.acquire(2 * 60 * 60 * 1000L);
+        return lock;
     }
 
-    private void releaseWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-        wakeLock = null;
+    private synchronized void acquireTaskWakeLock() {
+        if (taskWakeLock != null && taskWakeLock.isHeld()) return;
+        taskWakeLock = newWakeLock("PocketDeskLinux:task");
+    }
+
+    private synchronized void releaseTaskWakeLock() {
+        PowerManager.WakeLock lock = taskWakeLock;
+        taskWakeLock = null;
+        if (lock != null && lock.isHeld()) lock.release();
+    }
+
+    private synchronized void acquireInstallWakeLock() {
+        if (installWakeLock != null && installWakeLock.isHeld()) return;
+        installWakeLock = newWakeLock("PocketDeskLinux:install");
+    }
+
+    private synchronized void releaseInstallWakeLock() {
+        PowerManager.WakeLock lock = installWakeLock;
+        installWakeLock = null;
+        if (lock != null && lock.isHeld()) lock.release();
     }
 
     /** Human phase for a raw apt/dpkg/curl output line. */

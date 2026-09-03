@@ -217,6 +217,7 @@ public final class LinuxAppsTest {
         if ("CHROME_INSTALL".equals(name)) return LinuxApps.CHROME_INSTALL;
         if ("DEVELOPER_PACKAGES".equals(name)) return LinuxApps.DEVELOPER_PACKAGES;
         if ("DESKTOP_PACKAGES".equals(name)) return LinuxApps.DESKTOP_PACKAGES;
+        if ("PD_TIMEZONE".equals(name)) return LinuxApps.PD_TIMEZONE;
         throw new AssertionError("bootstrapCommand uses an unknown constant: " + name);
     }
 

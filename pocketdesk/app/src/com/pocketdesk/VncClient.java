@@ -59,19 +59,56 @@ final class VncClient {
     private byte[] rowBytes;
     private static final int STRIP_ROWS = 120;
 
+    /**
+     * The display server's private socket inside this app's storage, when there is one.
+     *
+     * Android does not keep loopback apart between apps, so a TCP port here could be opened by
+     * any other app on the phone that holds the internet permission -- and this session has no
+     * password. A unix socket in app-private storage cannot be opened by anyone else at all.
+     * The port stays as a fallback for a container whose Xtigervnc is too old for it.
+     */
+    private final String socketPath;
+    private android.net.LocalSocket localSocket;
+
     VncClient(String host, int port, Listener listener) {
+        this(host, port, null, listener);
+    }
+
+    VncClient(String host, int port, String socketPath, Listener listener) {
         this.host = host;
         this.port = port;
+        this.socketPath = socketPath;
         this.listener = listener;
     }
 
     void connectAndRun() throws IOException {
-        socket = new Socket();
-        socket.setTcpNoDelay(true);
-        socket.setKeepAlive(true);
-        socket.connect(new InetSocketAddress(host, port), 3000);
-        input = new DataInputStream(new BufferedInputStream(socket.getInputStream(), 256 * 1024));
-        output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 64 * 1024));
+        java.io.InputStream rawIn = null;
+        java.io.OutputStream rawOut = null;
+        if (socketPath != null && new java.io.File(socketPath).exists()) {
+            android.net.LocalSocket local = new android.net.LocalSocket();
+            try {
+                local.connect(new android.net.LocalSocketAddress(socketPath,
+                        android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+                localSocket = local;
+                rawIn = local.getInputStream();
+                rawOut = local.getOutputStream();
+            } catch (IOException notThere) {
+                // A socket file left behind by a session that died answers nobody. Fall through
+                // to the port rather than retrying this for ever.
+                try { local.close(); } catch (IOException ignored) {}
+                localSocket = null;
+            }
+        }
+        if (rawIn == null) {
+            socket = new Socket();
+            socket.setTcpNoDelay(true);
+            socket.setKeepAlive(true);
+            socket.connect(new InetSocketAddress(host, port), 3000);
+            rawIn = socket.getInputStream();
+            rawOut = socket.getOutputStream();
+        }
+        input = new DataInputStream(new BufferedInputStream(rawIn, 256 * 1024));
+        output = new DataOutputStream(new BufferedOutputStream(rawOut, 64 * 1024));
         handshake();
         sender = new Thread(this::drainOutbox, "pocketdesk-vnc-sender");
         sender.setDaemon(true);
@@ -336,7 +373,7 @@ final class VncClient {
         if (length < 0 || length > 4 * 1024 * 1024) throw new IOException("Invalid clipboard size");
         byte[] value = new byte[length];
         input.readFully(value);
-        listener.onClipboard(new String(value, StandardCharsets.UTF_8));
+        listener.onClipboard(new String(value, StandardCharsets.ISO_8859_1));
     }
 
     void requestUpdate(boolean incremental) throws IOException {
@@ -409,7 +446,7 @@ final class VncClient {
 
     void sendClipboard(String text) {
         if (text == null) return;
-        final byte[] value = text.getBytes(StandardCharsets.UTF_8);
+        final byte[] value = text.getBytes(StandardCharsets.ISO_8859_1);
         enqueue(() -> {
             synchronized (writeLock) {
                 output.writeByte(6);
@@ -429,6 +466,7 @@ final class VncClient {
         Thread activeSender = sender;
         if (activeSender != null) activeSender.interrupt();
         try { if (socket != null) socket.close(); } catch (IOException ignored) {}
+        try { if (localSocket != null) localSocket.close(); } catch (IOException ignored) {}
     }
 
     static boolean canConnect(String host, int port, int timeoutMs) {
@@ -437,6 +475,21 @@ final class VncClient {
             return true;
         } catch (IOException ignored) {
             return false;
+        }
+    }
+
+    /** True once the desktop's private socket answers -- the same question, for the new path. */
+    static boolean canConnect(String socketPath) {
+        if (socketPath == null || !new java.io.File(socketPath).exists()) return false;
+        android.net.LocalSocket test = new android.net.LocalSocket();
+        try {
+            test.connect(new android.net.LocalSocketAddress(socketPath,
+                    android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+            return true;
+        } catch (IOException ignored) {
+            return false;
+        } finally {
+            try { test.close(); } catch (IOException ignored) {}
         }
     }
 

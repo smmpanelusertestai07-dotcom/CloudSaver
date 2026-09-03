@@ -1,3 +1,93 @@
+# PocketDesk 10.0.45 — the audit release: 53 confirmed defects fixed
+
+A ten-dimension audit of the whole app (77 agents, every finding re-checked against the code by
+a second reviewer that tried to refute it) found 53 real defects. All of them are fixed here.
+The ones that would have cost the owner something:
+
+**Security**
+- **The desktop and its sound no longer listen on a network port.** Android does not keep
+  loopback apart between apps, so 127.0.0.1:5901 (with no password) and the audio port could be
+  opened by any other app on the phone holding the ordinary internet permission — the screen,
+  the keyboard and the sound of every AI conversation. Both now travel over unix sockets inside
+  this app's private storage, which no other app can open; a container too old for that falls
+  back to the port, so sound and screen never simply stop working.
+- **The app lock hides the window from the recents list whenever it is on**, not only once the
+  lock screen is already up — Android takes that thumbnail as the app leaves the foreground.
+- **Sign-in callbacks are no longer written to the app log.** A chatgpt:// or claude:// callback
+  carries the account's authorisation code, and the log is shareable.
+- **Every claim about protection is now literally true.** "No open network ports" was false;
+  "verified by their signature" was false for ChatGPT and Cursor, which publish a plain .deb
+  download (Claude, Antigravity and Chrome do come from signed repositories, and now say so
+  separately); "Phone files shares Download, DCIM and Documents" understated a share of the
+  phone's whole shared storage.
+
+**Nothing of the owner's is ever deleted by accident**
+- **Set-up can no longer wipe a working container.** If the file that proves the desktop is
+  installed went missing (an apt removal, an interrupted upgrade), the home screen said "Not set
+  up" and its only button deleted 4.5 GB — every app, sign-in and project. It now repairs the
+  computer instead, and deleting stays behind the Settings dialog that says it cannot be undone.
+- **"Copy your files into Downloads/Shared before uninstalling" was wrong in three places.**
+  Both folders belong to the app and Android deletes them with it; the app and the quick start
+  now say to move files onto the phone itself.
+- **Rebuilding the app list no longer deletes files the owner put on their desktop** — only the
+  entries PocketDesk itself wrote are cleared.
+
+**Set-up, installs and the desktop**
+- Set-up no longer fails at the last step when Phone files is on: the final ownership pass used
+  to walk into the phone's own storage, hit a folder Android hides, and throw away a finished
+  40-minute install.
+- A vendor repository that stops answering is removed again instead of being left behind to
+  fail every later install; a container already poisoned by one heals itself.
+- Installing Claude no longer drags in 149 KDE packages (~154 MB) through an unnamed alternative.
+- Installing an app while the desktop is open no longer kills the panel for the rest of the
+  session, and a panel that died can now come back.
+- The desktop waits up to two minutes for its display instead of four seconds, so a slow first
+  start no longer produces a desktop with no wallpaper, no panel and no icons.
+- Set-up and installs are now covered by the phone's safety stops (heat, 3 % battery, the daily
+  mobile-data limit) — the longest and hottest job in the app had none.
+- The 3 % battery stop no longer switches itself off with Overheat protection, and an overheat
+  message names the sensor that actually tripped.
+- An install and a desktop session each hold their own wake lock, so one finishing can no longer
+  suspend the other's download; whichever finishes last takes the notification down.
+- Deleting the computer or starting set-up while the desktop runs is refused with a reason
+  instead of being queued behind the whole session, which used to leave every button grey.
+
+**The screen and the keyboard**
+- Showing the key row or hiding the bars no longer resizes the whole Linux desktop and throws
+  away the owner's zoom; only a real rotation does that.
+- The control bar and key row ride above the on-screen keyboard instead of hiding under it.
+- A paired keyboard or mouse now counts as the owner being there, so Smart stopping cannot close
+  a session someone is typing in.
+- The keyboard field no longer swallows the volume rocker.
+- A session that has ended is dimmed and says so, instead of showing a frozen picture that
+  answers nothing.
+- Copy and paste of non-ASCII text is no longer mangled (RFB clipboard is Latin-1, not UTF-8).
+
+**Everything else**
+- The launcher's "Open desktop" shortcut works on a cold start again (it did nothing, then
+  opened the desktop unasked at some later moment).
+- "Screen rotation → Automatic" takes effect immediately instead of at the next app start.
+- The container's clock follows the phone's own time zone instead of being fixed to one country.
+- The size of the computer is measured once a minute at most, never twice at once, and never by
+  a thread that holds the screen it was started from.
+- The first-run permission walkthrough is marked as seen when it is answered, not before it is
+  shown.
+- The panel's temperature reading no longer prints 2500 °C on kernels that report thousandths.
+- Force close and Close all no longer skip a window because its title contains "Desktop".
+- The installer: dialogs no longer vanish because a Maintainer's e-mail looks like Pango markup;
+  a package that would delete software already installed is blocked with its name; a control
+  tarball cannot hide its setup scripts from the warning; and a failed install repairs dpkg
+  instead of claiming nothing was changed.
+- The open-source notices now ship inside the APK (Settings → Open-source notices) and name this
+  app rather than a different product; the credits line that promised them is true.
+- The signing key is kept with the project, and a build that cannot find it says so loudly and
+  names its APK -devkey, so an APK that cannot be installed over an existing PocketDesk can
+  never be handed over as the release.
+- Tests: a version-agreement suite (build.sh, MainActivity and the release notes must match, and
+  the number must end in 0 or 5), the sound port is read from the Java constant instead of being
+  copied, and the desktop's private sockets are asserted.
+- Version 10.0.45 (code 145).
+
 # PocketDesk 10.0.40 — install an app you downloaded, the way a phone does it
 
 - **An installer for apps you download yourself.** Downloading a .deb in Chrome inside the

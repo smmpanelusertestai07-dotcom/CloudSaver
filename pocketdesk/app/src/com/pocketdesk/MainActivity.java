@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.40";
+    static final String VERSION = "10.0.45";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -82,6 +82,7 @@ public final class MainActivity extends Activity {
     private TextView deviceDetails;
     private TextView linuxSize;
     private Ui.Row basicsUpdateRow;
+    private AlertDialog permissionIntro;
     private Ui.Row compatibleRow;
     /** True while the opening screen is on top: the lock waits for it rather than covering it. */
     private boolean introShowing;
@@ -122,8 +123,6 @@ public final class MainActivity extends Activity {
     private Ui.Row autoStartRow;
     private Ui.Row phoneFilesRow;
     private DeviceProbe lastProbe;
-    private Ui.Row crashRow;
-    private Ui.Row appLogRow;
     private Ui.Row dataCapRow;
     private Ui.Row lockNoticeRow;
     private Ui.Toggle appLockToggle;
@@ -169,6 +168,7 @@ public final class MainActivity extends Activity {
             View content = buildScreen();
             setContentView(content);
             configureSystemBars();
+            AppLock.applyWindowSecurity(this);
             applySystemInsets();
             if (state == null) showIntro();
         } catch (Throwable error) {
@@ -235,9 +235,13 @@ public final class MainActivity extends Activity {
                 .withEndAction(() -> {
                     shell.removeView(intro);
                     introShowing = false;
-                    // The lock belongs after the opening screen, never on top of it -- and never
-                    // on a screen the owner has already left, where onStart raises it instead.
-                    if (started && AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                    // The opening screen must never end without deciding what happens next: with
+                    // the lock on, it asks; without it, the shortcut the owner tapped is honoured
+                    // here, because onResume already ran and skipped it while the intro was up.
+                    if (started) {
+                        if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                        else consumeRoute();
+                    }
                 }).start(), 3100L);
     }
 
@@ -264,6 +268,7 @@ public final class MainActivity extends Activity {
         super.onStart();
         started = true;
         if (safeMode) return;
+        AppLock.applyWindowSecurity(this);
         try {
             IntentFilter filter = new IntentFilter(LinuxService.ACTION_STATUS);
             if (Build.VERSION.SDK_INT >= 33) {
@@ -290,7 +295,6 @@ public final class MainActivity extends Activity {
         refreshLockRows();
         measureLinuxSize();
         maybeShowPermissionIntro();
-        showCrashRowIfNeeded();
         // Re-entering mid-setup should show the running job straight away, not an empty card.
         if (LinuxService.isBusy() || LinuxService.lastMessage() != null) {
             renderProgress(LinuxService.lastMessage(), LinuxService.lastDetail(),
@@ -302,6 +306,15 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() {
         handler.removeCallbacks(liveRefresh);
         super.onPause();
+    }
+
+    @Override protected void onDestroy() {
+        // The intro's two delayed callbacks and the 5-second live refresh must not run against
+        // a destroyed screen: a theme change during the opening screen used to do exactly that.
+        handler.removeCallbacksAndMessages(null);
+        if (permissionIntro != null && permissionIntro.isShowing()) permissionIntro.dismiss();
+        permissionIntro = null;
+        super.onDestroy();
     }
 
     @Override protected void onStop() {
@@ -905,8 +918,13 @@ public final class MainActivity extends Activity {
         StringBuilder message = new StringBuilder(present
                 ? "Already installed. This fetches the newest build from the publisher and "
                         + "updates it in place — your login and settings stay."
-                : app.summary + "\n\nInstalled from the publisher's own official package, "
-                        + "verified by their signature. Nothing is downloaded from a browser.");
+                : app.summary + "\n\n" + (app.repoSigned
+                        ? "Installed from the publisher's own apt repository: the package is checked "
+                                + "against their signing key, and one that does not match is refused."
+                        : "Downloaded straight from the publisher's own site over an encrypted "
+                                + "connection — they publish no Linux repository yet, so there is no "
+                                + "signature to check, only who it came from.")
+                        + " Nothing is downloaded from a browser or a link.");
         message.append("\n\nDownload size: ").append(app.approximateSize)
                 .append(present ? "" : "\nAlways installs the newest build.");
         // Measured on this phone, now: the app's own size is the same everywhere, the space
@@ -1097,7 +1115,7 @@ public final class MainActivity extends Activity {
                         dialogBuilder()
                                 .setTitle("Show the phone's files inside the computer?")
                                 .setMessage("Android will ask you to allow All files access for PocketDesk. "
-                                        + "With it on, your phone's Download, DCIM (photos), Documents and "
+                                        + "With it on, your phone's shared storage — Download, DCIM (photos), Documents and "
                                         + "other folders appear inside the Linux computer as the Phone folder, "
                                         + "so ChatGPT, Claude and the browser can attach a file from the phone "
                                         + "and save one to it. Nothing on the phone is touched unless you "
@@ -1133,9 +1151,14 @@ public final class MainActivity extends Activity {
                 + "files. Desktop text size applies the next time the desktop starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
+        storage.addView(new Ui.Row(this, R.drawable.ic_info, "Open-source notices",
+                "The licences of everything bundled with this app, including PRoot (GPL-2.0)",
+                R.drawable.ic_chevron, dark, v -> showNotices()), Ui.matchWrap(this, 10));
+
         TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS. Tux, the Linux mascot, by Larry "
                 + "Ewing and The GIMP. Ubuntu is a trademark of Canonical Ltd. App names and logos "
-                + "are the property of their respective owners. Open-source notices ship with the app.",
+                + "are the property of their respective owners. The open-source notices ship inside "
+                + "this app — the row above opens them.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -1289,9 +1312,11 @@ public final class MainActivity extends Activity {
                         + "signature does not match.\n"
                         + "• Ubuntu's security updates install with the computer's basics, and "
                         + "Settings → Storage offers that update when a new version brings one.\n"
-                        + "• The computer is sealed in: it lives in this app's private storage, has "
-                        + "no open network ports, cannot see your phone's files unless you turn on "
-                        + "Phone files, and no other app on the phone can reach into it.\n\n"
+                        + "• The computer is sealed in: it lives in this app's private storage, "
+                        + "listens on no network port at all, and reaches the phone's screen and "
+                        + "speaker through sockets inside that private storage that no other app "
+                        + "can open. It cannot see your phone's files unless you turn on Phone "
+                        + "files.\n\n"
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
                         + "need, to look for Windows viruses that cannot run here anyway.", false);
@@ -1306,11 +1331,13 @@ public final class MainActivity extends Activity {
                         + "out of that box, and uninstalling PocketDesk takes all of it with you.\n\n"
                         + "What a bad Linux app could reach: what is inside the computer — your files "
                         + "there and the sign-ins of the AI apps installed there, which are files in "
-                        + "the same home folder — and, only while Phone files is on, the phone "
-                        + "folders shared in (Download, DCIM, Documents). That is exactly why Phone "
-                        + "files is off until you turn it on.\n\n"
+                        + "the same home folder — and, only while Phone files is on, your phone's "
+                        + "shared storage: not just Download, DCIM and Documents but everything "
+                        + "beside them, Pictures and Music included, to read and to change. That is "
+                        + "exactly why Phone files is off until you turn it on, and worth turning "
+                        + "off again when you are not using it.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
-                        + "messages, your photos outside those shared folders, the camera, the "
+                        + "messages, anything outside that shared storage, the camera, the "
                         + "microphone, your location or your contacts. PocketDesk holds no permission "
                         + "for any of them, so nothing inside can ask for one.\n\n"
                         + "So the whole risk is what you install. Apps from the Apps tab come signed "
@@ -1441,11 +1468,13 @@ public final class MainActivity extends Activity {
 
         addAnswer(card, R.drawable.ic_delete, "What if I uninstall PocketDesk?",
                 "Android deletes the whole Linux computer with the app — the system, the AI apps, "
-                        + "their sign-ins and every file inside it. Nothing is kept, and nothing "
-                        + "is copied anywhere first.\n\nSo before uninstalling, move anything you "
-                        + "want to keep out of the computer: save it into the Shared folder (it "
-                        + "appears in the phone's Files app) or, with Phone files on, straight into "
-                        + "the phone's own Download or Documents folder. Uninstalling one AI app "
+                        + "their sign-ins and every file inside it. The Shared folder goes too: it "
+                        + "belongs to this app as well, even though the phone can see it. Nothing "
+                        + "is kept and nothing is copied anywhere first.\n\nSo before uninstalling, "
+                        + "move anything you want to keep onto the phone itself: turn on Phone files "
+                        + "in Settings → Permissions and save it into the phone's own Download or "
+                        + "Documents folder, or copy it out of Android/data/com.pocketdesk/files/"
+                        + "Shared with the phone's Files app first. Uninstalling one AI app "
                         + "instead — Apps tab → the installed row → Uninstall — leaves the computer "
                         + "and your files exactly as they are.", false);
 
@@ -1461,8 +1490,12 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_volume, "Does sound work?",
                 "Yes. Whatever the Linux computer plays — a voice reply, a video in the browser, "
                         + "a notification — comes out of the phone's speaker or headphones while "
-                        + "the desktop screen is open. The volume keys set it, as does Screen → "
-                        + "Volume. Sound into the computer (a microphone) is not carried yet.", false);
+                        + "the desktop screen is open.\n\nIt arrives as media audio, which is the "
+                        + "only kind this app carries: there is no call, ring or alarm sound "
+                        + "involved. The phone's volume keys set it while the desktop is open and "
+                        + "show the level on screen — \u201cMedia volume · 60%\u201d — and Screen → "
+                        + "Media volume does the same from the menu. Sound INTO the computer (a "
+                        + "microphone) is not carried yet.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
                 "These are the permanent ones. This is an agentic development environment, "
@@ -1474,8 +1507,9 @@ public final class MainActivity extends Activity {
                         + "neither can anything that needs a virtual machine. Your AI accounts' "
                         + "own plans and limits still apply; PocketDesk cannot change them. "
                         + "PocketDesk is provided as is: it is a computer inside an app, not a "
-                        + "backup service — copy anything precious into the Shared folder or onto "
-                        + "the phone.", false);
+                        + "backup service — copy anything precious onto the phone itself, because "
+                        + "uninstalling the app deletes everything that belongs to it, the Shared "
+                        + "folder included.", false);
         return card;
     }
 
@@ -1749,7 +1783,11 @@ public final class MainActivity extends Activity {
         if (linuxSize == null) return;
         final boolean installed = ContainerRuntime.isInstalled(this);
         if (removeButton != null) {
-            removeButton.setVisibility(installed ? View.VISIBLE : View.GONE);
+            // Also when Ubuntu is on the phone but not usable: that is exactly when the owner
+            // needs a way out, and set-up no longer deletes anything by itself.
+            boolean present = installed
+                    || new java.io.File(ContainerRuntime.rootfs(this), "etc/os-release").isFile();
+            removeButton.setVisibility(present ? View.VISIBLE : View.GONE);
         }
         final boolean updateDue = ContainerRuntime.basicsUpdateDue(this);
         if (basicsUpdateRow != null) {
@@ -1760,13 +1798,19 @@ public final class MainActivity extends Activity {
                     + "then about 700 MB of packages; the finished computer uses 3.5–4.5 GB.");
             return;
         }
-        linuxSize.setText("Measuring the Linux computer's size…");
-        new Thread(() -> {
-            final long bytes = ContainerRuntime.directorySize(ContainerRuntime.rootfs(this));
-            handler.post(() -> linuxSize.setText("The Linux computer is using "
-                    + DeviceProbe.formatBytes(bytes) + " of this phone's storage."
-                    + (updateDue ? "" : " Its basics are up to date.")));
-        }, "pocketdesk-size").start();
+        if (!ContainerRuntime.hasFreshSize()) {
+            linuxSize.setText("Measuring the Linux computer's size…");
+        }
+        // Nothing here holds this screen: the walk is cached, single-flight, and drops its
+        // result if the view it was for is gone. Three concurrent walks over 4.5 GB used to
+        // start every time the owner came back from the desktop.
+        final TextView target = linuxSize;
+        final boolean due = updateDue;
+        ContainerRuntime.measureSize(ContainerRuntime.rootfs(this), handler, null, bytes -> {
+            if (!target.isAttachedToWindow()) return;
+            target.setText("The Linux computer is using " + DeviceProbe.formatBytes(bytes)
+                    + " of this phone's storage." + (due ? "" : " Its basics are up to date."));
+        });
     }
 
     private boolean notificationsAllowed() {
@@ -1808,9 +1852,17 @@ public final class MainActivity extends Activity {
     /** Asks for what the app needs on first launch, before the user starts a long install. */
     private void maybeShowPermissionIntro() {
         if (preferences.getBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, false)) return;
-        preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
-        if (notificationsAllowed() && batteryUnrestricted()) return;
-        dialogBuilder()
+        // Never over the opening screen or the lock: it was being raised behind both, dismissed
+        // by the next tap, and never shown again -- because the flag was written before the
+        // dialog appeared. It is written when the owner answers it, or when there is nothing
+        // left to ask for.
+        if (introShowing || AppLock.showing(shell) || AppLock.isLocked(this)) return;
+        if (permissionIntro != null && permissionIntro.isShowing()) return;
+        if (notificationsAllowed() && batteryUnrestricted()) {
+            preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
+            return;
+        }
+        permissionIntro = dialogBuilder()
                 .setTitle("Allow three things first")
                 .setMessage("Setting up the Linux computer downloads for 10–30 minutes in the background. "
                         + "Without these, the phone stops it half way.\n\n"
@@ -1820,8 +1872,12 @@ public final class MainActivity extends Activity {
                         + "3. Background activity and Auto-launch — ON, on the phone's battery page for "
                         + "PocketDesk (Settings → Permissions opens it).\n\n"
                         + "Nothing else is requested. All three can be changed later under Settings → Permissions.")
-                .setNegativeButton("Later", null)
-                .setPositiveButton("Allow", (dialog, which) -> startPermissionFlow())
+                .setNegativeButton("Later", (dialog, which) -> preferences.edit()
+                        .putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply())
+                .setPositiveButton("Allow", (dialog, which) -> {
+                    preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
+                    startPermissionFlow();
+                })
                 .show();
     }
 
@@ -1979,6 +2035,32 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    /** The bundled licence notices, read from the APK's own assets. */
+    private void showNotices() {
+        String text;
+        try (java.io.InputStream input = getAssets().open("open-source-notices.md");
+             java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream()) {
+            byte[] chunk = new byte[8192];
+            int read;
+            while ((read = input.read(chunk)) != -1) buffer.write(chunk, 0, read);
+            text = new String(buffer.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Throwable error) {
+            text = "The notices could not be read from this build. They are also in the project's "
+                    + "OPEN_SOURCE_NOTICES.md file.";
+        }
+        TextView body = Ui.text(this, text, 11.5f, Ui.text(dark));
+        body.setTextIsSelectable(true);
+        int pad = Ui.dp(this, 18);
+        body.setPadding(pad, pad, pad, pad);
+        android.widget.ScrollView scroller = new android.widget.ScrollView(this);
+        scroller.addView(body);
+        dialogBuilder()
+                .setTitle("Open-source notices")
+                .setView(scroller)
+                .setPositiveButton("Close", null)
+                .show();
+    }
+
     private void confirmBasicsUpdate() {
         if (!ContainerRuntime.isInstalled(this)) {
             showMessage("Set up Linux first", "Set-up installs the desktop, Google Chrome and the developer "
@@ -2130,68 +2212,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    /** A report the user has not seen yet is worth interrupting for; an old one just sits in the list. */
-    private void showCrashRowIfNeeded() {
-        if (appLogRow != null) {
-            appLogRow.setVisibility(AppLogs.any(this) ? View.VISIBLE : View.GONE);
-        }
-        if (crashRow == null) return;
-        long recordedAt = Crash.recordedAt(this);
-        crashRow.setVisibility(recordedAt == 0 ? View.GONE : View.VISIBLE);
-        if (recordedAt == 0) return;
-        preferences.edit().putLong(ContainerRuntime.KEY_CRASH_SEEN, recordedAt).apply();
-    }
-
-    /**
-     * What Linux printed when an app was launched. Without this the only symptom of a failed
-     * start is that nothing happened, which is not something anyone can act on.
-     */
-    private void showAppLogs() {
-        java.io.File[] logs = AppLogs.newestFirst(this);
-        if (logs.length == 0) {
-            showMessage("Nothing to show yet",
-                    "Open the desktop and tap an app first. Whatever it prints is kept here.");
-            return;
-        }
-        String report = AppLogs.readAll(this);
-        String shown = report.length() > 4000 ? report.substring(0, 4000) + "…" : report;
-        dialogBuilder()
-                .setTitle("Why an app didn't open")
-                .setMessage(shown)
-                .setNegativeButton("Close", null)
-                .setPositiveButton("Share", (dialog, which) -> {
-                    Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain")
-                            .putExtra(Intent.EXTRA_SUBJECT, "PocketDesk app report")
-                            .putExtra(Intent.EXTRA_TEXT, report);
-                    launch(Intent.createChooser(share, "Share app report"));
-                })
-                .show();
-    }
-
-    /** The recorded stack is the difference between "keeps stopping" and a fixable report. */
-    private void showCrashReport() {
-        String report = Crash.read(this);
-        if (report.isEmpty()) {
-            crashRow.setVisibility(View.GONE);
-            return;
-        }
-        String shown = report.length() > 3000 ? report.substring(0, 3000) + "…" : report;
-        dialogBuilder()
-                .setTitle("Last error report")
-                .setMessage(shown)
-                .setNegativeButton("Close", null)
-                .setNeutralButton("Clear", (dialog, which) -> {
-                    Crash.clear(this);
-                    crashRow.setVisibility(View.GONE);
-                })
-                .setPositiveButton("Share", (dialog, which) -> {
-                    Intent share = new Intent(Intent.ACTION_SEND).setType("text/plain")
-                            .putExtra(Intent.EXTRA_SUBJECT, "PocketDesk error report")
-                            .putExtra(Intent.EXTRA_TEXT, report);
-                    launch(Intent.createChooser(share, "Share error report"));
-                })
-                .show();
-    }
 
     private void showMessage(String title, String message) {
         dialogBuilder().setTitle(title).setMessage(message).setPositiveButton("OK", null).show();
@@ -2217,8 +2237,9 @@ public final class MainActivity extends Activity {
         String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
         if ("landscape".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
         else if ("portrait".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-        // "auto" leaves the phone's own rotation lock in charge. Forcing FULL_USER during
-        // first launch restarts the activity on some OEM builds, so it is deliberately skipped.
+        // "auto" hands rotation back to the phone. Leaving this branch out meant a screen already
+        // pinned to landscape stayed pinned until the app was closed and opened again.
+        else setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
     }
 
     private void configureSystemBars() {
