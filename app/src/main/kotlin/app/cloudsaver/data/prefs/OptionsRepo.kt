@@ -87,6 +87,19 @@ data class Options(
     val lastConfirmCount: Int = -1,
     val lastRunAt: Long = 0,
     val lastRunNote: String = "",
+    /**
+     * Why Android ended the last run, when Android ended it.
+     *
+     * Empty means the run finished on its own terms. Anything else is the
+     * platform's own stop reason, and it is kept because a run the system cut
+     * short still stamps [lastRunAt] - so every "is it running?" check stayed
+     * green while the app completed a fraction of the work. Android 16 made
+     * that the normal case rather than the rare one: a job running alongside
+     * a foreground service is now inside the JobScheduler runtime quota, so
+     * the app's own 40-minute window and its foreground-service ledger are no
+     * longer the binding limit.
+     */
+    val lastStopReason: String = "",
     val lastSnapshotDay: String = "",
     val fgsSessions: String = "",
     /** Last time the app observed the screen ON (13.G screen-off wait). */
@@ -181,6 +194,7 @@ class OptionsRepo(private val context: Context) {
         val LAST_CONFIRM_COUNT = intPreferencesKey("lastConfirmCount")
         val LAST_RUN_AT = longPreferencesKey("lastRunAt")
         val LAST_RUN_NOTE = stringPreferencesKey("lastRunNote")
+        val LAST_STOP_REASON = stringPreferencesKey("lastStopReason")
         val LAST_SNAPSHOT_DAY = stringPreferencesKey("lastSnapshotDay")
         val FGS_SESSIONS = stringPreferencesKey("fgsSessions")
         val LAST_INTERACTIVE_AT = longPreferencesKey("lastInteractiveAt")
@@ -251,6 +265,7 @@ class OptionsRepo(private val context: Context) {
             lastConfirmCount = p[K.LAST_CONFIRM_COUNT] ?: -1,
             lastRunAt = p[K.LAST_RUN_AT] ?: 0,
             lastRunNote = p[K.LAST_RUN_NOTE] ?: "",
+            lastStopReason = p[K.LAST_STOP_REASON] ?: "",
             lastSnapshotDay = p[K.LAST_SNAPSHOT_DAY] ?: "",
             fgsSessions = p[K.FGS_SESSIONS] ?: "",
             lastInteractiveAt = p[K.LAST_INTERACTIVE_AT] ?: 0,

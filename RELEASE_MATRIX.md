@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **490 unit tests** on the JVM, covering the pure rules and auditing the
+- **500 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **106 instrumented tests across 16 classes**, run on real emulators against a
+- **108 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -153,6 +153,80 @@ source for this release, including the rows that were already marked Done.
   `MatrixHonestyTest` now reads all seven of those numbers off the source tree
   and fails naming both figures, on top of already checking that every test it
   cites exists.
+- **Whether the pipeline that ships it is sound.** The worst defect in this
+  project was never in the app. CI had no signing secret, so it minted a fresh
+  RSA key on every run, signed with it, and uploaded `release.jks` *and*
+  `keystore-password.txt` as a workflow artifact - on a public repository,
+  where reading an artifact needs only read access. The private key and its
+  password for every published release were downloadable by anyone, and an APK
+  signed with them installs as an **update** over a real user's app, inheriting
+  the media and usage-access permissions they granted. `TamperCheck` cannot
+  see it: the expected certificate is whatever the builder passes in. The same
+  throwaway key is why three consecutive releases carried three different
+  certificates and no user could ever update in place - every version was an
+  uninstall, and with `allowBackup="false"` that is a wipe. The artifact is
+  gone, the password is never written to disk, and the release step now refuses
+  a tag whose key did not outlive its run and prints the four secrets to set.
+  `SigningIntegrityTest` holds all three properties, each proved by putting the
+  fault back and watching it fail. Eleven releases shipped before this was
+  looked for; nothing in the app's own tests could have found it, because it
+  was not in the app.
+- **Whether a rule that passes has read anything.** The source-text rules are
+  this project's cheapest defence, and Gradle knew about none of the files they
+  read. Editing `strings.xml` and re-running reported
+  `testDebugUnitTest UP-TO-DATE` and replayed the previous verdict - so a copy
+  rule could pass over text it had never seen. It was found by proving a new
+  rule: the fault went in, the suite said green, and the reason was that the
+  suite had not run. CI was safe only by accident, having no cache to reuse.
+  `app/build.gradle.kts` now declares the manifest, the strings, the Kotlin
+  sources, the workflow and this file as test inputs, and the same proof now
+  fails in one second.
+- **Whether one screen's number is the other screen's question.** Three found
+  this cycle, all the same shape. The Files list was capped at the newest 500
+  rows of the whole table and *then* filtered in Kotlin - and the worker takes
+  newest first, so on a mature library those 500 are all finished work: tapping
+  "Waiting" over a queue of twelve thousand filtered five hundred DONE rows
+  down to nothing and printed "No files match these filters", while Home's own
+  COUNT said twelve thousand. The chip, the album scope and the sort are now
+  all in the statement, because the statement is what carries the LIMIT. The
+  Free up space hub summed every original with any evidence at all and printed
+  it as "you could free about X", while the Reclaim screen behind that card put
+  the same rows through five further gates - so the card advertised gigabytes
+  and the list opened empty for anyone in their first month, which is everyone
+  at first; both now go through `ReclaimEligibility`, the only caller of the
+  raw query, pinned by a rule. And the anti-re-optimise guard on an in-place
+  light copy hung on a `DATE_MODIFIED` written only into MediaStore, never onto
+  the file - so the next volume scan corrected the file's own mtime, silently
+  changed the fingerprint the guard depended on, and the copy read as a new
+  photo: optimised again, and a second, worse copy of a photo the cloud already
+  held sent back up. The file is now stamped the way the release path stamps
+  its own output, and the scanner refuses known light copies by content URI,
+  which does not drift.
+- **Whether Android is letting it finish.** Nothing read `getStopReason()`, so
+  a run the platform cut short was indistinguishable from one that finished:
+  both stamped the last-run time, so the two-day silence never accumulated and
+  every health check stayed green while the queue barely moved. Android 16 made
+  that the normal case rather than the rare one - a job running alongside a
+  foreground service is now inside the JobScheduler runtime quota, so neither
+  the app's 40-minute window nor its foreground-service ledger is the binding
+  limit any more. The reason is now recorded, logged in the words the platform
+  uses, and the reasons that mean "the phone is rationing us" raise the
+  existing stalled chip, whose tap already leads to the one setting that fixes
+  it. `StopsTest` pins the numbers and the split.
+- **Whether the permission card can be trusted.** About said "Your photos and
+  videos ... **Nothing else**", while the app also holds
+  `PACKAGE_USAGE_STATS` and uses it to read how many bytes *another* app
+  transmitted. The setup step was honest about it; the one card a person opens
+  specifically to audit access denied it. It now names every access the
+  manifest grants, checked against the manifest by a rule, so a permission
+  added later cannot fall outside the sentence.
+- **Whether a warning leads anywhere.** The tamper banner said "install the
+  official APK" and no string in the app named where that is - one URL existed
+  in the whole of `strings.xml`, the Apache licence. It now names the releases
+  page and says each release carries a code that identifies its exact file. The
+  repository also had no README and no LICENSE, on a public repo, where no
+  licence means all rights reserved - both are there now, and the README's own
+  counts were checked against the tree before it was written.
 
 **Not done, and why**
 

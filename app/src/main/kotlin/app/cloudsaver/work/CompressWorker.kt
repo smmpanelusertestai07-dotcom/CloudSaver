@@ -13,6 +13,7 @@ import app.cloudsaver.core.logic.FgsBudget
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.RunDecider
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -266,6 +267,27 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 }
                 repo.setLong(OptionsRepo.K.LAST_RUN_AT, endAt)
                 repo.setString(OptionsRepo.K.LAST_RUN_NOTE, processed.toString())
+                // Whether Android ended this run, and why.
+                //
+                // A run the system cuts short still reaches here and still
+                // stamps LAST_RUN_AT, so every "has it run lately?" check read
+                // green while the app was finishing a fraction of the work -
+                // the exact failure the stall signal exists to catch, in a
+                // variant it could not see. Android 16 made it the normal case:
+                // a job running alongside a foreground service now sits inside
+                // the JobScheduler runtime quota, so neither the 40-minute
+                // window nor the foreground-service ledger is the real limit.
+                val cut = if (!isStopped) {
+                    ""
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Stops.name(stopReason)
+                } else {
+                    Stops.UNKNOWN
+                }
+                repo.setString(OptionsRepo.K.LAST_STOP_REASON, cut)
+                if (cut.isNotEmpty()) {
+                    AppLog.log(app, "work", "run ended by the system: $cut after ${endAt - startAt} ms")
+                }
                 // Never leave a "working" icon in the status bar once the run
                 // is over, whatever ended it.
                 Notifications.clearWorking(app)

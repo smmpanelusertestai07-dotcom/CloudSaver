@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "9.11.0"
+        versionName = "9.12.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -127,6 +127,35 @@ dependencies {
     androidTestImplementation(libs.uiautomator)
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Many of this project's rules are source-text rules: they open repository
+// files and assert properties of the words in them - that no chip repeats
+// another, that the About card names every permission the manifest holds,
+// that the release matrix's counts match the tree, that the CI workflow never
+// publishes a private key.
+//
+// Gradle knew about none of those files. Editing strings.xml and re-running
+// the tests reported `testDebugUnitTest UP-TO-DATE` and replayed the previous
+// verdict, so a copy rule could pass over text it had never read - which is
+// exactly how the first proof of two new rules "passed" while the fault sat
+// in the file. CI was only ever safe by accident, because it checks out fresh
+// and has no cache to reuse.
+//
+// Declared here so a local run tells the truth. If a rule reads a file as
+// text, that file belongs in this list.
+tasks.withType<Test>().configureEach {
+    inputs.files(
+        rootProject.file(".github/workflows/build.yml"),
+        rootProject.file("RELEASE_MATRIX.md"),
+        file("src/main/AndroidManifest.xml"),
+        file("src/main/res/values/strings.xml")
+    )
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sourceTextRuleFiles")
+    inputs.dir(file("src/main/kotlin"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sourceTextRuleSources")
 }
 
 // CI helper: prints the app version name.

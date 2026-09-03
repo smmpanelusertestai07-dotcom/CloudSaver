@@ -136,7 +136,7 @@
 
     <!-- tamper evidence (13.A) -->
     <string name="tamper_title">Modified copy</string>
-    <string name="tamper_text">This is not the official build - install the official APK. Deleting is disabled for safety.</string>
+    <string name="tamper_text">The signature on this copy is not the one CloudSaver is built with, so it was not built by its owner. Deleting is turned off for safety, and it stays off. The only official builds are the releases at github.com/smmpanelusertestai07-dotcom/CloudSaver \u2014 each one shows a long code that belongs to that exact file, so you can compare it with what you downloaded before you install it.</string>
 
     <!-- files -->
     <string name="files_size_pair">%1$s → %2$s</string>
@@ -1089,5 +1089,5 @@
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>
     <string name="about_permissions_title">What it may access</string>
-    <string name="about_permissions_body">Your photos and videos, to make the smaller copies. Nothing else, and nothing leaves the phone.</string>
+    <string name="about_permissions_body">Your photos and videos, to make the smaller copies. With Usage access on: how many bytes your cloud app sent, which is how an upload gets confirmed \u2014 never what it sent. Notifications, and leave to keep working while the screen is off. Nothing leaves the phone: the app holds no internet permission at all.</string>
 </resources>

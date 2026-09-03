@@ -629,7 +629,18 @@ interface ItemDao {
     fun processedCountFlow(): Flow<Int>
 
     /**
-     * Files whose name contains what was typed.
+     * Files whose name contains what was typed, already narrowed to the chip
+     * the user tapped and ordered the way they asked.
+     *
+     * The filter, the album scope and the sort are all in the statement
+     * because the statement has a LIMIT. Doing any of them in Kotlin means
+     * doing them to the newest 500 rows of the whole table - and the worker
+     * takes newest first, so on a mature library those 500 are all finished
+     * work. Tapping "Waiting" over a queue of twelve thousand filtered five
+     * hundred DONE rows down to nothing and printed "No files match these
+     * filters", while Home's own counter - a COUNT over the same table - said
+     * twelve thousand. The list has to be cut after the question is asked,
+     * not before.
      *
      * The ESCAPE clause is what makes that sentence true. In SQL LIKE, '%'
      * means "anything" and '_' means "any one character", so typing a percent
@@ -642,9 +653,22 @@ interface ItemDao {
      */
     @Query(
         "SELECT * FROM items WHERE displayName LIKE '%' || :q || '%' ESCAPE '\\' " +
-            "ORDER BY captureAt DESC LIMIT :limit"
+            "AND (:anyState = 1 OR state IN (:states)) " +
+            "AND (state != 'NEW' OR bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "ORDER BY CASE :sortKey " +
+            "  WHEN 1 THEN CASE WHEN outputBytes IS NULL THEN 0 ELSE sizeBytes - outputBytes END " +
+            "  WHEN 2 THEN sizeBytes " +
+            "  ELSE captureAt END DESC " +
+            "LIMIT :limit"
     )
-    fun searchFlow(q: String, limit: Int): Flow<List<ItemRow>>
+    fun searchFlow(
+        q: String,
+        states: Collection<String>,
+        anyState: Int,
+        excludedBuckets: Collection<String>,
+        sortKey: Int,
+        limit: Int
+    ): Flow<List<ItemRow>>
 
     /**
      * Originals whose copy the cloud itself collected. The copy vanished from

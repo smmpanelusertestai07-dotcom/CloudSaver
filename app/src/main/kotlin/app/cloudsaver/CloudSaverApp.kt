@@ -22,6 +22,9 @@ class CloudSaverApp : Application() {
         // internet permission a crash that writes nothing never happened as
         // far as anyone can tell (BB3).
         CrashLog.install(this)
+        // How the process died last time, for the deaths that handler cannot
+        // witness: native, ANR, out-of-memory. Cheap, and off the main path.
+        appScope.launch { CrashLog.recordPreviousExit(this@CloudSaverApp) }
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {

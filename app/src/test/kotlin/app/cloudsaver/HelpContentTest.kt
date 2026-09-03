@@ -190,6 +190,57 @@ class HelpContentTest {
     }
 
     @Test
+    fun `the permission card accounts for every permission the app holds`() {
+        assumeTrue("strings.xml not found", strings() != null)
+        // About is the one card a person opens specifically to audit what the
+        // app can reach. It said "Your photos and videos ... Nothing else",
+        // while the manifest also holds PACKAGE_USAGE_STATS - which the app
+        // uses to read how many bytes ANOTHER app transmitted. The onboarding
+        // step was honest about it; the audit card denied it. A card that
+        // denies a permission is worse than no card.
+        //
+        // Checked against the manifest, so a permission added later cannot
+        // quietly fall outside the sentence.
+        val manifest = File(
+            File(System.getProperty("user.dir").orEmpty()).absoluteFile,
+            "src/main/AndroidManifest.xml"
+        ).readText()
+        // Only permissions the app really keeps: a tools:node="remove" entry
+        // is a permission being STRIPPED from a library, not requested.
+        val held = Regex(
+            """<uses-permission[^>]*android:name="android\.permission\.([A-Z_]+)"[^>]*?(/>|>)""",
+            RegexOption.DOT_MATCHES_ALL
+        ).findAll(manifest)
+            .filterNot { it.value.contains("tools:node=\"remove\"") }
+            .map { it.groupValues[1] }
+            .toSet()
+
+        val card = values().single { it.first == "about_permissions_body" }.second.lowercase()
+
+        // Each permission the user would recognise as an access, and the words
+        // the card has to contain for it to be accounted for.
+        val mustMention = mapOf(
+            "READ_MEDIA_IMAGES" to listOf("photos"),
+            "READ_MEDIA_VIDEO" to listOf("videos"),
+            "PACKAGE_USAGE_STATS" to listOf("usage access", "bytes"),
+            "POST_NOTIFICATIONS" to listOf("notification")
+        )
+        val unaccounted = mustMention
+            .filterKeys { it in held }
+            .filterValues { words -> words.none { card.contains(it) } }
+            .keys
+        assertTrue(
+            "About must say the app can reach these, not deny them: $unaccounted",
+            unaccounted.isEmpty()
+        )
+        // And it may not claim there is nothing else while holding usage stats.
+        assertTrue(
+            "the card cannot say \"nothing else\" while it also reads another app's byte counts",
+            !("PACKAGE_USAGE_STATS" in held && card.contains("nothing else"))
+        )
+    }
+
+    @Test
     fun `no help sentence runs past about fifteen words`() {
         assumeTrue("strings.xml not found", strings() != null)
         // R4: short sentences, everywhere someone is being explained something.
