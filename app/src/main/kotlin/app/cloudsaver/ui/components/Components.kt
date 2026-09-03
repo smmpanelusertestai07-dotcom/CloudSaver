@@ -52,8 +52,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -617,6 +621,11 @@ fun StatusChip(text: String, onClick: () -> Unit) {
             .clip(CircleShape)
             .background(scheme.tertiaryContainer)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            // These are the taps that lead to the fix for whatever is wrong,
+            // and they were about 32 dp tall - under the 48 dp a thumb can
+            // reliably hit. The pill still LOOKS the same size; the target
+            // around it is the one that grew.
+            .heightIn(min = Dimens.TouchTarget)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Box(
@@ -806,6 +815,14 @@ private fun Segment(
                 indication = null,
                 onClick = onClick
             )
+            // Which option is on was carried by fill colour and nothing else,
+            // so a screen reader read the whole row as identical buttons and
+            // announced no selection at all. Colour is never the only carrier
+            // of meaning.
+            .semantics {
+                role = Role.RadioButton
+                selected = active
+            }
             .padding(vertical = 10.dp, horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {

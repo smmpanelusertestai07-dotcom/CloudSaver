@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -157,7 +159,14 @@ fun FileRow(
                 maxWidth - chrome < SideBySideMinWidth
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (selectable) {
-                    Checkbox(checked = selected!!, onCheckedChange = onSelectedChange!!)
+                    // Named after the file it selects. An unlabeled checkbox
+                    // in a list of them is announced as "checkbox, not ticked"
+                    // over and over, with nothing to say which file it means.
+                    Checkbox(
+                        checked = selected!!,
+                        onCheckedChange = onSelectedChange!!,
+                        modifier = Modifier.semantics { contentDescription = name }
+                    )
                     Spacer(Modifier.width(4.dp))
                 }
                 thumbnail()

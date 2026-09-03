@@ -40,6 +40,17 @@ data class ItemRow(
     val sizeBytes: Long,
     val dateModified: Long,
     val captureAt: Long,
+    /**
+     * When the user asked for this file to jump the queue, or 0.
+     *
+     * "Optimise this first" used to write [captureAt] = now, because the queue
+     * is ordered by capture date. That is the file's REAL shooting date: it is
+     * printed in the details dialog, stamped onto the released copy so the
+     * cloud files it chronologically, and used to sort "Newest". Jumping the
+     * queue therefore told the user, and the cloud, that a photo from 2019 was
+     * taken today - permanently, for a sort order that lasts one run.
+     */
+    val priorityAt: Long = 0,
     val dateAdded: Long = 0,
     val durationMs: Long = 0,
     val mimeType: String,
@@ -426,7 +437,7 @@ interface ItemDao {
         "SELECT * FROM items WHERE state = 'NEW' AND originalMissing = 0 " +
             "AND ((isVideo = 0 AND :photos = 1) OR (isVideo = 1 AND :videos = 1)) " +
             "AND (bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
-            "ORDER BY (captureAt >= :freshAfter) DESC, " +
+            "ORDER BY priorityAt DESC, (captureAt >= :freshAfter) DESC, " +
             "CASE WHEN captureAt >= :freshAfter THEN captureAt ELSE 0 END DESC, " +
             "CASE WHEN captureAt < :freshAfter THEN sizeBytes ELSE 0 END DESC " +
             "LIMIT :limit"
@@ -629,7 +640,18 @@ interface ItemDao {
     fun processedCountFlow(): Flow<Int>
 
     /**
-     * Files whose name contains what was typed.
+     * Files whose name contains what was typed, already narrowed to the chip
+     * the user tapped and ordered the way they asked.
+     *
+     * The filter, the album scope and the sort are all in the statement
+     * because the statement has a LIMIT. Doing any of them in Kotlin means
+     * doing them to the newest 500 rows of the whole table - and the worker
+     * takes newest first, so on a mature library those 500 are all finished
+     * work. Tapping "Waiting" over a queue of twelve thousand filtered five
+     * hundred DONE rows down to nothing and printed "No files match these
+     * filters", while Home's own counter - a COUNT over the same table - said
+     * twelve thousand. The list has to be cut after the question is asked,
+     * not before.
      *
      * The ESCAPE clause is what makes that sentence true. In SQL LIKE, '%'
      * means "anything" and '_' means "any one character", so typing a percent
@@ -642,9 +664,22 @@ interface ItemDao {
      */
     @Query(
         "SELECT * FROM items WHERE displayName LIKE '%' || :q || '%' ESCAPE '\\' " +
-            "ORDER BY captureAt DESC LIMIT :limit"
+            "AND (:anyState = 1 OR state IN (:states)) " +
+            "AND (state != 'NEW' OR bucket IS NULL OR bucket NOT IN (:excludedBuckets)) " +
+            "ORDER BY CASE :sortKey " +
+            "  WHEN 1 THEN CASE WHEN outputBytes IS NULL THEN 0 ELSE sizeBytes - outputBytes END " +
+            "  WHEN 2 THEN sizeBytes " +
+            "  ELSE captureAt END DESC " +
+            "LIMIT :limit"
     )
-    fun searchFlow(q: String, limit: Int): Flow<List<ItemRow>>
+    fun searchFlow(
+        q: String,
+        states: Collection<String>,
+        anyState: Int,
+        excludedBuckets: Collection<String>,
+        sortKey: Int,
+        limit: Int
+    ): Flow<List<ItemRow>>
 
     /**
      * Originals whose copy the cloud itself collected. The copy vanished from
@@ -898,7 +933,7 @@ interface CloudCapabilityDao {
         LedgerRow::class, ActivityRow::class, CloudCapabilityRow::class,
         ReclaimBatchRow::class, ReclaimItemRow::class, MediaProfileRow::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -1074,12 +1109,36 @@ abstract class AppDb : RoomDatabase() {
         }
 
         /**
+         * v7 separates "the user asked for this first" from the file's real
+         * shooting date.
+         *
+         * Until now "Optimise this first" wrote captureAt = now, because the
+         * queue is ordered by capture date - so a photo from 2019 became a
+         * photo from today, in the details dialog, in the Newest sort, and on
+         * the copy handed to the cloud. Existing rows keep 0, which means "no
+         * jump asked for" and leaves every real date untouched. Nothing is
+         * rewritten: the dates already corrupted cannot be recovered, because
+         * the original value was overwritten in place, and inventing one would
+         * be worse than leaving what the file itself says.
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE `items` ADD COLUMN `priorityAt` INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
+        /**
          * Every migration, in order. Public so the instrumented suite can
          * open a database built at an older version and prove the upgrade
          * path works: a wrong ALTER here does not fail the build, it crashes
          * the app on the first launch after an update.
          */
-        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        val MIGRATIONS = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+            MIGRATION_5_6, MIGRATION_6_7
+        )
 
         @Volatile
         private var instance: AppDb? = null

@@ -963,9 +963,15 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                                             R.string.optimise_now_override_charger
                                         RunDecider.Wait.SCREEN_ON ->
                                             R.string.optimise_now_override_screen
-                                        RunDecider.Wait.BATTERY_LOW,
-                                        RunDecider.Wait.BATTERY_SAVER ->
+                                        RunDecider.Wait.BATTERY_LOW ->
                                             R.string.optimise_now_override_battery
+                                        // Battery Saver is a switch the user
+                                        // turned on, not a low battery. Saying
+                                        // "even though the battery is low"
+                                        // contradicted the status line right
+                                        // above it, which said Battery Saver.
+                                        RunDecider.Wait.BATTERY_SAVER ->
+                                            R.string.optimise_now_override_saver
                                         else -> R.string.optimise_now_hint_override
                                     }
                                 )
@@ -1222,6 +1228,13 @@ private fun statusLine(
     // "Everything is backed up" is a claim about work that happened. A run
     // that found nothing to do has not backed anything up, so an empty queue
     // with an empty history says so plainly instead.
+    // And "backed up" is a claim about the CLOUD holding them. A copy still
+    // sitting in the upload folder has been made, not backed up - and with no
+    // cloud app installed it never will be. Saying so is the difference
+    // between a status line and a reassurance.
+    if (options.lastRunAt > 0 && processed > 0 && inFolder > 0) {
+        return pluralStringResource(R.plurals.status_in_folder, inFolder, inFolder)
+    }
     return if (options.lastRunAt > 0 && processed > 0) {
         stringResource(R.string.status_idle)
     } else {

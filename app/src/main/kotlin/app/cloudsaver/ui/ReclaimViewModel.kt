@@ -14,6 +14,7 @@ import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.core.logic.ReclaimRules
+import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
@@ -168,61 +169,32 @@ class ReclaimViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             loading.value = true
             val o = repo.current()
-            val healthy = cloudHealthy()
             val now = System.currentTimeMillis()
-            val ledgerByHash = db.ledger().all().associateBy { it.outputSha256 }
-            val rows = db.items().reclaimCandidates()
-            holdingApps.value = rows.mapNotNull { it.batchId }.distinct()
-                .mapNotNull { id ->
-                    db.batches().byId(id)?.cloudPackage?.let { pkg -> id to pkg }
-                }
-                .toMap()
             // Both grades are offered, always. The old switch asked the user
             // to configure their own safety, which is a question nobody can
             // answer; the list simply separates the two and says what each
             // one means, and nothing in the weaker group starts selected.
-            entries.value = rows.mapNotNull { row ->
-                val candidate = row.toCandidate(now, ledgerByHash.containsKey(row.outputSha256))
-                if (!ReclaimRules.isEligible(
-                        candidate, healthy, allowVerifiedBySize = true,
-                        skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
-                    )
-                ) {
-                    null
-                } else {
-                    Entry(row, candidate)
+            //
+            // Through ReclaimEligibility, which is also what the Free up space
+            // hub adds up - so the figure on the card and the rows on this
+            // screen cannot say different things.
+            val judged = ReclaimEligibility.judged(
+                ctx, db, o, now,
+                skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
+            )
+            holdingApps.value = judged.mapNotNull { it.row.batchId }.distinct()
+                .mapNotNull { id ->
+                    db.batches().byId(id)?.cloudPackage?.let { pkg -> id to pkg }
                 }
-            }
+                .toMap()
+            entries.value = judged.map { Entry(it.row, it.candidate) }
             loading.value = false
         }
     }
 
-    private suspend fun cloudHealthy(): Boolean {
-        val o = repo.current()
-        if (o.cloudProblem.isNotEmpty()) return false
-        return CloudApps.isAppInstalled(ctx, o.cloudSingle)
-    }
+    private suspend fun cloudHealthy(): Boolean =
+        ReclaimEligibility.cloudHealthy(ctx, repo.current())
 
-    private fun ItemRow.toCandidate(now: Long, inLedger: Boolean) = ReclaimRules.Candidate(
-        id = id,
-        fingerprint = fingerprint,
-        sizeBytes = sizeBytes,
-        optimisedBytes = outputBytes ?: 0L,
-        evidence = Evidence.parse(evidence),
-        confirmedAgeDays = Formats.daysBetween(confirmedAt ?: releasedAt ?: now, now),
-        state = runCatching { ItemState.valueOf(state) }.getOrDefault(ItemState.UNKNOWN),
-        hasLedgerEntry = inLedger,
-        // The ledger is keyed by the copy's hash, so finding the row at all is
-        // the hash check: a changed copy would hash to something else.
-        ledgerHashMatches = inLedger,
-        originalPresent = !originalMissing,
-        inExcludedAlbum = false,
-        isFavourite = false,
-        addedDaysAgo = Formats.daysBetween(dateAdded * 1000, now),
-        isVideo = isVideo,
-        album = bucket,
-        capturedAtMs = captureAt
-    )
 
     /** The list after filters, sorting and any active suggestion. */
     /**
@@ -738,7 +710,7 @@ class ReclaimViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             duplicatesLoading.value = true
             try {
-                duplicateGroups.value = DuplicateScanner(ctx).groups()
+                duplicateGroups.value = withChosenKeepers(DuplicateScanner(ctx).groups())
             } finally {
                 duplicatesLoading.value = false
             }
@@ -754,12 +726,31 @@ class ReclaimViewModel(
      * around the new keeper and the old keeper becomes a removable extra.
      */
     fun keepInstead(sha256: String, id: Long) {
-        duplicateGroups.value = duplicateGroups.value.map { group ->
-            if (group.sha256 != sha256) return@map group
-            val next = group.all.firstOrNull { it.id == id } ?: return@map group
+        keeperChoice[sha256] = id
+        duplicateGroups.value = withChosenKeepers(duplicateGroups.value)
+    }
+
+    /**
+     * The keeper the user picked per group, by content hash.
+     *
+     * Held apart from the group list because that list is rebuilt from a fresh
+     * scan the moment anything is removed - and the rebuild used to throw the
+     * choice away. Someone who swapped the keeper and ticked the old one then
+     * confirmed a removal that quietly did nothing: the fresh scan had put the
+     * automatic keeper back, so the file they ticked was no longer an extra
+     * and was filtered out. The control looked like it worked and did not.
+     *
+     * The hash is the group's identity and does not change, so the choice
+     * survives every rescan. It is per screen, like the swap itself.
+     */
+    private val keeperChoice = mutableMapOf<String, Long>()
+
+    private fun withChosenKeepers(groups: List<DuplicateRules.Group>): List<DuplicateRules.Group> =
+        groups.map { group ->
+            val wanted = keeperChoice[group.sha256] ?: return@map group
+            val next = group.all.firstOrNull { it.id == wanted } ?: return@map group
             group.copy(keeper = next, extras = group.all.filter { it.id != next.id })
         }
-    }
 
     /**
      * Moves the ticked extras to the gallery trash.
@@ -777,7 +768,10 @@ class ReclaimViewModel(
             try {
                 // Re-read now, not when the list was drawn: a file can be gone
                 // or a group can have changed between the tap and the action.
-                val fresh = DuplicateScanner(ctx).groups()
+                // Re-applied, not discarded: the user may have chosen which
+                // copy stays, and a rescan must not silently put the automatic
+                // one back and drop the file they ticked.
+                val fresh = withChosenKeepers(DuplicateScanner(ctx).groups())
                 duplicateGroups.value = fresh
                 val stillExtras = fresh.flatMap { g -> g.extras }
                     .filter { it.id in chosen }

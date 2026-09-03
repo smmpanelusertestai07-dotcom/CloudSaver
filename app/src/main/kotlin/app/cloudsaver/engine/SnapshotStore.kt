@@ -225,23 +225,59 @@ class SnapshotStore(
     }
 
     /** Locates an app-owned snapshot file, or null. */
+    /**
+     * The snapshot file, by where it lives and what it is called.
+     *
+     * NOT by owner. Android clears `OWNER_PACKAGE_NAME` on the rows of a file
+     * whose creating app is uninstalled - the file survives in shared storage,
+     * the ownership does not. The selection used to require
+     * `OWNER_PACKAGE_NAME = our package`, so after an uninstall the app could
+     * no longer find its own snapshot, and the one thing that carries "what
+     * already reached your cloud" across a reinstall was invisible exactly
+     * when it was needed. Every release before this one changed signature, so
+     * every update WAS an uninstall: the recovery path had never once run on a
+     * real reinstall.
+     *
+     * Dropping the owner clause is safe because the payload is not trusted on
+     * name alone - [SnapshotCodec] verifies a schema version and a SHA-256 of
+     * the payload and refuses anything that does not match. If more than one
+     * file answers, ours is preferred and the newest wins, so a re-created
+     * snapshot beats a stale one.
+     */
     internal fun findSnapshot(relativeDir: String, name: String): Uri? {
         val resolver = context.contentResolver
         val files = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val selection = "${MediaStore.MediaColumns.DISPLAY_NAME} = ? AND " +
-            "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND " +
-            "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
-        val args = arrayOf(name, "$relativeDir/", context.packageName)
+            "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+        val args = arrayOf(name, "$relativeDir/")
         return try {
-            var found: Uri? = null
+            var best: Uri? = null
+            var bestOwned = false
+            var bestModified = Long.MIN_VALUE
             resolver.query(
-                files, arrayOf(MediaStore.MediaColumns._ID), selection, args, null
+                files,
+                arrayOf(
+                    MediaStore.MediaColumns._ID,
+                    MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+                    MediaStore.MediaColumns.DATE_MODIFIED
+                ),
+                selection, args, null
             )?.use { c ->
-                if (c.moveToFirst()) {
-                    found = android.content.ContentUris.withAppendedId(files, c.getLong(0))
+                while (c.moveToNext()) {
+                    val owned = c.getString(1) == context.packageName
+                    val modified = c.getLong(2)
+                    // Ours beats an orphan; among equals, the newest wins.
+                    val better = best == null ||
+                        (owned && !bestOwned) ||
+                        (owned == bestOwned && modified > bestModified)
+                    if (better) {
+                        best = android.content.ContentUris.withAppendedId(files, c.getLong(0))
+                        bestOwned = owned
+                        bestModified = modified
+                    }
                 }
             }
-            found
+            best
         } catch (e: Exception) {
             null
         }

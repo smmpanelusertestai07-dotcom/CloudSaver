@@ -265,6 +265,30 @@ class ReclaimEngine(private val context: Context) {
                 },
                 null, null
             )
+            // Make the filesystem agree with the row.
+            //
+            // The two updates above set DATE_MODIFIED in MediaStore, but a
+            // ContentValues write does not touch the file's own mtime - so the
+            // row said one date and the file said another, and the next volume
+            // scan resolves that disagreement in the file's favour. The
+            // anti-re-optimise fingerprint was pinned to the row's value, so
+            // the correction silently unpinned it. Releaser does the same
+            // thing for its own output, one file over.
+            if (folder != null) {
+                @Suppress("DEPRECATION")
+                runCatching {
+                    resolver.query(
+                        target, arrayOf(MediaStore.MediaColumns.DATA), null, null, null
+                    )?.use { c ->
+                        if (c.moveToFirst()) {
+                            c.getString(0)?.takeIf { it.isNotEmpty() }?.let { data ->
+                                // DATE_MODIFIED is seconds; setLastModified is millis.
+                                File(data).setLastModified(row.dateModified * 1000)
+                            }
+                        }
+                    }
+                }
+            }
             db.items().update(row.copy(keptUri = target.toString(), updatedAt = now))
             Pinned(target, inPlace = folder != null)
         } catch (e: Exception) {

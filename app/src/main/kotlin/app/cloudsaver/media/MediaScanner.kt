@@ -47,7 +47,21 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val found = excludeOutputFolders(queryAll())
         var newItems = 0
         val now = System.currentTimeMillis()
+        // Light copies that replaced an original, by the identity Android
+        // gives them rather than by anything the app wrote down.
+        //
+        // An in-place light copy carries the original's own name and sits in
+        // the original's own album, so neither the pipeline-name check below
+        // nor the output-folder exclusion above can see it. What kept it out
+        // was its row's fingerprint, and a fingerprint is name+size+modified
+        // date - a value MediaProvider rewrites the first time it re-stats
+        // the file. When that happened the copy read as a brand-new photo,
+        // was optimised a second time, and a worse copy of a photo the cloud
+        // already held went back up. A content URI does not drift.
+        val keptUris = db.items().keptCopies().mapNotNullTo(HashSet()) { it.keptUri }
+        val keptIds = keptUris.mapNotNullTo(HashSet()) { it.substringAfterLast('/').toLongOrNull() }
         for (f in found) {
+            if (f.uri in keptUris || f.mediaStoreId in keptIds) continue
             // Z4.1: a file named like the app's own output is a copy that
             // came back - from the cloud into Download, from a share, from
             // anywhere. It is recognised by its name, matched to the ledger

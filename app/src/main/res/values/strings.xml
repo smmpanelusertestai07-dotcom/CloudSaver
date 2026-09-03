@@ -22,6 +22,10 @@
         <item quantity="other">%1$d files in the queue</item>
     </plurals>
     <string name="status_idle">Everything is backed up</string>
+    <plurals name="status_in_folder">
+        <item quantity="one">%1$d copy is ready and waiting for your cloud app</item>
+        <item quantity="other">%1$d copies are ready and waiting for your cloud app</item>
+    </plurals>
     <string name="status_fresh">Getting ready to scan your gallery</string>
     <string name="status_no_albums">No albums are ticked, so nothing is being optimised yet.</string>
     <string name="files_no_albums_title">No albums are ticked</string>
@@ -111,7 +115,7 @@
         <item quantity="one">%1$d file kept unchanged</item>
         <item quantity="other">%1$d files kept unchanged</item>
     </plurals>
-    <string name="asis_card_body">Optimising these would have damaged something, so the original was copied instead.</string>
+    <string name="asis_card_body">Each of these holds something a smaller copy cannot carry, so the original was copied across whole instead. Nothing was lost \u2014 the reason is listed beside each one.</string>
     <string name="asis_card_line">%1$d · %2$s</string>
     <string name="section_attention">Needs attention</string>
     <string name="section_progress">Backup progress</string>
@@ -136,7 +140,7 @@
 
     <!-- tamper evidence (13.A) -->
     <string name="tamper_title">Modified copy</string>
-    <string name="tamper_text">This is not the official build - install the official APK. Deleting is disabled for safety.</string>
+    <string name="tamper_text">The signature on this copy is not the one CloudSaver is built with, so it was not built by its owner. Deleting is turned off for safety, and it stays off. The only official builds are the releases at github.com/smmpanelusertestai07-dotcom/CloudSaver \u2014 each one shows a long code that belongs to that exact file, so you can compare it with what you downloaded before you install it.</string>
 
     <!-- files -->
     <string name="files_size_pair">%1$s → %2$s</string>
@@ -215,6 +219,7 @@
     <string name="activity_empty_group_title">Nothing in this group</string>
     <string name="activity_empty_group_body">Your history is not empty. Choose All to see everything CloudSaver has done.</string>
     <string name="activity_optimised">Optimised %1$s files, saving %2$s</string>
+    <string name="activity_optimised_none">Ran, and found nothing waiting to optimise</string>
     <string name="activity_released">Added %1$s files to the upload folder</string>
     <string name="activity_backed_up">%1$s files confirmed backed up</string>
     <string name="activity_reclaimed">Freed up %1$s originals, recovering %2$s</string>
@@ -554,7 +559,7 @@
     <string name="theme_dark">Dark</string>
     <string name="theme_dynamic">Use wallpaper colours instead (Android 12+)</string>
     <string name="opt_lock">App lock</string>
-    <string name="opt_lock_hint">Locks Settings, Files, Free up space and Backup export behind your screen lock.</string>
+    <string name="opt_lock_hint">Locks the whole app behind your screen lock \u2014 every tab, every screen, every time you come back to it.</string>
     <string name="opt_warnings">Alerts</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>
@@ -675,6 +680,10 @@
 
     <!-- setup: cloud step, power, folders, promises -->
     <string name="onb5_found">Found: %1$s</string>
+    <plurals name="onb5_found_several">
+        <item quantity="one">Found %1$d cloud app \u2014 pick which one to use below.</item>
+        <item quantity="other">Found %1$d cloud apps \u2014 pick which one to use below.</item>
+    </plurals>
     <string name="onb5_several">More than one cloud app is installed, so nothing was chosen for you. Pick the one you want to use.</string>
     <string name="onb5_check">Check the connection</string>
     <string name="cloud_use_different">Use a different app</string>
@@ -831,6 +840,7 @@
     <string name="optimise_now_override_charger">Runs now, even though the phone is not charging.</string>
     <string name="optimise_now_override_screen">Runs now, even though the screen is on.</string>
     <string name="optimise_now_override_battery">Runs now, even though the battery is low.</string>
+    <string name="optimise_now_override_saver">Runs now, even though Battery Saver is on.</string>
     <string name="optimise_blocked_hot">Waiting for the phone to cool down.</string>
     <string name="optimise_blocked_battery">Waiting for the battery to reach %1$d%%, or a charger.</string>
     <string name="optimise_blocked_space">Not enough free space on the phone right now.</string>
@@ -844,7 +854,7 @@
     <string name="storage_group_own">CloudSaver\'s own space</string>
     <string name="storage_group_cleanup">Clean up</string>
     <string name="storage_limit_line">Limit %1$s \u00b7 now using %2$s</string>
-    <string name="storage_folder_empties">Files leave this folder as soon as your cloud app has uploaded them.</string>
+    <string name="storage_folder_empties">Your cloud app takes the copies from here. CloudSaver clears the ones it has confirmed when the folder needs the room, so a confirmed copy may sit here a while longer.</string>
     <string name="calc_check_inside">Check this number inside your cloud app.</string>
     <string name="calc_source_note">Every figure here is worked out from the photos and videos on this phone, not from averages.</string>
     <string name="calc_your_gallery">Everything on this phone</string>
@@ -926,8 +936,8 @@
     <string name="dupes_sort_oldest">Oldest</string>
     <string name="dupes_removed_title">Extras removed</string>
     <plurals name="dupes_removed_body">
-        <item quantity="one">%d extra copy moved to your gallery trash. The original is untouched, and the trash keeps it for 30 days.</item>
-        <item quantity="other">%d extra copies moved to your gallery trash. The originals are untouched, and the trash keeps them for 30 days.</item>
+        <item quantity="one">%d extra copy removed. The original is untouched. On Android 11 and newer the extra is in your gallery trash for about 30 days.</item>
+        <item quantity="other">%d extra copies removed. The originals are untouched. On Android 11 and newer they are in your gallery trash for about 30 days.</item>
     </plurals>
     <string name="reclaim_confirm_proof">%1$d \u00b7 %2$s</string>
     <string name="reclaim_done_dropped">%1$d no longer qualified and were left alone (%2$s).</string>
@@ -938,13 +948,13 @@
     <string name="faq_a2">They go to Pictures/CloudSaver. If you switch to separate folders in Settings, they go to Pictures/CloudSaver/Photos and Pictures/CloudSaver/Videos instead. In your cloud app, open its backup or folder settings and select that folder \u2014 and turn off backup for DCIM and Camera, or you will be uploading the big originals as well. The Storage screen prints the exact path with a copy button. The folder also appears as an album in your gallery while files wait to be collected \u2014 that is what lets your cloud app see it. Most gallery apps can hide an album from their own settings. CloudSaver never hides it itself, because that would hide it from your cloud app too. One more thing: anything you put into the folder yourself is left exactly where it is \u2014 CloudSaver never moves, renames or removes a file it did not create \u2014 but your cloud app will upload it at full size, so Home shows a note whenever that happens.</string>
 
     <string name="faq_q3">Are my originals ever touched?</string>
-    <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Free up space, select files yourself, and confirm Android\'s own deletion dialog. Even then it goes to your gallery trash first, where it stays for 30 days.</string>
+    <string name="faq_a3">No. CloudSaver never edits, moves or deletes an original by itself, at any point, for any reason. The only way an original is ever removed is if you open Free up space, select files yourself, and confirm Android\'s own deletion dialog. On Android 11 and newer it goes to your gallery trash first, where it stays about 30 days; on Android 10 there is no media trash, so Android removes it straight away and says so in its own dialog.</string>
 
     <string name="faq_q4">How much quality is lost?</string>
     <string name="faq_a4" formatted="false">On the default setting, a 12-megapixel photo comes out about 30% smaller with no difference you can see on a phone. Photos above 16 megapixels come down to 16, saving about 75%. Video is capped at 1080p and comes out 60\u201375% smaller, keeping close to the original at normal viewing size. Higher and lower settings are in Settings under Quality, and the app shows what it actually measured on your own files.</string>
 
     <string name="faq_q5">Are dates, locations and file names kept?</string>
-    <string name="faq_a5">Yes. Every copy carries the original\'s shooting date, camera details and GPS location, and the file date is set to match. That is why the copies land in the right place chronologically in your cloud instead of all appearing as today. The file name keeps the original name with a short code added, so a copy can always be matched back to its original.</string>
+    <string name="faq_a5">Yes. Every copy carries the original\'s shooting date and camera details, and the file date is set to match. The GPS location comes too, as long as you allowed the location request during setup \u2014 Android hands apps a copy with the location removed unless that one is granted. Everything else is carried either way. That is why the copies land in the right place chronologically in your cloud instead of all appearing as today. The file name keeps the original name with a short code added, so a copy can always be matched back to its original.</string>
 
     <string name="faq_q6">How does CloudSaver know a file reached my cloud?</string>
     <string name="faq_a6">Two ways, both watched automatically. Some cloud apps delete their own copy after uploading it; when one disappears from the folder and CloudSaver did not remove it, that is proof. Otherwise CloudSaver adds copies a few at a time and watches how many bytes your cloud app sends, so a matching amount right after one file goes out is proof for that file. Every file shows which of the two applies to it, in plain words, and files with no proof are never offered for removal. The daily limit in Settings controls how much CloudSaver adds to the upload folder each day \u2014 which is what your cloud app then uploads. CloudSaver cannot control when that app uploads or which network it uses; set that inside the app itself.</string>
@@ -1089,5 +1099,5 @@
     <!-- About: requirements and technical facts, stated plainly -->
     <string name="about_requires_min">Needs Android 10 or newer. Built and tested against Android 16.</string>
     <string name="about_permissions_title">What it may access</string>
-    <string name="about_permissions_body">Your photos and videos, to make the smaller copies. Nothing else, and nothing leaves the phone.</string>
+    <string name="about_permissions_body">Your photos and videos, to make the smaller copies, including the location stored inside them so the copies keep it. With Usage access on: how many bytes your cloud app sent, which is how an upload gets confirmed \u2014 never what it sent. Notifications, and leave to keep working while the screen is off. Nothing leaves the phone: the app holds no internet permission at all.</string>
 </resources>

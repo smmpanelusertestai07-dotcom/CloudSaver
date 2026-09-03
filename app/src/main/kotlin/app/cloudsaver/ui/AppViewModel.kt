@@ -20,6 +20,7 @@ import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Projection
@@ -39,6 +40,7 @@ import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.engine.CloudWatchdog
 import app.cloudsaver.engine.DuplicateScanner
 import app.cloudsaver.engine.ProfileBuilder
+import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
@@ -84,6 +86,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
          * that the pause between words already shows results.
          */
         const val SEARCH_DEBOUNCE_MS = 220L
+
+        /**
+         * How many rows the Files list holds.
+         *
+         * The cap is on the ANSWER, not on the table: the chip, the album
+         * scope and the sort are all applied in SQL first, so this is the
+         * newest 500 of what the user actually asked for. It used to be the
+         * newest 500 of everything, which the filters then whittled to
+         * nothing while Home's counter said thousands.
+         */
+        const val FILES_PAGE = 500
 
         /** Nothing run for this long, with work waiting, means the OS killed us. */
         const val BACKGROUND_STALL_MS = 48 * 3_600_000L
@@ -401,56 +414,69 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * pause between words already shows results, and distinctUntilChanged
      * stops a re-emitted identical term from re-querying at all.
      */
-    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
-    private val searchResults: StateFlow<List<ItemRow>> = search
-        .debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }
-        .distinctUntilChanged()
-        // Escaped on the way in, because the box takes a name and the query
-        // takes a pattern: a '%' or a '_' typed into it is a wildcard to SQL,
-        // and one percent sign used to return the entire library.
-        .flatMapLatest { q -> db.items().searchFlow(Search.escapeLike(q), 500) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /**
+     * The states one chip stands for.
+     *
+     * "Backed up" is a story rather than one state: an item can be finished,
+     * its copy already tidied away, or its original reclaimed, and all three
+     * read the same to the user. Empty means the chip is off - every state.
+     */
+    private fun statesFor(chip: String?): List<String> = when (chip) {
+        null -> emptyList()
+        ItemState.DONE.name ->
+            listOf(ItemState.DONE.name, ItemState.GONE.name, ItemState.FREED.name)
+        ItemState.RELEASED.name ->
+            listOf(ItemState.STAGED.name, ItemState.RELEASED.name)
+        else -> listOf(chip)
+    }
 
     /**
      * The list the Files screen shows.
      *
-     * Filtering and sorting happen here rather than in SQL because the query
-     * is already capped at 500 rows: pushing them into the statement would
-     * mean four near-identical queries for no measurable gain.
+     * Every part of the question - the typed name, the chip, the album scope
+     * and the sort - goes into the statement, because the statement is what
+     * carries the LIMIT. A NEW row in an un-ticked album is inventory, not
+     * work: no run will touch it, so it is excluded there too, while history
+     * stays whatever the ticks say now.
      */
-    val items: StateFlow<List<ItemRow>> =
-        combine(searchResults, filesState, filesSort, options) { rows, state, sort, o ->
-            // A NEW row in an un-ticked album is inventory, not work: no run
-            // will touch it, so listing it under "Waiting" (or at all) shows
-            // the whole phone where the user chose a part of it. History -
-            // anything already processed - stays whatever the ticks say now.
-            val inScope = rows.filter {
-                it.state != ItemState.NEW.name ||
-                    it.bucket == null || it.bucket !in o.excludedBuckets
-            }
-            val filtered = when (state) {
-                null -> inScope
-                // "Backed up" is a story rather than one state: an item can be
-                // finished, its copy already tidied away, or its original
-                // reclaimed, and all three read the same to the user.
-                ItemState.DONE.name -> inScope.filter {
-                    it.state in setOf(
-                        ItemState.DONE.name, ItemState.GONE.name, ItemState.FREED.name
-                    )
-                }
-                ItemState.RELEASED.name -> inScope.filter {
-                    it.state in setOf(ItemState.STAGED.name, ItemState.RELEASED.name)
-                }
-                else -> inScope.filter { it.state == state }
-            }
-            when (sort) {
-                FilesSort.NEWEST -> filtered.sortedByDescending { it.captureAt }
-                FilesSort.SAVED -> filtered.sortedByDescending {
-                    it.outputBytes?.let { out -> it.sizeBytes - out } ?: 0L
-                }
-                FilesSort.LARGEST -> filtered.sortedByDescending { it.sizeBytes }
-            }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    /** Everything the Files list is currently asking for, as one value. */
+    private data class FilesQuery(
+        val typed: String,
+        val chip: String?,
+        val sort: FilesSort,
+        val excluded: Set<String>
+    )
+
+    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
+    val items: StateFlow<List<ItemRow>> = combine(
+        search.debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }.distinctUntilChanged(),
+        filesState,
+        filesSort,
+        options.map { it.excludedBuckets }.distinctUntilChanged()
+    ) { typed, chip, sort, excluded -> FilesQuery(typed, chip, sort, excluded) }
+        .distinctUntilChanged()
+        .flatMapLatest { ask ->
+            val states = statesFor(ask.chip)
+            db.items().searchFlow(
+                // Escaped on the way in, because the box takes a name and the
+                // query takes a pattern: a '%' or a '_' typed into it is a
+                // wildcard to SQL, and one percent sign used to return the
+                // entire library.
+                q = Search.escapeLike(ask.typed),
+                states = states,
+                // An empty IN () matches nothing in SQLite, which is right for
+                // a chip that names states and wrong for no chip at all.
+                anyState = if (states.isEmpty()) 1 else 0,
+                excludedBuckets = ask.excluded,
+                sortKey = when (ask.sort) {
+                    FilesSort.NEWEST -> 0
+                    FilesSort.SAVED -> 1
+                    FilesSort.LARGEST -> 2
+                },
+                limit = FILES_PAGE
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // ---- health chips -------------------------------------------------------
 
@@ -467,9 +493,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val spaceLow: Boolean = false,
         val paused: Boolean = false,
         /**
-         * Nothing has run for two days while work was waiting. Every other
-         * check can be green and the app still be dead, because the phone
-         * simply stopped scheduling it - and that failure is invisible.
+         * The phone is not letting this app finish its work.
+         *
+         * Two shapes of one failure. Either nothing has run for two days
+         * while work waited - the phone stopped scheduling it altogether -
+         * or runs do happen and Android cuts each one short, which from
+         * Android 16 is what a job alongside a foreground service normally
+         * gets. The second shape used to be invisible: a cut run still stamps
+         * the last-run time, so the two-day silence never accumulated and
+         * every check stayed green while the queue barely moved.
          */
         val backgroundWorkStopped: Boolean = false,
 
@@ -583,8 +615,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 plugged = power.plugged,
                 freeBytes = free,
                 paused = o.pauseAll,
-                backgroundWorkStopped = !o.pauseAll && waiting > 0 &&
-                    o.lastRunAt > 0 && silentFor > BACKGROUND_STALL_MS
+                backgroundWorkStopped = !o.pauseAll && waiting > 0 && o.lastRunAt > 0 &&
+                    (silentFor > BACKGROUND_STALL_MS || Stops.isRationed(o.lastStopReason))
             )
         }
     }
@@ -819,14 +851,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             val groups = runCatching { DuplicateScanner(ctx).groups() }.getOrDefault(emptyList())
             val largest = runCatching { db.items().largest(50) }.getOrDefault(emptyList())
-            val candidates = runCatching { db.items().reclaimCandidates() }.getOrDefault(emptyList())
+            // Through the same gate the Reclaim screen uses, not the raw
+            // candidate list: the hub must never advertise a figure the screen
+            // it links to will refuse in full.
+            val freeable = runCatching {
+                ReclaimEligibility.judged(
+                    ctx, db, repo.current(), System.currentTimeMillis()
+                )
+            }.getOrDefault(emptyList())
             findSpaceChecked.value = true
             findSpace.value = FindSpace(
                 duplicateBytes = groups.sumOf { it.reclaimableBytes },
                 duplicateGroups = groups.size,
                 biggestBytes = largest.sumOf { it.sizeBytes },
-                reclaimableBytes = candidates.sumOf { it.sizeBytes },
-                reclaimableCount = candidates.size
+                reclaimableBytes = freeable.sumOf { it.row.sizeBytes },
+                reclaimableCount = freeable.size
             )
         }
     }
@@ -871,9 +910,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     state = ItemState.NEW.name,
                     skipReason = null,
                     attempts = 0,
-                    // The queue is ordered by capture date, so "next" means
-                    // looking like the newest thing in the gallery.
-                    captureAt = now,
+                    // Ask for the jump, do not fake the date. captureAt is
+                    // what the camera recorded: it is shown in the details
+                    // dialog, stamped onto the copy so the cloud files it
+                    // chronologically, and used by the Newest sort. Writing
+                    // `now` into it bought one run's queue position at the
+                    // cost of the file's real date, for good.
+                    priorityAt = now,
                     updatedAt = now
                 )
             )

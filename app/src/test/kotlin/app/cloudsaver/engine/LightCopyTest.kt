@@ -23,6 +23,20 @@ class LightCopyTest {
     private val screen =
         File("src/main/kotlin/app/cloudsaver/ui/screens/ReclaimScreen.kt").readText()
 
+    /**
+     * Code without its prose.
+     *
+     * The banned-identifier rule below is about what the pin path CALLS. Read
+     * over the comments too, it also punished the sentence explaining why the
+     * pin path must not call those things - so a maintainer documenting the
+     * rule broke it. ProductBoundariesTest already answers this the same way:
+     * "the only mention of any refused feature in the codebase is the comment
+     * explaining the refusal".
+     */
+    private fun code(text: String): String = text.lineSequence()
+        .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+        .joinToString("\n")
+
     @Test
     fun `the light copies album is outside everything the scanner may touch`() {
         // Pure check, not a source grep: the exact path the engine writes to,
@@ -106,8 +120,10 @@ class LightCopyTest {
 
     @Test
     fun `a remade copy never enters the pipeline`() {
-        val region = engine.substringAfter("suspend fun pinLightCopy")
-            .substringBefore("suspend fun removeCopiesOnly")
+        val region = code(
+            engine.substringAfter("suspend fun pinLightCopy")
+                .substringBefore("suspend fun removeCopiesOnly")
+        )
         // The only database write in the whole pin path is the keptUri stamp.
         val writes = Regex("""db\.items\(\)\.update""").findAll(region).count()
         assertEquals("pinning may record keptUri and nothing else", 1, writes)
@@ -204,6 +220,52 @@ class LightCopyTest {
         val identity = engine.substringAfter("private fun identityOf")
             .substringBefore("Prepares a batch that removes originals")
         assertTrue(identity.contains("Fingerprint.fp16(name, size, modified)"))
+    }
+
+    /**
+     * The guard against re-optimising a light copy does not rest on a value
+     * the OS rewrites.
+     *
+     * The existing rule above pins the row to the file's identity, and that
+     * identity is `fp16(name, size, dateModified)`. In place, the two updates
+     * that set the copy's timeline write DATE_MODIFIED through ContentValues,
+     * which does not touch the file's own mtime - so the row said one date and
+     * the file said another. MediaProvider re-stats a file whose size or mtime
+     * disagrees with its row and rewrites DATE_MODIFIED from the disk, which
+     * silently changed the fingerprint the whole guard hung on. The copy then
+     * read as a new photo: optimised again, and a second, worse copy of a
+     * photo the cloud already held went back up.
+     *
+     * Two things now stop it, and this asserts both, because either one alone
+     * is a single point of failure on someone else's phone.
+     */
+    @Test
+    fun `the anti-re-optimise guard survives a media rescan`() {
+        // 1. The file's real mtime is set, so there is no disagreement for
+        //    MediaProvider to resolve. Releaser does this for its own output.
+        val write = engine.substringAfter("private suspend fun writeVerified")
+            .substringBefore("private fun inPlaceName")
+        assertTrue(
+            "the in-place copy must have its own mtime stamped, not just the row",
+            write.contains("setLastModified(row.dateModified * 1000)")
+        )
+        assertTrue(
+            "the mtime comes from the file MediaStore actually wrote",
+            write.contains("MediaStore.MediaColumns.DATA")
+        )
+
+        // 2. Even if it drifts anyway, the scanner refuses the file by an
+        //    identity that cannot drift.
+        val scanner = File("src/main/kotlin/app/cloudsaver/media/MediaScanner.kt").readText()
+        val scan = scanner.substringAfter("suspend fun scan()").substringBefore("private suspend fun recordReturnedCopy")
+        assertTrue(
+            "the scanner must know which files are kept light copies",
+            scan.contains("keptCopies()")
+        )
+        assertTrue(
+            "and skip them by content URI or MediaStore id, not by fingerprint",
+            Regex("""f\.uri in keptUris|f\.mediaStoreId in keptIds""").containsMatchIn(scan)
+        )
     }
 
     @Test

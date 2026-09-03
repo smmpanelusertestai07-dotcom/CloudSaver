@@ -134,4 +134,35 @@ class ProductBoundariesTest {
             worker.contains("Notifications.clearWorking")
         )
     }
+
+    /**
+     * A figure on one screen may not be a different question from the screen
+     * it links to.
+     *
+     * The Free up space hub summed `reclaimCandidates()` straight - every
+     * original with any evidence at all - and printed it as "you could free
+     * about X". The Reclaim screen behind that card put the same rows through
+     * `ReclaimRules.isEligible`, which refuses anything under thirty days
+     * settled, anything while the cloud app is missing or flagged, anything
+     * too small, and any favourite. So the card advertised gigabytes and the
+     * list opened empty - most visibly in a user's first month, which is
+     * everyone at first. Room's own comment shows this class of bug was
+     * already fixed once and fixed from the wrong end.
+     *
+     * `ReclaimEligibility` is now the only caller of the raw query, so the
+     * two answers cannot drift apart again.
+     */
+    @Test
+    fun `only the shared gate decides what can be freed`() {
+        val allowed = setOf("ReclaimEligibility.kt", "Db.kt")
+        val offenders = code()
+            .filter { (name, _) -> name !in allowed }
+            .filter { (_, text) -> withoutComments(text).contains("reclaimCandidates()") }
+            .map { (name, _) -> name }
+        assertTrue(
+            "these ask the database for raw candidates instead of asking " +
+                "ReclaimEligibility what may actually be freed: $offenders",
+            offenders.isEmpty()
+        )
+    }
 }

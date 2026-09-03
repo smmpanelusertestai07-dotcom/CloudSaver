@@ -60,6 +60,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -288,10 +290,19 @@ fun ListFilterRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                option.onSelect()
-                                open = null
-                            }
+                            // The row is the control and the dot beside it is
+                            // decoration - said here, because the RadioButton
+                            // below carries onClick = null and so announced
+                            // nothing at all: a screen reader met a row of
+                            // labels with no selected state and no role.
+                            .selectable(
+                                selected = option.selected,
+                                role = Role.RadioButton,
+                                onClick = {
+                                    option.onSelect()
+                                    open = null
+                                }
+                            )
                             .padding(horizontal = 12.dp, vertical = 12.dp)
                     ) {
                         RadioButton(selected = option.selected, onClick = null)

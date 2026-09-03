@@ -18,7 +18,7 @@ source for this release, including the rows that were already marked Done.
 | R10 | Self-heal: unsent copy remade twice then skipped with a reason, sent copy counts as proof, folder recreated, snapshots rebuilt daily, foreign files flagged and never touched | Done | `EvidenceRules.onCopyMissing` (RESEND → GIVE_UP at two), anchor rule in `pacedRelease`, `dailySnapshot` + `sharedTargetsPresent`, bounded so a very large gallery cannot silently break snapshot writing while every evidenced row is still kept whole, `MaintainEngine.foreignFiles` counts and reports without a single write path to those files; UserMistakeShieldTest asserts the pass stays inert |
 | R11 | SMART scheduling with every wait state explained; Optimise now bypasses the schedule, never the safety limits | Done | `RunDecider.decide` (charge/battery/saver/thermal/screen/budget) as a pure function with RunDeciderTest; Home prints the current `Wait` in plain words with its reset; `optimise_now_override_*` strings name what the button will and will not skip |
 | R12 | Survives reboot, update, clear-data, reinstall, phone change, SD removal, partial access and OS updates | Done | WorkManager `ensure` on every launch; `StartupRecovery` (crash handler → snapshot restore → purge → schedule) with restore now once per install; Room migrations 1..6 with MigrationTest; `Volumes.probeWritable` gates the SD option and the releaser verifies the landing volume; `Permissions.mediaAccess` blocks scanning under partial access and shows waiting text instead of a number; PermanenceTest, MediaAccessTest, VolumeRulesTest |
-| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | the app's mark is the launcher's own two adaptive layers, scaled by the launcher's own 108/72 and clipped to a rounded tile, rather than a second flat PNG that drifted from it - the icon in the app and the icon on the home screen are one object; `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 41 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme; and the app now fits the phone it is on rather than the phone it was written on - every screen walked at 320 dp and at 200% text, in landscape, behind a notch and in a mirrored language: chips and button pairs wrap instead of running off the edge, text that shares a row carries a weight so it shrinks rather than pushing its neighbour out, the tile grid takes its column count from the width it actually has, the headline figure stops growing where it would stop fitting, the list header travels with the list instead of taking the screen in landscape, and nothing holding words is pinned to a height; LayoutRulesTest holds all sixteen rules - the one forbidding a button label cut to one line is the class of fault the owner's own phone reported and eight emulators did not, and it was proved by making it fail before it was trusted; and the labels a real phone caught mid-word are gone as a class - the list action bar flows so its button drops under the sentence instead of losing its own verb to an ellipsis, "Select all (37)" replaced a sentence that lost its count, the saving note says "about 92 MB after" in full, a file row showing a checkbox stacks its size under the name at every font size so selection mode cannot squeeze the name to one word, and a duplicate row names its album rather than printing the content:// address of the file, and a file row now asks the row how wide it is rather than only how large the text is - at ordinary text size on a 320 dp phone the size column had about 42 dp and printed "643" over "KB" while the name it displaced was cut to "tour_photo...", on a screen where every file begins "tour_photo", so the row named nothing at all; below the width the two columns need, the size goes under the name and takes the whole row, which is what selection mode already did |
+| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | the app's mark is the launcher's own two adaptive layers, scaled by the launcher's own 108/72 and clipped to a rounded tile, rather than a second flat PNG that drifted from it - the icon in the app and the icon on the home screen are one object; `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 43 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme; and the app now fits the phone it is on rather than the phone it was written on - every screen walked at 320 dp and at 200% text, in landscape, behind a notch and in a mirrored language: chips and button pairs wrap instead of running off the edge, text that shares a row carries a weight so it shrinks rather than pushing its neighbour out, the tile grid takes its column count from the width it actually has, the headline figure stops growing where it would stop fitting, the list header travels with the list instead of taking the screen in landscape, and nothing holding words is pinned to a height; LayoutRulesTest holds all sixteen rules - the one forbidding a button label cut to one line is the class of fault the owner's own phone reported and eight emulators did not, and it was proved by making it fail before it was trusted; and the labels a real phone caught mid-word are gone as a class - the list action bar flows so its button drops under the sentence instead of losing its own verb to an ellipsis, "Select all (37)" replaced a sentence that lost its count, the saving note says "about 92 MB after" in full, a file row showing a checkbox stacks its size under the name at every font size so selection mode cannot squeeze the name to one word, and a duplicate row names its album rather than printing the content:// address of the file, and a file row now asks the row how wide it is rather than only how large the text is - at ordinary text size on a 320 dp phone the size column had about 42 dp and printed "643" over "KB" while the name it displaced was cut to "tour_photo...", on a screen where every file begins "tour_photo", so the row named nothing at all; below the width the two columns need, the size goes under the name and takes the whole row, which is what selection mode already did |
 | R14 | Help: FAQ, "If something is deleted", Quality explained with live preset compare, Privacy, About, Activity, Logs, crash card | Done | `HelpScreens.kt` — 18 FAQ answers including what happens with no cloud app and why Files is scoped where Free up space is not, a mission card that says outright why the app exists (encrypted clouds upload what they are handed and do not make it smaller, so a plan fills up and the usual answer is to pay for more) and what it does about the phone as well as the plan, where the per-phone recommended figures come from and what keeping a copy in its own album does, the six-condition deleted map, the live preset comparison, six privacy blocks, About with the requirement line, the permissions statement and the no-network promise — the build-chain facts (package name, build number, signing fingerprint) ship in the release notes, where the person comparing a downloaded file actually is; `ActivityScreen` (30 days, plain sentences); `HelpLogsScreen`; HelpContentTest |
 | R15 | The manual set is exactly: albums, cloud app, Optimise now, Pause, the Free up actions, per-item actions, Save/Restore | Done | Pause stops this app optimising and adding copies, and says outright that it cannot reach the cloud app - a setting may not promise an effect this app has no permission to have, which `HelpContentTest` now enforces as a copy rule. Nothing else in the app starts, stops or removes anything: the scheduler, the scanner, the stager, the releaser, evidence, snapshots and cleanup all run themselves; `RowActions` decides per-item offers from state; "Keep it in the same album" is a property of the replace mode, offered where that mode is chosen and off by default; one attention chip carries the cloud state rather than two chips repeating the same four words, pinned on the JVM by a rule that no two chips may say the same thing; Home no longer claims "Everything is backed up" over a queue that is empty because nothing was ticked or nothing was ever processed - three states, three sentences; the Free up hub says it is still checking rather than answering zero while it hashes; Files says which setting emptied it; the trial is the one extra tap and it only optimises three photos, from the ticked albums only, kept inside the app - no gallery album appears until the first real run publishes copies, and the trial card says so. The two launcher shortcuts (Free up space, Activity) are doors to screens that already exist, through the same route extra an alert tap uses - behind the app lock like everything else, starting nothing |
 | R16 | Permanently refused features are absent | Done | ProductBoundariesTest scans every source file with comments stripped for similar-photo detection, blur or quality scoring, automatic deletion, cloud recommendations or prices, and re-optimise-everything, and holds the worker set to jobs that do work rather than remind; the only mention of any refused feature in the codebase is the comment explaining the refusal |
@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **490 unit tests** on the JVM, covering the pure rules and auditing the
+- **501 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **106 instrumented tests across 16 classes**, run on real emulators against a
+- **108 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -153,6 +153,129 @@ source for this release, including the rows that were already marked Done.
   `MatrixHonestyTest` now reads all seven of those numbers off the source tree
   and fails naming both figures, on top of already checking that every test it
   cites exists.
+- **Whether the pipeline that ships it is sound.** The worst defect in this
+  project was never in the app. CI had no signing secret, so it minted a fresh
+  RSA key on every run, signed with it, and uploaded `release.jks` *and*
+  `keystore-password.txt` as a workflow artifact - on a public repository,
+  where reading an artifact needs only read access. The private key and its
+  password for every published release were downloadable by anyone, and an APK
+  signed with them installs as an **update** over a real user's app, inheriting
+  the media and usage-access permissions they granted. `TamperCheck` cannot
+  see it: the expected certificate is whatever the builder passes in. The same
+  throwaway key is why three consecutive releases carried three different
+  certificates and no user could ever update in place - every version was an
+  uninstall, and with `allowBackup="false"` that is a wipe. The artifact is
+  gone, the password is never written to disk, and the release step now refuses
+  a tag whose key did not outlive its run and prints the four secrets to set.
+  `SigningIntegrityTest` holds all three properties, each proved by putting the
+  fault back and watching it fail. Eleven releases shipped before this was
+  looked for; nothing in the app's own tests could have found it, because it
+  was not in the app.
+- **Whether a rule that passes has read anything.** The source-text rules are
+  this project's cheapest defence, and Gradle knew about none of the files they
+  read. Editing `strings.xml` and re-running reported
+  `testDebugUnitTest UP-TO-DATE` and replayed the previous verdict - so a copy
+  rule could pass over text it had never seen. It was found by proving a new
+  rule: the fault went in, the suite said green, and the reason was that the
+  suite had not run. CI was safe only by accident, having no cache to reuse.
+  `app/build.gradle.kts` now declares the manifest, the strings, the Kotlin
+  sources, the workflow and this file as test inputs, and the same proof now
+  fails in one second.
+- **Whether one screen's number is the other screen's question.** Three found
+  this cycle, all the same shape. The Files list was capped at the newest 500
+  rows of the whole table and *then* filtered in Kotlin - and the worker takes
+  newest first, so on a mature library those 500 are all finished work: tapping
+  "Waiting" over a queue of twelve thousand filtered five hundred DONE rows
+  down to nothing and printed "No files match these filters", while Home's own
+  COUNT said twelve thousand. The chip, the album scope and the sort are now
+  all in the statement, because the statement is what carries the LIMIT. The
+  Free up space hub summed every original with any evidence at all and printed
+  it as "you could free about X", while the Reclaim screen behind that card put
+  the same rows through five further gates - so the card advertised gigabytes
+  and the list opened empty for anyone in their first month, which is everyone
+  at first; both now go through `ReclaimEligibility`, the only caller of the
+  raw query, pinned by a rule. And the anti-re-optimise guard on an in-place
+  light copy hung on a `DATE_MODIFIED` written only into MediaStore, never onto
+  the file - so the next volume scan corrected the file's own mtime, silently
+  changed the fingerprint the guard depended on, and the copy read as a new
+  photo: optimised again, and a second, worse copy of a photo the cloud already
+  held sent back up. The file is now stamped the way the release path stamps
+  its own output, and the scanner refuses known light copies by content URI,
+  which does not drift.
+- **Whether Android is letting it finish.** Nothing read `getStopReason()`, so
+  a run the platform cut short was indistinguishable from one that finished:
+  both stamped the last-run time, so the two-day silence never accumulated and
+  every health check stayed green while the queue barely moved. Android 16 made
+  that the normal case rather than the rare one - a job running alongside a
+  foreground service is now inside the JobScheduler runtime quota, so neither
+  the app's 40-minute window nor its foreground-service ledger is the binding
+  limit any more. The reason is now recorded, logged in the words the platform
+  uses, and the reasons that mean "the phone is rationing us" raise the
+  existing stalled chip, whose tap already leads to the one setting that fixes
+  it. `StopsTest` pins the numbers and the split.
+- **Whether the permission card can be trusted.** About said "Your photos and
+  videos ... **Nothing else**", while the app also holds
+  `PACKAGE_USAGE_STATS` and uses it to read how many bytes *another* app
+  transmitted. The setup step was honest about it; the one card a person opens
+  specifically to audit access denied it. It now names every access the
+  manifest grants, checked against the manifest by a rule, so a permission
+  added later cannot fall outside the sentence.
+- **Whether a warning leads anywhere.** The tamper banner said "install the
+  official APK" and no string in the app named where that is - one URL existed
+  in the whole of `strings.xml`, the Apache licence. It now names the releases
+  page and says each release carries a code that identifies its exact file. The
+  repository also had no README and no LICENSE, on a public repo, where no
+  licence means all rights reserved - both are there now, and the README's own
+  counts were checked against the tree before it was written.
+- **Whether a promise the app makes is one it can keep.** `ACCESS_MEDIA_LOCATION`
+  was declared in the manifest and never once requested at runtime. It is a
+  dangerous permission from API 29: declaring it grants nothing. So
+  `MediaStore.setRequireOriginal` threw on every photo, the catch below it
+  opened the REDACTED stream instead, and the GPS location was stripped from
+  every copy this app has ever made - while FAQ 5 said "Every copy carries the
+  original's ... GPS location". Nothing failed and nothing was logged: the
+  fallback is what a redacted stream is for. It is requested now, the FAQ says
+  what happens if it is refused, and a rule pins that any dangerous permission
+  the code relies on appears in the request array.
+- **Whether the recovery path has ever run.** `findSnapshot` selected on
+  `OWNER_PACKAGE_NAME = our package`. Android clears that column on the rows of
+  a file whose creating app was uninstalled - the file survives, the ownership
+  does not. So after a reinstall the app could not find its own snapshot, and
+  the one thing carrying "what already reached your cloud" across a reinstall
+  was invisible exactly when it was needed. Every release before this one
+  changed signature, so every update WAS an uninstall: this path had never once
+  succeeded on a real device. It now matches on name and folder, prefers a file
+  it still owns, and takes the newest - safe because the payload is refused
+  unless its own SHA-256 checks out.
+- **Whether a sort order is worth a date.** "Optimise this first" wrote
+  `captureAt = now`, because the queue is ordered by capture date. That column
+  is the file's real shooting date: it is printed in the details dialog,
+  stamped onto the released copy so the cloud files it chronologically, and
+  used by the Newest sort. One tap for one run's queue position rewrote a 2019
+  photo as taken today, permanently, in the app and in the cloud - against the
+  app's own FAQ 5 promise that copies "land in the right place chronologically
+  instead of all appearing as today". Schema v7 adds `priorityAt`; the date is
+  left alone. The dates already overwritten cannot be recovered, because the
+  original value was replaced in place, and inventing one would be worse.
+- **Whether a screen reader can use it at all.** Five findings, all the same
+  failure: state carried by pixels only. The preset and quality choosers said
+  which option was on with fill colour and nothing else, so the row announced
+  as identical unlabelled buttons; the filter and sort options had a
+  `RadioButton` with `onClick = null` and no selectable row, so nothing carried
+  the choice; the cloud picker's name was not part of its own control; the list
+  checkboxes were announced as "checkbox" with no file name; and the attention
+  chips on Home - the taps that lead to the fix for whatever is wrong - were
+  about 32 dp tall against the 48 dp a thumb needs.
+- **Whether a sentence is true on the oldest phone it ships to.** The app
+  supports Android 10, which has no media trash at all. Two places stated the
+  30-day gallery trash as unconditional fact - the FAQ's answer to "can it
+  delete my photos", and the dialog shown right after removing duplicate
+  extras. Both now name the versions they are true of. The lock hint named four
+  screens when the lock gates the whole app; the Storage page said copies leave
+  the folder "as soon as your cloud app has uploaded them" when the clean-up is
+  lazy and runs when the folder needs room; and Home called copies "backed up"
+  while they were still sitting in the upload folder waiting for a cloud app
+  that may not even be installed.
 
 **Not done, and why**
 
