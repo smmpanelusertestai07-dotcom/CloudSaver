@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **503 unit tests** on the JVM, covering the pure rules and auditing the
+- **505 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke

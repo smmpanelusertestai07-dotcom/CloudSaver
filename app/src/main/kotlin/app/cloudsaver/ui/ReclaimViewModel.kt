@@ -14,6 +14,7 @@ import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.core.logic.ReclaimRules
+import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.CloudApps
@@ -403,6 +404,15 @@ class ReclaimViewModel(
      * files belong to the app; anything touching an original always does.
      */
     fun start(permanent: Boolean) {
+        // A modified build may not remove anything.
+        //
+        // TamperCheck's own contract says a mismatched signing certificate
+        // "disables the Free-up tool and all deletions", and the banner on
+        // Home tells the user deleting is turned off. Neither was true: the
+        // flag reached a banner and one button, and every path that removes a
+        // file ran exactly as before. Gated here, at the entry point, so no
+        // screen route can get past it.
+        if (TamperCheck.isModified(ctx)) return
         val chosen = selectedEntries()
         if (chosen.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -649,6 +659,15 @@ class ReclaimViewModel(
 
     /** Untrash, with the system dialog: the files are the gallery's, not ours. */
     fun restore(items: List<ReclaimItemRow>) {
+        // A modified build may not remove anything.
+        //
+        // TamperCheck's own contract says a mismatched signing certificate
+        // "disables the Free-up tool and all deletions", and the banner on
+        // Home tells the user deleting is turned off. Neither was true: the
+        // flag reached a banner and one button, and every path that removes a
+        // file ran exactly as before. Gated here, at the entry point, so no
+        // screen route can get past it.
+        if (TamperCheck.isModified(ctx)) return
         val uris = items.mapNotNull { row -> row.contentUri?.let { Uri.parse(it) } }
         // Nothing to restore from on Android 10: it has no trash, so those
         // batches were permanent and the history says so.
@@ -761,6 +780,15 @@ class ReclaimViewModel(
      * straight out, so 30 days of undo apply.
      */
     fun removeDuplicateExtras(chosen: Set<Long>) {
+        // A modified build may not remove anything.
+        //
+        // TamperCheck's own contract says a mismatched signing certificate
+        // "disables the Free-up tool and all deletions", and the banner on
+        // Home tells the user deleting is turned off. Neither was true: the
+        // flag reached a banner and one button, and every path that removes a
+        // file ran exactly as before. Gated here, at the entry point, so no
+        // screen route can get past it.
+        if (TamperCheck.isModified(ctx)) return
         if (busy.value) return
         if (chosen.isEmpty()) return
         busy.value = true

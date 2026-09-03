@@ -1806,6 +1806,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * itself via [deleteIntent]. [onDone] receives the deleted uris.
      */
     fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {
+        // A modified build may not remove anything - see the gate in
+        // ReclaimViewModel. This is the leftover-work-files path; its button is
+        // already hidden on a modified build, but the refusal belongs here too
+        // so hiding a control is not the only thing standing in the way.
+        if (TamperCheck.isModified(ctx)) return null
         deleteOnDone = onDone
         // Nothing to ask about still owes the caller its answer, or the card
         // that started this waits for a callback that never arrives.
