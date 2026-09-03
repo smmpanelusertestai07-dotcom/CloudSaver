@@ -20,10 +20,26 @@ import android.widget.TextView;
  * Single source of truth for colours, spacing and the reusable rows of the app.
  *
  * Vocabulary, named once and used everywhere: the machine is "the Linux computer"; what it
- * shows is "the desktop"; the system on it is "Ubuntu 24.04"; the device in hand is "your
+ * shows is "the desktop"; the system on it is "Ubuntu 24.04 LTS"; the device in hand is "your
  * phone"; the four AI programs are "AI desktop apps". Calling one thing by four names on one
  * screen ("Linux", "the desktop", "your Linux screen", "the container") is how an app reads as
  * unfinished, so no screen invents a fifth.
+ *
+ * What it is, in the same fixed words: a real Ubuntu 24.04 LTS system -- Canonical's own ARM64
+ * base image, apt and dpkg and all -- running on the phone's own Linux kernel inside a PRoot
+ * container. Everything above the kernel is Ubuntu's; the kernel is Android's, and Android's
+ * kernel is Linux, which is why Ubuntu's ARM64 programs run on it unchanged.
+ *
+ * Never written as a claim about this app, because none of it is true: "a second operating
+ * system", "dual boot", "a virtual machine", "an emulator", or "Ubuntu Desktop" (Canonical's
+ * own GNOME product, which this is not). "A complete operating system" is only ever written
+ * with the kernel sentence beside it. GNOME, KDE, Xfce and Cinnamon are named only to say that
+ * this desktop is none of them.
+ *
+ * The desktop's parts are named in exactly three places -- the "Is the desktop GNOME, KDE or
+ * Cinnamon?" answer, the "Linux only, on purpose" card and the desktop's own status details --
+ * and nowhere else: Openbox (windows), tint2 (the bar along the bottom), PCManFM (wallpaper,
+ * icons, Files), LXTerminal, dunst, PulseAudio, and a TigerVNC X display server.
  */
 final class Ui {
     /**

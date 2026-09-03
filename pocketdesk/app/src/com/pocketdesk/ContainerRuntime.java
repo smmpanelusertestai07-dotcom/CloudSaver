@@ -156,7 +156,7 @@ final class ContainerRuntime {
     /**
      * @param accelerated run with PRoot's seccomp accelerator. Used for the desktop session,
      *                    where speed is what the owner feels; installs keep the plain, slower,
-     *                    always-works mode because a failed install costs a 700 MB download.
+     *                    always-works mode because a failed install costs the whole download again.
      */
     static Process startContainer(Context context, String command, boolean accelerated) throws IOException {
         File root = rootfs(context);
@@ -265,7 +265,7 @@ final class ContainerRuntime {
      *
      * Each step records that it finished under /var/lib/pocketdesk/stage, so a set-up that was
      * stopped -- by the owner, a flat battery, or Android ending the app -- continues from the
-     * step it reached instead of downloading the whole 700 MB again. Each step also repairs a
+     * step it reached instead of downloading the whole 550 MB again. Each step also repairs a
      * half-applied install and retries three times before giving up, and gives up with its own
      * exit code so the phone can say which part failed rather than "code 1".
      */
@@ -287,9 +287,15 @@ final class ContainerRuntime {
                 // (librsvg2-common or every SVG icon falls back to a generic diamond), window
                 // controls, the table a browser reads to hand a sign-in link back to the app
                 // that asked for it, on-screen messages, sound, and the small everyday tools.
-                + "pd_step extras xdg-utils adwaita-icon-theme dmz-cursor-theme tzdata librsvg2-common "
-                + "wmctrl xdotool desktop-file-utils dunst libnotify-bin zenity "
-                + "pulseaudio pulseaudio-utils less file unzip zip wget || exit 13; "
+                + "pd_step extras " + LinuxApps.DESKTOP_PACKAGES + " || exit 13; "
+                // The everyday programs -- a text editor, an archive tool, a picture viewer, a
+                // calculator, a task manager, the volume mixer, a screenshot tool. Deliberately
+                // NOT guarded by "|| exit": a universe package having a bad day must never cost
+                // the owner a desktop, so a failure here is printed into the set-up log and
+                // set-up carries on to a complete computer.
+                + "pd_step tools " + LinuxApps.TOOL_PACKAGES
+                + " || echo 'PocketDesk: some everyday tools did not install this time; "
+                + "Settings, Update the computer basics will add them'; "
                 // The developer tools an agentic development environment needs from the first
                 // minute: a compiler, Python, Node.js, Git and SSH. One set-up, nothing to add.
                 + "pd_step devtools " + LinuxApps.DEVELOPER_PACKAGES + " || exit 14; "
@@ -365,6 +371,9 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
         // What opens when a downloaded .deb is tapped: PocketDesk's own app installer.
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
+        // Storage, and a screenshot, from inside the computer.
+        copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
@@ -375,6 +384,9 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-phone.png", "usr/share/pixmaps/pocketdesk-phone.png");
         // Tux, the Linux mascot, on the panel's Apps button (Larry Ewing, see the notices).
         copyAsset(context, "pocketdesk-linux.png", "usr/share/pixmaps/pocketdesk-linux.png");
+        // PocketDesk's own mark, in the far corner of the panel. Its own artwork, so no
+        // third-party trademark is involved -- see OPEN_SOURCE_NOTICES.md.
+        copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -402,6 +414,9 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
+        copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
+        copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
@@ -543,11 +558,12 @@ final class ContainerRuntime {
     /**
      * The size of the container, measured at most once a minute and never twice at once.
      *
-     * Walking 4.5 GB of Ubuntu is minutes of disk on a phone; it used to start again on every
+     * Walking 2-3 GB of Ubuntu is minutes of disk on a phone; it used to start again on every
      * return to the home screen, three walks racing each other while the desktop wanted the same
      * disk. Nothing here holds the screen it came from: the caller passes the handler.
      */
-    static void measureSize(File root, android.os.Handler main, java.util.concurrent.atomic.AtomicBoolean cancelled,
+    static void measureSize(Context context, File root, android.os.Handler main,
+                            java.util.concurrent.atomic.AtomicBoolean cancelled,
                             SizeListener onDone) {
         if (hasFreshSize()) {
             onDone.size(cachedSize);
@@ -558,7 +574,8 @@ final class ContainerRuntime {
         new Thread(() -> {
             long bytes = -1L;
             try {
-                bytes = directorySize(root);
+                bytes = androidReportedSize(context);
+                if (bytes < 0) bytes = directorySize(root);
             } catch (Throwable ignored) {
                 // A container being deleted underneath the walk is not worth a crash.
             } finally {
@@ -576,6 +593,29 @@ final class ContainerRuntime {
     }
 
     interface SizeListener { void size(long bytes); }
+
+    /**
+     * What the phone itself says PocketDesk is using: the same total Android prints under
+     * Settings -> Apps -> PocketDesk -> Storage. One question to the system, answered from the
+     * filesystem's own accounting, instead of walking 200,000 files of Ubuntu -- and it counts
+     * allocated blocks, which a walk over file lengths cannot see. An app needs no permission
+     * to ask about itself. -1 when the phone will not answer, and the caller walks instead.
+     */
+    static long androidReportedSize(Context context) {
+        try {
+            android.app.usage.StorageStatsManager stats = (android.app.usage.StorageStatsManager)
+                    context.getSystemService(Context.STORAGE_STATS_SERVICE);
+            android.os.storage.StorageManager storage = (android.os.storage.StorageManager)
+                    context.getSystemService(Context.STORAGE_SERVICE);
+            if (stats == null || storage == null) return -1L;
+            java.util.UUID uuid = storage.getUuidForPath(context.getFilesDir());
+            android.app.usage.StorageStats result = stats.queryStatsForPackage(
+                    uuid, context.getPackageName(), android.os.Process.myUserHandle());
+            return result.getAppBytes() + result.getDataBytes();
+        } catch (Throwable error) {
+            return -1L;   // any phone that will not answer keeps the old measurement
+        }
+    }
 
     static long directorySize(File root) {
         return Trees.size(root);

@@ -49,9 +49,48 @@ acknowledged, which the app's Settings tab does. Tux is not a PocketDesk mark.
 
 ## Wallpaper
 
-`app/assets/wallpaper.jpg` is PocketDesk's own composition: a dark-blue gradient with Tux, the
-Linux mascot, centred (Tux credited above). The desktop runs Ubuntu 24.04 LTS; "Ubuntu" is a
-trademark of Canonical Ltd, and PocketDesk is not affiliated with or endorsed by Canonical.
+`app/assets/wallpaper.jpg` is PocketDesk's own composition: a 1600x1600 square, a dark-blue
+radial glow on `#0b1320` with Tux and the words "PocketDesk" and "Ubuntu 24.04 LTS · Linux".
+Built by `tools/make_wallpaper.py` in this repository, from Tux (Larry Ewing and The GIMP,
+acknowledged above) and the DejaVu fonts. No Canonical artwork is used.
+
+## Marks this app does and does not show
+
+PocketDesk shows its own mark (`icon_in_app.png`, which is also the launcher icon, the opening
+screen and `pocketdesk-mark.png` in the corner of the desktop's bar) and Tux, the Linux mascot,
+credited above. It shows no Canonical mark: the Ubuntu logo, the "Circle of Friends", is
+Canonical's trademark, and Canonical's intellectual property rights policy grants its use only
+"in accordance with Canonical's brand guidelines, with Canonical's permission in writing".
+PocketDesk has no such permission and ships no Ubuntu-branded image; it uses the word "Ubuntu"
+only to state which system it runs, which that policy allows as discussion provided no
+endorsement is implied — and the app says in its own credits that it is not affiliated with,
+endorsed by or sponsored by Canonical. "Linux" is a registered trademark of Linus Torvalds,
+used here as a factual statement about what the app runs; PocketDesk's name contains no
+trademark of another party.
+
+## What set-up installs inside the Linux computer
+
+Nothing below ships inside this APK. Each package is downloaded at set-up from Ubuntu's own
+archive (or, for Google Chrome, from Google's own repository) and stays under its own licence,
+with its full licence text kept on the computer itself at `/usr/share/doc/<package>/copyright`.
+
+The desktop: `tigervnc-standalone-server`, `openbox`, `tint2`, `pcmanfm`, `libfm-modules`,
+`lxterminal`, `dunst`, `libnotify-bin`, `pulseaudio`, `pulseaudio-utils`, `dbus-x11`,
+`x11-xserver-utils`, `x11-utils`, `xdotool`, `wmctrl`, `zenity`, `xdg-utils`,
+`desktop-file-utils`, `librsvg2-common`, `adwaita-icon-theme`, `gnome-themes-extra-data`,
+`dmz-cursor-theme`, `fonts-dejavu-core`, `xfonts-base`, `fonts-noto-color-emoji`,
+`fonts-noto-core`, `locales`, `bash-completion`, `lsb-release`, `tzdata`.
+
+The everyday programs: `mousepad`, `xarchiver`, `7zip`, `gpicview`, `galculator`, `lxtask`,
+`lxappearance`, `pavucontrol`, `scrot`, `xclip`, `xsel`, `ripgrep`, `man-db`, `manpages`.
+
+The developer tools: `build-essential`, `pkg-config`, `python3`, `python3-pip`, `python3-venv`,
+`python3-dev`, `nodejs`, `npm`, `git`, `git-lfs`, `openssh-client`, `jq`, `htop`, `tree`, `vim`,
+`nano`, `rsync`, `sqlite3`, `sudo`, `curl`, `wget`, `gnupg`, `ca-certificates`, `less`, `file`,
+`unzip`, `zip`.
+
+Google Chrome is proprietary software from Google LLC, installed from Google's own signed
+repository under its own terms of service; it is not open source and is not redistributed here.
 
 ## Icons
 

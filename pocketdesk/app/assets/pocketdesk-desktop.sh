@@ -16,6 +16,9 @@ export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # No screen reader will ever run here, yet every GTK program and web page tried to reach the
 # accessibility bus first and logged "Could not connect to accessibility bus" while it waited.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
+# The last word on the matter, for an app that reads no settings file. If one app ever looks
+# wrong because of it, delete this line: settings.ini alone still gives a dark desktop.
+export GTK_THEME=Adwaita:dark
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 # One web process for every page: each new one is a 150 MB program started under PRoot, and
 # starting it was most of the wait before a page appeared.
@@ -29,14 +32,14 @@ mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 mkdir -p /dev/shm 2>/dev/null && chmod 1777 /dev/shm 2>/dev/null || true
 cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
-mkdir -p "$HOME/.config/gtk-3.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
+mkdir -p "$HOME/Pictures" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
          "$HOME/.config/openbox" "$HOME/.config/pcmanfm/LXDE" "$HOME/.config/libfm" \
          "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
          "$HOME/Downloads" "$HOME/Phone" "$HOME/.pocketdesk/logs"
 
 # The left-hand list of every Open and Save dialog (ChatGPT's "attach", the browser's upload,
 # the file manager): the phone's files and the computer's own, side by side.
-printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Downloads Downloads\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared Shared with phone\n' \
+printf 'file:///home/coder/Phone Phone\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Downloads Downloads\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared Shared with phone\n' \
   > "$HOME/.config/gtk-3.0/bookmarks"
 
 # Downloads stay inside the computer, where no other app on the phone can read them; the
@@ -59,17 +62,39 @@ fi
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
-printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: rgb\nXcursor.theme: Adwaita\nXcursor.size: 32\n' \
+printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #0b1320\n*foreground: #e6ecf7\n' \
   "$DPI" > "$HOME/.Xresources"
 
-printf '[Settings]\ngtk-font-name=Sans 11\ngtk-application-prefer-dark-theme=1\ngtk-xft-dpi=%s\ngtk-icon-theme-name=Adwaita\ngtk-theme-name=Adwaita-dark\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\n' \
-  "$((DPI * 1024))" > "$HOME/.config/gtk-3.0/settings.ini"
+# Adwaita, not "Adwaita-dark": GTK 3 has no theme of that name unless gnome-themes-extra is
+# installed, and asking for a theme GTK cannot find makes it drop the variant and fall back to
+# the default -- light Adwaita. That one word is why every dialog, menu and file window has been
+# white. The dark variant is compiled into libgtk-3-0 and is reached by asking for Adwaita and
+# setting prefer-dark.
+#
+# Written only while the file is still PocketDesk's. lxappearance rewrites it without the marker,
+# and from then on the owner's own choice is what starts. A file written by a PocketDesk before
+# the marker existed is recognised by the wrong theme name it carries and is taken over once.
+write_gtk_defaults() {
+  for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
+    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=1\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\n' \
+      "$((DPI * 1024))" > "$gtk_dir/settings.ini"
+  done
+}
+GTK_INI="$HOME/.config/gtk-3.0/settings.ini"
+if [ ! -f "$GTK_INI" ] \
+   || head -n 1 "$GTK_INI" 2>/dev/null | grep -qx '# pocketdesk-default' \
+   || grep -q '^gtk-theme-name=Adwaita-dark$' "$GTK_INI" 2>/dev/null; then
+  write_gtk_defaults
+fi
 
 # A normal arrow instead of the old X11 cross.
 printf '[Icon Theme]\nName=Default\nComment=Default cursor\nInherits=Adwaita\n' \
   > "$HOME/.icons/default/index.theme"
 
-printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)\nfgcolor=rgb(226,232,245)\ngeometry_columns=100\ngeometry_rows=30\nhidescrollbar=false\ndisallowbold=false\n' \
+# lxterminal applies a palette only when color_preset and all sixteen colours are present; one
+# missing line and it silently loads its own preset instead. A blinking cursor is two full
+# redraws a second for ever, and under PRoot every one is a traced round trip and a VNC frame.
+printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgcolor=#f1f5fb\ncolor_preset=PocketDesk\npalette_color_0=#0d1526\npalette_color_1=#ff6b6b\npalette_color_2=#4ade80\npalette_color_3=#fbbf24\npalette_color_4=#7a9bff\npalette_color_5=#c792ea\npalette_color_6=#56d4dd\npalette_color_7=#c2cae6\npalette_color_8=#55607d\npalette_color_9=#ff8a8a\npalette_color_10=#86efac\npalette_color_11=#fcd34d\npalette_color_12=#a5bcff\npalette_color_13=#ddb0ff\npalette_color_14=#8beaf2\npalette_color_15=#f1f5fb\ngeometry_columns=100\ngeometry_rows=30\nhidescrollbar=false\ndisallowbold=false\nboldbright=true\ncursorblinks=false\ncursorunderline=false\naudiblebell=false\nvisualbell=false\n' \
   > "$HOME/.config/lxterminal/lxterminal.conf"
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
@@ -77,10 +102,12 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=rgb(16,24,40)
 printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=72\nsmall_icon_size=24\nthumbnail_size=128\n' \
   > "$HOME/.config/libfm/libfm.conf"
 
-# Ubuntu 24.04's own wallpaper; a right-click (a long press, in Finger mode) on it opens the
 # window manager's menu, which lists every installed app, Phone files, the terminal and the
 # window commands, rather than the file manager's own short one.
-printf '[*]\nwallpaper_mode=crop\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\ndesktop_bg=#0b1220\ndesktop_fg=#e6ecf7\ndesktop_shadow=#000000\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
+# PocketDesk's own wallpaper (a dark-blue square with Tux and the app's name -- Canonical's
+# artwork and the Ubuntu logo are not ours to ship, see OPEN_SOURCE_NOTICES.md); a right-click
+# (a long press, in Finger mode) on it opens the apps menu.
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
@@ -92,7 +119,9 @@ printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removabl
 # pocketdesk-menu below from the packages that are really installed.
 
 # Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
-printf '[global]\nfont = Sans 10\nframe_width = 1\nframe_color = "#2b3563"\ncorner_radius = 10\noffset = 12x56\norigin = top-right\ntimeout = 6\nmax_icon_size = 40\n\n[urgency_low]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_normal]\nbackground = "#0f1327"\nforeground = "#e6ecf7"\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\ntimeout = 0\n' \
+# Toasts in the desktop's own colours. timeout belongs to the urgency sections -- dunst does not
+# read it from [global] -- and the panel is at the bottom, so these sit at the top right.
+printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#2b3563"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#101a2e"\nforeground = "#9aa7bd"\nframe_color = "#23304a"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#101a2e"\nforeground = "#f1f5fb"\nframe_color = "#2b3563"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
   > "$HOME/.config/dunst/dunstrc"
 
 # Firefox: no sandbox, no separate content processes, software rendering.
@@ -121,6 +150,18 @@ user_pref("browser.download.folderList", 2);
 PREFS
 fi
 
+# The terminal's prompt says where you are. Left alone it reads "coder@localhost", because PRoot
+# keeps the phone's own hostname and /etc/hostname cannot change it without a namespace this
+# container does not have. Appended once, behind a marker, so an owner's own .bashrc is never
+# overwritten and never added to twice.
+if ! grep -q 'PocketDesk prompt' "$HOME/.bashrc" 2>/dev/null; then
+  cat >> "$HOME/.bashrc" <<'PROMPT'
+
+# PocketDesk prompt: the computer's name, then the folder you are in.
+PS1='\[\e[38;5;75m\]PocketDesk\[\e[0m\]:\[\e[38;5;150m\]\w\[\e[0m\]\$ '
+PROMPT
+fi
+
 /usr/local/bin/pocketdesk-menu || true
 
 # Sound. There is no sound card a container can reach, so PulseAudio plays into a virtual
@@ -142,6 +183,15 @@ if command -v pulseaudio >/dev/null 2>&1; then
   for n in 1 2 3 4 5 6; do pactl info >/dev/null 2>&1 && break; sleep 0.5; done
   pactl load-module module-null-sink sink_name=phone sink_properties=device.description=Phone >/dev/null 2>&1 || true
   pactl set-default-sink phone >/dev/null 2>&1 || true
+  # 100% and unmuted at every start. Android's media volume is the real control (see
+  # AudioBridge): this sink's own level is a second gain stage on the very same sound, it is
+  # applied to the monitor stream the phone reads, and PulseAudio's module-device-restore
+  # remembers it by name -- so a level dropped once would follow the owner for ever, and a level
+  # dropped far enough would fall into the viewer's own silence gate and stop sound altogether.
+  # Per-app balance is still available: Tools -> Volume and sound opens pavucontrol.
+  pactl set-sink-mute phone 0 >/dev/null 2>&1 || true
+  pactl set-sink-volume phone 100% >/dev/null 2>&1 || true
+
   mkdir -p "$HOME/.pocketdesk"
   chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
   rm -f "$HOME/.pocketdesk/audio.sock"
@@ -217,6 +267,10 @@ if ! wait_for_display 80; then
 fi
 
 xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
+# The root window is grey until the file manager paints it, and grey again if the file manager is
+# ever killed for memory. This is the same navy as the wallpaper's edge and the desktop's own
+# background, so the seam is invisible either way.
+xsetroot -solid '#0b1320' >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
 eval "$(dbus-launch --sh-syntax)"
 # Electron apps ask the system bus about power, network and devices. There is no init here to
@@ -226,7 +280,18 @@ mkdir -p /run/dbus 2>/dev/null || true
 pgrep -f 'dbus-daemon --system' >/dev/null 2>&1 || \
   dbus-daemon --system --fork >/dev/null 2>&1 || true
 openbox-session >/tmp/pocketdesk-openbox.log 2>&1 &
+# The panel must never be the reason there is no computer. If tint2 is not running twelve
+# seconds after it was asked to start, the settings it was given are moved aside and it is
+# started again on the ones it ships with -- a plain bar, but a bar. The rejected file is kept,
+# never deleted, so it and the log together say what went wrong.
 tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
+(
+  sleep 12
+  pgrep -x tint2 >/dev/null 2>&1 && exit 0
+  echo 'panel: tint2 did not stay up; using its own settings instead' >> /tmp/pocketdesk-tint2.log
+  mv -f "$HOME/.config/tint2/tint2rc" "$HOME/.config/tint2/tint2rc.rejected" 2>/dev/null || true
+  tint2 >>/tmp/pocketdesk-tint2.log 2>&1 &
+) &
 command -v dunst >/dev/null 2>&1 && dunst >/tmp/pocketdesk-dunst.log 2>&1 &
 pcmanfm --desktop --profile LXDE >/tmp/pocketdesk-pcmanfm.log 2>&1 &
 wait "$VNC_PID"

@@ -14,7 +14,7 @@
    **Your phone is compatible** likha hona chahiye — tap karo to detail wahin niche khulti hai.
 3. **Set up Linux** dabao → confirm karo. Ubuntu 24.04 LTS download hoga (30 MB), phir ek hi baar me
    desktop, sound, Google Chrome aur developer tools (gcc/make, Python 3, Node.js, Git, SSH) — lagbhag
-   700 MB packages, 15–40 min. 6 GB free chahiye. Beech me net kat jaye to wahi se resume hota hai.
+   550 MB packages, 15–45 min. 6 GB free chahiye. Beech me net kat jaye to wahi se resume hota hai.
 4. Kuch galat ho to Home pe **Needs attention** card dikhega — har row tap karo, wahi fix ya detail khulta hai.
 5. **Linux only, on purpose** card me likha hai computer Linux hi kyun hai — har line tap karo,
    facts (dates ke saath) wahin khulte hain.

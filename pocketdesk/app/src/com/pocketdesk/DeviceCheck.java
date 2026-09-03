@@ -20,8 +20,13 @@ final class DeviceCheck {
     static final long MIN_RAM_GB = 4;
     /** Decimal, like Android's own Settings screen prints sizes. */
     static final long MIN_FREE_BYTES = 6_000_000_000L;
-    /** Once installed, the desktop still needs room to breathe. */
-    static final long LOW_FREE_BYTES = 1_000_000_000L;
+    /**
+     * Once installed, the desktop still needs room to breathe. Android itself only warns at
+     * min(5 % of the partition, 500 MB) and starts deleting app caches there, so the figure the
+     * app asks for is the one that still leaves room to act on: a browser cache, an app's
+     * temporary unpack space, and a day's downloads.
+     */
+    static final long LOW_FREE_BYTES = 2_000_000_000L;
 
     static final class Result {
         final boolean compatible;

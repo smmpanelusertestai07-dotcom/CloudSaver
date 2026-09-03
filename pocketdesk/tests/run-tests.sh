@@ -68,3 +68,42 @@ for script in "$PROJECT_DIR"/app/assets/*.sh; do
   bash -n "$script" || { echo "FAIL shell syntax: $script"; exit 1; }
 done
 echo "PASS AssetScriptSyntax ($(ls "$PROJECT_DIR"/app/assets/*.sh | wc -l) scripts)"
+
+# Terminology, guarded. "Ubuntu Desktop" is Canonical's own GNOME product, which this is not,
+# and this is not dual boot, a virtual machine or a second operating system. What is banned is
+# the CLAIM, not the word: the app says "not dual boot" on purpose, so each file is folded to a
+# single line (Java wraps a long sentence across many string literals) and the honest denials are
+# removed before the scan. Cinnamon is deliberately NOT banned: the FAQ names it, along with
+# GNOME, KDE and Xfce, precisely to say that this desktop is none of them. Ui.java is where the
+# rule itself lives, and a rule has to name what it forbids, so it is the one file skipped.
+banned='dual[ -]boot|Ubuntu Desktop|virtual machine on your phone|is a virtual machine|second operating system'
+for file in "$PROJECT_DIR"/app/src/com/pocketdesk/*.java "$PROJECT_DIR"/app/assets/*.sh; do
+  case "$file" in */Ui.java) continue ;; esac
+  folded=$(tr '\n' ' ' < "$file" \
+    | sed -E 's/" *\+ *"//g' \
+    | sed -E 's/(not|never|nor|neither) +(a +|an +)?(second operating system|virtual machine|emulator|dual[ -]boot)//gI')
+  if printf '%s' "$folded" | grep -qiE "$banned"; then
+    echo "FAIL Terminology: $(basename "$file") claims a banned term (see the rule in Ui.java)"
+    printf '%s' "$folded" | grep -oiE "$banned" | sort -u
+    exit 1
+  fi
+done
+# The Ubuntu Circle-of-Friends logo needs Canonical's written permission, so no Ubuntu-branded
+# image may ship.
+if ls "$PROJECT_DIR"/app/res/*/*ubuntu* >/dev/null 2>&1; then
+  echo "FAIL Terminology: an Ubuntu-branded image must not ship; Canonical requires written permission"; exit 1
+fi
+grep -q 'trademark of Canonical' "$PROJECT_DIR/app/src/com/pocketdesk/MainActivity.java" \
+  || { echo "FAIL Terminology: the Canonical trademark line is missing from the credits"; exit 1; }
+tagline=$(grep -c 'A Linux computer that runs locally on your phone' "$PROJECT_DIR/app/src/com/pocketdesk/MainActivity.java")
+[ "$tagline" -ge 2 ] \
+  || { echo "FAIL Terminology: the one tagline must appear on the opening screen and the home header, found $tagline"; exit 1; }
+echo "PASS Terminology"
+
+# Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
+# that runs after each app install, or a computer built by an earlier version never gets it.
+for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png; do
+  n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" || true)
+  [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
+done
+echo "PASS AssetCopySites"

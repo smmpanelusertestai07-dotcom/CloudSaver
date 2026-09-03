@@ -218,8 +218,14 @@ grep -q 'pocketdesk-open --label "ChatGPT" chatgpt' "$menu" || fail "the menu mu
 grep -q '%U' "$menu" && fail "field codes must not survive into a menu command, which no launcher expands"
 grep -q 'Should Not Appear' "$menu" && fail "NoDisplay entries must stay out of the menu"
 
+# The four AI apps are deliberately NOT pinned to the bar: a 720-pixel bar holds either the
+# pinned apps or the buttons of the windows that are open, and once an AI app is running its own
+# window button is what you need. They keep their desktop icon and the Apps menu.
 grep -q 'launcher_item_app = .*pocketdesk-chatgpt.desktop' "$WORK/coder/.config/tint2/tint2rc" \
-  || fail "the panel launcher must point at the wrapped entry"
+  && fail "an AI app must not take one of the bar's few pinned slots"
+grep -q 'Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt' \
+  "$WORK/coder/.local/share/applications/pocketdesk-chatgpt.desktop" \
+  || fail "the app's own entry must point at the wrapped launcher"
 
 # ---- pocketdesk-menu: the window manager rules, rewritten on every run ------------------
 cat > "$WORK/rc-default.xml" <<'RC'
@@ -260,11 +266,13 @@ printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/epiphany"; chmod +x "$WORK/fakebin/e
 POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
 rc="$WORK/coder/.config/openbox/rc.xml"
 [ -f "$rc" ] || fail "pocketdesk-menu must write the Openbox settings"
-grep -q '<titleLayout>CIMNL</titleLayout>' "$rc" \
-  || fail "the close button must sit at the left edge of the title bar, where a maximised window always starts"
+grep -q '<titleLayout>ICNL</titleLayout>' "$rc" \
+  || fail "minimise and close sit at the left edge, where a maximised window always starts"
 grep -q '<application type="normal"><maximized>yes</maximized><decor>yes</decor></application>' "$rc" \
   || fail "every normal window must open maximised with a title bar"
-grep -q '<size>11</size>' "$rc" || fail "title font must be enlarged for a phone"
+grep -q '<size>14</size>' "$rc" || fail "the title font must be big enough for the buttons to be tapped"
+grep -q '<name>PocketDesk</name>' "$rc" || fail "the window frames must use the PocketDesk theme"
+[ -f "$WORK/coder/.themes/PocketDesk/openbox-3/themerc" ] || fail "the Openbox theme must be written"
 grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"
 grep -q 'key="A-F4"' "$rc" || fail "Openbox's own bindings must be kept"
 # Openbox binds Super+F1..F4 to "go to desktop N" by default: Force close on Super+F4 would also
@@ -274,6 +282,9 @@ grep -q '<number>1</number>' "$rc" || fail "a phone has one desktop"
 grep -q 'key="W-p".*pcmanfm /home/coder/Phone' "$rc" || fail "Super+P must open the Phone folder"
 grep -q 'key="W-a".*ShowMenu.*root-menu' "$rc" || fail "Super+A must open the apps menu (the panel's Apps button sends it)"
 grep -q 'key="W-r".*pocketdesk-windows refresh' "$rc" || fail "Super+R must redraw the screen"
+grep -q 'key="W-f".*pocketdesk-windows fit' "$rc" || fail "Super+F must put a stray window back on the screen"
+grep -q 'key="W-m".*pocketdesk-windows minimise' "$rc" || fail "Super+M must minimise the window in front"
+grep -q 'key="W-s".*pocketdesk-shot' "$rc" || fail "Super+S must take a screenshot"
 phone="$WORK/coder/Desktop/pocketdesk-phone.desktop"
 [ -f "$phone" ] || fail "the desktop must carry a Phone files icon"
 grep -q '^Exec=pcmanfm /home/coder/Phone$' "$phone" || fail "the Phone files icon must open /home/coder/Phone"
@@ -283,9 +294,33 @@ tint="$WORK/coder/.config/tint2/tint2rc"
 grep -q 'launcher_item_app = .*pocketdesk-phone.desktop' "$tint" || fail "Phone files must be on the panel too"
 grep -q 'launcher_item_app = .*pocketdesk-apps.desktop' "$tint" || fail "the panel must carry the Apps button"
 grep -q '^execp_command = /usr/local/bin/pocketdesk-status$' "$tint" || fail "the panel must show the phone's battery, temperature and memory"
-grep -q '^panel_items = LTSEC$' "$tint" || fail "the panel items must include the executor (E)"
-[ "$(grep 'launcher_item_app' "$tint" | head -n 1 | grep -c pocketdesk-apps.desktop)" = 1 ] \
-  || fail "the Apps button must be the first thing on the panel"
+grep -q '^panel_items = LTSECP$' "$tint" \
+  || fail "the bar must be: launchers, the open windows, the tray, the phone's numbers, the clock, the PocketDesk mark"
+grep -q '^panel_position = bottom center horizontal$' "$tint" || fail "the bar starts at the bottom edge"
+grep -q '^panel_layer = top$' "$tint" || fail "the bar must stay visible over a maximised window"
+grep -q '^panel_background_id = 1$' "$tint" \
+  || fail "the bar must use its own background, not the transparent one every item defaults to"
+[ "$(grep -n '^rounded = ' "$tint" | head -n 1 | cut -d: -f1)" -lt "$(grep -n '_background_id = ' "$tint" | head -n 1 | cut -d: -f1)" ] \
+  || fail "every background must be defined before the first *_background_id; tint2 resolves an id as it reads it"
+[ "$(grep -c '^launcher_item_app = ' "$tint" || true)" -le 5 ] \
+  || fail "more than five pinned apps leaves no room for the window list on a 720 px screen"
+# The mark itself lives at an absolute path the container owns, which a test running as an
+# ordinary user cannot create, so the script's own fallback to the Tux mark is accepted here --
+# what matters is that the far corner is never left empty.
+grep -qE '^button_icon = /usr/share/pixmaps/pocketdesk-(mark|linux)\.png$' "$tint" \
+  || fail "the far corner wears the PocketDesk mark"
+grep -q '^button_lclick_command = /usr/local/bin/pocketdesk-windows minimise-all$' "$tint" \
+  || fail "the mark in the corner shows the desktop"
+grep -q '^mouse_left = toggle$' "$tint" || fail "a tap on a window button must raise it, never minimise it"
+grep -q '^task_thumbnail = 0$' "$tint" || fail "thumbnails poll window contents; this phone traces every syscall"
+grep -q '^clock_tooltip = ' "$tint" \
+  || fail "the clock tooltip option is clock_tooltip; time_tooltip_format is tint2's internal name and is rejected"
+grep -q '^time_tooltip_format' "$tint" && fail "time_tooltip_format is not a tint2 config key"
+grep -q '^execp_tooltip' "$tint" \
+  && fail "a fixed execp_tooltip blocks the live one tint2 builds from the script's standard error"
+grep -q '^execp_interval = 30$' "$tint" || fail "the phone's numbers refresh every 30 seconds"
+grep -q '^execp_lclick_command = /usr/local/bin/pocketdesk-storage$' "$tint" \
+  || fail "tapping the panel's numbers must open the storage dialog"
 grep -q '^Icon=pocketdesk-linux$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
   || fail "the Apps button wears Tux"
 grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
@@ -293,6 +328,9 @@ grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-app
 grep -q 'label="Phone files"' "$menu" || fail "the menu must offer Phone files"
 grep -q 'label="Terminal"' "$menu" || fail "the menu must offer the terminal"
 grep -q 'label="Reload screen"' "$menu" || fail "the menu must offer a screen redraw"
+grep -q 'label="Fit window to the screen"' "$menu" || fail "the menu must offer to fit a window to the screen"
+grep -q 'label="Storage"' "$menu" || fail "the menu must offer Storage"
+grep -q 'id="tools-menu"' "$menu" || fail "the tools belong in a submenu, not at the root beside the AI apps"
 
 # The browser opens links; a sign-in that opened in the browser comes back to the app through
 # the scheme its package declares.
@@ -357,7 +395,6 @@ grep -q '^Name=Brave$' "$WORK/coder/Desktop/brave-browser.desktop" || fail "the 
 [ -f "$WORK/coder/Desktop/org.gnome.Epiphany.desktop" ] && fail "one browser on the desktop, not two"
 [ -f "$WORK/coder/Desktop/lxterminal.desktop" ] || fail "the terminal must have a desktop icon"
 grep -q '^Name=Terminal$' "$WORK/coder/Desktop/lxterminal.desktop" || fail "the terminal icon is labelled Terminal"
-grep -q 'launcher_item_app = .*pocketdesk-lxterminal.desktop' "$tint" || fail "the terminal must be on the panel"
 
 # Google Chrome, when present, is the browser over anything else, and its Exec goes through the launcher.
 cat > "$APPS/google-chrome.desktop" <<ENTRY
@@ -502,4 +539,14 @@ if command -v dpkg-deb >/dev/null 2>&1; then
   echo "$out" | grep -qi 'AppImage' || fail "an AppImage must be explained, not silently refused: $out"
 fi
 
-echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound)"
+# ---- pocketdesk-status: two short lines, and a real free-storage figure -------------------
+# tint2 draws an execp item at the width of its widest line, so a long line pushes the window
+# buttons off a 720-pixel bar. The tooltip is the script's standard error, which tint2 shows.
+status_out=$(bash "$PROJECT_DIR/app/assets/pocketdesk-status.sh" 2>"$WORK/status.err")
+[ "$(printf '%s\n' "$status_out" | wc -l)" -le 2 ] || fail "the panel's status is at most two short lines"
+[ "$(printf '%s\n' "$status_out" | awk '{ if (length($0) > 16) bad = 1 } END { print bad + 0 }')" = 0 ] \
+  || fail "a status line wider than 16 characters squeezes the window list off the bar"
+grep -q 'Storage free' "$WORK/status.err" || fail "the tooltip must say how much storage is free"
+grep -q 'Tap for storage' "$WORK/status.err" || fail "the tooltip must say what tapping the numbers does"
+
+echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound, panel status)"

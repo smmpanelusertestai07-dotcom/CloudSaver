@@ -13,7 +13,7 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 | Area | Detail |
 | --- | --- |
 | Linux | Ubuntu 24.04.4 LTS ARM64, SHA-256 verified, running under PRoot |
-| Desktop | Openbox, tint2 panel, LXTerminal, PCManFM file manager, dunst notifications, TigerVNC |
+| Desktop | Openbox (windows, PocketDesk themerc), tint2 panel along the bottom (pinned apps, one button per open window, tray, this phone's battery/temperature/memory/free storage, 12-hour clock, PocketDesk mark that shows the desktop; movable to the top from the wallpaper menu), LXTerminal, PCManFM file manager, dunst notifications, PulseAudio, TigerVNC. Not GNOME, KDE, Xfce or Cinnamon — those want a gigabyte and a GPU before an app opens |
 | Viewer | In-app RFB 3.8 client over a unix socket in app-private storage (`…/ubuntu-rootfs/home/coder/.pocketdesk/vnc.sock`, Xtigervnc `-rfbunixpath` with `-rfbport -1`), falling back to `127.0.0.1:5901` only on a container whose server has no unix support — Android shares loopback between apps, so a port here is reachable by any other app. The desktop is born in the phone's orientation and kept the size of the screen; at 100 % it sits inside a small gap with a rounded blue border on a deep backdrop (portrait and landscape), pinch or Screen → Zoom to look closer, Fit to come back, Full screen to hide the controls |
 | Controls | One bar, bottom by default (or top): Home · status · Screen ▾ (Fit, Zoom, Rotate, Full screen, bar position, Volume) · Finger/Mouse · Keyboard · Keys (Esc, Tab, Ctrl, Alt, Super, arrows, on demand) · Window ▾ (Close, Force close, Switch, All windows, Minimise all, Paste, Apps menu, Phone files, Reload the screen) |
 | Input | Finger mode (tap where you touch, swipe to scroll with a fling, hold to right-click, a hand at the pointer) and Mouse mode (drag the pointer, which is the shape the desktop reports; two fingers scroll; tap-then-drag), USB and Bluetooth mouse, hardware keyboard, composing-aware phone keyboard, Android clipboard bridge |
@@ -35,7 +35,7 @@ No WebView, no cloud PC, no subscription. Everything runs locally on the device.
 
 - Android 10 (API 29) and above, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
 - 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
-- At least 6 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 3.5–4.5 GB
+- At least 6 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 2–3 GB, and grows into the phone's free space from there (PocketDesk sets no quota of its own)
 - Reference device: Realme C25s, Android 13, 4 GB RAM
 
 ## Build
@@ -65,7 +65,7 @@ PocketDesk asks for the minimum set, and every one of them is visible in the app
 | `POST_NOTIFICATIONS` | Show setup progress and the session's stop button |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE` | Required to keep the Linux process alive while you use it |
 | `VIBRATE` | Right-click and long-press feedback in the desktop viewer |
-| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Shows one yes/no prompt asking to exempt a 10–30 minute setup from battery saver. The user always chooses; nothing is exempted silently |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Shows one yes/no prompt asking to exempt a 15–45 minute setup from battery saver. The user always chooses; nothing is exempted silently |
 | `USE_BIOMETRIC` | The optional App lock's fingerprint prompt (the phone's PIN is the fallback). Granted at install, nothing is read from the sensor by the app |
 | `MANAGE_EXTERNAL_STORAGE` (Android 11+), `READ/WRITE_EXTERNAL_STORAGE` (Android 10) | **Optional, off by default.** Settings → Permissions → Phone files: the phone's storage becomes the Phone folder inside the Linux computer, so an AI app can attach a file from the phone. Nothing on the phone is visible to the computer until the owner allows it |
 

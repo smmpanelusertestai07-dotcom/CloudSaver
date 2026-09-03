@@ -272,7 +272,7 @@ public final class LinuxService extends Service {
                 return START_NOT_STICKY;
             }
             // A running desktop holds no wake lock of its own (the screen does, while it is on),
-            // so the download takes one, or a 700 MB fetch would stall with the screen off.
+            // so the download takes one, or the package fetch would stall with the screen off.
             acquireInstallWakeLock();
             stopRequested = false;
             handler.removeCallbacks(jobMonitor);
@@ -1051,7 +1051,7 @@ public final class LinuxService extends Service {
      * One lock per job, never one shared between them.
      *
      * A single field was acquired by an install and released by the desktop task finishing --
-     * so a 700 MB download continued with the screen off and no lock, and Android suspended it
+     * so a long download continued with the screen off and no lock, and Android suspended it
      * half way. Both fields are volatile: they are written from the main thread and from two
      * worker threads.
      */
