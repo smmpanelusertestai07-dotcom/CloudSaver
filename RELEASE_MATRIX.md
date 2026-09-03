@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **513 unit tests** on the JVM, covering the pure rules and auditing the
+- **515 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -323,6 +323,20 @@ source for this release, including the rows that were already marked Done.
   own. The sum now asks all it can and the caller answers the last one, so the
   dot leads to a screen with something on it. An instrumented test seeds one
   original that qualifies and one for each refusal, against a real database.
+
+- **Whether the weakest proof was ever agreed to.** Three grades of proof can
+  offer an original for removal, and the weakest - a day's outgoing byte total
+  adding up - says a day's photographs went out, not that this photograph did.
+  The rule says in writing that it counts "only behind an explicit opt-in",
+  and every one of the three call sites passed the literal `true` instead,
+  while the opt-in it names sat in settings with a setter no screen ever
+  reached. So the app offered originals on that proof with nobody having
+  agreed to anything, and the mark on the Storage tab - which did read the
+  setting - disagreed with the screen it led to. The switch exists now, off by
+  default, and all three sites ask it. A rule refuses the literal, and another
+  refuses a route the app sends itself that the graph does not have - the
+  alerts and the two launcher shortcuts travel as plain strings, and nothing
+  had ever checked them against the screens.
 
 **Not done, and why**
 

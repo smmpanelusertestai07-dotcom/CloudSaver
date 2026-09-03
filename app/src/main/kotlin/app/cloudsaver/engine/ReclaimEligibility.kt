@@ -87,7 +87,14 @@ object ReclaimEligibility {
         return db.items().reclaimCandidates().mapNotNull { row ->
             val candidate = candidateOf(row, now, ledger.contains(row.outputSha256))
             if (ReclaimRules.isEligible(
-                    candidate, healthy, allowVerifiedBySize = true,
+                    candidate, healthy,
+                    // The user's answer, not a constant. A day's byte total
+                    // says a day's photographs went out, not that this one
+                    // did, and the rule has always said that counts only
+                    // behind an explicit opt-in. Hard-coding true here meant
+                    // the screen offered those originals with nobody having
+                    // opted in to anything.
+                    allowVerifiedBySize = o.freeUpAllowVerified30,
                     skipFavourites = skipFavourites, skipSmall = skipSmall
                 )
             ) {

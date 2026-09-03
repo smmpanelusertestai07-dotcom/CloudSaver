@@ -148,4 +148,45 @@ class NavigationSafetyTest {
             emptySet<String>(), listed - inGraph
         )
     }
+
+    /**
+     * A route the app sends itself has to be one it has.
+     *
+     * An alert and a launcher shortcut both travel as a plain string on an
+     * intent. Nothing checked those strings against the graph, so renaming a
+     * screen would have left a shortcut that opens the app and then sits on
+     * Home, and an alert about a problem that never takes you to it - with no
+     * error anywhere, because an unknown route is now dropped rather than
+     * thrown.
+     */
+    @Test
+    fun `every route the app sends itself is a route it has`() {
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        val known = Regex("""const val [A-Z_]+ = "([a-z_]+)"""")
+            .findAll(app.substringAfter("object Routes {").substringBefore("\n}"))
+            .map { it.groupValues[1] }
+            .toSet()
+        assertTrue("no route constants were found; the parser is broken", known.size > 10)
+
+        val sent = mutableListOf<Pair<String, String>>()
+        for (file in File("src/main/kotlin/app/cloudsaver").walkTopDown()) {
+            if (!file.isFile || file.extension != "kt") continue
+            for (m in Regex("""route = "([a-z_]+)"""").findAll(file.readText())) {
+                sent += file.name to m.groupValues[1]
+            }
+        }
+        val shortcuts = File("src/main/res/xml/shortcuts.xml").readText()
+        for (m in Regex("""android:name="app\.cloudsaver\.route" android:value="([a-z_]+)"""")
+            .findAll(shortcuts)) {
+            sent += "shortcuts.xml" to m.groupValues[1]
+        }
+        assertTrue("nothing was found sending a route; the parser is broken", sent.size >= 4)
+
+        val unknown = sent.filterNot { it.second in known }
+        assertTrue(
+            "these send the app to a screen the graph does not have, so the alert " +
+                "or shortcut opens the app and goes nowhere: $unknown",
+            unknown.isEmpty()
+        )
+    }
 }

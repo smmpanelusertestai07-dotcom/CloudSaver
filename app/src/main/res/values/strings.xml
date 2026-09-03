@@ -566,6 +566,8 @@
     <string name="opt_lock">App lock</string>
     <string name="opt_lock_hint">Locks the whole app behind your screen lock \u2014 every tab, every screen, every time you come back to it.</string>
     <string name="opt_warnings">Alerts</string>
+    <string name="opt_verified30">Also offer files verified by upload size</string>
+    <string name="opt_verified30_hint">Free up space normally offers an original only when CloudSaver watched your cloud app collect that exact copy. Turn this on and it will also offer files where only the amount your cloud app sent that day added up, and only after a month\u0027s wait. More space to free up, on weaker proof.</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and stops adding copies to the upload folder. It cannot stop your cloud app \u2014 pause that inside the app itself.</string>

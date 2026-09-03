@@ -366,4 +366,38 @@ class ProductBoundariesTest {
             unread.isEmpty()
         )
     }
+
+    /**
+     * The weakest grade of proof is never assumed on the user's behalf.
+     *
+     * Three grades can offer an original for removal, and one of them - a
+     * day's outgoing byte total adding up - says a day's photographs went out,
+     * not that this photograph did. The rule has always said in writing that
+     * it counts "only behind an explicit opt-in", and every call site passed
+     * the literal `true` instead, while the opt-in it names sat in settings
+     * with a setter no screen reached. So the app offered originals on that
+     * proof with nobody having agreed to anything, and the mark on the tab -
+     * which did read the setting - disagreed with the screen it led to.
+     */
+    @Test
+    fun `the weakest proof is offered only where the user asked for it`() {
+        val offenders = mutableListOf<String>()
+        for ((name, text) in code()) {
+            for (m in Regex("""allowVerifiedBySize\s*=\s*true""").findAll(withoutComments(text))) {
+                offenders += "$name: ${m.value}"
+            }
+        }
+        assertTrue(
+            "these offer an original for removal on a day's byte total without " +
+                "asking the user, which the rule they call says must be an " +
+                "explicit opt-in: $offenders",
+            offenders.isEmpty()
+        )
+        // And the switch that answers it has to exist on a screen.
+        val options = File("src/main/kotlin/app/cloudsaver/ui/screens/OptionsScreen.kt").readText()
+        assertTrue(
+            "the opt-in is read but no screen lets anyone give it",
+            options.contains("vm.setFreeUpVerified30(")
+        )
+    }
 }
