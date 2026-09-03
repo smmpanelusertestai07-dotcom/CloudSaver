@@ -333,4 +333,37 @@ class ProductBoundariesTest {
             )
         }
     }
+
+    /**
+     * A result the user is waiting for has to reach them.
+     *
+     * "Export the list" wrote a CSV, set a done-or-failed message, and that
+     * was the end of it: nothing in the app read the property, so the button
+     * did its work in silence either way. Someone who picked a folder the
+     * write could not reach was left believing they had the list of the
+     * photographs they were about to remove.
+     */
+    @Test
+    fun `every message a view model sets is read by a screen`() {
+        val screens = File("src/main/kotlin/app/cloudsaver/ui")
+            .walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && !it.name.endsWith("ViewModel.kt") }
+            .joinToString("\n") { withoutComments(it.readText()) }
+        val unread = mutableListOf<String>()
+        for (file in File("src/main/kotlin/app/cloudsaver/ui")
+            .walkTopDown()
+            .filter { it.isFile && it.name.endsWith("ViewModel.kt") }) {
+            val declared = Regex("""val\s+(\w*[Mm]essage)\s*=\s*MutableStateFlow""")
+                .findAll(withoutComments(file.readText()))
+                .map { it.groupValues[1] }
+            for (name in declared) {
+                if (!screens.contains(".$name")) unread += "${file.name}: $name"
+            }
+        }
+        assertTrue(
+            "these are set for the user and never shown to them, so the action " +
+                "that set one succeeds and fails in exactly the same silence: $unread",
+            unread.isEmpty()
+        )
+    }
 }

@@ -764,19 +764,38 @@ interface ItemDao {
      * Free up screen, so "you could free 12 GB" led to a list that offered
      * four. A number this app prints is a number it can deliver, so the two
      * queries now ask the same questions.
+     *
+     * Three of those questions were still missing, and each of them can only
+     * make the answer smaller: an original whose copy has no ledger entry has
+     * no proof it ever went out, one added in the last thirty days has not
+     * waited, and one under the size floor is never offered at all. Without
+     * them the tab could wear a mark for a screen with nothing on it.
+     *
+     * `ReclaimRules.refuse` is still the authority - it also asks the cloud
+     * app is installed, which SQL cannot, so the caller answers that before
+     * asking at all. What this cannot ask is whether a photograph is a
+     * favourite: that lives in MediaStore, not here.
      */
     @Query(
         "SELECT COALESCE(SUM(sizeBytes), 0) FROM items " +
             "WHERE originalMissing = 0 AND contentUri IS NOT NULL " +
             "AND outputSha256 IS NOT NULL " +
-            "AND state IN ('RELEASED', 'GONE', 'DONE') AND (" +
-            "evidence IN ('CONFIRMED_EXACT', 'CONFIRMED') " +
-            "OR (evidence = 'CONFIRMED_PACED' AND releasedAt IS NOT NULL " +
-            "AND releasedAt <= :settledBefore) " +
-            "OR (:includeVerified AND evidence = 'VERIFIED' AND releasedAt IS NOT NULL " +
-            "AND releasedAt <= :settledBefore))"
+            "AND state IN ('RELEASED', 'GONE', 'DONE') " +
+            "AND sizeBytes >= :minSizeBytes " +
+            "AND dateAdded <= :addedBeforeSeconds " +
+            "AND outputSha256 IN (SELECT outputSha256 FROM ledger) " +
+            // The confirmation has to have aged, whichever grade it is. The
+            // fallback is the row itself: no date means nothing has settled.
+            "AND COALESCE(confirmedAt, releasedAt, :settledBefore + 1) <= :settledBefore " +
+            "AND (evidence IN ('CONFIRMED_EXACT', 'CONFIRMED', 'CONFIRMED_PACED') " +
+            "OR (:includeVerified AND evidence = 'VERIFIED'))"
     )
-    fun reclaimableBytesFlow(settledBefore: Long, includeVerified: Boolean): Flow<Long>
+    fun reclaimableBytesFlow(
+        settledBefore: Long,
+        addedBeforeSeconds: Long,
+        minSizeBytes: Long,
+        includeVerified: Boolean
+    ): Flow<Long>
 
     @Query(
         "SELECT sizeBytes, outputBytes, durationMs FROM items " +

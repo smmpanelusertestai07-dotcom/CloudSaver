@@ -66,6 +66,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -387,12 +389,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     @OptIn(ExperimentalCoroutinesApi::class)
     val reclaimableBytes: StateFlow<Long> = options
         .flatMapLatest { o ->
-            db.items().reclaimableBytesFlow(
-                settledBefore = System.currentTimeMillis() -
-                    EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L,
-                includeVerified = o.freeUpAllowVerified30
-            )
+            // The one refusal SQL cannot make. With no cloud app installed,
+            // or one the app has flagged, nothing at all is offered - so a
+            // mark on the tab would send someone to an empty screen.
+            if (o.cloudProblem.isNotEmpty() || !CloudApps.isAppInstalled(ctx, o.cloudSingle)) {
+                flowOf(0L)
+            } else {
+                val now = System.currentTimeMillis()
+                db.items().reclaimableBytesFlow(
+                    settledBefore = now - EvidenceRules.RECLAIM_MIN_DAYS * 86_400_000L,
+                    addedBeforeSeconds =
+                        (now - ReclaimRules.MIN_CONFIRM_AGE_DAYS * 86_400_000L) / 1000L,
+                    minSizeBytes = ReclaimRules.MIN_SIZE_BYTES,
+                    includeVerified = o.freeUpAllowVerified30
+                )
+            }
         }
+        // Asking the package manager is a call to another process, and this
+        // flow is collected wherever the tab bar is. It does not belong on
+        // the frame thread.
+        .flowOn(Dispatchers.IO)
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
 
     // ---- files list ---------------------------------------------------------

@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **512 unit tests** on the JVM, covering the pure rules and auditing the
+- **513 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **109 instrumented tests across 16 classes**, run on real emulators against a
+- **110 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -313,6 +313,16 @@ source for this release, including the rows that were already marked Done.
   now ask whether access is *full*, `AccessNotice` chooses wording for the case
   at hand, and regaining access from either state refreshes at once rather than
   waiting for the next scheduled run.
+
+- **Whether a mark on a tab is a promise.** The Storage tab wears a dot when
+  there are originals worth freeing, and the sum behind it asked three fewer
+  questions than the Free-up screen does: it never checked the copy had a
+  ledger entry proving it went out, never made an original wait its thirty
+  days from the day it arrived, and never applied the size floor - and no SQL
+  can ask whether the cloud app is installed, which refuses everything on its
+  own. The sum now asks all it can and the caller answers the last one, so the
+  dot leads to a screen with something on it. An instrumented test seeds one
+  original that qualifies and one for each refusal, against a real database.
 
 **Not done, and why**
 

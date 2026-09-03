@@ -5,6 +5,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.db.LedgerRow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -220,4 +221,67 @@ class ScopeQueriesTest {
         assertEquals("too_small", rows.getValue("tiny.jpg").skipReason)
         assertEquals("SKIP", rows.getValue("gone.jpg").state)
     }
+
+    /**
+     * The mark on the Storage tab must never promise more than the Free-up
+     * screen will offer. It is one SQL sum standing in for a rule written in
+     * Kotlin, so every refusal that rule makes and this sum can also make is
+     * checked here against a real database.
+     */
+    @Test
+    fun theReclaimableSumRefusesWhatTheScreenRefuses() = runBlocking {
+        val now = 1_000L * 86_400_000L
+        val settledBefore = now - 30L * 86_400_000L
+        val addedBefore = (now - 30L * 86_400_000L) / 1000L
+        val floor = 2L * 1024 * 1024
+
+        fun reclaimable(name: String, sha: String) = photo(name, "Camera", now).copy(
+            fingerprint = "fp-$name",
+            sizeBytes = 10L * 1024 * 1024,
+            state = "RELEASED",
+            evidence = "CONFIRMED_EXACT",
+            contentUri = "content://media/external/images/media/1",
+            outputSha256 = sha,
+            outputBytes = 1_000L,
+            originalMissing = false,
+            confirmedAt = settledBefore - 1,
+            releasedAt = settledBefore - 1,
+            dateAdded = addedBefore - 1
+        )
+
+        // Eligible in every way, and its copy is in the ledger.
+        db.items().insert(reclaimable("good.jpg", "sha-good"))
+        db.ledger().insert(ledgerRow("sha-good", "fp-good.jpg"))
+        // Everything below fails exactly one of the rule's questions.
+        db.items().insert(reclaimable("noledger.jpg", "sha-noledger"))
+        db.items().insert(reclaimable("small.jpg", "sha-small").copy(sizeBytes = floor - 1))
+        db.ledger().insert(ledgerRow("sha-small", "fp-small.jpg"))
+        db.items().insert(reclaimable("justadded.jpg", "sha-added").copy(dateAdded = addedBefore + 1))
+        db.ledger().insert(ledgerRow("sha-added", "fp-justadded.jpg"))
+        db.items().insert(
+            reclaimable("justconfirmed.jpg", "sha-conf")
+                .copy(confirmedAt = settledBefore + 1, releasedAt = settledBefore + 1)
+        )
+        db.ledger().insert(ledgerRow("sha-conf", "fp-justconfirmed.jpg"))
+
+        val sum = db.items().reclaimableBytesFlow(
+            settledBefore = settledBefore,
+            addedBeforeSeconds = addedBefore,
+            minSizeBytes = floor,
+            includeVerified = false
+        ).first()
+        assertEquals(
+            "only the original the screen would actually offer may be counted",
+            10L * 1024 * 1024, sum
+        )
+    }
+
+    private fun ledgerRow(sha: String, fingerprint: String) = LedgerRow(
+        outputSha256 = sha,
+        fingerprint = fingerprint,
+        displayName = fingerprint,
+        outputBytes = 1_000L,
+        evidence = "CONFIRMED_EXACT",
+        confirmedAt = 1L
+    )
 }
