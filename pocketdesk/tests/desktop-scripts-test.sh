@@ -439,4 +439,61 @@ grep -q 'trap .spinner_stop. EXIT' "$opener" || fail "the busy indicator must go
 awk '/if has_window; then/,/fi/' "$opener" | grep -q 'spinner_stop' \
   || fail "the busy indicator must close as soon as the app has a window"
 
+# ---- Installing an app you downloaded yourself -------------------------------------------
+# The Android moment: a file from a website, a screen that says what it is and what it needs,
+# a hard stop when it cannot work here, and "Install anyway" when only trust is at stake.
+installer="$PROJECT_DIR/app/assets/pocketdesk-install.sh"
+[ -f "$installer" ] || fail "the app installer is missing"
+grep -q 'Install anyway' "$installer" || fail "a risk the owner can judge must offer Install anyway"
+grep -q 'Cannot ask you first' "$installer" || fail "nothing may be installed without asking first"
+grep -q 'MimeType=application/vnd.debian.binary-package' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \
+  || fail "a downloaded package must open the installer"
+grep -q 'application/vnd.debian.binary-package=pocketdesk-install.desktop' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \
+  || fail "the file-type table must send .deb files to the installer"
+grep -q 'Install a downloaded app' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \
+  || fail "the menu must offer to install a downloaded app"
+
+if command -v dpkg-deb >/dev/null 2>&1; then
+  PKG="$WORK/pkgsrc"
+  rm -rf "$PKG"; mkdir -p "$PKG/DEBIAN" "$PKG/usr/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$PKG/usr/bin/demoapp"; chmod 755 "$PKG/usr/bin/demoapp"
+  write_control() {   # write_control <package> <arch> <installed-size KB>
+    printf 'Package: %s\nVersion: 1.2.3\nArchitecture: %s\nMaintainer: Demo <d@example.com>\nInstalled-Size: %s\nDescription: A demo app\n' \
+      "$1" "$2" "$3" > "$PKG/DEBIAN/control"
+  }
+  report() { POCKETDESK_SIMULATE=0 bash "$installer" --report "$1" 2>&1; }
+
+  write_control demoapp arm64 2048
+  dpkg-deb --build -Znone "$PKG" "$WORK/demo_arm64.deb" >/dev/null 2>&1
+  out=$(report "$WORK/demo_arm64.deb")
+  echo "$out" | grep -q '^verdict=warn' || fail "an ARM64 package must be installable with a warning: $out"
+  echo "$out" | grep -q 'not signed' || fail "the owner must be told a downloaded package is unsigned"
+
+  write_control demoapp amd64 2048
+  dpkg-deb --build -Znone "$PKG" "$WORK/demo_amd64.deb" >/dev/null 2>&1
+  out=$(report "$WORK/demo_amd64.deb")
+  echo "$out" | grep -q '^verdict=blocked' || fail "an Intel/AMD package must be blocked: $out"
+  echo "$out" | grep -qi 'ARM64 processor' || fail "the reason must name the processor"
+
+  # A package larger than the phone's free space is blocked, with both numbers side by side.
+  write_control demoapp arm64 419430400
+  dpkg-deb --build -Znone "$PKG" "$WORK/demo_huge.deb" >/dev/null 2>&1
+  out=$(report "$WORK/demo_huge.deb")
+  echo "$out" | grep -q '^verdict=blocked' || fail "a package larger than the free space must be blocked: $out"
+
+  # One of the four AI apps, downloaded by hand: allowed, but told where the signed copy is.
+  write_control chatgpt arm64 2048
+  dpkg-deb --build -Znone "$PKG" "$WORK/chatgpt.deb" >/dev/null 2>&1
+  out=$(report "$WORK/chatgpt.deb" || true)
+  echo "$out" | grep -q 'Apps tab' \
+    || fail "a hand-downloaded copy of a published app must point at the Apps tab: $out"
+
+  printf 'not a package' > "$WORK/notes.txt"
+  out=$(report "$WORK/notes.txt" || true)
+  echo "$out" | grep -qi 'not a linux app package' || fail "a non-package must be refused plainly: $out"
+  printf 'x' > "$WORK/thing.AppImage"
+  out=$(report "$WORK/thing.AppImage" || true)
+  echo "$out" | grep -qi 'AppImage' || fail "an AppImage must be explained, not silently refused: $out"
+fi
+
 echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound)"

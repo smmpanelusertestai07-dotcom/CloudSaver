@@ -156,6 +156,7 @@ EOF
   echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
   echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
   echo '  <separator label="Desktop"/>'
+  echo '  <item label="Install a downloaded app"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
   echo '  <item label="Refresh app list"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
@@ -211,6 +212,13 @@ EOF
   done
   [ -n "$match" ] && add_favourite "$match"
 done
+
+# The installer that a downloaded app package opens into. Two jobs: it is the handler for
+# .deb files (Chrome's Open, and a double tap in the file manager), and it is a launcher of its
+# own so an app can be installed without finding the file first.
+printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install a Linux app package (.deb) you downloaded\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-linux\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
+  > "$LOCAL_APPS/pocketdesk-install.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-install.desktop"
 
 # The phone's own files, as a folder on the desktop and a button on the panel. Empty but for a
 # note until the owner turns Phone files on in PocketDesk's Settings; then Download, DCIM and
@@ -282,6 +290,11 @@ browser_handler=$BROWSER_ENTRY
     printf 'x-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
       "$browser_handler" "$browser_handler" "$browser_handler"
   fi
+  # A downloaded app package opens PocketDesk's installer, the way tapping an APK opens
+  # Android's. Without this line the file does nothing at all when it is tapped.
+  printf 'application/vnd.debian.binary-package=pocketdesk-install.desktop\n'
+  printf 'application/x-deb=pocketdesk-install.desktop\n'
+  printf 'application/x-debian-package=pocketdesk-install.desktop\n'
   for desktop in "$APPLICATIONS_DIR"/*.desktop; do
     [ -f "$desktop" ] || continue
     mime=$(field "$desktop" MimeType)

@@ -1,3 +1,40 @@
+# PocketDesk 10.0.35 — install an app you downloaded, the way a phone does it
+
+- **An installer for apps you download yourself.** Downloading a .deb in Chrome inside the
+  desktop and tapping it used to do nothing at all; the advice was a terminal command. Now it
+  opens PocketDesk's own installer — the screen Android shows for an APK, which a Linux desktop
+  has never had. It names the app, its version and its publisher, and shows its size against
+  the space this phone has free at that moment.
+- **Four checks before anything is installed**, each with a plain reason:
+  processor (a build for Intel and AMD is blocked — a phone needs the ARM64 one), space
+  (blocked when it needs more than the phone has, both numbers shown), what it needs (the
+  install is simulated first, so missing software is named instead of leaving a half-installed
+  app), and where it came from (a downloaded file carries no signature of its own, and if the
+  app is one of the four in the Apps tab it points at the signed copy there).
+- **Install anyway, or blocked with the reason.** A risk you can judge ends in *Install anyway*,
+  exactly as Android does for an app from outside the Play Store. Something that cannot work
+  here is blocked, never half-done. AppImage files are refused with the reason (they need FUSE,
+  which a phone container cannot provide).
+- **It is the handler for .deb files**, so Chrome's Open and a tap in the file manager both
+  reach it, and the Apps menu gained *Install a downloaded app* for picking a file directly.
+- **Every number about your phone is now read from your phone.** The install dialog says "On
+  this phone: 74.0 GB free — enough (it needs 4.0 GB)", or, when it is not, what to free. The
+  app's own size is the same on every phone; whether it fits is not, and the app no longer
+  pretends otherwise.
+- **What protects what, stated exactly.** Google Play Protect scans PocketDesk itself on the
+  phone, at install and in the background — but it cannot look inside the Linux computer,
+  because Android keeps every app's private files private (the same rule that stops any other
+  app reading yours). So the checking inside is PocketDesk's: publisher-signed repositories for
+  the Apps tab, the installer's safety check for anything you download, Chrome's Safe Browsing
+  at its Enhanced level for the web, and Ubuntu's security updates with the basics update.
+- New answer: *Can I install an app I downloaded myself?* — the whole flow, the four checks,
+  and which numbers are per-phone.
+- Tests: the installer is exercised against real packages built during the run — an ARM64
+  package installs with a warning, an amd64 one is blocked naming the processor, one larger
+  than the free space is blocked, a hand-downloaded copy of a published app points at the Apps
+  tab, and a non-package and an AppImage are refused with their own reasons.
+- Version 10.0.35 (code 135).
+
 # PocketDesk 10.0.30 — a set-up that continues, and protection that is on by default
 
 - **Set-up continues where it stopped.** It is now a chain of steps that each record when they

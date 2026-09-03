@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketDesk-v10.0.30-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketDesk-v10.0.35-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -34,6 +34,7 @@
 - Desktop, sound, **Google Chrome** (computer ka ek hi browser) aur **developer tools** (gcc/make, Python 3, Node.js, Git, SSH, jq, htop, vim)
   sab setup me hi install ho jaate hain — Apps tab me sirf 4 AI apps hain.
 - Purane computer ko update karna ho: Settings → Storage → **Update the computer's basics**.
+- **Khud ka downloaded app install karna:** desktop me Chrome se app ka Linux ARM64 `.deb` download karo → file kholo (Chrome ke download bar se ya Downloads folder se). PocketDesk ka installer khulta hai: app ka naam, version, publisher, size aur *is phone* me kitni jagah bachi hai. Processor, space, dependencies aur "unsigned file" ka check karke **Install anyway** milta hai; jo yahan chal hi nahi sakta (amd64 build, AppImage) wo reason ke saath block hota hai. Menu me **Install a downloaded app** bhi hai.
 - **App hatana:** installed AI app ki row tap karo → **Uninstall**. Space wapas, baaki sab (computer, files, dusre apps) waisa hi. Computer basics uninstall nahi hote — wo computer ka hissa hai.
 
 ### Sign in kaise hoga

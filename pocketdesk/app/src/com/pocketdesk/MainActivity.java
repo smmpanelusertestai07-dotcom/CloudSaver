@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.30";
+    static final String VERSION = "10.0.35";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -833,22 +833,34 @@ public final class MainActivity extends Activity {
     /** What the browser can install and what it cannot, in one card, short. */
     private View buildOtherAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.sectionTitle(this, "Anything else, from the browser", R.drawable.ic_network, dark));
+        card.addView(Ui.sectionTitle(this, "Install an app you downloaded", R.drawable.ic_download, dark));
         card.addView(Ui.text(this,
-                "You can install any other Linux app yourself from the browser inside the desktop; "
-                        + "the four above are simply the best of their kind today.", 12.5f, muted),
+                "The four above are simply the best of their kind today — you can install any "
+                        + "other Linux app yourself, and it works the way installing an APK from a "
+                        + "website works on the phone.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
-        card.addView(Ui.text(this, "Works", 13.5f, text), Ui.matchWrap(this, 12));
+        card.addView(Ui.text(this, "How", 13.5f, text), Ui.matchWrap(this, 12));
         card.addView(Ui.text(this,
-                "Ubuntu packages for ARM64: .deb files marked arm64 or aarch64. AppImages for "
-                        + "aarch64. Programs in .tar.gz form built for arm64. Open the download in "
-                        + "Files and install a .deb with a right-click, or in Terminal with "
-                        + "sudo apt install ./name.deb", 12.5f, muted), Ui.matchWrap(this, 4));
+                "In the desktop, download the app's Linux build for ARM64 (a .deb file) in Chrome "
+                        + "and open it. PocketDesk's installer names the app and its publisher, "
+                        + "shows its size against this phone's free space, checks the processor and "
+                        + "the software it needs, and says plainly that a downloaded file is not "
+                        + "signed. Then Install anyway, or a blocked install with the reason. The "
+                        + "Apps menu on the desktop also has “Install a downloaded app”.",
+                12.5f, muted), Ui.matchWrap(this, 4));
+        card.addView(Ui.text(this, "Works", 13.5f, text), Ui.matchWrap(this, 10));
+        card.addView(Ui.text(this,
+                "Ubuntu and Debian packages for ARM64: .deb files marked arm64 or aarch64. "
+                        + "Programs in .tar.gz form built for arm64.", 12.5f, muted),
+                Ui.matchWrap(this, 4));
         card.addView(Ui.text(this, "Does not work", 13.5f, text), Ui.matchWrap(this, 10));
         card.addView(Ui.text(this,
-                "Anything built only for amd64 or x86 PCs. Snap and Flatpak packages. Windows "
-                        + ".exe files. Android .apk files. Apps that need a real graphics card or "
-                        + "hardware virtualisation.", 12.5f, muted), Ui.matchWrap(this, 4));
+                "Anything built only for amd64 or x86 PCs. AppImage files — they mount themselves "
+                        + "with FUSE, which a phone container cannot provide. Snap and Flatpak "
+                        + "packages. Windows .exe files. Android .apk files. Apps that need a real "
+                        + "graphics card or hardware virtualisation. The installer refuses each of "
+                        + "these with the reason rather than failing silently.",
+                12.5f, muted), Ui.matchWrap(this, 4));
         return card;
     }
 
@@ -897,6 +909,9 @@ public final class MainActivity extends Activity {
                         + "verified by their signature. Nothing is downloaded from a browser.");
         message.append("\n\nDownload size: ").append(app.approximateSize)
                 .append(present ? "" : "\nAlways installs the newest build.");
+        // Measured on this phone, now: the app's own size is the same everywhere, the space
+        // and memory it has to fit into are not.
+        message.append("\n\n").append(fitOnThisPhone(app));
         if (app.caution != null) message.append("\n\n").append(app.caution);
         if (LinuxService.isDesktopRunning()) {
             message.append("\n\nThe desktop keeps running while this installs; the app appears on it when done.");
@@ -914,6 +929,36 @@ public final class MainActivity extends Activity {
             builder.setNeutralButton("Uninstall", (dialog, which) -> confirmRemoveApp(app));
         }
         builder.show();
+    }
+
+    /**
+     * What this app needs, against what this phone has, read now rather than quoted.
+     *
+     * The download size and what an app needs are the same on every phone; the free space,
+     * the memory and therefore the answer are not. This is the line that turns a requirement
+     * into "yes, on this phone".
+     */
+    private String fitOnThisPhone(LinuxApps.App app) {
+        DeviceProbe probe = lastProbe;
+        try {
+            if (probe == null) probe = DeviceProbe.read(this);
+        } catch (Throwable error) {
+            return "Needs " + DeviceProbe.formatBytes(app.needsBytes) + " of free space.";
+        }
+        String needs = DeviceProbe.formatBytes(app.needsBytes);
+        String free = DeviceProbe.formatBytes(probe.freeStorage);
+        StringBuilder line = new StringBuilder("On this phone: ").append(free).append(" free");
+        if (probe.freeStorage >= app.needsBytes) {
+            line.append(" — enough (it needs ").append(needs).append(").");
+        } else {
+            line.append(" — not enough: it needs ").append(needs)
+                    .append(". Free some space first, or uninstall an app you are not using.");
+        }
+        if (LinuxApps.isAiApp(app) && probe.totalRam > 0) {
+            line.append("\nMemory: ").append(DeviceProbe.formatBytes(probe.totalRam))
+                    .append(" — enough for one AI app at a time.");
+        }
+        return line.toString();
     }
 
     private void confirmRemoveApp(LinuxApps.App app) {
@@ -1224,8 +1269,17 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_shield, "Is there virus and malware protection?",
                 "Yes, and it is on by default — the same layered kind a phone uses, not a "
                         + "scanner you have to run.\n\n"
-                        + "• Google Play Protect already checks PocketDesk itself on your phone, as "
-                        + "it does every Android app.\n"
+                        + "• Google Play Protect scans PocketDesk itself on your phone: when it is "
+                        + "installed and again in the background, as it does with every Android app, "
+                        + "sideloaded ones included. What it cannot do is look inside the Linux "
+                        + "computer — Android keeps every app's private files private, and that same "
+                        + "rule is what stops any other app on this phone reading yours. So the "
+                        + "checking inside the computer is PocketDesk's job, and these are it.\n"
+                        + "• Anything you download and install yourself goes through PocketDesk's own "
+                        + "installer first: the processor it was built for, the space it needs against "
+                        + "the space this phone has, the software it depends on, and a plain warning "
+                        + "that a downloaded file is not signed. See “Can I install an app I "
+                        + "downloaded myself?” below.\n"
                         + "• Google Chrome inside the computer runs Safe Browsing at its Enhanced "
                         + "level: dangerous sites and downloads are blocked before they open, and a "
                         + "malware or phishing warning cannot be clicked through. That check is done "
@@ -1241,6 +1295,34 @@ public final class MainActivity extends Activity {
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
                         + "need, to look for Windows viruses that cannot run here anyway.", false);
+
+        addAnswer(card, R.drawable.ic_download, "Can I install an app I downloaded myself?",
+                "Yes — it works like tapping an APK from a website on Android, and PocketDesk "
+                        + "adds the installer screen that a Linux desktop normally does not have.\n\n"
+                        + "In the desktop: download the app's Linux build for ARM64 (a .deb file) in "
+                        + "Chrome, then open it — Chrome's download bar, or the Downloads folder. The "
+                        + "installer appears with the app's name, version, publisher, its size, and "
+                        + "how much space this phone has free right now. The Apps menu also has "
+                        + "“Install a downloaded app” if you would rather pick the file.\n\n"
+                        + "Four checks run before anything is installed:\n"
+                        + "• Processor — a build for Intel and AMD computers (amd64) is blocked; a "
+                        + "phone needs the ARM64 build.\n"
+                        + "• Space — blocked if it needs more than this phone has free, with both "
+                        + "numbers shown.\n"
+                        + "• What it needs — the install is tried out first, so software it is "
+                        + "missing is named instead of leaving a half-installed app behind.\n"
+                        + "• Where it came from — a downloaded file carries no signature of its own, "
+                        + "and it says so; if the app is one of the four in the Apps tab, it points "
+                        + "you at the signed copy there.\n\n"
+                        + "A check you can judge for yourself ends in Install anyway, exactly as "
+                        + "Android does for an app from outside the Play Store. A check that cannot "
+                        + "work here — the wrong processor, no space — blocks the install and says "
+                        + "why. AppImage files are refused with a reason: they need FUSE, which a "
+                        + "phone container cannot provide, so look for the .deb build.\n\n"
+                        + "One thing to know: an app's own size is the same on every phone, but "
+                        + "whether it fits is not. Every number about your phone — free space, "
+                        + "memory, temperature, what fits — is read from this phone, at that moment.",
+                false);
 
         addAnswer(card, R.drawable.ic_shield, "What can this app touch on my phone?",
                 "Its permissions are: internet, network status, notifications, running in "

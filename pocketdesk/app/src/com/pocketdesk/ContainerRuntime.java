@@ -353,6 +353,8 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
+        // What opens when a downloaded .deb is tapped: PocketDesk's own app installer.
+        copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
@@ -389,6 +391,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
+        copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
