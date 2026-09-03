@@ -157,9 +157,99 @@ fi
 if ! grep -q 'PocketDesk prompt' "$HOME/.bashrc" 2>/dev/null; then
   cat >> "$HOME/.bashrc" <<'PROMPT'
 
-# PocketDesk prompt: the computer's name, then the folder you are in.
-PS1='\[\e[38;5;75m\]PocketDesk\[\e[0m\]:\[\e[38;5;150m\]\w\[\e[0m\]\$ '
+# PocketDesk prompt: the computer's name, the folder, the git branch, and a red mark when the
+# last command failed -- the one thing a phone screen cannot afford to make you scroll for.
+pd_branch() {
+  git rev-parse --abbrev-ref HEAD 2>/dev/null | sed 's/^/ /'
+}
+pd_mark() { [ $? -eq 0 ] && printf '\001\033[38;5;75m\002$' || printf '\001\033[38;5;203m\002$'; }
+PS1='\[\e[38;5;75m\]PocketDesk\[\e[0m\]:\[\e[38;5;150m\]\w\[\e[38;5;180m\]$(pd_branch)\[\e[0m\]`pd_mark`\[\e[0m\] '
+
+# A phone keyboard is slow, so history is long, shared between terminals and never truncated by
+# whichever window closes last.
+HISTSIZE=50000
+HISTFILESIZE=200000
+HISTCONTROL=ignoreboth:erasedups
+shopt -s histappend checkwinsize cdspell autocd 2>/dev/null
+PROMPT_COMMAND="history -a; history -n; ${PROMPT_COMMAND:-}"
+
+# Colour and less typing: both matter more on a 6-inch screen than on a desk.
+alias ls='ls --color=auto --group-directories-first'
+alias ll='ls -alh --color=auto --group-directories-first'
+alias la='ls -A --color=auto'
+alias grep='grep --color=auto'
+alias fgrep='fgrep --color=auto'
+alias egrep='egrep --color=auto'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias df='df -h'
+alias du='du -h'
+alias free='free -h'
+alias please='sudo'
+alias ports='ss -tulpn 2>/dev/null || netstat -tulpn'
+export EDITOR=nano
+export VISUAL=nano
+export PAGER=less
+export LESS='-R -F -X -i -M'
+export GREP_COLORS='mt=01;38;5;180'
+# Ubuntu ships C.UTF-8 with no locale generation, so this works on a fresh container and keeps
+# emoji, Devanagari and every other script rendering in the terminal.
+export LANG=${LANG:-C.UTF-8}
+export LC_ALL=${LC_ALL:-C.UTF-8}
+# Node and npm put their caches inside the container rather than anywhere the phone syncs.
+export npm_config_cache="$HOME/.cache/npm"
+# Agents run here: give them a terminal that says it can do colour, and a wide-enough default.
+export TERM=${TERM:-xterm-256color}
+export COLORTERM=truecolor
+
+# Bash completion, when the package is installed.
+if ! shopt -oq posix; then
+  [ -f /usr/share/bash-completion/bash_completion ] && . /usr/share/bash-completion/bash_completion
+fi
+
+# The one command worth knowing about on a phone: work that must survive the screen going off.
+alias keep='tmux new -A -s pocketdesk'
 PROMPT
+fi
+
+# The desktop's own eyes and hands, offered to whichever AI agent is installed.
+#
+# Codex's Appshots are macOS only and Claude Desktop's Computer Use is not in the Linux beta, so
+# PocketDesk provides both itself over MCP: a picture of the window in front plus the words on
+# it, and click, type, key and scroll. Registered here rather than at install time because the
+# agents are installed after the computer is, and this runs at every start.
+if [ -x /usr/local/bin/pocketdesk-mcp ]; then
+  # Codex reads one TOML file. Appended once, behind its own marker.
+  mkdir -p "$HOME/.codex"
+  if ! grep -q 'mcp_servers.pocketdesk' "$HOME/.codex/config.toml" 2>/dev/null; then
+    cat >> "$HOME/.codex/config.toml" <<'CODEXMCP'
+
+# PocketDesk's desktop tools: appshot, click, type_text, press_key, scroll.
+[mcp_servers.pocketdesk]
+command = "python3"
+args = ["/usr/local/bin/pocketdesk-mcp"]
+startup_timeout_sec = 30
+CODEXMCP
+  fi
+  # Claude Code is registered through its own command, so the file format stays its business.
+  if command -v claude >/dev/null 2>&1 \
+     && ! grep -q '"pocketdesk"' "$HOME/.claude.json" 2>/dev/null; then
+    claude mcp add --scope user pocketdesk -- python3 /usr/local/bin/pocketdesk-mcp \
+      >/tmp/pocketdesk-mcp-register.log 2>&1 || true
+  fi
+  # Any project folder gets it too, for agents that read a project-scoped file.
+  if [ ! -f "$HOME/Projects/.mcp.json" ]; then
+    cat > "$HOME/Projects/.mcp.json" <<'PROJECTMCP'
+{
+  "mcpServers": {
+    "pocketdesk": {
+      "command": "python3",
+      "args": ["/usr/local/bin/pocketdesk-mcp"]
+    }
+  }
+}
+PROJECTMCP
+  fi
 fi
 
 /usr/local/bin/pocketdesk-menu || true

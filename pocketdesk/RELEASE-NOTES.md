@@ -1,3 +1,66 @@
+# PocketDesk 10.0.55 — the set-up finally finishes, and the AI can see the screen
+
+**The set-up that kept stopping**
+
+The cause was PocketDesk's own heat guard. A Helio G85 running `dpkg` under PRoot for half an
+hour gets hot — hotter still on the charger the app tells you to use — and at 49 °C the guard
+**ended** the set-up: it destroyed the container mid-`apt`, which is why it stopped part way,
+stopped again near the end on Continue, and why the same packages were paid for twice on mobile
+data.
+
+Heat now **pauses** the work instead of ending it. The container is frozen with SIGSTOP, so it
+uses no processor at all and the phone cools fast; every byte already downloaded is kept, and
+`dpkg` is never cut off between unpacking and configuring. Below 43 °C it carries on by itself.
+The screen says so, with the temperature. Only a phone that stays too hot for 45 minutes is
+stopped for real — and even then nothing is downloaded twice.
+
+**Less mobile data, every time**
+
+- **The package lists are kept.** They were deleted at the end of every set-up and every app
+  install, which meant apt had to fetch about 40 MB of index again before the *next* install
+  could start. The 550 MB of `.deb` files is still reclaimed; only the index stays.
+- **A list less than 12 hours old is reused**, so installing two apps in an evening downloads
+  the index once, not twice.
+- **No more pipelining.** Carrier proxies mangle pipelined requests, apt reads that as a
+  corrupted package and downloads it again. One request at a time is slightly slower per package
+  and much cheaper overall.
+- **IPv4 is forced for apt too.** A mobile network that advertises IPv6 it cannot route made
+  every fetch wait for the v6 attempt to time out.
+- **The screen now counts the megabytes** as they arrive: "Downloading packages · 180 MB
+  downloaded · 12 min so far". You can see it moving, and see it stop.
+
+**PocketDesk's own Appshot and Computer Use**
+
+Codex's Appshots are macOS-only; Claude Desktop's Computer Use is not in the Linux beta. Neither
+is coming to a phone, so PocketDesk provides the capability itself, over MCP, from parts the
+desktop already had:
+
+- **appshot** — a picture of the window in front *and* the words on it (read on the phone by
+  Tesseract, which set-up now installs)
+- **click, type_text, press_key, scroll** — working that window, with clicks outside it refused
+  unless the agent says it means it
+- **list_windows, focus_window, run_in_terminal**
+
+It registers itself for **Codex** (`~/.codex/config.toml`) and **Claude Code** (`claude mcp add`)
+at every desktop start, and any other agent can use it with `python3 /usr/local/bin/pocketdesk-mcp`.
+Tools → **AI computer use** on the desktop shows whether each one is wired up. Nothing is watched
+in the background and no picture leaves the phone to be read.
+
+**A terminal worth working in**
+
+Git branch and a red mark for a failed command in the prompt; 50,000 lines of history shared
+between windows; colour `ls` and `grep`; `ll`, `la`, `..`, `df`, `free`; `EDITOR`, `PAGER`,
+`LESS`, a UTF-8 locale so Devanagari and emoji render; `TERM=xterm-256color` and `COLORTERM` so
+an agent's output is in colour; bash completion; and `keep`, which is `tmux` — a command an agent
+starts survives the session being stopped.
+
+**Also**
+
+- New tools installed with the basics: `tmux`, `tesseract-ocr`.
+- New test suite **McpServer**: the desktop's MCP server is exercised the way an agent meets it —
+  a real `initialize` and `tools/list` over stdin — so a broken one fails the build.
+- Open-source notices now cover the MCP server, Tesseract and tmux.
+
 # PocketDesk 10.0.50 — the desktop release: a finished computer, in its own words
 
 Nine researchers looked at how real Linux desktops are built and what this one was missing, and

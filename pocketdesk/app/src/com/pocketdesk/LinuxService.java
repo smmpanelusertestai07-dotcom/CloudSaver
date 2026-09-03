@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.os.SystemClock;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -50,6 +51,10 @@ public final class LinuxService extends Service {
     /** Battery temperatures in °C: warn first, only stop when it is genuinely unsafe. */
     private static final float WARN_TEMPERATURE_C = 45f;
     private static final float STOP_TEMPERATURE_C = 49f;
+    /** Warm enough to start again: a hysteresis gap, or the work stops and starts every minute. */
+    private static final float RESUME_TEMPERATURE_C = 43f;
+    /** How long a set-up may sit paused for heat before it is stopped for real. */
+    private static final long MAX_PAUSE_MS = 45L * 60L * 1000L;
     private static final String CHANNEL_ID = "pocketdesk_linux";
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
     /** An app install running beside an open desktop, which BUSY (the desktop's own task) is not. */
@@ -77,6 +82,9 @@ public final class LinuxService extends Service {
     private volatile boolean stoppedForReason;
     /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
     private volatile boolean stopRequested;
+    /** Set while a set-up or install is frozen because the phone is too hot. */
+    private volatile boolean pausedForHeat;
+    private volatile long pausedSince;
 
     /**
      * The safety stops that apply to a background job -- set-up or an app install -- which is
@@ -109,9 +117,76 @@ public final class LinuxService extends Service {
                 cancelJobs();
                 return;
             }
-            handler.postDelayed(this, 30_000L);
+            // Heat is the one condition that comes back on its own, so it PAUSES the work
+            // instead of ending it. Killing a set-up mid-apt is what cost the owner their
+            // download twice over and left dpkg half-configured; a paused container uses no
+            // processor at all, so the phone cools while every byte already fetched is kept.
+            boolean hot = prefs.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true)
+                    && (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
+                        || (probe.batteryTempC > 0 && probe.batteryTempC >= STOP_TEMPERATURE_C));
+            if (hot && !pausedForHeat) {
+                if (freezeJobs(true)) {
+                    pausedForHeat = true;
+                    pausedSince = SystemClock.elapsedRealtime();
+                    status("Paused while the phone cools",
+                            "It is at " + Math.round(probe.batteryTempC) + " °C. Nothing is lost and "
+                                    + "nothing will be downloaded twice — this carries on by itself "
+                                    + "below " + Math.round(RESUME_TEMPERATURE_C) + " °C. Taking the "
+                                    + "phone off the charger cools it fastest.",
+                            -1, true, false);
+                }
+            } else if (pausedForHeat) {
+                boolean cool = probe.batteryTempC > 0 && probe.batteryTempC <= RESUME_TEMPERATURE_C
+                        && probe.thermalStatus < PowerManager.THERMAL_STATUS_SEVERE;
+                if (cool || probe.batteryTempC <= 0) {
+                    freezeJobs(false);
+                    pausedForHeat = false;
+                    status("Carrying on", "The phone has cooled down.", -1, true, false);
+                } else if (SystemClock.elapsedRealtime() - pausedSince > MAX_PAUSE_MS) {
+                    // Three quarters of an hour without cooling is a phone that cannot finish
+                    // this today. Let it go rather than hold a wake lock for ever.
+                    freezeJobs(false);
+                    pausedForHeat = false;
+                    String tooLong = "The phone stayed too hot to carry on. Nothing is lost: tap "
+                            + "Continue set-up when it is cool, and it goes on from the step it "
+                            + "reached without downloading anything twice.";
+                    status("Stopped to protect the phone", tooLong, -1, false, true);
+                    recordStop(tooLong);
+                    cancelJobs();
+                    return;
+                }
+            }
+            handler.postDelayed(this, pausedForHeat ? 20_000L : 30_000L);
         }
     };
+
+    /**
+     * Freezes or thaws the container of a running set-up or install.
+     *
+     * SIGSTOP on PRoot is enough to still everything inside it: PRoot traces every syscall its
+     * children make, so once the tracer stops, each child blocks at its next one and the whole
+     * container uses no processor. SIGCONT starts it again exactly where it was -- no partial
+     * download is thrown away, and dpkg is never interrupted between unpacking and configuring.
+     *
+     * @return true when at least one process was signalled, so the caller knows the pause is real
+     */
+    private boolean freezeJobs(boolean freeze) {
+        int signal = freeze ? 19 : 18;                       // SIGSTOP / SIGCONT
+        boolean any = false;
+        Process[] processes = {activeProcess, installProcess};
+        for (Process process : processes) {
+            if (process == null) continue;
+            try {
+                if (!process.isAlive()) continue;
+                android.os.Process.sendSignal((int) process.pid(), signal);
+                any = true;
+            } catch (Throwable ignored) {
+                // An OEM that will not let us signal our own child keeps the old behaviour:
+                // the caller sees false and the guard stops the job instead of pausing it.
+            }
+        }
+        return any;
+    }
 
     /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
     private void cancelJobs() {
@@ -492,12 +567,20 @@ public final class LinuxService extends Service {
         status("Setting up the desktop",
                 "The longest part · usually 15\u201340 min in total", -1, true, false);
         final long[] lastLine = {0L};
+        // Counting the bytes apt announces is what turns "usually 15-40 min" into something the
+        // owner can act on: they can see the download moving, and see it stop moving.
+        final long[] fetched = {0L};
         int code = runTracked(ContainerRuntime.bootstrapCommand(), line -> {
+            long size = fetchedBytes(line);
+            if (size > 0) fetched[0] += size;
             long now = System.currentTimeMillis();
             if (now - lastLine[0] < 900L) return;
             lastLine[0] = now;
+            String downloaded = fetched[0] > 0
+                    ? " · " + DeviceProbe.formatBytes(fetched[0]) + " downloaded" : "";
             status("Setting up the desktop",
-                    phaseFor(line) + " · " + elapsedText(toolsStartedAt) + " · usually 15\u201340 min in total",
+                    phaseFor(line) + downloaded + " · " + elapsedText(toolsStartedAt)
+                            + " · usually 15\u201340 min in total",
                     -1, true, false);
         });
         if (code != 0) {
@@ -1103,6 +1186,39 @@ public final class LinuxService extends Service {
         if (value.contains("% ") || value.startsWith("#")) return "Downloading";
         if (value.startsWith("Get:") || value.startsWith("Hit:")) return "Downloading packages";
         return "Working";
+    }
+
+    /**
+     * The size apt prints at the end of a "Get:" line, in bytes, or -1 when there is none.
+     *
+     * apt writes it as "[2,927 kB]" or "[1,024 B]" or "[15.8 MB]", with the owner's own
+     * thousands separator. Adding these up is the only way the phone can say how much of the
+     * download has actually arrived: apt itself reports a total only when it has finished.
+     */
+    static long fetchedBytes(String line) {
+        if (line == null || !line.startsWith("Get:")) return -1L;
+        int open = line.lastIndexOf('[');
+        int close = line.lastIndexOf(']');
+        if (open < 0 || close < open) return -1L;
+        String inside = line.substring(open + 1, close).replace(",", "").trim();
+        int space = inside.lastIndexOf(' ');
+        if (space <= 0) return -1L;
+        String number = inside.substring(0, space).trim();
+        String unit = inside.substring(space + 1).trim();
+        double value;
+        try {
+            value = Double.parseDouble(number);
+        } catch (NumberFormatException notANumber) {
+            return -1L;
+        }
+        if (value < 0) return -1L;
+        switch (unit) {
+            case "B": return (long) value;
+            case "kB": return (long) (value * 1000L);
+            case "MB": return (long) (value * 1000_000L);
+            case "GB": return (long) (value * 1000_000_000L);
+            default: return -1L;
+        }
     }
 
     private static String elapsedText(long startedAt) {

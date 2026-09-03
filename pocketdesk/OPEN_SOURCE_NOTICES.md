@@ -54,6 +54,21 @@ radial glow on `#0b1320` with Tux and the words "PocketDesk" and "Ubuntu 24.04 L
 Built by `tools/make_wallpaper.py` in this repository, from Tux (Larry Ewing and The GIMP,
 acknowledged above) and the DejaVu fonts. No Canonical artwork is used.
 
+## PocketDesk's own desktop tools
+
+`app/assets/pocketdesk-mcp.py` is PocketDesk's own work, written for this app and covered by this
+project's licence. It is a Model Context Protocol server with no third-party dependencies: MCP is
+JSON-RPC 2.0 over standard input and output, implemented here in the Python 3 standard library so
+that nothing has to be downloaded for it. It drives programs that are already part of the
+computer — `xdotool` (pointer and keyboard), `wmctrl` (the window list), `scrot` (the picture)
+and, when installed, `tesseract-ocr` (the words) — each under its own licence, from Ubuntu's own
+archive. The Model Context Protocol specification is published by Anthropic under the MIT
+licence; this is an independent implementation of it and carries no Anthropic code.
+
+The same is true of `pocketdesk-agent.sh`, `pocketdesk-storage.sh`, `pocketdesk-shot.sh`,
+`pocketdesk-windows.sh`, `pocketdesk-menu.sh`, `pocketdesk-desktop.sh`, `pocketdesk-open.sh` and
+`pocketdesk-install.sh`: all PocketDesk's own.
+
 ## Marks this app does and does not show
 
 PocketDesk shows its own mark (`icon_in_app.png`, which is also the launcher icon, the opening
@@ -82,7 +97,9 @@ The desktop: `tigervnc-standalone-server`, `openbox`, `tint2`, `pcmanfm`, `libfm
 `fonts-noto-core`, `locales`, `bash-completion`, `lsb-release`, `tzdata`.
 
 The everyday programs: `mousepad`, `xarchiver`, `7zip`, `gpicview`, `galculator`, `lxtask`,
-`lxappearance`, `pavucontrol`, `scrot`, `xclip`, `xsel`, `ripgrep`, `man-db`, `manpages`.
+`lxappearance`, `pavucontrol`, `scrot`, `xclip`, `xsel`, `ripgrep`, `man-db`, `manpages`,
+`tmux`, `tesseract-ocr` and `tesseract-ocr-eng` (Apache-2.0; used only by PocketDesk's own
+appshot, to read the words on a window on the phone itself).
 
 The developer tools: `build-essential`, `pkg-config`, `python3`, `python3-pip`, `python3-venv`,
 `python3-dev`, `nodejs`, `npm`, `git`, `git-lfs`, `openssh-client`, `jq`, `htop`, `tree`, `vim`,

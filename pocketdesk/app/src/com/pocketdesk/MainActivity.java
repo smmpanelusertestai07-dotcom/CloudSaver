@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.50";
+    static final String VERSION = "10.0.55";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -1535,6 +1535,25 @@ public final class MainActivity extends Activity {
                         + "open. The Home tab says when and why the computer last stopped, and an app "
                         + "that the phone closed says so on the desktop. Window → Force close ends "
                         + "an app that has stopped answering.", false);
+
+        addAnswer(card, R.drawable.ic_desktop, "Can the AI see the screen and use the computer?",
+                "Yes — PocketDesk provides that itself, because the publishers' own versions of it "
+                        + "do not exist on Linux. Codex's Appshots are a macOS feature, and Claude "
+                        + "Desktop's Computer Use is not in its Linux beta. Neither is coming to a "
+                        + "phone, so this app builds the capability from the desktop's own parts.\n\n"
+                        + "Any AI agent on this computer that speaks MCP — Claude Code and Codex "
+                        + "both do, and it is switched on for them automatically — gets these:\n"
+                        + "• appshot — a picture of the window in front, and the words on it\n"
+                        + "• click, type, press a key, scroll — working that window\n"
+                        + "• the list of open windows, and bringing one to the front\n"
+                        + "• running a command in a terminal window you can watch\n\n"
+                        + "Ask Claude Code to \"take an appshot and tell me what is on screen\", or "
+                        + "to fix what it sees. Tools → AI computer use, inside the desktop, shows "
+                        + "whether each agent is wired up.\n\n"
+                        + "It only ever looks when an agent asks. Nothing is watched in the "
+                        + "background, nothing is recorded, and every picture is taken and read on "
+                        + "this phone — the reading is done by Tesseract, installed inside the "
+                        + "computer, so the screen never goes anywhere for that.", false);
 
         addAnswer(card, R.drawable.ic_apps, "How many apps can I have open at once?",
                 "One AI app at a time, and about three light windows beside it — Files, the "
