@@ -100,7 +100,11 @@ jobs:
           # app whose .so files are not 16 KiB aligned in a compatibility
           # mode with a launch-time system dialog rather than refusing to
           # install it - so a wrong answer here ships and looks fine in CI.
-          "$BT/zipalign" -f -P 16 "$UNSIGNED" CloudSaver-aligned.apk
+          # -P <kb> is a flag; <align> stays a positional argument, so the 4
+          # is still required. Writing "-P 16 in out" prints the usage text
+          # and produces no file - caught by signing a real APK by hand
+          # rather than by reading the flag name and assuming.
+          "$BT/zipalign" -f -P 16 4 "$UNSIGNED" CloudSaver-aligned.apk
           "$BT/apksigner" sign \
             --ks release.jks \
             --ks-pass env:KEYSTORE_PASSWORD \
