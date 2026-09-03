@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.45";
+    static final String VERSION = "10.0.50";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -211,7 +211,8 @@ public final class MainActivity extends Activity {
         TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
         powered.setGravity(Gravity.CENTER);
         second.addView(powered, Ui.matchWrap(this, 18));
-        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · official AI desktop apps · everything on this phone",
+        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · the official AI desktop apps · "
+                + "the whole computer is on this phone",
                 14f, Color.rgb(190, 204, 240));
         system.setGravity(Gravity.CENTER);
         system.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), 0);
@@ -614,8 +615,13 @@ public final class MainActivity extends Activity {
         attentionSpace = attentionRow(R.drawable.ic_storage, "Free space is low",
                 "", v -> toggleDetail(attentionSpace, spaceDetail, "The Linux computer needs "
                         + DeviceProbe.formatBytes(DeviceCheck.MIN_FREE_BYTES) + " free to set up and about "
-                        + DeviceProbe.formatBytes(DeviceCheck.LOW_FREE_BYTES) + " free to run comfortably. "
-                        + "Delete or move some files on the phone; nothing inside the Linux computer needs to go."), false);
+                        + DeviceProbe.formatBytes(DeviceCheck.LOW_FREE_BYTES) + " free to run "
+                        + "comfortably. PocketDesk has no quota of its own — the computer grows into "
+                        + "the phone's free space, so this is the phone filling up, not the computer. "
+                        + "Around 500 MB free Android clears app caches by itself; your files and the "
+                        + "computer are not touched, but a new download or install would stop part-way. "
+                        + "Delete or move some files on the phone, or remove an AI app you are not "
+                        + "using from the Apps tab; nothing inside the Linux computer has to go."), false);
         spaceDetail = detailUnder(attentionCard);
         attentionHeat = attentionRow(R.drawable.ic_temperature, "The phone is hot",
                 "Let it cool before opening the desktop; it stops itself above 49 °C to protect the battery.",
@@ -729,12 +735,15 @@ public final class MainActivity extends Activity {
         LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.sectionTitle(this, "Linux only, on purpose", R.drawable.ic_desktop, dark));
         card.addView(Ui.text(this,
-                "The computer inside this app is Ubuntu 24.04 LTS, running on the phone's own "
-                        + "processor. It is built for one purpose: an agentic development "
-                        + "environment, where the official AI desktop apps, Google Chrome and the "
-                        + "developer tools they use run locally. It is not a feature-rich "
-                        + "general-purpose desktop, and it does not try to be. Tap a line for the "
-                        + "facts behind it.", 12.5f, muted),
+                "The computer inside this app is Ubuntu 24.04 LTS — Canonical's own ARM64 system "
+                        + "— running on the phone's own processor. Its desktop is built from small "
+                        + "standard parts (Openbox for the windows, tint2 for the bar, PCManFM for the "
+                        + "wallpaper and files), not from a large desktop system like GNOME or KDE, so "
+                        + "the memory goes to the apps. It is built for one job and complete for it: an "
+                        + "agentic development environment where the official AI desktop apps, Google "
+                        + "Chrome and the developer tools run locally. Basic on purpose — and because "
+                        + "it is a real Ubuntu, with apt and sudo, you can make it as advanced as you "
+                        + "like. Tap a line for the facts behind it.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
         addAnswer(card, R.drawable.ic_desktop, "Why Ubuntu — the system AI agents work in",
                 "Ubuntu is the Linux that development runs on, and the one AI agents are given "
@@ -755,6 +764,23 @@ public final class MainActivity extends Activity {
                         + "So this is not a cut-down phone Linux — it is the same Ubuntu 24.04 LTS "
                         + "that developers and AI agents work on every day, running on your phone's "
                         + "own processor.", true);
+
+        addAnswer(card, R.drawable.ic_info, "Is this a complete operating system?",
+                "Almost, and here is the honest line. Everything an operating system has above the "
+                        + "kernel is here, and it is Ubuntu's own: apt and dpkg, the C library, the "
+                        + "shell, the desktop, the fonts, the drivers Ubuntu ships in user space. The "
+                        + "kernel is the phone's — and the phone's kernel is Linux, which is why "
+                        + "Ubuntu's ARM64 programs run on it unchanged.\n\n"
+                        + "So \u201ca real Ubuntu 24.04 LTS system running on this phone\u201d is "
+                        + "true, and this app will not tell you otherwise: it is not a second "
+                        + "operating system on your phone, not dual boot, and not an emulator. None "
+                        + "of those is what this is, and on a phone each would be slower or "
+                        + "impossible.\n\n"
+                        + "What the phone's kernel does not hand over, this system does not have: no "
+                        + "control of the phone's hardware, no graphics chip, no kernel modules of its "
+                        + "own, no systemd. That is the whole of the difference — and none of it stops "
+                        + "apt, the desktop or the AI apps from working exactly as they do on a PC.",
+                false);
 
         addAnswer(card, R.drawable.ic_check, "Every AI desktop app here ships for Linux",
                 "OpenAI released the ChatGPT desktop app for Linux (with Codex) as a public preview "
@@ -1134,6 +1160,23 @@ public final class MainActivity extends Activity {
         LinearLayout storage = group(page, "Storage");
         linuxSize = Ui.text(this, "", 12.5f, muted);
         storage.addView(linuxSize, Ui.matchWrap(this, 0));
+        TextView storageExplain = Ui.text(this,
+                "PocketDesk has no size limit of its own. The computer grows into whatever this "
+                + "phone has free and gives the space straight back when you remove an app, and "
+                + "Android sets no quota for it — the free figure above is the whole ceiling, "
+                + "shared with your photos, your Android apps and everything else on the phone.\n\n"
+                + "Keep about 2 GB free. At around 500 MB Android says storage is running out and "
+                + "starts clearing app caches by itself; at zero, a download or an install inside "
+                + "Linux stops with \"no space left on device\" and says so — nothing you have "
+                + "already saved is lost, and the desktop keeps running. Inside the computer, the "
+                + "bar along the bottom shows the same free figure, and tapping it explains where "
+                + "that number comes from.\n\n"
+                + "What is installed is complete for running the AI desktop apps, and it is "
+                + "ordinary Ubuntu underneath: from the Terminal you can apt install any ARM64 "
+                + "Linux program, add a repository, or build from source. Anything you add comes "
+                + "out of the free space above — there is no other limit.",
+                12.5f, muted);
+        storage.addView(storageExplain, Ui.matchWrap(this, 8));
         // Only when there is something to install: this row stays hidden while the computer's
         // basics match this version of the app (see measureLinuxSize).
         basicsUpdateRow = new Ui.Row(this, R.drawable.ic_download, "Update the computer's basics",
@@ -1155,10 +1198,15 @@ public final class MainActivity extends Activity {
                 "The licences of everything bundled with this app, including PRoot (GPL-2.0)",
                 R.drawable.ic_chevron, dark, v -> showNotices()), Ui.matchWrap(this, 10));
 
-        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS. Tux, the Linux mascot, by Larry "
-                + "Ewing and The GIMP. Ubuntu is a trademark of Canonical Ltd. App names and logos "
-                + "are the property of their respective owners. The open-source notices ship inside "
-                + "this app — the row above opens them.",
+        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS, downloaded at set-up from "
+                + "Canonical's own ARM64 base image and updated from Ubuntu's own package servers. "
+                + "Ubuntu is a registered trademark of Canonical Ltd; PocketDesk is not affiliated "
+                + "with, endorsed by or sponsored by Canonical, and shows no Canonical logo. Linux "
+                + "is a registered trademark of Linus Torvalds. Tux, the Linux mascot, is by Larry "
+                + "Ewing and The GIMP. The desktop is Openbox, tint2, PCManFM, LXTerminal, dunst and "
+                + "TigerVNC, each under its own licence. App names and logos are the property of "
+                + "their respective owners. The open-source notices ship inside this app — the row "
+                + "above opens them.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -1231,14 +1279,44 @@ public final class MainActivity extends Activity {
                 Ui.matchWrap(this, 6));
 
         addAnswer(card, R.drawable.ic_desktop, "What exactly is this?",
-                "A real Ubuntu 24.04 LTS computer running inside this app, on your phone's own "
-                        + "processor — a container, not a cloud PC and not a virtual machine. It is "
-                        + "an agentic development environment: a desktop, Google Chrome, the "
-                        + "developer tools (Python, Node.js, Git and a C/C++ compiler), and the "
-                        + "four AI desktop apps, each the publisher's own official Linux build. It is "
-                        + "not a general-purpose desktop with every feature of a PC. The phone stays "
-                        + "a phone; the computer lives in this app's private storage and is removed "
-                        + "with it.", true);
+                "A real Ubuntu 24.04 LTS system, running on your phone's own processor, inside this "
+                        + "app.\n\n"
+                        + "It is Ubuntu itself: Canonical's own ARM64 base system, with every package "
+                        + "installed by apt from Ubuntu's own servers, exactly as on a PC. One part is "
+                        + "not Ubuntu's — the kernel. Android is already Linux, so this system uses the "
+                        + "phone's own Linux kernel, through PRoot: an ordinary program that gives "
+                        + "Ubuntu its own root folder and needs no root on the phone. That makes it a "
+                        + "container — not a second operating system, not an emulator, not dual "
+                        + "boot, and not a cloud PC. Android keeps running the phone throughout, and "
+                        + "nothing is emulated: these are ARM64 programs on an ARM64 processor.\n\n"
+                        + "What is here: apt and dpkg, the desktop, Google Chrome, the developer tools "
+                        + "(Python, Node.js, Git and a C/C++ compiler) and the four AI desktop apps, "
+                        + "each the publisher's own official Linux build.\n\n"
+                        + "What is not here: the phone's graphics chip (the processor does the "
+                        + "drawing), a sound card (sound is streamed to the phone's speaker instead), "
+                        + "systemd-style background services, and any power over Android itself. The "
+                        + "computer lives in this app's private storage and is removed with the app.",
+                true);
+
+        addAnswer(card, R.drawable.ic_desktop, "Is the desktop GNOME, KDE or Cinnamon?",
+                "None of them. This desktop is a small set of standard Ubuntu parts, each doing one "
+                        + "job, chosen so the phone's memory goes to the apps and not to the "
+                        + "desktop:\n"
+                        + "• Openbox draws the windows and their title bars, and holds the menu you get "
+                        + "by long-pressing the wallpaper.\n"
+                        + "• tint2 is the bar along the bottom: the Apps button, the open windows, this "
+                        + "phone's battery, temperature, free memory and free storage, the clock, and "
+                        + "the PocketDesk mark that shows the desktop.\n"
+                        + "• PCManFM paints the wallpaper and the desktop icons, and is the Files "
+                        + "window.\n"
+                        + "• LXTerminal is the terminal, dunst shows the messages, PulseAudio carries "
+                        + "the sound to your phone's speaker, and a TigerVNC display server is the "
+                        + "screen this app shows you.\n\n"
+                        + "GNOME, KDE, Xfce and Cinnamon are whole desktop systems that want a gigabyte "
+                        + "or more of memory and a graphics chip before an app has even opened; this "
+                        + "phone has neither to spare. Everything here is ordinary Ubuntu packages from "
+                        + "Ubuntu's own servers, so anything you install later behaves exactly as its "
+                        + "own documentation says.", false);
 
         addAnswer(card, R.drawable.ic_phone, "Is it all on my phone?",
                 "Yes. The entire Linux computer runs locally on this phone — no cloud, no "
@@ -1287,6 +1365,30 @@ public final class MainActivity extends Activity {
                         + "Permissions. Saving there puts the file on the phone itself.\n\n"
                         + "The Linux system itself lives in this app's private storage "
                         + "(/data/data/com.pocketdesk/files/ubuntu-rootfs), which no other app can open.",
+                false);
+
+        addAnswer(card, R.drawable.ic_desktop, "Is this a basic computer or a full one?",
+                "Basic on purpose, and complete for the job it is built for. Out of the box it runs "
+                        + "the four official AI desktop apps properly — the one thing it is meant to be "
+                        + "best at — and everything they need is already installed: the Ubuntu 24.04 "
+                        + "LTS desktop, Google Chrome, sound, a file manager, a terminal, on-screen "
+                        + "messages, your phone's own files, a text editor, an archive tool, a picture "
+                        + "viewer, a calculator, a task manager, screenshots, colour emoji and Indian "
+                        + "and other scripts, the manual pages, and the developer tools an AI coding "
+                        + "agent expects from its first minute — a C/C++ compiler, Python 3 with its "
+                        + "headers, Node.js and npm, Git, SSH, ripgrep, SQLite. There is nothing to add "
+                        + "before you start.\n\n"
+                        + "It is not a cut-down system, though. It is ordinary Ubuntu, so from the "
+                        + "Terminal you can take it as far as you like: sudo apt install any of the "
+                        + "tens of thousands of ARM64 programs Ubuntu publishes, add a publisher's own "
+                        + "repository, or build from source with the compiler that is already here. "
+                        + "Chinese, Japanese and Korean text, for example, is one line: sudo apt "
+                        + "install fonts-noto-cjk (about 93 MB).\n\n"
+                        + "Two honest limits, so nothing surprises you. A program must have an ARM64 "
+                        + "Linux build: software built only for Intel and AMD computers will not run "
+                        + "here, and the installer says so rather than leaving half of it behind. And "
+                        + "anything that needs a kernel of its own — Docker, virtual machines, snap — "
+                        + "cannot work inside a container on a phone. Everything else is fair game.",
                 false);
 
         addAnswer(card, R.drawable.ic_shield, "Is there virus and malware protection?",
@@ -1399,7 +1501,8 @@ public final class MainActivity extends Activity {
                         + "Apps. ChatGPT registers OpenAI's official update channel when it installs "
                         + "and Claude registers Anthropic's, so a tap pulls exactly what they "
                         + "published — login and settings kept. It is never forced, because a "
-                        + "700 MB download should not start on mobile data without you choosing it.",
+                        + "download of several hundred megabytes should not start on mobile data "
+                        + "without you choosing it.",
                 false);
 
         addAnswer(card, R.drawable.ic_wifi, "Does it work without internet?",
@@ -1432,6 +1535,23 @@ public final class MainActivity extends Activity {
                         + "open. The Home tab says when and why the computer last stopped, and an app "
                         + "that the phone closed says so on the desktop. Window → Force close ends "
                         + "an app that has stopped answering.", false);
+
+        addAnswer(card, R.drawable.ic_apps, "How many apps can I have open at once?",
+                "One AI app at a time, and about three light windows beside it — Files, the "
+                        + "Terminal and one browser page. Four windows in all. This phone has 4 GB of "
+                        + "memory: Android keeps roughly a third of it, the Linux desktop uses about "
+                        + "120 MB, and one AI app uses 0.9–1.3 GB — ChatGPT alone is about 1.3 GB — so "
+                        + "there is no room for a second one, and the phone would close one of them "
+                        + "without asking. Nothing is lost when it does: your conversations are in "
+                        + "your account, not in the window. PocketDesk closes the browser for you when "
+                        + "an AI app starts and memory is short, and says so.\n\n"
+                        + "Every open window gets a button on the bar at the bottom of the desktop — "
+                        + "about four of them fit across a portrait screen, more in landscape. Tap one "
+                        + "to bring it forward, hold it to minimise it, and tap the clock for the full "
+                        + "list, which has no limit. There is one desktop, not four: on a phone there "
+                        + "is no way to reach a second one, so nothing can go missing on it.\n\n"
+                        + "The bar itself can move: long-press the wallpaper and choose Move the bar to "
+                        + "the top. The desktop remembers it.", false);
 
         addAnswer(card, R.drawable.ic_lock, "Do I need an account, password or lock?",
                 "No account and no separate password — the Linux computer is yours, "
@@ -1494,8 +1614,11 @@ public final class MainActivity extends Activity {
                         + "only kind this app carries: there is no call, ring or alarm sound "
                         + "involved. The phone's volume keys set it while the desktop is open and "
                         + "show the level on screen — \u201cMedia volume · 60%\u201d — and Screen → "
-                        + "Media volume does the same from the menu. Sound INTO the computer (a "
-                        + "microphone) is not carried yet.", false);
+                        + "Media volume does the same from the menu.\n\nInside the computer, Tools "
+                        + "→ Volume and sound balances one app against another; the desktop's own "
+                        + "output is set to full at every start, so your phone's volume keys stay the "
+                        + "one control that matters. Sound INTO the computer (a microphone) is not "
+                        + "carried yet.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
                 "These are the permanent ones. This is an agentic development environment, "
@@ -1720,8 +1843,12 @@ public final class MainActivity extends Activity {
             networkTile.set(probe.network);
             batteryTile.set(probe.batteryPercent < 0 ? "—" : probe.batteryPercent + "%",
                     probe.batteryPercent >= 0 && probe.batteryPercent <= 15 ? Ui.WARNING : Ui.text(dark));
+            // An installed, healthy computer with 5 GB free is not a warning: the 6 GB line is
+            // what set-up needs, not what running needs.
+            long lowMark = ContainerRuntime.isInstalled(this)
+                    ? DeviceCheck.LOW_FREE_BYTES : DeviceCheck.MIN_FREE_BYTES;
             storageTile.set(DeviceProbe.formatBytes(probe.freeStorage),
-                    probe.freeStorage < DeviceCheck.MIN_FREE_BYTES ? Ui.WARNING : Ui.text(dark));
+                    probe.freeStorage < lowMark ? Ui.WARNING : Ui.text(dark));
             if (probe.batteryTempC > 0) {
                 heatTile.set(String.format(Locale.ROOT, "%.0f°C", probe.batteryTempC),
                         probe.batteryTempC >= 44f ? Ui.WARNING : Ui.text(dark));
@@ -1795,22 +1922,33 @@ public final class MainActivity extends Activity {
         }
         if (!installed) {
             linuxSize.setText("The Linux computer is not set up yet. Set-up downloads about 30 MB, "
-                    + "then about 700 MB of packages; the finished computer uses 3.5–4.5 GB.");
+                    + "then about 550 MB of packages; the finished computer uses 2–3 GB. "
+                    + "This phone has " + DeviceProbe.formatBytes(freeSpaceNow()) + " free.");
             return;
         }
         if (!ContainerRuntime.hasFreshSize()) {
             linuxSize.setText("Measuring the Linux computer's size…");
         }
         // Nothing here holds this screen: the walk is cached, single-flight, and drops its
-        // result if the view it was for is gone. Three concurrent walks over 4.5 GB used to
+        // result if the view it was for is gone. Three concurrent walks over the whole system used to
         // start every time the owner came back from the desktop.
         final TextView target = linuxSize;
         final boolean due = updateDue;
-        ContainerRuntime.measureSize(ContainerRuntime.rootfs(this), handler, null, bytes -> {
+        ContainerRuntime.measureSize(this, ContainerRuntime.rootfs(this), handler, null, bytes -> {
             if (!target.isAttachedToWindow()) return;
             target.setText("The Linux computer is using " + DeviceProbe.formatBytes(bytes)
-                    + " of this phone's storage." + (due ? "" : " Its basics are up to date."));
+                    + ". This phone has " + DeviceProbe.formatBytes(freeSpaceNow()) + " free."
+                    + (due ? "" : " Its basics are up to date."));
         });
+    }
+
+    /** The phone's free space, right now, in one syscall -- the same figure the home tile shows. */
+    private long freeSpaceNow() {
+        try {
+            return new android.os.StatFs(getFilesDir().getAbsolutePath()).getAvailableBytes();
+        } catch (RuntimeException error) {
+            return lastProbe == null ? -1L : lastProbe.freeStorage;
+        }
     }
 
     private boolean notificationsAllowed() {
@@ -1939,7 +2077,9 @@ public final class MainActivity extends Activity {
             statusBadge.setText("Ready");
             statusHeadline.setText("The Linux computer is set up");
             long openedAt = preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L);
-            String note = "Ubuntu 24.04 LTS is on this phone. Open the desktop and tap an app.";
+            String note = "Ubuntu 24.04 LTS is set up on this phone: a basic computer on purpose, "
+                    + "and complete for the one job it is built for — running the official AI "
+                    + "desktop apps. Open the desktop and tap an app.";
             if (openedAt > 0) note += " Last opened " + clock(openedAt) + ".";
             String story = stopStory();
             if (story != null) note += "\n\n" + story;
@@ -1961,7 +2101,7 @@ public final class MainActivity extends Activity {
                     : "Set up the Linux computer once");
             statusNote.setText("One set-up does it all: Ubuntu 24.04 LTS, the desktop, sound, Google "
                     + "Chrome and the developer tools (Python, Node.js, Git and a C/C++ compiler). "
-                    + "About 30 MB now, then about 700 MB of packages; 3.5–4.5 GB when finished. "
+                    + "About 30 MB now, then about 550 MB of packages; 2–3 GB when finished. "
                     + "Then add the AI desktop apps from the Apps tab."
                     + (started ? "\n\nA set-up was started and did not finish. Nothing is lost and "
                             + "nothing is downloaded twice: this carries on from the step it reached."
@@ -2023,10 +2163,12 @@ public final class MainActivity extends Activity {
                 .setTitle("Set up the Linux computer?")
                 .setMessage("Ubuntu 24.04 LTS will be downloaded and set up inside this app, with "
                         + "the desktop, Google Chrome and the developer tools.\n\n"
-                        + "• Download: about 30 MB, then about 700 MB of packages\n"
-                        + "• Final size: 3.5–4.5 GB\n"
+                        + "• Download: about 30 MB, then about 550 MB of packages\n"
+                        + "• Final size: 2–3 GB, and 6 GB free to start\n"
+                        + "• After that it grows into whatever the phone has free — no fixed limit, "
+                        + "and every AI app you add takes 2–4 GB more\n"
                         + "• Wi-Fi or mobile data both work\n"
-                        + "• Takes 15–40 minutes depending on your connection\n"
+                        + "• Takes 15–45 minutes depending on your connection\n"
                         + "• Safe to stop: tapping Continue set-up later carries on from the step "
                         + "it reached, without downloading anything twice"
                         + warning)

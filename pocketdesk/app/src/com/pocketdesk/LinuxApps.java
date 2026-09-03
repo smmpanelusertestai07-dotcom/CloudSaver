@@ -102,12 +102,17 @@ final class LinuxApps {
             + "> \"$PD_ROOT/etc/apt/apt.conf.d/99pocketdesk\"; "
             // Phone storage is slow, and dpkg's fsync after every file was most of the wait.
             // force-unsafe-io is what container images use for the same reason; an install cut
-            // off mid-way is repaired by pd_repair rather than by the filesystem. Manuals and
-            // documentation are not unpacked either -- there is no man page reader here -- but
-            // every package's copyright file is kept, because the licences must stay.
-            + "printf 'force-unsafe-io\npath-exclude=/usr/share/man/*\npath-exclude=/usr/share/doc/*\n"
-            + "path-include=/usr/share/doc/*/copyright\npath-exclude=/usr/share/groff/*\n"
-            + "path-exclude=/usr/share/info/*\n' > \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketdesk\"; "
+            // off mid-way is repaired by pd_repair rather than by the filesystem. Changelogs and
+            // info files are still not unpacked, and every package's copyright file is kept,
+            // because the licences must stay. Man pages and groff's macros ARE unpacked: they
+            // cost about 3 MB across the whole computer, and man-db is installed.
+            + "printf 'force-unsafe-io\npath-exclude=/usr/share/doc/*\n"
+            + "path-include=/usr/share/doc/*/copyright\npath-exclude=/usr/share/info/*\n' "
+            + "> \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketdesk\"; "
+            // man-db's postinst normally builds its index with mandb, and under PRoot's traced
+            // syscalls that is minutes. man <page> works without an index; only apropos and
+            // man -k need one, and "sudo mandb" builds it whenever the owner wants it.
+            + "echo 'man-db man-db/auto-update boolean false' | debconf-set-selections 2>/dev/null || true; "
             + "pd_repair() { dpkg --configure -a >/dev/null 2>&1 || true; "
             + "apt-get -y -f install >/dev/null 2>&1 || true; }; "
             + "pd_update() { pd_u=1; while [ $pd_u -le 3 ]; do "
@@ -212,14 +217,24 @@ final class LinuxApps {
     /** The desktop and its tools: what set-up installs, and what the Settings row refreshes. */
     static final String DESKTOP_PACKAGES =
             "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
+            + "gnome-themes-extra-data fonts-noto-color-emoji fonts-noto-core "
+            + "locales bash-completion lsb-release "
             + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
             + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils librsvg2-common "
-            + "lxterminal pcmanfm tint2 pulseaudio pulseaudio-utils "
+            + "lxterminal pcmanfm libfm-modules tint2 pulseaudio pulseaudio-utils "
             + "less file unzip zip wget";
+    /**
+     * The everyday programs a computer is expected to have. Their step is allowed to fail: not
+     * one of them is the desktop, and none of them runs in the background -- each costs memory
+     * only while its own window is open. About 52 MB installed, all told.
+     */
+    static final String TOOL_PACKAGES =
+            "mousepad xarchiver 7zip gpicview galculator lxtask lxappearance pavucontrol "
+            + "scrot xclip xsel ripgrep man-db manpages";
     /** The developer tools an agentic development environment needs from the first minute. */
     static final String DEVELOPER_PACKAGES =
-            "build-essential pkg-config python3 python3-pip python3-venv nodejs npm "
-            + "git git-lfs openssh-client jq htop tree vim nano rsync";
+            "build-essential pkg-config python3 python3-pip python3-venv python3-dev nodejs npm "
+            + "git git-lfs openssh-client jq htop tree vim nano rsync sqlite3";
 
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
@@ -229,14 +244,15 @@ final class LinuxApps {
             new App("basics", "Computer basics",
                     "The desktop, sound, Google Chrome and the developer tools, plus Ubuntu's "
                             + "security updates.",
-                    R.drawable.ic_desktop, 0, "about 700 MB", 3 * GB,
-                    "10–30 min", null,
+                    R.drawable.ic_desktop, 0, "about 550 MB", 3 * GB,
+                    "15–45 min", null,
                     "/usr/bin/gcc",
                     // Run again from the top: the finished-step marks are cleared first, so every
                     // part is re-checked and anything the publisher has updated is fetched.
                     "rm -f \"$PD_STATE/stage/\"* 2>/dev/null || true; "
                             + "pd_update || exit 11; "
                             + "pd_step core " + DESKTOP_PACKAGES + " || exit 12; "
+                            + "pd_step tools " + TOOL_PACKAGES + " || true; "
                             + "pd_step devtools " + DEVELOPER_PACKAGES + " || exit 14; "
                             // Ubuntu's own security updates for everything already installed.
                             + "apt-get -y upgrade || pd_repair; "

@@ -5,7 +5,7 @@
 # than the exception -- which makes "show me what is open" and "close everything" ordinary
 # things to want, not power-user extras.
 #
-# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|count|menu|refresh
+# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|fit|minimise|panel-edge|count|menu|refresh
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
@@ -51,14 +51,10 @@ case "${1:-list}" in
     command -v xrefresh >/dev/null 2>&1 && xrefresh 2>/dev/null
     ;;
   minimise-all)
-    # Openbox's own show-desktop toggle does this without touching each window.
+    # Openbox's own show-desktop toggle, and nothing else: the same command brings everything
+    # back. Iconifying each window on top of it was the bug -- the second tap then un-hid a
+    # desktop whose windows were all still minimised, and nothing came back.
     command -v xdotool >/dev/null 2>&1 && xdotool key --clearmodifiers super+d 2>/dev/null
-    while read -r id _; do
-      [ -n "$id" ] || continue
-      xdotool windowminimize "$id" 2>/dev/null || true
-    done <<EOF
-$(open_windows)
-EOF
     ;;
   close-all)
     count=$(open_windows | wc -l)
@@ -79,13 +75,44 @@ $(open_windows)
 EOF
     # A hung app ignores the polite request. Whatever is still open after a moment is ended
     # outright, so "Close all" always ends with nothing open.
-    sleep 3
+    sleep 6
     while read -r id _; do
       [ -n "$id" ] || continue
       command -v xdotool >/dev/null 2>&1 && xdotool windowkill "$id" 2>/dev/null || true
     done <<EOF
 $(open_windows)
 EOF
+    ;;
+  fit)
+    # A window dragged half off the screen, or un-maximised by a double tap, put back: top-left
+    # corner, then maximised again. A root menu has no window to act on, so Openbox's own
+    # Maximize cannot be reached from it; this works from the menu, the keys and the phone alike.
+    command -v xdotool >/dev/null 2>&1 || exit 0
+    id=$(xdotool getactivewindow 2>/dev/null) || exit 0
+    [ -n "$id" ] || exit 0
+    hex=$(printf '0x%08x' "$id" 2>/dev/null) || exit 0
+    is_own_furniture "$hex" && exit 0
+    wmctrl -i -r "$hex" -b remove,maximized_vert,maximized_horz 2>/dev/null || true
+    xdotool windowmove "$id" 0 0 2>/dev/null || true
+    wmctrl -i -r "$hex" -b add,maximized_vert,maximized_horz 2>/dev/null || true
+    ;;
+  minimise)
+    command -v xdotool >/dev/null 2>&1 || exit 0
+    id=$(xdotool getactivewindow 2>/dev/null) || exit 0
+    [ -n "$id" ] || exit 0
+    hex=$(printf '0x%08x' "$id" 2>/dev/null) || exit 0
+    is_own_furniture "$hex" && exit 0
+    xdotool windowminimize "$id" 2>/dev/null || true
+    ;;
+  panel-edge)
+    # Which edge the bar lives on. pocketdesk-menu writes the new panel_position and tint2
+    # rebuilds its panel from the file on SIGUSR1, so the bar moves without a restart.
+    edge=${2:-bottom}
+    case "$edge" in top|bottom) ;; *) edge=bottom ;; esac
+    mkdir -p "$HOME/.config/pocketdesk"
+    printf '%s\n' "$edge" > "$HOME/.config/pocketdesk/panel-edge"
+    /usr/local/bin/pocketdesk-menu >/dev/null 2>&1 || true
+    pkill -USR1 -x tint2 2>/dev/null || true
     ;;
   kill-active)
     # Force close: the window in front is ended without asking it, for an app that has stopped
@@ -103,11 +130,17 @@ EOF
     ;;
   list|*)
     rows=""
+    active=$(command -v xdotool >/dev/null 2>&1 \
+      && printf '0x%08x' "$(xdotool getactivewindow 2>/dev/null || echo 0)" 2>/dev/null || true)
     while IFS= read -r line; do
       [ -n "$line" ] || continue
       id=$(printf '%s' "$line" | awk '{print $1}')
-      title=$(printf '%s' "$line" | cut -d' ' -f5-)
+      # wmctrl prints "<id> <desktop> <host> <title>" padded with spaces, and cut counts each of
+      # those spaces as another empty field -- which took the first word off a title whenever the
+      # host name filled its column. Drop exactly three fields instead.
+      title=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*([^[:space:]]+[[:space:]]+){3}//')
       [ -n "$title" ] || title=$id
+      [ -n "$active" ] && [ "$id" = "$active" ] && title="* $title"
       rows="$rows$id
 $title
 "
@@ -121,7 +154,8 @@ EOF
     fi
     command -v zenity >/dev/null 2>&1 || exit 0
     chosen=$(printf '%s' "$rows" | zenity --list --title="Open windows" \
-      --text="Pick one to bring to the front" --column="id" --column="Window" \
+      --text="* is the app you are looking at. Tap another to switch to it." \
+      --column="id" --column="Window" \
       --hide-column=1 --print-column=1 --width=460 --height=360) || exit 0
     [ -n "$chosen" ] && wmctrl -i -a "$chosen" 2>/dev/null || true
     ;;

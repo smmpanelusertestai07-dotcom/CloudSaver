@@ -7,6 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.res.ColorStateList;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -46,9 +47,9 @@ import java.io.IOException;
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
     private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
             MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
-            MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
+            MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
-            MENU_RELOAD = 18;
+            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20;
 
     private SharedPreferences preferences;
     private FrameLayout outer;
@@ -193,7 +194,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         barRow.addView(keysButton, barItem(82));
 
         Button window = toolButton("Window ▾", R.drawable.ic_desktop);
-        window.setContentDescription("Window: close, force close, switch, paste");
+        window.setContentDescription("Window: switch apps, minimise, close, force close, paste");
         window.setOnClickListener(v -> showWindowMenu(v));
         barRow.addView(window, barItem(112));
 
@@ -340,6 +341,12 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 .setIcon(R.drawable.ic_settings);
         items.add(0, MENU_VOLUME_UP, 6, "Media volume up").setIcon(R.drawable.ic_volume);
         items.add(0, MENU_VOLUME_DOWN, 7, "Media volume down").setIcon(R.drawable.ic_volume);
+        AudioManager sound = (AudioManager) getSystemService(AUDIO_SERVICE);
+        boolean silent = sound != null
+                && (sound.isStreamMute(AudioManager.STREAM_MUSIC)
+                    || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
+        items.add(0, MENU_VOLUME_MUTE, 8, silent ? "Media volume: unmute" : "Media volume: mute")
+                .setIcon(R.drawable.ic_volume);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -361,6 +368,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     return true;
                 case MENU_VOLUME_UP: adjustVolume(AudioManager.ADJUST_RAISE); return true;
                 case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
+                case MENU_VOLUME_MUTE: adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE); return true;
                 default: return false;
             }
         });
@@ -371,15 +379,19 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.setForceShowIcon(true);
         Menu items = menu.getMenu();
-        items.add(0, MENU_CLOSE, 0, "Close this window").setIcon(R.drawable.ic_close);
-        items.add(0, MENU_FORCE_CLOSE, 1, "Force close (stuck app)").setIcon(R.drawable.ic_stop);
-        items.add(0, MENU_SWITCH, 2, "Switch to the next window").setIcon(R.drawable.ic_switch);
-        items.add(0, MENU_ALL_WINDOWS, 3, "All open windows").setIcon(R.drawable.ic_apps);
-        items.add(0, MENU_MINIMISE_ALL, 4, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
-        items.add(0, MENU_PASTE, 5, "Paste from the phone").setIcon(R.drawable.ic_download);
-        items.add(0, MENU_APPS, 6, "Apps menu: every installed app").setIcon(R.drawable.ic_apps);
-        items.add(0, MENU_PHONE_FILES, 7, "Phone files").setIcon(R.drawable.ic_phone);
-        items.add(0, MENU_RELOAD, 8, "Reload the screen").setIcon(R.drawable.ic_rotate);
+        // Switching comes first: on a phone that is the common act, and the one item that
+        // throws work away should not be the one under the thumb.
+        items.add(0, MENU_SWITCH, 0, "Switch to the next app").setIcon(R.drawable.ic_switch);
+        items.add(0, MENU_ALL_WINDOWS, 1, "All open apps").setIcon(R.drawable.ic_apps);
+        items.add(0, MENU_APPS, 2, "Apps menu: every installed app").setIcon(R.drawable.ic_apps);
+        items.add(0, MENU_FIT_WINDOW, 3, "Fit this window to the screen").setIcon(R.drawable.ic_fit);
+        items.add(0, MENU_MINIMISE, 4, "Minimise this window").setIcon(R.drawable.ic_desktop);
+        items.add(0, MENU_MINIMISE_ALL, 5, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
+        items.add(0, MENU_CLOSE, 6, "Close this window").setIcon(R.drawable.ic_close);
+        items.add(0, MENU_FORCE_CLOSE, 7, "Force close (stuck app)").setIcon(R.drawable.ic_stop);
+        items.add(0, MENU_PASTE, 8, "Paste from the phone").setIcon(R.drawable.ic_download);
+        items.add(0, MENU_PHONE_FILES, 9, "Phone files").setIcon(R.drawable.ic_phone);
+        items.add(0, MENU_RELOAD, 10, "Reload the screen").setIcon(R.drawable.ic_rotate);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 // Alt+F4 and Alt+Tab are Openbox's own bindings; Super+F4, Super+Tab, Super+D,
@@ -393,6 +405,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 case MENU_APPS: chord(0xffeb, 'a'); return true;
                 case MENU_PHONE_FILES: chord(0xffeb, 'p'); return true;
                 case MENU_RELOAD: chord(0xffeb, 'r'); return true;
+                case MENU_FIT_WINDOW: chord(0xffeb, 'f'); return true;
+                case MENU_MINIMISE: chord(0xffeb, 'm'); return true;
                 default: return false;
             }
         });
@@ -409,11 +423,21 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private void adjustVolume(int direction) {
         AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (manager == null) return;
-        manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+        try {
+            manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+        } catch (RuntimeException blocked) {
+            // Do Not Disturb can put media under the notification policy, and Android then
+            // refuses the change to an app without policy access instead of ignoring it.
+            Toast.makeText(this, "Do Not Disturb is holding this phone's media volume. Turn it "
+                    + "off in the phone's settings to change the desktop's sound.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         showVolume(manager);
     }
 
     private TextView volumeChip;
+    private TextView volumeNote;
     private ProgressBar volumeBar;
     private LinearLayout volumePanel;
     private final Runnable hideVolume = () -> {
@@ -421,36 +445,51 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 .withEndAction(() -> { if (volumePanel != null) volumePanel.setVisibility(View.GONE); }).start();
     };
 
-    /** "Media volume 60%" with a bar, on the desktop, for a second and a half. */
+    /** "Media volume  ·  60 %", a bar and the step, on the desktop, for a second and a half. */
     private void showVolume(AudioManager manager) {
         int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-        int now = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int percent = Math.round(now * 100f / max);
+        int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        boolean silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
+        int percent = silent ? 0 : Math.round(step * 100f / max);
         if (volumePanel == null || outer == null) return;
-        volumeChip.setText(percent == 0 ? "Media volume · muted" : "Media volume · " + percent + "%");
+        volumeChip.setText(silent ? "Media volume  ·  silent"
+                : "Media volume  ·  " + percent + " %");
+        volumeNote.setText(silent
+                ? "Volume up to hear the desktop again"
+                : "Step " + step + " of " + max + " — the desktop plays as media audio");
         volumeBar.setProgress(percent);
         volumePanel.setVisibility(View.VISIBLE);
         volumePanel.animate().cancel();
         volumePanel.setAlpha(1f);
         volumePanel.removeCallbacks(hideVolume);
-        volumePanel.postDelayed(hideVolume, 1500L);
+        volumePanel.postDelayed(hideVolume, 1600L);
     }
 
     /** The indicator itself: built once, hidden until a volume key is pressed. */
     private View buildVolumePanel() {
         volumePanel = new LinearLayout(this);
         volumePanel.setOrientation(LinearLayout.VERTICAL);
-        volumePanel.setBackground(Ui.background(Color.argb(238, 15, 21, 44), 14, this));
-        int pad = Ui.dp(this, 12);
-        volumePanel.setPadding(pad, Ui.dp(this, 9), pad, Ui.dp(this, 11));
-        volumeChip = Ui.bold(this, "Media volume", 13, Color.rgb(226, 232, 248));
+        volumePanel.setBackground(Ui.outlined(
+                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 14, this));
+        volumePanel.setElevation(Ui.dp(this, 6));
+        int pad = Ui.dp(this, 14);
+        volumePanel.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 12));
+        volumeChip = Ui.bold(this, "Media volume", 14, Color.rgb(230, 236, 247));
         volumePanel.addView(volumeChip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         volumeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         volumeBar.setMax(100);
-        LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(Ui.dp(this, 168), Ui.dp(this, 6));
-        barLp.topMargin = Ui.dp(this, 8);
+        volumeBar.setProgressTintList(ColorStateList.valueOf(Color.rgb(122, 155, 255)));
+        volumeBar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.rgb(44, 54, 96)));
+        LinearLayout.LayoutParams barLp =
+                new LinearLayout.LayoutParams(Ui.dp(this, 188), Ui.dp(this, 7));
+        barLp.topMargin = Ui.dp(this, 9);
         volumePanel.addView(volumeBar, barLp);
+        volumeNote = Ui.text(this, "", 11, Color.rgb(158, 172, 208));
+        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noteLp.topMargin = Ui.dp(this, 7);
+        volumePanel.addView(volumeNote, noteLp);
         volumePanel.setVisibility(View.GONE);
         return volumePanel;
     }
@@ -458,7 +497,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** What the status label opens: the plain facts about this session and how to drive it. */
     private void showDetails() {
         boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
-        String text = "Linux computer: Ubuntu 24.04 LTS, running on this phone.\n\n"
+        String text = "Linux computer: Ubuntu 24.04 LTS on this phone's own processor, inside "
+                + "this app — a container, not a virtual machine. The desktop is Openbox for "
+                + "the windows, with the tint2 bar along the bottom.\n\n"
                 + "Screen: " + desktop.desktopSize() + " pixels, the size of this display, so "
                 + "the whole desktop fits at 100 %. Zoom " + desktop.zoomPercent() + " %. Pinch, "
                 + "or Screen → Zoom, to look closer; Fit brings it all back.\n\n"
@@ -468,10 +509,19 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "Mouse — drag anywhere to move the arrow, tap to click, hold to right-click, "
                 + "two fingers to scroll, tap then press-and-move to drag.\n\n"
                 + "Keyboard opens the phone keyboard; Keys adds Esc, Tab, Ctrl, arrows and more. "
-                + "Window closes, force-closes or switches the window in front, opens the apps "
-                + "menu or Phone files, and pastes from the phone.\n\n"
-                + "Sound plays through the phone's speaker; the volume keys and Screen → Volume "
-                + "set it.\n\n"
+                + "Window switches between open apps, minimises or closes the one in front, "
+                + "fits a stray window back to the screen, opens the apps menu or Phone files, "
+                + "and pastes from the phone.\n\n"
+                + "Several apps at once: one AI app at a time, plus Files, the Terminal and a "
+                + "browser page — four windows in all. Every open window has a button on the bar "
+                + "at the bottom of the desktop: tap to switch, hold to minimise. Window → All "
+                + "open apps lists them by name, with no limit.\n\n"
+                + "Sound: everything the computer plays comes out of this phone as MEDIA audio — "
+                + "there is no call, ring or alarm sound in PocketDesk at all. The phone's volume "
+                + "keys set it while this screen is open and show the level, and Screen → Media "
+                + "volume does the same from the menu. Inside the computer, Tools → Volume and "
+                + "sound balances one app against another; the phone still decides how loud it "
+                + "ends up.\n\n"
                 + "Stopping the computer keeps everything: apps stay signed in and files stay "
                 + "where they are, so the next open continues from here.";
         new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)
@@ -728,18 +778,30 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             adjustVolume(AudioManager.ADJUST_LOWER);
             return true;
         }
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE);
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 
     @Override public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                || keyCode == KeyEvent.KEYCODE_VOLUME_MUTE) {
             return true;                        // swallow the pair, or the system panel appears
         }
         return super.onKeyUp(keyCode, event);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        int code = event.getKeyCode();
+        if (code == KeyEvent.KEYCODE_BACK) return super.dispatchKeyEvent(event);
+        // The volume keys belong to the phone, in front of the lock as much as behind it:
+        // never an X keysym, never swallowed.
+        if (code == KeyEvent.KEYCODE_VOLUME_UP || code == KeyEvent.KEYCODE_VOLUME_DOWN
+                || code == KeyEvent.KEYCODE_VOLUME_MUTE) {
+            return super.dispatchKeyEvent(event);
+        }
         if (lockedNow()) return true;
         int keysym = androidKeySym(event);
         if (keysym == 0 || desktop == null || desktop.getClient() == null) {

@@ -1,3 +1,82 @@
+# PocketDesk 10.0.50 — the desktop release: a finished computer, in its own words
+
+Nine researchers looked at how real Linux desktops are built and what this one was missing, and
+the twenty-three changes they agreed on are here. Nothing needs to be set up again for most of
+it: start the desktop once and it rebuilds its own bar, theme and menus.
+
+**The desktop itself**
+- **A real bar along the bottom.** Openbox's windows now sit above a tint2 panel that carries the
+  Apps button, the browser, Files, the Terminal and your phone's folder; a button for every open
+  window; the system tray; this phone's battery, temperature, free memory and free storage; a
+  12-hour clock; and the PocketDesk mark in the far corner, which shows the desktop. Tap a window
+  button to raise it, hold it to minimise. **The bar can move to the top**: long-press the
+  wallpaper and choose "Move the bar to the top" — the desktop remembers.
+- **A watchdog for the bar.** If tint2 ever refuses PocketDesk's settings, the desktop notices
+  within twelve seconds, sets that file aside and starts tint2 with its own defaults. There is no
+  longer a way to end up with no bar at all.
+- **No more washed-out white.** GTK is told to use Adwaita **dark** — the old line asked for a
+  theme called "Adwaita:dark", which does not exist, so every GTK app fell back to white. The
+  root window, the terminal's palette, the on-screen messages, the window frames (a PocketDesk
+  Openbox theme) and the tooltips are all one dark navy set now.
+- **A new wallpaper**, drawn for this release: 1600×1600, PocketDesk's navy with a soft blue
+  glow, Tux, and the words "PocketDesk · Ubuntu 24.04 LTS".
+- **Bigger, tappable title bars** — 14 pt, with minimise and close at the left edge where a
+  maximised window always starts.
+- **Both bottom corners do something.** Bottom left is the Apps button; bottom right is the
+  PocketDesk mark that minimises everything and shows the desktop.
+- **New in the menu:** Fit window to the screen (Super+F), Minimise this window (Super+M),
+  Screenshot (Super+S, saved to Pictures), Storage, and a Tools submenu so the four AI apps stay
+  at the top where they belong.
+
+**What you can see about this phone, inside the computer**
+- The bar shows battery %, free storage, battery temperature and free memory in two short lines,
+  and the full picture in its tooltip. **Tapping the numbers opens Storage**, which explains how
+  much room the computer may use — all of the phone's free space, with no quota of its own.
+- The Settings tab says the same thing in the app: what the computer is using, what this phone
+  has free, and what happens as that runs down.
+
+**Sound and volume**
+- The volume keys now show **"Media volume · 60 %"** with a bar, the step (6 of 15) and the
+  stream named, because media is the only sound this app carries. **Mute** was added to the keys
+  and to the Screen menu, and the keys keep working while App lock is covering the desktop.
+- A volume key can no longer crash the desktop: if Do Not Disturb is holding media volume,
+  the desktop says so instead of stopping.
+- The desktop's own output is set to full and unmuted at every start, so the phone's keys stay
+  the one control that matters.
+
+**More of a computer, out of the box**
+- Set-up now installs colour emoji and Noto's Indian and other scripts (Devanagari, Bengali,
+  Tamil, Arabic, Hebrew, Thai and more — Hinglish and Hindi text finally render), the manual
+  pages, locales, `lsb-release` and bash completion; a text editor, an archive tool, a picture
+  viewer, a calculator, a task manager, the volume mixer, screenshots, `ripgrep`, `xclip`; and
+  `python3-dev` and `sqlite3` for the developer tools.
+- **A failure in the everyday programs can no longer cost you a desktop**: that step is allowed
+  to fail and set-up carries on, saying so in the log.
+- Man pages work: `man git`, `man apt`, `man bash`. They were being thrown away at unpack time
+  to save about 3 MB, which was never worth it.
+
+**Words that are now exact**
+- The app says what this is and what it is not: a real Ubuntu 24.04 LTS system on the phone's own
+  Linux kernel, in a PRoot container — not a second operating system, not dual boot, not an
+  emulator, not Canonical's own Ubuntu Desktop.
+- New answers: **"Is the desktop GNOME, KDE or Cinnamon?"** (none of them — Openbox, tint2,
+  PCManFM, LXTerminal, dunst, PulseAudio and TigerVNC, each named), **"Is this a complete
+  operating system?"**, **"How many apps can I have open at once?"** (one AI app plus about three
+  light windows, and why), and **"Is this a basic computer or a full one?"** — basic on purpose,
+  complete for the job, and yours to make as advanced as you like with `apt`.
+- The size figures are the measured ones: about 30 MB, then about 550 MB of packages, 2–3 GB
+  finished, 15–45 minutes.
+- A **Terminology test** now fails the build if a banned claim ever reaches the app's text, if an
+  Ubuntu-branded image is ever added, or if the Canonical trademark line goes missing.
+
+**Fixed**
+- The desktop's app list could not be built at all when the panel-edge setting was read after the
+  menu that offers it — a `set -u` failure that would have left the desktop without menus.
+- Storage is now measured by asking Android (the same figure its own Settings screen shows)
+  instead of walking 200,000 files; the walk is still there for any phone that will not answer.
+- An installed computer with 5 GB free no longer shows an orange "low space" tile: the 6 GB line
+  is what set-up needs, not what running needs.
+
 # PocketDesk 10.0.45 — the audit release: 53 confirmed defects fixed
 
 A ten-dimension audit of the whole app (77 agents, every finding re-checked against the code by
