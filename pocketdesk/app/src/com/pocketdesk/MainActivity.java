@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.70";
+    static final String VERSION = "10.0.75";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -122,6 +122,7 @@ public final class MainActivity extends Activity {
     private Ui.Row batteryOptimisationRow;
     private Ui.Row autoStartRow;
     private Ui.Row phoneFilesRow;
+    private Ui.Row microphoneRow;
     private DeviceProbe lastProbe;
     private Ui.Row dataCapRow;
     private Ui.Row lockNoticeRow;
@@ -1152,6 +1153,23 @@ public final class MainActivity extends Activity {
                     }
                 });
         permissions.addView(phoneFilesRow, Ui.matchWrap(this, 8));
+        microphoneRow = new Ui.Row(this, R.drawable.ic_volume, "Microphone", "Checking…",
+                R.drawable.ic_open_in_new, dark, v -> dialogBuilder()
+                        .setTitle("The computer's microphone")
+                        .setMessage("Turn it on from the desktop itself: Screen \u2192 Microphone. "
+                                + "The phone asks you the first time, and Android offers \u201cOnly "
+                                + "this time\u201d as well as \u201cWhile using the app\u201d \u2014 "
+                                + "either is enough.\n\nIt is off every time the desktop starts, and "
+                                + "it stops the moment you leave the desktop screen. To take the "
+                                + "permission back for good, use the phone's app settings.")
+                        .setNegativeButton("Close", null)
+                        .setPositiveButton("Phone settings", (d, w) -> openAppInfo())
+                        .show());
+        permissions.addView(microphoneRow, Ui.matchWrap(this, 8));
+        Ui.Row privacyRow = new Ui.Row(this, R.drawable.ic_shield, "Privacy monitor",
+                PrivacyMonitor.summary(this), R.drawable.ic_chevron, dark, v -> showPrivacyMonitor());
+        privacyRow.setStatus("SEE", Ui.muted(dark));
+        permissions.addView(privacyRow, Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
@@ -1297,6 +1315,30 @@ public final class MainActivity extends Activity {
                         + "systemd-style background services, and any power over Android itself. The "
                         + "computer lives in this app's private storage and is removed with the app.",
                 true);
+
+        addAnswer(card, R.drawable.ic_info, "Do Mac, Windows and Linux get the same features?",
+                "No, and the pattern is worth knowing before you choose anything.\n\n"
+                        + "\u2022 Cursor and Antigravity: THE SAME on all three. Both are built on "
+                        + "VS Code, so one set of code ships everywhere at once. There is no "
+                        + "\u201cMac first\u201d here at all.\n"
+                        + "\u2022 ChatGPT and Claude: macOS first, Windows next, Linux last. Their "
+                        + "Mac apps are written natively for macOS; the Linux ones arrived in 2026 "
+                        + "and are still catching up.\n\n"
+                        + "What is genuinely Mac-only, and stays that way, is always the same kind "
+                        + "of thing \u2014 something that calls the operating system's own "
+                        + "frameworks:\n"
+                        + "\u2022 Codex Appshots (macOS only \u2014 not even on Windows)\n"
+                        + "\u2022 The apps' own Computer Use \u2014 on macOS and Windows, not in "
+                        + "the Linux builds yet\n"
+                        + "\u2022 Claude's Dictation, and Cowork, which needs hardware "
+                        + "virtualisation no phone gives an app\n"
+                        + "\u2022 Xcode and the iOS Simulator \u2014 macOS only, always\n\n"
+                        + "PocketDesk answers the first two itself: appshot, and click, type, key "
+                        + "and scroll, given to any AI agent here over MCP, plus Super+Space. Those "
+                        + "are this app's own, not the publishers' \u2014 the capability is the "
+                        + "same, the feature name is not.\n\n"
+                        + "Everything else is equal: Chat, Codex, Claude Code, MCP, projects, the "
+                        + "in-app browser and Chrome extensions all work here.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Is the desktop GNOME, KDE or Cinnamon?",
                 "None of them. This desktop is a small set of standard Ubuntu parts, each doing one "
@@ -1541,6 +1583,24 @@ public final class MainActivity extends Activity {
                         + "open. The Home tab says when and why the computer last stopped, and an app "
                         + "that the phone closed says so on the desktop. Window → Force close ends "
                         + "an app that has stopped answering.", false);
+
+        addAnswer(card, R.drawable.ic_desktop, "Live voice, camera and screen share \u2014 what works?",
+                "Voice: YES. Now that the microphone works, a live voice conversation runs in the "
+                        + "browser \u2014 ChatGPT's and Claude's own voice modes on their websites "
+                        + "hear you and answer through the phone's speaker. Where a desktop app has "
+                        + "voice on Linux, that works too; where it does not, the browser does.\n\n"
+                        + "Screen share: YES, in the browser. Chrome can share this desktop's screen "
+                        + "or one of its windows into a meeting or into a website that asks for it, "
+                        + "the same way as on a PC.\n\n"
+                        + "Live camera: NO, and here is exactly why, so it does not sound like a "
+                        + "missing feature that might arrive. A program like Chrome looks for a "
+                        + "camera at /dev/video0. Creating one for it needs a kernel module, and an "
+                        + "app on a phone that is not rooted cannot load a kernel module \u2014 no "
+                        + "app can, on any phone. It is not a limit of this app.\n\n"
+                        + "What you get instead: Screen \u2192 Take a photo into the computer hands "
+                        + "you the phone's own camera app and drops the picture straight into the "
+                        + "computer's Pictures folder, ready to attach. PocketDesk itself holds no "
+                        + "camera permission at all \u2014 the Privacy monitor shows that.", false);
 
         addAnswer(card, R.drawable.ic_volume, "Can the computer hear me? (microphone)",
                 "Yes. Screen → Microphone, on the desktop screen, hands the phone's microphone to "
@@ -2007,7 +2067,46 @@ public final class MainActivity extends Activity {
         return power != null && power.isIgnoringBatteryOptimizations(getPackageName());
     }
 
+    /**
+     * Every permission this app can hold, read off the phone rather than off a promise.
+     *
+     * Built from the manifest that actually shipped, so a permission added in a later version
+     * appears here by itself, and the ones this app never asks for are listed too -- an absence
+     * the owner can check is worth more than a sentence saying it is absent.
+     */
+    private void showPrivacyMonitor() {
+        StringBuilder held = new StringBuilder();
+        StringBuilder never = new StringBuilder();
+        for (PrivacyMonitor.Entry entry : PrivacyMonitor.read(this)) {
+            StringBuilder target = entry.neverAsked ? never : held;
+            target.append(entry.neverAsked ? "\u2715  " : (entry.held ? "\u25cf  " : "\u25cb  "))
+                    .append(entry.name);
+            if (!entry.neverAsked) target.append("  \u2014  ").append(entry.state());
+            target.append('\n').append("     ").append(entry.purpose).append("\n\n");
+        }
+        String text = "What PocketDesk holds right now\n\n" + held
+                + "What it never asks for\n\n" + never
+                + "A filled circle is on, an empty one is off, a cross means the app cannot ask "
+                + "at all \u2014 the permission is not in the app, so no dialog for it exists.\n\n"
+                + "The Linux computer has no permissions of its own. It reaches only what this app "
+                + "reaches, which is why this list is the whole answer.";
+        dialogBuilder()
+                .setTitle("Privacy monitor")
+                .setMessage(text)
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Phone settings", (d, w) -> openAppInfo())
+                .show();
+    }
+
     private void refreshPermissionRows() {
+        if (microphoneRow != null) {
+            boolean on = checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                    == PackageManager.PERMISSION_GRANTED;
+            microphoneRow.setStatus(on ? "ALLOWED" : "OFF", on ? Ui.SUCCESS : Ui.muted(dark));
+            microphoneRow.setValue(on
+                    ? "Allowed · the desktop can use it when you turn it on there; never after you leave"
+                    : "Off · the computer has no microphone until you turn it on from the desktop");
+        }
         if (notificationRow != null) {
             boolean on = notificationsAllowed();
             notificationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);

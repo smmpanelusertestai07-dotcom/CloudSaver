@@ -51,9 +51,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
             MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
-            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21;
+            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22;
     /** The request code the microphone prompt comes back on; above AppLock's own codes. */
     private static final int REQUEST_MICROPHONE = 4711;
+    /** The request code the phone's camera app comes back on. */
+    private static final int REQUEST_PHOTO = 4712;
 
     private SharedPreferences preferences;
     private FrameLayout outer;
@@ -150,6 +152,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         if (AppLock.handleResult(this, outer, request, result, null)) return;
+        if (request == REQUEST_PHOTO) {
+            if (result == RESULT_OK) savePhoto(data);
+            return;
+        }
         super.onActivityResult(request, result, data);
     }
 
@@ -189,6 +195,63 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             return;
         }
         startMicrophone();
+    }
+
+    /**
+     * A photo from the phone's camera, straight into the computer's Pictures folder.
+     *
+     * This asks the phone's OWN camera app to take it, so PocketDesk needs no camera permission
+     * of its own -- there is no camera permission in this app at all, and the Privacy monitor
+     * says so. A live camera INSIDE Linux is a different thing and is not possible here: a
+     * program like Chrome looks for /dev/video0, and creating one needs a kernel module, which
+     * an app on an unrooted phone cannot load.
+     */
+    private void takePhoto() {
+        if (!ContainerRuntime.isInstalled(this)) {
+            showMessage("No computer yet", "Set up the Linux computer first.");
+            return;
+        }
+        try {
+            Intent camera = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            if (camera.resolveActivity(getPackageManager()) == null) {
+                showMessage("No camera app", "This phone has no app that answers a request for a "
+                        + "photo. Save a picture into Phone files instead and open it from there.");
+                return;
+            }
+            startActivityForResult(camera, REQUEST_PHOTO);
+        } catch (Throwable refused) {
+            showMessage("The camera did not open", "This phone would not hand over its camera app.");
+        }
+    }
+
+    /** Writes the thumbnail the camera app hands back into the computer's Pictures folder. */
+    private void savePhoto(Intent data) {
+        Object extra = data == null || data.getExtras() == null ? null : data.getExtras().get("data");
+        if (!(extra instanceof android.graphics.Bitmap)) {
+            showMessage("No photo came back", "The camera app returned nothing to save. Some camera "
+                    + "apps only save to the phone's gallery — turn on Phone files in Settings and "
+                    + "the photo will be in the computer's Phone folder instead.");
+            return;
+        }
+        android.graphics.Bitmap photo = (android.graphics.Bitmap) extra;
+        java.io.File pictures = new java.io.File(ContainerRuntime.rootfs(this),
+                "home/coder/Pictures");
+        if (!pictures.isDirectory() && !pictures.mkdirs()) {
+            showMessage("Could not save it", "The computer's Pictures folder could not be opened.");
+            return;
+        }
+        java.io.File file = new java.io.File(pictures,
+                "photo-" + System.currentTimeMillis() + ".png");
+        try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+            photo.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, out);
+            out.getFD().sync();
+        } catch (java.io.IOException problem) {
+            showMessage("Could not save it", problem.getMessage() == null
+                    ? "The photo could not be written." : problem.getMessage());
+            return;
+        }
+        Toast.makeText(this, "Saved in the computer's Pictures as " + file.getName(),
+                Toast.LENGTH_LONG).show();
     }
 
     /** One themed dialog, in the viewer's own style, for the microphone's few honest answers. */
@@ -425,6 +488,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_MICROPHONE, 9, microphone.isRunning()
                         ? "Microphone: turn off" : "Microphone: let the computer hear you")
                 .setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_PHOTO, 10, "Take a photo into the computer").setIcon(R.drawable.ic_phone);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -448,6 +512,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
                 case MENU_VOLUME_MUTE: adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE); return true;
                 case MENU_MICROPHONE: toggleMicrophone(); return true;
+                case MENU_PHOTO: takePhoto(); return true;
                 default: return false;
             }
         });

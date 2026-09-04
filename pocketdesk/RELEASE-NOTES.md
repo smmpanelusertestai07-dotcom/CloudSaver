@@ -1,3 +1,47 @@
+# PocketDesk 10.0.75 — a privacy monitor, a camera that needs no camera permission, and the honest OS table
+
+**Privacy monitor**
+
+Settings → Permissions → **Privacy monitor** lists every permission this app holds, read off the
+phone's own package rather than a hand-written list — so a permission added in a future version
+appears there by itself. Each says what it is for and whether it is on right now.
+
+It also lists what PocketDesk **never asks for**, so the absence is checkable rather than
+promised: camera, location, contacts, calls, messages, sensors. A cross means the permission is
+not in the app at all, so no dialog for it can ever appear.
+
+Android's own "Only this time" / "While using the app" choice applies to the microphone — the new
+**Microphone** row in Settings shows which one is in force, and both are enough.
+
+**A camera, without a camera permission**
+
+Screen → **Take a photo into the computer** hands you the phone's own camera app and drops the
+picture straight into the computer's Pictures folder. Because it asks the camera app rather than
+the camera, **PocketDesk holds no camera permission at all** — and the Privacy monitor proves it.
+
+A live camera *inside* Linux is not possible and the app now says exactly why rather than leaving
+it vague: Chrome looks for `/dev/video0`, and creating one needs a kernel module, which no app on
+an unrooted phone can load. That is Android's rule, not this app's.
+
+**Live voice and screen share — both work**
+
+With the microphone in place, a live voice conversation runs in the browser: ChatGPT's and
+Claude's own voice modes hear you and answer through the phone's speaker. Chrome can also share
+this desktop's screen or a single window into a meeting, exactly as on a PC. Both are in the FAQ
+with the honest boundary drawn around them.
+
+**"Do Mac, Windows and Linux get the same features?"**
+
+A new answer, because the pattern decides what is worth chasing:
+
+- **Cursor and Antigravity: identical on all three.** Both are VS Code builds — one codebase ships
+  everywhere at once. There is no "Mac first" here.
+- **ChatGPT and Claude: macOS first, Windows next, Linux last.**
+- What stays Mac-only is always the same kind of thing — something calling the OS's own
+  frameworks: Codex Appshots (not even on Windows), the apps' own Computer Use, Claude's
+  Dictation and Cowork, Xcode and the iOS Simulator.
+- PocketDesk answers the first two itself, with its own appshot and its own click/type/scroll.
+
 # PocketDesk 10.0.70 — the microphone, Cmd-Cmd, and sign-ins that are not in plain text
 
 Three of the ⚠️ rows in the feature table become ✅. Everything here is local and free.
