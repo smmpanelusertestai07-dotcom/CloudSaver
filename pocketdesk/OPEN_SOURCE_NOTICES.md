@@ -69,6 +69,18 @@ The same is true of `pocketdesk-agent.sh`, `pocketdesk-storage.sh`, `pocketdesk-
 `pocketdesk-windows.sh`, `pocketdesk-menu.sh`, `pocketdesk-desktop.sh`, `pocketdesk-open.sh` and
 `pocketdesk-install.sh`: all PocketDesk's own.
 
+## Mobile app development
+
+"Mobile app development" installs, from Ubuntu's own archive: `openjdk-21-jdk-headless`
+(GPL-2.0 with Classpath Exception), `gradle` (Apache-2.0), `adb` and `fastboot` from
+android-platform-tools (Apache-2.0), `aapt` (Apache-2.0), `scrcpy` (Apache-2.0) and
+`android-sdk-libsparse-utils` (Apache-2.0). None of it ships inside this APK, and removing the
+row removes all of it.
+
+No Android SDK is downloaded from Google, on purpose: Google publishes no ARM64 Linux build of
+`aapt2`, and a half-installed SDK is worse than none. Android, adb and the Android robot are
+trademarks of Google LLC; PocketDesk shows no Google mark and is not affiliated with Google.
+
 ## Windows apps support
 
 "Windows apps support" installs **Wine** — from [Hangover](https://github.com/AndreRH/hangover)

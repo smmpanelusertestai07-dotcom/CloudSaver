@@ -385,6 +385,43 @@ final class LinuxApps {
                             + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
                     null, true),
 
+            // Mobile app development: the tools that really do work on an ARM64 phone, and none
+            // that only pretend to. Every package here is in Ubuntu's own archive for arm64 --
+            // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
+            // half-installed SDK is worse than none.
+            new App("mobiledev", "Mobile app development",
+                    "Java 21, Gradle, adb, fastboot, aapt and scrcpy — and the pairing helper that "
+                            + "lets this computer install and test an app on THIS phone, or on "
+                            + "another one over Wi-Fi.",
+                    R.drawable.ic_terminal, 0, "about 700 MB", 3 * GB,
+                    "10–25 min", null,
+                    "/usr/bin/adb",
+                    "pd_update || exit 11; "
+                            + "pd_step mobiledev openjdk-21-jdk-headless gradle adb fastboot aapt "
+                            + "scrcpy android-sdk-libsparse-utils || exit 20; "
+                            // Where Gradle and every Java tool look for a JDK. Written once, so
+                            // an owner who changes it keeps their change.
+                            + "if ! grep -q 'JAVA_HOME' /etc/profile.d/pocketdesk-java.sh 2>/dev/null; then "
+                            + "mkdir -p /etc/profile.d; "
+                            + "printf 'export JAVA_HOME=$(dirname $(dirname $(readlink -f "
+                            + "$(command -v javac || command -v java))))\nexport PATH=\"$JAVA_HOME/bin:$PATH\"\n' "
+                            + "> /etc/profile.d/pocketdesk-java.sh; fi; "
+                            // Gradle on a 4 GB phone: the daemon is what runs it out of memory,
+                            // and 1 GB is what is actually free once Android and the desktop have
+                            // taken theirs.
+                            + "mkdir -p /home/coder/.gradle; "
+                            + "if [ ! -f /home/coder/.gradle/gradle.properties ]; then "
+                            + "printf 'org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m\n"
+                            + "org.gradle.daemon=false\norg.gradle.parallel=false\n"
+                            + "org.gradle.caching=true\n' > /home/coder/.gradle/gradle.properties; fi; "
+                            + "chown -R coder:coder /home/coder/.gradle 2>/dev/null || true; "
+                            + "java -version 2>&1 | head -n 1; adb version 2>&1 | head -n 1",
+                    "apt-get remove -y --purge openjdk-21-jdk-headless gradle adb fastboot aapt "
+                            + "scrcpy >/dev/null 2>&1 || true; "
+                            + "rm -f /etc/profile.d/pocketdesk-java.sh \"$PD_STATE/stage/mobiledev\"; "
+                            + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
+                    false),
+
             // The Windows layer: an app on the Apps tab like any other, so it is the owner's
             // choice, it can be removed, and it can never slow down or break a set-up that does
             // not want it.

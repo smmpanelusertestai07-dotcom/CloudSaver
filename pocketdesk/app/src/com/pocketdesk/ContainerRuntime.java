@@ -357,6 +357,9 @@ final class ContainerRuntime {
             case 15: return "One of the app repositories did not answer, so it was removed again "
                     + "rather than left to break later installs. Check the internet connection and "
                     + "try again; everything else that was installed is kept.";
+            case 20: return "The mobile development tools did not finish installing. Check the "
+                    + "connection and free space, then tap the row again — what was already "
+                    + "installed is kept.";
             case 17: return "Windows apps support is not installed yet. Add it from the Apps tab "
                     + "first — it is the layer that runs Windows programs.";
             case 18: return "The download did not finish. Check the internet connection and try "
@@ -411,6 +414,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
+        copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -457,6 +461,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
+        copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }

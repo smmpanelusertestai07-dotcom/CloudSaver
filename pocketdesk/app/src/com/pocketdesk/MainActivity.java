@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.1.15";
+    static final String VERSION = "10.1.20";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -831,6 +831,7 @@ public final class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         appRows.clear();
         page.addView(buildAppsCard(text, muted));
+        page.addView(buildDeveloperCard(text, muted));
         page.addView(buildWindowsCard(text, muted));
         page.addView(buildOtherAppsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
@@ -870,6 +871,43 @@ public final class MainActivity extends Activity {
                 v -> confirmApp(app));
         appRows.put(app.id, row);
         return row;
+    }
+
+    /**
+     * Developer tools that are not part of the basics: the mobile-app toolchain.
+     *
+     * Its own card because it is a different promise from the four AI apps -- 700 MB that most
+     * owners will never need, and one real limit inside it that has to be said before it is
+     * installed, not after.
+     */
+    private View buildDeveloperCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Mobile app development", R.drawable.ic_terminal, dark));
+        card.addView(Ui.text(this,
+                "Java 21, Gradle, adb, fastboot, aapt and scrcpy — everything for writing an "
+                        + "Android app here and trying it on a real phone.",
+                12.5f, muted), Ui.matchWrap(this, 6));
+        LinuxApps.App mobile = LinuxApps.byId("mobiledev");
+        if (mobile != null) card.addView(appRow(mobile), Ui.matchWrap(this, 12));
+        card.addView(Ui.text(this, "Test on a real phone — including this one", 13.5f, text),
+                Ui.matchWrap(this, 14));
+        card.addView(Ui.text(this,
+                "Android's Wireless debugging listens on the phone's own network, and this "
+                        + "computer shares that network — so 127.0.0.1 reaches the phone it is "
+                        + "running on. Build an APK here, install it here, and it opens on this "
+                        + "screen. Another phone on the same Wi-Fi works the same way.\n\n"
+                        + "Inside the desktop: Tools → Phone app testing → Pair a phone. It walks "
+                        + "you through turning Wireless debugging on and takes the pairing code.",
+                12.5f, muted), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this,
+                "Two honest limits. Google publishes no ARM64 Linux build of aapt2, so a full "
+                        + "Android Gradle build may stop at that one tool — compiling and testing "
+                        + "on a device work, and that gap is Google's to close. And an Android "
+                        + "emulator cannot run here at all: it needs hardware virtualisation, "
+                        + "which no app on an unrooted phone can have. A real phone is the test "
+                        + "device.",
+                12.5f, Ui.WARNING), Ui.matchWrap(this, 10));
+        return card;
     }
 
     /**
@@ -1407,6 +1445,48 @@ public final class MainActivity extends Activity {
                         + "systemd-style background services, and any power over Android itself. The "
                         + "computer lives in this app's private storage and is removed with the app.",
                 true);
+
+        addAnswer(card, R.drawable.ic_terminal, "What can I actually build on this computer?",
+                "Everything below was checked against what really installs and runs on an ARM64 "
+                        + "phone. Nothing is listed that only half works.\n\n"
+                        + "WORKS PROPERLY\n"
+                        + "• Web and back-end: Node.js, npm, Python 3, Go, Rust and PHP from "
+                        + "Ubuntu, any framework on top, and a local server you open in the "
+                        + "browser here\n"
+                        + "• Anything an AI agent writes: Claude Code, Codex, Cursor's and "
+                        + "Antigravity's agents all read, write, run and test in the Terminal, "
+                        + "with git, ripgrep, SQLite and a C/C++ compiler already installed\n"
+                        + "• Scripts, data work, automation, APIs, bots\n"
+                        + "• Git and GitHub over SSH or HTTPS\n\n"
+                        + "ANDROID APPS — yes, with one real limit\n"
+                        + "Apps tab → Mobile app development installs Java 21, Gradle, adb, "
+                        + "fastboot, aapt and scrcpy. Kotlin and Java compile, and Gradle is set "
+                        + "up for a 4 GB phone (no daemon, 1 GB heap).\n"
+                        + "You can install and TEST an app on a real phone — including this one: "
+                        + "Android's Wireless debugging listens on the phone's own network, and "
+                        + "this computer shares it, so 127.0.0.1 reaches the phone it is running "
+                        + "on. Desktop → Tools → Phone app testing walks you through it. Another "
+                        + "phone on the same Wi-Fi works the same way.\n"
+                        + "The limit: Google publishes no ARM64 Linux build of aapt2, so a full "
+                        + "Android Gradle build may stop there. Compiling, testing on a device, "
+                        + "and everything around it works; that one tool is the gap, and it is "
+                        + "Google's to close.\n\n"
+                        + "iOS APPS — no, and no trick changes it\n"
+                        + "Xcode, the iOS Simulator and SwiftUI previews are macOS-only programs "
+                        + "that need Apple's own frameworks. They cannot run here or on any "
+                        + "phone. Building an iOS app needs a Mac, or a build service.\n\n"
+                        + "NOT POSSIBLE HERE\n"
+                        + "• An Android emulator — it needs hardware virtualisation, which no app "
+                        + "on an unrooted phone can have. A real phone is the test device.\n"
+                        + "• Docker and virtual machines — same reason\n"
+                        + "• Anything needing a graphics chip: game engines, 3D, video encoding "
+                        + "at speed\n\n"
+                        + "HOW HEAVY CAN IT GET\n"
+                        + "This phone has 4 GB and no graphics chip. One AI app plus a build is "
+                        + "the ceiling. A big compile will take minutes where a laptop takes "
+                        + "seconds — it finishes, it is just slower. For work bigger than that, "
+                        + "the honest answer is a machine with more memory, and the AI agents "
+                        + "here can drive one over SSH.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can it run Windows apps too?",
                 "Yes, some of them — and the app tells you which before you download anything.\n\n"

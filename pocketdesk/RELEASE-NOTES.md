@@ -1,3 +1,37 @@
+# PocketDesk 10.1.20 — build an Android app here, and test it on this very phone
+
+**Apps tab → Mobile app development** (about 700 MB) installs Java 21, Gradle, `adb`, `fastboot`,
+`aapt` and `scrcpy` — all from Ubuntu's own ARM64 archive, nothing fetched from Google. Gradle is
+configured for a 4 GB phone before it is ever run: no daemon, a 1 GB heap, no parallel workers.
+
+**The part worth having: test on a real phone, including this one**
+
+Android 11 and later have **Wireless debugging**, which listens on the phone's own network — and
+this computer shares that network. So `127.0.0.1` reaches the phone it is running on. Build an APK
+here, install it here, and it opens on the same screen a moment later. No cable, no PC. Another
+phone on the same Wi-Fi is the same steps with its address.
+
+Desktop → **Tools → Phone app testing**: pair a phone (it walks through turning Wireless debugging
+on and takes the pairing code), connect, install an APK, watch logcat, mirror the screen with
+scrcpy, or see what is connected.
+
+**And a straight answer to "what can I actually build here?"**
+
+A new FAQ entry, checked against what really installs and runs on ARM64 rather than what sounds
+good:
+
+- **Works properly** — web and back-end (Node, Python, Go, Rust, PHP), anything an AI agent
+  writes and runs, scripts, data, APIs, bots, Git
+- **Android** — Kotlin and Java compile, and you can install and test on a real device. One real
+  limit: Google publishes no ARM64 Linux `aapt2`, so a full Android Gradle build may stop at that
+  one tool. Said before you install, not after
+- **iOS** — no, and no trick changes it. Xcode and the Simulator are macOS programs
+- **Not possible** — Android emulator, Docker, virtual machines (all need hardware virtualisation
+  no app on an unrooted phone can have), and anything needing a graphics chip
+- **How heavy** — one AI app plus a build is the ceiling on 4 GB; a big compile takes minutes
+  where a laptop takes seconds. It finishes. For more, the agents here can drive a bigger machine
+  over SSH
+
 # PocketDesk 10.1.15 — Wine was installed all along
 
 The report finally said it, in apt's own words:
