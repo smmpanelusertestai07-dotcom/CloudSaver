@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -137,6 +138,12 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri -> uri?.let { rvm.exportSelection(it, exportOk, exportFail) } }
+
+    // The result of the last export, and it belongs to this screen: leaving
+    // it in the view model would show a stale note the next time Free-up is
+    // opened, which is the trap the settings message fell into.
+    val exportMessage by rvm.message.collectAsStateWithLifecycle()
+    DisposableEffect(Unit) { onDispose { rvm.dismissMessage() } }
 
     val shared by rvm.listFilter.collectAsStateWithLifecycle()
     val holdingApps by rvm.holdingApps.collectAsStateWithLifecycle()
@@ -464,6 +471,19 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                    }
+                    // Export wrote the file and then said nothing at all -
+                    // not when it worked, and not when it failed. Nothing in
+                    // the app read the result, so someone who picked a folder
+                    // the write could not reach was left believing they had a
+                    // list of the photographs they were about to remove.
+                    exportMessage?.let { note ->
+                        Text(
+                            note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                     FlowRow(
                         Modifier.padding(top = 8.dp),

@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **505 unit tests** on the JVM, covering the pure rules and auditing the
+- **515 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **108 instrumented tests across 16 classes**, run on real emulators against a
+- **110 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -276,6 +276,67 @@ source for this release, including the rows that were already marked Done.
   lazy and runs when the folder needs room; and Home called copies "backed up"
   while they were still sitting in the upload folder waiting for a cloud app
   that may not even be installed.
+
+- **Whether a query that never matches anything looks any different from one
+  that does.** The startup cleanup for the placeholder file earlier builds
+  parked in the output folder asked MediaStore for a name `LIKE '%\\_keep.jpg'`.
+  Without an `ESCAPE` clause the backslash is a backslash and the underscore is
+  still a wildcard, so the pattern asks for a file name containing a backslash;
+  no file has one, so from the day it was written it matched nothing at all,
+  threw nothing and logged nothing. The name is now judged in Kotlin, where it
+  can be unit-tested, and `QueryRulesTest` refuses an escaped LIKE wildcard
+  anywhere the query does not name an escape character - proved by putting the
+  original line back and watching it fail.
+- **Whether "Clear the list" clears the list.** Excluding a file parks its row
+  in SKIP with the reason `user_excluded`; the setting's own hint says
+  clearing puts those files back in the queue. The clear only unset the flag,
+  so every one of them stayed in SKIP and none went back in the queue. It now
+  lifts the state and the reason together, in one statement, and leaves alone a
+  row parked for some other reason or whose original has since left the
+  gallery - all three cases pinned by an instrumented test against a real
+  database.
+- **Whether an exported activity trusts what it is handed.** The launcher
+  activity is exported, as a launcher must be, and read a route string
+  straight off the intent into the navigator. Any app on the phone could send
+  a route the graph does not have and crash this one on launch, in one line,
+  as often as it liked. Routes are now checked against the graph before they
+  reach the navigator, and `NavigationSafetyTest` holds the allow-list to
+  being exactly the screens the `NavHost` declares - a screen missing from it
+  is an alert that opens nothing, a name in it that the graph lacks is the
+  crash the check exists to stop.
+- **Whether losing access entirely says anything at all.** There are two ways
+  to lose sight of the gallery and only one of them had words. Every screen
+  asked "is access partial?", so someone who finished setup and later switched
+  the permission off came back to a blank Home, a Files list reading as an
+  empty gallery, and a calculator printing a total from a database nothing was
+  refreshing - a number about photographs the app could no longer see. Screens
+  now ask whether access is *full*, `AccessNotice` chooses wording for the case
+  at hand, and regaining access from either state refreshes at once rather than
+  waiting for the next scheduled run.
+
+- **Whether a mark on a tab is a promise.** The Storage tab wears a dot when
+  there are originals worth freeing, and the sum behind it asked three fewer
+  questions than the Free-up screen does: it never checked the copy had a
+  ledger entry proving it went out, never made an original wait its thirty
+  days from the day it arrived, and never applied the size floor - and no SQL
+  can ask whether the cloud app is installed, which refuses everything on its
+  own. The sum now asks all it can and the caller answers the last one, so the
+  dot leads to a screen with something on it. An instrumented test seeds one
+  original that qualifies and one for each refusal, against a real database.
+
+- **Whether the weakest proof was ever agreed to.** Three grades of proof can
+  offer an original for removal, and the weakest - a day's outgoing byte total
+  adding up - says a day's photographs went out, not that this photograph did.
+  The rule says in writing that it counts "only behind an explicit opt-in",
+  and every one of the three call sites passed the literal `true` instead,
+  while the opt-in it names sat in settings with a setter no screen ever
+  reached. So the app offered originals on that proof with nobody having
+  agreed to anything, and the mark on the Storage tab - which did read the
+  setting - disagreed with the screen it led to. The switch exists now, off by
+  default, and all three sites ask it. A rule refuses the literal, and another
+  refuses a route the app sends itself that the graph does not have - the
+  alerts and the two launcher shortcuts travel as plain strings, and nothing
+  had ever checked them against the screens.
 
 **Not done, and why**
 

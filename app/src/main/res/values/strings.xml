@@ -70,6 +70,11 @@
     <string name="partial_action">Allow all photos</string>
     <string name="partial_chip">Only selected photos visible</string>
     <string name="partial_waiting">Waiting for full photo access</string>
+    <string name="no_access_title">CloudSaver cannot see your photos</string>
+    <string name="no_access_body">Photo and video access is switched off, so nothing is scanned and no total is shown. Your files are exactly where you left them.</string>
+    <string name="no_access_action">Turn photo access back on</string>
+    <string name="no_access_chip">No photo access</string>
+    <string name="no_access_waiting">Waiting for photo access</string>
     <string name="crash_title">CloudSaver stopped unexpectedly last time</string>
     <string name="crash_body">Nothing was lost. A record of what happened is in the log.</string>
     <string name="crash_share">Share log</string>
@@ -561,6 +566,8 @@
     <string name="opt_lock">App lock</string>
     <string name="opt_lock_hint">Locks the whole app behind your screen lock \u2014 every tab, every screen, every time you come back to it.</string>
     <string name="opt_warnings">Alerts</string>
+    <string name="opt_verified30">Also offer files verified by upload size</string>
+    <string name="opt_verified30_hint">Free up space normally offers an original only when CloudSaver watched your cloud app collect that exact copy. Turn this on and it will also offer files where only the amount your cloud app sent that day added up, and only after a month\u0027s wait. More space to free up, on weaker proof.</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and stops adding copies to the upload folder. It cannot stop your cloud app \u2014 pause that inside the app itself.</string>

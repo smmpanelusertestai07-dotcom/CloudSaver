@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.cloudsaver.R
+import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.ui.components.typeFilter
 import app.cloudsaver.ui.components.sizeFilter
 import app.cloudsaver.ui.components.selectionSummary
@@ -175,13 +176,13 @@ fun FilesScreen(vm: AppViewModel) {
                 selection = selection,
                 matchingCount = rows.size,
                 onSelectAll = { selection.selectAll(rows.map { it.id }) },
-                intro = if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
+                intro = if (AccessNotice.isLimited(mediaAccess)) {
                     {
                         // The list below shows only what was scanned under full
                         // access; nothing new arrives until access is full again.
                         androidx.compose.material3.AssistChip(
                             onClick = { OemPages.openAppInfo(appContext) },
-                            label = { Text(stringResource(R.string.partial_chip)) },
+                            label = { Text(stringResource(AccessNotice.chip(mediaAccess))) },
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
                     }

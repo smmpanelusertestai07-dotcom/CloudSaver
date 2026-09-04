@@ -26,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
@@ -62,6 +63,7 @@ import app.cloudsaver.util.Permissions
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
+import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
@@ -84,7 +86,6 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material.icons.outlined.Savings
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.TrendingUp
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandFaint
@@ -328,11 +329,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
 
-        // BB1.3: under partial access the app refuses to scan, so the truth
-        // the rest of this screen usually tells is suspended. The card says
-        // so and offers the one way out.
+        // BB1.3: with anything less than full access the app refuses to scan,
+        // so the truth the rest of this screen usually tells is suspended. The
+        // card says so and offers the one way out. It covers access switched
+        // off entirely as well as access narrowed to a few photos: both leave
+        // this screen unable to describe a gallery it cannot see.
         AnimatedVisibility(
-            visible = mediaAccess == Permissions.MediaAccess.PARTIAL,
+            visible = AccessNotice.isLimited(mediaAccess),
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
@@ -353,14 +356,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        stringResource(R.string.partial_title),
+                        stringResource(AccessNotice.title(mediaAccess)),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f)
                     )
                 }
                 Text(
-                    stringResource(R.string.partial_body),
+                    stringResource(AccessNotice.body(mediaAccess)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp)
@@ -368,7 +371,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 Button(
                     onClick = { OemPages.openAppInfo(context) },
                     modifier = Modifier.padding(top = 10.dp)
-                ) { Text(stringResource(R.string.partial_action)) }
+                ) { Text(stringResource(AccessNotice.action(mediaAccess))) }
             }
         }
 
@@ -477,7 +480,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 // level with nothing in particular.
                 Row(verticalAlignment = Alignment.Top) {
                     Icon(
-                        Icons.Outlined.TrendingUp,
+                        Icons.AutoMirrored.Outlined.TrendingUp,
                         contentDescription = null,
                         tint = OnBrandMuted,
                         modifier = Modifier.size(16.dp)

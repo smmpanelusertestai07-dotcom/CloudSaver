@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
@@ -185,15 +186,23 @@ class StartupRecovery(private val context: Context) {
             .getOrDefault(setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY))) {
             val collection = MediaStore.Images.Media.getContentUri(volume)
             val selection = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
-                "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ? AND " +
                 "${MediaStore.MediaColumns.OWNER_PACKAGE_NAME} = ?"
-            val args = arrayOf(Defaults.OUTPUT_DIR_LIKE, "%\\_keep.jpg", context.packageName)
+            val args = arrayOf(Defaults.OUTPUT_DIR_LIKE, context.packageName)
             try {
                 val ids = mutableListOf<Long>()
                 resolver.query(
-                    collection, arrayOf(MediaStore.MediaColumns._ID), selection, args, null
+                    collection,
+                    arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME),
+                    selection,
+                    args,
+                    null
                 )?.use { c ->
-                    while (c.moveToNext()) ids += c.getLong(0)
+                    while (c.moveToNext()) {
+                        // The name is judged in Kotlin. Asking SQL for it needs
+                        // an ESCAPE clause to keep the underscore literal, and
+                        // the query that did not have one matched nothing.
+                        if (ScanSources.isKeepPlaceholderName(c.getString(1))) ids += c.getLong(0)
+                    }
                 }
                 for (id in ids) {
                     val uri = android.content.ContentUris.withAppendedId(collection, id)

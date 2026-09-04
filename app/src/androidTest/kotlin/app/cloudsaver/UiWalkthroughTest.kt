@@ -2,6 +2,8 @@ package app.cloudsaver
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
@@ -125,14 +127,38 @@ class UiWalkthroughTest {
      * heading to navigate does nothing at all.
      */
     private fun ComposeTestRule.openExactRow(label: String) {
+        await(hasText(label), label)
         onAllNodes(hasText(label)).onFirst().performScrollTo().performClick()
         waitForIdle()
     }
 
     /** Scrolls a labelled row into view and taps it. Fails loudly if absent. */
     private fun ComposeTestRule.openRow(label: String) {
+        await(hasText(label, substring = true), label)
         onNode(hasText(label, substring = true)).performScrollTo().performClick()
         waitForIdle()
+    }
+
+    /**
+     * Waits for something before touching it.
+     *
+     * Every row this tour opens comes from a database query that runs off the
+     * main thread, and `waitForIdle` returns as soon as composition is quiet -
+     * which it is, drawing an empty list, while the query is still running.
+     * On a quick emulator the first rows had usually landed by then and on a
+     * slower one they had not, so the tour failed on a row that was about to
+     * appear, differently on each Android version. Nothing here is asserting
+     * that a screen is fast; it is asserting what the screen says. So it
+     * waits.
+     */
+    private fun ComposeTestRule.await(matcher: SemanticsMatcher, what: String) {
+        try {
+            waitUntil(WAIT_MS) { onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
+        } catch (e: ComposeTimeoutException) {
+            // The timeout says only that a wait expired. Name the thing that
+            // never arrived, so the next reader does not start from scratch.
+            throw AssertionError("\"$what\" never appeared", e)
+        }
     }
 
     /**
@@ -144,6 +170,7 @@ class UiWalkthroughTest {
      * displayed, not that it is unique.
      */
     private fun ComposeTestRule.assertOn(label: String) {
+        await(hasText(label, substring = true), label)
         onAllNodes(hasText(label, substring = true)).onFirst().assertIsDisplayed()
     }
 
@@ -161,6 +188,13 @@ class UiWalkthroughTest {
         val repo = OptionsRepo.get(target)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, done)
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
+        // Settings survive a test, because they are meant to survive a
+        // restart: one class earlier in the run leaves an album unticked on
+        // purpose, and the Files list shows only what a run would touch. The
+        // tour photographs screens, so its own gallery has to be in scope -
+        // otherwise it opens a Files tab with nothing in it and the failure
+        // reads as a missing row rather than as a setting left behind.
+        repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
     }
 
     private fun setTheme(mode: String) = runBlocking {
@@ -346,6 +380,9 @@ class UiWalkthroughTest {
             compose.waitForIdle()
 
             // A selection running, with the bar that says what it will act on.
+            // The dialog above closes on an animation, so the row underneath
+            // is waited for rather than assumed back.
+            compose.await(hasText("tour_photo_1.jpg", substring = true), "the file row")
             compose.onNode(hasText("tour_photo_1.jpg"))
                 .performScrollTo()
                 .performTouchInput { longClick() }
@@ -367,5 +404,13 @@ class UiWalkthroughTest {
             compose.assertOn(s(R.string.help_deleted))
             shoot("33-help-if-something-is-deleted")
         }
+    }
+
+    private companion object {
+        /**
+         * Long enough for a cold query on the slowest emulator in the matrix,
+         * short enough that a screen which never draws still fails the run.
+         */
+        const val WAIT_MS = 15_000L
     }
 }

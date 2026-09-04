@@ -53,6 +53,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.CapacityMath
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.ui.components.AnimatedNumber
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.HeroCard
@@ -237,12 +238,13 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
             }
 
             Spacer(Modifier.height(12.dp))
-            // BB1.3: under partial access every total would describe the
-            // user's selection, not their gallery. Waiting text, never a number.
-            if (mediaAccess == Permissions.MediaAccess.PARTIAL) {
+            // BB1.3: without full access every total would describe the
+            // user's selection - or a database nothing is refreshing - rather
+            // than their gallery. Waiting text, never a number.
+            if (AccessNotice.isLimited(mediaAccess)) {
                 AppCard {
                     Text(
-                        stringResource(R.string.partial_waiting),
+                        stringResource(AccessNotice.waiting(mediaAccess)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = scheme.onSurfaceVariant
                     )

@@ -94,13 +94,13 @@ class MediaAccessTest {
     fun `home shows the card and files shows the chip`() {
         val home = source("src/main/kotlin/app/cloudsaver/ui/screens/HomeScreen.kt")
         assertTrue(
-            "Home must surface the partial-access card",
-            home.contains("partial_title") && home.contains("MediaAccess.PARTIAL")
+            "Home must surface the limited-access card",
+            home.contains("AccessNotice.title(") && home.contains("AccessNotice.isLimited(")
         )
         val files = source("src/main/kotlin/app/cloudsaver/ui/screens/FilesScreen.kt")
         assertTrue(
-            "Files must surface the partial-access chip",
-            files.contains("partial_chip") && files.contains("MediaAccess.PARTIAL")
+            "Files must surface the limited-access chip",
+            files.contains("AccessNotice.chip(") && files.contains("AccessNotice.isLimited(")
         )
     }
 
@@ -109,8 +109,9 @@ class MediaAccessTest {
         for (screen in listOf("StorageScreen", "CalculatorScreen")) {
             val text = source("src/main/kotlin/app/cloudsaver/ui/screens/$screen.kt")
             assertTrue(
-                "$screen must render the waiting text under PARTIAL, never a total",
-                text.contains("partial_waiting") && text.contains("MediaAccess.PARTIAL")
+                "$screen must render the waiting text whenever access is short of " +
+                    "full, never a total",
+                text.contains("AccessNotice.waiting(") && text.contains("AccessNotice.isLimited(")
             )
         }
     }
@@ -122,5 +123,56 @@ class MediaAccessTest {
             "the snapshot payload must carry mediaAccess",
             codec.contains("\"mediaAccess\"")
         )
+    }
+
+    /**
+     * There are two ways to lose sight of the gallery, and only one of them
+     * used to have any words. A screen asking "is it partial?" says nothing
+     * at all when the answer is "there is no access": Home went blank, the
+     * Files list read as an empty gallery, and the calculator printed a total
+     * from a database nothing was refreshing - a number about photographs the
+     * app could no longer see.
+     *
+     * So screens ask whether access is full. The one place allowed to name
+     * PARTIAL is where the words are chosen.
+     */
+    @Test
+    fun `no screen asks whether access is partial`() {
+        val offenders = mutableListOf<String>()
+        for (file in File("src/main/kotlin/app/cloudsaver/ui").walkTopDown()) {
+            if (!file.isFile || file.extension != "kt") continue
+            val code = file.readLines()
+                .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
+                .joinToString("\n")
+            // Naming PARTIAL is fine in a file that also answers for NONE -
+            // the setup step chooses between all three, and AccessNotice is
+            // where the wording for each is picked. What is not fine is a
+            // screen that knows only about the middle case.
+            if (code.contains("MediaAccess.NONE")) continue
+            for (m in Regex("""[=!]=\s*(?:[A-Za-z.]*)MediaAccess\.PARTIAL""").findAll(code)) {
+                offenders += "${file.name}: ${m.value.trim()}"
+            }
+        }
+        assertTrue(
+            "these branch on partial access, so they say nothing when access is " +
+                "switched off entirely and the screen states something untrue: " +
+                "$offenders",
+            offenders.isEmpty()
+        )
+    }
+
+    /** No-access must have its own words, not partial access's, in every slot. */
+    @Test
+    fun `losing access entirely is worded as itself`() {
+        val notice = File("src/main/kotlin/app/cloudsaver/ui/components/AccessNotice.kt").readText()
+        for (slot in listOf("title", "body", "action", "chip", "waiting")) {
+            val fn = notice.substringAfter("fun $slot(", "").substringBefore("\n\n")
+            assertTrue("AccessNotice.$slot is gone", fn.isNotEmpty())
+            assertTrue(
+                "AccessNotice.$slot hands no-access the partial-access wording, " +
+                    "which tells someone they picked some photos when they picked none",
+                fn.contains("R.string.no_access_")
+            )
+        }
     }
 }

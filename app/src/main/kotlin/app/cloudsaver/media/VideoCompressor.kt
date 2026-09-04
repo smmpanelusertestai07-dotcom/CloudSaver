@@ -180,7 +180,14 @@ object VideoCompressor {
             }
             if (export != null && outFile.exists()) {
                 val outBytes = outFile.length()
-                val outDur = if (export.durationMs > 0) export.durationMs else probeDurationMs(outFile)
+                // Media3 renamed this to say what it always was: the muxer's
+                // own figure, close but not exact. The name changed, the
+                // number did not, and a zero still means "ask the file".
+                val outDur = if (export.approximateDurationMs > 0) {
+                    export.approximateDurationMs
+                } else {
+                    probeDurationMs(outFile)
+                }
                 val outBps = if (outDur > 0) outBytes * 8000L / outDur else Long.MAX_VALUE
                 if (BitrateCalc.resultAcceptable(srcBytes, outBytes, outBps, targetBps, probe.durationMs, outDur)) {
                     return CompressResult(

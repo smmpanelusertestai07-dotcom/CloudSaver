@@ -33,11 +33,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -246,7 +246,7 @@ fun ListFilterRow(
                 },
                 leadingIcon = {
                     Icon(
-                        Icons.Outlined.Sort,
+                        Icons.AutoMirrored.Outlined.Sort,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )

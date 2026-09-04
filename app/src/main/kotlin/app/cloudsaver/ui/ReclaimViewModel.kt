@@ -347,7 +347,8 @@ class ReclaimViewModel(
             val chosen = selectedEntries()
             val dropped = chosen.mapNotNull { entry ->
                 ReclaimRules.refuse(
-                    entry.candidate, healthy, allowVerifiedBySize = true,
+                    entry.candidate, healthy,
+                    allowVerifiedBySize = o.freeUpAllowVerified30,
                     skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                 )?.let { entry.row.displayName to it }
             }
@@ -431,7 +432,8 @@ class ReclaimViewModel(
                 val healthy = cloudHealthy()
                 val stillGood = chosen.filter {
                     ReclaimRules.isEligible(
-                        it.candidate, healthy, allowVerifiedBySize = true,
+                        it.candidate, healthy,
+                        allowVerifiedBySize = o.freeUpAllowVerified30,
                         skipFavourites = skipFavourites.value, skipSmall = skipSmall.value
                     )
                 }

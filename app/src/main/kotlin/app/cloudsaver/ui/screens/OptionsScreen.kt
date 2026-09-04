@@ -637,6 +637,19 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             icon = IconAlerts,
             checked = o.warningsNotif
         ) { vm.setWarningsNotif(it) }
+        // The rule this switch turns on has always been written down - a
+        // day's byte total says a day's photographs went out, not that this
+        // photograph did, so it counts "only behind an explicit opt-in". The
+        // opt-in was stored, had a setter, and no screen anywhere reached it,
+        // while the Free-up screen offered those files regardless. Now the
+        // switch exists and the answer is the user's, off by default: an
+        // original is offered on per-file proof unless they say otherwise.
+        SwitchCard(
+            title = stringResource(R.string.opt_verified30),
+            hint = stringResource(R.string.opt_verified30_hint),
+            icon = IconExcluded,
+            checked = o.freeUpAllowVerified30
+        ) { vm.setFreeUpVerified30(it) }
         SwitchCard(
             title = stringResource(R.string.opt_pause),
             hint = stringResource(R.string.opt_pause_hint),
