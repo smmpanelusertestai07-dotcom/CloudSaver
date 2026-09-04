@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.75";
+    static final String VERSION = "10.0.80";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -1315,6 +1315,29 @@ public final class MainActivity extends Activity {
                         + "systemd-style background services, and any power over Android itself. The "
                         + "computer lives in this app's private storage and is removed with the app.",
                 true);
+
+        addAnswer(card, R.drawable.ic_desktop, "Can it run Windows apps too?",
+                "Yes, some of them — and the app tells you which before you download anything.\n\n"
+                        + "Add \u201cWindows apps support\u201d from the Apps tab (about 900 MB). It "
+                        + "installs Wine, which lets this computer run Windows programs. Then, inside "
+                        + "the desktop: Tools \u2192 Windows apps \u2192 pick one, download it in the "
+                        + "browser, and Install a downloaded app takes it from there.\n\n"
+                        + "The rule is the processor, and it is checked FIRST, in one second, before "
+                        + "anything is unpacked:\n"
+                        + "\u2022 Built for ARM64 \u2014 this phone's own processor \u2192 it "
+                        + "installs\n"
+                        + "\u2022 Built only for Intel and AMD \u2192 refused, and it says why. "
+                        + "Running it would mean translating every instruction, which this phone "
+                        + "cannot do at a usable speed\n\n"
+                        + "Cursor and Antigravity publish ARM64 Windows builds; Claude and ChatGPT "
+                        + "ship theirs as Microsoft Store packages, which PocketDesk opens and takes "
+                        + "the ARM64 part out of \u2014 that one is more likely to fail.\n\n"
+                        + "Be honest with yourself about this: it is EXPERIMENTAL. A Windows app may "
+                        + "open, may look wrong, or may not start at all. Nothing on the Linux side "
+                        + "changes either way \u2014 separate folder, separate launcher, and removing "
+                        + "Windows apps support removes all of it. And all four AI apps already have "
+                        + "Linux ARM64 builds that run faster here, so the Windows route is for "
+                        + "programs that have no Linux version at all.", false);
 
         addAnswer(card, R.drawable.ic_info, "Do Mac, Windows and Linux get the same features?",
                 "No, and the pattern is worth knowing before you choose anything.\n\n"

@@ -64,7 +64,7 @@ if [ -z "$FILE" ]; then
   if have zenity; then
     FILE=$(zenity --file-selection --title="Install a downloaded app" \
       --filename="$HOME/Downloads/" \
-      --file-filter="Linux app packages | *.deb" 2>/dev/null) || exit 0
+      --file-filter="App packages | *.deb *.exe *.msix *.msixbundle *.appx" 2>/dev/null) || exit 0
   else
     printf 'Usage: pocketdesk-install <file.deb>\n'
     exit 2
@@ -97,13 +97,61 @@ Look for the app's .deb build for Linux ARM64 instead, or install it from the Ap
     exit 1 ;;
 esac
 
+# A Windows program goes to the Windows installer, which reads the processor it was built for
+# out of the file before anything is unpacked. With no Windows layer installed it says so and
+# stops -- nothing is downloaded, nothing is half-installed.
+case "$name_only" in
+  *.exe|*.msix|*.msixbundle|*.appx|*.appxbundle)
+    if ! command -v wine >/dev/null 2>&1 && ! command -v wine64 >/dev/null 2>&1; then
+      say error "Windows apps are not set up yet" \
+"$name_only is a Windows program.
+
+To run Windows programs on this computer, add \"Windows apps support\" from PocketDesk's Apps tab first. It installs Wine, which is about 900 MB.
+
+Nothing was installed and nothing was changed."
+      exit 1
+    fi
+    win_verdict=$(/usr/local/bin/pocketdesk-winapp check "$FILE" 2>/dev/null | head -n 1)
+    case "$win_verdict" in
+      arm64)
+        if have zenity; then
+          zenity --question --no-markup --width=460 --title="Install a Windows app?" \
+            --text="$name_only is a Windows program built for ARM64 — this phone's own processor.
+
+Windows apps here are experimental: it may open, it may look wrong, or it may not start at all. Nothing on the Linux side is touched either way.
+
+Install it?" 2>/dev/null || exit 0
+        fi
+        out=$(/usr/local/bin/pocketdesk-winapp install "$FILE" 2>&1)
+        if printf '%s' "$out" | grep -q '^INSTALLED'; then
+          say info "Installed" "$out"
+        else
+          say error "That did not install" "$out"
+          exit 1
+        fi
+        exit 0 ;;
+      x64|x86)
+        say error "Built for the wrong processor" \
+"$name_only is built only for Intel and AMD processors.
+
+This phone is ARM64. Running it would mean translating every instruction, which this phone cannot do at a usable speed — so nothing was installed.
+
+Look for the app's ARM64 build for Windows, or its Linux ARM64 build."
+        exit 1 ;;
+      *)
+        say error "Could not read that file" \
+"The processor $name_only was built for could not be read, so it was not installed."
+        exit 1 ;;
+    esac ;;
+esac
+
 case "$name_only" in
   *.deb) ;;
   *)
     say error "Not an app package" \
 "$name_only is not a Linux app package.
 
-Apps for this computer come as .deb files built for ARM64. The Apps tab installs the four AI apps from their publishers; anything else you download has to be a .deb."
+Apps for this computer come as .deb files built for ARM64, or — with Windows apps support installed — as Windows .exe and .msix files built for ARM64. The Apps tab installs the four AI apps from their publishers."
     exit 1 ;;
 esac
 

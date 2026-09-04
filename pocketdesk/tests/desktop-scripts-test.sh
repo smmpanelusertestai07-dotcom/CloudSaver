@@ -549,4 +549,49 @@ status_out=$(bash "$PROJECT_DIR/app/assets/pocketdesk-status.sh" 2>"$WORK/status
 grep -q 'Storage free' "$WORK/status.err" || fail "the tooltip must say how much storage is free"
 grep -q 'Tap for storage' "$WORK/status.err" || fail "the tooltip must say what tapping the numbers does"
 
+# ---- Windows apps: the processor check that decides everything ---------------------------
+# A Windows program says which processor it was built for in its PE header. Getting this wrong
+# in either direction is expensive: a refused ARM64 app the owner could have used, or a 500 MB
+# Intel download that ends in a shrug. So every case is built here and checked for real.
+mkdir -p "$WORK/win"
+python3 - "$WORK/win" <<'PEEOF'
+import struct, os, sys
+folder = sys.argv[1]
+for name, machine in (("arm64.exe", 0xaa64), ("arm64ec.exe", 0xa641),
+                      ("x64.exe", 0x8664), ("x86.exe", 0x014c)):
+    raw = bytearray(0x100)
+    raw[0:2] = b"MZ"
+    struct.pack_into("<I", raw, 0x3c, 0x80)
+    raw[0x80:0x84] = b"PE\0\0"
+    struct.pack_into("<H", raw, 0x84, machine)
+    open(os.path.join(folder, name), "wb").write(bytes(raw))
+open(os.path.join(folder, "junk.exe"), "wb").write(b"this is not a windows program")
+PEEOF
+printf '#!/bin/sh\necho "wine-11.0"\n' > "$WORK/fakebin/wine"; chmod +x "$WORK/fakebin/wine"
+winapp() { PATH="$WORK/fakebin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-winapp.sh" "$@"; }
+[ "$(winapp check "$WORK/win/arm64.exe" | head -n 1)" = arm64 ] \
+  || fail "an ARM64 Windows program must be recognised as ARM64"
+[ "$(winapp check "$WORK/win/arm64ec.exe" | head -n 1)" = arm64 ] \
+  || fail "ARM64EC is ARM64: refusing it would refuse most Windows-on-Arm apps"
+[ "$(winapp check "$WORK/win/x64.exe" | head -n 1)" = x64 ] \
+  || fail "an Intel/AMD program must be recognised as x64, not run"
+[ "$(winapp check "$WORK/win/x86.exe" | head -n 1)" = x86 ] || fail "32-bit Intel must be recognised"
+[ "$(winapp check "$WORK/win/junk.exe" | head -n 1)" = unknown ] \
+  || fail "a file that is not a Windows program must not be guessed at"
+winapp check "$WORK/win/x64.exe" | grep -q 'NOT SUPPORTED' \
+  || fail "the x64 verdict must say plainly that it will not run"
+winapp check "$WORK/win/arm64.exe" | grep -q 'SUPPORTED' \
+  || fail "the ARM64 verdict must say it is supported"
+# Installing an Intel build must refuse BEFORE anything is unpacked.
+if winapp install "$WORK/win/x64.exe" TestApp >/dev/null 2>&1; then
+  fail "an Intel-only Windows program must be refused, not installed"
+fi
+[ -d "$WORK/coder/.pocketdesk/windows" ] && fail "a refused install must leave nothing behind"
+# Without a Windows layer the script must say so rather than half-install.
+if PATH="/usr/bin:/bin" bash "$PROJECT_DIR/app/assets/pocketdesk-winapp.sh" version >/dev/null 2>&1; then
+  fail "with no wine installed, pocketdesk-winapp must refuse"
+fi
+
+echo "PASS WindowsApps (PE processor detection, verdicts, refusal without a Windows layer)"
+
 echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound, panel status)"

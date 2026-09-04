@@ -357,6 +357,9 @@ final class ContainerRuntime {
             case 15: return "One of the app repositories did not answer, so it was removed again "
                     + "rather than left to break later installs. Check the internet connection and "
                     + "try again; everything else that was installed is kept.";
+            case 16: return "The Windows layer could not be installed. Nothing on the Linux side "
+                    + "changed, and every app you already have still works. Try again on a better "
+                    + "connection.";
             default: return null;
         }
     }
@@ -401,6 +404,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
+        copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -446,6 +450,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
+        copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }

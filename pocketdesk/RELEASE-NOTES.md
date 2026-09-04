@@ -1,3 +1,56 @@
+# PocketDesk 10.0.80 — Windows apps, as a separate layer that cannot break anything
+
+A second kind of app can now be installed: **Windows programs built for ARM64**. It sits *beside*
+the Linux side, never on top of it.
+
+**How to use it**
+
+1. Apps tab → **Windows apps support** (about 900 MB). It installs Wine.
+2. In the desktop: **Tools → Windows apps** → pick Cursor, Antigravity, Claude or ChatGPT, and
+   the browser opens their download page.
+3. Open the downloaded file with **Install a downloaded app**, exactly like a `.deb`.
+
+**The processor is checked first, in one second, before anything is unpacked**
+
+PocketDesk reads the file's own PE header — the two bytes that say which processor it was built
+for — and answers before a single megabyte is spent:
+
+- **ARM64** (also ARM64EC) → installs
+- **Intel / AMD only** → refused, with the reason. Translating every instruction is not something
+  this phone can do at a usable speed, so it says so instead of wasting the download
+- **Not a Windows program** → refused rather than guessed at
+
+`.exe`, `.msix`, `.msixbundle`, `.appx` all work. Installers are **unpacked, not run** — an
+installer stub is often 32-bit Intel even when the program inside is ARM64, so running it would
+fail on a file that would itself have worked. A Store bundle holds one program per processor;
+the ARM64 one is taken out.
+
+**Wine comes from Hangover when it can**
+
+Hangover is Wine 11 with the newest ARM64 support and ships packages for Ubuntu 24.04 on arm64.
+The release is looked up **on the phone at install time**, not written into the app, so this keeps
+working when a new Hangover appears. Ubuntu's own `wine64` is the fallback — older, but always
+there.
+
+**It cannot break the computer**
+
+Separate folder, separate prefix, separate launchers, its own stage marker, its own exit code.
+If every line of the Windows layer fails, the computer is exactly as it was. Removing "Windows
+apps support" removes Wine, the prefix and every Windows program with it, and touches nothing
+else.
+
+**Said plainly, in the app**
+
+This is **experimental**. A Windows app may open, may look wrong, or may not start at all — the
+FAQ says so, the install dialog says so, and the Apps row says so. All four AI apps already have
+Linux ARM64 builds that run faster here, so the Windows route is really for programs that have
+no Linux version at all.
+
+**Also**: a new test suite, **WindowsApps**, builds real PE files for ARM64, ARM64EC, x64 and x86
+and checks every verdict, that an Intel-only app is refused *before* unpacking, that a refused
+install leaves nothing behind, and that the installer refuses outright when no Windows layer is
+present.
+
 # PocketDesk 10.0.75 — a privacy monitor, a camera that needs no camera permission, and the honest OS table
 
 **Privacy monitor**

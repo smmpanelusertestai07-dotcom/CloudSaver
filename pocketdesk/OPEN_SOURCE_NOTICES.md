@@ -69,6 +69,20 @@ The same is true of `pocketdesk-agent.sh`, `pocketdesk-storage.sh`, `pocketdesk-
 `pocketdesk-windows.sh`, `pocketdesk-menu.sh`, `pocketdesk-desktop.sh`, `pocketdesk-open.sh` and
 `pocketdesk-install.sh`: all PocketDesk's own.
 
+## Windows apps support
+
+"Windows apps support" installs **Wine** — from [Hangover](https://github.com/AndreRH/hangover)
+(Wine 11 for ARM64, LGPL-2.1+) when its packages for Ubuntu 24.04 arm64 can be fetched, and from
+Ubuntu's own `wine64` (LGPL-2.1+) otherwise. Hangover bundles **FEX-Emu** and **Box64**, each
+under its own licence. Nothing of Wine or Hangover ships inside this APK; it is downloaded at
+install time and can be removed again from the Apps tab, which takes every Windows program with
+it.
+
+Wine is not an emulator and is not Windows: it is an independent implementation of the Windows
+programming interfaces. PocketDesk shows **no Microsoft mark of any kind** — the Windows logo is
+Microsoft's trademark and needs their permission, which PocketDesk does not have and does not
+claim. The words "Windows apps" are used only to say what kind of file the computer can open.
+
 ## Marks this app does and does not show
 
 PocketDesk shows its own mark (`icon_in_app.png`, which is also the launcher icon, the opening

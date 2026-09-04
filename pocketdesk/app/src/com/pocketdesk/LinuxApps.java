@@ -281,6 +281,52 @@ final class LinuxApps {
             "build-essential pkg-config python3 python3-pip python3-venv python3-dev nodejs npm "
             + "git git-lfs openssh-client jq htop tree vim nano rsync sqlite3";
 
+    /**
+     * Wine, so the computer can also run Windows programs built for ARM64.
+     *
+     * Hangover first: it is Wine 11 with the newest ARM64EC support, and it publishes ready-made
+     * packages for Ubuntu 24.04 on arm64. The release is looked up on the phone at install time
+     * rather than written into the app, so this keeps working when a new Hangover appears and
+     * the old one is taken down -- and it costs the owner nothing to be years out of date.
+     * Ubuntu's own wine64 is the fallback: older (9.0) and no x86 translation, but it is in the
+     * archive the computer already trusts, so there is always something rather than nothing.
+     *
+     * Nothing here touches the Linux side. It is a separate step, a separate marker and a
+     * separate folder: if every line of it fails, the computer is exactly as it was.
+     */
+    static final String WINDOWS_LAYER =
+            "pd_update || exit 11; "
+            + "apt-get install -y --no-install-recommends curl ca-certificates p7zip-full unzip "
+            + "cabextract || true; "
+            + "pd_win_dir=/var/cache/pocketdesk/windows; mkdir -p \"$pd_win_dir\"; "
+            // Hangover's own release listing, read on the phone. Only the assets for this
+            // distribution and this processor are taken.
+            + "pd_win_json=$(curl -fsSL --max-time 60 "
+            + "https://api.github.com/repos/AndreRH/hangover/releases/latest 2>/dev/null || true); "
+            + "pd_win_urls=$(printf '%s' \"$pd_win_json\" | tr ',' '\n' | "
+            + "grep -o 'https://[^\"]*ubuntu-24.04[^\"]*arm64[^\"]*\\.deb' | sort -u); "
+            + "if [ -n \"$pd_win_urls\" ]; then "
+            + "echo 'PocketDesk: fetching the Windows layer'; "
+            + "for pd_u in $pd_win_urls; do "
+            + "curl -fsSL --max-time 600 -o \"$pd_win_dir/$(basename \"$pd_u\")\" \"$pd_u\" || true; done; "
+            + "dpkg -i \"$pd_win_dir\"/*.deb >/dev/null 2>&1 || apt-get -y -f install >/dev/null 2>&1 || true; "
+            + "fi; "
+            // Whatever happened above, the computer must end with a working wine or say so.
+            + "if ! command -v wine >/dev/null 2>&1; then "
+            + "echo 'PocketDesk: using the package archive instead'; "
+            + "pd_step winelayer wine64 || echo 'PocketDesk: the Windows layer did not install'; fi; "
+            + "rm -rf \"$pd_win_dir\"; "
+            + "if command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1; then "
+            // One prefix, made once, with Wine's own installers turned off: they want to download
+            // Mono and Gecko, which is 100 MB the AI apps do not use and a dialog nobody can read
+            // on a phone.
+            + "su - coder -c 'export WINEPREFIX=$HOME/.pocketdesk-wine; "
+            + "export WINEDLLOVERRIDES=mscoree=d;mshtml=d; export WINEDEBUG=-all; "
+            + "mkdir -p \"$WINEPREFIX\"; wineboot --init >/dev/null 2>&1 || true' || true; "
+            + "printf 'ok' > \"$PD_STATE/windows-layer\"; "
+            + "wine --version 2>/dev/null || wine64 --version 2>/dev/null || true; "
+            + "else echo 'PocketDesk: no Windows layer this time'; exit 16; fi";
+
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
             // earlier version catches up without being rebuilt. Not removable: it is the computer.
@@ -309,6 +355,26 @@ final class LinuxApps {
                             + "[ -x /usr/bin/google-chrome-stable ] && : > \"$PD_STATE/stage/chrome\" || true; "
                             + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
                     null, true),
+
+            // The Windows layer: an app on the Apps tab like any other, so it is the owner's
+            // choice, it can be removed, and it can never slow down or break a set-up that does
+            // not want it.
+            new App("windows", "Windows apps support",
+                    "Wine, so this computer can also run Windows programs built for ARM64. "
+                            + "Experimental: a Windows program may open, may look wrong, or may "
+                            + "not start at all. Nothing on the Linux side changes either way.",
+                    R.drawable.ic_desktop, 0, "about 900 MB", 3 * GB,
+                    "10–25 min", "Windows programs built only for Intel and AMD will not run here, "
+                            + "and the installer says so before it starts.",
+                    "/usr/bin/wine",
+                    WINDOWS_LAYER,
+                    "apt-get remove -y --purge 'wine*' 'hangover*' >/dev/null 2>&1 || true; "
+                            + "rm -rf /home/coder/.pocketdesk-wine /home/coder/.pocketdesk/windows "
+                            + "\"$PD_STATE/windows-layer\" \"$PD_STATE/stage/winelayer\"; "
+                            + "rm -f /home/coder/.local/share/applications/pocketdesk-win-*.desktop "
+                            + "/home/coder/Desktop/pocketdesk-win-*.desktop; "
+                            + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
+                    false),
 
             new App("chatgpt", "ChatGPT",
                     "AI assistant by OpenAI, with the Codex coding agent.",
