@@ -1,3 +1,43 @@
+# PocketDesk 10.1.15 — Wine was installed all along
+
+The report finally said it, in apt's own words:
+
+> `wine64 is already the newest version (9.0~repack-4build3).`
+> `0 upgraded, 0 newly installed, 0 to remove.`
+
+**Wine was installed.** PocketDesk was looking in the wrong place and reporting it as a failed
+download.
+
+Ubuntu's `wine64` package on ARM64 installs exactly two files:
+
+```
+/usr/lib/wine/wine64
+/usr/lib/wine/wineserver64
+```
+
+and **nothing at all in `/usr/bin`**. The launcher lives in the separate `wine` package, and on
+Ubuntu it is not even called `wine` — it is `wine-stable`. So `command -v wine64` found nothing on
+a computer where Wine was complete and working, and the owner was told to try again on a better
+connection, three times, over a download that had already finished.
+
+**Fixed**
+
+- The layer now looks where Wine really is: `/usr/local/bin/wine`, `/usr/bin/wine`,
+  `/usr/bin/wine-stable`, `/usr/lib/wine/wine64`, `/usr/lib/wine/wine`.
+- Both packages are installed, not one: `wine64` is the engine, `wine` is what puts a launcher on
+  the path at all.
+- Whatever the packaging called it, it gets **one name**: `/usr/local/bin/wine` is linked to the
+  real binary, so the installer, the launchers it writes, and the owner in a terminal all say
+  `wine`. `wineserver` too.
+- The installer script looks in the same places, so a computer that already has Wine from
+  somewhere else works without reinstalling anything.
+- The diagnostic that said "ready-made packages found: 1" was counting the word "none". It counts
+  packages now, and a failure also lists what is actually in `/usr/lib/wine`.
+
+**A test that would have caught it.** The finder is lifted out of the install command itself —
+not copied — and pointed at a tree where Wine exists only at `/usr/lib/wine/wine64` with nothing
+on the path. It must find it. Put the old path-only check back and that test fails.
+
 # PocketDesk 10.1.10 — the report now carries what the computer actually said
 
 The Windows layer failed again, and the report said only this:

@@ -20,7 +20,17 @@ export WINEPREFIX="$PREFIX"
 export WINEDLLOVERRIDES="mscoree=d;mshtml=d"
 export WINEDEBUG=-all
 
-WINE=$(command -v wine 2>/dev/null || command -v wine64 2>/dev/null || true)
+# Where a working Wine really is. Ubuntu's wine64 package on arm64 installs exactly two files,
+# /usr/lib/wine/wine64 and wineserver64, and nothing at all in /usr/bin -- so looking only on the
+# path finds nothing on a computer where Wine is fully installed. The Windows layer makes
+# /usr/local/bin/wine point at whichever one is really there; this list is the belt to that brace.
+WINE=""
+for candidate in /usr/local/bin/wine /usr/bin/wine /usr/bin/wine-stable \
+                 /usr/lib/wine/wine64 /usr/lib/wine/wine; do
+  [ -x "$candidate" ] && { WINE=$candidate; break; }
+done
+[ -n "$WINE" ] || WINE=$(command -v wine 2>/dev/null || command -v wine-stable 2>/dev/null \
+                         || command -v wine64 2>/dev/null || true)
 
 say() { printf '%s\n' "$*"; }
 die() { printf '%s\n' "$*" >&2; exit 1; }

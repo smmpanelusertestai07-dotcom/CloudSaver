@@ -196,6 +196,37 @@ public final class LinuxAppsTest {
         require(!Files.exists(root.resolve("var/lib/pocketdesk/windows-layer")),
                 "a Windows layer that did not install must not leave its marker behind");
 
+        // The bug that cost three releases: Ubuntu's wine64 on arm64 installs /usr/lib/wine/wine64
+        // and NOTHING in /usr/bin, so a check that only looks at the path reports "no Wine" on a
+        // computer where apt has just said "wine64 is already the newest version". The layer must
+        // find it where it really is.
+        Path wineRoot = work.resolve("wineroot");
+        Files.createDirectories(wineRoot.resolve("usr/lib/wine"));
+        Files.createDirectories(wineRoot.resolve("usr/local/bin"));
+        Path realWine = wineRoot.resolve("usr/lib/wine/wine64");
+        Files.write(realWine, "#!/bin/bash\necho 'wine-9.0'\n".getBytes(StandardCharsets.UTF_8));
+        realWine.toFile().setExecutable(true);
+        Path wineOut = work.resolve("wine-found.out");
+        // The finder is lifted out of the layer and pointed at the stand-in tree, so what is
+        // tested is the real search order and not a copy of it.
+        String finder = LinuxApps.WINDOWS_LAYER.substring(
+                LinuxApps.WINDOWS_LAYER.indexOf("pd_find_wine() {"),
+                LinuxApps.WINDOWS_LAYER.indexOf("pd_win_dir="))
+                .replace("/usr/local/bin/wine", wineRoot + "/usr/local/bin/wine")
+                .replace("/usr/bin/wine-stable", wineRoot + "/usr/bin/wine-stable")
+                .replace("/usr/bin/wine ", wineRoot + "/usr/bin/wine ")
+                .replace("/usr/lib/wine/wine64", wineRoot + "/usr/lib/wine/wine64")
+                .replace("/usr/lib/wine/wine ", wineRoot + "/usr/lib/wine/wine ");
+        int found = run(work, "#!/bin/bash\nset -eu\nexport PATH='" + winBin + "'\n"
+                + finder + "\nfound=$(pd_find_wine)\n"
+                + "[ -n \"$found\" ] || { echo 'NOT FOUND'; exit 1; }\n"
+                + "echo \"$found\"\n", wineOut);
+        String whereWine = new String(Files.readAllBytes(wineOut), StandardCharsets.UTF_8).trim();
+        require(found == 0, "Wine in /usr/lib/wine must be found even with nothing on the path; "
+                + "the search said:\n" + whereWine);
+        require(whereWine.endsWith("/usr/lib/wine/wine64"),
+                "the search must return the real binary, not something else: " + whereWine);
+
         // pd_repo writes a source and must prove it, which cannot be done from a cached list.
         // The stamp is deliberately made FRESH first: without the force, pd_repo would take the
         // cache, fetch nothing, and report a repository it never proved.

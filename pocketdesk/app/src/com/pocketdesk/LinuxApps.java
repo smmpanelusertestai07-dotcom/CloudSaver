@@ -298,52 +298,62 @@ final class LinuxApps {
             "pd_update || exit 11; "
             + "apt-get install -y --no-install-recommends curl ca-certificates p7zip-full unzip "
             + "cabextract >/dev/null 2>&1 || true; "
+            // Where a working Wine really is. Ubuntu's wine64 package on arm64 installs exactly
+            // two files -- /usr/lib/wine/wine64 and wineserver64 -- and NOTHING in /usr/bin, so
+            // "command -v wine64" finds nothing on a computer where Wine is fully installed.
+            // That one wrong assumption is what reported "the Windows layer could not be
+            // installed" while apt was saying "wine64 is already the newest version".
+            + "pd_find_wine() { for pd_c in /usr/local/bin/wine /usr/bin/wine /usr/bin/wine-stable "
+            + "/usr/lib/wine/wine64 /usr/lib/wine/wine /opt/wine-stable/bin/wine; do "
+            + "[ -x \"$pd_c\" ] && { printf '%s' \"$pd_c\"; return 0; }; done; "
+            + "command -v wine 2>/dev/null || command -v wine-stable 2>/dev/null "
+            + "|| command -v wine64 2>/dev/null || true; }; "
             + "pd_win_dir=/var/cache/pocketdesk/windows; mkdir -p \"$pd_win_dir\"; "
-            // Every one of these is written with "|| true" on purpose. The whole command runs
-            // under "set -e", and a grep that simply finds nothing exits 1 -- which killed the
-            // install outright the first time this shipped, and reported it as if the download
-            // had failed. Nothing here may end the script except the one deliberate exit at the
-            // bottom, which knows whether there is a working Wine.
+            // Every step is allowed to come back empty. The whole command runs under "set -e",
+            // where a search that simply finds nothing counts as a failure.
             + "pd_win_json=$(curl -fsSL --max-time 60 "
             + "https://api.github.com/repos/AndreRH/hangover/releases/latest 2>/dev/null || true); "
-            // Any arm64 .deb in the release, preferring the ones that name this Ubuntu. Hangover
-            // has changed how it names these before, so the match is deliberately loose.
             + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
             + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' "
             + "| grep -iE '24[._]04|noble' | sort -u || true); "
             + "if [ -z \"${pd_win_urls:-}\" ]; then "
             + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
             + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' | sort -u || true); fi; "
+            + "pd_win_count=$(printf '%s' \"${pd_win_urls:-}\" | grep -c . || true); "
             + "if [ -n \"${pd_win_urls:-}\" ]; then "
-            + "echo 'PocketDesk: fetching the Windows layer'; "
+            + "echo \"PocketDesk: fetching the Windows layer ($pd_win_count packages)\"; "
             + "for pd_u in $pd_win_urls; do "
             + "curl -fsSL --max-time 900 -o \"$pd_win_dir/$(basename \"$pd_u\")\" \"$pd_u\" || true; done; "
             + "dpkg -i \"$pd_win_dir\"/*.deb >/dev/null 2>&1 || true; "
             + "apt-get -y -f install >/dev/null 2>&1 || true; "
             + "else echo 'PocketDesk: no ready-made Windows layer for this system'; fi; "
-            // Ubuntu's own Wine is the fallback. On arm64 the "wine" metapackage cannot be
-            // installed (it wants the 32-bit half, which arm64 has no version of), so wine64 is
-            // tried first and by name.
-            + "if ! command -v wine64 >/dev/null 2>&1 && ! command -v wine >/dev/null 2>&1; then "
-            + "echo 'PocketDesk: using the Ubuntu archive instead'; "
-            + "apt-get install -y --no-install-recommends wine64 >/dev/null 2>&1 "
-            + "|| apt-get install -y wine64 >/dev/null 2>&1 "
-            + "|| apt-get install -y wine >/dev/null 2>&1 || true; fi; "
+            // Ubuntu's own Wine as the fallback. Both packages: wine64 is the engine, and wine is
+            // what puts a launcher on the path at all -- on Ubuntu it is called wine-stable.
+            + "if [ -z \"$(pd_find_wine)\" ]; then "
+            + "echo 'PocketDesk: installing Wine from the Ubuntu archive'; "
+            + "apt-get install -y --no-install-recommends wine64 wine >/dev/null 2>&1 "
+            + "|| apt-get install -y wine64 wine >/dev/null 2>&1 "
+            + "|| apt-get install -y wine64 >/dev/null 2>&1 || true; fi; "
             + "rm -rf \"$pd_win_dir\"; "
-            + "pd_wine=$(command -v wine 2>/dev/null || command -v wine64 2>/dev/null || true); "
+            + "pd_wine=$(pd_find_wine); "
             + "if [ -n \"${pd_wine:-}\" ]; then "
-            // The prefix is only a folder until a program is started; Wine builds it on first
-            // use, as the owner, which is also the only user that will ever open it. Building it
-            // here as root was one more thing to go wrong for no gain.
+            // One name for it, whatever the packaging called it. Everything downstream -- the
+            // installer, the launchers it writes, the owner in a terminal -- says "wine".
+            + "mkdir -p /usr/local/bin; "
+            + "[ \"$pd_wine\" = /usr/local/bin/wine ] || ln -sf \"$pd_wine\" /usr/local/bin/wine; "
+            + "for pd_s in /usr/bin/wineserver /usr/bin/wineserver-stable /usr/lib/wine/wineserver64 "
+            + "/usr/lib/wine/wineserver; do [ -x \"$pd_s\" ] && { ln -sf \"$pd_s\" /usr/local/bin/wineserver; break; }; done; "
             + "mkdir -p /home/coder/.pocketdesk-wine /home/coder/.pocketdesk/windows; "
             + "chown -R coder:coder /home/coder/.pocketdesk-wine /home/coder/.pocketdesk 2>/dev/null || true; "
             + "printf 'ok' > \"$PD_STATE/windows-layer\"; "
-            + "echo \"PocketDesk: Windows layer ready ($(\"$pd_wine\" --version 2>/dev/null || echo installed))\"; "
+            + "echo \"PocketDesk: Windows layer ready at $pd_wine\"; "
+            + "/usr/local/bin/wine --version 2>/dev/null || true; "
             + "else "
-            // A failure has to say which of the two ways failed, or the next attempt is a guess.
             + "echo 'PocketDesk: no Wine on this computer after both attempts'; "
-            + "echo \"PocketDesk: ready-made packages found: $(printf '%s' \"${pd_win_urls:-none}\" | wc -w)\"; "
-            + "apt-get install -y --no-install-recommends wine64 2>&1 | tail -n 5; "
+            + "echo \"PocketDesk: ready-made packages found: ${pd_win_count:-0}\"; "
+            + "echo 'PocketDesk: looked in /usr/bin and /usr/lib/wine'; "
+            + "ls -1 /usr/lib/wine 2>/dev/null | head -n 5 || echo 'PocketDesk: /usr/lib/wine is not there'; "
+            + "apt-get install -y --no-install-recommends wine64 wine 2>&1 | tail -n 6; "
             + "exit 16; fi";
 
     static final App[] CATALOG = {
@@ -406,7 +416,9 @@ final class LinuxApps {
                     R.drawable.ic_terminal, R.drawable.logo_cursor, "about 500 MB", 2 * GB,
                     "5–15 min", null,
                     "/home/coder/.local/share/applications/pocketdesk-win-cursorwindows.desktop",
-                    "command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1 || exit 17; "
+                    // Wine is not always on the path -- see WINDOWS_LAYER -- so the layer's own
+                    // marker is what says it is there.
+                    "[ -x /usr/local/bin/wine ] || [ -f \"$PD_STATE/windows-layer\" ] || exit 17; "
                             + "pd_cw=$(curl -fsSL --max-time 60 "
                             + "'https://cursor.com/api/download?platform=win32-arm64-user&releaseTrack=stable' "
                             + "2>/dev/null | grep -o '\"downloadUrl\":\"[^\"]*\"' | cut -d'\"' -f4); "
