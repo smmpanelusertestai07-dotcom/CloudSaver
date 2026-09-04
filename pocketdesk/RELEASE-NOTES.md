@@ -1,3 +1,26 @@
+# PocketDesk 10.1.00 — "See Last error report" now has a report to see
+
+The app has been telling people to look at something that did not exist. When something went
+wrong it saved a full report to `last-crash.txt` — and **nothing in the app ever read it**. The
+message said "See Last error report"; there was no such screen.
+
+**Settings → Permissions → Last error report**
+
+- Says whether anything has gone wrong, and when
+- Opens the whole thing: date, Android version, phone model, PocketDesk version, and the error
+- **Copy** puts it on the clipboard, so it can be pasted into a message. An owner with no PC
+  cannot read a log file, but they can paste one
+- **Clear** empties it
+
+**Failures that were handled are kept too**
+
+A set-up or an install that fails explains itself in a dialog, and the dialog took the
+explanation with it when it was dismissed. Those reasons — including what the container itself
+said last — are now written to the same report, so the answer is still there an hour later.
+
+This is the release to have before reporting anything: whatever goes wrong next, the exact reason
+is one tap and one Copy away.
+
 # PocketDesk 10.0.95 — the Windows layer says why it failed
 
 10.0.90's Windows layer failed on the reference phone with nothing but *"The Windows layer could

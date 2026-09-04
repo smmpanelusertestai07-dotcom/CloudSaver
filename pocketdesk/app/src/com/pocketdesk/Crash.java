@@ -48,6 +48,30 @@ final class Crash {
         }
     }
 
+    /**
+     * A failure that was handled, kept the same way a crash is.
+     *
+     * A set-up or an install that fails says why in a dialog, and the dialog is gone the moment
+     * it is dismissed -- taking with it the one line that would have explained the failure. This
+     * keeps it, so "Last error report" answers for both kinds of trouble.
+     */
+    static void note(Context context, String title, String detail) {
+        try {
+            StringBuilder text = new StringBuilder();
+            text.append(new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(new Date()))
+                    .append('\n')
+                    .append("Android ").append(android.os.Build.VERSION.RELEASE)
+                    .append(" \u00b7 ").append(android.os.Build.MODEL).append('\n')
+                    .append("PocketDesk ").append(MainActivity.VERSION).append("\n\n")
+                    .append(title).append("\n\n").append(detail == null ? "" : detail);
+            try (FileOutputStream out = new FileOutputStream(new File(context.getFilesDir(), FILE))) {
+                out.write(text.toString().getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Throwable ignored) {
+            // Never let recording a failure cause another one.
+        }
+    }
+
     static String read(Context context) {
         File file = new File(context.getFilesDir(), FILE);
         if (!file.isFile()) return "";

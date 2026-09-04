@@ -387,7 +387,11 @@ public final class LinuxService extends Service {
                     Thread.currentThread().interrupt();
                     status("Cancelled", "The desktop is still running.", -1, false, false);
                 } catch (Exception error) {
-                    status("Could not complete task", cleanError(error), -1, false, true);
+                    String message = cleanError(error);
+                    status("Could not complete task", message, -1, false, true);
+                    // The dialog goes when it is dismissed; the reason should not go with it.
+                    Crash.note(LinuxService.this,
+                            (removing ? "Removing " : "Installing ") + appId + " failed", message);
                 } finally {
                     INSTALLING.set(false);
                     releaseInstallWakeLock();
@@ -456,6 +460,7 @@ public final class LinuxService extends Service {
                 } else {
                     String message = cleanError(error);
                     status("Could not complete task", message, -1, false, true);
+                    Crash.note(LinuxService.this, "A task failed", message);
                 }
             } finally {
                 workerThread = null;

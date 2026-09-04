@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.95";
+    static final String VERSION = "10.1.00";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -123,6 +123,7 @@ public final class MainActivity extends Activity {
     private Ui.Row autoStartRow;
     private Ui.Row phoneFilesRow;
     private Ui.Row microphoneRow;
+    private Ui.Row errorReportRow;
     private DeviceProbe lastProbe;
     private Ui.Row dataCapRow;
     private Ui.Row lockNoticeRow;
@@ -1256,6 +1257,11 @@ public final class MainActivity extends Activity {
                 PrivacyMonitor.summary(this), R.drawable.ic_chevron, dark, v -> showPrivacyMonitor());
         privacyRow.setStatus("SEE", Ui.muted(dark));
         permissions.addView(privacyRow, Ui.matchWrap(this, 8));
+        // "See Last error report" was on screen with nothing behind it: the report was written
+        // and never read by anything. This is the screen the app was pointing at.
+        errorReportRow = new Ui.Row(this, R.drawable.ic_stop, "Last error report",
+                "Checking…", R.drawable.ic_chevron, dark, v -> showErrorReport());
+        permissions.addView(errorReportRow, Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketDesk",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
@@ -2209,7 +2215,49 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    /**
+     * The last thing that went wrong, in full, with a way to hand it on.
+     *
+     * A message that says "see the report" and then has no report is worse than no message: the
+     * owner is told there is an answer and given no way to it. The Copy button is the point --
+     * an owner with no PC cannot read a log file, but they can paste one.
+     */
+    private void showErrorReport() {
+        String report = Crash.read(this);
+        if (report.isEmpty()) {
+            showMessage("No error report", "Nothing has gone wrong since this was last cleared.");
+            return;
+        }
+        dialogBuilder()
+                .setTitle("Last error report")
+                .setMessage(report)
+                .setNeutralButton("Clear", (d, w) -> {
+                    Crash.clear(this);
+                    refreshPermissionRows();
+                })
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Copy", (d, w) -> {
+                    android.content.ClipboardManager board =
+                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (board != null) {
+                        board.setPrimaryClip(android.content.ClipData.newPlainText(
+                                "PocketDesk error report", report));
+                        android.widget.Toast.makeText(this, "Copied. Paste it wherever you are "
+                                + "asking for help.", android.widget.Toast.LENGTH_LONG).show();
+                    }
+                })
+                .show();
+    }
+
     private void refreshPermissionRows() {
+        if (errorReportRow != null) {
+            long at = Crash.recordedAt(this);
+            boolean any = at > 0;
+            errorReportRow.setStatus(any ? "SEE" : "NONE", any ? Ui.WARNING : Ui.muted(dark));
+            errorReportRow.setValue(any
+                    ? "Something went wrong " + clock(at) + ". Tap to read it, and to copy it."
+                    : "Nothing has gone wrong. Anything that does is kept here.");
+        }
         if (microphoneRow != null) {
             boolean on = checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                     == PackageManager.PERMISSION_GRANTED;
