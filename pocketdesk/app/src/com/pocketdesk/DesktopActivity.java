@@ -1,5 +1,6 @@
 package com.pocketdesk;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
@@ -9,6 +10,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.media.AudioManager;
@@ -49,7 +51,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
             MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
-            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20;
+            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21;
+    /** The request code the microphone prompt comes back on; above AppLock's own codes. */
+    private static final int REQUEST_MICROPHONE = 4711;
 
     private SharedPreferences preferences;
     private FrameLayout outer;
@@ -76,6 +80,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private boolean keyRowShown;
     /** The Linux computer's sound, streamed to the phone's speaker while this screen is open. */
     private final AudioBridge audio = new AudioBridge();
+    private final MicBridge microphone = new MicBridge(this);
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -127,6 +132,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
+    @Override protected void onStop() {
+        super.onStop();
+        // A microphone must never outlive the screen that turned it on. Leaving the desktop --
+        // to another app, to the lock screen, to Home -- stops recording, every time.
+        if (microphone.isRunning()) {
+            microphone.stop();
+            Toast.makeText(this, "Microphone off: the desktop screen was left.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
     /** True while the locked screen covers the desktop: keys and taps stop here. */
     private boolean lockedNow() {
         return outer != null && AppLock.showing(outer);
@@ -137,9 +153,68 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         super.onActivityResult(request, result, data);
     }
 
+    @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] granted) {
+        super.onRequestPermissionsResult(request, permissions, granted);
+        if (request != REQUEST_MICROPHONE) return;
+        if (granted.length > 0 && granted[0] == PackageManager.PERMISSION_GRANTED) {
+            startMicrophone();
+        } else {
+            Toast.makeText(this, "Without microphone permission the Linux computer has no "
+                    + "microphone. You can allow it later from the phone's app settings.",
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * The phone's microphone, handed to the Linux computer while this screen is open.
+     *
+     * Off at every start, asked for the first time it is used, and stopped the moment this
+     * screen is left -- the three things that make a microphone on someone else's computer
+     * something they can trust rather than something they have to watch.
+     */
+    private void toggleMicrophone() {
+        if (microphone.isRunning()) {
+            microphone.stop();
+            Toast.makeText(this, "Microphone off.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!MicBridge.available(this)) {
+            showMessage("No microphone yet", "The desktop makes the microphone when it starts. "
+                    + "This computer was set up by an earlier version: stop the desktop and open "
+                    + "it again, and the microphone will be there.");
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_MICROPHONE);
+            return;
+        }
+        startMicrophone();
+    }
+
+    /** One themed dialog, in the viewer's own style, for the microphone's few honest answers. */
+    private void showMessage(String title, String text) {
+        new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)
+                .setTitle(title)
+                .setMessage(text)
+                .setPositiveButton("OK", null)
+                .show();
+    }
+
+    private void startMicrophone() {
+        microphone.start();
+        String problem = microphone.problem();
+        if (problem != null) {
+            showMessage("The microphone did not start", problem);
+            return;
+        }
+        Toast.makeText(this, "Microphone on. It stops when you leave this screen.",
+                Toast.LENGTH_LONG).show();
+    }
+
     @Override protected void onDestroy() {
         finished = true;
         audio.stop();
+        microphone.stop();
         if (desktop != null && desktop.getClient() != null) desktop.getClient().close();
         if (connectionThread != null) connectionThread.interrupt();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -347,6 +422,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
         items.add(0, MENU_VOLUME_MUTE, 8, silent ? "Media volume: unmute" : "Media volume: mute")
                 .setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_MICROPHONE, 9, microphone.isRunning()
+                        ? "Microphone: turn off" : "Microphone: let the computer hear you")
+                .setIcon(R.drawable.ic_volume);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -369,6 +447,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 case MENU_VOLUME_UP: adjustVolume(AudioManager.ADJUST_RAISE); return true;
                 case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
                 case MENU_VOLUME_MUTE: adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE); return true;
+                case MENU_MICROPHONE: toggleMicrophone(); return true;
                 default: return false;
             }
         });
@@ -521,7 +600,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "keys set it while this screen is open and show the level, and Screen → Media "
                 + "volume does the same from the menu. Inside the computer, Tools → Volume and "
                 + "sound balances one app against another; the phone still decides how loud it "
-                + "ends up.\n\n"
+                + "ends up. Screen → Microphone hands the phone's microphone to the computer; it "
+                + "is off at every start and stops the moment you leave this screen.\n\n"
+                + "Super+Space takes an appshot — the window in front, its words read, pasted "
+                + "straight into whichever AI app is open.\n\n"
                 + "Stopping the computer keeps everything: apps stay signed in and files stay "
                 + "where they are, so the next open continues from here.";
         new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)

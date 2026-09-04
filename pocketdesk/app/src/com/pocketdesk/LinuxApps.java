@@ -267,6 +267,11 @@ final class LinuxApps {
     static final String TOOL_PACKAGES =
             "mousepad xarchiver 7zip gpicview galculator lxtask lxappearance pavucontrol "
             + "scrot xclip xsel ripgrep man-db manpages tmux "
+            // Electron's safeStorage keeps an app's sign-in token encrypted -- but only where
+            // libsecret finds a keyring. With none, every Electron app on Linux falls back to
+            // writing the token in plain text. This is what makes the four AI apps store their
+            // sign-ins the way they do on a Mac.
+            + "gnome-keyring libsecret-1-0 libsecret-tools "
             // The words on the screen, for PocketDesk's own Appshot: an agent gets the text of a
             // window as well as its picture. About 35 MB with the English data, and it only runs
             // when an agent actually asks for a reading.

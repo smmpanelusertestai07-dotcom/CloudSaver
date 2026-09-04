@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.65";
+    static final String VERSION = "10.0.70";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -1439,9 +1439,13 @@ public final class MainActivity extends Activity {
                         + "exactly why Phone files is off until you turn it on, and worth turning "
                         + "off again when you are not using it.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
-                        + "messages, anything outside that shared storage, the camera, the "
-                        + "microphone, your location or your contacts. PocketDesk holds no permission "
-                        + "for any of them, so nothing inside can ask for one.\n\n"
+                        + "messages, anything outside that shared storage, the camera, your location "
+                        + "or your contacts. PocketDesk holds no permission for any of them, so "
+                        + "nothing inside can ask for one.\n\n"
+                        + "The microphone is the one exception, and it is yours to give: Screen → "
+                        + "Microphone on the desktop hands it over, the phone asks you the first "
+                        + "time, it is off at every start, and it stops the moment you leave the "
+                        + "desktop screen. Android's own microphone dot shows the whole time.\n\n"
                         + "So the whole risk is what you install. Apps from the Apps tab come signed "
                         + "by their publishers; anything you download yourself, treat like an APK "
                         + "from a website — read what the installer says before you tap Install "
@@ -1481,7 +1485,9 @@ public final class MainActivity extends Activity {
                         + "for the optional App lock.\n\nYour phone's storage is reachable only if "
                         + "you turn on Phone files in Settings → Permissions; off (the default) the "
                         + "computer cannot see a single file on the phone. It has NO permission for "
-                        + "the camera, microphone, location, contacts, calls or messages.", false);
+                        + "the camera, location, contacts, calls or messages. The microphone it can "
+                        + "have, but only while you turn it on from the desktop screen, and never "
+                        + "after you leave it.", false);
 
         addAnswer(card, R.drawable.ic_check, "Are these real Linux apps, and the best ones?",
                 "Yes. Every app here is the publisher's own official Linux build — OpenAI's "
@@ -1535,6 +1541,23 @@ public final class MainActivity extends Activity {
                         + "open. The Home tab says when and why the computer last stopped, and an app "
                         + "that the phone closed says so on the desktop. Window → Force close ends "
                         + "an app that has stopped answering.", false);
+
+        addAnswer(card, R.drawable.ic_volume, "Can the computer hear me? (microphone)",
+                "Yes. Screen → Microphone, on the desktop screen, hands the phone's microphone to "
+                        + "the Linux computer as an ordinary recording device — inside it appears as "
+                        + "\u201cPhone microphone\u201d, and every program finds it: a voice reply "
+                        + "in an AI app, a meeting page in the browser, dictation.\n\n"
+                        + "Three rules it keeps, because a microphone is the one thing you should "
+                        + "never have to wonder about:\n"
+                        + "• It is OFF every time the desktop starts. Nothing is remembered as "
+                        + "\u201calways on\u201d.\n"
+                        + "• It asks the phone's own microphone permission the first time, and you "
+                        + "can take that back in the phone's app settings whenever you like.\n"
+                        + "• It stops the instant you leave the desktop screen — to another app, to "
+                        + "the lock screen, to Home. The screen says so when it does.\n\n"
+                        + "The sound goes straight into the computer through this app's own private "
+                        + "storage. It is not recorded to a file, PocketDesk sends it nowhere, and "
+                        + "Android shows its own microphone dot the whole time it is on.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can the AI see the screen and use the computer?",
                 "Yes — PocketDesk provides that itself, because the publishers' own versions of it "
@@ -1636,8 +1659,12 @@ public final class MainActivity extends Activity {
                         + "Media volume does the same from the menu.\n\nInside the computer, Tools "
                         + "→ Volume and sound balances one app against another; the desktop's own "
                         + "output is set to full at every start, so your phone's volume keys stay the "
-                        + "one control that matters. Sound INTO the computer (a microphone) is not "
-                        + "carried yet.", false);
+                        + "one control that matters.\n\nThe microphone works both ways now: "
+                        + "Screen → Microphone hands the phone's microphone to the computer as a "
+                        + "recording device called \u201cPhone microphone\u201d, so a voice reply, "
+                        + "a meeting page in the browser or an AI app's dictation all find one. Off "
+                        + "at every start, asks permission the first time, and stops the moment you "
+                        + "leave the desktop screen.", false);
 
         addAnswer(card, R.drawable.ic_info, "The honest limits",
                 "These are the permanent ones. This is an agentic development environment, "

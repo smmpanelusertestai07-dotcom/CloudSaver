@@ -252,6 +252,31 @@ PROJECTMCP
   fi
 fi
 
+# Sign-ins, kept the way a desktop keeps them.
+#
+# Electron's safeStorage encrypts an app's token -- but only when libsecret finds a keyring. With
+# none, every Electron app on Linux quietly falls back to writing the token in plain text, which
+# is how the four AI apps would have stored their sign-ins here. gnome-keyring gives them a real
+# one.
+#
+# It is unlocked with a key made once on this phone and kept in the same private storage as the
+# computer itself, because there is nobody to type a password to a keyring on a phone. That is
+# not a second lock on top of Android's -- Android's app sandbox is the lock, and App lock in
+# Settings is the one the owner sets. What it does buy is that a token is never sitting in a
+# config file in plain text, which is what an AI app copying files around could otherwise pick up.
+if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+  keyfile="$HOME/.pocketdesk/keyring-key"
+  if [ ! -s "$keyfile" ]; then
+    mkdir -p "$HOME/.pocketdesk"
+    (head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n') > "$keyfile" 2>/dev/null || true
+    chmod 600 "$keyfile" 2>/dev/null || true
+  fi
+  if [ -s "$keyfile" ] && ! pgrep -x gnome-keyring-d >/dev/null 2>&1; then
+    eval "$(cat "$keyfile" | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null)" || true
+    export GNOME_KEYRING_CONTROL SSH_AUTH_SOCK
+  fi
+fi
+
 /usr/local/bin/pocketdesk-menu || true
 
 # Sound. There is no sound card a container can reach, so PulseAudio plays into a virtual
@@ -294,6 +319,24 @@ if command -v pulseaudio >/dev/null 2>&1; then
     echo "sound: falling back to the local port" >> /tmp/pocketdesk-pulse.log
     pactl load-module module-simple-protocol-tcp rate=44100 format=s16le channels=2 \
       source=phone.monitor record=true playback=false listen=127.0.0.1 port=4712 >/dev/null 2>&1 || true
+  fi
+
+  # The phone's microphone, the other way round: a named pipe that PulseAudio reads as a real
+  # recording device, so every program inside the computer -- a voice reply, a meeting page in
+  # the browser, an AI app's dictation -- simply finds a microphone called "Phone microphone".
+  #
+  # A pipe rather than a socket because module-pipe-source is the one PulseAudio module that
+  # turns bytes written by something outside PulseAudio into a source, and PocketDesk's Android
+  # side can open a pipe in its own private storage like any other file. Nothing is recorded
+  # until the owner turns the microphone on: with no writer the pipe simply reads as silence.
+  rm -f "$HOME/.pocketdesk/mic.pipe"
+  mkfifo -m 600 "$HOME/.pocketdesk/mic.pipe" 2>/dev/null || true
+  if [ -p "$HOME/.pocketdesk/mic.pipe" ]; then
+    pactl load-module module-pipe-source source_name=phone_mic \
+      source_properties=device.description='Phone microphone' \
+      file="$HOME/.pocketdesk/mic.pipe" format=s16le rate=16000 channels=1 >/dev/null 2>&1 \
+      && pactl set-default-source phone_mic >/dev/null 2>&1 || true
+    echo "microphone: pipe source ready" >> /tmp/pocketdesk-pulse.log
   fi
 fi
 

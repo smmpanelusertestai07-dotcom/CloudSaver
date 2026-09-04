@@ -1,3 +1,49 @@
+# PocketDesk 10.0.70 — the microphone, Cmd-Cmd, and sign-ins that are not in plain text
+
+Three of the ⚠️ rows in the feature table become ✅. Everything here is local and free.
+
+**The computer can hear you now**
+
+The phone's microphone is handed to Linux as an ordinary recording device — inside it appears as
+**"Phone microphone"**, and every program finds it: a voice reply in an AI app, a meeting page in
+the browser, dictation. The desktop makes a named pipe, PulseAudio reads it as a source, and
+PocketDesk's Android side records at 16 kHz mono and writes into it.
+
+Three rules it keeps, because a microphone is the one thing an owner should never have to wonder
+about:
+
+- **Off at every start.** Nothing is remembered as "always on".
+- **It asks the phone's own permission the first time**, and that can be taken back at any moment
+  from the phone's app settings.
+- **It stops the instant the desktop screen is left** — to another app, to the lock screen, to
+  Home. The screen says so when it does. With nothing recording, the pipe has no writer and the
+  microphone simply reads as silent, not as one that is listening and discarding.
+
+Screen → **Microphone** turns it on. Android's own microphone dot shows the whole time.
+
+**Super+Space — PocketDesk's Cmd-Cmd**
+
+One key, and whatever is on screen goes to the AI app. It captures the window in front (never
+the AI app's own window), reads its words with Tesseract, puts the picture on the clipboard, then
+brings the AI app forward and pastes it. With no AI app open it stops at the clipboard and says
+so, so a capture is never lost. Every one is saved in **Pictures/Appshots**, picture and text
+side by side. Also in the wallpaper menu under Tools.
+
+**Sign-ins are encrypted, not written in plain text**
+
+Electron's `safeStorage` keeps an app's token encrypted — but only where libsecret finds a
+keyring. With none, every Electron app on Linux quietly falls back to plain text, which is how
+the four AI apps were storing their sign-ins here. `gnome-keyring` is installed and unlocked at
+session start with a key made once on this phone, so the tokens are encrypted the way they are on
+a Mac. Android's app sandbox is still the real lock; this stops a token sitting in a config file
+in the clear.
+
+**Honesty, kept**
+
+Two privacy answers said PocketDesk holds no microphone permission. That is no longer true, so
+they now say exactly what is true instead: the microphone is the one permission the app can have,
+it is yours to give, and it is never active after you leave the desktop screen.
+
 # PocketDesk 10.0.65 — set-up that still works in three years
 
 The Ubuntu download was pinned to one point release, `24.04.4`, with its digest compiled into the
