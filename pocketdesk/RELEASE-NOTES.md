@@ -1,3 +1,31 @@
+# PocketDesk 10.1.05 — a false alarm about your own phone, silenced
+
+The error the new report screen caught first was not PocketDesk's. It was this, on a Realme phone
+running Android 13:
+
+> `Activity client record must not be null to execute transaction item:`
+> `TopResumedActivityChangeItem{onTop=false}`
+
+That is a race inside Android itself: the system tells a screen it is no longer on top *after*
+that screen's own record has already gone. No app can prevent it, and nothing the owner does
+causes it. PocketDesk survived it — that part worked — but then told the owner their computer had
+hit an error, which was a false alarm about their own phone.
+
+**Now**: Android's own teardown races are still recorded in the report, because a lot of them
+would mean this app is closing screens badly — but the owner is not told. Anything that really is
+PocketDesk's fault still says so.
+
+**And a guard that was missing.** Catching every main-thread error for ever sounds safer than it
+is: an error that repeats on every turn of the loop would spin the processor and empty the
+battery while the screen looked normal. After twelve in one minute, the next one is left alone —
+Android ends the app, the report is on disk, and the owner opens it instead of watching the phone
+get hot.
+
+**A new test, CrashTest**, runs that judgement against the exact error this phone reported, a
+wrapped copy of it, one recognisable only by its frames, and two real faults — because getting it
+wrong in either direction is expensive: a real bug hidden for ever, or crying wolf every time
+Android closes a screen awkwardly.
+
 # PocketDesk 10.1.00 — "See Last error report" now has a report to see
 
 The app has been telling people to look at something that did not exist. When something went

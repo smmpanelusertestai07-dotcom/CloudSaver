@@ -30,6 +30,13 @@ java -cp "$OUT" com.pocketdesk.VncClientProtocolTest
 java -cp "$OUT" com.pocketdesk.TarGzExtractorTest
 java -cp "$OUT" com.pocketdesk.TreesTest
 
+# Crash's one judgement: Android's own teardown race, or a fault in this app? Getting it wrong
+# hides a real bug for ever, or cries wolf every time Android closes a screen awkwardly.
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/FrameworkRace.java" \
+  "$PROJECT_DIR/tests/CrashTest.java"
+java -cp "$OUT" com.pocketdesk.CrashTest
+
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
   "$PROJECT_DIR/tests/stub/com/pocketdesk/R.java" \
   "$PROJECT_DIR/app/src/com/pocketdesk/LinuxApps.java" \

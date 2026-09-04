@@ -32,6 +32,11 @@ final class Crash {
         });
     }
 
+    /** Android's own teardown races, told apart from a fault in this app. */
+    static boolean isFrameworkRace(Throwable error) {
+        return FrameworkRace.is(error);
+    }
+
     static void save(Context context, Throwable error) {
         try {
             StringWriter buffer = new StringWriter();
