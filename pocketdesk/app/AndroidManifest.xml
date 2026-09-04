@@ -19,6 +19,13 @@
     <!-- The app lock's fingerprint prompt. A normal permission, granted at install; without it
          the prompt throws and only the PIN screen could ever be shown. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!--
+        The microphone, so the Linux computer has one: a voice reply in an AI app, a meeting page
+        in the browser, dictation. Asked for only when the owner turns the microphone on from the
+        desktop screen, never at start-up, and recording stops the moment that screen is left.
+    -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <!-- Optional, off until the owner turns on "Phone files" in Settings: the phone's storage
          appears inside the Linux computer as the Phone folder, so an AI app can attach a photo
          or a document from the phone. Android 11+ grants it on its All files access page;

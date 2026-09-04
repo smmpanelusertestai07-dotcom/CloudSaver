@@ -50,6 +50,18 @@ final class ContainerRuntime {
             "https://mirror.us.leaseweb.net/ubuntu-cdimage/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
     };
     static final String UBUNTU_SHA256 = "04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2";
+    /**
+     * Where Canonical lists every base image for this release, and the digests for all of them.
+     *
+     * The pinned file above is a point release -- 24.04.4 today, 24.04.5 one day -- and Canonical
+     * eventually prunes the older ones from this directory. On the day that happens, a phone
+     * setting up for the first time would get a 404 and no computer at all, from an app nobody
+     * had touched. So when the pinned name is gone, the newest arm64 base image in this same
+     * directory is used instead, and checked against the digest listed beside it rather than
+     * against a constant compiled into an old APK. Same host, same HTTPS, same publisher.
+     */
+    static final String UBUNTU_RELEASE_DIRECTORY =
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/";
     static final String UBUNTU_LABEL = "Ubuntu 24.04.4 LTS · ARM64";
     static final String KEY_SETUP_STAGE = "setup_stage";
 
@@ -281,7 +293,9 @@ final class ContainerRuntime {
                 + "pd_update || exit 11; "
                 // The desktop itself: X server, window manager, panel, file manager, terminal.
                 + "pd_step desktop tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
-                + "x11-xserver-utils x11-utils xfonts-base fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
+                // No xfonts-base: apt runs --no-install-recommends, every font here is named
+                // through fontconfig, and Xtigervnc's font path ends in its own built-ins.
+                + "x11-xserver-utils x11-utils fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
                 + "|| exit 12; "
                 // What makes it look and behave like a computer: icons and a pointer theme
                 // (librsvg2-common or every SVG icon falls back to a generic diamond), window
@@ -363,6 +377,14 @@ final class ContainerRuntime {
     /** True when the basics were built by an older version of the app and an update is due. */
     static boolean basicsUpdateDue(Context context) {
         if (!isInstalled(context)) return false;
+        // Chrome installs best-effort, and the basics-version stamp is written whether it landed
+        // or not -- so the version alone hid the one row that installs it again, at exactly the
+        // moment the owner needed it. /usr/bin/google-chrome-stable is a link into /opt, which
+        // reads as missing from Android's side, so the link itself is inspected and the real
+        // binary is checked too.
+        File root = rootfs(context);
+        if (!Trees.exists(new File(root, "usr/bin/google-chrome-stable"))
+                && !new File(root, "opt/google/chrome/google-chrome").isFile()) return true;
         return !MainActivity.VERSION.equals(basicsVersion(context));
     }
 
@@ -378,6 +400,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
+        copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -422,6 +445,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
+        copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }

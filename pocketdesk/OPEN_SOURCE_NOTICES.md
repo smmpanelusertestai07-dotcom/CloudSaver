@@ -93,13 +93,15 @@ The desktop: `tigervnc-standalone-server`, `openbox`, `tint2`, `pcmanfm`, `libfm
 `lxterminal`, `dunst`, `libnotify-bin`, `pulseaudio`, `pulseaudio-utils`, `dbus-x11`,
 `x11-xserver-utils`, `x11-utils`, `xdotool`, `wmctrl`, `zenity`, `xdg-utils`,
 `desktop-file-utils`, `librsvg2-common`, `adwaita-icon-theme`, `gnome-themes-extra-data`,
-`dmz-cursor-theme`, `fonts-dejavu-core`, `xfonts-base`, `fonts-noto-color-emoji`,
-`fonts-noto-core`, `locales`, `bash-completion`, `lsb-release`, `tzdata`.
+`dmz-cursor-theme`, `fonts-dejavu-core`, `fonts-noto-color-emoji`,
+`fonts-noto-core`, `bash-completion`, `lsb-release`, `tzdata`.
 
 The everyday programs: `mousepad`, `xarchiver`, `7zip`, `gpicview`, `galculator`, `lxtask`,
 `lxappearance`, `pavucontrol`, `scrot`, `xclip`, `xsel`, `ripgrep`, `man-db`, `manpages`,
 `tmux`, `tesseract-ocr` and `tesseract-ocr-eng` (Apache-2.0; used only by PocketDesk's own
-appshot, to read the words on a window on the phone itself).
+appshot, to read the words on a window on the phone itself), and `gnome-keyring`,
+`libsecret-1-0` and `libsecret-tools` (LGPL-2.1+), which give Electron's `safeStorage` a real
+keyring so the AI apps' sign-in tokens are encrypted rather than written in plain text.
 
 The developer tools: `build-essential`, `pkg-config`, `python3`, `python3-pip`, `python3-venv`,
 `python3-dev`, `nodejs`, `npm`, `git`, `git-lfs`, `openssh-client`, `jq`, `htop`, `tree`, `vim`,

@@ -100,7 +100,11 @@ public final class LinuxAppsTest {
         // A stand-in apt-get that fails as many times as the counter file says.
         Path counter = work.resolve("attempts");
         // Only the install calls are counted; "apt-get update" between retries is not one.
+        // Update calls are counted separately: the freshness cache is only worth having if a
+        // second install skips the fetch, and only safe if a new repository forces one.
+        Path updates = work.resolve("updates");
         Files.write(bin.resolve("apt-get"), ("#!/bin/bash\n"
+                + "[ \"$1\" = update ] && echo update >> '" + updates + "'\n"
                 + "[ \"$1\" = install ] || exit 0\n"
                 + "echo install >> '" + counter + "'\n"
                 + "n=$(wc -l < '" + counter + "')\n"
@@ -138,6 +142,45 @@ public final class LinuxAppsTest {
                 + countLines(counter));
         require(!Files.exists(root.resolve("var/lib/pocketdesk/stage/hopeless")),
                 "a step that never finished must not be recorded as done");
+
+        // The package list costs about 40 MB of mobile data. Fetch it once, reuse it for the
+        // rest of the window -- and never reuse it for a repository that was just written, or
+        // its packages are invisible to apt and the install fails with "no such package".
+        Files.write(counter, new byte[0]);
+        Files.write(updates, new byte[0]);
+        Files.deleteIfExists(root.resolve("var/lib/pocketdesk/apt-updated-at"));
+        require(run(work, prelude + "pd_update\n") == 0, "pd_update must fetch when nothing is known");
+        require(countLines(updates) == 1, "the first update must reach apt-get");
+        require(Files.exists(root.resolve("var/lib/pocketdesk/apt-updated-at")),
+                "pd_update must record when it succeeded");
+        require(run(work, prelude + "pd_update\n") == 0, "a second update must succeed");
+        require(countLines(updates) == 1, "a list fetched moments ago must be reused, not fetched again");
+        require(run(work, prelude + "pd_update force\n") == 0, "a forced update must succeed");
+        require(countLines(updates) == 2, "pd_update force must always reach apt-get");
+
+        // A stamp older than the window, and a stamp that is nonsense, both mean fetch.
+        Files.write(root.resolve("var/lib/pocketdesk/apt-updated-at"),
+                String.valueOf((System.currentTimeMillis() / 1000L) - (13 * 3600))
+                        .getBytes(StandardCharsets.UTF_8));
+        require(run(work, prelude + "pd_update\n") == 0, "an aged list must be refetched");
+        require(countLines(updates) == 3, "a list older than the window must be fetched again");
+        Files.write(root.resolve("var/lib/pocketdesk/apt-updated-at"),
+                "not-a-number".getBytes(StandardCharsets.UTF_8));
+        require(run(work, prelude + "pd_update\n") == 0, "a damaged stamp must not break the update");
+        require(countLines(updates) == 4, "a damaged stamp must be treated as no stamp");
+
+        // pd_repo writes a source and must prove it, which cannot be done from a cached list.
+        // The stamp is deliberately made FRESH first: without the force, pd_repo would take the
+        // cache, fetch nothing, and report a repository it never proved.
+        Files.write(updates, new byte[0]);
+        Files.write(root.resolve("var/lib/pocketdesk/apt-updated-at"),
+                String.valueOf(System.currentTimeMillis() / 1000L).getBytes(StandardCharsets.UTF_8));
+        require(run(work, prelude + "pd_repo demo.list 'deb [arch=arm64] http://example.invalid x main'\n") == 0,
+                "pd_repo must succeed when the update after it succeeds");
+        require(countLines(updates) >= 1,
+                "pd_repo must fetch the list for the source it just wrote, cache or no cache");
+        require(Files.exists(root.resolve("etc/apt/sources.list.d/demo.list")),
+                "pd_repo must write the source inside the container, not on the host");
     }
 
     /**
