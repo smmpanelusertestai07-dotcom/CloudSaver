@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.isSelected
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,6 +47,9 @@ import java.io.File
  * suite passed the whole time. Nothing here is allowed to fail quietly now.
  */
 private const val SHOT_DIR = "Pictures/CSTestShots/"
+
+/** The album name MediaStore gives [SHOT_DIR], as the app sees it. */
+private const val SHOT_ALBUM = "CSTestShots"
 
 @RunWith(AndroidJUnit4::class)
 class UiWalkthroughTest {
@@ -134,8 +139,16 @@ class UiWalkthroughTest {
 
     /** Scrolls a labelled row into view and taps it. Fails loudly if absent. */
     private fun ComposeTestRule.openRow(label: String) {
-        await(hasText(label, substring = true), label)
-        onNode(hasText(label, substring = true)).performScrollTo().performClick()
+        val row = hasText(label, substring = true)
+        // performScrollTo only reaches a node that already exists, and a lazy
+        // list composes nothing it is not showing - so a row further down the
+        // Files list is not merely off screen, it is absent from the tree and
+        // no wait will conjure it. Ask the list to scroll to it by name first.
+        // It is allowed to fail: on a screen with no list, or a row already in
+        // view, there is nothing to do and the wait below reports the truth.
+        runCatching { onAllNodes(hasScrollAction()).onFirst().performScrollToNode(row) }
+        await(row, label)
+        onNode(row).performScrollTo().performClick()
         waitForIdle()
     }
 
@@ -188,13 +201,25 @@ class UiWalkthroughTest {
         val repo = OptionsRepo.get(target)
         repo.setBool(OptionsRepo.K.ONBOARDING_DONE, done)
         repo.setInt(OptionsRepo.K.ONBOARDING_STEP, 0)
+        // Two settings, one reason: the tour has to be looking at its own
+        // three photographs and nothing else.
+        //
         // Settings survive a test, because they are meant to survive a
-        // restart: one class earlier in the run leaves an album unticked on
-        // purpose, and the Files list shows only what a run would touch. The
-        // tour photographs screens, so its own gallery has to be in scope -
-        // otherwise it opens a Files tab with nothing in it and the failure
-        // reads as a missing row rather than as a setting left behind.
-        repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, emptySet())
+        // restart, and a class earlier in the run leaves an album unticked on
+        // purpose - so the scope is reset rather than inherited.
+        //
+        // And the tour publishes its screenshots into the gallery, because
+        // that is the only folder adb can pull from. The app then inventories
+        // them, correctly: they are images in Pictures, and it has no way to
+        // know they are photographs of itself. By the middle of a run there
+        // were more than twenty, all newer than the three fixtures, so they
+        // filled the top of the Files list and pushed `tour_photo_1.jpg` off
+        // the bottom of the screen - and a row a lazy list has not composed
+        // does not exist to look for, however long anything waits for it.
+        // Excluding that album is what a person would do with a folder they
+        // did not want touched, and it also stops the tour photographing the
+        // app offering to optimise its own screenshots.
+        repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, setOf(SHOT_ALBUM))
     }
 
     private fun setTheme(mode: String) = runBlocking {

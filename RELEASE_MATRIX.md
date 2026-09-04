@@ -338,6 +338,19 @@ source for this release, including the rows that were already marked Done.
   alerts and the two launcher shortcuts travel as plain strings, and nothing
   had ever checked them against the screens.
 
+- **Whether the evidence was photographing the product or itself.** The tour
+  publishes its screenshots into the gallery, because that is the only folder
+  adb can pull from, and the app inventoried them - correctly, they are images
+  in Pictures and nothing tells it they are pictures of itself. So the Files
+  list it photographed showed the app offering to optimise `27-activity.png`
+  alongside the three fixtures, and by the middle of a run there were more
+  than twenty of them, enough to push a fixture off the visible page of a lazy
+  list, where a row is not merely off screen but absent from the tree. Five of
+  the eight emulators failed on it, a different five each time; adding a wait
+  made no difference, because there was nothing to wait for. The tour excludes
+  that album now, in the app's own settings, exactly as a person would - and
+  its photographs show the product rather than the harness.
+
 **Not done, and why**
 
 - **The owner's own device pass.** Ten minutes on a real phone with a real
