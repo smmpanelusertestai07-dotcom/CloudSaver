@@ -582,13 +582,26 @@ public final class LinuxService extends Service {
             status("Continuing set-up", "Ubuntu is already on the phone; carrying on from where "
                     + "it stopped.", 38, true, false);
         } else {
-            if (!archive.isFile() || !ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(sha256(archive))) {
+            String expected = ContainerRuntime.UBUNTU_SHA256;
+            if (!archive.isFile() || !expected.equalsIgnoreCase(sha256(archive))) {
                 if (archive.exists() && !archive.delete()) throw new IOException("Could not replace old Ubuntu download");
-                download(ContainerRuntime.UBUNTU_MIRRORS, archive, "Downloading Ubuntu");
+                try {
+                    download(ContainerRuntime.UBUNTU_MIRRORS, archive, "Downloading Ubuntu");
+                } catch (IOException gone) {
+                    // The pinned point release has been pruned from Canonical's directory, which
+                    // happens to every APK eventually. Take the newest base image published there
+                    // now, with the digest published beside it.
+                    String[] current = currentBaseImage();
+                    if (current == null) throw gone;
+                    status("Downloading Ubuntu", "Using the current Ubuntu 24.04 LTS base image…",
+                            -1, true, false);
+                    expected = current[1];
+                    download(new String[]{current[0]}, archive, "Downloading Ubuntu");
+                }
             }
             status("Checking download", "Verifying that the Linux download is safe and complete…", 36, true, false);
             String actual = sha256(archive);
-            if (!ContainerRuntime.UBUNTU_SHA256.equalsIgnoreCase(actual)) {
+            if (!expected.equalsIgnoreCase(actual)) {
                 archive.delete();
                 throw new IOException("Ubuntu checksum did not match. The download was removed for safety.");
             }
@@ -958,6 +971,49 @@ public final class LinuxService extends Service {
      * Downloads with resume and mirror failover. A dropped mobile-data connection continues
      * from the byte it stopped at instead of starting the whole archive again.
      */
+    /**
+     * The newest arm64 base image Canonical publishes for this release, and its digest.
+     *
+     * Read from the release directory's own SHA256SUMS, over HTTPS to Canonical's own host --
+     * the same trust as the pinned URL itself. Returns {url, sha256}, or null if the listing
+     * cannot be read or holds no arm64 base image, in which case the caller reports the original
+     * failure rather than inventing one.
+     */
+    private String[] currentBaseImage() {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(
+                    ContainerRuntime.UBUNTU_RELEASE_DIRECTORY + "SHA256SUMS").openConnection();
+            connection.setConnectTimeout(20_000);
+            connection.setReadTimeout(40_000);
+            connection.setRequestProperty("User-Agent", "PocketDesk");
+            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return null;
+            String best = null, digest = null;
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // "<64 hex>  *ubuntu-base-24.04.4-base-arm64.tar.gz", the sha256sum format.
+                    String[] parts = line.trim().split("\\s+");
+                    if (parts.length != 2 || parts[0].length() != 64) continue;
+                    String name = parts[1].startsWith("*") ? parts[1].substring(1) : parts[1];
+                    if (!name.startsWith("ubuntu-base-") || !name.endsWith("-base-arm64.tar.gz")) continue;
+                    // Plain text order is enough: the names differ only in the point number.
+                    if (best == null || name.compareTo(best) > 0) {
+                        best = name;
+                        digest = parts[0];
+                    }
+                }
+            }
+            if (best == null) return null;
+            return new String[]{ContainerRuntime.UBUNTU_RELEASE_DIRECTORY + best, digest};
+        } catch (Exception unreachable) {
+            return null;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
     private void download(String[] sources, File destination, String title) throws Exception {
         File part = new File(destination.getAbsolutePath() + ".part");
         Exception last = null;

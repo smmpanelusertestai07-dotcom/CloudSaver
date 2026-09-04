@@ -50,6 +50,18 @@ final class ContainerRuntime {
             "https://mirror.us.leaseweb.net/ubuntu-cdimage/ubuntu-base/releases/noble/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
     };
     static final String UBUNTU_SHA256 = "04207713ece899c3740823d33690441ad3a7f0ded1101aca744e2b0f37ac7ff2";
+    /**
+     * Where Canonical lists every base image for this release, and the digests for all of them.
+     *
+     * The pinned file above is a point release -- 24.04.4 today, 24.04.5 one day -- and Canonical
+     * eventually prunes the older ones from this directory. On the day that happens, a phone
+     * setting up for the first time would get a 404 and no computer at all, from an app nobody
+     * had touched. So when the pinned name is gone, the newest arm64 base image in this same
+     * directory is used instead, and checked against the digest listed beside it rather than
+     * against a constant compiled into an old APK. Same host, same HTTPS, same publisher.
+     */
+    static final String UBUNTU_RELEASE_DIRECTORY =
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/noble/release/";
     static final String UBUNTU_LABEL = "Ubuntu 24.04.4 LTS · ARM64";
     static final String KEY_SETUP_STAGE = "setup_stage";
 

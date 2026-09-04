@@ -1,3 +1,15 @@
+# PocketDesk 10.0.65 — set-up that still works in three years
+
+The Ubuntu download was pinned to one point release, `24.04.4`, with its digest compiled into the
+app. Canonical eventually prunes older point releases from that directory, and on the day it
+prunes this one, a phone setting up for the first time would get a 404 and no computer at all —
+from an app nobody had touched.
+
+Set-up now falls back to the newest ARM64 base image Canonical publishes for 24.04 LTS, and
+checks it against the digest published beside it in the same `SHA256SUMS` file, over HTTPS to
+Canonical's own host. The pinned file stays the first choice, so nothing changes while it exists;
+the fallback only runs when it is gone. A download that cannot be verified is still deleted.
+
 # PocketDesk 10.0.60 — the audit release: 17 confirmed defects, including three of my own
 
 A seven-dimension audit (55 agents, every finding re-checked by a second reviewer told to refute
