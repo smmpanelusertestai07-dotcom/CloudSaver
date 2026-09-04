@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.1.05";
+    static final String VERSION = "10.1.10";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;

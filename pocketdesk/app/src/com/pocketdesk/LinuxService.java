@@ -387,11 +387,11 @@ public final class LinuxService extends Service {
                     Thread.currentThread().interrupt();
                     status("Cancelled", "The desktop is still running.", -1, false, false);
                 } catch (Exception error) {
-                    String message = cleanError(error);
-                    status("Could not complete task", message, -1, false, true);
+                    status("Could not complete task", cleanError(error), -1, false, true);
                     // The dialog goes when it is dismissed; the reason should not go with it.
                     Crash.note(LinuxService.this,
-                            (removing ? "Removing " : "Installing ") + appId + " failed", message);
+                            (removing ? "Removing " : "Installing ") + appId + " failed",
+                            fullError(error));
                 } finally {
                     INSTALLING.set(false);
                     releaseInstallWakeLock();
@@ -458,9 +458,8 @@ public final class LinuxService extends Service {
                         status("Task cancelled", "No background task is running.", -1, false, false);
                     }
                 } else {
-                    String message = cleanError(error);
-                    status("Could not complete task", message, -1, false, true);
-                    Crash.note(LinuxService.this, "A task failed", message);
+                    status("Could not complete task", cleanError(error), -1, false, true);
+                    Crash.note(LinuxService.this, "A task failed", fullError(error));
                 }
             } finally {
                 workerThread = null;
@@ -728,19 +727,10 @@ public final class LinuxService extends Service {
         status("Installing " + app.name,
                 "Fetching the newest build · usually takes " + app.typicalTime, -1, true, false);
         final long[] lastLine = {0L};
-        // The last few lines the container said, kept for the moment it fails. "It did not
-        // install" with no reason is the message that leaves an owner with nowhere to go; the
-        // computer usually said exactly what went wrong one line earlier.
-        final java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
         installingNow = true;
         int code;
         try {
             code = runInstall(app.installCommand(), line -> {
-                String trimmed = line == null ? "" : line.trim();
-                if (!trimmed.isEmpty() && !isTransferNoise(trimmed)) {
-                    tail.addLast(trimmed);
-                    while (tail.size() > 6) tail.removeFirst();
-                }
                 long now = System.currentTimeMillis();
                 if (now - lastLine[0] < 900L) return;
                 lastLine[0] = now;
@@ -753,14 +743,12 @@ public final class LinuxService extends Service {
         }
         if (code != 0) {
             String reason = ContainerRuntime.setupFailureReason(code);
-            StringBuilder said = new StringBuilder();
-            for (String one : tail) said.append(said.length() == 0 ? "" : "\n").append(one);
-            throw new IOException((reason != null ? reason
+            // The container's own last words are added by fullError, from the shared record, so
+            // they reach the report whichever of the two handlers catches this.
+            throw new IOException(reason != null ? reason
                     : app.name + " did not finish installing (code " + code + "). Check the "
                     + "internet connection and free space, then tap the row again — what was "
-                    + "already downloaded is kept.")
-                    + (said.length() == 0 ? ""
-                        : "\n\nWhat the computer said last:\n" + said));
+                    + "already downloaded is kept.");
         }
         ContainerRuntime.refreshDesktopEntries(this);
         // Refresh the desktop's own menu, panel and icons so the new app is there at once --
@@ -780,11 +768,15 @@ public final class LinuxService extends Service {
     /** A container command for an install: its own process, so the desktop's is untouched. */
     private int runInstall(String command, ContainerRuntime.OutputListener listener)
             throws IOException, InterruptedException {
+        forgetLines();
         Process process = ContainerRuntime.startContainer(this, command);
         installProcess = process;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
+                // Kept whether or not anyone is listening: the report needs these exactly when
+                // the listener has stopped caring, because the job is about to fail.
+                rememberLine(line);
                 if (listener != null && !line.trim().isEmpty()) listener.line(line);
                 if (Thread.currentThread().isInterrupted()) {
                     process.destroyForcibly();
@@ -925,11 +917,15 @@ public final class LinuxService extends Service {
 
     private int runTracked(String command, ContainerRuntime.OutputListener listener)
             throws IOException, InterruptedException {
+        forgetLines();
         activeProcess = ContainerRuntime.startContainer(this, command);
         Process process = activeProcess;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
+                // Kept whether or not anyone is listening: the report needs these exactly when
+                // the listener has stopped caring, because the job is about to fail.
+                rememberLine(line);
                 if (listener != null && !line.trim().isEmpty()) listener.line(line);
                 if (Thread.currentThread().isInterrupted()) {
                     process.destroyForcibly();
@@ -1410,5 +1406,54 @@ public final class LinuxService extends Service {
         String message = error.getMessage();
         if (message == null || message.trim().isEmpty()) message = error.getClass().getSimpleName();
         return shortText(message);
+    }
+
+    /**
+     * The failure in full, for the report, where shortText's 150 characters are not a kindness.
+     *
+     * The notification has to be one short line; the report has to be the whole thing, or the
+     * owner copies out a message that ends in an ellipsis and nobody can help them from it.
+     */
+    private static String fullError(Exception error) {
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) message = error.getClass().getName();
+        String tail = containerTail();
+        return message + (tail.isEmpty() ? "" : "\n\nWhat the computer said last:\n" + tail);
+    }
+
+    /**
+     * The last lines the container printed, whichever job printed them.
+     *
+     * Shared rather than per-job on purpose: a failure can be caught in either of two places,
+     * and the owner should not get the explanation from one and a bare sentence from the other.
+     * Bounded in both directions, so a long install cannot grow it without end and one very long
+     * line cannot fill the report on its own.
+     */
+    private static final java.util.ArrayDeque<String> CONTAINER_TAIL = new java.util.ArrayDeque<>();
+
+    static void rememberLine(String line) {
+        String trimmed = line == null ? "" : line.trim();
+        if (trimmed.isEmpty() || isTransferNoise(trimmed)) return;
+        synchronized (CONTAINER_TAIL) {
+            CONTAINER_TAIL.addLast(trimmed.length() > 300
+                    ? trimmed.substring(0, 300) + "\u2026" : trimmed);
+            while (CONTAINER_TAIL.size() > 12) CONTAINER_TAIL.removeFirst();
+        }
+    }
+
+    static void forgetLines() {
+        synchronized (CONTAINER_TAIL) {
+            CONTAINER_TAIL.clear();
+        }
+    }
+
+    private static String containerTail() {
+        StringBuilder text = new StringBuilder();
+        synchronized (CONTAINER_TAIL) {
+            for (String one : CONTAINER_TAIL) {
+                text.append(text.length() == 0 ? "" : "\n").append(one);
+            }
+        }
+        return text.toString();
     }
 }

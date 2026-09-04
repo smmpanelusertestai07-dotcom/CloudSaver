@@ -1,3 +1,28 @@
+# PocketDesk 10.1.10 — the report now carries what the computer actually said
+
+The Windows layer failed again, and the report said only this:
+
+> *"The Windows layer could not be installed. Nothing on the Linux side changed… Try again on a
+> better conn…"*
+
+That is PocketDesk's own sentence, cut off at 150 characters, and none of it explains anything.
+The container had said exactly what went wrong — and it was thrown away twice over.
+
+**Two faults, both fixed**
+
+1. **The report was being truncated.** The same 150-character trim that keeps the notification to
+   one line was also applied to the copy saved for the report. A notification has to be short; a
+   report has to be whole, or the owner copies out a message ending in an ellipsis and nobody can
+   help them from it. The report is now untrimmed.
+2. **The container's own output never reached it.** Only one of the two places a failure can be
+   caught had the lines, and the Windows layer failed in the other one. The last twelve lines the
+   container printed are now kept in one place that both handlers read, cleared at the start of
+   every job, and recorded whether or not anything was listening — which is exactly when they
+   matter, because the job is about to fail.
+
+So the next failure of anything — a Windows layer, an app install, a set-up — carries **"What the
+computer said last:"** and apt's own words underneath it.
+
 # PocketDesk 10.1.05 — a false alarm about your own phone, silenced
 
 The error the new report screen caught first was not PocketDesk's. It was this, on a Realme phone
