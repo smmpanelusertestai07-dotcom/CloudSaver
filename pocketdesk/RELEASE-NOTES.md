@@ -1,3 +1,26 @@
+# PocketDesk 10.0.85 — Windows where you can see it, and the phone's own words for settings
+
+**Windows apps are on the Apps tab now**, in their own card, next to the Linux ones:
+
+- **Windows apps support** — the layer itself, one tap, like any other app
+- **Cursor, Antigravity, Claude and ChatGPT for Windows** — each a row that opens the
+  publisher's own download page, and says honestly how likely it is to work: Cursor's ARM64
+  installer is the best bet, ChatGPT's Store package the worst
+- Every file is still checked before anything is unpacked
+
+The Home screen says so too — the set-up card mentions Windows apps, and the opening screen now
+reads **"Ubuntu 24.04 LTS · Linux and Windows apps · the whole computer is on this phone"**.
+
+**Settings use the phone's own words**
+
+A setting here should read exactly like the same setting on the phone:
+
+- Theme: **"Match phone" → "System default"** — Android's own name for it
+- Screen rotation: **"Automatic" → "Auto-rotate"**
+
+**One thing that had become untrue** was fixed: the "Does not work" list still said Windows `.exe`
+files do not work. They do now, when they are built for ARM64, so the line is gone.
+
 # PocketDesk 10.0.80 — Windows apps, as a separate layer that cannot break anything
 
 A second kind of app can now be installed: **Windows programs built for ARM64**. It sits *beside*

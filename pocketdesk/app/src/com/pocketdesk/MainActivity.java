@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.80";
+    static final String VERSION = "10.0.85";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -212,7 +212,7 @@ public final class MainActivity extends Activity {
         TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
         powered.setGravity(Gravity.CENTER);
         second.addView(powered, Ui.matchWrap(this, 18));
-        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · the official AI desktop apps · "
+        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · Linux and Windows apps · "
                 + "the whole computer is on this phone",
                 14f, Color.rgb(190, 204, 240));
         system.setGravity(Gravity.CENTER);
@@ -830,6 +830,7 @@ public final class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         appRows.clear();
         page.addView(buildAppsCard(text, muted));
+        page.addView(buildWindowsCard(text, muted));
         page.addView(buildOtherAppsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
         return page;
@@ -870,6 +871,78 @@ public final class MainActivity extends Activity {
         return row;
     }
 
+    /**
+     * The Windows side of the Apps tab: the layer itself, then the same four apps in their
+     * Windows form, each one tap from its publisher's download page.
+     *
+     * Deliberately a separate card with its own words. A Windows app here is not the same
+     * promise as a Linux one, and putting them in one list would say it was.
+     */
+    private View buildWindowsCard(int text, int muted) {
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionTitle(this, "Windows apps", R.drawable.ic_desktop, dark));
+        card.addView(Ui.text(this,
+                "This computer can also run Windows programs built for ARM64 — this phone's own "
+                        + "processor. Add the layer below first, then pick an app: its download "
+                        + "page opens, and the file you get installs like any other.",
+                12.5f, muted), Ui.matchWrap(this, 6));
+        card.addView(Ui.text(this, "Experimental: a Windows app may open, may look wrong, or may "
+                        + "not start at all. Nothing on the Linux side changes either way, and "
+                        + "removing the layer removes every Windows app with it.",
+                12.5f, Ui.WARNING), Ui.matchWrap(this, 8));
+
+        LinuxApps.App layer = LinuxApps.byId("windows");
+        if (layer != null) card.addView(appRow(layer), Ui.matchWrap(this, 12));
+
+        card.addView(Ui.text(this, "The four AI apps, in their Windows form", 13.5f, text),
+                Ui.matchWrap(this, 14));
+        addWindowsApp(card, "Cursor", "Windows ARM64 installer — the most likely to work",
+                "https://cursor.com/download");
+        addWindowsApp(card, "Antigravity", "Windows ARM64 installer",
+                "https://antigravity.google/download");
+        addWindowsApp(card, "Claude", "Windows ARM64, as a Store package — less likely to work",
+                "https://claude.com/download");
+        addWindowsApp(card, "ChatGPT", "Windows, from the Microsoft Store — least likely to work",
+                "https://chatgpt.com/download");
+        card.addView(Ui.text(this,
+                "Every file is checked before anything is unpacked: built for ARM64 and it "
+                        + "installs; built only for Intel and AMD and it is refused, with the "
+                        + "reason, before the download is wasted.\n\nAll four already have Linux "
+                        + "builds above, which run faster here — this is for programs that have no "
+                        + "Linux version at all.", 12.5f, muted), Ui.matchWrap(this, 12));
+        return card;
+    }
+
+    /** Opens a publisher's own page in the phone's browser, and says so if there is none. */
+    private void openLink(String url) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Throwable noBrowser) {
+            showMessage("No browser", "This phone has no app that can open " + url + ".");
+        }
+    }
+
+    /** One Windows app row: the publisher's own download page, and what to expect from it. */
+    private void addWindowsApp(LinearLayout card, String name, String note, String url) {
+        card.addView(new Ui.Row(this, R.drawable.ic_desktop, name + " for Windows", note,
+                R.drawable.ic_open_in_new, dark, v -> dialogBuilder()
+                        .setTitle(name + " for Windows")
+                        .setMessage("Two ways, and the second is easier:\n\n"
+                                + "1. In the DESKTOP, open Tools \u2192 Windows apps \u2192 "
+                                + name + ". The download lands inside the computer, and Install a "
+                                + "downloaded app takes it from there.\n\n"
+                                + "2. Or open the page on this phone now. The file goes to the "
+                                + "phone's Downloads, and you will need Phone files turned on in "
+                                + "Settings \u2192 Permissions for the computer to see it.\n\n"
+                                + "Pick the ARM64 build. An Intel-only file is refused before "
+                                + "anything is unpacked.")
+                        .setNegativeButton("Close", null)
+                        .setPositiveButton("Open the page", (d, w) -> openLink(url))
+                        .show()),
+                Ui.matchWrap(this, 8));
+    }
+
     /** What the browser can install and what it cannot, in one card, short. */
     private View buildOtherAppsCard(int text, int muted) {
         LinearLayout card = Ui.card(this, dark);
@@ -897,7 +970,7 @@ public final class MainActivity extends Activity {
         card.addView(Ui.text(this,
                 "Anything built only for amd64 or x86 PCs. AppImage files — they mount themselves "
                         + "with FUSE, which a phone container cannot provide. Snap and Flatpak "
-                        + "packages. Windows .exe files. Android .apk files. Apps that need a real "
+                        + "packages. Android .apk files. Apps that need a real "
                         + "graphics card or hardware virtualisation. The installer refuses each of "
                         + "these with the reason rather than failing silently.",
                 12.5f, muted), Ui.matchWrap(this, 4));
@@ -1845,12 +1918,14 @@ public final class MainActivity extends Activity {
 
     // --------------------------------------------------------------- choosers
 
-    private static final String[] THEME_LABELS = {"Match phone", "Light", "Dark"};
+    // Android's own words for these, so a setting here reads exactly like the same setting on
+    // the phone: the system theme is "System default", not a phrase invented for this app.
+    private static final String[] THEME_LABELS = {"System default", "Light", "Dark"};
     private static final String[] THEME_VALUES = {"system", "light", "dark"};
     private static final int[] THEME_ICONS =
             {R.drawable.ic_auto_mode, R.drawable.ic_light_mode, R.drawable.ic_dark_mode};
 
-    private static final String[] ROTATION_LABELS = {"Automatic", "Portrait", "Landscape"};
+    private static final String[] ROTATION_LABELS = {"Auto-rotate", "Portrait", "Landscape"};
     private static final String[] ROTATION_VALUES = {"auto", "portrait", "landscape"};
     private static final int[] ROTATION_ICONS =
             {R.drawable.ic_rotate, R.drawable.ic_phone, R.drawable.ic_desktop};
@@ -2248,6 +2323,8 @@ public final class MainActivity extends Activity {
             String note = "Ubuntu 24.04 LTS is set up on this phone: a basic computer on purpose, "
                     + "and complete for the one job it is built for — running the official AI "
                     + "desktop apps. Open the desktop and tap an app.";
+            note += "\n\nApps tab → Windows apps adds Wine, so this computer can also run "
+                    + "Windows programs built for ARM64.";
             if (openedAt > 0) note += " Last opened " + clock(openedAt) + ".";
             String story = stopStory();
             if (story != null) note += "\n\n" + story;
@@ -2270,7 +2347,8 @@ public final class MainActivity extends Activity {
             statusNote.setText("One set-up does it all: Ubuntu 24.04 LTS, the desktop, sound, Google "
                     + "Chrome and the developer tools (Python, Node.js, Git and a C/C++ compiler). "
                     + "About 30 MB now, then about 550 MB of packages; 2–3 GB when finished. "
-                    + "Then add the AI desktop apps from the Apps tab."
+                    + "Then add the AI desktop apps from the Apps tab — as Linux apps, or as "
+                    + "Windows apps once you add Windows apps support there."
                     + (started ? "\n\nA set-up was started and did not finish. Nothing is lost and "
                             + "nothing is downloaded twice: this carries on from the step it reached."
                             : ""));
