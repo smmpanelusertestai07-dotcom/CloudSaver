@@ -357,6 +357,12 @@ final class ContainerRuntime {
             case 15: return "One of the app repositories did not answer, so it was removed again "
                     + "rather than left to break later installs. Check the internet connection and "
                     + "try again; everything else that was installed is kept.";
+            case 17: return "Windows apps support is not installed yet. Add it from the Apps tab "
+                    + "first — it is the layer that runs Windows programs.";
+            case 18: return "The download did not finish. Check the internet connection and try "
+                    + "again; nothing was half-installed.";
+            case 19: return "The file downloaded, but it could not be installed. It may not be the "
+                    + "ARM64 build. Nothing on the Linux side was changed.";
             case 16: return "The Windows layer could not be installed. Nothing on the Linux side "
                     + "changed, and every app you already have still works. Try again on a better "
                     + "connection.";

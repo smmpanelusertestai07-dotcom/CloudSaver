@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.0.85";
+    static final String VERSION = "10.0.90";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -894,10 +894,26 @@ public final class MainActivity extends Activity {
         LinuxApps.App layer = LinuxApps.byId("windows");
         if (layer != null) card.addView(appRow(layer), Ui.matchWrap(this, 12));
 
-        card.addView(Ui.text(this, "The four AI apps, in their Windows form", 13.5f, text),
+        card.addView(Ui.text(this, "One tap, like a Linux app", 13.5f, text),
                 Ui.matchWrap(this, 14));
-        addWindowsApp(card, "Cursor", "Windows ARM64 installer — the most likely to work",
-                "https://cursor.com/download");
+        LinuxApps.App cursorWin = LinuxApps.byId("cursor-win");
+        if (cursorWin != null) card.addView(appRow(cursorWin), Ui.matchWrap(this, 8));
+        card.addView(Ui.text(this,
+                "Cursor publishes the address of its current Windows ARM64 build, so PocketDesk "
+                        + "fetches and installs it for you — no page to read, no file to find.",
+                12.5f, muted), Ui.matchWrap(this, 6));
+
+        card.addView(Ui.text(this, "The others: download in the desktop's browser", 13.5f, text),
+                Ui.matchWrap(this, 16));
+        card.addView(Ui.text(this,
+                "Antigravity, Claude and ChatGPT build their download pages in the browser itself, "
+                        + "so there is no fixed address to fetch. Open one INSIDE the desktop "
+                        + "(Tools \u2192 Windows apps) and download it there.\n\n"
+                        + "You will not have to find it afterwards: the moment a Windows app lands "
+                        + "in the computer's Downloads folder, the desktop notices it, checks the "
+                        + "processor and opens the installer by itself. An Intel-only file gets a "
+                        + "message instead, and no download is wasted twice.",
+                12.5f, muted), Ui.matchWrap(this, 6));
         addWindowsApp(card, "Antigravity", "Windows ARM64 installer",
                 "https://antigravity.google/download");
         addWindowsApp(card, "Claude", "Windows ARM64, as a Store package — less likely to work",
@@ -905,11 +921,9 @@ public final class MainActivity extends Activity {
         addWindowsApp(card, "ChatGPT", "Windows, from the Microsoft Store — least likely to work",
                 "https://chatgpt.com/download");
         card.addView(Ui.text(this,
-                "Every file is checked before anything is unpacked: built for ARM64 and it "
-                        + "installs; built only for Intel and AMD and it is refused, with the "
-                        + "reason, before the download is wasted.\n\nAll four already have Linux "
-                        + "builds above, which run faster here — this is for programs that have no "
-                        + "Linux version at all.", 12.5f, muted), Ui.matchWrap(this, 12));
+                "All of these already have Linux builds above, which run faster here — the Windows "
+                        + "route is really for programs that have no Linux version at all.",
+                12.5f, muted), Ui.matchWrap(this, 12));
         return card;
     }
 
@@ -928,15 +942,14 @@ public final class MainActivity extends Activity {
         card.addView(new Ui.Row(this, R.drawable.ic_desktop, name + " for Windows", note,
                 R.drawable.ic_open_in_new, dark, v -> dialogBuilder()
                         .setTitle(name + " for Windows")
-                        .setMessage("Two ways, and the second is easier:\n\n"
-                                + "1. In the DESKTOP, open Tools \u2192 Windows apps \u2192 "
-                                + name + ". The download lands inside the computer, and Install a "
-                                + "downloaded app takes it from there.\n\n"
-                                + "2. Or open the page on this phone now. The file goes to the "
-                                + "phone's Downloads, and you will need Phone files turned on in "
-                                + "Settings \u2192 Permissions for the computer to see it.\n\n"
+                        .setMessage("Best way: open the desktop, then Tools \u2192 Windows apps "
+                                + "\u2192 " + name + ". Download it there and the installer opens "
+                                + "by itself when the file lands \u2014 nothing to find.\n\n"
+                                + "Or open the page on this phone now. The file goes to the phone's "
+                                + "Downloads, and you will need Phone files turned on in Settings "
+                                + "\u2192 Permissions for the computer to see it.\n\n"
                                 + "Pick the ARM64 build. An Intel-only file is refused before "
-                                + "anything is unpacked.")
+                                + "anything is unpacked, so nothing is wasted.")
                         .setNegativeButton("Close", null)
                         .setPositiveButton("Open the page", (d, w) -> openLink(url))
                         .show()),

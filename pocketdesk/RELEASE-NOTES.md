@@ -1,3 +1,35 @@
+# PocketDesk 10.0.90 — a Windows app installs like a Linux one now
+
+The gap this closes: a Linux app was one tap, and a Windows app was "here is a website, good
+luck". Two changes fix that.
+
+**Cursor for Windows: one tap**
+
+A new row on the Apps tab. Cursor publishes an endpoint that answers with the address of its
+*current* Windows ARM64 build, so PocketDesk asks it, downloads the file itself and installs it —
+no page to read, no version written into the app that could go stale, no file to find afterwards.
+It uses the same downloader as everything else, so it resumes, it respects the mobile-data limit,
+and it pauses when the phone gets hot.
+
+**Everything else: the desktop notices the download for you**
+
+Antigravity, Claude and ChatGPT build their download pages in the browser, so there is no fixed
+address to fetch. For those, download inside the desktop's own browser (Tools → Windows apps) —
+and then nothing has to be found:
+
+The desktop now **watches the Downloads folder**. The moment a `.exe`, `.msix`, `.msixbundle` or
+`.appx` lands, it reads which processor the file was built for and:
+
+- **ARM64** → a notification, and the installer opens by itself
+- **Intel / AMD only** → a notification saying it will not run here, so the next download is the
+  right one
+
+It uses inotify, not a timer: it sleeps until the kernel says a file finished writing, so it
+costs nothing while nothing is downloading. Each file is offered once.
+
+**Also**: exit codes 17, 18 and 19 say plainly whether the Windows layer was missing, the
+download failed, or the file was not the ARM64 build — instead of one number.
+
 # PocketDesk 10.0.85 — Windows where you can see it, and the phone's own words for settings
 
 **Windows apps are on the Apps tab now**, in their own card, next to the Linux ones:

@@ -266,7 +266,7 @@ final class LinuxApps {
      */
     static final String TOOL_PACKAGES =
             "mousepad xarchiver 7zip gpicview galculator lxtask lxappearance pavucontrol "
-            + "scrot xclip xsel ripgrep man-db manpages tmux "
+            + "scrot xclip xsel ripgrep man-db manpages tmux inotify-tools "
             // Electron's safeStorage keeps an app's sign-in token encrypted -- but only where
             // libsecret finds a keyring. With none, every Electron app on Linux falls back to
             // writing the token in plain text. This is what makes the four AI apps store their
@@ -374,6 +374,33 @@ final class LinuxApps {
                             + "rm -f /home/coder/.local/share/applications/pocketdesk-win-*.desktop "
                             + "/home/coder/Desktop/pocketdesk-win-*.desktop; "
                             + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
+                    false),
+
+            // Cursor for Windows, installed the way a Linux app is: one tap, and PocketDesk does
+            // the download itself. Cursor publishes an endpoint that answers with the address of
+            // the current Windows ARM64 build, so nothing here goes stale -- no version number
+            // written into the app, no page to read, no file to find afterwards.
+            new App("cursor-win", "Cursor for Windows",
+                    "The Windows ARM64 build, downloaded and installed for you. Needs Windows "
+                            + "apps support. Experimental: it may open, may look wrong, or may not "
+                            + "start at all.",
+                    R.drawable.ic_terminal, R.drawable.logo_cursor, "about 500 MB", 2 * GB,
+                    "5–15 min", null,
+                    "/home/coder/.local/share/applications/pocketdesk-win-cursorwindows.desktop",
+                    "command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1 || exit 17; "
+                            + "pd_cw=$(curl -fsSL --max-time 60 "
+                            + "'https://cursor.com/api/download?platform=win32-arm64-user&releaseTrack=stable' "
+                            + "2>/dev/null | grep -o '\"downloadUrl\":\"[^\"]*\"' | cut -d'\"' -f4); "
+                            + "[ -n \"$pd_cw\" ] || exit 18; "
+                            + "echo \"PocketDesk: downloading Cursor for Windows\"; "
+                            + "mkdir -p /home/coder/Downloads; "
+                            + "curl -fL --retry 3 --max-time 3600 -o /home/coder/Downloads/cursor-windows-arm64.exe "
+                            + "\"$pd_cw\" || exit 18; "
+                            + "chown coder:coder /home/coder/Downloads/cursor-windows-arm64.exe 2>/dev/null || true; "
+                            + "su - coder -c '/usr/local/bin/pocketdesk-winapp install "
+                            + "/home/coder/Downloads/cursor-windows-arm64.exe \"Cursor Windows\"' || exit 19; "
+                            + "rm -f /home/coder/Downloads/cursor-windows-arm64.exe",
+                    "su - coder -c '/usr/local/bin/pocketdesk-winapp remove cursorwindows' || true",
                     false),
 
             new App("chatgpt", "ChatGPT",

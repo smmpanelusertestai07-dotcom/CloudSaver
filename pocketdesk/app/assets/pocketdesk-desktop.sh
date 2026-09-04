@@ -277,6 +277,41 @@ if command -v gnome-keyring-daemon >/dev/null 2>&1; then
   fi
 fi
 
+# A Windows app downloaded in the browser should not then have to be FOUND.
+#
+# Downloading a .deb and downloading a .exe are the same act to the owner, but the second one
+# used to end with a file sitting in a folder and no idea what to do with it. This watches the
+# Downloads folder and offers to install anything Windows-shaped the moment it lands -- the
+# nearest thing a phone has to double-clicking an installer.
+#
+# inotifywait, not a timer: it sleeps until the kernel says a file was closed after writing, so
+# it costs nothing while nothing is being downloaded. Without the package it simply does not run.
+if command -v inotifywait >/dev/null 2>&1 \
+   && ! pgrep -f 'pocketdesk-download-watch' >/dev/null 2>&1; then
+  (
+    exec -a pocketdesk-download-watch bash -c '
+      mkdir -p "$HOME/Downloads"
+      while inotifywait -q -e close_write -e moved_to --format "%f" "$HOME/Downloads" 2>/dev/null; do
+        for pd_new in "$HOME/Downloads"/*.exe "$HOME/Downloads"/*.msix                       "$HOME/Downloads"/*.msixbundle "$HOME/Downloads"/*.appx; do
+          [ -f "$pd_new" ] || continue
+          # Only once per file: a marker beside it, not a list to keep in step.
+          [ -f "$pd_new.pocketdesk-seen" ] && continue
+          : > "$pd_new.pocketdesk-seen"
+          pd_arch=$(/usr/local/bin/pocketdesk-winapp check "$pd_new" 2>/dev/null | head -n 1)
+          case "$pd_arch" in
+            arm64)
+              notify-send -a PocketDesk -i pocketdesk-linux -u critical                 "Windows app downloaded"                 "$(basename "$pd_new") is built for ARM64. Opening the installer." 2>/dev/null || true
+              /usr/local/bin/pocketdesk-install "$pd_new" &
+              ;;
+            x64|x86)
+              notify-send -a PocketDesk -i pocketdesk-linux                 "That one will not run here"                 "$(basename "$pd_new") is built only for Intel and AMD. Look for the ARM64 build." 2>/dev/null || true
+              ;;
+          esac
+        done
+      done' >/dev/null 2>&1
+  ) &
+fi
+
 /usr/local/bin/pocketdesk-menu || true
 
 # Sound. There is no sound card a container can reach, so PulseAudio plays into a virtual
