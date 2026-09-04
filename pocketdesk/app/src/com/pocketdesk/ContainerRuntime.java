@@ -281,7 +281,9 @@ final class ContainerRuntime {
                 + "pd_update || exit 11; "
                 // The desktop itself: X server, window manager, panel, file manager, terminal.
                 + "pd_step desktop tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
-                + "x11-xserver-utils x11-utils xfonts-base fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
+                // No xfonts-base: apt runs --no-install-recommends, every font here is named
+                // through fontconfig, and Xtigervnc's font path ends in its own built-ins.
+                + "x11-xserver-utils x11-utils fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
                 + "|| exit 12; "
                 // What makes it look and behave like a computer: icons and a pointer theme
                 // (librsvg2-common or every SVG icon falls back to a generic diamond), window
@@ -363,6 +365,14 @@ final class ContainerRuntime {
     /** True when the basics were built by an older version of the app and an update is due. */
     static boolean basicsUpdateDue(Context context) {
         if (!isInstalled(context)) return false;
+        // Chrome installs best-effort, and the basics-version stamp is written whether it landed
+        // or not -- so the version alone hid the one row that installs it again, at exactly the
+        // moment the owner needed it. /usr/bin/google-chrome-stable is a link into /opt, which
+        // reads as missing from Android's side, so the link itself is inspected and the real
+        // binary is checked too.
+        File root = rootfs(context);
+        if (!Trees.exists(new File(root, "usr/bin/google-chrome-stable"))
+                && !new File(root, "opt/google/chrome/google-chrome").isFile()) return true;
         return !MainActivity.VERSION.equals(basicsVersion(context));
     }
 

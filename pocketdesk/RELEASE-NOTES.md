@@ -1,3 +1,78 @@
+# PocketDesk 10.0.60 — the audit release: 17 confirmed defects, including three of my own
+
+A seven-dimension audit (55 agents, every finding re-checked by a second reviewer told to refute
+it) went over 10.0.55 the day it was built. It confirmed 17 real defects — **four of them
+critical, and three of those introduced by 10.0.55 itself**. All are fixed here. 10.0.55 should
+not be used.
+
+**The heat pause did not work at all**
+
+The pause added in 10.0.55 was unreachable. The monitor's first if/else chain already ended the
+job for heat and returned, so the pause code below it could never run: heat still *killed* the
+set-up, exactly as before. The thermal branch is gone from that chain, and the pause is now the
+only thing that answers a hot phone. If an OEM refuses to let the app signal its own child, it
+falls back to the old stop with a clear message instead of working a hot phone regardless.
+
+Two more holes in the same area, both found by the audit:
+
+- **Stopping a paused job could wedge the app.** A frozen container can act on nothing but
+  SIGKILL, and the stop path only ever sent the polite signal. It now thaws first and forces the
+  kill through, and clears the pause state whenever a new job starts.
+- **The wake lock expired after exactly two hours and was never renewed**, so a set-up slower
+  than that lost the processor with the screen off and apt died at its own timeout — the other
+  half of "it stops again near the end". It is now a lease, renewed every half minute for as
+  long as the job runs.
+
+**Chrome and the AI apps could not install at all after 10.0.55**
+
+The freshness cache added in 10.0.55 was called by `pd_repo`, the helper that writes a new
+repository and then proves it. A repository written one second ago is in no index that has been
+fetched, so `apt-get install google-chrome-stable` had nothing to install — and the same held for
+Claude Desktop and Antigravity, which are installed the same way. `pd_repo` now always fetches.
+There is a regression test that fails if that force is ever removed again.
+
+**The freshness cache measured the wrong thing**
+
+It read the date on apt's index files — which apt copies from the mirror, so it is the archive's
+publish date, not when this phone last fetched. A list could be called stale minutes after being
+downloaded, or fresh when it was days old. PocketDesk now writes its own stamp when an update
+actually succeeds, and reads that; a missing, empty, corrupt or future stamp all mean fetch.
+"Update the computer's basics" always forces a real fetch, because finding new versions is its
+whole job.
+
+**Losing the set-up's proof cost 550 MB**
+
+The only record that Ubuntu had finished unpacking was a preference written asynchronously, and
+starting set-up overwrote it with "started" before anything else. If Android ended the app in
+that window, the next run saw no proof, deleted the whole system and downloaded it again. The
+proof is now a file inside the container itself, written and flushed to disk; the preference
+stays as a fallback so a phone already part-way through is not wiped by this update.
+
+**Less data still**
+
+- `restricted` and `noble-backports` are no longer fetched: on arm64 they supply not one package
+  this computer installs, and cost about **4.7 MB of every package-list download**. `multiverse`
+  stays, so "apt install any ARM64 program" keeps meaning what it says.
+- **`locales` (4.2 MB) and `xfonts-base` (5.9 MB) are no longer installed** — nothing here used
+  either; the computer runs on the C.UTF-8 built into libc, and every font is named through
+  fontconfig.
+- The kept package lists are **stored gzipped**, about a quarter of the space.
+- **Chrome's 133 MB download gets three attempts**, like every other step. It had exactly one.
+
+**Man pages really work now**
+
+`man-db` and the manuals were downloaded and then thrown away: the base image ships its own dpkg
+rule dropping every man page, and dpkg reads the directory in name order, so that rule was read
+after PocketDesk's and won. PocketDesk's fragment is renamed so it is read last. `man git`,
+`man apt`, `man bash` — the claim 10.0.50 made is true from this release.
+
+**And two ways out of a dead end**
+
+- A Chrome failure now says *"Google Chrome did not install"* on screen. It was being shown as
+  *"Installing Google Chrome"*, because the failure line contains the word Chrome.
+- Settings → **Update the computer's basics** now appears whenever the computer has no browser at
+  all, not only when the app version has moved on — so there is a way to try Chrome again.
+
 # PocketDesk 10.0.55 — the set-up finally finishes, and the AI can see the screen
 
 **The set-up that kept stopping**

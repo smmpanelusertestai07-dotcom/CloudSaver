@@ -93,8 +93,8 @@ The desktop: `tigervnc-standalone-server`, `openbox`, `tint2`, `pcmanfm`, `libfm
 `lxterminal`, `dunst`, `libnotify-bin`, `pulseaudio`, `pulseaudio-utils`, `dbus-x11`,
 `x11-xserver-utils`, `x11-utils`, `xdotool`, `wmctrl`, `zenity`, `xdg-utils`,
 `desktop-file-utils`, `librsvg2-common`, `adwaita-icon-theme`, `gnome-themes-extra-data`,
-`dmz-cursor-theme`, `fonts-dejavu-core`, `xfonts-base`, `fonts-noto-color-emoji`,
-`fonts-noto-core`, `locales`, `bash-completion`, `lsb-release`, `tzdata`.
+`dmz-cursor-theme`, `fonts-dejavu-core`, `fonts-noto-color-emoji`,
+`fonts-noto-core`, `bash-completion`, `lsb-release`, `tzdata`.
 
 The everyday programs: `mousepad`, `xarchiver`, `7zip`, `gpicview`, `galculator`, `lxtask`,
 `lxappearance`, `pavucontrol`, `scrot`, `xclip`, `xsel`, `ripgrep`, `man-db`, `manpages`,

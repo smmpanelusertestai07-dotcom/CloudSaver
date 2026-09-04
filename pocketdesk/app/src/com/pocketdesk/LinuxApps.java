@@ -116,7 +116,10 @@ final class LinuxApps {
             // because the licences must stay. Man pages and groff's macros ARE unpacked: they
             // cost about 3 MB across the whole computer, and man-db is installed.
             + "printf 'force-unsafe-io\npath-exclude=/usr/share/doc/*\n"
-            + "path-include=/usr/share/doc/*/copyright\npath-exclude=/usr/share/info/*\n' "
+            + "path-include=/usr/share/doc/*/copyright\npath-exclude=/usr/share/info/*\n"
+            // The base image's own excludes file drops every man page; this line, read after it,
+            // puts them back. Without it man-db and the manuals were fetched and thrown away.
+            + "path-include=/usr/share/man/*\n' "
             + "> \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketdesk\"; "
             // man-db's postinst normally builds its index with mandb, and under PRoot's traced
             // syscalls that is minutes. man <page> works without an index; only apropos and
@@ -129,22 +132,26 @@ final class LinuxApps {
             // the same packages, so a fresh set is reused and the download is skipped entirely.
             // "pd_update force" always fetches, for the basics update that is meant to find new
             // versions. POCKETDESK_LIST_HOURS makes the window testable.
+            // The age that matters is when THIS phone last fetched, which is only knowable from
+            // a stamp written here: apt keeps the mirror's own Last-Modified on the index files,
+            // so their date is the archive's publish date and says nothing about this phone.
             + "pd_fresh() { pd_h=\"${POCKETDESK_LIST_HOURS:-12}\"; "
-            + "[ -f \"$PD_ROOT/var/lib/apt/lists/lock\" ] || return 1; "
-            + "pd_n=$(find \"$PD_ROOT/var/lib/apt/lists\" -maxdepth 1 -name '*_Packages*' "
-            + "-newermt \"-$pd_h hours\" 2>/dev/null | wc -l); "
-            + "[ \"${pd_n:-0}\" -gt 0 ]; }; "
+            + "pd_at=$(cat \"$PD_STATE/apt-updated-at\" 2>/dev/null || true); "
+            + "case \"$pd_at\" in '' | *[!0-9]*) return 1;; esac; "
+            + "pd_age=$(( $(date +%s) - pd_at )); "
+            + "[ \"$pd_age\" -ge 0 ] && [ \"$pd_age\" -lt $(( pd_h * 3600 )) ]; }; "
             + "pd_update() { "
             + "if [ \"${1:-}\" != force ] && pd_fresh; then "
             + "echo 'PocketDesk: the package list is up to date; nothing to download'; return 0; fi; "
             + "pd_u=1; while [ $pd_u -le 3 ]; do "
-            + "apt-get update 2>\"$PD_STATE/apt-update.err\" && return 0; "
+            + "if apt-get update 2>\"$PD_STATE/apt-update.err\"; then "
+            + "date +%s > \"$PD_STATE/apt-updated-at\"; return 0; fi; "
             + "echo \"PocketDesk: package list attempt $pd_u did not finish\"; "
             // One unreachable vendor repository fails the whole update, and then every install
             // and the basics update after it -- for as long as the container exists. From the
             // second attempt, a source named in apt's own error is set aside so the computer
             // keeps working with the ones that do answer.
-            + "if [ $pd_u -ge 2 ]; then for pd_l in /etc/apt/sources.list.d/*.list; do "
+            + "if [ $pd_u -ge 2 ]; then for pd_l in \"$PD_ROOT\"/etc/apt/sources.list.d/*.list; do "
             + "[ -f \"$pd_l\" ] || continue; "
             + "pd_url=$(awk '{for (i=1; i<=NF; i++) if ($i ~ /^https?:/) { print $i; exit }}' \"$pd_l\"); "
             + "[ -n \"$pd_url\" ] || continue; "
@@ -154,10 +161,14 @@ final class LinuxApps {
             + "sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; pd_u=$((pd_u+1)); done; return 1; }; "
             // A repository is written, proved, and rolled back if it does not answer: an
             // unproven source must never be left behind to break every later install.
-            + "pd_repo() { pd_f=\"/etc/apt/sources.list.d/$1\"; printf '%s\n' \"$2\" > \"$pd_f\"; "
-            + "if pd_update; then return 0; fi; "
+            + "pd_repo() { pd_f=\"$PD_ROOT/etc/apt/sources.list.d/$1\"; "
+            + "mkdir -p \"$PD_ROOT/etc/apt/sources.list.d\"; printf '%s\n' \"$2\" > \"$pd_f\"; "
+            // A source written a second ago is in no index that has been fetched, so its
+            // packages stay invisible to apt until the lists are fetched again. Past the
+            // freshness check, always: this is the one call that must not be cached.
+            + "if pd_update force; then return 0; fi; "
             + "echo \"PocketDesk: the $1 repository did not answer; removing it again\"; "
-            + "rm -f \"$pd_f\"; pd_update || true; return 1; }; "
+            + "rm -f \"$pd_f\"; pd_update force || true; return 1; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketDesk: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -220,7 +231,10 @@ final class LinuxApps {
             + fetchKey(CHROME_KEY, "/etc/apt/keyrings/google-chrome.gpg")
             + "pd_repo google-chrome.list 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] "
             + CHROME_REPO + " stable main' || exit 15; "
-            + "apt-get install -y --no-install-recommends google-chrome-stable; "
+            // The same three attempts every other step gets: 133 MB over mobile data had
+            // exactly one, and apt resumes the partial file, so a retry is not a second 133 MB.
+            + "pd_step chrome google-chrome-stable "
+            + "|| echo \"PocketDesk: Google Chrome did not finish downloading this time\"; "
             + "printf 'repo_add_once=\"false\"\nrepo_reenable_on_distupgrade=\"false\"\n' > /etc/default/google-chrome; "
             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
             + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
@@ -276,7 +290,9 @@ final class LinuxApps {
                     // Run again from the top: the finished-step marks are cleared first, so every
                     // part is re-checked and anything the publisher has updated is fetched.
                     "rm -f \"$PD_STATE/stage/\"* 2>/dev/null || true; "
-                            + "pd_update || exit 11; "
+                            // This row exists to find what the publishers have changed, so it is
+                            // the one place that must never reuse a list it fetched earlier.
+                            + "pd_update force || exit 11; "
                             + "pd_step core " + DESKTOP_PACKAGES + " || exit 12; "
                             + "pd_step tools " + TOOL_PACKAGES + " || true; "
                             + "pd_step devtools " + DEVELOPER_PACKAGES + " || exit 14; "

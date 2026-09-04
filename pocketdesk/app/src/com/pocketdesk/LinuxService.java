@@ -55,6 +55,13 @@ public final class LinuxService extends Service {
     private static final float RESUME_TEMPERATURE_C = 43f;
     /** How long a set-up may sit paused for heat before it is stopped for real. */
     private static final long MAX_PAUSE_MS = 45L * 60L * 1000L;
+    /**
+     * How long a job's wake lock lives before it must be renewed. A timeout, not a lock held for
+     * ever: if the process dies between renewals the phone gets its processor back by itself.
+     * The monitor renews it every half minute, so it is a lease rather than a deadline -- taken
+     * once and never renewed, it expired in the middle of a slow set-up and the phone slept.
+     */
+    private static final long WAKE_LOCK_MS = 2L * 60L * 60L * 1000L;
     private static final String CHANNEL_ID = "pocketdesk_linux";
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
     /** An app install running beside an open desktop, which BUSY (the desktop's own task) is not. */
@@ -102,11 +109,6 @@ public final class LinuxService extends Service {
                     && !DeviceProbe.isCharging(LinuxService.this)) {
                 reason = "Battery reached 3%, so the download was stopped. Charge the phone, then "
                         + "start it again — nothing already installed is downloaded twice.";
-            } else if (prefs.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true)
-                    && (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
-                        || (probe.batteryTempC > 0 && probe.batteryTempC >= STOP_TEMPERATURE_C))) {
-                reason = "The phone got too hot, so the download was stopped. Let it cool for a few "
-                        + "minutes, then start it again — it carries on from where it stopped.";
             } else if (DataBudget.exhausted(LinuxService.this)) {
                 reason = "Today's mobile data limit is used up, so the download was stopped. It "
                         + "carries on over Wi-Fi, after midnight, or with a higher limit in Settings.";
@@ -128,17 +130,28 @@ public final class LinuxService extends Service {
                 if (freezeJobs(true)) {
                     pausedForHeat = true;
                     pausedSince = SystemClock.elapsedRealtime();
+                    String heat = probe.batteryTempC > 0
+                            ? "It is at " + Math.round(probe.batteryTempC) + " °C. " : "";
                     status("Paused while the phone cools",
-                            "It is at " + Math.round(probe.batteryTempC) + " °C. Nothing is lost and "
-                                    + "nothing will be downloaded twice — this carries on by itself "
-                                    + "below " + Math.round(RESUME_TEMPERATURE_C) + " °C. Taking the "
-                                    + "phone off the charger cools it fastest.",
+                            heat + "Nothing is lost and nothing will be downloaded twice — this "
+                                    + "carries on by itself once the phone is cooler. Taking it off "
+                                    + "the charger cools it fastest.",
                             -1, true, false);
+                } else {
+                    // An OEM that will not let us signal our own child keeps the old behaviour,
+                    // rather than leaving a hot phone working on regardless.
+                    String tooHot = "The phone got too hot, so the work was stopped. Let it cool for "
+                            + "a few minutes, then start it again — it carries on from where it "
+                            + "stopped, and nothing is downloaded twice.";
+                    status("Stopped to protect the phone", tooHot, -1, false, true);
+                    recordStop(tooHot);
+                    cancelJobs();
+                    return;
                 }
             } else if (pausedForHeat) {
-                boolean cool = probe.batteryTempC > 0 && probe.batteryTempC <= RESUME_TEMPERATURE_C
-                        && probe.thermalStatus < PowerManager.THERMAL_STATUS_SEVERE;
-                if (cool || probe.batteryTempC <= 0) {
+                boolean cool = probe.thermalStatus < PowerManager.THERMAL_STATUS_SEVERE
+                        && (probe.batteryTempC <= 0 || probe.batteryTempC <= RESUME_TEMPERATURE_C);
+                if (cool) {
                     freezeJobs(false);
                     pausedForHeat = false;
                     status("Carrying on", "The phone has cooled down.", -1, true, false);
@@ -156,6 +169,7 @@ public final class LinuxService extends Service {
                     return;
                 }
             }
+            renewWakeLocks();
             handler.postDelayed(this, pausedForHeat ? 20_000L : 30_000L);
         }
     };
@@ -191,6 +205,12 @@ public final class LinuxService extends Service {
     /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
     private void cancelJobs() {
         stopRequested = true;
+        // A frozen container can act on nothing but SIGKILL, so thaw it before ending it --
+        // otherwise the stop leaves a live stopped PRoot and a worker blocked in readLine().
+        if (pausedForHeat) {
+            freezeJobs(false);
+            pausedForHeat = false;
+        }
         Thread worker = workerThread;
         if (worker != null) worker.interrupt();
         Future<?> task = currentTask;
@@ -198,9 +218,15 @@ public final class LinuxService extends Service {
         Future<?> install = installTask;
         if (install != null) install.cancel(true);
         Process active = activeProcess;
-        if (active != null) active.destroy();
+        if (active != null) {
+            active.destroy();
+            if (active.isAlive()) active.destroyForcibly();
+        }
         Process installing = installProcess;
-        if (installing != null) installing.destroy();
+        if (installing != null) {
+            installing.destroy();
+            if (installing.isAlive()) installing.destroyForcibly();
+        }
     }
 
     private final Runnable safetyMonitor = new Runnable() {
@@ -350,6 +376,8 @@ public final class LinuxService extends Service {
             // so the download takes one, or the package fetch would stall with the screen off.
             acquireInstallWakeLock();
             stopRequested = false;
+            pausedForHeat = false;
+            pausedSince = 0L;
             handler.removeCallbacks(jobMonitor);
             handler.postDelayed(jobMonitor, 30_000L);
             installTask = installExecutor.submit(() -> {
@@ -399,6 +427,8 @@ public final class LinuxService extends Service {
         stopRequested = false;
         if (!ACTION_START_DESKTOP.equals(action)) {
             // A desktop session has its own monitor; a download does not, and needs one.
+            pausedForHeat = false;
+            pausedSince = 0L;
             handler.removeCallbacks(jobMonitor);
             handler.postDelayed(jobMonitor, 30_000L);
         }
@@ -501,7 +531,12 @@ public final class LinuxService extends Service {
         // afterwards always saw "started" and the whole resume path was dead code.
         String previousStage = preferences.getString(ContainerRuntime.KEY_SETUP_STAGE, "");
         boolean finishedBefore = preferences.getBoolean(ContainerRuntime.KEY_DESKTOP_INSTALLED, false);
-        preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "started").apply();
+        // Never write a value that says less than what is already known: overwriting "unpacked"
+        // with "started" throws away the only proof the base system is on the phone, and any
+        // failure before the next write would leave it thrown away for good -- 550 MB again.
+        if (!"unpacked".equals(previousStage)) {
+            preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "started").commit();
+        }
         status("Preparing Linux", "Getting the local Linux system ready…", 2, true, false);
         ContainerRuntime.installRuntime(this);
 
@@ -509,7 +544,13 @@ public final class LinuxService extends Service {
         File archive = ContainerRuntime.downloadFile(this);
         // Only a run that finished unpacking may be continued: the marker and the two binaries
         // have to agree, or a half-written system would be handed to the package steps.
-        boolean unpacked = "unpacked".equals(previousStage)
+        // The proof lives where the base system lives. A preference is written asynchronously
+        // and dies with the process; losing it used to cost the whole rootfs at the deleteTree
+        // below, and every package already paid for with it. The preference stays as a fallback
+        // so a phone already part-way through this update is not wiped by it.
+        File unpackedMark = new File(root, "var/lib/pocketdesk/unpacked");
+        boolean unpacked = !finishedBefore
+                && (unpackedMark.isFile() || "unpacked".equals(previousStage))
                 && new File(root, "usr/bin/apt-get").isFile()
                 && new File(root, "usr/bin/dpkg").isFile();
         // A container that once finished set-up is never wiped by starting set-up again: if the
@@ -561,7 +602,20 @@ public final class LinuxService extends Service {
             }
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
         }
-        preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "unpacked").apply();
+        // Written for every branch, not just a fresh extraction, so a rootfs unpacked by an
+        // older version is back-filled the first time it resumes under this one.
+        try {
+            File markDirectory = new File(root, "var/lib/pocketdesk");
+            if (markDirectory.isDirectory() || markDirectory.mkdirs()) {
+                try (FileOutputStream mark = new FileOutputStream(unpackedMark)) {
+                    mark.write(ContainerRuntime.UBUNTU_SHA256.getBytes("UTF-8"));
+                    mark.getFD().sync();
+                }
+            }
+        } catch (IOException couldNotMark) {
+            // The preference below still carries the resume, exactly as it did before.
+        }
+        preferences.edit().putString(ContainerRuntime.KEY_SETUP_STAGE, "unpacked").commit();
 
         final long toolsStartedAt = System.currentTimeMillis();
         status("Setting up the desktop",
@@ -1143,7 +1197,7 @@ public final class LinuxService extends Service {
         if (power == null) return null;
         PowerManager.WakeLock lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag);
         lock.setReferenceCounted(false);
-        lock.acquire(2 * 60 * 60 * 1000L);
+        lock.acquire(WAKE_LOCK_MS);
         return lock;
     }
 
@@ -1169,12 +1223,41 @@ public final class LinuxService extends Service {
         if (lock != null && lock.isHeld()) lock.release();
     }
 
+    /**
+     * Extends both job locks so a long set-up or app install keeps the processor.
+     *
+     * The lock was taken once with a two-hour timeout and never renewed, so a 550 MB set-up on
+     * mobile data that ran past two hours lost the processor with the screen off, apt's fetch
+     * died at its own timeout, and the job stopped at a late step -- the second half of the
+     * owner's "it stops again near the end". setReferenceCounted(false) makes a repeat acquire
+     * restart the timeout on the same lock rather than take a second one.
+     *
+     * Called only from the monitor, and only past its BUSY/INSTALLING check: a job that has just
+     * finished clears its flag before releasing its lock, so renewing any earlier would bring a
+     * finished job's lock back to life.
+     */
+    private synchronized void renewWakeLocks() {
+        try {
+            if (taskWakeLock != null) taskWakeLock.acquire(WAKE_LOCK_MS);
+            if (installWakeLock != null) installWakeLock.acquire(WAKE_LOCK_MS);
+        } catch (Throwable ignored) {
+            // An OEM power manager that will not renew our own lock must not take the job down
+            // with it: the work carries on, and stops early at worst, exactly as it does today.
+        }
+    }
+
     /** Human phase for a raw apt/dpkg/curl output line. */
     private static String phaseFor(String line) {
         String value = line == null ? "" : line.trim();
         // The container's own step lines, so the phone can say what is happening rather than
         // echoing package names at someone who did not ask for them.
         if (value.startsWith("PocketDesk:")) {
+            // A failure line wins over the words it happens to contain: "Google Chrome did not
+            // install this time" used to match the Chrome branch and be shown as progress.
+            if (value.contains("did not install")) {
+                return value.contains("Chrome") ? "Google Chrome did not install"
+                        : "Some everyday tools did not install";
+            }
             if (value.contains("already done")) return "Skipping a part that is already installed";
             if (value.contains("did not finish")) return "Connection hiccup · trying that part again";
             if (value.contains("Chrome")) return "Installing Google Chrome";
