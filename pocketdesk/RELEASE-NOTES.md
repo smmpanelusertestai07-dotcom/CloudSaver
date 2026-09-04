@@ -1,3 +1,38 @@
+# PocketDesk 10.0.95 — the Windows layer says why it failed
+
+10.0.90's Windows layer failed on the reference phone with nothing but *"The Windows layer could
+not be installed."* That message is useless, and this release fixes the useless part first.
+
+**Every failure now carries what the computer actually said**
+
+A failed install shows the last few lines the container printed, under **"What the computer said
+last:"**. An install that fails with no reason leaves an owner with nowhere to go; the computer
+almost always said exactly what went wrong one line earlier, and now that line reaches the
+screen.
+
+**The Windows layer itself is more robust and more talkative**
+
+- **Nothing in it can end the command by accident any more.** It runs under `set -e`, where a
+  step that simply finds nothing counts as a failure; every step is now explicitly allowed to
+  come back empty, and the only exit is the deliberate one at the end that knows whether there
+  is a working Wine.
+- **The Hangover package match is looser.** It looked for a name with `ubuntu-24.04` before
+  `arm64`, in that order. Now it takes any ARM64 `.deb` in the release, preferring one that also
+  names this Ubuntu — so a change in how the project names its files cannot break it.
+- **Ubuntu's Wine is tried by name and in two ways**, because the `wine` metapackage cannot be
+  installed on ARM64 at all: it wants a 32-bit half that ARM64 has no version of.
+- **When it still fails it prints why**: how many ready-made packages it found, and the last
+  lines of apt's own error.
+- **No more `su -`.** Under PRoot that goes through PAM and fails on some phones. The Wine folder
+  is created and handed to the owner instead, and Wine builds its own prefix the first time a
+  program starts — which is one fewer thing that can go wrong.
+
+**A test that would have caught it**
+
+The Windows layer is now run for real in the test suite with nothing reachable — no network, apt
+failing — and must reach its own exit 16 *and* say why, rather than dying part-way and being
+reported as a download problem.
+
 # PocketDesk 10.0.90 — a Windows app installs like a Linux one now
 
 The gap this closes: a Linux app was one tap, and a Windows app was "here is a website, good

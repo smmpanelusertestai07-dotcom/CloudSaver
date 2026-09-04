@@ -169,6 +169,33 @@ public final class LinuxAppsTest {
         require(run(work, prelude + "pd_update\n") == 0, "a damaged stamp must not break the update");
         require(countLines(updates) == 4, "a damaged stamp must be treated as no stamp");
 
+        // The Windows layer, run for real with nothing reachable. The whole command runs under
+        // "set -e", and the first version of it died at a grep that simply found nothing --
+        // reported to the owner as "the Windows layer could not be installed" with no reason.
+        // It must now reach its own deliberate exit and say what it tried.
+        Path winBin = work.resolve("winbin");
+        Files.createDirectories(winBin);
+        Files.write(winBin.resolve("curl"), "#!/bin/bash\nexit 22\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(winBin.resolve("dpkg"), "#!/bin/bash\nexit 0\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(winBin.resolve("apt-get"), "#!/bin/bash\nexit 100\n".getBytes(StandardCharsets.UTF_8));
+        Files.write(winBin.resolve("chown"), "#!/bin/bash\nexit 0\n".getBytes(StandardCharsets.UTF_8));
+        for (String tool : new String[]{"curl", "dpkg", "apt-get", "chown"}) {
+            winBin.resolve(tool).toFile().setExecutable(true);
+        }
+        Path winOut = work.resolve("windows-layer.out");
+        String winScript = "#!/bin/bash\nset -eu\nexport PATH='" + winBin + "':$PATH\n"
+                + "export POCKETDESK_TEST_ROOT='" + root + "'\nexport POCKETDESK_RETRY_SLEEP=0\n"
+                + "pd_update() { return 0; }\nPD_STATE='" + root + "/var/lib/pocketdesk'\n"
+                + "mkdir -p \"$PD_STATE\"\n" + LinuxApps.WINDOWS_LAYER + "\n";
+        int winCode = run(work, winScript, winOut);
+        String winLog = new String(Files.readAllBytes(winOut), StandardCharsets.UTF_8);
+        require(winCode == 16, "with nothing reachable the Windows layer must reach its own exit 16, "
+                + "not die part-way; it exited " + winCode + " and said:\n" + winLog);
+        require(winLog.contains("no Wine on this computer"),
+                "a failed Windows layer must say why, not just fail:\n" + winLog);
+        require(!Files.exists(root.resolve("var/lib/pocketdesk/windows-layer")),
+                "a Windows layer that did not install must not leave its marker behind");
+
         // pd_repo writes a source and must prove it, which cannot be done from a cached list.
         // The stamp is deliberately made FRESH first: without the force, pd_repo would take the
         // cache, fetch nothing, and report a repository it never proved.
@@ -270,11 +297,17 @@ public final class LinuxAppsTest {
     }
 
     private static int run(Path work, String script) throws Exception {
+        return run(work, script, null);
+    }
+
+    /** Runs the script, and keeps what it said when a place to keep it is given. */
+    private static int run(Path work, String script, Path output) throws Exception {
         Path file = work.resolve("harness.sh");
         Files.write(file, script.getBytes(StandardCharsets.UTF_8));
         Process process = new ProcessBuilder("bash", file.toString())
                 .redirectErrorStream(true).start();
-        readAll(process.getInputStream());
+        byte[] said = readAll(process.getInputStream());
+        if (output != null) Files.write(output, said);
         return process.waitFor();
     }
 

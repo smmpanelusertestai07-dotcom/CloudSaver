@@ -297,35 +297,54 @@ final class LinuxApps {
     static final String WINDOWS_LAYER =
             "pd_update || exit 11; "
             + "apt-get install -y --no-install-recommends curl ca-certificates p7zip-full unzip "
-            + "cabextract || true; "
+            + "cabextract >/dev/null 2>&1 || true; "
             + "pd_win_dir=/var/cache/pocketdesk/windows; mkdir -p \"$pd_win_dir\"; "
-            // Hangover's own release listing, read on the phone. Only the assets for this
-            // distribution and this processor are taken.
+            // Every one of these is written with "|| true" on purpose. The whole command runs
+            // under "set -e", and a grep that simply finds nothing exits 1 -- which killed the
+            // install outright the first time this shipped, and reported it as if the download
+            // had failed. Nothing here may end the script except the one deliberate exit at the
+            // bottom, which knows whether there is a working Wine.
             + "pd_win_json=$(curl -fsSL --max-time 60 "
             + "https://api.github.com/repos/AndreRH/hangover/releases/latest 2>/dev/null || true); "
-            + "pd_win_urls=$(printf '%s' \"$pd_win_json\" | tr ',' '\n' | "
-            + "grep -o 'https://[^\"]*ubuntu-24.04[^\"]*arm64[^\"]*\\.deb' | sort -u); "
-            + "if [ -n \"$pd_win_urls\" ]; then "
+            // Any arm64 .deb in the release, preferring the ones that name this Ubuntu. Hangover
+            // has changed how it names these before, so the match is deliberately loose.
+            + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
+            + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' "
+            + "| grep -iE '24[._]04|noble' | sort -u || true); "
+            + "if [ -z \"${pd_win_urls:-}\" ]; then "
+            + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
+            + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' | sort -u || true); fi; "
+            + "if [ -n \"${pd_win_urls:-}\" ]; then "
             + "echo 'PocketDesk: fetching the Windows layer'; "
             + "for pd_u in $pd_win_urls; do "
-            + "curl -fsSL --max-time 600 -o \"$pd_win_dir/$(basename \"$pd_u\")\" \"$pd_u\" || true; done; "
-            + "dpkg -i \"$pd_win_dir\"/*.deb >/dev/null 2>&1 || apt-get -y -f install >/dev/null 2>&1 || true; "
-            + "fi; "
-            // Whatever happened above, the computer must end with a working wine or say so.
-            + "if ! command -v wine >/dev/null 2>&1; then "
-            + "echo 'PocketDesk: using the package archive instead'; "
-            + "pd_step winelayer wine64 || echo 'PocketDesk: the Windows layer did not install'; fi; "
+            + "curl -fsSL --max-time 900 -o \"$pd_win_dir/$(basename \"$pd_u\")\" \"$pd_u\" || true; done; "
+            + "dpkg -i \"$pd_win_dir\"/*.deb >/dev/null 2>&1 || true; "
+            + "apt-get -y -f install >/dev/null 2>&1 || true; "
+            + "else echo 'PocketDesk: no ready-made Windows layer for this system'; fi; "
+            // Ubuntu's own Wine is the fallback. On arm64 the "wine" metapackage cannot be
+            // installed (it wants the 32-bit half, which arm64 has no version of), so wine64 is
+            // tried first and by name.
+            + "if ! command -v wine64 >/dev/null 2>&1 && ! command -v wine >/dev/null 2>&1; then "
+            + "echo 'PocketDesk: using the Ubuntu archive instead'; "
+            + "apt-get install -y --no-install-recommends wine64 >/dev/null 2>&1 "
+            + "|| apt-get install -y wine64 >/dev/null 2>&1 "
+            + "|| apt-get install -y wine >/dev/null 2>&1 || true; fi; "
             + "rm -rf \"$pd_win_dir\"; "
-            + "if command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1; then "
-            // One prefix, made once, with Wine's own installers turned off: they want to download
-            // Mono and Gecko, which is 100 MB the AI apps do not use and a dialog nobody can read
-            // on a phone.
-            + "su - coder -c 'export WINEPREFIX=$HOME/.pocketdesk-wine; "
-            + "export WINEDLLOVERRIDES=mscoree=d;mshtml=d; export WINEDEBUG=-all; "
-            + "mkdir -p \"$WINEPREFIX\"; wineboot --init >/dev/null 2>&1 || true' || true; "
+            + "pd_wine=$(command -v wine 2>/dev/null || command -v wine64 2>/dev/null || true); "
+            + "if [ -n \"${pd_wine:-}\" ]; then "
+            // The prefix is only a folder until a program is started; Wine builds it on first
+            // use, as the owner, which is also the only user that will ever open it. Building it
+            // here as root was one more thing to go wrong for no gain.
+            + "mkdir -p /home/coder/.pocketdesk-wine /home/coder/.pocketdesk/windows; "
+            + "chown -R coder:coder /home/coder/.pocketdesk-wine /home/coder/.pocketdesk 2>/dev/null || true; "
             + "printf 'ok' > \"$PD_STATE/windows-layer\"; "
-            + "wine --version 2>/dev/null || wine64 --version 2>/dev/null || true; "
-            + "else echo 'PocketDesk: no Windows layer this time'; exit 16; fi";
+            + "echo \"PocketDesk: Windows layer ready ($(\"$pd_wine\" --version 2>/dev/null || echo installed))\"; "
+            + "else "
+            // A failure has to say which of the two ways failed, or the next attempt is a guess.
+            + "echo 'PocketDesk: no Wine on this computer after both attempts'; "
+            + "echo \"PocketDesk: ready-made packages found: $(printf '%s' \"${pd_win_urls:-none}\" | wc -w)\"; "
+            + "apt-get install -y --no-install-recommends wine64 2>&1 | tail -n 5; "
+            + "exit 16; fi";
 
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
@@ -397,10 +416,15 @@ final class LinuxApps {
                             + "curl -fL --retry 3 --max-time 3600 -o /home/coder/Downloads/cursor-windows-arm64.exe "
                             + "\"$pd_cw\" || exit 18; "
                             + "chown coder:coder /home/coder/Downloads/cursor-windows-arm64.exe 2>/dev/null || true; "
-                            + "su - coder -c '/usr/local/bin/pocketdesk-winapp install "
-                            + "/home/coder/Downloads/cursor-windows-arm64.exe \"Cursor Windows\"' || exit 19; "
+                            // Not "su -": under PRoot that goes through PAM and fails on some
+                            // phones. The installer only needs coder's HOME, so it is given one.
+                            + "HOME=/home/coder USER=coder "
+                            + "/usr/local/bin/pocketdesk-winapp install "
+                            + "/home/coder/Downloads/cursor-windows-arm64.exe 'Cursor Windows' || exit 19; "
+                            + "chown -R coder:coder /home/coder/.pocketdesk /home/coder/.local "
+                            + "/home/coder/Desktop 2>/dev/null || true; "
                             + "rm -f /home/coder/Downloads/cursor-windows-arm64.exe",
-                    "su - coder -c '/usr/local/bin/pocketdesk-winapp remove cursorwindows' || true",
+                    "HOME=/home/coder /usr/local/bin/pocketdesk-winapp remove cursorwindows || true",
                     false),
 
             new App("chatgpt", "ChatGPT",

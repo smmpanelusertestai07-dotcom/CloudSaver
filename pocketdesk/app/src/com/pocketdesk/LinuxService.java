@@ -723,10 +723,19 @@ public final class LinuxService extends Service {
         status("Installing " + app.name,
                 "Fetching the newest build · usually takes " + app.typicalTime, -1, true, false);
         final long[] lastLine = {0L};
+        // The last few lines the container said, kept for the moment it fails. "It did not
+        // install" with no reason is the message that leaves an owner with nowhere to go; the
+        // computer usually said exactly what went wrong one line earlier.
+        final java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
         installingNow = true;
         int code;
         try {
             code = runInstall(app.installCommand(), line -> {
+                String trimmed = line == null ? "" : line.trim();
+                if (!trimmed.isEmpty() && !isTransferNoise(trimmed)) {
+                    tail.addLast(trimmed);
+                    while (tail.size() > 6) tail.removeFirst();
+                }
                 long now = System.currentTimeMillis();
                 if (now - lastLine[0] < 900L) return;
                 lastLine[0] = now;
@@ -739,10 +748,14 @@ public final class LinuxService extends Service {
         }
         if (code != 0) {
             String reason = ContainerRuntime.setupFailureReason(code);
-            throw new IOException(reason != null ? reason
+            StringBuilder said = new StringBuilder();
+            for (String one : tail) said.append(said.length() == 0 ? "" : "\n").append(one);
+            throw new IOException((reason != null ? reason
                     : app.name + " did not finish installing (code " + code + "). Check the "
                     + "internet connection and free space, then tap the row again — what was "
-                    + "already downloaded is kept.");
+                    + "already downloaded is kept.")
+                    + (said.length() == 0 ? ""
+                        : "\n\nWhat the computer said last:\n" + said));
         }
         ContainerRuntime.refreshDesktopEntries(this);
         // Refresh the desktop's own menu, panel and icons so the new app is there at once --
