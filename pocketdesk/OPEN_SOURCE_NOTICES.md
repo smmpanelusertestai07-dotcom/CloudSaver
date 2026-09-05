@@ -91,9 +91,12 @@ Canonical's trademark, and Canonical's intellectual property rights policy grant
 PocketLinux has no such permission and ships no Ubuntu-branded image; it uses the word "Ubuntu"
 only to state which system it runs, which that policy allows as discussion provided no
 endorsement is implied — and the app says in its own credits that it is not affiliated with,
-endorsed by or sponsored by Canonical. "Linux" is a registered trademark of Linus Torvalds,
-used here as a factual statement about what the app runs; PocketLinux's name contains no
-trademark of another party.
+endorsed by or sponsored by Canonical. Linux® is the registered trademark of Linus Torvalds in
+the U.S. and other countries, administered by the Linux Foundation. This app runs the Linux
+kernel and says so, which is factual use. Its name also contains the word, which is use *as*
+part of a mark: the Linux Foundation grants a free, perpetual, worldwide sublicense for exactly
+that, and any public distribution of this app under this name should hold one. PocketLinux is
+not affiliated with, endorsed by or sponsored by Linus Torvalds or the Linux Foundation.
 
 ## What set-up installs inside the Linux computer
 
