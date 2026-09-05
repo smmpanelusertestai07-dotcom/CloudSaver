@@ -603,6 +603,7 @@ import importlib.util
 import os
 from pathlib import Path
 import select
+import signal
 import struct
 import subprocess
 import sys
@@ -647,10 +648,15 @@ def completed_downloads(data, directory):
             raise OSError(errno.ENOENT, "download directory is no longer watched")
         if not mask & (IN_CLOSE_WRITE | IN_MOVED_TO) or mask & IN_ISDIR:
             continue
-        # Events name one completed file. Scanning every .exe on an unrelated download used
-        # to offer other files while they were still being written.
-        if name and name.lower().endswith(".exe") and "/" not in name:
-            yield directory / name
+        # Events name one completed file. Scanning the folder instead used to offer other
+        # files while they were still being written.
+        if not name or "/" in name:
+            continue
+        lowered = name.lower()
+        # Every browser writes these while the transfer is still running.
+        if lowered.endswith((".crdownload", ".part", ".tmp", ".download")) or name.startswith("."):
+            continue
+        yield directory / name
 
 
 def notify(title, body, critical=False):
@@ -725,6 +731,67 @@ def load_childwatch():
     return helper
 
 
+# How close to Android's ceiling the computer may drift before something is closed on purpose.
+# Six slots of headroom: an app being opened can add several processes between two checks, and
+# being killed at 33 is indistinguishable, to the owner, from being killed at 40.
+CROWDED_AT = 26
+# Only act on a crowd that persists. A launch briefly spikes the count and then settles.
+CROWDED_FOR_SECONDS = 6
+
+
+def busiest_closable(proc=Path('/proc')):
+    """The open program costing the most process slots that is safe to close and reopen.
+
+    The browser first: it is the heaviest, and closing it loses a tab rather than a conversation.
+    Never the desktop's own parts -- a computer with no panel is not a rescue.
+    """
+    groups = {}
+    for entry in proc.iterdir():
+        if not entry.name.isdecimal():
+            continue
+        try:
+            command = (entry / 'cmdline').read_bytes().split(b'\0', 1)[0]
+        except OSError:
+            continue
+        name = os.fsdecode(command).rsplit('/', 1)[-1].lower()
+        for known in ('chrome', 'chatgpt', 'claude', 'cursor', 'antigravity'):
+            if known in name:
+                groups.setdefault(known, []).append(int(entry.name))
+    for candidate in ('chrome', 'antigravity', 'cursor', 'chatgpt', 'claude'):
+        if len(groups.get(candidate, ())) >= 2:
+            return candidate, groups[candidate]
+    return None, []
+
+
+def keep_under_ceiling(childwatch, crowded_since, now=None):
+    """Close one program before Android kills the whole computer. Returns the new crowd start.
+
+    Android gives an app 32 forked processes and takes the lot when that is passed. Under PRoot
+    every Linux process is one of those, so the ceiling is the computer's. Reaching it is not a
+    warning: it is the session ending mid-sentence. Ending one program instead is strictly better,
+    and the owner is told which and why.
+    """
+    now = time.monotonic() if now is None else now
+    if childwatch.process_count() < CROWDED_AT:
+        return None
+    if crowded_since is None:
+        return now
+    if now - crowded_since < CROWDED_FOR_SECONDS:
+        return crowded_since
+    name, pids = busiest_closable()
+    if name is None:
+        return now          # nothing safe to close; keep watching rather than kill a desktop part
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    notify("Closed " + name.title() + " to keep the computer running",
+           "This phone lets an app run 32 programs at once, and the computer was at its limit. "
+           "Closing one keeps everything else open; the whole computer would have stopped.", True)
+    return None
+
+
 def main(home=None, download=None, panel_delay=12, display_pid=None, inherited_pids=()):
     home = Path(os.environ["HOME"]) if home is None else Path(home)
     download = Path(os.environ["POCKETDESK_DOWNLOAD_DIR"]) if download is None else Path(download)
@@ -732,6 +799,9 @@ def main(home=None, download=None, panel_delay=12, display_pid=None, inherited_p
     state.mkdir(parents=True, exist_ok=True)
     childwatch = load_childwatch()
     inherited = list(inherited_pids)
+    # Orphans reparent here instead of nowhere, so they can be cleared rather than pile up.
+    childwatch.become_subreaper()
+    crowded_since = None
     with childwatch.ChildWakeup() as child_events, (state / "desktop-watch.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -762,6 +832,16 @@ def main(home=None, download=None, panel_delay=12, display_pid=None, inherited_p
                             return status
                     inherited[:] = [pid for pid in inherited
                                     if childwatch.inherited_child_status(pid) is None]
+                    # Clear finished processes nobody owns, every turn. This is the whole reason
+                    # the session used to be killed: a zombie still holds an Android process slot,
+                    # and a container has no init to wait for the ones an exiting app leaves.
+                    owned = {child.pid for child in children}
+                    owned.update(offer.pid for offer in offer_children)
+                    owned.update(inherited)
+                    if display_pid is not None:
+                        owned.add(display_pid)
+                    childwatch.reap_unowned(owned)
+                    crowded_since = keep_under_ceiling(childwatch, crowded_since)
                     if offer_thread is not None and not offer_thread.is_alive():
                         children.extend(offer_children)
                         offer_children.clear()

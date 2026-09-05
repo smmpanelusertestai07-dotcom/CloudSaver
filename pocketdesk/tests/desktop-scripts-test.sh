@@ -406,7 +406,7 @@ grep -qx -- '-i -r 0x01000001 -e 0,0,60,712,1068' "$guard_calls" \
 [ "$(wc -l < "$guard_calls")" -eq 1 ] \
   || fail "the guard must leave in-bounds, desktop, maximised and minimised windows alone"
 grep -q 'pocketdesk-window-guard.sh.*usr/local/bin/pocketdesk-window-guard' \
-  "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" \
+  "$PROJECT_DIR/app/src/com/pocketlinux/ContainerRuntime.java" \
   || fail "updating old computers must copy in the new window boundary guard"
 
 # The browser opens links; a sign-in that opened in the browser comes back to the app through
@@ -563,7 +563,7 @@ grep -q 'show_wm_menu=1' "$desktop" || fail "a right-click on the wallpaper must
 grep -q 'NO_AT_BRIDGE=1' "$desktop" || fail "the accessibility bus must be switched off (every app waited on it)"
 grep -q 'module-simple-protocol-tcp' "$desktop" || fail "sound must be streamed to the phone"
 grep -q 'source=phone.monitor' "$desktop" || fail "the stream must carry the Phone output"
-audio_port=$(grep -oE 'PORT *= *[0-9]+' "$PROJECT_DIR/app/src/com/pocketdesk/AudioBridge.java" \
+audio_port=$(grep -oE 'PORT *= *[0-9]+' "$PROJECT_DIR/app/src/com/pocketlinux/AudioBridge.java" \
   | head -n 1 | grep -oE '[0-9]+' || true)
 [ -n "$audio_port" ] || fail "AudioBridge.PORT could not be read"
 grep -q "port=$audio_port" "$desktop" || fail "the sound fallback port must match AudioBridge.PORT ($audio_port)"

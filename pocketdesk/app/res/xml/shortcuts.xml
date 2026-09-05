@@ -10,9 +10,9 @@
         android:shortcutLongLabel="@string/shortcut_open_desktop_long">
         <intent
             android:action="android.intent.action.MAIN"
-            android:targetPackage="com.pocketdesk"
-            android:targetClass="com.pocketdesk.MainActivity">
-            <extra android:name="com.pocketdesk.route" android:value="desktop" />
+            android:targetPackage="com.pocketlinux"
+            android:targetClass="com.pocketlinux.MainActivity">
+            <extra android:name="com.pocketlinux.route" android:value="desktop" />
         </intent>
     </shortcut>
 </shortcuts>

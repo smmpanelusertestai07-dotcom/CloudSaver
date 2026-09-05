@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 public final class DiagnosticReportTest {
     private static void check(boolean value, String reason) {

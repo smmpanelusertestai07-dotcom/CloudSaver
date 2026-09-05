@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 /**
  * The one judgement Crash makes on its own: is this Android's own teardown race, or is it a
@@ -40,7 +40,7 @@ public final class CrashTest {
         NullPointerException ours = new NullPointerException(
                 "Attempt to invoke virtual method on a null object reference");
         ours.setStackTrace(new StackTraceElement[]{
-                new StackTraceElement("com.pocketdesk.MainActivity", "refreshLiveTiles",
+                new StackTraceElement("com.pocketlinux.MainActivity", "refreshLiveTiles",
                         "MainActivity.java", 1700),
                 new StackTraceElement("android.os.Handler", "dispatchMessage", "Handler.java", 106),
         });

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCE = (PROJECT / 'app/src/com/pocketdesk/LinuxService.java').read_text()
+SOURCE = (PROJECT / 'app/src/com/pocketlinux/LinuxService.java').read_text()
 
 
 def method(signature):
@@ -39,7 +39,7 @@ METHODS = '\n'.join(method(signature) for signature in (
 ))
 
 HARNESS = r'''
-package com.pocketdesk;
+package com.pocketlinux;
 public final class DesktopWakeHarness {
     static final class PowerManager {
         static final int PARTIAL_WAKE_LOCK = 1;
@@ -146,7 +146,7 @@ class DesktopWakeTest(unittest.TestCase):
         compiler = [shutil.which('javac')] if shutil.which('javac') else [
             shutil.which('java'), '-m', 'jdk.compiler/com.sun.tools.javac.Main']
         result = subprocess.run(compiler + ['-d', str(cls.path), str(source),
-            str(PROJECT / 'app/src/com/pocketdesk/TaskGeneration.java')],
+            str(PROJECT / 'app/src/com/pocketlinux/TaskGeneration.java')],
             capture_output=True, text=True, timeout=25)
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
@@ -157,7 +157,7 @@ class DesktopWakeTest(unittest.TestCase):
 
     def run_case(self, name):
         result = subprocess.run(['java', '-cp', str(self.path),
-            'com.pocketdesk.DesktopWakeHarness', name], capture_output=True, text=True, timeout=5)
+            'com.pocketlinux.DesktopWakeHarness', name], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_active_renewal_then_monitor_loss_has_bounded_lease(self):

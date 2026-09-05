@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 public final class VncOutboxTest {
     public static void main(String[] args) throws Exception {

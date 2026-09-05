@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 import java.io.File;
 import java.io.IOException;
@@ -68,8 +68,8 @@ public final class ActivityStartupTest {
 
     public static void main(String[] args) throws Exception {
         File project = new File(args.length > 0 ? args[0] : ".");
-        File sources = new File(project, "app/src/com/pocketdesk");
-        require(sources.isDirectory(), "sources", "app/src/com/pocketdesk is missing at " + sources);
+        File sources = new File(project, "app/src/com/pocketlinux");
+        require(sources.isDirectory(), "sources", "app/src/com/pocketlinux is missing at " + sources);
 
         List<File> activities = new ArrayList<>();
         File[] all = sources.listFiles();

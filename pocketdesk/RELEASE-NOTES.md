@@ -1,3 +1,72 @@
+# PocketLinux 11.0.5 — the computer stops stopping
+
+The desktop was ending by itself with "The desktop display ended unexpectedly (exit 137)". The
+report that came with it named the cause without meaning to:
+
+```
+Host RAM MiB: available=1223 total=3740 lowMemory=false
+sampledLive=32 peak=36
+pid=1076 ppid=630 procState=Z      pid=4036 ppid=630 procState=Z
+pid=630  ppid=1   procState=Z      pid=1995 ppid=630 procState=Z
+pid=4815 ppid=630 procState=Z
+```
+
+**It was never memory.** 1.2 GB was free and `lowMemory` was false. Exit 137 is SIGKILL, and the
+number that mattered is `peak=36`: **Android 12 and later kill every one of an app's forked
+processes once there are more than 32 of them**. Under PRoot each Linux process *is* one of this
+app's Android processes, so that limit is the whole computer's limit — and passing it does not
+slow anything down, it ends the session mid-sentence.
+
+**Five of the seven survivors were zombies** (`procState=Z`), children of an app that had already
+exited. A zombie still holds a process slot. Nothing in a container waits for a reparented
+orphan, because a container has no init to do it — so they accumulated until the session was
+killed for a crowd that was mostly already dead.
+
+## Three fixes, none of them a setting
+
+**Finished processes are cleared, continuously.** The session's last process now makes itself a
+child subreaper, so orphans reparent to it instead of to a pid 1 that does not really exist, and
+it clears them every turn of its loop. Processes that belong to someone — the display, the panel,
+an installer — are looked at with `WNOWAIT` and left exactly as they are, so no owner ever loses a
+child's exit status.
+
+**The computer stays under the ceiling.** At 26 processes held for six seconds, one program is
+closed on purpose — the browser first, because closing it loses a tab rather than a conversation —
+and the owner is told which and why. Six slots of headroom, because opening an app adds several
+processes between two checks, and being killed at 33 is no different, to the owner, from being
+killed at 40. Desktop parts are never candidates: a computer with no panel is not a rescue.
+
+**A session that ends by itself comes back by itself.** Twice, automatically, with the viewer
+showing "The phone stopped the computer. Reopening it — nothing was lost…" instead of throwing
+you to the home screen. A session that ran healthily for five minutes earns the pair back; a
+computer that genuinely cannot start stops after two and says so plainly, rather than looping and
+heating the phone.
+
+## Settings → Running → Android process limit is gone
+
+It needed developer options, it changed a setting for the entire phone, and it did nothing at all
+for anyone who never found it. The computer manages itself now. A test fails the build if that row,
+its helper or its phone-wide policy script ever come back.
+
+## The package identifier is now com.pocketlinux
+
+The name change is complete: label, package, sources, actions and the APK. **This installs as a new
+app rather than an update** — Android treats a different package as a different app — so the Linux
+computer is set up again from scratch and Ubuntu is downloaded once more. Use Wi-Fi for that.
+Remove the old PocketDesk afterwards to get its storage back.
+
+## Also fixed
+
+- **Downloads were only being noticed if they were Windows programs.** The watcher's filter still
+  matched `.exe` only, left over from the removed Windows layer, so a `.deb` never reached the
+  installer offer and no other file was ever placed. It now sees every finished file, and ignores
+  the `.crdownload`, `.part` and `.tmp` files a browser writes while a transfer is still running.
+- **The runtime report stopped quoting a setting nobody can act on.** It said "Android
+  child-process monitor setting: Global override unset; effective policy not verified", which is
+  true and useless. It now states the ceiling and what the computer does to stay under it.
+
+---
+
 # PocketLinux 11.0.0 — one system, and it is Linux
 
 The app is now **PocketLinux**. The name says what it is, and the Windows compatibility layer that
@@ -2132,7 +2201,7 @@ account of everything in between.
   precise dragging; a solid, draggable Controls chip.
 - **Smart stopping** — ends a desktop nothing has touched for 25 minutes or one below 15 %
   battery off the charger, and says which. Fixed hours and Never remain.
-- **Downloads reach the phone** — `Android/data/com.pocketdesk/files/Shared/Downloads`.
+- **Downloads reach the phone** — `Android/data/com.pocketlinux/files/Shared/Downloads`.
 - **Privacy answered in the app** — everything local, where logins live, exact paths, the full
   permission list and what is absent, what uninstalling deletes.
 - **Nothing fails silently** — toasts on start, progress with free memory, a dialog naming the

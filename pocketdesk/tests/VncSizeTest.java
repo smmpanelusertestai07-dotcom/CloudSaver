@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;

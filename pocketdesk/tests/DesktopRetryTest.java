@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 public final class DesktopRetryTest {
     private static void check(boolean result, String message) {

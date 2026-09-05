@@ -20,7 +20,7 @@ import unittest
 
 
 PROJECT = Path(__file__).resolve().parents[1]
-PRODUCTION = PROJECT / 'app/src/com/pocketdesk/ProotProcess.java'
+PRODUCTION = PROJECT / 'app/src/com/pocketlinux/ProotProcess.java'
 
 SIGNAL_STUB = r'''
 package android.os;
@@ -57,7 +57,7 @@ public final class Process {
 '''
 
 HARNESS = r'''
-package com.pocketdesk;
+package com.pocketlinux;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
@@ -154,7 +154,7 @@ public final class ProotProcessHarness {
                 membersField.setAccessible(true);
                 @SuppressWarnings("unchecked") java.util.Map<Integer, Object> members =
                         (java.util.Map<Integer, Object>) membersField.get(session);
-                Class<?> identityClass = Class.forName("com.pocketdesk.ProotProcess$Identity");
+                Class<?> identityClass = Class.forName("com.pocketlinux.ProotProcess$Identity");
                 java.lang.reflect.Constructor<?> identity = identityClass.getDeclaredConstructor(
                         int.class, int.class, int.class, int.class, long.class, char.class);
                 identity.setAccessible(true);
@@ -350,7 +350,7 @@ class ProotProcessBehavior(unittest.TestCase):
         self.temp.cleanup()
 
     def run_stop(self, mode, action='sync'):
-        run = subprocess.run(['java', '-cp', str(self.classes), 'com.pocketdesk.ProotProcessHarness',
+        run = subprocess.run(['java', '-cp', str(self.classes), 'com.pocketlinux.ProotProcessHarness',
                               os.sys.executable, str(self.worker), str(self.root), mode, action],
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=16)
         self.assertFalse((self.root / 'unsafe-signal').exists(), 'Attempted to signal an unrelated process')

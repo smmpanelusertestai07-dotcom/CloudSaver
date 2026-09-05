@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketLinux-v11.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketLinux-v11.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -11,21 +11,30 @@
    Pehli baar desktop kholne par purane Windows layer ke launchers aur prefixes apne aap saaf ho
    jaate hain; baaki kuch nahi chhua jaata.
 
-### 10.5.40: paired phone aur background work
+### 11.0.5: computer ab khud ko chalta rakhta hai
 
-- Update ke baad **Settings → Running → Android process limit** kholo. Yeh isi
-  connected phone ko verify karke current status padhta hai. Pairing se setting
-  apne aap nahi badalti.
-- **Apply** ka explanation padh kar use karo: Android ka child-process monitor
-  poore phone ke apps ke liye relax hota hai. Battery/RAM use badh sakta hai;
-  memory aur thermal protection chalu rehti hai. **Restore** se pehle ki value
-  wapas aa sakti hai. App reset ya Linux reinstall nahi chahiye.
-- Agar pehle se paired ho lekin connection nahi ho: Wireless debugging ON rakho,
-  desktop **Tools → Phone app testing → Connect** mein main screen ka current
-  connection port do. Pairing port alag hota hai. Phir status dobara check karo.
-- Lambi job shuru karne se pehle status check kar sakte ho; Linux computer ka
-  display khula hona zaroori nahi. App switch ke baad retained viewer ab sirf
-  badle hue pixels mangta hai. Nayi connection/actual resize par full refresh hai.
+Pehle jo hota tha: desktop achanak band, "The desktop display ended unexpectedly (exit 137)".
+Wo **memory ki problem nahi thi** — report me 1.2 GB free tha aur lowMemory false. Asli wajah:
+**Android 12+ ek app ke 32 se zyada forked processes ko ek saath maar deta hai**, aur PRoot me
+har Linux process usi app ka process hai. Report me peak **36** tha — jisme **5 zombie** the
+(khatam ho chuke processes jinhe container me koi wait nahi kar raha tha, kyunki container me
+init hota hi nahi).
+
+Ab teen cheezein apne aap hoti hain, bina kisi setting ke:
+
+- **Zombie clear hote rehte hain.** Session ab subreaper hai, toh jo processes orphan ho jaate
+  hain wo yahan aate hain aur clear ho jaate hain. Jo processes kisi ke apne hain (display,
+  panel, installer) unhe chhua nahi jaata.
+- **26 pe ruk jaata hai.** Agar computer 26 processes par kuch second tak ruka rahe, to ek
+  program (pehle browser) band kar diya jaata hai aur tumhe bataya jaata hai — 32 par Android
+  poora computer band kar deta, ye usse behtar hai.
+- **Band ho jaye to khud khul jaata hai.** Jo session apne aap band ho, wo **do baar apne aap
+  reopen** hota hai; viewer screen par "Reopening…" dikhta hai, Home par nahi feka jaata. Teesri
+  baar rukta hai aur saaf reason deta hai.
+
+**Settings → Running → Android process limit hata diya gaya hai.** Wo developer options maangta
+tha, poore phone ki setting badalta tha, aur jise mila hi nahi uske liye kuch nahi karta tha.
+Ab system khud manage karta hai.
 
 ### Desktop ke controls
 
@@ -173,8 +182,8 @@ Settings badalne se kabhi kuch delete nahi hota.
 - Computer Downloads: `/home/coder/Downloads` — private, sirf PocketLinux ke andar.
 - Phone Downloads: `/home/coder/Phone/Download/PocketLinux` — Android Files me dikhta hai; Phone files permission chahiye.
 - Settings → Data and files → **Downloads go to** me har file ke liye poochna, Computer, ya Phone choose karo. Setting badalne par purani file move/delete nahi hoti.
-- Shared: `/home/coder/Shared` — bahar nikalne ka rasta. Yehi ek folder phone ke Files app me `Android/data/com.pocketdesk/files/Shared` par dikhta hai. File manager me bhi bookmark hai.
-- Uninstall karne se poora computer delete ho jata hai — aur `Downloads` aur `Shared` dono app ke hi andar hain, wo bhi jaate hain. Rakhna hai to file **phone ke apne folder** me le jao: Settings → Permissions → **Phone files** ON karke seedha phone ke `Download`/`Documents` me save karo, ya `Shared` me daal kar phone ke Files app se (`Android/data/com.pocketdesk/files/Shared`) apne `Download` me copy kar lo.
+- Shared: `/home/coder/Shared` — bahar nikalne ka rasta. Yehi ek folder phone ke Files app me `Android/data/com.pocketlinux/files/Shared` par dikhta hai. File manager me bhi bookmark hai.
+- Uninstall karne se poora computer delete ho jata hai — aur `Downloads` aur `Shared` dono app ke hi andar hain, wo bhi jaate hain. Rakhna hai to file **phone ke apne folder** me le jao: Settings → Permissions → **Phone files** ON karke seedha phone ke `Download`/`Documents` me save karo, ya `Shared` me daal kar phone ke Files app se (`Android/data/com.pocketlinux/files/Shared`) apne `Download` me copy kar lo.
 
 ## Privacy — chhoti si baat
 

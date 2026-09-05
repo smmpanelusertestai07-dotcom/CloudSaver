@@ -14,7 +14,7 @@ PROJECT = Path(__file__).resolve().parents[1]
 STUBS = {
 'android/content/Context.java': '''package android.content;
 public class Context { public Context getApplicationContext() { return this; } }''',
-'com/pocketdesk/ContainerRuntime.java': '''package com.pocketdesk;
+'com/pocketlinux/ContainerRuntime.java': '''package com.pocketlinux;
 public class ContainerRuntime {
  public static java.io.File rootfs(android.content.Context context) { return new java.io.File("/test-root"); }
 }''',
@@ -96,7 +96,7 @@ public class Os {
   }
  }
 }''',
-'com/pocketdesk/MicBridgeHarness.java': r'''package com.pocketdesk;
+'com/pocketlinux/MicBridgeHarness.java': r'''package com.pocketlinux;
 import android.media.AudioRecord;
 import android.system.Os;
 import java.util.concurrent.TimeUnit;
@@ -175,7 +175,7 @@ class MicrophoneTest(unittest.TestCase):
         cls.java = java
         compilation = subprocess.run(javac + ['-encoding', 'UTF-8', '-source', '8', '-target', '8', '-d', str(cls.folder)]
                        + [str(cls.folder / name) for name in STUBS]
-                       + [str(PROJECT / 'app/src/com/pocketdesk/MicBridge.java')],
+                       + [str(PROJECT / 'app/src/com/pocketlinux/MicBridge.java')],
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if compilation.returncode:
             raise AssertionError(compilation.stderr)
@@ -185,7 +185,7 @@ class MicrophoneTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     def check_case(self, case):
-        result = subprocess.run([self.java, '-cp', str(self.folder), 'com.pocketdesk.MicBridgeHarness', case],
+        result = subprocess.run([self.java, '-cp', str(self.folder), 'com.pocketlinux.MicBridgeHarness', case],
                                 timeout=10, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

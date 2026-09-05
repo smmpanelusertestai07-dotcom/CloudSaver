@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 public final class ViewerSizeTest {
     private static void size(int width, int height, boolean wide, int expectedWidth, int expectedHeight) {

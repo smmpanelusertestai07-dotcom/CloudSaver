@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -193,7 +193,7 @@ public final class LinuxAppsTest {
      * asked whether the result parses.
      */
     private static void checkBootstrapShell(Path projectDir, Path work) throws Exception {
-        Path source = projectDir.resolve("app/src/com/pocketdesk/ContainerRuntime.java");
+        Path source = projectDir.resolve("app/src/com/pocketlinux/ContainerRuntime.java");
         require(Files.exists(source), "ContainerRuntime.java not found at " + source);
         String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
         int start = text.indexOf("static String bootstrapCommand() {");

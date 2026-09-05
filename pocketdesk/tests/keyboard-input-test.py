@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 PROJECT = Path(__file__).resolve().parents[1]
-SOURCE = PROJECT / 'app/src/com/pocketdesk/KeyboardInputView.java'
+SOURCE = PROJECT / 'app/src/com/pocketlinux/KeyboardInputView.java'
 KEY_NAMES = sorted(set(re.findall(r'KeyEvent\.(KEYCODE_\w+)', SOURCE.read_text())))
 STUBS = {
     'android/content/Context.java': 'package android.content; public class Context {}',
@@ -53,7 +53,7 @@ public boolean finishComposingText(){return false;} public boolean deleteSurroun
 public boolean deleteSurroundingTextInCodePoints(int before,int after){return false;}
 public boolean performEditorAction(int action){return false;} public boolean sendKeyEvent(android.view.KeyEvent event){return false;}
 }''',
-    'com/pocketdesk/KeyboardInputHarness.java': r'''package com.pocketdesk;
+    'com/pocketlinux/KeyboardInputHarness.java': r'''package com.pocketlinux;
 import android.view.KeyEvent;
 import android.view.inputmethod.*;
 public class KeyboardInputHarness implements KeyboardInputView.Listener {
@@ -132,7 +132,7 @@ class KeyboardInputTests(unittest.TestCase):
         cls.work.cleanup()
 
     def run_case(self, name):
-        result = subprocess.run(['java', '-cp', str(self.root / 'classes'), 'com.pocketdesk.KeyboardInputHarness', name],
+        result = subprocess.run(['java', '-cp', str(self.root / 'classes'), 'com.pocketlinux.KeyboardInputHarness', name],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
 
