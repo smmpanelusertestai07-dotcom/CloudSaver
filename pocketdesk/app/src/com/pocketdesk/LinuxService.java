@@ -62,11 +62,17 @@ public final class LinuxService extends Service {
      * once and never renewed, it expired in the middle of a slow set-up and the phone slept.
      */
     private static final long WAKE_LOCK_MS = 2L * 60L * 60L * 1000L;
+    // A live desktop is user-started foreground work too. Its independent CPU lease must
+    // survive finishing setup or a parallel install, but expire promptly if renewal stops.
+    private static final long DESKTOP_WAKE_LOCK_MS = 120_000L;
     private static final String CHANNEL_ID = "pocketdesk_linux";
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
     /** An app install running beside an open desktop, which BUSY (the desktop's own task) is not. */
     private static final AtomicBoolean INSTALLING = new AtomicBoolean(false);
     private static volatile boolean desktopRunning;
+    private static volatile boolean desktopStarting;
+    private static final TaskGeneration PRIMARY_TASK = new TaskGeneration();
+    private final ThreadLocal<Long> workerGeneration = new ThreadLocal<>();
     /** The container process of an app install, separate from the desktop's own. */
     private static volatile Process installProcess;
     private static volatile String lastMessage;
@@ -84,7 +90,12 @@ public final class LinuxService extends Service {
     private volatile Thread workerThread;
     private volatile PowerManager.WakeLock taskWakeLock;
     private volatile PowerManager.WakeLock installWakeLock;
+    private volatile PowerManager.WakeLock desktopWakeLock;
+    private volatile boolean serviceDestroyed;
     private long sessionStartedAt;
+    private volatile long sessionGeneration;
+    /** A bounded, fixed-label phase reported by our startup script, never an app URL. */
+    private volatile String desktopStartupPhase = "Starting the Linux process";
     /** Set while the monitor is ending a session for a reason it has already announced. */
     private volatile boolean stoppedForReason;
     /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
@@ -92,6 +103,11 @@ public final class LinuxService extends Service {
     /** Set while a set-up or install is frozen because the phone is too hot. */
     private volatile boolean pausedForHeat;
     private volatile long pausedSince;
+    private volatile long timedJobStartedAt;
+    private volatile String timedJobTitle;
+    private volatile String timedJobPhase;
+    private volatile String timedJobTypical;
+    /** Mirrors the auto-installed compatibility layer into the same report as the app package. */
 
     /**
      * The safety stops that apply to a background job -- set-up or an app install -- which is
@@ -169,8 +185,16 @@ public final class LinuxService extends Service {
                     return;
                 }
             }
+            if (!pausedForHeat && timedJobTitle != null && timedJobStartedAt > 0L) {
+                status(timedJobTitle,
+                        (timedJobPhase == null ? "Working" : timedJobPhase) + " · "
+                                + elapsedText(timedJobStartedAt) + " · usually "
+                                + (timedJobTypical == null ? "depends on the connection" : timedJobTypical),
+                        -1, true, false);
+            }
             renewWakeLocks();
-            handler.postDelayed(this, pausedForHeat ? 20_000L : 30_000L);
+            handler.postDelayed(this, pausedForHeat ? 20_000L
+                    : timedJobTitle != null ? 10_000L : 30_000L);
         }
     };
 
@@ -192,7 +216,9 @@ public final class LinuxService extends Service {
             if (process == null) continue;
             try {
                 if (!process.isAlive()) continue;
-                android.os.Process.sendSignal((int) process.pid(), signal);
+                int pid = ProotProcess.pidOf(process);
+                if (pid <= 0) continue;
+                android.os.Process.sendSignal(pid, signal);
                 any = true;
             } catch (Throwable ignored) {
                 // An OEM that will not let us signal our own child keeps the old behaviour:
@@ -204,6 +230,7 @@ public final class LinuxService extends Service {
 
     /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
     private void cancelJobs() {
+        RuntimeDiagnostics.sample(this, "Cancel setup/install requested", ProotProcess.trackingSummary());
         stopRequested = true;
         // A frozen container can act on nothing but SIGKILL, so thaw it before ending it --
         // otherwise the stop leaves a live stopped PRoot and a worker blocked in readLine().
@@ -219,21 +246,26 @@ public final class LinuxService extends Service {
         if (install != null) install.cancel(true);
         Process active = activeProcess;
         if (active != null) {
-            active.destroy();
-            if (active.isAlive()) active.destroyForcibly();
+            ProotProcess.requestStop(active);
         }
         Process installing = installProcess;
         if (installing != null) {
-            installing.destroy();
-            if (installing.isAlive()) installing.destroyForcibly();
+            ProotProcess.requestStop(installing);
         }
     }
 
     private final Runnable safetyMonitor = new Runnable() {
         @Override public void run() {
-            if (!desktopRunning) return;
+            if (!renewDesktopWakeLock(sessionGeneration)) return;
+            RuntimeDiagnostics.sample(LinuxService.this, "Desktop runtime sample", ProotProcess.trackingSummary());
             SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
             prefs.edit().putLong(ContainerRuntime.KEY_HEARTBEAT_AT, System.currentTimeMillis()).apply();
+            // The job monitor owns heat, battery and data guards during an install. A desktop
+            // idle/session timer must not call stopEverything() and kill that background job.
+            if (installingNow || INSTALLING.get() || timedJobTitle != null) {
+                handler.postDelayed(this, 30_000L);
+                return;
+            }
             int minutes = prefs.getInt(ContainerRuntime.KEY_SESSION_MINUTES,
                     ContainerRuntime.SESSION_SMART);
             long elapsed = System.currentTimeMillis() - sessionStartedAt;
@@ -329,12 +361,17 @@ public final class LinuxService extends Service {
      * never shown for a later, different stop (the home screen checks the timestamps).
      */
     private void recordStop(String reason) {
-        stoppedForReason = true;
-        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
-                .putLong(ContainerRuntime.KEY_LAST_STOP_AT, System.currentTimeMillis())
-                .putString(ContainerRuntime.KEY_LAST_STOP_REASON, reason)
-                .apply();
+        synchronized (PRIMARY_TASK) {
+            Long generation = workerGeneration.get();
+            if (generation != null && !PRIMARY_TASK.isCurrent(generation)) return;
+            stoppedForReason = true;
+            getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+                    .putLong(ContainerRuntime.KEY_LAST_STOP_AT, System.currentTimeMillis())
+                    .putString(ContainerRuntime.KEY_LAST_STOP_REASON, reason)
+                    .apply();
+        }
     }
+
 
     /** The last time anything was typed or tapped on the desktop, or when it opened. */
     private long lastInteractionAt() {
@@ -345,16 +382,20 @@ public final class LinuxService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        linuxDns = new LinuxDns(this);
+        linuxDns.start();
     }
+
+    private LinuxDns linuxDns;
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
         final String appId = intent == null ? null : intent.getStringExtra(EXTRA_APP_ID);
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, notification("PocketDesk", "Preparing local Linux…", -1),
+            startForeground(NOTIFICATION_ID, notification("PocketLinux", "Preparing local Linux…", -1),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
-            startForeground(NOTIFICATION_ID, notification("PocketDesk", "Preparing local Linux…", -1));
+            startForeground(NOTIFICATION_ID, notification("PocketLinux", "Preparing local Linux…", -1));
         }
         if (ACTION_STOP.equals(action)) {
             stopEverything(true);
@@ -362,14 +403,16 @@ public final class LinuxService extends Service {
         }
         if (action == null) return START_NOT_STICKY;
         reconcileUncleanStop(this);
+        stoppedForReason = false;
         // An install while the desktop is open: the desktop keeps its executor and its
         // process, the install gets its own of each, and the new app appears on the running
         // desktop when it is done. Waiting for the desktop to be stopped first was the reason
         // the Apps tab went grey whenever the computer was on.
-        if ((ACTION_INSTALL_APP.equals(action) || ACTION_UNINSTALL_APP.equals(action)) && isDesktopRunning()) {
+        boolean appAction = ACTION_INSTALL_APP.equals(action) || ACTION_UNINSTALL_APP.equals(action);
+        if (appAction && isDesktopRunning()) {
             final boolean removing = ACTION_UNINSTALL_APP.equals(action);
             if (!INSTALLING.compareAndSet(false, true)) {
-                status("PocketDesk is busy", "A task is already running; wait for it to finish.", -1, true, false);
+                status("PocketLinux is busy", "A task is already running; wait for it to finish.", -1, true, false);
                 return START_NOT_STICKY;
             }
             // A running desktop holds no wake lock of its own (the screen does, while it is on),
@@ -382,7 +425,8 @@ public final class LinuxService extends Service {
             handler.postDelayed(jobMonitor, 30_000L);
             installTask = installExecutor.submit(() -> {
                 try {
-                    if (removing) uninstallApp(appId); else installApp(appId);
+                    if (removing) uninstallApp(appId);
+                    else installApp(appId);
                 } catch (InterruptedException cancelled) {
                     Thread.currentThread().interrupt();
                     status("Cancelled", "The desktop is still running.", -1, false, false);
@@ -423,12 +467,42 @@ public final class LinuxService extends Service {
             status("An app is installing", "Wait for it to finish, then delete the computer.", -1, false, true);
             return START_NOT_STICKY;
         }
-        if (!BUSY.compareAndSet(false, true)) {
-            status("PocketDesk is busy", desktopRunning ? "Desktop is already running." : "Wait for the current task to finish.", -1, true, false);
+        if (!appAction && !ACTION_SETUP.equals(action) && !ACTION_REMOVE.equals(action)
+                && !ACTION_START_DESKTOP.equals(action)) {
+            status("Unknown action", "Nothing was changed.", -1, false, true);
             return START_NOT_STICKY;
         }
-        acquireTaskWakeLock();
-        stopRequested = false;
+        final long generation;
+        synchronized (PRIMARY_TASK) {
+            // Startup may have completed after the earlier running-desktop branch. Do not
+            // supersede that live session with a task queued behind its waitFor worker.
+            if (isDesktopRunning()) {
+                status("The desktop is running", appAction
+                        ? "The desktop just became ready. Tap the app again to start this task."
+                        : "Return to the desktop, or stop it before starting this task.", -1, false, false);
+                return START_NOT_STICKY;
+            }
+            if (!BUSY.compareAndSet(false, true)) {
+                status("PocketLinux is busy", desktopRunning ? "Desktop is already running." : "Wait for the current task to finish.", -1, true, false);
+                return START_NOT_STICKY;
+            }
+            generation = PRIMARY_TASK.next();
+            // A dead desktop can still be unwinding on its worker. A newly accepted task
+            // owns the state now; do not let its install process inherit desktopRunning=true.
+            if (!isDesktopRunning()) {
+                desktopRunning = false;
+                Process previous = activeProcess;
+                if (previous != null && !previous.isAlive()) activeProcess = null;
+                getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+                        .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
+            }
+            desktopStarting = ACTION_START_DESKTOP.equals(action);
+            if (ACTION_START_DESKTOP.equals(action)) {
+                sessionGeneration = generation;
+            }
+            acquireTaskWakeLock();
+            stopRequested = false;
+        }
         if (!ACTION_START_DESKTOP.equals(action)) {
             // A desktop session has its own monitor; a download does not, and needs one.
             pausedForHeat = false;
@@ -437,10 +511,12 @@ public final class LinuxService extends Service {
             handler.postDelayed(jobMonitor, 30_000L);
         }
         currentTask = executor.submit(() -> {
+            if (!PRIMARY_TASK.isCurrent(generation)) return;
+            workerGeneration.set(generation);
             workerThread = Thread.currentThread();
             try {
                 if (ACTION_SETUP.equals(action)) setupUbuntu();
-                else if (ACTION_START_DESKTOP.equals(action)) startDesktop();
+                else if (ACTION_START_DESKTOP.equals(action)) startDesktop(generation);
                 else if (ACTION_INSTALL_APP.equals(action)) installApp(appId);
                 else if (ACTION_UNINSTALL_APP.equals(action)) uninstallApp(appId);
                 else if (ACTION_REMOVE.equals(action)) removeLinux();
@@ -458,29 +534,43 @@ public final class LinuxService extends Service {
                         status("Task cancelled", "No background task is running.", -1, false, false);
                     }
                 } else {
-                    status("Could not complete task", cleanError(error), -1, false, true);
-                    Crash.note(LinuxService.this, "A task failed", fullError(error));
+                    PRIMARY_TASK.runIfCurrent(generation, () -> {
+                        status("Could not complete task", cleanError(error), -1, false, true);
+                        Crash.note(LinuxService.this, "A task failed", fullError(error));
+                    });
                 }
             } finally {
-                workerThread = null;
-                BUSY.set(false);
-                releaseTaskWakeLock();
-                // Only the last one out turns off the lights: an install running beside a desktop
-                // that just died still needs the service, its notification and its wake lock.
-                if (!desktopRunning && !INSTALLING.get()) {
-                    stopForeground(STOP_FOREGROUND_REMOVE);
-                    stopSelf();
-                }
+                if (workerThread == Thread.currentThread()) workerThread = null;
+                PRIMARY_TASK.runIfCurrent(generation, () -> {
+                    if (ACTION_START_DESKTOP.equals(action)) desktopStarting = false;
+                    BUSY.set(false);
+                    releaseTaskWakeLock();
+                    // A new Open can already be queued after Stop. Only this task's generation
+                    // may clear busy/starting, release its lock or end the foreground service.
+                    if (!desktopRunning && !INSTALLING.get()) {
+                        stopForeground(STOP_FOREGROUND_REMOVE);
+                        stopSelf();
+                    }
+                });
+                workerGeneration.remove();
             }
         });
         return START_NOT_STICKY;
     }
 
     @Override public void onDestroy() {
+        serviceDestroyed = true;
+        if (linuxDns != null) linuxDns.stop();
         handler.removeCallbacks(safetyMonitor);
         handler.removeCallbacks(jobMonitor);
         releaseTaskWakeLock();
         releaseInstallWakeLock();
+        releaseDesktopWakeLock();
+        // Each Stop/Open can create another Service instance. A single-thread executor keeps
+        // its idle worker alive until shutdown, even after all of that instance's work ended.
+        // Let any in-flight cleanup finish without retaining an idle worker for every reopen.
+        executor.shutdown();
+        installExecutor.shutdown();
         super.onDestroy();
     }
 
@@ -491,12 +581,15 @@ public final class LinuxService extends Service {
     /** True while an app is being installed, beside an open desktop or not. */
     static boolean isInstalling() { return INSTALLING.get() || (BUSY.get() && installingNow); }
 
+
     private static volatile boolean installingNow;
 
     static boolean isDesktopRunning() {
         Process process = activeProcess;
         return desktopRunning && process != null && process.isAlive();
     }
+
+    static boolean isDesktopStarting() { return desktopStarting; }
 
     /**
      * Notices a desktop that ended without the service seeing it end: the alive flag is still
@@ -514,7 +607,7 @@ public final class LinuxService extends Service {
                 .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false)
                 .putLong(ContainerRuntime.KEY_LAST_STOP_AT, at)
                 .putString(ContainerRuntime.KEY_LAST_STOP_REASON,
-                        "Android ended PocketDesk while the desktop was open, which it does to take "
+                        "Android ended PocketLinux while the desktop was open, which it does to take "
                                 + "memory back when the phone runs short. Nothing was lost. Keep one AI "
                                 + "app open at a time, and close the browser when you are done with it.")
                 .apply();
@@ -717,6 +810,10 @@ public final class LinuxService extends Service {
         LinuxApps.App app = LinuxApps.byId(appId);
         if (app == null) throw new IOException("Unknown app.");
         if (!ContainerRuntime.isInstalled(this)) throw new IOException("Install Linux first.");
+        // An APK update can add a helper used by a new catalogue row. Put the current helpers in
+        // the existing computer before running that row, even when the desktop has not been opened
+        // since the Android app was updated.
+        ContainerRuntime.refreshDesktopEntries(this);
         preflight(true, 10);
         long free = DeviceProbe.read(this).freeStorage;
         if (free < app.needsBytes) {
@@ -765,32 +862,35 @@ public final class LinuxService extends Service {
                 100, false, false);
     }
 
+
+
+    /** POSIX single-quote escaping for values placed into the root container command. */
+    private static String shellQuote(String value) {
+        return "'" + (value == null ? "" : value.replace("'", "'\"'\"'")) + "'";
+    }
+
     /** A container command for an install: its own process, so the desktop's is untouched. */
     private int runInstall(String command, ContainerRuntime.OutputListener listener)
             throws IOException, InterruptedException {
         forgetLines();
         Process process = ContainerRuntime.startContainer(this, command);
         installProcess = process;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
+        try {
+            return ProcessOutput.consume(process, line -> {
                 // Kept whether or not anyone is listening: the report needs these exactly when
                 // the listener has stopped caring, because the job is about to fail.
                 rememberLine(line);
                 if (listener != null && !line.trim().isEmpty()) listener.line(line);
-                if (Thread.currentThread().isInterrupted()) {
-                    process.destroyForcibly();
-                    throw new InterruptedException();
-                }
-            }
+            });
         } finally {
-            if (Thread.currentThread().isInterrupted() && process.isAlive()) process.destroyForcibly();
-            installProcess = null;
+            ProotProcess.stopAndWait(process);
+            if (installProcess == process) installProcess = null;
         }
-        return process.waitFor();
     }
 
-    private void startDesktop() throws Exception {
+
+    private void startDesktop(long generation) throws Exception {
+        requireCurrentPrimary(generation);
         if (!ContainerRuntime.isInstalled(this)) throw new IOException("Set up the Linux computer first.");
         preflight(false, 4);
         ContainerRuntime.installRuntime(this);
@@ -799,9 +899,12 @@ public final class LinuxService extends Service {
         ContainerRuntime.writeDesktopScripts(this);
         status("Opening the desktop", "Starting your Linux computer…", -1, true, false);
         SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
-        prefs.edit().remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
-        stoppedForReason = false;
-        stopRequested = false;
+        synchronized (PRIMARY_TASK) {
+            requireCurrentPrimary(generation);
+            prefs.edit().remove(ContainerRuntime.KEY_LAST_STOP_REASON).apply();
+            stoppedForReason = false;
+            stopRequested = false;
+        }
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
         // The desktop is born the way the phone is held. It used to start landscape whatever
         // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
@@ -811,10 +914,15 @@ public final class LinuxService extends Service {
             geometry = new int[]{geometry[1], geometry[0]};
         }
         int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
-        // Downloads live inside the computer, where no other app on the phone can read them.
-        // The Shared folder is the way out to the phone's own Files app, and Phone files is the
-        // way in; a toggle that quietly moved the folder about was one choice too many.
-        String command = ContainerRuntime.startDesktopCommand(geometry[0], geometry[1], dpi, false);
+        String downloadTarget = ContainerRuntime.normaliseDownloadTarget(
+                prefs.getString(ContainerRuntime.KEY_DOWNLOAD_TARGET, ContainerRuntime.DOWNLOAD_ASK));
+        // A revoked All files permission must never make Chrome save into an unmounted placeholder.
+        // Fall back to asking, which in turn uses the private computer folder as its safe default.
+        if (ContainerRuntime.DOWNLOAD_PHONE.equals(downloadTarget) && !PhoneFiles.allowed(this)) {
+            downloadTarget = ContainerRuntime.DOWNLOAD_ASK;
+        }
+        String command = ContainerRuntime.startDesktopCommand(
+                geometry[0], geometry[1], dpi, downloadTarget);
         geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
         // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
@@ -825,32 +933,65 @@ public final class LinuxService extends Service {
         File sessionLog = new File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/logs/desktop-session.log");
         File logParent = sessionLog.getParentFile();
         if (logParent != null) logParent.mkdirs();
-        sessionLog.delete();
+        if (sessionLog.isFile()) {
+            File previousLog = new File(logParent, "desktop-session.previous.log");
+            previousLog.delete();
+            if (!sessionLog.renameTo(previousLog)) sessionLog.delete();
+        }
+        desktopStartupPhase = "Starting the Linux process";
+        Process desktopProcess = null;
         for (int attempt = 0; ; attempt++) {
-            activeProcess = ContainerRuntime.startContainer(this, command, accelerated);
+            desktopProcess = ContainerRuntime.startContainer(this, command, accelerated);
+            try {
+                synchronized (PRIMARY_TASK) {
+                    requireCurrentPrimary(generation);
+                    activeProcess = desktopProcess;
+                }
+            } catch (InterruptedException superseded) {
+                ProotProcess.stopAndWait(desktopProcess);
+                throw superseded;
+            }
             sessionStartedAt = System.currentTimeMillis();
-            recordOutput(activeProcess, sessionLog, attempt);
+            recordOutput(desktopProcess, sessionLog, attempt);
             // Fifteen seconds was never enough: this phone takes half a minute to put the
             // display up, so the wait expired, the session was killed, and the home screen
             // reported a failure for a desktop that was only slow. Wait as long as the viewer
             // does, and say how it is going.
             boolean ready = false;
-            for (int i = 0; i < 600 && activeProcess.isAlive(); i++) {
+            long startupAt = SystemClock.elapsedRealtime();
+            long nextStatusAt = startupAt;
+            long nextSampleAt = startupAt;
+            while (desktopProcess.isAlive()
+                    && SystemClock.elapsedRealtime() - startupAt < 150_000L) {
+                if (!PRIMARY_TASK.isCurrent(generation) || stopRequested || Thread.currentThread().isInterrupted()) {
+                    ProotProcess.stopAndWait(desktopProcess);
+                    throw new InterruptedException("Desktop start cancelled");
+                }
                 if (VncClient.canConnect(new File(ContainerRuntime.rootfs(this),
                                 "home/coder/.pocketdesk/vnc.sock").getAbsolutePath())
                         || VncClient.canConnect("127.0.0.1", 5901, 250)) {
                     ready = true;
                     break;
                 }
-                if (i > 0 && i % 20 == 0) {
-                    status("Opening the desktop", "Starting the display… " + (i / 4) + "s", -1, true, false);
+                long now = SystemClock.elapsedRealtime();
+                if (now >= nextSampleAt) {
+                    RuntimeDiagnostics.sample(this, "Desktop startup sample", ProotProcess.trackingSummary());
+                    nextSampleAt = now + 10_000L;
+                }
+                if (now >= nextStatusAt) {
+                    status("Opening the desktop", desktopStartupPhase + "… "
+                            + ((now - startupAt) / 1000L) + "s", -1, true, false);
+                    nextStatusAt = now + 5_000L;
                 }
                 Thread.sleep(250);
             }
             if (ready) break;
-            int exit = activeProcess.isAlive() ? -1 : activeProcess.exitValue();
-            activeProcess.destroyForcibly();
-            activeProcess = null;
+            int exit = desktopProcess.isAlive() ? -1 : desktopProcess.exitValue();
+            String failedPhase = desktopStartupPhase;
+            RuntimeDiagnostics.snap(this, "Desktop start failed: exit=" + exit
+                    + ", stage=" + failedPhase);
+            ProotProcess.stopAndWait(desktopProcess);
+            if (activeProcess == desktopProcess) activeProcess = null;
             // The first, accelerated try never produced a display -- it died, or it hung until
             // the wait ran out. Either is what a kernel that cannot run PRoot's accelerator
             // looks like, so the second try goes without it. The answer is remembered only if
@@ -862,34 +1003,67 @@ public final class LinuxService extends Service {
                 status("Opening the desktop", "Starting again in compatibility mode…", -1, true, false);
                 continue;
             }
-            throw new IOException("The display did not start" + (exit >= 0 ? " (exit " + exit + ")" : "")
-                    + ". Open the desktop again; if it repeats, run Setup once more.");
+            throw new IOException((exit < 0 ? "Desktop startup reached its 150-second limit"
+                    : "The display did not start (exit " + exit + ")")
+                    + ". Last stage: " + failedPhase
+                    + ". The desktop session report keeps the startup output; installed apps and files are kept.");
         }
-        if (fellBack) prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
-        prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis())
-                .putLong(ContainerRuntime.KEY_HEARTBEAT_AT, System.currentTimeMillis())
-                .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, true).apply();
-        desktopRunning = true;
-        BUSY.set(false);
-        releaseTaskWakeLock();
-        status("The Linux computer is running",
-                "Desktop " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
-        updateNotification("The Linux computer is running", "Tap to return · phone protection is active", 100);
-        handler.removeCallbacks(safetyMonitor);
-        handler.postDelayed(safetyMonitor, 30_000L);
+        try {
+            synchronized (PRIMARY_TASK) {
+                requireCurrentPrimary(generation);
+                if (fellBack) prefs.edit().putBoolean(ContainerRuntime.KEY_PROOT_NO_SECCOMP, true).apply();
+                prefs.edit().putLong(ContainerRuntime.KEY_LAST_OPENED_AT, System.currentTimeMillis())
+                        .putLong(ContainerRuntime.KEY_HEARTBEAT_AT, System.currentTimeMillis())
+                        .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, true).apply();
+                desktopRunning = true;
+                desktopStarting = false;
+                renewDesktopWakeLock(generation);
+                RuntimeDiagnostics.snap(this, "Desktop display is ready");
+                BUSY.set(false);
+                releaseTaskWakeLock();
+                status("The Linux computer is running",
+                        "Desktop " + geometry[0] + "×" + geometry[1] + " · tap Open desktop", 100, false, false);
+                updateNotification("The Linux computer is running", "Tap to return · phone protection is active", 100);
+                handler.removeCallbacks(safetyMonitor);
+                handler.postDelayed(safetyMonitor, 30_000L);
+            }
+        } catch (InterruptedException superseded) {
+            ProotProcess.stopAndWait(desktopProcess);
+            throw superseded;
+        }
 
-        int exitCode = activeProcess.waitFor();
-        activeProcess = null;
-        desktopRunning = false;
-        handler.removeCallbacks(safetyMonitor);
-        prefs.edit().putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
+        int exitCode;
+        try {
+            // Stop can clear the shared field while this worker is waking from a connection
+            // probe. Keep ownership of the actual session instead of dereferencing that field.
+            exitCode = desktopProcess.waitFor();
+            if (PRIMARY_TASK.isCurrent(generation) && !stopRequested && !stoppedForReason) {
+                RuntimeDiagnostics.sample(this, "Desktop root exited before cleanup: exit=" + exitCode,
+                        ProotProcess.trackingSummary());
+            }
+        } finally {
+            // A killed tracer can leave live descendants behind with PPid=1/TracerPid=0.
+            // The Android-side tracker recorded those identities while the session was live.
+            ProotProcess.stopAndWait(desktopProcess);
+            synchronized (PRIMARY_TASK) {
+                if (PRIMARY_TASK.isCurrent(generation) && activeProcess == desktopProcess) {
+                    activeProcess = null;
+                    desktopRunning = false;
+                    releaseDesktopWakeLock();
+                    handler.removeCallbacks(safetyMonitor);
+                    prefs.edit().putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
+                }
+            }
+        }
+        if (!PRIMARY_TASK.isCurrent(generation)) return;
         // Nobody asked for this stop and no rule announced it: the display server itself ended.
-        // On a phone that is nearly always the kernel taking memory back from the largest
-        // program it can find, which was the display's own process.
         if (!stopRequested && !stoppedForReason) {
-            recordStop("The desktop's display ended by itself (exit " + exitCode + "), which on a "
-                    + "phone nearly always means memory ran out. Nothing was lost. Keep one AI app "
-                    + "open at a time, and close the browser when you are done with it.");
+            RuntimeDiagnostics.snap(this, "Desktop process ended unexpectedly: exit=" + exitCode);
+            recordStop("The desktop display ended unexpectedly (exit " + exitCode + "). "
+                    + (exitCode == 137 ? "Its process received SIGKILL; Android child-process limits, memory pressure "
+                            + "or another forced stop may be responsible. " : "")
+                    + "Saved files are kept; unsaved work may need recovery. "
+                    + "Close other apps before reopening the desktop.");
         }
         status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
     }
@@ -902,14 +1076,22 @@ public final class LinuxService extends Service {
     private void recordOutput(Process process, File sessionLog, int attempt) {
         Thread output = new Thread(() -> {
             if (process == null) return;
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                 java.io.PrintWriter writer = new java.io.PrintWriter(new FileOutputStream(sessionLog, true), true)) {
+            try (java.io.PrintWriter writer = new java.io.PrintWriter(new FileOutputStream(sessionLog, true), true)) {
                 writer.println("--- start attempt " + (attempt + 1) + " ---");
-                String line;
-                while ((line = reader.readLine()) != null) {
+                writer.println("PocketLinux " + MainActivity.VERSION + " | "
+                        + new java.util.Date() + " | current desktop attempt");
+                ProcessOutput.consume(process, line -> {
+                    if (line.startsWith("PD_DESKTOP_PHASE: ")) {
+                        String phase = line.substring("PD_DESKTOP_PHASE: ".length()).trim();
+                        synchronized (PRIMARY_TASK) {
+                            if (activeProcess == process && phase.length() > 0 && phase.length() <= 100
+                                    && phase.matches("[A-Za-z ]+")) desktopStartupPhase = phase;
+                        }
+                    }
                     if (!line.trim().isEmpty()) writer.println(line);
-                }
+                });
             } catch (IOException ignored) {}
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
         }, "pocketdesk-linux-output-" + attempt);
         output.setDaemon(true);
         output.start();
@@ -918,26 +1100,23 @@ public final class LinuxService extends Service {
     private int runTracked(String command, ContainerRuntime.OutputListener listener)
             throws IOException, InterruptedException {
         forgetLines();
-        activeProcess = ContainerRuntime.startContainer(this, command);
-        Process process = activeProcess;
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
+        Process process = ContainerRuntime.startContainer(this, command);
+        try {
+            synchronized (PRIMARY_TASK) {
+                Long generation = workerGeneration.get();
+                if (generation != null) requireCurrentPrimary(generation);
+                activeProcess = process;
+            }
+            return ProcessOutput.consume(process, line -> {
                 // Kept whether or not anyone is listening: the report needs these exactly when
                 // the listener has stopped caring, because the job is about to fail.
                 rememberLine(line);
                 if (listener != null && !line.trim().isEmpty()) listener.line(line);
-                if (Thread.currentThread().isInterrupted()) {
-                    process.destroyForcibly();
-                    throw new InterruptedException();
-                }
-            }
+            });
         } finally {
-            if (Thread.currentThread().isInterrupted() && process.isAlive()) process.destroyForcibly();
+            ProotProcess.stopAndWait(process);
+            if (activeProcess == process) activeProcess = null;
         }
-        int code = process.waitFor();
-        activeProcess = null;
-        return code;
     }
 
     private void preflight(boolean download, int minimumBattery) throws IOException {
@@ -1000,7 +1179,7 @@ public final class LinuxService extends Service {
                     ContainerRuntime.UBUNTU_RELEASE_DIRECTORY + "SHA256SUMS").openConnection();
             connection.setConnectTimeout(20_000);
             connection.setReadTimeout(40_000);
-            connection.setRequestProperty("User-Agent", "PocketDesk");
+            connection.setRequestProperty("User-Agent", "PocketLinux");
             if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return null;
             String best = null, digest = null;
             try (BufferedReader reader = new BufferedReader(
@@ -1063,7 +1242,7 @@ public final class LinuxService extends Service {
         connection.setReadTimeout(40_000);
         connection.setInstanceFollowRedirects(true);
         connection.setRequestProperty("User-Agent",
-                "PocketDesk/" + MainActivity.VERSION + " (Android " + Build.VERSION.RELEASE + ")");
+                "PocketLinux/" + MainActivity.VERSION + " (Android " + Build.VERSION.RELEASE + ")");
         connection.setRequestProperty("Accept-Encoding", "identity");
         if (alreadyHave > 0) connection.setRequestProperty("Range", "bytes=" + alreadyHave + "-");
         connection.connect();
@@ -1159,34 +1338,46 @@ public final class LinuxService extends Service {
     }
 
     private void stopEverything(boolean userRequested) {
-        stopRequested = true;
-        handler.removeCallbacks(safetyMonitor);
-        Future<?> task = currentTask;
-        if (task != null) task.cancel(true);
-        Thread worker = workerThread;
-        if (worker != null) worker.interrupt();
-        Process process = activeProcess;
-        if (process != null) {
-            process.destroy();
-            if (process.isAlive()) process.destroyForcibly();
+        RuntimeDiagnostics.sample(this, userRequested ? "User requested desktop stop" : "Safety policy requested desktop stop",
+                ProotProcess.trackingSummary());
+        synchronized (PRIMARY_TASK) {
+            PRIMARY_TASK.next(); // Invalidate the old worker before it can finish on another thread.
+            stopRequested = true;
+            handler.removeCallbacks(safetyMonitor);
+            Future<?> task = currentTask;
+            if (task != null) task.cancel(true);
+            Thread worker = workerThread;
+            if (worker != null) worker.interrupt();
+            Process process = activeProcess;
+            if (process != null) {
+                ProotProcess.requestStop(process);
+            }
+            Process install = installProcess;
+            if (install != null) {
+                ProotProcess.requestStop(install);
+            }
+            activeProcess = null;
+            installProcess = null;
+            desktopRunning = false;
+            desktopStarting = false;
+            BUSY.set(false);
+            getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
+                    .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
+            releaseTaskWakeLock();
+            releaseDesktopWakeLock();
+            if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
+            // An install running beside the desktop keeps the service and its own lock alive.
+            if (!INSTALLING.get()) {
+                stopForeground(STOP_FOREGROUND_REMOVE);
+                stopSelf();
+            }
         }
-        Process install = installProcess;
-        if (install != null) {
-            install.destroy();
-            if (install.isAlive()) install.destroyForcibly();
-        }
-        activeProcess = null;
-        installProcess = null;
-        desktopRunning = false;
-        BUSY.set(false);
-        getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE).edit()
-                .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
-        releaseTaskWakeLock();
-        if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
-        // An install running beside the desktop keeps the service and its own lock alive.
-        if (!INSTALLING.get()) {
-            stopForeground(STOP_FOREGROUND_REMOVE);
-            stopSelf();
+    }
+
+
+    private static void requireCurrentPrimary(long generation) throws InterruptedException {
+        if (!PRIMARY_TASK.isCurrent(generation) || Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("Task was stopped or superseded");
         }
     }
 
@@ -1196,22 +1387,27 @@ public final class LinuxService extends Service {
     static boolean lastWasError() { return lastError; }
 
     private void status(String message, String detail, int progress, boolean busy, boolean error) {
-        // Every report is a chance to attribute the bytes moved since the last one to the
-        // network they moved on; the daily limit counts mobile data only.
-        DataBudget.usedToday(this);
-        lastMessage = message;
-        lastDetail = detail;
-        lastProgress = progress;
-        lastError = error;
-        Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
-        intent.putExtra(EXTRA_MESSAGE, message);
-        intent.putExtra(EXTRA_DETAIL, detail);
-        intent.putExtra(EXTRA_PROGRESS, progress);
-        intent.putExtra(EXTRA_BUSY, busy);
-        intent.putExtra(EXTRA_ERROR, error);
-        sendBroadcast(intent);
-        updateNotification(message, detail, progress);
+        synchronized (PRIMARY_TASK) {
+            Long generation = workerGeneration.get();
+            if (generation != null && !PRIMARY_TASK.isCurrent(generation)) return;
+            // Every report is a chance to attribute the bytes moved since the last one to the
+            // network they moved on; the daily limit counts mobile data only.
+            DataBudget.usedToday(this);
+            lastMessage = message;
+            lastDetail = detail;
+            lastProgress = progress;
+            lastError = error;
+            Intent intent = new Intent(ACTION_STATUS).setPackage(getPackageName());
+            intent.putExtra(EXTRA_MESSAGE, message);
+            intent.putExtra(EXTRA_DETAIL, detail);
+            intent.putExtra(EXTRA_PROGRESS, progress);
+            intent.putExtra(EXTRA_BUSY, busy);
+            intent.putExtra(EXTRA_ERROR, error);
+            sendBroadcast(intent);
+            updateNotification(message, detail, progress);
+        }
     }
+
 
     private void updateNotification(String title, String detail, int progress) {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -1263,17 +1459,55 @@ public final class LinuxService extends Service {
      * worker threads.
      */
     private PowerManager.WakeLock newWakeLock(String tag) {
+        return newWakeLock(tag, WAKE_LOCK_MS);
+    }
+
+    private PowerManager.WakeLock newWakeLock(String tag, long timeoutMillis) {
         PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
         if (power == null) return null;
         PowerManager.WakeLock lock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag);
         lock.setReferenceCounted(false);
-        lock.acquire(WAKE_LOCK_MS);
+        lock.acquire(timeoutMillis);
         return lock;
+    }
+
+    /**
+     * Keep background desktop work from suspending with the screen off. This is a CPU wake
+     * lease, not a memory reservation or exemption from Android's child-process policy.
+     * Generation and root liveness are checked under the same lock used by Stop/Open, so a
+     * delayed monitor from an old session cannot revive its lease after Stop released it.
+     */
+    private boolean renewDesktopWakeLock(long generation) {
+        synchronized (PRIMARY_TASK) {
+            if (serviceDestroyed || !PRIMARY_TASK.isCurrent(generation)
+                    || !isDesktopRunning() || stopRequested) return false;
+            synchronized (this) {
+                if (serviceDestroyed) return false;
+                try {
+                    if (desktopWakeLock == null) {
+                        desktopWakeLock = newWakeLock("PocketLinuxLinux:desktop", DESKTOP_WAKE_LOCK_MS);
+                    } else {
+                        desktopWakeLock.acquire(DESKTOP_WAKE_LOCK_MS);
+                    }
+                } catch (RuntimeException denied) {
+                    // A refused wake lock must not stop an otherwise live desktop.
+                }
+            }
+            return true;
+        }
+    }
+
+    private synchronized void releaseDesktopWakeLock() {
+        PowerManager.WakeLock lock = desktopWakeLock;
+        desktopWakeLock = null;
+        try {
+            if (lock != null && lock.isHeld()) lock.release();
+        } catch (RuntimeException ignored) { /* The bounded lease still expires. */ }
     }
 
     private synchronized void acquireTaskWakeLock() {
         if (taskWakeLock != null && taskWakeLock.isHeld()) return;
-        taskWakeLock = newWakeLock("PocketDeskLinux:task");
+        taskWakeLock = newWakeLock("PocketLinuxLinux:task");
     }
 
     private synchronized void releaseTaskWakeLock() {
@@ -1284,7 +1518,7 @@ public final class LinuxService extends Service {
 
     private synchronized void acquireInstallWakeLock() {
         if (installWakeLock != null && installWakeLock.isHeld()) return;
-        installWakeLock = newWakeLock("PocketDeskLinux:install");
+        installWakeLock = newWakeLock("PocketLinuxLinux:install");
     }
 
     private synchronized void releaseInstallWakeLock() {
@@ -1319,9 +1553,17 @@ public final class LinuxService extends Service {
     /** Human phase for a raw apt/dpkg/curl output line. */
     private static String phaseFor(String line) {
         String value = line == null ? "" : line.trim();
+        if (value.startsWith("PD_PHASE:")) {
+            String phase = value.substring("PD_PHASE:".length()).trim();
+            return phase.isEmpty() ? "Working" : phase;
+        }
+        if (value.startsWith("PD_ERROR:")) {
+            String problem = value.substring("PD_ERROR:".length()).trim();
+            return problem.isEmpty() ? "Install stopped" : problem;
+        }
         // The container's own step lines, so the phone can say what is happening rather than
         // echoing package names at someone who did not ask for them.
-        if (value.startsWith("PocketDesk:")) {
+        if (value.startsWith("PocketLinux:")) {
             // A failure line wins over the words it happens to contain: "Google Chrome did not
             // install this time" used to match the Chrome branch and be shown as progress.
             if (value.contains("did not install")) {
@@ -1375,9 +1617,30 @@ public final class LinuxService extends Service {
     }
 
     private static String elapsedText(long startedAt) {
-        long minutes = (System.currentTimeMillis() - startedAt) / 60_000L;
-        if (minutes < 1) return "under a minute so far";
-        return minutes + " min so far";
+        long totalSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
+        if (totalSeconds < 60L) return totalSeconds + " sec so far";
+        return (totalSeconds / 60L) + "m " + (totalSeconds % 60L) + "s so far";
+    }
+
+    /** curl --progress-bar's final numeric token, or -1 for an ordinary setup line. */
+    static int transferPercent(String line) {
+        if (line == null) return -1;
+        int percent = line.lastIndexOf('%');
+        if (percent < 1) return -1;
+        int start = percent - 1;
+        while (start >= 0) {
+            char value = line.charAt(start);
+            if ((value >= '0' && value <= '9') || value == '.') start--;
+            else break;
+        }
+        String number = line.substring(start + 1, percent);
+        if (number.isEmpty()) return -1;
+        try {
+            int value = (int) Double.parseDouble(number);
+            return value >= 0 && value <= 100 ? value : -1;
+        } catch (NumberFormatException error) {
+            return -1;
+        }
     }
 
     /** True for a curl/wget progress line, which is a wall of numbers rather than a status. */

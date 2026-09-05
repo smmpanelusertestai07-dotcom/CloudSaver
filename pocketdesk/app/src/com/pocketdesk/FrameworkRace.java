@@ -18,8 +18,8 @@ final class FrameworkRace {
     private FrameworkRace() {}
 
     /**
-     * The sentences that only Android's own teardown writes. Kept in one place so a stack
-     * trace and a report already written to disk are judged by exactly the same words.
+     * The sentences that only Android's own teardown writes. Kept in one place so a stack trace
+     * and a report already written to disk are judged by exactly the same words.
      */
     private static final String[] MARKS = {
             "Activity client record must not be null",
@@ -32,10 +32,10 @@ final class FrameworkRace {
      *
      * It is needed because a race does not happen instead of a real fault -- it happens just
      * AFTER one, as the phone tidies up the screen the real fault killed. Written blindly, the
-     * race's report lands on top of the report that actually says what went wrong, and the
-     * owner is left looking at Android's tidying instead of the cause. This lets the recorder
-     * tell "the report I already have is the real one" from "the report I already have is
-     * another race", so only the second is ever replaced.
+     * race's report lands on top of the report that actually says what went wrong, and the owner
+     * is left looking at Android's tidying instead of the cause. This lets the recorder tell "the
+     * report I already have is the real one" from "the report I already have is another race",
+     * so only the second is ever replaced.
      */
     static boolean isReport(String report) {
         if (report == null) return false;
@@ -47,12 +47,13 @@ final class FrameworkRace {
 
     static boolean is(Throwable error) {
         for (Throwable one = error; one != null; one = one.getCause()) {
+            if (!(one instanceof IllegalArgumentException)) continue;
             String message = one.getMessage();
-            if (message != null) {
-                for (String mark : MARKS) {
-                    if (message.contains(mark)) return true;
-                }
-            }
+            boolean knownMessage = message != null
+                    && (message.contains("Activity client record must not be null")
+                        || message.contains("Unable to find non-null record"))
+                    && message.contains("Activity");
+            if (!knownMessage) continue;
             StackTraceElement[] frames = one.getStackTrace();
             if (frames == null) continue;
             for (StackTraceElement frame : frames) {

@@ -51,8 +51,8 @@ final class Crash {
      * The order of events is what makes this necessary. A fault kills a screen; Android then
      * tries to tell that screen it is no longer on top, finds it gone, and throws "Activity
      * client record must not be null". Two reports, milliseconds apart, and the second one --
-     * the useless one -- used to be the one the owner was left with. This is the whole reason a
-     * black screen could be reported for weeks as a fault in Android rather than a fault here.
+     * the useless one -- used to be the one the owner was left holding, which is how a fault in
+     * this app could be reported for weeks as a fault in Android.
      */
     private static boolean wouldBuryTheRealOne(Context context, Throwable error) {
         if (!isFrameworkRace(error)) return false;
@@ -92,7 +92,7 @@ final class Crash {
                     .append('\n')
                     .append("Android ").append(android.os.Build.VERSION.RELEASE)
                     .append(" \u00b7 ").append(android.os.Build.MODEL).append('\n')
-                    .append("PocketDesk ").append(MainActivity.VERSION).append("\n\n")
+                    .append("PocketLinux ").append(MainActivity.VERSION).append("\n\n")
                     .append(title).append("\n\n").append(detail == null ? "" : detail);
             try (FileOutputStream out = new FileOutputStream(new File(context.getFilesDir(), FILE))) {
                 out.write(text.toString().getBytes(StandardCharsets.UTF_8));

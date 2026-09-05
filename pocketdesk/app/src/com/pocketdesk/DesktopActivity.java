@@ -31,7 +31,6 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
-import android.widget.ScrollView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -52,7 +51,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
             MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
-            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22;
+            MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22,
+            MENU_WIDE_WORKSPACE = 23;
+    private static final String KEY_WIDE_WORKSPACE = "viewer_wide_workspace";
     /** The request code the microphone prompt comes back on; above AppLock's own codes. */
     private static final int REQUEST_MICROPHONE = 4711;
     /** The request code the phone's camera app comes back on. */
@@ -68,26 +69,33 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private VncView desktop;
     private TextView status;
     private Button pointerButton;
+    private Button dragButton;
     private Button keysButton;
     private Button restoreBars;
     private Button ctrlButton;
     private Button altButton;
     private Button superButton;
+    private Button shiftButton;
     private KeyboardInputView keyboardInput;
     private Thread connectionThread;
+    private boolean reconnectWhenIdle;
     private volatile boolean finished;
-    private boolean ctrl;
-    private boolean alt;
-    private boolean superKey;
+    private volatile boolean viewerVisible;
+    private final java.util.Set<Integer> hardwareKeys = new java.util.LinkedHashSet<>();
     private boolean controlsAtTop;
     private boolean keyRowShown;
     /** The Linux computer's sound, streamed to the phone's speaker while this screen is open. */
     private final AudioBridge audio = new AudioBridge();
-    private final MicBridge microphone = new MicBridge(this);
+    /** Created only after Activity.attach() has supplied a base context. */
+    private MicBridge microphone;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         try {
+            // Activity fields are initialised before Android attaches the base context. Creating
+            // this as a field called getApplicationContext() too early and made DesktopActivity
+            // fail before onCreate on Android 13, followed by a missing activity-record error.
+            microphone = new MicBridge(getApplicationContext());
             preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
             // The bar sits at the bottom unless the owner moved it: that is where a thumb is.
             controlsAtTop = "top".equals(preferences.getString(ContainerRuntime.KEY_CONTROLS_AT, "bottom"));
@@ -114,54 +122,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     "home/coder/.pocketdesk/audio.sock").getAbsolutePath());
             audio.start();
         } catch (Throwable error) {
-            // Never finish() from here. Ending a screen that has not finished being created is
-            // what leaves Android delivering "you are no longer on top" to a screen it has
-            // already forgotten -- a black flash, a bounce to the home screen, and a report
-            // blaming Android for a fault that was ours. A screen that says what went wrong,
-            // and stays put until the owner taps Back, is both kinder and far easier to fix.
             Crash.save(this, error);
-            showStartupFailure(error);
-        }
-    }
-
-    /**
-     * The screen shown when the desktop screen itself could not be built.
-     *
-     * Deliberately made of nothing: a scrolling column, two pieces of text and a button, with no
-     * theme, no drawable and no preference read. Whatever failed above, this must not fail too.
-     */
-    private void showStartupFailure(Throwable error) {
-        try {
-            ScrollView scroll = new ScrollView(this);
-            scroll.setBackgroundColor(Color.rgb(5, 7, 17));
-            LinearLayout column = new LinearLayout(this);
-            column.setOrientation(LinearLayout.VERTICAL);
-            int pad = Ui.dp(this, 22);
-            column.setPadding(pad, pad + Ui.dp(this, 28), pad, pad);
-            column.addView(Ui.title(this, "The desktop screen could not open", 20f,
-                    Color.rgb(230, 236, 247)));
-            column.addView(Ui.text(this,
-                    "Nothing on the Linux computer was harmed: this is the phone's half of the "
-                            + "app, and your files, apps and sign-ins are exactly as you left them. "
-                            + "The reason is below and is kept in Settings under Last error report, "
-                            + "so it can be read again later.",
-                    14f, Color.rgb(154, 167, 189)));
-            TextView reason = Ui.text(this, String.valueOf(error), 13f, Color.rgb(255, 173, 173));
-            reason.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 18));
-            column.addView(reason);
-            Button back = Ui.primaryButton(this, "Back to PocketDesk", R.drawable.ic_arrow_back);
-            back.setOnClickListener(v -> finish());
-            column.addView(back);
-            scroll.addView(column);
-            setContentView(scroll);
-        } catch (Throwable alsoBroken) {
-            // A phone that cannot draw four views is a phone that cannot show anything: leave.
-            finish();
+            showLaunchFailure(error);
         }
     }
 
     @Override protected void onStart() {
         super.onStart();
+        viewerVisible = true;
+        VncClient active = desktop == null ? null : desktop.getClient();
+        if (active != null) active.setUpdatesPaused(false);
         AppLock.applyWindowSecurity(this);
         // The lock covers this screen too: the desktop, with every AI app signed in, is the
         // one screen that matters most.
@@ -175,11 +145,20 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
+    @Override protected void onPause() {
+        releaseRemoteInput();
+        super.onPause();
+    }
+
     @Override protected void onStop() {
+        releaseRemoteInput();
+        viewerVisible = false;
+        VncClient active = desktop == null ? null : desktop.getClient();
+        if (active != null) active.setUpdatesPaused(true);
         super.onStop();
         // A microphone must never outlive the screen that turned it on. Leaving the desktop --
         // to another app, to the lock screen, to Home -- stops recording, every time.
-        if (microphone.isRunning()) {
+        if (microphone != null && microphone.isRunning()) {
             microphone.stop();
             Toast.makeText(this, "Microphone off: the desktop screen was left.",
                     Toast.LENGTH_SHORT).show();
@@ -220,13 +199,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
      * something they can trust rather than something they have to watch.
      */
     private void toggleMicrophone() {
+        if (microphone == null) {
+            showMessage("Microphone unavailable", "Close this screen and open the desktop again.");
+            return;
+        }
         if (microphone.isRunning()) {
             microphone.stop();
             Toast.makeText(this, "Microphone off.", Toast.LENGTH_SHORT).show();
             return;
         }
         if (!MicBridge.available(this)) {
-            showMessage("No microphone yet", "The desktop makes the microphone when it starts. "
+            showMessage("Microphone is not ready", "The desktop makes the microphone when it starts. "
                     + "This computer was set up by an earlier version: stop the desktop and open "
                     + "it again, and the microphone will be there.");
             return;
@@ -241,7 +224,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /**
      * A photo from the phone's camera, straight into the computer's Pictures folder.
      *
-     * This asks the phone's OWN camera app to take it, so PocketDesk needs no camera permission
+     * This asks the phone's OWN camera app to take it, so PocketLinux needs no camera permission
      * of its own -- there is no camera permission in this app at all, and the Privacy monitor
      * says so. A live camera INSIDE Linux is a different thing and is not possible here: a
      * program like Chrome looks for /dev/video0, and creating one needs a kernel module, which
@@ -297,7 +280,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     /** One themed dialog, in the viewer's own style, for the microphone's few honest answers. */
     private void showMessage(String title, String text) {
-        new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)
+        new AlertDialog.Builder(this, R.style.Theme_PocketLinux_Dialog)
                 .setTitle(title)
                 .setMessage(text)
                 .setPositiveButton("OK", null)
@@ -305,6 +288,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private void startMicrophone() {
+        if (microphone == null) return;
         microphone.start();
         String problem = microphone.problem();
         if (problem != null) {
@@ -316,13 +300,69 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     @Override protected void onDestroy() {
+        releaseRemoteInput();
         finished = true;
         audio.stop();
-        microphone.stop();
+        if (microphone != null) microphone.stop();
         if (desktop != null && desktop.getClient() != null) desktop.getClient().close();
         if (connectionThread != null) connectionThread.interrupt();
+        if (desktop != null) desktop.release();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onDestroy();
+    }
+
+    /**
+     * Keep a failed viewer on screen with the primary cause instead of silently throwing the
+     * owner back to Home. This deliberately uses only framework widgets so it still works when
+     * the richer desktop UI was the part that failed.
+     */
+    private void showLaunchFailure(Throwable error) {
+        finished = true;
+        audio.stop();
+        if (microphone != null) microphone.stop();
+        try {
+            LinearLayout page = new LinearLayout(this);
+            page.setOrientation(LinearLayout.VERTICAL);
+            page.setGravity(Gravity.CENTER);
+            page.setPadding(48, 48, 48, 48);
+            page.setBackgroundColor(Color.rgb(5, 7, 17));
+
+            TextView title = new TextView(this);
+            title.setText("The desktop could not open");
+            title.setTextColor(Color.WHITE);
+            title.setTextSize(24);
+            title.setTypeface(Typeface.DEFAULT_BOLD);
+            page.addView(title, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            TextView detail = new TextView(this);
+            String reason = error.getMessage();
+            detail.setText("Nothing in the Linux computer was changed. The original error was saved "
+                    + "under Settings → Last error report.\n\n"
+                    + error.getClass().getSimpleName()
+                    + (reason == null || reason.trim().isEmpty() ? "" : ": " + reason));
+            detail.setTextColor(Color.rgb(190, 204, 240));
+            detail.setTextSize(15);
+            detail.setPadding(0, 24, 0, 24);
+            detail.setTextIsSelectable(true);
+            page.addView(detail, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            Button retry = new Button(this);
+            retry.setText("Try again");
+            retry.setOnClickListener(v -> recreate());
+            page.addView(retry, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            Button back = new Button(this);
+            back.setText("Back to PocketLinux");
+            back.setOnClickListener(v -> finish());
+            page.addView(back, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            setContentView(page);
+        } catch (Throwable screenFailure) {
+            finish();
+        }
     }
 
     private View buildScreen() {
@@ -335,7 +375,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         LinearLayout barRow = (LinearLayout) bar.getChildAt(0);
 
         Button home = toolButton("Home", R.drawable.ic_arrow_back);
-        home.setContentDescription("Back to PocketDesk home");
+        home.setContentDescription("Back to PocketLinux home");
         home.setOnClickListener(v -> finish());
         barRow.addView(home, barItem(88));
 
@@ -362,6 +402,21 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         pointerButton.setOnClickListener(v -> togglePointerMode());
         barRow.addView(pointerButton, barItem(96));
 
+        dragButton = toolButton("Drag", R.drawable.ic_cursor);
+        dragButton.setContentDescription("Hold the left mouse button to resize a sidebar or move an item");
+        dragButton.setOnClickListener(v -> {
+            if (lockedNow()) return;
+            if (!desktop.isLive()) {
+                Toast.makeText(this, "Connect to the desktop first", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            boolean held = desktop.toggleDrag();
+            Toast.makeText(this, held
+                    ? "Mouse held: swipe to resize or move. Tap Release when finished."
+                    : "Mouse released", Toast.LENGTH_LONG).show();
+        });
+        barRow.addView(dragButton, barItem(94));
+
         Button keyboard = toolButton("Keyboard", R.drawable.ic_keyboard);
         keyboard.setContentDescription("Open the phone keyboard");
         keyboard.setOnClickListener(v -> showKeyboard());
@@ -385,6 +440,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         ctrlButton = addModifier(keys, "Ctrl", 0);
         altButton = addModifier(keys, "Alt", 1);
         superButton = addModifier(keys, "Super", 2);
+        shiftButton = addModifier(keys, "Shift", 3);
         addKey(keys, "←", 0xff51);
         addKey(keys, "↑", 0xff52);
         addKey(keys, "↓", 0xff54);
@@ -399,10 +455,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
         // ---- The desktop itself -----------------------------------------------------------------
         desktop = new VncView(this);
+        desktop.setWideWorkspace(preferences.getBoolean(KEY_WIDE_WORKSPACE, false));
         desktop.setPointerMode("mouse".equals(preferences.getString(ContainerRuntime.KEY_POINTER_MODE, "finger"))
                 ? VncView.PointerMode.TOUCHPAD : VncView.PointerMode.DIRECT);
         stylePointerButton();
+        desktop.setInputStateListener(this::styleHeldInput);
         desktop.setStateListener((text, connected) -> {
+            if (!connected) releaseRemoteInput();
             // The bar has room for the headline only; the full sentence is on the card.
             text = text.contains(". ") ? text.substring(0, text.indexOf(". ")) : text;
             status.setText(text);
@@ -481,6 +540,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             column.addView(bar, stripLp);
         }
         styleToggle(keysButton, keyRowShown);
+        if (outer != null) outer.requestApplyInsets();
     }
 
     /** A one-pixel line between the desktop and the control bar, so the bar reads as a shelf. */
@@ -514,7 +574,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_FIT, 0, "Fit: whole desktop, centred").setIcon(R.drawable.ic_fit);
         items.add(0, MENU_ZOOM_IN, 1, "Zoom in (" + desktop.zoomPercent() + " %)").setIcon(R.drawable.ic_fullscreen);
         items.add(0, MENU_ZOOM_OUT, 2, "Zoom out").setIcon(R.drawable.ic_fullscreen);
-        items.add(0, MENU_ROTATE, 3, "Rotate").setIcon(R.drawable.ic_rotate);
+        items.add(0, MENU_WIDE_WORKSPACE, 3, desktop.isWideWorkspace()
+                ? "Phone-sized workspace" : "Wider workspace: more room, smaller text")
+                .setIcon(R.drawable.ic_desktop);
+        items.add(0, MENU_ROTATE, 4, "Rotate").setIcon(R.drawable.ic_rotate);
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
                 .setIcon(R.drawable.ic_settings);
@@ -542,6 +605,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                         Toast.makeText(this, "Already showing the whole desktop", Toast.LENGTH_SHORT).show();
                     }
                     return true;
+                case MENU_WIDE_WORKSPACE: {
+                    boolean wide = !desktop.isWideWorkspace();
+                    desktop.setWideWorkspace(wide);
+                    preferences.edit().putBoolean(KEY_WIDE_WORKSPACE, wide).apply();
+                    Toast.makeText(this, wide
+                            ? "More room for sidebars and settings. Pinch to enlarge the text."
+                            : "Workspace matches the phone screen", Toast.LENGTH_LONG).show();
+                    return true;
+                }
                 case MENU_ROTATE: toggleOrientation(); return true;
                 case MENU_FULL_SCREEN: setBarsHidden(true); return true;
                 case MENU_BAR_POSITION:
@@ -681,6 +753,25 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     /** What the status label opens: the plain facts about this session and how to drive it. */
     private void showDetails() {
+        if (!desktop.isLive()) {
+            boolean active = LinuxService.isDesktopRunning() || LinuxService.isDesktopStarting();
+            String reason = active ? "The Linux computer is still active. Reconnect this screen to it."
+                    : preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON,
+                            "The desktop connection ended. Your installed apps and saved files are kept.");
+            new AlertDialog.Builder(this, R.style.Theme_PocketLinux_Dialog)
+                    .setTitle("Desktop connection")
+                    .setMessage(reason + "\n\nSettings → Linux app reports includes the desktop and viewer reports.")
+                    .setNegativeButton("Close", null)
+                    .setPositiveButton(active ? "Reconnect" : "Open desktop", (dialog, which) -> {
+                        if (!LinuxService.isDesktopRunning() && !LinuxService.isDesktopStarting()) {
+                            Intent start = new Intent(this, LinuxService.class)
+                                    .setAction(LinuxService.ACTION_START_DESKTOP);
+                            startForegroundService(start);
+                        }
+                        connectWithRetry();
+                    }).show();
+            return;
+        }
         boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
         String text = "Linux computer: Ubuntu 24.04 LTS on this phone's own processor, inside "
                 + "this app — a container, not a virtual machine. The desktop is Openbox for "
@@ -702,7 +793,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "at the bottom of the desktop: tap to switch, hold to minimise. Window → All "
                 + "open apps lists them by name, with no limit.\n\n"
                 + "Sound: everything the computer plays comes out of this phone as MEDIA audio — "
-                + "there is no call, ring or alarm sound in PocketDesk at all. The phone's volume "
+                + "there is no call, ring or alarm sound in PocketLinux at all. The phone's volume "
                 + "keys set it while this screen is open and show the level, and Screen → Media "
                 + "volume does the same from the menu. Inside the computer, Tools → Volume and "
                 + "sound balances one app against another; the phone still decides how loud it "
@@ -712,7 +803,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "straight into whichever AI app is open.\n\n"
                 + "Stopping the computer keeps everything: apps stay signed in and files stay "
                 + "where they are, so the next open continues from here.";
-        new AlertDialog.Builder(this, R.style.Theme_PocketDesk_Dialog)
+        new AlertDialog.Builder(this, R.style.Theme_PocketLinux_Dialog)
                 .setTitle(status.getText())
                 .setMessage(text)
                 .setPositiveButton("OK", null)
@@ -795,54 +886,85 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     }
 
     private void setBarsHidden(boolean hidden) {
+        if (hidden) releaseRemoteInput();
         bar.setVisibility(hidden ? View.GONE : View.VISIBLE);
         keyRow.setVisibility(hidden || !keyRowShown ? View.GONE : View.VISIBLE);
         restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
     }
 
-    /** A slow phone's first desktop start can take well over a minute, so wait that long. */
-    private static final int CONNECT_ATTEMPTS = 600;
-
     private void connectWithRetry() {
+        // A status-button tap must not race an existing connection reader or start Linux again.
+        if (finished) return;
+        if (connectionThread != null && connectionThread.isAlive()) {
+            reconnectWhenIdle = true;
+            return;
+        }
+        reconnectWhenIdle = false;
         connectionThread = new Thread(() -> {
-            String lastError = "The Linux computer did not come up. Go back and open it again.";
+            try {
             long startedAt = SystemClock.elapsedRealtime();
-            for (int attempt = 0; attempt < CONNECT_ATTEMPTS && !finished; attempt++) {
-                if (!VncClient.canConnect(vncSocketPath()) && !VncClient.canConnect("127.0.0.1", 5901, 250)) {
-                    // The service's "running" flag is set late and cleared early, so it is not a
-                    // reliable failure signal while starting up: reading it as one is what put
-                    // "Desktop stopped" on a desktop that was still on its way. The wait simply
-                    // runs its course now, and the only thing reported is how long it has been.
-                    if (attempt % 8 == 0) {
-                        long seconds = (SystemClock.elapsedRealtime() - startedAt) / 1000L;
-                        desktop.onDisconnected(seconds < 25
-                                ? "Starting your Linux computer… " + seconds + "s"
-                                : "Starting your Linux computer… " + seconds
-                                        + "s. The first start after an update is the slow one — "
-                                        + "please keep waiting.");
-                    }
-                    SystemClock.sleep(250);
-                    continue;
-                }
+            DesktopRetry retries = new DesktopRetry(startedAt);
+            long nextStatusAt = 0L;
+            String lastError = "The desktop did not become ready. Tap the status below to retry.";
+            while (!finished && !Thread.currentThread().isInterrupted()) {
+                // Connect once, for real. Probe-then-connect opened and discarded an extra
+                // client on every attempt and introduced a readiness race under heavy load.
                 VncClient client = new VncClient("127.0.0.1", 5901, vncSocketPath(), desktop);
+                client.setUpdatesPaused(!viewerVisible);
                 desktop.setClient(client);
+                // A visibility change between construction and publication must reach this client.
+                client.setUpdatesPaused(!viewerVisible);
+                if (finished) { client.close(); desktop.setClient(null); return; }
+                boolean retryable = true;
                 try {
                     client.connectAndRun();
-                    lastError = "The Linux computer was stopped";
+                    lastError = "Desktop connection closed";
                 } catch (IOException error) {
                     lastError = error.getMessage() == null ? "Connection failed" : error.getMessage();
                 } catch (Throwable error) {
-                    // An OutOfMemoryError here used to take the whole app down. Ending the
-                    // session with a message is always better than "PocketDesk keeps stopping".
                     Crash.save(DesktopActivity.this, error);
                     lastError = "Viewer ran out of memory or hit an error ("
                             + error.getClass().getSimpleName() + "). Close other apps and reopen.";
+                    retryable = false;
+                } finally {
                     client.close();
                 }
-                if (!finished) desktop.onDisconnected(lastError);
-                return;
+                if (finished) return;
+                if (desktop.getFatalError() != null) {
+                    lastError = desktop.getFatalError();
+                    retryable = false;
+                }
+                long now = SystemClock.elapsedRealtime();
+                boolean active = LinuxService.isDesktopRunning() || LinuxService.isDesktopStarting();
+                if (client.hasConnected()) {
+                    RuntimeDiagnostics.snap(DesktopActivity.this, "viewer-disconnected: " + lastError);
+                }
+                if (!retryable || !retries.retry(now, client.hasConnected(), client.connectedMillis(), active)
+                        || (!active && now - startedAt > 5_000L)) break;
+                if (now >= nextStatusAt) {
+                    desktop.onDisconnected(retries.hasConnected() ? "Reconnecting to your running desktop…"
+                            : "Starting your Linux computer… " + (now - startedAt) / 1000L + "s");
+                    nextStatusAt = now + 2_000L;
+                }
+                SystemClock.sleep(750L);
             }
-            if (!finished) desktop.onDisconnected(lastError);
+            if (!finished) {
+                RuntimeDiagnostics.snap(DesktopActivity.this, "viewer-retry-ended: " + lastError);
+                String detail = LinuxService.lastDetail();
+                if (!LinuxService.isDesktopRunning() && !LinuxService.isDesktopStarting()
+                        && LinuxService.lastWasError() && detail != null && !detail.isEmpty()) {
+                    desktop.onDisconnected(detail);
+                } else {
+                    desktop.onDisconnected(lastError);
+                }
+            }
+            } finally {
+                Thread reader = Thread.currentThread();
+                runOnUiThread(() -> {
+                    if (connectionThread == reader) connectionThread = null;
+                    if (!finished && reconnectWhenIdle && !desktop.isLive()) connectWithRetry();
+                });
+            }
         }, "pocketdesk-vnc-client");
         connectionThread.start();
     }
@@ -865,8 +987,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         preferences.edit().putString(ContainerRuntime.KEY_POINTER_MODE, mouse ? "mouse" : "finger").apply();
         stylePointerButton();
         Toast.makeText(this, mouse
-                        ? "Mouse: drag to move the arrow, tap to click, two fingers to scroll"
-                        : "Finger: tap where you touch, swipe to scroll, hold to right-click",
+                        ? "Mouse: move the arrow, then tap Drag to resize an edge. Two fingers scroll."
+                        : "Finger: tap to click, swipe to scroll. Use Drag to hold a divider.",
                 Toast.LENGTH_SHORT).show();
     }
 
@@ -898,33 +1020,41 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return button;
     }
 
-    /**
-     * Ctrl, Alt and Super hold until the next key and then let go, the way a phone's Shift
-     * does: Ctrl then C is a copy, and the next letter is a plain letter again.
-     */
+    /** Toolbar modifiers combine for one key, then release; Shift also supports selection. */
     private void toggleModifier(int type) {
-        if (type == 0) {
-            ctrl = !ctrl;
-            sendKey(0xffe3, ctrl);
-            styleModifier(ctrlButton, ctrl);
-        } else if (type == 1) {
-            alt = !alt;
-            sendKey(0xffe9, alt);
-            styleModifier(altButton, alt);
-        } else {
-            superKey = !superKey;
-            sendKey(0xffeb, superKey);
-            styleModifier(superButton, superKey);
-        }
+        if (lockedNow()) return;
+        int keysym = type == 0 ? 0xffe3 : type == 1 ? 0xffe9 : type == 2 ? 0xffeb : 0xffe1;
+        desktop.toggleHeldModifier(keysym);
     }
 
     private void releaseModifiers() {
-        if (ctrl) { ctrl = false; sendKey(0xffe3, false); styleModifier(ctrlButton, false); }
-        if (alt) { alt = false; sendKey(0xffe9, false); styleModifier(altButton, false); }
-        if (superKey) { superKey = false; sendKey(0xffeb, false); styleModifier(superButton, false); }
+        if (desktop != null) desktop.releaseModifiers();
+    }
+
+    private void styleHeldInput() {
+        if (desktop == null) return;
+        styleModifier(ctrlButton, desktop.isModifierHeld(0xffe3));
+        styleModifier(altButton, desktop.isModifierHeld(0xffe9));
+        styleModifier(superButton, desktop.isModifierHeld(0xffeb));
+        styleModifier(shiftButton, desktop.isModifierHeld(0xffe1));
+        if (dragButton != null) {
+            boolean held = desktop.isDragHeld();
+            dragButton.setText(held ? "Release" : "Drag");
+            dragButton.setContentDescription(held ? "Release the held left mouse button"
+                    : "Place the pointer on an edge, then hold the left mouse button to drag it");
+            styleToggle(dragButton, held);
+        }
+    }
+
+    private void releaseRemoteInput() {
+        if (desktop == null) return;
+        for (int keysym : hardwareKeys) sendKey(keysym, false);
+        hardwareKeys.clear();
+        desktop.releaseInput();
     }
 
     private void styleModifier(Button button, boolean active) {
+        if (button == null) return;
         button.setTextColor(active ? Color.rgb(12, 18, 45) : Color.rgb(232, 236, 255));
         button.setBackground(active ? Ui.brandGradient(this, 10) : Ui.background(Color.rgb(35, 42, 73), 10, this));
     }
@@ -936,6 +1066,32 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         sendKey(keysym, true);
         sendKey(keysym, false);
         sendKey(modifier, false);
+    }
+
+    @Override public void replaceText(int backspaces, int deletes, String text) {
+        if (lockedNow() || desktop == null) return;
+        VncClient active = desktop.getClient();
+        if (active == null) return;
+        backspaces = Math.max(0, backspaces);
+        deletes = Math.max(0, deletes);
+        if (text == null) text = "";
+        if (backspaces == 0 && deletes == 0 && text.isEmpty()) return;
+        VncView.lastInteractionAt = System.currentTimeMillis();
+        boolean modified = desktop.isModifierHeld(0xffe1) || desktop.isModifierHeld(0xffe3)
+                || desktop.isModifierHeld(0xffe9) || desktop.isModifierHeld(0xffeb);
+        if (modified) {
+            // Keep toolbar modifiers scoped to the first key, as before. The remainder of an
+            // IME paste/composition replacement is one queued write, even for thousands of letters.
+            if (backspaces > 0) { specialKey(0xff08); backspaces--; }
+            else if (deletes > 0) { specialKey(0xffff); deletes--; }
+            else {
+                int first = text.codePointAt(0);
+                if (first == '\n' || first == '\r') specialKey(0xff0d);
+                else typeCodePoint(first);
+                text = text.substring(Character.charCount(first));
+            }
+        }
+        if (backspaces > 0 || deletes > 0 || !text.isEmpty()) active.replaceText(backspaces, deletes, text);
     }
 
     @Override public void typeCodePoint(int codePoint) {
@@ -996,11 +1152,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             return super.dispatchKeyEvent(event);
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            hardwareKeys.add(keysym);
             sendKey(keysym, true);
             return true;
         }
         if (event.getAction() == KeyEvent.ACTION_UP) {
+            hardwareKeys.remove(keysym);
             sendKey(keysym, false);
+            if (keysym < 0xffe1 || keysym > 0xffee) releaseModifiers();
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -1056,7 +1215,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         // Bluetooth keyboard through dispatchKeyEvent -- is the owner being here. Without this
         // stamp, Smart stopping counted a two-hour typing session as idle and closed it.
         VncView.lastInteractionAt = System.currentTimeMillis();
-        VncClient client = desktop.getClient();
+        VncClient client = desktop == null ? null : desktop.getClient();
         if (client != null) client.sendKey(keysym, down);
     }
 
@@ -1133,18 +1292,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** Keeps the bar clear of the status bar and the gesture bar, whichever end it sits at. */
     private void applySystemInsets(View root) {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
-            // The keyboard's height goes to the viewer, which slides up under it; it never
-            // reaches the layout, so the Linux desktop is never resized for it.
             int ime = Build.VERSION.SDK_INT >= 30
                     ? insets.getInsets(android.view.WindowInsets.Type.ime()).bottom : 0;
-            if (desktop != null) desktop.setKeyboardInset(ime);
-            // The controls ride above the keyboard instead of hiding under it. A translation,
-            // not a layout change: resizing this window would resize the Linux desktop itself,
-            // which is the very thing adjustNothing is here to prevent.
-            float lift = controlsAtTop ? 0f : -ime;
-            if (bar != null) bar.setTranslationY(lift);
-            if (keyRow != null) keyRow.setTranslationY(lift);
-            if (barDivider != null) barDivider.setTranslationY(lift);
             int top;
             int bottom;
             int left;
@@ -1161,6 +1310,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 right = insets.getSystemWindowInsetRight();
             }
             view.setPadding(left, top, right, bottom);
+            // The IME inset includes the navigation area already excluded by this padding.
+            // Count it once so neither the control row nor the desktop floats too far upward.
+            int keyboardCover = Math.max(0, ime - bottom);
+            if (desktop != null) desktop.setKeyboardInset(keyboardCover);
+            float lift = controlsAtTop ? 0f : -keyboardCover;
+            if (bar != null) bar.setTranslationY(lift);
+            if (keyRow != null) keyRow.setTranslationY(lift);
+            if (barDivider != null) barDivider.setTranslationY(lift);
             return insets;
         });
         root.requestApplyInsets();

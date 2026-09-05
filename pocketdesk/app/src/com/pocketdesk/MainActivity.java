@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.1.25";
+    static final String VERSION = "11.0.0";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -61,6 +61,8 @@ public final class MainActivity extends Activity {
     private boolean safeMode;
     private boolean receiverRegistered;
     private String pendingRoute;
+    /** Debounces two taps that would otherwise enqueue two top-resumed Activity transactions. */
+    private boolean desktopOpening;
 
     private FrameLayout shell;
     private FrameLayout pageHost;
@@ -115,9 +117,10 @@ public final class MainActivity extends Activity {
     private TextView dataNote;
 
     private Ui.Row appearanceRow;
-    private Ui.Row downloadToRow;
     private Ui.Row rotationRow;
     private Ui.Row autoStopRow;
+    private Ui.Row processPolicyRow;
+    private AlertDialog processPolicyDialog;
     private Ui.Row desktopScaleRow;
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
@@ -127,6 +130,7 @@ public final class MainActivity extends Activity {
     private Ui.Row errorReportRow;
     private DeviceProbe lastProbe;
     private Ui.Row dataCapRow;
+    private Ui.Row downloadTargetRow;
     private Ui.Row lockNoticeRow;
     private Ui.Toggle appLockToggle;
     private boolean askBatteryAfterNotifications;
@@ -197,7 +201,7 @@ public final class MainActivity extends Activity {
         mark.setImageResource(R.drawable.icon_in_app);
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
         first.addView(mark, new LinearLayout.LayoutParams(Ui.dp(this, 104), Ui.dp(this, 104)));
-        TextView name = Ui.bold(this, "PocketDesk", 30, Color.WHITE);
+        TextView name = Ui.bold(this, "PocketLinux", 30, Color.WHITE);
         name.setGravity(Gravity.CENTER);
         name.setLetterSpacing(-0.02f);
         first.addView(name, Ui.matchWrap(this, 18));
@@ -214,7 +218,7 @@ public final class MainActivity extends Activity {
         TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
         powered.setGravity(Gravity.CENTER);
         second.addView(powered, Ui.matchWrap(this, 18));
-        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · Linux and Windows apps · "
+        TextView system = Ui.text(this, "Ubuntu 24.04 LTS · native ARM64 Linux apps · "
                 + "the whole computer is on this phone",
                 14f, Color.rgb(190, 204, 240));
         system.setGravity(Gravity.CENTER);
@@ -289,6 +293,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        desktopOpening = false;
         if (safeMode) return;
         handler.removeCallbacks(liveRefresh);
         LinuxService.reconcileUncleanStop(this);
@@ -318,6 +323,8 @@ public final class MainActivity extends Activity {
         handler.removeCallbacksAndMessages(null);
         if (permissionIntro != null && permissionIntro.isShowing()) permissionIntro.dismiss();
         permissionIntro = null;
+        if (processPolicyDialog != null && processPolicyDialog.isShowing()) processPolicyDialog.dismiss();
+        processPolicyDialog = null;
         super.onDestroy();
     }
 
@@ -450,7 +457,7 @@ public final class MainActivity extends Activity {
     }
 
     private TextView versionLine(int muted) {
-        TextView version = Ui.text(this, "PocketDesk " + VERSION + " · Ubuntu 24.04 LTS · works on "
+        TextView version = Ui.text(this, "PocketLinux " + VERSION + " · Ubuntu 24.04 LTS · works on "
                 + DeviceCheck.releaseName(DeviceCheck.MIN_SDK) + " and above", 12, muted);
         version.setGravity(Gravity.CENTER);
         return version;
@@ -464,7 +471,7 @@ public final class MainActivity extends Activity {
         ImageView logo = new ImageView(this);
         logo.setImageResource(R.drawable.icon_in_app);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        logo.setContentDescription("PocketDesk");
+        logo.setContentDescription("PocketLinux");
         header.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
 
         LinearLayout heading = new LinearLayout(this);
@@ -473,7 +480,7 @@ public final class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
         headingLp.setMarginStart(Ui.dp(this, 12));
         header.addView(heading, headingLp);
-        TextView name = Ui.bold(this, "PocketDesk", 22, text);
+        TextView name = Ui.bold(this, "PocketLinux", 22, text);
         name.setLetterSpacing(-0.015f);
         heading.addView(name);
         heading.addView(Ui.text(this, "A Linux computer that runs locally on your phone", 12.5f, muted));
@@ -619,7 +626,7 @@ public final class MainActivity extends Activity {
                 "", v -> toggleDetail(attentionSpace, spaceDetail, "The Linux computer needs "
                         + DeviceProbe.formatBytes(DeviceCheck.MIN_FREE_BYTES) + " free to set up and about "
                         + DeviceProbe.formatBytes(DeviceCheck.LOW_FREE_BYTES) + " free to run "
-                        + "comfortably. PocketDesk has no quota of its own — the computer grows into "
+                        + "comfortably. PocketLinux has no quota of its own — the computer grows into "
                         + "the phone's free space, so this is the phone filling up, not the computer. "
                         + "Around 500 MB free Android clears app caches by itself; your files and the "
                         + "computer are not touched, but a new download or install would stop part-way. "
@@ -792,28 +799,41 @@ public final class MainActivity extends Activity {
                         + "(with Claude Code) as a beta on 30 June 2026, for Ubuntu and Debian on "
                         + "x64 and ARM64, from its own apt repository. Cursor publishes Linux ARM64 "
                         + ".deb and AppImage builds, and Google publishes Antigravity for Linux. "
-                        + "PocketDesk installs exactly those packages, from each publisher's own "
+                        + "PocketLinux installs exactly those packages, from each publisher's own "
                         + "servers, and every app updates the way its publisher ships updates.", false);
-        addAnswer(card, R.drawable.ic_phone, "Why not Windows or macOS on the phone",
-                "Windows and macOS can only run inside a virtual machine, and a virtual machine "
-                        + "needs hardware virtualisation that Android does not offer to apps: a "
-                        + "phone's kernel keeps it for itself, and no app, script or setting "
-                        + "changes that. Emulating one instead would run ten to fifty times slower "
-                        + "than the phone, with less memory than either system needs. macOS is "
-                        + "additionally licensed only for Apple's own computers. Wine, which runs "
-                        + "some Windows programs on Linux, can run small native ARM64 Windows "
-                        + "programs, but not the Windows editions of these AI apps, which are the "
-                        + "same programs as their Linux editions in any case. Linux is not the "
-                        + "fallback; it is the one system that runs here as itself.", false);
+        addAnswer(card, R.drawable.ic_check, "Why Linux and not Windows or macOS",
+                "Because on a phone, Linux is the only one of the three that is real \u2014 and, "
+                        + "on this processor, it is also the best supported.\n\n"
+                        + "WINDOWS CANNOT RUN HERE. Not as a preference: as a fact, with three "
+                        + "separate causes. Android's own hypervisor (the Android Virtualization "
+                        + "Framework) is documented as being for privileged and platform apps, so "
+                        + "an ordinary installed app cannot start a virtual machine. A "
+                        + "compatibility layer instead of a virtual machine hits the second wall: "
+                        + "the one project that ran Windows programs on ARM64 dropped its "
+                        + "Android support. And the third is this container itself \u2014 it "
+                        + "already uses ptrace for every system call, and an x86 translator "
+                        + "layered on top of that is the exact combination that fails.\n\n"
+                        + "ON ARM64, LINUX IS AHEAD OF WINDOWS. Not behind it. Claude's Cowork is "
+                        + "not supported on Windows ARM64 at all, and Claude Code on Windows ARM64 "
+                        + "has an open crash report; both work on Linux ARM64. Windows' own ARM "
+                        + "story still leans on translating Intel code, and these apps are among "
+                        + "the ones that lean hardest.\n\n"
+                        + "macOS IS NOT LICENSED TO RUN ANYWHERE BUT APPLE'S OWN HARDWARE, so it "
+                        + "was never a candidate.\n\n"
+                        + "AND LINUX IS THE ONE THAT LASTS. Ubuntu 24.04 LTS has security updates "
+                        + "to April 2029, to April 2036 with Ubuntu Pro (free for personal use), "
+                        + "and to April 2039 with the Legacy add-on \u2014 fifteen years, on a "
+                        + "base that never forces an upgrade. Each Windows release gets about "
+                        + "twenty-four months before the next one is required.", false);
         addAnswer(card, R.drawable.ic_shield, "Safe, private, and yours",
                 "Everything lives in this app's private storage on this phone: the system, the "
-                        + "apps, their logins, your files. No PocketDesk account, no server, no "
+                        + "apps, their logins, your files. No PocketLinux account, no server, no "
                         + "analytics; Android's cloud backup is switched off for this app. Ubuntu "
                         + "24.04 LTS receives security updates from Canonical until April 2029 "
                         + "(and to 2034 with Ubuntu Pro), so the base does not go stale, and the "
                         + "AI apps update from their publishers for as long as they ship updates.", false);
         addAnswer(card, R.drawable.ic_bolt, "Fast for a phone, and built to last",
-                "Nothing is emulated: the apps are ARM64 programs running directly on the "
+                "The native Linux apps are ARM64 programs running directly on the "
                         + "phone's ARM64 processor. What a phone lacks is a graphics card and a "
                         + "PC's memory, so a heavy app takes a minute or two to open the first "
                         + "time and one AI app at a time is the comfortable way to work. Linux "
@@ -833,7 +853,6 @@ public final class MainActivity extends Activity {
         appRows.clear();
         page.addView(buildAppsCard(text, muted));
         page.addView(buildDeveloperCard(text, muted));
-        page.addView(buildWindowsCard(text, muted));
         page.addView(buildOtherAppsCard(text, muted));
         page.addView(versionLine(muted), Ui.matchWrap(this, 2));
         return page;
@@ -911,90 +930,7 @@ public final class MainActivity extends Activity {
         return card;
     }
 
-    /**
-     * The Windows side of the Apps tab: the layer itself, then the same four apps in their
-     * Windows form, each one tap from its publisher's download page.
-     *
-     * Deliberately a separate card with its own words. A Windows app here is not the same
-     * promise as a Linux one, and putting them in one list would say it was.
-     */
-    private View buildWindowsCard(int text, int muted) {
-        LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.sectionTitle(this, "Windows apps", R.drawable.ic_desktop, dark));
-        card.addView(Ui.text(this,
-                "This computer can also run Windows programs built for ARM64 — this phone's own "
-                        + "processor. Add the layer below first, then pick an app: its download "
-                        + "page opens, and the file you get installs like any other.",
-                12.5f, muted), Ui.matchWrap(this, 6));
-        card.addView(Ui.text(this, "Experimental: a Windows app may open, may look wrong, or may "
-                        + "not start at all. Nothing on the Linux side changes either way, and "
-                        + "removing the layer removes every Windows app with it.",
-                12.5f, Ui.WARNING), Ui.matchWrap(this, 8));
 
-        LinuxApps.App layer = LinuxApps.byId("windows");
-        if (layer != null) card.addView(appRow(layer), Ui.matchWrap(this, 12));
-
-        card.addView(Ui.text(this, "One tap, like a Linux app", 13.5f, text),
-                Ui.matchWrap(this, 14));
-        LinuxApps.App cursorWin = LinuxApps.byId("cursor-win");
-        if (cursorWin != null) card.addView(appRow(cursorWin), Ui.matchWrap(this, 8));
-        card.addView(Ui.text(this,
-                "Cursor publishes the address of its current Windows ARM64 build, so PocketDesk "
-                        + "fetches and installs it for you — no page to read, no file to find.",
-                12.5f, muted), Ui.matchWrap(this, 6));
-
-        card.addView(Ui.text(this, "The others: download in the desktop's browser", 13.5f, text),
-                Ui.matchWrap(this, 16));
-        card.addView(Ui.text(this,
-                "Antigravity, Claude and ChatGPT build their download pages in the browser itself, "
-                        + "so there is no fixed address to fetch. Open one INSIDE the desktop "
-                        + "(Tools \u2192 Windows apps) and download it there.\n\n"
-                        + "You will not have to find it afterwards: the moment a Windows app lands "
-                        + "in the computer's Downloads folder, the desktop notices it, checks the "
-                        + "processor and opens the installer by itself. An Intel-only file gets a "
-                        + "message instead, and no download is wasted twice.",
-                12.5f, muted), Ui.matchWrap(this, 6));
-        addWindowsApp(card, "Antigravity", "Windows ARM64 installer",
-                "https://antigravity.google/download");
-        addWindowsApp(card, "Claude", "Windows ARM64, as a Store package — less likely to work",
-                "https://claude.com/download");
-        addWindowsApp(card, "ChatGPT", "Windows, from the Microsoft Store — least likely to work",
-                "https://chatgpt.com/download");
-        card.addView(Ui.text(this,
-                "All of these already have Linux builds above, which run faster here — the Windows "
-                        + "route is really for programs that have no Linux version at all.",
-                12.5f, muted), Ui.matchWrap(this, 12));
-        return card;
-    }
-
-    /** Opens a publisher's own page in the phone's browser, and says so if there is none. */
-    private void openLink(String url) {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } catch (Throwable noBrowser) {
-            showMessage("No browser", "This phone has no app that can open " + url + ".");
-        }
-    }
-
-    /** One Windows app row: the publisher's own download page, and what to expect from it. */
-    private void addWindowsApp(LinearLayout card, String name, String note, String url) {
-        card.addView(new Ui.Row(this, R.drawable.ic_desktop, name + " for Windows", note,
-                R.drawable.ic_open_in_new, dark, v -> dialogBuilder()
-                        .setTitle(name + " for Windows")
-                        .setMessage("Best way: open the desktop, then Tools \u2192 Windows apps "
-                                + "\u2192 " + name + ". Download it there and the installer opens "
-                                + "by itself when the file lands \u2014 nothing to find.\n\n"
-                                + "Or open the page on this phone now. The file goes to the phone's "
-                                + "Downloads, and you will need Phone files turned on in Settings "
-                                + "\u2192 Permissions for the computer to see it.\n\n"
-                                + "Pick the ARM64 build. An Intel-only file is refused before "
-                                + "anything is unpacked, so nothing is wasted.")
-                        .setNegativeButton("Close", null)
-                        .setPositiveButton("Open the page", (d, w) -> openLink(url))
-                        .show()),
-                Ui.matchWrap(this, 8));
-    }
 
     /** What the browser can install and what it cannot, in one card, short. */
     private View buildOtherAppsCard(int text, int muted) {
@@ -1008,7 +944,7 @@ public final class MainActivity extends Activity {
         card.addView(Ui.text(this, "How", 13.5f, text), Ui.matchWrap(this, 12));
         card.addView(Ui.text(this,
                 "In the desktop, download the app's Linux build for ARM64 (a .deb file) in Chrome "
-                        + "and open it. PocketDesk's installer names the app and its publisher, "
+                        + "and open it. PocketLinux's installer names the app and its publisher, "
                         + "shows its size against this phone's free space, checks the processor and "
                         + "the software it needs, and says plainly that a downloaded file is not "
                         + "signed. Then Install anyway, or a blocked install with the reason. The "
@@ -1032,13 +968,16 @@ public final class MainActivity extends Activity {
 
     private void refreshAppRows(boolean linuxInstalled, boolean busy, boolean running) {
         int installed = 0;
+        // BUSY includes the desktop's long-lived process. A running desktop is allowed beside an
+        // app install; only setup/remove/another non-desktop task makes the rows unavailable.
+        boolean taskBusy = busy && !running;
         // Grey rows say why they are grey.
         if (appsNote != null) {
             String why = null;
-            if (!linuxInstalled && busy) why = "The Linux computer is being set up. These can be added as soon as it is ready.";
+            if (!linuxInstalled && taskBusy) why = "The Linux computer is being set up. These can be added as soon as it is ready.";
             else if (!linuxInstalled) why = "Set up the Linux computer on the Home tab first. Then each of these installs with one tap.";
             else if (LinuxService.isInstalling()) why = "An app is installing. One at a time; the others follow.";
-            else if (busy) why = "Another task is running. These can be added when it finishes.";
+            else if (taskBusy) why = "Another task is running. These can be added when it finishes.";
             appsNote.setText(why == null ? "" : why);
             appsNote.setVisibility(why == null ? View.GONE : View.VISIBLE);
         }
@@ -1046,19 +985,21 @@ public final class MainActivity extends Activity {
             Ui.Row row = appRows.get(app.id);
             if (row == null) continue;
             boolean present = linuxInstalled && ContainerRuntime.isAppInstalled(this, app);
-            if (present && !"essentials".equals(app.id)) installed++;
+            if (present && LinuxApps.isAiApp(app)) installed++;
             row.setStatus(present ? "ADDED" : "ADD", present ? Ui.SUCCESS : Ui.accent(dark));
             row.setValue(present
                     ? "Installed · tap to update" + (app.removable() ? " or uninstall" : "")
                     : app.summary + " · " + app.approximateSize);
             // An open desktop is no obstacle: the install runs beside it and the new app
             // appears on it. Only a task already running (setup, another install) waits.
-            boolean usable = linuxInstalled && !busy && !LinuxService.isInstalling();
+            boolean usable = linuxInstalled && !taskBusy && !LinuxService.isInstalling();
             row.setEnabled(usable);
             row.setAlpha(usable ? 1f : 0.45f);
         }
         // Linux is set up but no AI app is on it yet: the one trip worth a dot.
-        if (navItems[TAB_APPS] != null) navItems[TAB_APPS].setDot(linuxInstalled && installed == 0 && !busy);
+        if (navItems[TAB_APPS] != null) {
+            navItems[TAB_APPS].setDot(linuxInstalled && installed == 0 && !taskBusy);
+        }
     }
 
     private void confirmApp(LinuxApps.App app) {
@@ -1144,6 +1085,9 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+
+
+
     private void sendAppTask(String action, String appId) {
         Intent intent = new Intent(this, LinuxService.class).setAction(action)
                 .putExtra(LinuxService.EXTRA_APP_ID, appId);
@@ -1185,20 +1129,6 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         appearance.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
-        // Files
-        LinearLayout files = group(page, "Files");
-        downloadToRow = new Ui.Row(this, R.drawable.ic_download, "Where downloads go",
-                labelOf(DOWNLOAD_LABELS, DOWNLOAD_VALUES, ContainerRuntime.downloadTo(this)),
-                R.drawable.ic_chevron, dark, v -> chooseDownloadTo());
-        files.addView(downloadToRow, Ui.matchWrap(this, 0));
-        files.addView(Ui.text(this, "Everything downloaded in the computer -- a file an AI app "
-                        + "writes for you, an app you built, a document from the browser -- is "
-                        + "saved in the computer's own Downloads folder, which nothing else on "
-                        + "the phone can read. Choose \u201cThe phone as well\u201d and a copy "
-                        + "also goes to the phone's Download folder, where every app on the phone "
-                        + "can open it.",
-                12.5f, muted), Ui.matchWrap(this, 8));
-
         // Running
         LinearLayout running = group(page, "Running");
         autoStopRow = new Ui.Row(this, R.drawable.ic_timer, "When to stop by itself",
@@ -1207,6 +1137,10 @@ public final class MainActivity extends Activity {
                                 ContainerRuntime.SESSION_SMART)),
                 R.drawable.ic_chevron, dark, v -> chooseTimer());
         running.addView(autoStopRow, Ui.matchWrap(this, 0));
+        processPolicyRow = new Ui.Row(this, R.drawable.ic_desktop, "Android process limit",
+                AndroidProcessPolicy.summary(this), R.drawable.ic_chevron, dark,
+                v -> runProcessPolicy("status"));
+        running.addView(processPolicyRow, Ui.matchWrap(this, 8));
         Ui.Toggle guard = new Ui.Toggle(this, R.drawable.ic_shield, "Overheat protection",
                 "Stops the Linux computer if the phone gets too hot; everything on it is kept",
                 preferences.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true), dark);
@@ -1225,16 +1159,20 @@ public final class MainActivity extends Activity {
         wifiOnly.control.setOnCheckedChangeListener((button, checked) ->
                 preferences.edit().putBoolean(ContainerRuntime.KEY_WIFI_ONLY, checked).apply());
         data.addView(wifiOnly, Ui.matchWrap(this, 8));
-        data.addView(Ui.text(this, "What the computer downloads stays inside it, where no other "
-                + "app on this phone can read it. To move a file out, save it into the computer's "
-                + "Shared folder — that one appears in the phone's Files app — or turn on Phone "
-                + "files below and save straight to the phone.", 12.5f, muted), Ui.matchWrap(this, 10));
+        downloadTargetRow = new Ui.Row(this, R.drawable.ic_download, "Downloads go to",
+                downloadTargetValue(), R.drawable.ic_chevron, dark, v -> chooseDownloadTarget());
+        data.addView(downloadTargetRow, Ui.matchWrap(this, 8));
+        data.addView(Ui.text(this, "Ask every time is safest: Chrome asks for each download and "
+                + "Computer Downloads is the fallback for an app that cannot ask. Phone Downloads "
+                + "saves into Download/PocketLinux, visible to Android's Files app; it needs Phone "
+                + "files permission below. Existing files are never moved when this changes.",
+                12.5f, muted), Ui.matchWrap(this, 10));
 
         // Privacy and safety
         LinearLayout privacy = group(page, "Privacy and safety");
         appLockToggle = new Ui.Toggle(this, R.drawable.ic_lock, "App lock",
                 "Asks for your fingerprint or the phone's PIN right after the opening screen, and "
-                        + "again whenever PocketDesk comes back to the front — the home screen and "
+                        + "again whenever PocketLinux comes back to the front — the home screen and "
                         + "the desktop both. No separate password to remember.",
                 preferences.getBoolean(ContainerRuntime.KEY_APP_LOCK, false), dark);
         appLockToggle.control.setOnCheckedChangeListener((b, checked) -> onAppLockToggled(checked));
@@ -1252,7 +1190,7 @@ public final class MainActivity extends Activity {
 
         // Permissions
         LinearLayout permissions = group(page, "Permissions");
-        permissions.addView(Ui.text(this, "PocketDesk asks for the minimum it needs. Tap a row to change it.",
+        permissions.addView(Ui.text(this, "PocketLinux asks for the minimum it needs. Tap a row to change it.",
                 12.5f, muted), Ui.matchWrap(this, 0));
         notificationRow = new Ui.Row(this, R.drawable.ic_notification, "Notifications", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> requestNotificationPermission(true));
@@ -1261,7 +1199,7 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_open_in_new, dark, v -> openBatterySettings());
         permissions.addView(batteryOptimisationRow, Ui.matchWrap(this, 8));
         Ui.Row backgroundRow = new Ui.Row(this, R.drawable.ic_auto_mode, "Background activity",
-                "On the phone's battery page for PocketDesk, turn ON Allow foreground activity and "
+                "On the phone's battery page for PocketLinux, turn ON Allow foreground activity and "
                         + "Allow background activity, so the computer keeps running with the screen off",
                 R.drawable.ic_open_in_new, dark, v -> openBackgroundActivitySettings());
         backgroundRow.setStatus("CHECK", Ui.muted(dark));
@@ -1281,7 +1219,7 @@ public final class MainActivity extends Activity {
                     } else {
                         dialogBuilder()
                                 .setTitle("Show the phone's files inside the computer?")
-                                .setMessage("Android will ask you to allow All files access for PocketDesk. "
+                                .setMessage("Android will ask you to allow All files access for PocketLinux. "
                                         + "With it on, your phone's shared storage — Download, DCIM (photos), Documents and "
                                         + "other folders appear inside the Linux computer as the Phone folder, "
                                         + "so ChatGPT, Claude and the browser can attach a file from the phone "
@@ -1315,8 +1253,11 @@ public final class MainActivity extends Activity {
         errorReportRow = new Ui.Row(this, R.drawable.ic_stop, "Last error report",
                 "Checking…", R.drawable.ic_chevron, dark, v -> showErrorReport());
         permissions.addView(errorReportRow, Ui.matchWrap(this, 8));
+        permissions.addView(new Ui.Row(this, R.drawable.ic_terminal, "Linux app reports",
+                "Startup, sign-in handoff and exit logs for Linux apps",
+                R.drawable.ic_chevron, dark, v -> showLinuxAppReports()), Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
-                "Android's full settings page for PocketDesk",
+                "Android's full settings page for PocketLinux",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
 
         // Storage
@@ -1324,7 +1265,7 @@ public final class MainActivity extends Activity {
         linuxSize = Ui.text(this, "", 12.5f, muted);
         storage.addView(linuxSize, Ui.matchWrap(this, 0));
         TextView storageExplain = Ui.text(this,
-                "PocketDesk has no size limit of its own. The computer grows into whatever this "
+                "PocketLinux has no size limit of its own. The computer grows into whatever this "
                 + "phone has free and gives the space straight back when you remove an app, and "
                 + "Android sets no quota for it — the free figure above is the whole ceiling, "
                 + "shared with your photos, your Android apps and everything else on the phone.\n\n"
@@ -1363,7 +1304,7 @@ public final class MainActivity extends Activity {
 
         TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS, downloaded at set-up from "
                 + "Canonical's own ARM64 base image and updated from Ubuntu's own package servers. "
-                + "Ubuntu is a registered trademark of Canonical Ltd; PocketDesk is not affiliated "
+                + "Ubuntu is a registered trademark of Canonical Ltd; PocketLinux is not affiliated "
                 + "with, endorsed by or sponsored by Canonical, and shows no Canonical logo. Linux "
                 + "is a registered trademark of Linus Torvalds. Tux, the Linux mascot, is by Larry "
                 + "Ewing and The GIMP. The desktop is Openbox, tint2, PCManFM, LXTerminal, dunst and "
@@ -1405,7 +1346,7 @@ public final class MainActivity extends Activity {
                 preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, true)
                         .putBoolean(ContainerRuntime.KEY_LOCK_NOTICE, false).apply();
                 refreshLockRows();
-                android.widget.Toast.makeText(this, "App lock is on: PocketDesk asks for your fingerprint "
+                android.widget.Toast.makeText(this, "App lock is on: PocketLinux asks for your fingerprint "
                         + "or PIN whenever it comes to the front", android.widget.Toast.LENGTH_LONG).show();
             } else {
                 appLockToggle.control.setChecked(false);
@@ -1441,52 +1382,6 @@ public final class MainActivity extends Activity {
                         + "and belongs to you. Nothing is uploaded anywhere.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
 
-        addAnswer(card, R.drawable.ic_home, "What is this computer for?",
-                "PocketDesk exists for one thing: to give a phone the computer that the desktop "
-                        + "AI apps need, so somebody with a phone and no PC can do real work with "
-                        + "them.\n\n"
-                        + "ChatGPT with Codex, Claude Desktop with Claude Code, Cursor and "
-                        + "Antigravity are desktop programs. They are built for Linux, macOS and "
-                        + "Windows, and their phone versions are chat windows: they cannot open "
-                        + "your folder, run your code, or change your files. The published Linux "
-                        + "builds are ARM64 — the same processor family as this phone. So the "
-                        + "missing piece was never the hardware. It was a Linux computer to run "
-                        + "them on. That is what this is.\n\n"
-                        + "WHAT YOU GET, AS A COMPUTER\n"
-                        + "\u2022 A desktop: a window manager with real windows you move, resize, "
-                        + "minimise and switch between; a panel with a clock, a tray and the open "
-                        + "windows; a menu of everything installed; and desktop icons\n"
-                        + "\u2022 A file manager with tabs, and the phone's own Download, Photos "
-                        + "and Documents folders inside it when you allow that\n"
-                        + "\u2022 A terminal, a text editor, an archive manager, a picture viewer, "
-                        + "a calculator, a task manager and a sound mixer\n"
-                        + "\u2022 Google Chrome, signed in, with extensions and downloads\n"
-                        + "\u2022 Sound out through the phone's speaker, and the phone's "
-                        + "microphone in\n"
-                        + "\u2022 Copy and paste both ways between the phone and the computer\n"
-                        + "\u2022 Software installed with apt from Ubuntu's own servers, and "
-                        + "downloaded .deb files installed by PocketDesk's own installer\n"
-                        + "\u2022 Files and sign-ins that stay exactly as you left them: closing "
-                        + "the desktop is closing a lid, not throwing the computer away\n\n"
-                        + "WHAT YOU GET, AS A PLACE TO BUILD\n"
-                        + "\u2022 Python, Node.js, Git, SQLite, ripgrep and a C/C++ compiler from "
-                        + "the first minute\n"
-                        + "\u2022 The four AI apps, each the publisher's own official Linux build, "
-                        + "with their agents able to read, write, run and test right here\n"
-                        + "\u2022 PocketDesk's own tools offered to those agents: a picture of the "
-                        + "screen with the words on it, and click, type, key and scroll — so an "
-                        + "agent can work the desktop, not only the files\n"
-                        + "\u2022 Android app development, and a real phone to test on: this one\n"
-                        + "\u2022 Windows programs built for ARM64, through Wine, as a separate "
-                        + "layer that cannot disturb the Linux side\n\n"
-                        + "WHAT IT IS NOT, SO NOTHING IS A SURPRISE\n"
-                        + "It is not a cloud PC — nothing leaves the phone. It is not an emulator "
-                        + "— these are ARM64 programs on an ARM64 processor. It is not a second "
-                        + "operating system and not dual boot — Android keeps running the phone "
-                        + "throughout. And it has no power over Android: it can see nothing of "
-                        + "your other apps, and neither can they see it.",
-                true);
-
         addAnswer(card, R.drawable.ic_desktop, "What exactly is this?",
                 "A real Ubuntu 24.04 LTS system, running on your phone's own processor, inside this "
                         + "app.\n\n"
@@ -1505,7 +1400,7 @@ public final class MainActivity extends Activity {
                         + "drawing), a sound card (sound is streamed to the phone's speaker instead), "
                         + "systemd-style background services, and any power over Android itself. The "
                         + "computer lives in this app's private storage and is removed with the app.",
-                false);
+                true);
 
         addAnswer(card, R.drawable.ic_terminal, "What can I actually build on this computer?",
                 "Everything below was checked against what really installs and runs on an ARM64 "
@@ -1519,35 +1414,23 @@ public final class MainActivity extends Activity {
                         + "with git, ripgrep, SQLite and a C/C++ compiler already installed\n"
                         + "• Scripts, data work, automation, APIs, bots\n"
                         + "• Git and GitHub over SSH or HTTPS\n\n"
-                        + "ANDROID APPS — end to end, on this phone\n"
+                        + "ANDROID APPS — yes, with one real limit\n"
                         + "Apps tab → Mobile app development installs Java 21, Gradle, adb, "
-                        + "fastboot, aapt2 and scrcpy. Kotlin and Java compile, and Gradle is set "
+                        + "fastboot, aapt and scrcpy. Kotlin and Java compile, and Gradle is set "
                         + "up for a 4 GB phone (no daemon, 1 GB heap).\n"
-                        + "aapt2 used to be the gap: Google publishes it for Intel Linux and not "
-                        + "for ARM64, and Android's build plugin downloads it from Maven, so the "
-                        + "build stopped there. Ubuntu builds its own aapt2 from the same source; "
-                        + "PocketDesk installs that and points Gradle at it "
-                        + "(android.aapt2FromMavenOverride), so the build finishes here.\n"
-                        + "Then you TEST it on a real phone — including this one. Android's "
-                        + "Wireless debugging listens on the phone's own network, and this "
-                        + "computer shares it, so 127.0.0.1 reaches the phone it is running on. "
-                        + "Desktop → Tools → Phone app testing walks you through it, and another "
+                        + "You can install and TEST an app on a real phone — including this one: "
+                        + "Android's Wireless debugging listens on the phone's own network, and "
+                        + "this computer shares it, so 127.0.0.1 reaches the phone it is running "
+                        + "on. Desktop → Tools → Phone app testing walks you through it. Another "
                         + "phone on the same Wi-Fi works the same way.\n"
-                        + "The AI apps here can do all of it themselves: PocketDesk gives their "
-                        + "agents phone tools as well as desktop ones — install an app, open it, "
-                        + "photograph the phone screen, read it as a list of named buttons, tap, "
-                        + "swipe, type, press a key, read logcat. \u201cBuild this, put it on my "
-                        + "phone, open it and tell me what is broken\u201d is one instruction.\n\n"
-                        + "iPHONE APPS — written and run here, compiled elsewhere\n"
-                        + "Compiling and signing an iOS app needs Xcode, and Xcode runs only on "
-                        + "macOS. That is Apple's rule and no phone changes it. What does work, "
-                        + "with no Mac anywhere: write the app here as React Native through Expo "
-                        + "(Terminal: pocketdesk-mobile new expo), run \u201cnpx expo start\u201d, "
-                        + "and open it on a real iPhone by scanning the code with Expo Go — the "
-                        + "code is served from this computer, the app runs on the iPhone. The same "
-                        + "project runs on this Android phone at the same time. When it is time "
-                        + "for TestFlight or the App Store, Expo's build service compiles it on "
-                        + "their Macs from this project, which needs an Apple Developer account.\n\n"
+                        + "The limit: Google publishes no ARM64 Linux build of aapt2, so a full "
+                        + "Android Gradle build may stop there. Compiling, testing on a device, "
+                        + "and everything around it works; that one tool is the gap, and it is "
+                        + "Google's to close.\n\n"
+                        + "iOS APPS — no, and no trick changes it\n"
+                        + "Xcode, the iOS Simulator and SwiftUI previews are macOS-only programs "
+                        + "that need Apple's own frameworks. They cannot run here or on any "
+                        + "phone. Building an iOS app needs a Mac, or a build service.\n\n"
                         + "NOT POSSIBLE HERE\n"
                         + "• An Android emulator — it needs hardware virtualisation, which no app "
                         + "on an unrooted phone can have. A real phone is the test device.\n"
@@ -1561,54 +1444,40 @@ public final class MainActivity extends Activity {
                         + "the honest answer is a machine with more memory, and the AI agents "
                         + "here can drive one over SSH.", false);
 
-        addAnswer(card, R.drawable.ic_download, "Where do my downloads go?",
-                "Into the computer's own Downloads folder, and you choose whether a copy also "
-                        + "goes to the phone.\n\n"
-                        + "Anything downloaded inside the computer — a file an AI app writes for "
-                        + "you, an app you just built, a document from the browser — lands in the "
-                        + "computer's Downloads folder first. That folder is inside PocketDesk's "
-                        + "private storage: nothing else on the phone can read it, and it needs no "
-                        + "permission at all. For most files that is the whole story.\n\n"
-                        + "Settings → Files → Where downloads go has three answers:\n"
-                        + "\u2022 This computer — keep it here. The default.\n"
-                        + "\u2022 The phone as well — a copy also goes to the phone's own Download "
-                        + "folder, where every app on the phone can open it: send it in a "
-                        + "messaging app, open it in the phone's PDF reader, install an APK you "
-                        + "built. This needs Phone files to be on, because that is Android's own "
-                        + "permission for reaching the phone's storage.\n"
-                        + "\u2022 Ask me each time — a small dialog as each file arrives.\n\n"
-                        + "It is a copy, never a move: a file sent to the phone and then deleted "
-                        + "there is still here. The same setting is in the desktop under Tools → "
-                        + "Where downloads go, and a change takes effect on the next file rather "
-                        + "than at the next start.\n\n"
-                        + "PocketDesk also notices what arrived. A Windows program built for ARM64 "
-                        + "opens the installer by itself; one built only for Intel says so instead "
-                        + "of leaving you to find out; a .deb says it can be installed. Half-"
-                        + "downloaded files are ignored until they are finished.",
-                false);
-
-        addAnswer(card, R.drawable.ic_desktop, "Can it run Windows apps too?",
-                "Yes, some of them — and the app tells you which before you download anything.\n\n"
-                        + "Add \u201cWindows apps support\u201d from the Apps tab (about 900 MB). It "
-                        + "installs Wine, which lets this computer run Windows programs. Then, inside "
-                        + "the desktop: Tools \u2192 Windows apps \u2192 pick one, download it in the "
-                        + "browser, and Install a downloaded app takes it from there.\n\n"
-                        + "The rule is the processor, and it is checked FIRST, in one second, before "
-                        + "anything is unpacked:\n"
-                        + "\u2022 Built for ARM64 \u2014 this phone's own processor \u2192 it "
-                        + "installs\n"
-                        + "\u2022 Built only for Intel and AMD \u2192 refused, and it says why. "
-                        + "Running it would mean translating every instruction, which this phone "
-                        + "cannot do at a usable speed\n\n"
-                        + "Cursor and Antigravity publish ARM64 Windows builds; Claude and ChatGPT "
-                        + "ship theirs as Microsoft Store packages, which PocketDesk opens and takes "
-                        + "the ARM64 part out of \u2014 that one is more likely to fail.\n\n"
-                        + "Be honest with yourself about this: it is EXPERIMENTAL. A Windows app may "
-                        + "open, may look wrong, or may not start at all. Nothing on the Linux side "
-                        + "changes either way \u2014 separate folder, separate launcher, and removing "
-                        + "Windows apps support removes all of it. And all four AI apps already have "
-                        + "Linux ARM64 builds that run faster here, so the Windows route is for "
-                        + "programs that have no Linux version at all.", false);
+        addAnswer(card, R.drawable.ic_desktop, "Why not Windows apps, or a Windows layer?",
+                "Because on this hardware it cannot be done, and where it can be done it is worse "
+                        + "than what is already here. PocketLinux carried a Windows compatibility "
+                        + "layer for several releases; it was removed on purpose, and this is the "
+                        + "whole reasoning.\n\n"
+                        + "THREE WALLS, ANY ONE OF WHICH IS ENOUGH\n"
+                        + "1. Real Windows needs a virtual machine, and Android's own "
+                        + "virtualisation framework is documented as being for privileged and "
+                        + "platform apps \u2014 an installed app cannot start one.\n"
+                        + "2. A compatibility layer instead: the one project that ran Windows "
+                        + "programs on ARM64 dropped its Android support.\n"
+                        + "3. This container already traces every system call with ptrace. An x86 "
+                        + "translator on top of that is the known-broken combination, and it "
+                        + "reports exactly that when tried.\n\n"
+                        + "AND EVEN WHERE IT WORKS, IT LOSES\n"
+                        + "The two most important apps ship for Windows as store packages, which "
+                        + "a compatibility layer installs without their package identity. Without "
+                        + "it, the sign-in that comes back through a custom link may never reach "
+                        + "the app, and the app's own updater stops working \u2014 so every update "
+                        + "becomes a manual download, for ever. These are Chromium apps, the "
+                        + "hardest kind to translate: they lose their sandbox and gain a whole "
+                        + "second system's worth of processes, roughly a third more memory on a "
+                        + "phone that has under four gigabytes.\n\n"
+                        + "THE FEATURE PEOPLE WANT IT FOR IS THE FIRST TO BREAK\n"
+                        + "The one thing the Windows builds have that the Linux builds do not is "
+                        + "the apps' own Computer Use. It works by driving Windows programs with "
+                        + "Windows automation \u2014 and inside a compatibility layer there are no "
+                        + "Windows programs to drive. PocketLinux supplies that capability itself "
+                        + "instead: appshot with the words on screen, click, type, key and scroll, "
+                        + "offered to any AI agent here, natively.\n\n"
+                        + "ALL FOUR APPS SHIP FOR LINUX ARM64 OFFICIALLY. That is the sentence "
+                        + "that ends the argument: there is nothing to gain and a great deal to "
+                        + "lose. The Linux builds are native, auto-updating, and on this processor "
+                        + "better supported than the Windows ones.", false);
 
         addAnswer(card, R.drawable.ic_info, "Do Mac, Windows and Linux get the same features?",
                 "No, and the pattern is worth knowing before you choose anything.\n\n"
@@ -1627,7 +1496,7 @@ public final class MainActivity extends Activity {
                         + "\u2022 Claude's Dictation, and Cowork, which needs hardware "
                         + "virtualisation no phone gives an app\n"
                         + "\u2022 Xcode and the iOS Simulator \u2014 macOS only, always\n\n"
-                        + "PocketDesk answers the first two itself: appshot, and click, type, key "
+                        + "PocketLinux answers the first two itself: appshot, and click, type, key "
                         + "and scroll, given to any AI agent here over MCP, plus Super+Space. Those "
                         + "are this app's own, not the publishers' \u2014 the capability is the "
                         + "same, the feature name is not.\n\n"
@@ -1642,7 +1511,7 @@ public final class MainActivity extends Activity {
                         + "by long-pressing the wallpaper.\n"
                         + "• tint2 is the bar along the bottom: the Apps button, the open windows, this "
                         + "phone's battery, temperature, free memory and free storage, the clock, and "
-                        + "the PocketDesk mark that shows the desktop.\n"
+                        + "the PocketLinux mark that shows the desktop.\n"
                         + "• PCManFM paints the wallpaper and the desktop icons, and is the Files "
                         + "window.\n"
                         + "• LXTerminal is the terminal, dunst shows the messages, PulseAudio carries "
@@ -1655,8 +1524,9 @@ public final class MainActivity extends Activity {
                         + "own documentation says.", false);
 
         addAnswer(card, R.drawable.ic_phone, "Is it all on my phone?",
-                "Yes. The entire Linux computer runs locally on this phone — no cloud, no "
-                        + "server, no PocketDesk account, no tracking or analytics of any kind. "
+                "Yes. The Linux computer and every app on it run "
+                        + "locally on this phone — no cloud, no "
+                        + "server, no PocketLinux account, no tracking or analytics of any kind. "
                         + "Android's own cloud backup is switched off for this app. The internet is "
                         + "used only to download Ubuntu, the apps you choose, and whatever you "
                         + "yourself open in the browser or an AI app.", false);
@@ -1679,26 +1549,30 @@ public final class MainActivity extends Activity {
                         + "Phone folder inside the computer. In ChatGPT's attach dialog, the "
                         + "browser's upload dialog or Files, pick Phone in the left-hand list, then "
                         + "Download, DCIM for photos, or Documents. The computer's own files are "
-                        + "Projects and Downloads, right beside it — two folders, your choice each "
-                        + "time. Saving into Phone puts the file on the phone.", false);
+                        + "Projects and Computer Downloads, right beside it. Saving into Phone puts "
+                        + "the file on the phone. Settings → Data and files → Downloads go to also "
+                        + "lets every new download ask, stay private, or go to Phone Downloads.", false);
 
         addAnswer(card, R.drawable.ic_lock, "Are my logins safe?",
                 "When you sign in to ChatGPT or Claude inside Linux, the login is stored by that "
                         + "app inside /home/coder — which is this app's private storage on "
-                        + "this phone. Android lets no other app read it, and PocketDesk itself "
+                        + "this phone. Android lets no other app read it, and PocketLinux itself "
                         + "never sees, stores or sends your passwords. They travel only to "
                         + "OpenAI's or Anthropic's own servers, exactly as on any computer.", false);
 
         addAnswer(card, R.drawable.ic_storage, "Where do my files go?",
                 "Inside the computer:\n"
                         + "• Projects — /home/coder/Projects, your work.\n"
-                        + "• Downloads — /home/coder/Downloads, what the browser and the apps save. "
-                        + "It stays inside the computer, where no other app on the phone can read it.\n"
+                        + "• Computer Downloads — /home/coder/Downloads, private to PocketLinux.\n"
+                        + "• Phone Downloads — /home/coder/Phone/Download/PocketLinux, the phone's "
+                        + "public Download folder when Phone files permission is on.\n"
                         + "• Shared — /home/coder/Shared, the way out: this one folder also appears in "
                         + "the phone's Files app under Android/data/com.pocketdesk/files/Shared. Save "
                         + "or copy a file there and the phone can open it.\n"
                         + "• Phone — the phone's own storage, once Phone files is on in Settings → "
                         + "Permissions. Saving there puts the file on the phone itself.\n\n"
+                        + "Settings → Data and files → Downloads go to chooses Ask every time, "
+                        + "Computer, or Phone. Changing it never moves an existing file.\n\n"
                         + "The Linux system itself lives in this app's private storage "
                         + "(/data/data/com.pocketdesk/files/ubuntu-rootfs), which no other app can open.",
                 false);
@@ -1708,7 +1582,7 @@ public final class MainActivity extends Activity {
                         + "the four official AI desktop apps properly — the one thing it is meant to be "
                         + "best at — and everything they need is already installed: the Ubuntu 24.04 "
                         + "LTS desktop, Google Chrome, sound, a file manager, a terminal, on-screen "
-                        + "messages, your phone's own files, a text editor, an archive tool, a picture "
+                        + "messages, the Software catalogue, your phone's own files, a text editor, an archive tool, a picture "
                         + "viewer, a calculator, a task manager, screenshots, colour emoji and Indian "
                         + "and other scripts, the manual pages, and the developer tools an AI coding "
                         + "agent expects from its first minute — a C/C++ compiler, Python 3 with its "
@@ -1730,13 +1604,13 @@ public final class MainActivity extends Activity {
         addAnswer(card, R.drawable.ic_shield, "Is there virus and malware protection?",
                 "Yes, and it is on by default — the same layered kind a phone uses, not a "
                         + "scanner you have to run.\n\n"
-                        + "• Google Play Protect scans PocketDesk itself on your phone: when it is "
+                        + "• Google Play Protect scans PocketLinux itself on your phone: when it is "
                         + "installed and again in the background, as it does with every Android app, "
                         + "sideloaded ones included. What it cannot do is look inside the Linux "
                         + "computer — Android keeps every app's private files private, and that same "
                         + "rule is what stops any other app on this phone reading yours. So the "
-                        + "checking inside the computer is PocketDesk's job, and these are it.\n"
-                        + "• Anything you download and install yourself goes through PocketDesk's own "
+                        + "checking inside the computer is PocketLinux's job, and these are it.\n"
+                        + "• Anything you download and install yourself goes through PocketLinux's own "
                         + "installer first: the processor it was built for, the space it needs against "
                         + "the space this phone has, the software it depends on, and a plain warning "
                         + "that a downloaded file is not signed. See “Can I install an app I "
@@ -1757,16 +1631,16 @@ public final class MainActivity extends Activity {
                         + "files.\n\n"
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
-                        + "need, to look for Windows viruses that cannot run here anyway.", false);
+                        + "need, to look for viruses that cannot run on Linux anyway.", false);
 
         addAnswer(card, R.drawable.ic_lock, "If something bad got in, how far could it get?",
                 "Worth knowing exactly, because the honest answer is what makes the rules above "
                         + "worth following.\n\n"
-                        + "Everything in the Linux computer runs as PocketDesk's own Android user, "
-                        + "inside PocketDesk's private storage. Android gives every app its own user "
+                        + "Everything in the Linux computer runs as PocketLinux's own Android user, "
+                        + "inside PocketLinux's private storage. Android gives every app its own user "
                         + "id and keeps them apart, so nothing in there can read another app's data, "
                         + "change the phone's system, or become root on the phone. There is no way "
-                        + "out of that box, and uninstalling PocketDesk takes all of it with you.\n\n"
+                        + "out of that box, and uninstalling PocketLinux takes all of it with you.\n\n"
                         + "What a bad Linux app could reach: what is inside the computer — your files "
                         + "there and the sign-ins of the AI apps installed there, which are files in "
                         + "the same home folder — and, only while Phone files is on, your phone's "
@@ -1776,7 +1650,7 @@ public final class MainActivity extends Activity {
                         + "off again when you are not using it.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
                         + "messages, anything outside that shared storage, the camera, your location "
-                        + "or your contacts. PocketDesk holds no permission for any of them, so "
+                        + "or your contacts. PocketLinux holds no permission for any of them, so "
                         + "nothing inside can ask for one.\n\n"
                         + "The microphone is the one exception, and it is yours to give: Screen → "
                         + "Microphone on the desktop hands it over, the phone asks you the first "
@@ -1788,7 +1662,7 @@ public final class MainActivity extends Activity {
                         + "anyway, and turn Phone files off when you are not using it.", false);
 
         addAnswer(card, R.drawable.ic_download, "Can I install an app I downloaded myself?",
-                "Yes — it works like tapping an APK from a website on Android, and PocketDesk "
+                "Yes — it works like tapping an APK from a website on Android, and PocketLinux "
                         + "adds the installer screen that a Linux desktop normally does not have.\n\n"
                         + "In the desktop: download the app's Linux build for ARM64 (a .deb file) in "
                         + "Chrome, then open it — Chrome's download bar, or the Downloads folder. The "
@@ -1866,17 +1740,15 @@ public final class MainActivity extends Activity {
                         + "why it last stopped.", false);
 
         addAnswer(card, R.drawable.ic_stop, "Why did an app close by itself, or the desktop go back to Home?",
-                "Almost always memory. The AI desktop apps are full computer programs — "
-                        + "ChatGPT alone is 1.3 GB — and on a 4 GB phone the system ends the "
-                        + "biggest program when memory runs out: sometimes the app, sometimes the "
-                        + "whole desktop, which then drops you back on this screen. So: one AI app "
-                        + "at a time, and the browser closed when you are done with it. PocketDesk "
-                        + "now helps: an AI app started while memory is short closes the browser's "
-                        + "windows first, and a sign-in closes the browser once it has handed the "
-                        + "result back.\n\nPocketDesk itself never closes an app that has a window "
-                        + "open. The Home tab says when and why the computer last stopped, and an app "
-                        + "that the phone closed says so on the desktop. Window → Force close ends "
-                        + "an app that has stopped answering.", false);
+                "A crash can come from the app, the desktop connection, memory pressure or an "
+                        + "Android process stop. Exit 137 means SIGKILL; it does not identify who "
+                        + "stopped it. On a 4 GB phone, keep one AI app open and close browser tabs "
+                        + "when you have finished using them.\n\n"
+                        + "PocketLinux preserves a running app during repeated taps and sign-in "
+                        + "callbacks. If available memory is very low, a new heavy Linux app waits "
+                        + "until you free memory and retry. The browser stays open. Settings → Linux "
+                        + "app reports has startup and exit output; Home records desktop stops. "
+                        + "Saved files remain, but unsaved work may need recovery.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Live voice, camera and screen share \u2014 what works?",
                 "Voice: YES. Now that the microphone works, a live voice conversation runs in the "
@@ -1893,7 +1765,7 @@ public final class MainActivity extends Activity {
                         + "app can, on any phone. It is not a limit of this app.\n\n"
                         + "What you get instead: Screen \u2192 Take a photo into the computer hands "
                         + "you the phone's own camera app and drops the picture straight into the "
-                        + "computer's Pictures folder, ready to attach. PocketDesk itself holds no "
+                        + "computer's Pictures folder, ready to attach. PocketLinux itself holds no "
                         + "camera permission at all \u2014 the Privacy monitor shows that.", false);
 
         addAnswer(card, R.drawable.ic_volume, "Can the computer hear me? (microphone)",
@@ -1910,11 +1782,11 @@ public final class MainActivity extends Activity {
                         + "• It stops the instant you leave the desktop screen — to another app, to "
                         + "the lock screen, to Home. The screen says so when it does.\n\n"
                         + "The sound goes straight into the computer through this app's own private "
-                        + "storage. It is not recorded to a file, PocketDesk sends it nowhere, and "
+                        + "storage. It is not recorded to a file, PocketLinux sends it nowhere, and "
                         + "Android shows its own microphone dot the whole time it is on.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can the AI see the screen and use the computer?",
-                "Yes — PocketDesk provides that itself, because the publishers' own versions of it "
+                "Yes — PocketLinux provides that itself, because the publishers' own versions of it "
                         + "do not exist on Linux. Codex's Appshots are a macOS feature, and Claude "
                         + "Desktop's Computer Use is not in its Linux beta. Neither is coming to a "
                         + "phone, so this app builds the capability from the desktop's own parts.\n\n"
@@ -1933,14 +1805,11 @@ public final class MainActivity extends Activity {
                         + "computer, so the screen never goes anywhere for that.", false);
 
         addAnswer(card, R.drawable.ic_apps, "How many apps can I have open at once?",
-                "One AI app at a time, and about three light windows beside it — Files, the "
-                        + "Terminal and one browser page. Four windows in all. This phone has 4 GB of "
-                        + "memory: Android keeps roughly a third of it, the Linux desktop uses about "
-                        + "120 MB, and one AI app uses 0.9–1.3 GB — ChatGPT alone is about 1.3 GB — so "
-                        + "there is no room for a second one, and the phone would close one of them "
-                        + "without asking. Nothing is lost when it does: your conversations are in "
-                        + "your account, not in the window. PocketDesk closes the browser for you when "
-                        + "an AI app starts and memory is short, and says so.\n\n"
+                "On a 4 GB phone, start with one AI app and only the browser tabs or tools you "
+                        + "need. Memory use varies by task; a fixed number of windows cannot guarantee "
+                        + "that everything fits. Android may stop a process under memory pressure. "
+                        + "Save your work regularly. PocketLinux checks available memory before a new "
+                        + "heavy Linux launch and leaves existing apps and sign-in pages open.\n\n"
                         + "Every open window gets a button on the bar at the bottom of the desktop — "
                         + "about four of them fit across a portrait screen, more in landscape. Tap one "
                         + "to bring it forward, hold it to minimise it, and tap the clock for the full "
@@ -1953,7 +1822,7 @@ public final class MainActivity extends Activity {
                 "No account and no separate password — the Linux computer is yours, "
                         + "protected by the phone itself. If you want a lock, turn on App lock in "
                         + "Settings: it asks for the phone's own fingerprint or PIN right after the "
-                        + "opening screen when you start PocketDesk, and again each time it comes "
+                        + "opening screen when you start PocketLinux, and again each time it comes "
                         + "back to the front, the desktop included. Inside Linux the user is ‘coder’ "
                         + "with no password, which is fine because nothing outside this app can "
                         + "reach it.", false);
@@ -1982,7 +1851,7 @@ public final class MainActivity extends Activity {
                         + "on the desktop screen. For speed: one AI app at a time, close the "
                         + "browser when done, Desktop text size Compact, and keep the phone cool.", false);
 
-        addAnswer(card, R.drawable.ic_delete, "What if I uninstall PocketDesk?",
+        addAnswer(card, R.drawable.ic_delete, "What if I uninstall PocketLinux?",
                 "Android deletes the whole Linux computer with the app — the system, the AI apps, "
                         + "their sign-ins and every file inside it. The Shared folder goes too: it "
                         + "belongs to this app as well, even though the phone can see it. Nothing "
@@ -1998,7 +1867,9 @@ public final class MainActivity extends Activity {
                 "No, on any phone: Windows and macOS need a virtual machine, and Android keeps "
                         + "hardware virtualisation away from apps; emulation would be ten to fifty "
                         + "times slower than the phone, and macOS is licensed only for Apple's own "
-                        + "computers. The Linux only, on purpose card above has the whole answer. "
+                        + "computers. \u201cWhy Linux and not Windows or macOS\u201d on the Home "
+                        + "tab, and \u201cWhy not Windows apps, or a Windows layer?\u201d above, "
+                        + "have the whole answer with its evidence. "
                         + "The AI desktop apps are the same programs on all three systems, so "
                         + "nothing is missing here that a Windows edition would add. For Windows "
                         + "or macOS itself, a cloud PC used over remote desktop is the real route.", false);
@@ -2028,8 +1899,8 @@ public final class MainActivity extends Activity {
                         + "processor and open more slowly than on a PC, and one heavy app at a time is the "
                         + "comfortable way to work. Windows and macOS cannot run on a phone, and "
                         + "neither can anything that needs a virtual machine. Your AI accounts' "
-                        + "own plans and limits still apply; PocketDesk cannot change them. "
-                        + "PocketDesk is provided as is: it is a computer inside an app, not a "
+                        + "own plans and limits still apply; PocketLinux cannot change them. "
+                        + "PocketLinux is provided as is: it is a computer inside an app, not a "
                         + "backup service — copy anything precious onto the phone itself, because "
                         + "uninstalling the app deletes everything that belongs to it, the Shared "
                         + "folder included.", false);
@@ -2070,6 +1941,49 @@ public final class MainActivity extends Activity {
 
     private static final String[] CAP_LABELS = {"No limit", "250 MB", "500 MB", "1 GB", "2 GB", "5 GB"};
     private static final int[] CAP_VALUES = {0, 250, 500, 1000, 2000, 5000};
+
+    private static final String[] DOWNLOAD_LABELS = {
+            "Ask every time · recommended", "Computer Downloads · private", "Phone Downloads · Android"};
+    private static final String[] DOWNLOAD_VALUES = {
+            ContainerRuntime.DOWNLOAD_ASK, ContainerRuntime.DOWNLOAD_COMPUTER,
+            ContainerRuntime.DOWNLOAD_PHONE};
+    private static final int[] DOWNLOAD_ICONS = {
+            R.drawable.ic_download, R.drawable.ic_desktop, R.drawable.ic_phone};
+
+    private String downloadTargetValue() {
+        String value = ContainerRuntime.normaliseDownloadTarget(preferences.getString(
+                ContainerRuntime.KEY_DOWNLOAD_TARGET, ContainerRuntime.DOWNLOAD_ASK));
+        String label = labelOf(DOWNLOAD_LABELS, DOWNLOAD_VALUES, value);
+        if (ContainerRuntime.DOWNLOAD_PHONE.equals(value) && !PhoneFiles.allowed(this)) {
+            label += " · allow Phone files first";
+        }
+        if (LinuxService.isDesktopRunning()) label += " · applies next start";
+        return label;
+    }
+
+    private void chooseDownloadTarget() {
+        String current = ContainerRuntime.normaliseDownloadTarget(preferences.getString(
+                ContainerRuntime.KEY_DOWNLOAD_TARGET, ContainerRuntime.DOWNLOAD_ASK));
+        int selected = 0;
+        for (int i = 0; i < DOWNLOAD_VALUES.length; i++) {
+            if (DOWNLOAD_VALUES[i].equals(current)) selected = i;
+        }
+        showChooser("Where new downloads go", DOWNLOAD_LABELS, DOWNLOAD_ICONS, selected, index -> {
+            String picked = DOWNLOAD_VALUES[index];
+            preferences.edit().putString(ContainerRuntime.KEY_DOWNLOAD_TARGET, picked).apply();
+            if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());
+            if (ContainerRuntime.DOWNLOAD_PHONE.equals(picked) && !PhoneFiles.allowed(this)) {
+                dialogBuilder()
+                        .setTitle("Allow Phone Downloads?")
+                        .setMessage("Android's All files access is required to save into the phone's "
+                                + "public Download/PocketLinux folder. Until it is allowed, the desktop "
+                                + "falls back to Ask every time and keeps the file private.")
+                        .setNegativeButton("Later", null)
+                        .setPositiveButton("Allow", (d, w) -> PhoneFiles.request(this))
+                        .show();
+            }
+        });
+    }
 
     private String dataCapLabel() {
         int cap = DataBudget.capMb(preferences);
@@ -2141,50 +2055,6 @@ public final class MainActivity extends Activity {
     private static final String[] SCALE_LABELS = {"Compact · PC-like", "Normal", "Large"};
     private static final int[] SCALE_VALUES = {96, 120, 144};
 
-    /**
-     * Where a downloaded file goes.
-     *
-     * The computer's own Downloads is the default because it is the answer that always works:
-     * it is inside PocketDesk's private storage, no other app on the phone can read it, and it
-     * needs no permission at all. The phone's Download folder is the one every other app on the
-     * phone can open, which is exactly why it needs Phone files to be on first.
-     */
-    private static final String[] DOWNLOAD_LABELS = {
-            "This computer", "The phone as well", "Ask me each time"};
-    private static final String[] DOWNLOAD_VALUES = {
-            ContainerRuntime.DOWNLOAD_TO_COMPUTER,
-            ContainerRuntime.DOWNLOAD_TO_PHONE,
-            ContainerRuntime.DOWNLOAD_TO_ASK};
-    private static final int[] DOWNLOAD_ICONS = {
-            R.drawable.ic_desktop, R.drawable.ic_phone, R.drawable.ic_help};
-
-    private void chooseDownloadTo() {
-        String current = ContainerRuntime.downloadTo(this);
-        int selected = 0;
-        for (int i = 0; i < DOWNLOAD_VALUES.length; i++) {
-            if (DOWNLOAD_VALUES[i].equals(current)) selected = i;
-        }
-        showChooser("Where downloads go", DOWNLOAD_LABELS, DOWNLOAD_ICONS, selected, index -> {
-            ContainerRuntime.setDownloadTo(this, DOWNLOAD_VALUES[index]);
-            if (downloadToRow != null) downloadToRow.setValue(DOWNLOAD_LABELS[index]);
-            if (ContainerRuntime.DOWNLOAD_TO_COMPUTER.equals(DOWNLOAD_VALUES[index])
-                    || PhoneFiles.allowed(this)) {
-                return;
-            }
-            // Choosing the phone without the permission that reaches it would fail silently at
-            // the first download, which is the worst moment to find out.
-            dialogBuilder()
-                    .setTitle("Phone files is off")
-                    .setMessage("A copy can only go to the phone's Download folder while Phone "
-                            + "files is on: that is Android's own permission for reaching the "
-                            + "phone's storage. Until it is on, downloads stay in the computer "
-                            + "and PocketDesk says so each time.")
-                    .setNegativeButton("Later", null)
-                    .setPositiveButton("Turn it on", (d, w) -> PhoneFiles.request(this))
-                    .show();
-        });
-    }
-
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];
         return labels[0];
@@ -2221,6 +2091,75 @@ public final class MainActivity extends Activity {
             preferences.edit().putInt(ContainerRuntime.KEY_SESSION_MINUTES, TIMER_VALUES[index]).apply();
             autoStopRow.setValue(TIMER_LABELS[index]);
         });
+    }
+
+    private void runProcessPolicy(String action) {
+        if (AndroidProcessPolicy.isBusy()) {
+            showProcessPolicyWait(null);
+            return;
+        }
+        // The worker retains the application only. Closing or rotating this screen never
+        // cancels an in-flight write halfway through, nor opens a dialog under App lock.
+        final java.lang.ref.WeakReference<MainActivity> owner = new java.lang.ref.WeakReference<>(this);
+        boolean accepted = AndroidProcessPolicy.run(getApplicationContext(), action, result -> {
+            MainActivity activity = owner.get();
+            if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+            if (activity.processPolicyRow != null)
+                activity.processPolicyRow.setValue(AndroidProcessPolicy.summary(activity));
+            if (activity.processPolicyDialog != null) activity.processPolicyDialog.dismiss();
+            activity.processPolicyDialog = null;
+            if (activity.started && !activity.introShowing && !AppLock.showing(activity.shell)
+                    && !AppLock.isLocked(activity)) activity.showProcessPolicyResult(result);
+        });
+        if (accepted) {
+            if (processPolicyRow != null) processPolicyRow.setValue(AndroidProcessPolicy.summary(this));
+            showProcessPolicyWait(action);
+        }
+    }
+
+    private void showProcessPolicyWait(String action) {
+        if (processPolicyDialog != null) processPolicyDialog.dismiss();
+        String task = "apply".equals(action) ? "Applying and verifying the process limit."
+                : "restore".equals(action) ? "Restoring and verifying the previous process limit."
+                : "Checking the paired phone.";
+        processPolicyDialog = dialogBuilder().setTitle("Android process limit")
+                .setMessage(task + " This can take up to 45 seconds. "
+                        + "The Linux computer keeps running; closing this dialog lets the check finish.")
+                .setNegativeButton("Close", null).show();
+    }
+
+    private void showProcessPolicyResult(AndroidProcessPolicy.Result result) {
+        String state = !result.ok || result.enabled == null ? "Unknown — check again to verify"
+                : result.enabled ? "Active" : "Relaxed";
+        String message = result.message + "\n\nAndroid child-process limit: " + state
+                + "\n\nApply relaxes Android's child-process limit for all apps on this phone. "
+                + "It can help keep the Linux computer running when several child processes are open, "
+                + "but can increase battery and RAM use. Android's memory and thermal protection "
+                + "remain active; this does not guarantee that Android will never stop the computer. "
+                + "PocketLinux saves the previous value so Restore can put it back. "
+                + "Pairing alone does not change this setting.";
+        if (!result.paired || !result.sameDevice) message += "\n\nTurn on this phone's Wireless debugging. "
+                + "Inside the desktop, Tools → Phone app testing has Pair and Connect. "
+                + "If already paired, use Connect with the current Wireless debugging port. "
+                + "A different paired phone cannot change this device's limit.";
+        AlertDialog.Builder builder = dialogBuilder().setTitle("Android process limit")
+                .setMessage(message).setNegativeButton("Close", null);
+        if (result.canApply()) {
+            builder.setPositiveButton("Apply", (dialog, which) -> runProcessPolicy("apply"));
+        } else {
+            builder.setPositiveButton("Check again", (dialog, which) -> runProcessPolicy("status"));
+        }
+        if (result.canRestore()) {
+            builder.setNeutralButton("Restore", (dialog, which) -> runProcessPolicy("restore"));
+        } else if (!result.paired || !result.sameDevice) {
+            builder.setNeutralButton("Developer settings", (dialog, which) -> {
+                if (!launch(new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)))
+                    launch(new Intent(Settings.ACTION_SETTINGS));
+            });
+        } else if (result.canApply()) {
+            builder.setNeutralButton("Check again", (dialog, which) -> runProcessPolicy("status"));
+        }
+        processPolicyDialog = builder.show();
     }
 
     /** Bigger type on the Linux desktop, without shrinking the picture. */
@@ -2424,7 +2363,7 @@ public final class MainActivity extends Activity {
             if (!entry.neverAsked) target.append("  \u2014  ").append(entry.state());
             target.append('\n').append("     ").append(entry.purpose).append("\n\n");
         }
-        String text = "What PocketDesk holds right now\n\n" + held
+        String text = "What PocketLinux holds right now\n\n" + held
                 + "What it never asks for\n\n" + never
                 + "A filled circle is on, an empty one is off, a cross means the app cannot ask "
                 + "at all \u2014 the permission is not in the app, so no dialog for it exists.\n\n"
@@ -2464,12 +2403,104 @@ public final class MainActivity extends Activity {
                             (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     if (board != null) {
                         board.setPrimaryClip(android.content.ClipData.newPlainText(
-                                "PocketDesk error report", report));
+                                "PocketLinux error report", report));
                         android.widget.Toast.makeText(this, "Copied. Paste it wherever you are "
                                 + "asking for help.", android.widget.Toast.LENGTH_LONG).show();
                     }
                 })
                 .show();
+    }
+
+
+
+    private void showLinuxAppReports() {
+        final String[] names = {"ChatGPT", "Chrome", "Browser sign-in handoff", "Claude", "Cursor",
+                "Antigravity", "Desktop session", "Previous desktop session", "Runtime and viewer"};
+        final String[] files = {"chatgpt.log", "google-chrome.log", "browser-handoff.log", "claude-desktop.log",
+                "cursor.log", "antigravity.log", "desktop-session.log", "desktop-session.previous.log", "runtime-events.log"};
+        dialogBuilder().setTitle("Linux app reports").setItems(names, (dialog, index) -> {
+            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this),
+                    "home/coder/.pocketdesk/logs");
+            java.io.File reportFile = index == files.length - 1 ? RuntimeDiagnostics.file(this)
+                    : new java.io.File(folder, files[index]);
+            String output = readReportTail(reportFile);
+            if (output.isEmpty()) output = "No startup report yet. Open this Linux app once, then check here.";
+            if (index < 6) {
+                long desktopOpenedAt = preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L);
+                output = DiagnosticReport.ageNotice(reportFile.lastModified(), desktopOpenedAt) + output;
+                java.io.File failureFile = new java.io.File(folder, files[index] + ".failure");
+                String failure = readReportTail(failureFile);
+                if (!failure.isEmpty()) {
+                    output += "\n\n=== " + names[index] + " · retained failure ===\n"
+                            + DiagnosticReport.failureNotice(failureFile.lastModified()) + failure;
+                }
+            }
+            // Old launcher versions could echo OAuth URLs. Redact their queries when displaying
+            // and copying too, so existing reports do not expose sign-in credentials.
+            output = DiagnosticReport.redact(output);
+            final String report = "PocketLinux " + VERSION + " · " + names[index] + " (Linux)\n\n" + output;
+            dialogBuilder().setTitle(names[index] + " · Linux report").setMessage(report)
+                    .setNegativeButton("Close", null)
+                    .setPositiveButton("Copy", (entry, which) -> {
+                        android.content.ClipboardManager board =
+                                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (board != null) {
+                            board.setPrimaryClip(android.content.ClipData.newPlainText(
+                                    "PocketLinux Linux app report", report));
+                            android.widget.Toast.makeText(this, "Linux app report copied.", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                    }).show();
+        }).setNegativeButton("Close", null).setPositiveButton("Copy all", (dialog, which) -> {
+            StringBuilder combined = new StringBuilder("PocketLinux " + VERSION + " | Android "
+                    + android.os.Build.VERSION.RELEASE + " | " + android.os.Build.MODEL + "\n");
+            String reason = preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON, "");
+            if (reason != null && !reason.isEmpty()) combined.append("Last stop: ").append(reason).append('\n');
+            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/logs");
+            String[] reports = new String[files.length];
+            String[] failures = new String[6];
+            long[] modifiedAt = new long[6];
+            long[] failureModifiedAt = new long[6];
+            for (int i = 0; i < files.length; i++) {
+                java.io.File reportFile = i == files.length - 1 ? RuntimeDiagnostics.file(this)
+                        : new java.io.File(folder, files[i]);
+                reports[i] = readReportTail(reportFile);
+                if (i < 6) {
+                    modifiedAt[i] = reportFile.lastModified();
+                    java.io.File failureFile = new java.io.File(folder, files[i] + ".failure");
+                    failures[i] = readReportTail(failureFile);
+                    failureModifiedAt[i] = failureFile.lastModified();
+                }
+            }
+            String report = DiagnosticReport.combine(combined.toString(), names, reports, failures,
+                    modifiedAt, failureModifiedAt, preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L));
+            android.content.ClipboardManager board = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (board != null) {
+                board.setPrimaryClip(android.content.ClipData.newPlainText("PocketLinux Linux reports", report));
+                android.widget.Toast.makeText(this, "Linux reports copied.", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        }).show();
+    }
+
+
+    private String readReportTail(java.io.File file) {
+        if (!file.isFile() || file.length() <= 0L) return "";
+        final int limit = 160 * 1024;
+        try (java.io.RandomAccessFile input = new java.io.RandomAccessFile(file, "r")) {
+            long length = input.length();
+            long start = Math.max(0L, length - limit);
+            input.seek(start);
+            byte[] bytes = new byte[(int) (length - start)];
+            input.readFully(bytes);
+            String text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+            if (start > 0L) {
+                int line = text.indexOf('\n');
+                if (line >= 0) text = text.substring(line + 1);
+                text = "…showing the latest part of the report…\n\n" + text;
+            }
+            return text.trim();
+        } catch (Exception error) {
+            return "The report exists, but Android could not read it: " + error.getMessage();
+        }
     }
 
     private void refreshPermissionRows() {
@@ -2505,6 +2536,7 @@ public final class MainActivity extends Activity {
                     + " · tap to change in Android settings"
                     : "Off · turn on so ChatGPT, Claude and the browser can attach a file from the phone");
         }
+        if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());
         if (batteryOptimisationRow != null) {
             boolean on = batteryUnrestricted();
             batteryOptimisationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
@@ -2535,7 +2567,7 @@ public final class MainActivity extends Activity {
                         + "2. Battery usage — Unrestricted, so the download is not killed when the "
                         + "screen turns off.\n\n"
                         + "3. Background activity and Auto-launch — ON, on the phone's battery page for "
-                        + "PocketDesk (Settings → Permissions opens it).\n\n"
+                        + "PocketLinux (Settings → Permissions opens it).\n\n"
                         + "Nothing else is requested. All three can be changed later under Settings → Permissions.")
                 .setNegativeButton("Later", (dialog, which) -> preferences.edit()
                         .putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply())
@@ -2585,6 +2617,7 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshState() {
+        if (processPolicyRow != null) processPolicyRow.setValue(AndroidProcessPolicy.summary(this));
         if (statusBadge == null) return;
         boolean installed = ContainerRuntime.isInstalled(this);
         boolean running = LinuxService.isDesktopRunning();
@@ -2598,8 +2631,13 @@ public final class MainActivity extends Activity {
                     : "Back to desktop to continue. Apps can be added while it runs; stopping keeps everything as it is.");
         } else if (busy) {
             statusBadge.setText("Working");
-            statusHeadline.setText("Please wait");
-            statusNote.setText("Keep this screen open or use other apps; a notification shows progress.");
+            String task = LinuxService.lastMessage();
+            String detail = LinuxService.lastDetail();
+            statusHeadline.setText(task == null ? "Please wait" : task);
+            statusNote.setText((detail == null || detail.trim().isEmpty()
+                    ? "The background task is starting."
+                    : detail) + "\n\nYou may use another app or turn the screen off; keep internet "
+                    + "on and leave PocketLinux's battery usage Unrestricted.");
         } else if (installed) {
             statusBadge.setText("Ready");
             statusHeadline.setText("The Linux computer is set up");
@@ -2607,8 +2645,8 @@ public final class MainActivity extends Activity {
             String note = "Ubuntu 24.04 LTS is set up on this phone: a basic computer on purpose, "
                     + "and complete for the one job it is built for — running the official AI "
                     + "desktop apps. Open the desktop and tap an app.";
-            note += "\n\nApps tab → Windows apps adds Wine, so this computer can also run "
-                    + "Windows programs built for ARM64.";
+            note += "\n\nTools → Software installs any native ARM64 Ubuntu package, and a .deb "
+                    + "you downloaded yourself opens in PocketLinux's own installer.";
             if (openedAt > 0) note += " Last opened " + clock(openedAt) + ".";
             String story = stopStory();
             if (story != null) note += "\n\n" + story;
@@ -2631,8 +2669,7 @@ public final class MainActivity extends Activity {
             statusNote.setText("One set-up does it all: Ubuntu 24.04 LTS, the desktop, sound, Google "
                     + "Chrome and the developer tools (Python, Node.js, Git and a C/C++ compiler). "
                     + "About 30 MB now, then about 550 MB of packages; 2–3 GB when finished. "
-                    + "Then add the AI desktop apps from the Apps tab — as Linux apps, or as "
-                    + "Windows apps once you add Windows apps support there."
+                    + "Then add the supported Linux ARM64 AI desktop apps from the Apps tab."
                     + (started ? "\n\nA set-up was started and did not finish. Nothing is lost and "
                             + "nothing is downloaded twice: this carries on from the step it reached."
                             : ""));
@@ -2649,6 +2686,7 @@ public final class MainActivity extends Activity {
             button.setAlpha(button.isEnabled() ? 1f : 0.45f);
         }
         refreshAppRows(installed, busy, running);
+        refreshPermissionRows();
     }
 
     private void renderProgress(String message, String detail, int progress, boolean busy, boolean error) {
@@ -2741,7 +2779,7 @@ public final class MainActivity extends Activity {
         }
         if (!ContainerRuntime.basicsUpdateDue(this)) {
             showMessage("Already up to date", "The computer's basics were installed by this version "
-                    + "of PocketDesk. This row comes back when a newer version has something to add.");
+                    + "of PocketLinux. This row comes back when a newer version has something to add.");
             return;
         }
         LinuxApps.App basics = LinuxApps.byId("basics");
@@ -2764,7 +2802,7 @@ public final class MainActivity extends Activity {
                 .setTitle("Delete the Linux computer?")
                 .setMessage("Deletes Ubuntu and everything inside it: the AI apps, their sign-ins and "
                         + "every file in the Linux home folder. Files you saved in the Shared folder "
-                        + "or on the phone itself are not touched. PocketDesk stays installed, and "
+                        + "or on the phone itself are not touched. PocketLinux stays installed, and "
                         + "set-up can build the computer again. This cannot be undone.")
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Delete", (d, which) -> sendServiceAction(LinuxService.ACTION_REMOVE))
@@ -2772,8 +2810,19 @@ public final class MainActivity extends Activity {
     }
 
     private void startDesktop() {
+        if (desktopOpening) return;
+        desktopOpening = true;
+        if (startButton != null) startButton.setEnabled(false);
         if (!LinuxService.isDesktopRunning()) sendServiceAction(LinuxService.ACTION_START_DESKTOP);
-        startActivity(new Intent(this, DesktopActivity.class));
+        try {
+            startActivity(new Intent(this, DesktopActivity.class));
+        } catch (Throwable error) {
+            desktopOpening = false;
+            if (startButton != null) startButton.setEnabled(true);
+            Crash.save(this, error);
+            showMessage("The desktop did not open", "Android refused to open the desktop screen. "
+                    + "The error is saved under Settings → Last error report.");
+        }
     }
 
     private void sendServiceAction(String action) {
@@ -2891,8 +2940,8 @@ public final class MainActivity extends Activity {
 
     private AlertDialog.Builder dialogBuilder() {
         return new AlertDialog.Builder(this, dark
-                ? R.style.Theme_PocketDesk_Dialog
-                : R.style.Theme_PocketDesk_Dialog_Light);
+                ? R.style.Theme_PocketLinux_Dialog
+                : R.style.Theme_PocketLinux_Dialog_Light);
     }
 
     // --------------------------------------------------------------- system
@@ -2964,7 +3013,7 @@ public final class MainActivity extends Activity {
             logo.setImageResource(R.drawable.icon_in_app);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             root.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 68), Ui.dp(this, 68)));
-            root.addView(Ui.bold(this, "PocketDesk", 26, Ui.LIGHT_TEXT), Ui.matchWrap(this, 16));
+            root.addView(Ui.bold(this, "PocketLinux", 26, Ui.LIGHT_TEXT), Ui.matchWrap(this, 16));
             root.addView(Ui.title(this, "Recovery mode", 16, Ui.PRIMARY), Ui.matchWrap(this, 4));
 
             String reason = error == null ? "Unknown startup issue"
@@ -2995,7 +3044,7 @@ public final class MainActivity extends Activity {
             scroll.requestApplyInsets();
         } catch (Throwable ignored) {
             TextView emergency = new TextView(this);
-            emergency.setText("PocketDesk safe mode\nPlease reinstall the latest APK.");
+            emergency.setText("PocketLinux safe mode\nPlease reinstall the latest APK.");
             emergency.setTextSize(19);
             emergency.setPadding(48, 64, 48, 64);
             setContentView(emergency);

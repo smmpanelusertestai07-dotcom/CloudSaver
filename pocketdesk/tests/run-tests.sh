@@ -2,6 +2,14 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# The suite reads and writes UTF-8 on purpose -- one test feeds real Devanagari through a real
+# process -- and the JVM picks its default charset from the locale. On a machine whose locale is
+# plain ASCII (a container's usual default) that test failed for the environment rather than for
+# the code. Pin it here so the result means the same thing everywhere.
+export LC_ALL=${LC_ALL:-C.UTF-8}
+export LANG=${LANG:-C.UTF-8}
+
+
 OUT="$PROJECT_DIR/build/tests"
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -11,47 +19,63 @@ else
   JAVAC=(java -m jdk.compiler/com.sun.tools.javac.Main)
 fi
 
-"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
-  "$PROJECT_DIR/tests/android/net/LocalSocketAddress.java" \
-  "$PROJECT_DIR/tests/android/net/LocalSocket.java" \
-  "$PROJECT_DIR/app/src/com/pocketdesk/VncClient.java" \
-  "$PROJECT_DIR/tests/VncClientProtocolTest.java"
-java -cp "$OUT" com.pocketdesk.VncClientProtocolTest
 
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
-  "$PROJECT_DIR/tests/android/system/ErrnoException.java" \
-  "$PROJECT_DIR/tests/android/system/OsConstants.java" \
-  "$PROJECT_DIR/tests/android/system/StructStat.java" \
-  "$PROJECT_DIR/tests/android/system/Os.java" \
-  "$PROJECT_DIR/app/src/com/pocketdesk/TarGzExtractor.java" \
-  "$PROJECT_DIR/app/src/com/pocketdesk/Trees.java" \
-  "$PROJECT_DIR/tests/TarGzExtractorTest.java" \
-  "$PROJECT_DIR/tests/TreesTest.java"
-java -cp "$OUT" com.pocketdesk.TarGzExtractorTest
-java -cp "$OUT" com.pocketdesk.TreesTest
+  "$PROJECT_DIR/app/src/com/pocketdesk/DiagnosticReport.java" \
+  "$PROJECT_DIR/tests/DiagnosticReportTest.java"
+java -cp "$OUT" com.pocketdesk.DiagnosticReportTest
 
-# Crash's one judgement: Android's own teardown race, or a fault in this app? Getting it wrong
-# hides a real bug for ever, or cries wolf every time Android closes a screen awkwardly.
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
-  "$PROJECT_DIR/app/src/com/pocketdesk/FrameworkRace.java" \
-  "$PROJECT_DIR/tests/CrashTest.java"
-java -cp "$OUT" com.pocketdesk.CrashTest
+  "$PROJECT_DIR/app/src/com/pocketdesk/ResolverConfig.java" \
+  "$PROJECT_DIR/tests/ResolverConfigTest.java"
+java -cp "$OUT" com.pocketdesk.ResolverConfigTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/ProcFiles.java" \
+  "$PROJECT_DIR/tests/ProcFilesTest.java"
+java -cp "$OUT" com.pocketdesk.ProcFilesTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/DesktopRetry.java" \
+  "$PROJECT_DIR/tests/DesktopRetryTest.java"
+java -cp "$OUT" com.pocketdesk.DesktopRetryTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/ProcessOutput.java" \
+  "$PROJECT_DIR/tests/ProcessOutputTest.java"
+java -cp "$OUT" com.pocketdesk.ProcessOutputTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/ProcessPolicyOutput.java" \
+  "$PROJECT_DIR/tests/ProcessPolicyOutputTest.java"
+java -cp "$OUT" com.pocketdesk.ProcessPolicyOutputTest
+
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/app/src/com/pocketdesk/TaskGeneration.java" \
+  "$PROJECT_DIR/tests/TaskGenerationTest.java"
+java -cp "$OUT" com.pocketdesk.TaskGenerationTest
 
 # An Activity is not a usable Context until Android attaches it -- and a field initializer runs
-# before that. One line that forgot it (new MicBridge(this), whose constructor asked for the
-# application context) meant every "Open desktop" died in the constructor: black screen, straight
-# back to the home screen, and Android's own teardown race recorded as if it were the cause.
+# before that. One line that forgot it meant every "Open desktop" died in the constructor: a black
+# screen, straight back to the home screen, and Android's own teardown race recorded as the cause.
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
   "$PROJECT_DIR/tests/ActivityStartupTest.java"
 java -cp "$OUT" com.pocketdesk.ActivityStartupTest "$PROJECT_DIR"
 
-"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
-  "$PROJECT_DIR/tests/stub/com/pocketdesk/R.java" \
-  "$PROJECT_DIR/app/src/com/pocketdesk/LinuxApps.java" \
-  "$PROJECT_DIR/tests/LinuxAppsTest.java"
-java -cp "$OUT" com.pocketdesk.LinuxAppsTest "$PROJECT_DIR"
-
 bash "$PROJECT_DIR/tests/desktop-scripts-test.sh"
+python3 "$PROJECT_DIR/tests/linux-startup-test.py"
+python3 "$PROJECT_DIR/tests/app-log-test.py"
+python3 "$PROJECT_DIR/tests/browser-handoff-test.py"
+python3 "$PROJECT_DIR/tests/graphics-runtime-test.py"
+python3 "$PROJECT_DIR/tests/desktop-runtime-test.py"
+python3 "$PROJECT_DIR/tests/desktop-watch-test.py"
+python3 "$PROJECT_DIR/tests/system-bus-test.py"
+python3 "$PROJECT_DIR/tests/window-status-budget-test.py"
+python3 "$PROJECT_DIR/tests/proot-process-test.py"
+python3 "$PROJECT_DIR/tests/process-policy-test.py"
+python3 "$PROJECT_DIR/tests/desktop-wake-test.py"
+python3 "$PROJECT_DIR/tests/keyboard-input-test.py"
+python3 "$PROJECT_DIR/tests/microphone-test.py"
 
 # The Android version the app says it supports must be the one the APK is built for.
 build_min=$(grep -o -- '--min-sdk-version [0-9]*' "$PROJECT_DIR/build.sh" | head -n 1 | awk '{print $2}')
@@ -60,12 +84,47 @@ code_min=$(grep -o 'MIN_SDK = [0-9]*' "$PROJECT_DIR/app/src/com/pocketdesk/Devic
   || { echo "FAIL MinSdkAgreement: build.sh says '$build_min', DeviceCheck says '$code_min'"; exit 1; }
 echo "PASS MinSdkAgreement (Android API $build_min)"
 
+# The one reason this app ever targeted an old Android was the Windows layer: only targetSdk 28
+# is assigned Android's untrusted_app_27 domain, the last one allowed to execute files written
+# into app_data_file, and that is how a Windows program's downloaded code was mapped. With the
+# Windows layer gone nothing needs it, and staying there would be a real cost: a low target opts
+# the app out of a decade of Android's own hardening, and Android raises the floor it will
+# install at with every release. The container itself does not need it -- PRoot and its loader
+# are signed APK libraries, extracted by the package manager, which modern targets allow.
+build_target=$(grep -o -- '--target-sdk-version [0-9]*' "$PROJECT_DIR/build.sh" | head -n 1 | awk '{print $2}')
+[ "$build_target" = 35 ] \
+  || { echo "FAIL AndroidTargetPolicy: target SDK must be 35, got '$build_target'"; exit 1; }
+grep -q 'POCKETDESK_ANDROID_TARGET_SDK' "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" \
+  || { echo "FAIL AndroidTargetPolicy: Android target is missing from runtime diagnostics"; exit 1; }
+echo "PASS AndroidTargetPolicy (target API 35, current hardening)"
+
+# No trace of the removed Windows layer may return: not a helper, not a catalogue row, not a
+# code path. It was removed because it cannot work on this hardware (see the release notes),
+# and a half-restored version of it is worse than none.
+# The words "Windows" and "Wine" may still be written -- the app explains at length why there is
+# no Windows layer, and one line tidies up after an older version that had one. What may never
+# come back is the layer itself, so this looks for the things only an implementation carries.
+layer_pattern='WINEPREFIX|winapp|winelayer|wineserver|wineboot|winecfg|WindowsApps|xfreerdp|--windows-app'
+if grep -rlnE "$layer_pattern" "$PROJECT_DIR/app/src" "$PROJECT_DIR/app/assets" >/dev/null 2>&1; then
+  echo "FAIL LinuxOnly: a Windows-layer implementation reference is back"
+  grep -rlnE "$layer_pattern" "$PROJECT_DIR/app/src" "$PROJECT_DIR/app/assets"
+  exit 1
+fi
+for gone in pocketdesk-winapp.sh pocketdesk-winelayer.sh pocketdesk-wineprocess.py \
+            pocketdesk-wineboot.py pocketdesk-winqueue.sh pocketdesk-rdp.sh; do
+  [ ! -e "$PROJECT_DIR/app/assets/$gone" ] \
+    || { echo "FAIL LinuxOnly: $gone is back"; exit 1; }
+done
+[ ! -e "$PROJECT_DIR/app/src/com/pocketdesk/WindowsApps.java" ] \
+  || { echo "FAIL LinuxOnly: WindowsApps.java is back"; exit 1; }
+echo "PASS LinuxOnly (no Windows layer in the shipped app)"
+
 # Three files carry the version. A forgotten bump ships an APK whose own screen contradicts
 # Android's app info, and the owner cannot tell which build they are running.
 name=$(grep -m1 '^VERSION_NAME=' "$PROJECT_DIR/build.sh" | cut -d'"' -f2)
 code=$(grep -m1 '^VERSION_CODE=' "$PROJECT_DIR/build.sh" | cut -d'"' -f2)
 java_name=$(grep -m1 'static final String VERSION = ' "$PROJECT_DIR/app/src/com/pocketdesk/MainActivity.java" | cut -d'"' -f2)
-notes_name=$(grep -m1 '^# PocketDesk [0-9]' "$PROJECT_DIR/RELEASE-NOTES.md" | awk '{print $3}')
+notes_name=$(grep -m1 '^# PocketLinux [0-9]' "$PROJECT_DIR/RELEASE-NOTES.md" | awk '{print $3}')
 [ -n "$name" ] && [ -n "$code" ] && [ -n "$java_name" ] && [ -n "$notes_name" ] \
   || { echo "FAIL VersionAgreement: could not read one of the version values"; exit 1; }
 [ "$name" = "$java_name" ] \
@@ -83,6 +142,22 @@ for script in "$PROJECT_DIR"/app/assets/*.sh; do
   bash -n "$script" || { echo "FAIL shell syntax: $script"; exit 1; }
 done
 echo "PASS AssetScriptSyntax ($(ls "$PROJECT_DIR"/app/assets/*.sh | wc -l) scripts)"
+
+grep -q 'PromptForDownloadLocation' "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" \
+  || { echo "FAIL Downloads: Chrome is not wired to the destination choice"; exit 1; }
+grep -q 'LinuxApps.CHROME_POLICY' "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" \
+  || { echo "FAIL Downloads: an existing Chrome policy is not repaired on desktop start"; exit 1; }
+grep -q 'POCKETDESK_DOWNLOAD_DIR' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
+  || { echo "FAIL Downloads: the desktop does not receive its selected destination"; exit 1; }
+grep -q 'Windows programs cannot run here' "$PROJECT_DIR/app/assets/pocketdesk-install.sh" \
+  || { echo "FAIL Installer: a downloaded Windows program must be refused with its reason"; exit 1; }
+grep -q -- '--use-angle=swiftshader' "$PROJECT_DIR/app/assets/pocketdesk-open.sh" \
+  || { echo "FAIL Installer: ChatGPT's software renderer profile is missing"; exit 1; }
+grep -q '^installed$' < <(bash "$PROJECT_DIR/app/assets/pocketdesk-software.sh" --selftest) \
+  || { echo "FAIL Software: the Ubuntu software centre did not self-test"; exit 1; }
+grep -q 'shell monkey' "$PROJECT_DIR/app/assets/pocketdesk-adb.sh" \
+  || { echo "FAIL PhoneTesting: an installed APK must be launched for testing"; exit 1; }
+echo "PASS CompletedComputerFeatures"
 
 # Terminology, guarded. "Ubuntu Desktop" is Canonical's own GNOME product, which this is not,
 # and this is not dual boot, a virtual machine or a second operating system. What is banned is
@@ -117,11 +192,16 @@ echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
 # that runs after each app install, or a computer built by an earlier version never gets it.
-for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-winapp.sh pocketdesk-adb.sh pocketdesk-save.sh pocketdesk-mobile.sh; do
+for helper in pocketdesk-storage.sh pocketdesk-software.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-graphics.py pocketdesk-appprocess.py pocketdesk-childwatch.py pocketdesk-adb.sh pocketdesk-procinfo.py pocketdesk-save.sh pocketdesk-mobile.sh; do
   n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" || true)
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done
+[ "$(grep -c 'writeProcessPolicyScript(context);' "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java")" = 2 ] \
+  && grep -q 'copyAsset(context, "pocketdesk-process-policy.py", "usr/local/bin/pocketdesk-process-policy")' "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" \
+  || { echo "FAIL AssetCopySites: paired process policy helper must be installed and refreshed"; exit 1; }
 echo "PASS AssetCopySites"
+
+# The Android surface and foreground service are one feature. A catalogue row without one of
 
 # The desktop's MCP server is what gives an agent eyes and hands, so it is checked the way an
 # agent will meet it: a real initialize and tools/list over stdin, answered on stdout.
@@ -139,6 +219,12 @@ for pd_tool in appshot screenshot list_windows click type_text press_key scroll 
   echo "$mcp_out" | grep -q "\"$pd_tool\"" \
     || { echo "FAIL McpServer: the $pd_tool tool is not offered"; exit 1; }
 done
+echo "$mcp_out" | grep -q '"id": 2' \
+  || { echo "FAIL McpServer: tools/list did not answer the request it was asked"; exit 1; }
+# An unknown method must be an error, not a crash that takes the agent's session with it.
+echo '{"jsonrpc":"2.0","id":3,"method":"nonsense"}' \
+  | python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" | grep -q '"error"' \
+  || { echo "FAIL McpServer: an unknown method must answer with an error"; exit 1; }
 # Every phone tool must refuse gracefully when nothing is connected, because that is the state
 # an agent meets first. A tool that throws instead of saying "pair a phone" reads as a broken
 # computer rather than an unpaired one.
@@ -148,10 +234,4 @@ no_device=$(printf '%s\n' \
   | env PATH=/nonexistent "$(command -v python3)" "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" 2>/dev/null || true)
 echo "$no_device" | grep -qi 'adb is not installed\|No phone is connected' \
   || { echo "FAIL McpServer: a phone tool with no phone must say so, not fail"; exit 1; }
-echo "$mcp_out" | grep -q '"id": 2' \
-  || { echo "FAIL McpServer: tools/list did not answer the request it was asked"; exit 1; }
-# An unknown method must be an error, not a crash that takes the agent's session with it.
-echo '{"jsonrpc":"2.0","id":3,"method":"nonsense"}' \
-  | python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" | grep -q '"error"' \
-  || { echo "FAIL McpServer: an unknown method must answer with an error"; exit 1; }
 echo "PASS McpServer ($(python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" --selftest | grep -o '"' | wc -l | awk '{print $1/2}') tools)"

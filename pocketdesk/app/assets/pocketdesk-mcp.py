@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PocketDesk's eyes and hands, offered to any AI agent over MCP.
+"""PocketLinux's eyes and hands, offered to any AI agent over MCP.
 
 Codex's Appshots are macOS only, and Claude Desktop's Computer Use is not in the Linux beta.
 Neither is coming to a phone. But the capability behind them -- look at the screen, read what is
@@ -7,7 +7,7 @@ on it, click and type -- is ordinary X11 work, and this desktop already carries 
 needs: xdotool for the pointer and the keyboard, wmctrl for the window list, scrot for the
 picture. Anthropic's own computer-use reference environment is built from exactly these.
 
-So PocketDesk offers them itself, as a Model Context Protocol server over stdin and stdout. Any
+So PocketLinux offers them itself, as a Model Context Protocol server over stdin and stdout. Any
 agent that speaks MCP -- Claude Code, Codex, or one the owner writes -- can see this desktop and
 work it, without a second machine and without any of it leaving the phone.
 
@@ -307,7 +307,6 @@ def tool_run_in_terminal(arguments):
     return [{"type": "text", "text": "Opened a terminal window running: %s" % command}], False
 
 
-
 # --------------------------------------------------------------- a phone, from inside the computer
 #
 # The testing half. Everything above works the Linux desktop; everything below works a PHONE
@@ -329,7 +328,7 @@ ADB_TIMEOUT = 120
 def adb(argv, timeout=ADB_TIMEOUT):
     """An adb command against the connected phone. Returns (code, stdout, stderr)."""
     if not have("adb"):
-        return 127, "", ("adb is not installed. Add 'Mobile app development' from PocketDesk's "
+        return 127, "", ("adb is not installed. Add 'Mobile app development' from PocketLinux's "
                          "Apps tab, then pair a phone with Tools -> Phone app testing.")
     return run(["adb"] + list(argv), timeout=timeout)
 
@@ -569,7 +568,7 @@ TOOLS = [
     {
         "name": "appshot",
         "description": (
-            "Look at the window in front of the PocketDesk desktop: a picture of it plus the "
+            "Look at the window in front of the PocketLinux desktop: a picture of it plus the "
             "words on it. This is the tool to use before clicking or typing anywhere."
         ),
         "inputSchema": {
@@ -678,7 +677,7 @@ TOOLS = [
     {
         "name": "phone_devices",
         "description": (
-            "Every phone this computer can install onto and test on. The phone PocketDesk is "
+            "Every phone this computer can install onto and test on. The phone PocketLinux is "
             "running on appears here as 127.0.0.1 once Wireless debugging is paired."
         ),
         "inputSchema": {"type": "object", "properties": {}},
@@ -832,7 +831,8 @@ def handle(message):
             "capabilities": {"tools": {}},
             "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
             "instructions": (
-                "This is the PocketDesk Linux desktop running on the owner's phone.\n\n"
+                "This is the PocketLinux desktop: an Ubuntu computer running on the owner's "
+                "phone.\n\n"
                 "To work the desktop: use appshot to see a window before you act on it, then "
                 "click, type_text, press_key and scroll. Coordinates are screen pixels, top "
                 "left is 0,0.\n\n"

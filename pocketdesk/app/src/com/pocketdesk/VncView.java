@@ -24,6 +24,21 @@ final class VncView extends View implements VncClient.Listener {
     interface StateListener { void state(String text, boolean connected); }
 
     private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean released;
+    private volatile String fatalError;
+    String getFatalError() { return fatalError; }
+
+    void release() {
+        releaseInput();
+        released = true;
+        main.removeCallbacksAndMessages(null);
+        stopFling();
+        synchronized (backLock) {
+            synchronized (pixelLock) { recycleFramebuffers(); }
+        }
+        if (cursorBitmap != null) { cursorBitmap.recycle(); cursorBitmap = null; }
+        client = null;
+    }
     /**
      * When the desktop was last touched or typed on. Smart auto-stop reads it: a session being
      * worked in should never be closed by a clock, and one nobody is using should not run on.
@@ -63,8 +78,8 @@ final class VncView extends View implements VncClient.Listener {
     private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF destination = new RectF();
     private final android.graphics.Path pointerPath = new android.graphics.Path();
-    private Bitmap bitmap;
-    private VncClient client;
+    private volatile Bitmap bitmap;
+    private volatile VncClient client;
     private StateListener stateListener;
     private PointerMode pointerMode = PointerMode.TOUCHPAD;
     private int pointerX = 640;
@@ -92,6 +107,62 @@ final class VncView extends View implements VncClient.Listener {
     private long lastTapAt = -10_000L;
     private boolean dragArmed;
     private boolean dragging;
+    private int physicalButtons;
+    private Runnable inputStateListener;
+    private final HeldInput heldInput = new HeldInput(new HeldInput.Output() {
+        @Override public void key(int keysym, boolean down) {
+            VncClient active = client;
+            if (active != null) active.sendKey(keysym, down);
+        }
+        @Override public void pointer(int x, int y, int mask) {
+            pointerX = x;
+            pointerY = y;
+            VncClient active = client;
+            if (active != null) active.sendPointer(x, y, mask);
+        }
+    });
+
+    void setInputStateListener(Runnable listener) { inputStateListener = listener; }
+    private void inputChanged() {
+        if (inputStateListener != null) inputStateListener.run();
+        invalidate();
+    }
+    boolean isDragHeld() { return heldInput.isDragging(); }
+    boolean isModifierHeld(int keysym) { return heldInput.hasModifier(keysym); }
+    void toggleHeldModifier(int keysym) {
+        if (!live || client == null) return;
+        lastInteractionAt = System.currentTimeMillis();
+        heldInput.toggleModifier(keysym);
+        inputChanged();
+    }
+    void releaseModifiers() {
+        heldInput.releaseModifiers();
+        inputChanged();
+    }
+    boolean toggleDrag() {
+        if (!live || client == null) return false;
+        lastInteractionAt = System.currentTimeMillis();
+        stopFling();
+        dragging = dragArmed = false;
+        lastTapAt = -10_000L;
+        if (heldInput.isDragging()) {
+            heldInput.releasePointer();
+            heldInput.releaseModifiers();
+        } else heldInput.startDrag(pointerX, pointerY);
+        inputChanged();
+        return heldInput.isDragging();
+    }
+    /** Background, disconnect and mode changes must never leave Linux with a held key/button. */
+    void releaseInput() {
+        stopFling();
+        if ((dragging || physicalButtons != 0) && client != null) client.sendPointer(pointerX, pointerY, 0);
+        physicalButtons = 0;
+        heldInput.releaseAll();
+        dragging = dragArmed = false;
+        moved = true;
+        lastTapAt = -10_000L;
+        inputChanged();
+    }
 
     interface ZoomListener { void zoomChanged(int percent); }
 
@@ -147,6 +218,16 @@ final class VncView extends View implements VncClient.Listener {
     /** The view size the Linux desktop was last matched to, so a bar is not a new screen. */
     private int matchedWidth;
     private int matchedHeight;
+    private boolean wideWorkspace;
+
+    boolean isWideWorkspace() { return wideWorkspace; }
+    void setWideWorkspace(boolean wide) {
+        if (wide == wideWorkspace) return;
+        releaseInput();
+        wideWorkspace = wide;
+        resetView();
+        matchDesktopToScreen();
+    }
 
     @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
         super.onSizeChanged(width, height, oldWidth, oldHeight);
@@ -162,7 +243,7 @@ final class VncView extends View implements VncClient.Listener {
                 || width != matchedWidth
                 || Math.abs(height - matchedHeight) > barsHeight;
         if (!shapeChanged) {
-            centreOnNextLayout = false;
+            centreOnNextLayout = zoom <= 1f;
             invalidate();               // same desktop, less room: just redraw where it fits
             return;
         }
@@ -218,23 +299,18 @@ final class VncView extends View implements VncClient.Listener {
         @Override public void run() {
             VncClient active = client;
             if (active == null || !active.isResizable()) return;
-            int viewWidth = getWidth();
-            int viewHeight = getHeight();
+            // A key row can open during the resize debounce. Use the size recorded for the
+            // actual screen change, so a temporary toolbar cannot shrink the Linux root.
+            int viewWidth = matchedWidth > 0 ? matchedWidth : getWidth();
+            int viewHeight = matchedHeight > 0 ? matchedHeight : getHeight();
             if (viewWidth < 320 || viewHeight < 320) return;
-            long pixels = (long) viewWidth * viewHeight;
-            if (pixels > MAX_DESKTOP_PIXELS) {
-                double shrink = Math.sqrt(MAX_DESKTOP_PIXELS / (double) pixels);
-                viewWidth = (int) Math.round(viewWidth * shrink);
-                viewHeight = (int) Math.round(viewHeight * shrink);
-            }
-            viewWidth -= viewWidth % 2;
-            viewHeight -= viewHeight % 2;
+            int[] size = ViewerSize.choose(viewWidth, viewHeight, wideWorkspace);
+            viewWidth = size[0];
+            viewHeight = size[1];
             if (viewWidth == active.getWidth() && viewHeight == active.getHeight()) return;
             active.requestDesktopSize(viewWidth, viewHeight);
         }
     };
-
-    private static final long MAX_DESKTOP_PIXELS = 2_300_000L;
 
     /** Back to 100 %: the whole desktop on screen, centred. */
     void resetView() {
@@ -296,7 +372,8 @@ final class VncView extends View implements VncClient.Listener {
     void setClient(VncClient client) { this.client = client; }
     VncClient getClient() { return client; }
     void setStateListener(StateListener listener) { this.stateListener = listener; }
-    void setPointerMode(PointerMode mode) { pointerMode = mode; stopFling(); invalidate(); }
+    boolean isLive() { return live; }
+    void setPointerMode(PointerMode mode) { releaseInput(); pointerMode = mode; invalidate(); }
     PointerMode getPointerMode() { return pointerMode; }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -322,10 +399,14 @@ final class VncView extends View implements VncClient.Listener {
             overlayPaint.setTextAlign(Paint.Align.CENTER);
             float centreX = destination.centerX();
             float centreY = destination.centerY();
-            canvas.drawText("The computer stopped", centreX, centreY - Ui.dp(getContext(), 6), overlayPaint);
+            boolean running = LinuxService.isDesktopRunning();
+            canvas.drawText(running ? "Desktop connection interrupted" : "The computer stopped",
+                    centreX, centreY - Ui.dp(getContext(), 6), overlayPaint);
             overlayPaint.setTextSize(Ui.dp(getContext(), 12.5f));
             overlayPaint.setColor(Color.rgb(150, 166, 205));
-            canvas.drawText("Tap Back, then Open desktop to start it again",
+            canvas.drawText(running ? (status.startsWith("Reconnecting") ? "Reconnecting to your desktop…"
+                            : "Tap the status below to reconnect")
+                            : "Tap Home to see the stop reason and reopen",
                     centreX, centreY + Ui.dp(getContext(), 16), overlayPaint);
             overlayPaint.setTextAlign(Paint.Align.LEFT);
         }
@@ -343,7 +424,7 @@ final class VncView extends View implements VncClient.Listener {
         float scale = destination.width() / current.getWidth();
         float px = destination.left + pointerX * scale;
         float py = destination.top + pointerY * scale;
-        if (pointerMode == PointerMode.TOUCHPAD) {
+        if (pointerMode == PointerMode.TOUCHPAD || heldInput.isDragging()) {
             // Mouse mode shows the pointer the desktop itself is showing -- an I-beam over text,
             // a hand over a link, a resize arrow at an edge -- and an arrow until it says.
             Bitmap shape = cursorBitmap;
@@ -410,7 +491,7 @@ final class VncView extends View implements VncClient.Listener {
         overlayPaint.setColor(Color.argb(220, 0, 0, 0));
         canvas.drawPath(pointerPath, overlayPaint);
         overlayPaint.setStyle(Paint.Style.FILL);
-        overlayPaint.setColor(dragging ? Color.rgb(160, 190, 255) : Color.WHITE);
+        overlayPaint.setColor(dragging || heldInput.isDragging() ? Color.rgb(160, 190, 255) : Color.WHITE);
         canvas.drawPath(pointerPath, overlayPaint);
     }
 
@@ -418,7 +499,10 @@ final class VncView extends View implements VncClient.Listener {
         lastInteractionAt = System.currentTimeMillis();
         if (isMouse(event)) return handleMouse(event);
         VncClient active = client;
-        if (active == null || bitmap == null) return true;
+        if (active == null || bitmap == null || !live) return true;
+        // Explicit Drag holds the pointer already positioned on a divider. Both control modes
+        // become a relative touchpad until Release, so lifting a thumb cannot jump the divider.
+        if (heldInput.isDragging()) return heldDragTouch(event, active);
         zoomDetector.onTouchEvent(event);
         int action = event.getActionMasked();
 
@@ -518,6 +602,26 @@ final class VncView extends View implements VncClient.Listener {
         }
     }
 
+    private boolean heldDragTouch(MotionEvent event, VncClient active) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_CANCEL) {
+            releaseInput();
+            return true;
+        }
+        if (event.getPointerCount() > 1) {
+            // Extra fingers pause a drag; they cannot zoom, scroll or move its anchor by accident.
+            heldInput.endStroke();
+            return true;
+        }
+        if (action == MotionEvent.ACTION_DOWN) heldInput.beginStroke(event.getX(), event.getY());
+        else if (action == MotionEvent.ACTION_MOVE) {
+            heldInput.moveStroke(event.getX(), event.getY(), active.getWidth(), active.getHeight(), 1f);
+            followPointer();
+            invalidate();
+        } else if (action == MotionEvent.ACTION_UP) heldInput.endStroke();
+        return true;
+    }
+
     /** One wheel click, in the direction the mask names (8 up, 16 down, 32 left, 64 right). */
     private void wheel(VncClient active, int mask) {
         active.sendPointer(pointerX, pointerY, mask);
@@ -552,7 +656,9 @@ final class VncView extends View implements VncClient.Listener {
         lastInteractionAt = System.currentTimeMillis();
         VncClient active = client;
         Bitmap current = bitmap;
-        if (active == null || current == null) return true;
+        if (active == null || current == null || !live) return true;
+        // A real mouse supplies its own physical buttons. End the on-screen hold first.
+        if (heldInput.isDragging()) { heldInput.releasePointer(); inputChanged(); }
 
         float relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
         float relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
@@ -569,6 +675,8 @@ final class VncView extends View implements VncClient.Listener {
         int changedButton = mouseButtons(event.getActionButton());
         if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) buttons |= changedButton;
         else if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_RELEASE) buttons &= ~changedButton;
+        if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) buttons = 0;
+        physicalButtons = buttons;
         if (event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
             sendWheel(active, buttons, event.getAxisValue(MotionEvent.AXIS_VSCROLL), 8, 16);
             sendWheel(active, buttons, event.getAxisValue(MotionEvent.AXIS_HSCROLL), 64, 32);
@@ -702,15 +810,21 @@ final class VncView extends View implements VncClient.Listener {
     };
 
     @Override public boolean performClick() {
+        heldInput.releaseModifiers();
+        inputChanged();
         super.performClick();
         return true;
     }
 
     @Override public void onConnected(int width, int height, String name) {
+        // The next rectangle can follow immediately on this network thread. Install both
+        // buffers before returning, rather than clearing freshly decoded pixels in a UI post.
+        if (!replaceBitmap(width, height)) return;
         main.post(() -> {
+            if (released) return;
+            releaseInput();
             live = true;
             everConnected = true;
-            replaceBitmap(width, height);
             pointerX = width / 2;
             pointerY = height / 2;
             // Tell Linux where the pointer is, or its own cursor stays wherever the last session
@@ -726,9 +840,11 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     @Override public void onResize(int width, int height) {
+        if (!replaceBitmap(width, height)) return;
         main.post(() -> {
+            if (released) return;
+            releaseInput();
             live = true;
-            replaceBitmap(width, height);
             centreOnNextLayout = true;
             pointerX = Math.min(pointerX, width - 1);
             pointerY = Math.min(pointerY, height - 1);
@@ -779,9 +895,11 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
+        if (released) return;
         final Bitmap shape = width > 0 && height > 0 && argb != null
                 ? Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888) : null;
         main.post(() -> {
+            if (released) { if (shape != null) shape.recycle(); return; }
             Bitmap old = cursorBitmap;
             cursorBitmap = shape;
             cursorHotX = hotX;
@@ -810,7 +928,9 @@ final class VncView extends View implements VncClient.Listener {
 
     @Override public void onDisconnected(String reason) {
         main.post(() -> {
-            status = reason == null ? "Disconnected" : reason;
+            if (released) return;
+            releaseInput();
+            status = fatalError != null ? fatalError : reason == null ? "Disconnected" : reason;
             live = false;
             if (stateListener != null) stateListener.state(status, false);
             invalidate();
@@ -818,7 +938,7 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     /** True while frames are still arriving. A dead session must not look like a live one. */
-    private boolean live;
+    private volatile boolean live;
     /** Set once a session has really connected: before that, "stopped" would be wrong. */
     private boolean everConnected;
 
@@ -891,21 +1011,44 @@ final class VncView extends View implements VncClient.Listener {
         return lines;
     }
 
-    private void replaceBitmap(int width, int height) {
-        // A pointer parked at a stale coordinate lands in a corner on a phone-shaped desktop.
-        // The middle is where a mouse pointer belongs when a screen first appears.
-        pointerX = width / 2;
-        pointerY = height / 2;
+    /** Called with both bitmap locks held, or on the UI thread after network use has stopped. */
+    private void recycleFramebuffers() {
+        if (bitmap != null) bitmap.recycle();
+        if (back != null) back.recycle();
+        bitmap = null;
+        back = null;
+        frontCanvas = null;
+        anyDirty = false;
+    }
+
+    private boolean replaceBitmap(int width, int height) {
         synchronized (backLock) {
             synchronized (pixelLock) {
-                Bitmap oldFront = bitmap;
-                Bitmap oldBack = back;
-                bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                back = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                frontCanvas = null;
-                anyDirty = false;
-                if (oldFront != null) oldFront.recycle();
-                if (oldBack != null) oldBack.recycle();
+                if (released) return false;
+                // Reconnect at the same size needs no extra allocation. On resize release the
+                // old pair first: allocating four full screens at once caused avoidable peaks.
+                if (bitmap != null && back != null && !bitmap.isRecycled() && !back.isRecycled()
+                        && bitmap.getWidth() == width && bitmap.getHeight() == height) {
+                    bitmap.eraseColor(Color.BLACK);
+                    back.eraseColor(Color.BLACK);
+                    anyDirty = false;
+                    return true;
+                }
+                recycleFramebuffers();
+                try {
+                    bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                    back = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                    return true;
+                } catch (OutOfMemoryError | IllegalArgumentException error) {
+                    recycleFramebuffers();
+                    fatalError = "Not enough viewer memory for this screen. Close other apps and reopen the desktop.";
+                    live = false;
+                    VncClient active = client;
+                    if (active != null) active.close();
+                    Crash.save(getContext(), error);
+                    onDisconnected(fatalError);
+                    return false;
+                }
             }
         }
     }

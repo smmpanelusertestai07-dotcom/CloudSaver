@@ -15,7 +15,7 @@ import java.io.File;
 /**
  * The phone's own storage, inside the Linux computer as the folder "Phone".
  *
- * Off by default: PocketDesk asks for nothing it does not need, and a computer that cannot see
+ * Off by default: PocketLinux asks for nothing it does not need, and a computer that cannot see
  * the phone's files is a safe computer. On, the phone's storage is bound into the container at
  * /home/coder/Phone, so ChatGPT's "attach a file" dialog, the browser's uploads and the file
  * manager all show the phone's Download, DCIM and Documents folders next to the computer's

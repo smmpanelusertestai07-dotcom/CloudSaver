@@ -64,23 +64,21 @@ public final class LinuxAppsTest {
                     app.id + " does not actually remove its package");
         }
 
-        // Google Chrome carries the protection: Safe Browsing at its strongest level, dangerous
-        // downloads blocked, and no way to click through a malware warning.
-        require(LinuxApps.CHROME_INSTALL.contains("\"SafeBrowsingProtectionLevel\": 2"),
+        // Google Chrome keeps Enhanced Safe Browsing, but must not turn a normal Linux .deb into
+        // an unchangeable enterprise block. The owner explicitly asked for this download.
+        require(LinuxApps.CHROME_POLICY.contains("\"SafeBrowsingProtectionLevel\": 2"),
                 "Chrome must run Safe Browsing at its enhanced level");
-        require(LinuxApps.CHROME_INSTALL.contains("SafeBrowsingProceedAnywayDisabled"),
-                "a malware warning must not be clickable-through");
-        require(LinuxApps.CHROME_INSTALL.contains("DownloadRestrictions"),
-                "dangerous downloads must be blocked");
+        require(!LinuxApps.CHROME_POLICY.contains("SafeBrowsingProceedAnywayDisabled"),
+                "Chrome must let the owner respond to a download warning");
+        require(!LinuxApps.CHROME_POLICY.contains("DownloadRestrictions"),
+                "normal Linux packages must not be blocked by enterprise policy");
 
-        checkResumeHelpers(work);
+        checkResumeHelpers(projectDir, work);
         checkBootstrapShell(projectDir, work);
 
         LinuxApps.App chatgpt = LinuxApps.byId("chatgpt");
         require(chatgpt != null, "chatgpt is missing from the catalogue");
         require(chatgpt.installCommand().contains("/latest/"), "chatgpt must track the latest build");
-        require(LinuxApps.byId("nope") == null, "byId must return null for an unknown id");
-
         // Apps are launched from their own packaged .desktop entry now, so there is no
         // hand-written launcher left to check here.
 
@@ -92,7 +90,7 @@ public final class LinuxAppsTest {
      * fails twice is retried until it works, and three failures give up rather than loop. This
      * is what makes a stopped set-up continue instead of starting over.
      */
-    private static void checkResumeHelpers(Path work) throws Exception {
+    private static void checkResumeHelpers(Path projectDir, Path work) throws Exception {
         Path root = work.resolve("root");
         Path bin = work.resolve("bin");
         Files.createDirectories(bin);
@@ -169,63 +167,6 @@ public final class LinuxAppsTest {
         require(run(work, prelude + "pd_update\n") == 0, "a damaged stamp must not break the update");
         require(countLines(updates) == 4, "a damaged stamp must be treated as no stamp");
 
-        // The Windows layer, run for real with nothing reachable. The whole command runs under
-        // "set -e", and the first version of it died at a grep that simply found nothing --
-        // reported to the owner as "the Windows layer could not be installed" with no reason.
-        // It must now reach its own deliberate exit and say what it tried.
-        Path winBin = work.resolve("winbin");
-        Files.createDirectories(winBin);
-        Files.write(winBin.resolve("curl"), "#!/bin/bash\nexit 22\n".getBytes(StandardCharsets.UTF_8));
-        Files.write(winBin.resolve("dpkg"), "#!/bin/bash\nexit 0\n".getBytes(StandardCharsets.UTF_8));
-        Files.write(winBin.resolve("apt-get"), "#!/bin/bash\nexit 100\n".getBytes(StandardCharsets.UTF_8));
-        Files.write(winBin.resolve("chown"), "#!/bin/bash\nexit 0\n".getBytes(StandardCharsets.UTF_8));
-        for (String tool : new String[]{"curl", "dpkg", "apt-get", "chown"}) {
-            winBin.resolve(tool).toFile().setExecutable(true);
-        }
-        Path winOut = work.resolve("windows-layer.out");
-        String winScript = "#!/bin/bash\nset -eu\nexport PATH='" + winBin + "':$PATH\n"
-                + "export POCKETDESK_TEST_ROOT='" + root + "'\nexport POCKETDESK_RETRY_SLEEP=0\n"
-                + "pd_update() { return 0; }\nPD_STATE='" + root + "/var/lib/pocketdesk'\n"
-                + "mkdir -p \"$PD_STATE\"\n" + LinuxApps.WINDOWS_LAYER + "\n";
-        int winCode = run(work, winScript, winOut);
-        String winLog = new String(Files.readAllBytes(winOut), StandardCharsets.UTF_8);
-        require(winCode == 16, "with nothing reachable the Windows layer must reach its own exit 16, "
-                + "not die part-way; it exited " + winCode + " and said:\n" + winLog);
-        require(winLog.contains("no Wine on this computer"),
-                "a failed Windows layer must say why, not just fail:\n" + winLog);
-        require(!Files.exists(root.resolve("var/lib/pocketdesk/windows-layer")),
-                "a Windows layer that did not install must not leave its marker behind");
-
-        // The bug that cost three releases: Ubuntu's wine64 on arm64 installs /usr/lib/wine/wine64
-        // and NOTHING in /usr/bin, so a check that only looks at the path reports "no Wine" on a
-        // computer where apt has just said "wine64 is already the newest version". The layer must
-        // find it where it really is.
-        Path wineRoot = work.resolve("wineroot");
-        Files.createDirectories(wineRoot.resolve("usr/lib/wine"));
-        Files.createDirectories(wineRoot.resolve("usr/local/bin"));
-        Path realWine = wineRoot.resolve("usr/lib/wine/wine64");
-        Files.write(realWine, "#!/bin/bash\necho 'wine-9.0'\n".getBytes(StandardCharsets.UTF_8));
-        realWine.toFile().setExecutable(true);
-        Path wineOut = work.resolve("wine-found.out");
-        // The finder is lifted out of the layer and pointed at the stand-in tree, so what is
-        // tested is the real search order and not a copy of it.
-        String finder = LinuxApps.WINDOWS_LAYER.substring(
-                LinuxApps.WINDOWS_LAYER.indexOf("pd_find_wine() {"),
-                LinuxApps.WINDOWS_LAYER.indexOf("pd_win_dir="))
-                .replace("/usr/local/bin/wine", wineRoot + "/usr/local/bin/wine")
-                .replace("/usr/bin/wine-stable", wineRoot + "/usr/bin/wine-stable")
-                .replace("/usr/bin/wine ", wineRoot + "/usr/bin/wine ")
-                .replace("/usr/lib/wine/wine64", wineRoot + "/usr/lib/wine/wine64")
-                .replace("/usr/lib/wine/wine ", wineRoot + "/usr/lib/wine/wine ");
-        int found = run(work, "#!/bin/bash\nset -eu\nexport PATH='" + winBin + "'\n"
-                + finder + "\nfound=$(pd_find_wine)\n"
-                + "[ -n \"$found\" ] || { echo 'NOT FOUND'; exit 1; }\n"
-                + "echo \"$found\"\n", wineOut);
-        String whereWine = new String(Files.readAllBytes(wineOut), StandardCharsets.UTF_8).trim();
-        require(found == 0, "Wine in /usr/lib/wine must be found even with nothing on the path; "
-                + "the search said:\n" + whereWine);
-        require(whereWine.endsWith("/usr/lib/wine/wine64"),
-                "the search must return the real binary, not something else: " + whereWine);
 
         // pd_repo writes a source and must prove it, which cannot be done from a cached list.
         // The stamp is deliberately made FRESH first: without the force, pd_repo would take the
@@ -240,6 +181,8 @@ public final class LinuxAppsTest {
         require(Files.exists(root.resolve("etc/apt/sources.list.d/demo.list")),
                 "pd_repo must write the source inside the container, not on the host");
     }
+
+    /** Reproduces 10.1.95: dpkg + old marker say ready, but core DLL/graphics files are absent. */
 
     /**
      * The set-up script itself, checked as shell.

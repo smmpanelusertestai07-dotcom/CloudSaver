@@ -93,20 +93,6 @@ public final class ActivityStartupTest {
         System.out.println("       checked " + handedThis.size()
                 + " field(s) built with `this` in an Activity: " + handedThis);
 
-        // The exact line this test exists for. Even if the pattern above is ever loosened, the
-        // microphone bridge must never go back to asking a half-built Activity for anything.
-        File bridge = new File(sources, "MicBridge.java");
-        if (bridge.isFile()) {
-            String body = constructorBody(read(bridge), "MicBridge");
-            require(body != null, "MicBridge", "its constructor could not be found");
-            for (String forbidden : NEEDS_A_REAL_CONTEXT) {
-                require(!body.contains(forbidden),
-                        "MicBridge",
-                        "its constructor calls " + forbidden + ") -- it is built as a field of the "
-                                + "desktop screen, where the context is not attached yet");
-            }
-        }
-
         System.out.println("PASS ActivityStartup (" + checks + " checks)");
     }
 

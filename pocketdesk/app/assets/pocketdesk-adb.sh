@@ -21,6 +21,14 @@ say() { printf '%s\n' "$*"; }
 
 have adb || { say "adb is not installed. Add 'Mobile app development' from the Apps tab first."; exit 1; }
 
+# The device last connected by this helper. Supplying -s matters when this phone and a second
+# phone are both connected: adb otherwise refuses with "more than one device" at test time.
+DEVICE=$(cat "$STATE/device" 2>/dev/null || true)
+case "$DEVICE" in *[!a-zA-Z0-9._:-]* ) DEVICE="" ;; esac
+adb_device() {
+  if [ -n "$DEVICE" ]; then adb -s "$DEVICE" "$@"; else adb "$@"; fi
+}
+
 ask() {   # ask <title> <text>  -> prints what was typed
   if have zenity; then
     zenity --entry --title="$1" --text="$2" 2>/dev/null
@@ -87,6 +95,7 @@ This phone is 127.0.0.1.") || exit 0
     out=$(adb connect "$host:$port" 2>&1)
     if printf '%s' "$out" | grep -qiE 'connected to'; then
       printf '%s' "$host:$port" > "$STATE/device"
+      DEVICE="$host:$port"
       tell "Connected" "$out
 
 Now 'Install an APK' will put an app straight onto that phone, and 'Logs' will show what it prints."
@@ -107,20 +116,50 @@ Wireless debugging turns itself off when the phone leaves Wi-Fi, and the port ch
     fi
     [ -f "$apk" ] || { say "usage: pocketdesk-adb install <file.apk>"; exit 1; }
     say "Installing $(basename "$apk")…"
-    out=$(adb install -r "$apk" 2>&1)
+    out=$(adb_device install -r "$apk" 2>&1)
     say "$out"
-    printf '%s' "$out" | grep -qi 'Success' \
-      && tell "Installed" "$(basename "$apk") is on the phone. Open it from the phone's own app list." \
-      || { tell "Not installed" "$out"; exit 1; }
+    if ! printf '%s' "$out" | grep -qi 'Success'; then
+      tell "Not installed" "$out"
+      exit 1
+    fi
+    package=""
+    if have aapt; then
+      package=$(aapt dump badging "$apk" 2>/dev/null \
+        | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -n 1)
+    fi
+    case "$package" in *[!a-zA-Z0-9._]* ) package="" ;; esac
+    if [ -n "$package" ]; then
+      printf '%s' "$package" > "$STATE/last-package"
+      launch=$(adb_device shell monkey -p "$package" -c android.intent.category.LAUNCHER 1 2>&1 || true)
+      if printf '%s' "$launch" | grep -qiE 'Events injected: 1|Monkey finished'; then
+        tell "Installed and opened" "$(basename "$apk") was installed, and $package was launched on the phone. Use Logs to inspect it."
+      else
+        tell "Installed" "$(basename "$apk") is installed. It has no launcher Activity PocketLinux could open automatically; start it from the phone's app list."
+      fi
+    else
+      tell "Installed" "$(basename "$apk") is installed. PocketLinux could not read its package name, so open it from the phone's app list."
+    fi
     ;;
 
   devices) adb devices -l ;;
 
   logs)
+    package=$(cat "$STATE/last-package" 2>/dev/null || true)
+    case "$package" in *[!a-zA-Z0-9._]* ) package="" ;; esac
+    pid=""
+    [ -n "$package" ] && pid=$(adb_device shell pidof "$package" 2>/dev/null | awk '{print $1}' || true)
     if have lxterminal; then
-      lxterminal -e bash -lc 'adb logcat -v brief; read -p "Press Enter to close "' &
+      if [ -n "$pid" ]; then
+        if [ -n "$DEVICE" ]; then
+          lxterminal -e bash -lc "echo 'Logs for $package (pid $pid)'; adb -s '$DEVICE' logcat -v brief --pid='$pid'; read -p 'Press Enter to close '" &
+        else
+          lxterminal -e bash -lc "echo 'Logs for $package (pid $pid)'; adb logcat -v brief --pid='$pid'; read -p 'Press Enter to close '" &
+        fi
+      else
+        lxterminal -e bash -lc 'adb logcat -v brief; read -p "Press Enter to close "' &
+      fi
     else
-      adb logcat -v brief
+      [ -n "$pid" ] && adb_device logcat -v brief --pid="$pid" || adb_device logcat -v brief
     fi
     ;;
 
@@ -128,7 +167,11 @@ Wireless debugging turns itself off when the phone leaves Wi-Fi, and the port ch
     have scrcpy || { say "scrcpy is not installed."; exit 1; }
     # Small and slow on purpose: this phone is drawing the desktop, the viewer and now a mirror
     # of itself, all on a processor with no graphics chip to help.
-    scrcpy --max-size 800 --max-fps 15 --no-audio 2>&1 | tail -n 5 &
+    if [ -n "$DEVICE" ]; then
+      scrcpy --serial "$DEVICE" --max-size 800 --max-fps 15 --no-audio 2>&1 | tail -n 5 &
+    else
+      scrcpy --max-size 800 --max-fps 15 --no-audio 2>&1 | tail -n 5 &
+    fi
     ;;
 
   disconnect) adb disconnect; rm -f "$STATE/device"; say "Disconnected." ;;

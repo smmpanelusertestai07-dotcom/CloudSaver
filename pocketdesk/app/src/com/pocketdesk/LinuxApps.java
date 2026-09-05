@@ -1,7 +1,7 @@
 package com.pocketdesk;
 
 /**
- * The desktop apps PocketDesk can install into the container.
+ * The desktop apps PocketLinux can install into the container.
  *
  * Every entry installs the newest build each time it runs, so "install" and "update" are the same
  * action: apt repositories upgrade in place, and the direct downloads all resolve a "latest" URL
@@ -142,11 +142,11 @@ final class LinuxApps {
             + "[ \"$pd_age\" -ge 0 ] && [ \"$pd_age\" -lt $(( pd_h * 3600 )) ]; }; "
             + "pd_update() { "
             + "if [ \"${1:-}\" != force ] && pd_fresh; then "
-            + "echo 'PocketDesk: the package list is up to date; nothing to download'; return 0; fi; "
+            + "echo 'PocketLinux: the package list is up to date; nothing to download'; return 0; fi; "
             + "pd_u=1; while [ $pd_u -le 3 ]; do "
             + "if apt-get update 2>\"$PD_STATE/apt-update.err\"; then "
             + "date +%s > \"$PD_STATE/apt-updated-at\"; return 0; fi; "
-            + "echo \"PocketDesk: package list attempt $pd_u did not finish\"; "
+            + "echo \"PocketLinux: package list attempt $pd_u did not finish\"; "
             // One unreachable vendor repository fails the whole update, and then every install
             // and the basics update after it -- for as long as the container exists. From the
             // second attempt, a source named in apt's own error is set aside so the computer
@@ -156,7 +156,7 @@ final class LinuxApps {
             + "pd_url=$(awk '{for (i=1; i<=NF; i++) if ($i ~ /^https?:/) { print $i; exit }}' \"$pd_l\"); "
             + "[ -n \"$pd_url\" ] || continue; "
             + "if grep -qF \"$pd_url\" \"$PD_STATE/apt-update.err\" 2>/dev/null; then "
-            + "echo \"PocketDesk: $(basename \\\"$pd_l\\\") is not answering and was set aside\"; "
+            + "echo \"PocketLinux: $(basename \\\"$pd_l\\\") is not answering and was set aside\"; "
             + "mv \"$pd_l\" \"$pd_l.unreachable\"; fi; done; fi; "
             + "sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; pd_u=$((pd_u+1)); done; return 1; }; "
             // A repository is written, proved, and rolled back if it does not answer: an
@@ -167,13 +167,13 @@ final class LinuxApps {
             // packages stay invisible to apt until the lists are fetched again. Past the
             // freshness check, always: this is the one call that must not be cached.
             + "if pd_update force; then return 0; fi; "
-            + "echo \"PocketDesk: the $1 repository did not answer; removing it again\"; "
+            + "echo \"PocketLinux: the $1 repository did not answer; removing it again\"; "
             + "rm -f \"$pd_f\"; pd_update force || true; return 1; }; "
             + "pd_step() { pd_stage=$1; shift; "
-            + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketDesk: $pd_stage is already done\"; return 0; fi; "
+            + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
             + "if apt-get install -y --no-install-recommends \"$@\"; then : > \"$PD_STATE/stage/$pd_stage\"; return 0; fi; "
-            + "echo \"PocketDesk: $pd_stage attempt $pd_try did not finish, repairing and trying again\"; "
+            + "echo \"PocketLinux: $pd_stage attempt $pd_try did not finish, repairing and trying again\"; "
             + "pd_repair; pd_update || true; sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; "
             + "pd_try=$((pd_try+1)); done; return 1; }; ";
 
@@ -222,10 +222,20 @@ final class LinuxApps {
      * "make me default" prompt (there is nothing else here), no GPU (there is none), no
      * metrics. Passwords and sign-in stay, in Chrome's basic store (no keyring here).
      *
-     * Protection is enforced, not left to a setting: Safe Browsing runs at its Enhanced level
-     * (the same Google service that protects Chrome on the phone), dangerous downloads are
-     * blocked, and a malware or phishing warning cannot be clicked through.
+     * Safe Browsing runs at its Enhanced level (the same Google service that protects Chrome on
+     * the phone). Do not force the enterprise DownloadRestrictions policy: Chrome classifies
+     * normal Linux package files such as .deb as dangerous file types and then reports the
+     * owner's deliberate download as "Blocked by your organization". Safe Browsing still warns;
+     * the owner keeps the final choice for a download they explicitly requested.
      */
+    static final String CHROME_POLICY =
+            "{\"HomepageLocation\": \"about:blank\", \"HomepageIsNewTabPage\": false, "
+            + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
+            + "\"BackgroundModeEnabled\": false, \"DefaultBrowserSettingEnabled\": false, "
+            + "\"MetricsReportingEnabled\": false, \"HardwareAccelerationModeEnabled\": false, "
+            + "\"PromotionalTabsEnabled\": false, \"SafeBrowsingProtectionLevel\": 2, "
+            + "\"SafeBrowsingExtendedReportingEnabled\": false, \"AdvancedProtectionAllowed\": true}";
+
     static final String CHROME_INSTALL =
             "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates; "
             + fetchKey(CHROME_KEY, "/etc/apt/keyrings/google-chrome.gpg")
@@ -234,18 +244,12 @@ final class LinuxApps {
             // The same three attempts every other step gets: 133 MB over mobile data had
             // exactly one, and apt resumes the partial file, so a retry is not a second 133 MB.
             + "pd_step chrome google-chrome-stable "
-            + "|| echo \"PocketDesk: Google Chrome did not finish downloading this time\"; "
+            + "|| echo \"PocketLinux: Google Chrome did not finish downloading this time\"; "
             + "printf 'repo_add_once=\"false\"\nrepo_reenable_on_distupgrade=\"false\"\n' > /etc/default/google-chrome; "
             + "echo 'deb [arch=arm64 signed-by=/etc/apt/keyrings/google-chrome.gpg] " + CHROME_REPO
             + " stable main' > /etc/apt/sources.list.d/google-chrome.list; "
             + "mkdir -p /etc/opt/chrome/policies/managed; "
-            + "printf '{\"HomepageLocation\": \"about:blank\", \"HomepageIsNewTabPage\": false, "
-            + "\"NewTabPageLocation\": \"about:blank\", \"RestoreOnStartup\": 5, "
-            + "\"BackgroundModeEnabled\": false, \"DefaultBrowserSettingEnabled\": false, "
-            + "\"MetricsReportingEnabled\": false, \"HardwareAccelerationModeEnabled\": false, "
-            + "\"PromotionalTabsEnabled\": false, \"SafeBrowsingProtectionLevel\": 2, "
-            + "\"SafeBrowsingProceedAnywayDisabled\": true, \"SafeBrowsingExtendedReportingEnabled\": false, "
-            + "\"DownloadRestrictions\": 1, \"AdvancedProtectionAllowed\": true}\n' "
+            + "printf '%s\\n' '" + CHROME_POLICY + "' "
             + "> /etc/opt/chrome/policies/managed/pocketdesk.json; "
             // The old built-in browser goes once Chrome is here: one browser, not two.
             + "apt-get remove -y epiphany-browser >/dev/null 2>&1 || true";
@@ -255,7 +259,7 @@ final class LinuxApps {
             "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
             + "gnome-themes-extra-data fonts-noto-color-emoji fonts-noto-core "
             + "locales bash-completion lsb-release "
-            + "xdg-utils x11-xserver-utils x11-utils dbus-x11 "
+            + "xdg-utils x11-xserver-utils x11-utils dbus-x11 dbus-system-bus-common "
             + "dunst libnotify-bin zenity xdotool wmctrl desktop-file-utils librsvg2-common "
             + "lxterminal pcmanfm libfm-modules tint2 pulseaudio pulseaudio-utils "
             + "less file unzip zip wget";
@@ -272,7 +276,7 @@ final class LinuxApps {
             // writing the token in plain text. This is what makes the four AI apps store their
             // sign-ins the way they do on a Mac.
             + "gnome-keyring libsecret-1-0 libsecret-tools "
-            // The words on the screen, for PocketDesk's own Appshot: an agent gets the text of a
+            // The words on the screen, for PocketLinux's own Appshot: an agent gets the text of a
             // window as well as its picture. About 35 MB with the English data, and it only runs
             // when an agent actually asks for a reading.
             + "tesseract-ocr tesseract-ocr-eng";
@@ -280,81 +284,6 @@ final class LinuxApps {
     static final String DEVELOPER_PACKAGES =
             "build-essential pkg-config python3 python3-pip python3-venv python3-dev nodejs npm "
             + "git git-lfs openssh-client jq htop tree vim nano rsync sqlite3";
-
-    /**
-     * Wine, so the computer can also run Windows programs built for ARM64.
-     *
-     * Hangover first: it is Wine 11 with the newest ARM64EC support, and it publishes ready-made
-     * packages for Ubuntu 24.04 on arm64. The release is looked up on the phone at install time
-     * rather than written into the app, so this keeps working when a new Hangover appears and
-     * the old one is taken down -- and it costs the owner nothing to be years out of date.
-     * Ubuntu's own wine64 is the fallback: older (9.0) and no x86 translation, but it is in the
-     * archive the computer already trusts, so there is always something rather than nothing.
-     *
-     * Nothing here touches the Linux side. It is a separate step, a separate marker and a
-     * separate folder: if every line of it fails, the computer is exactly as it was.
-     */
-    static final String WINDOWS_LAYER =
-            "pd_update || exit 11; "
-            + "apt-get install -y --no-install-recommends curl ca-certificates p7zip-full unzip "
-            + "cabextract >/dev/null 2>&1 || true; "
-            // Where a working Wine really is. Ubuntu's wine64 package on arm64 installs exactly
-            // two files -- /usr/lib/wine/wine64 and wineserver64 -- and NOTHING in /usr/bin, so
-            // "command -v wine64" finds nothing on a computer where Wine is fully installed.
-            // That one wrong assumption is what reported "the Windows layer could not be
-            // installed" while apt was saying "wine64 is already the newest version".
-            + "pd_find_wine() { for pd_c in /usr/local/bin/wine /usr/bin/wine /usr/bin/wine-stable "
-            + "/usr/lib/wine/wine64 /usr/lib/wine/wine /opt/wine-stable/bin/wine; do "
-            + "[ -x \"$pd_c\" ] && { printf '%s' \"$pd_c\"; return 0; }; done; "
-            + "command -v wine 2>/dev/null || command -v wine-stable 2>/dev/null "
-            + "|| command -v wine64 2>/dev/null || true; }; "
-            + "pd_win_dir=/var/cache/pocketdesk/windows; mkdir -p \"$pd_win_dir\"; "
-            // Every step is allowed to come back empty. The whole command runs under "set -e",
-            // where a search that simply finds nothing counts as a failure.
-            + "pd_win_json=$(curl -fsSL --max-time 60 "
-            + "https://api.github.com/repos/AndreRH/hangover/releases/latest 2>/dev/null || true); "
-            + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
-            + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' "
-            + "| grep -iE '24[._]04|noble' | sort -u || true); "
-            + "if [ -z \"${pd_win_urls:-}\" ]; then "
-            + "pd_win_urls=$(printf '%s' \"${pd_win_json:-}\" | tr ',' '\n' "
-            + "| grep -oE 'https://[^\"]+\\.deb' | grep -iE 'arm64|aarch64' | sort -u || true); fi; "
-            + "pd_win_count=$(printf '%s' \"${pd_win_urls:-}\" | grep -c . || true); "
-            + "if [ -n \"${pd_win_urls:-}\" ]; then "
-            + "echo \"PocketDesk: fetching the Windows layer ($pd_win_count packages)\"; "
-            + "for pd_u in $pd_win_urls; do "
-            + "curl -fsSL --max-time 900 -o \"$pd_win_dir/$(basename \"$pd_u\")\" \"$pd_u\" || true; done; "
-            + "dpkg -i \"$pd_win_dir\"/*.deb >/dev/null 2>&1 || true; "
-            + "apt-get -y -f install >/dev/null 2>&1 || true; "
-            + "else echo 'PocketDesk: no ready-made Windows layer for this system'; fi; "
-            // Ubuntu's own Wine as the fallback. Both packages: wine64 is the engine, and wine is
-            // what puts a launcher on the path at all -- on Ubuntu it is called wine-stable.
-            + "if [ -z \"$(pd_find_wine)\" ]; then "
-            + "echo 'PocketDesk: installing Wine from the Ubuntu archive'; "
-            + "apt-get install -y --no-install-recommends wine64 wine >/dev/null 2>&1 "
-            + "|| apt-get install -y wine64 wine >/dev/null 2>&1 "
-            + "|| apt-get install -y wine64 >/dev/null 2>&1 || true; fi; "
-            + "rm -rf \"$pd_win_dir\"; "
-            + "pd_wine=$(pd_find_wine); "
-            + "if [ -n \"${pd_wine:-}\" ]; then "
-            // One name for it, whatever the packaging called it. Everything downstream -- the
-            // installer, the launchers it writes, the owner in a terminal -- says "wine".
-            + "mkdir -p /usr/local/bin; "
-            + "[ \"$pd_wine\" = /usr/local/bin/wine ] || ln -sf \"$pd_wine\" /usr/local/bin/wine; "
-            + "for pd_s in /usr/bin/wineserver /usr/bin/wineserver-stable /usr/lib/wine/wineserver64 "
-            + "/usr/lib/wine/wineserver; do [ -x \"$pd_s\" ] && { ln -sf \"$pd_s\" /usr/local/bin/wineserver; break; }; done; "
-            + "mkdir -p /home/coder/.pocketdesk-wine /home/coder/.pocketdesk/windows; "
-            + "chown -R coder:coder /home/coder/.pocketdesk-wine /home/coder/.pocketdesk 2>/dev/null || true; "
-            + "printf 'ok' > \"$PD_STATE/windows-layer\"; "
-            + "echo \"PocketDesk: Windows layer ready at $pd_wine\"; "
-            + "/usr/local/bin/wine --version 2>/dev/null || true; "
-            + "else "
-            + "echo 'PocketDesk: no Wine on this computer after both attempts'; "
-            + "echo \"PocketDesk: ready-made packages found: ${pd_win_count:-0}\"; "
-            + "echo 'PocketDesk: looked in /usr/bin and /usr/lib/wine'; "
-            + "ls -1 /usr/lib/wine 2>/dev/null | head -n 5 || echo 'PocketDesk: /usr/lib/wine is not there'; "
-            + "apt-get install -y --no-install-recommends wine64 wine 2>&1 | tail -n 6; "
-            + "exit 16; fi";
 
     static final App[] CATALOG = {
             // New installs get all of this during setup. This row is how a container built by an
@@ -390,23 +319,22 @@ final class LinuxApps {
             // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
             // half-installed SDK is worse than none.
             new App("mobiledev", "Mobile app development",
-                    "Java 21, Gradle, adb, fastboot, aapt2 and scrcpy — and the pairing helper "
-                            + "that lets this computer build an app, install it and test it on "
-                            + "THIS phone, or on another one over Wi-Fi. The AI apps installed "
-                            + "here can drive that phone themselves.",
+                    "Java 21, Gradle, adb, fastboot, aapt2 and scrcpy — and the pairing helper that "
+                            + "lets this computer install and test an app on THIS phone, or on "
+                            + "another one over Wi-Fi.",
                     R.drawable.ic_terminal, 0, "about 700 MB", 3 * GB,
                     "10–25 min", null,
                     "/usr/bin/adb",
                     "pd_update || exit 11; "
+                            // aapt2 is the one piece Google publishes for Intel Linux and not for
+                            // ARM64, and Android's build plugin fetches it from Maven -- so a
+                            // perfectly good build failed on a processor the tool was never
+                            // shipped for. Ubuntu builds its own from the same source; installing
+                            // that and pointing Gradle at it is what lets an Android build finish
+                            // on this phone at all.
+                            + "apt-get install -y --no-install-recommends aapt2 >/dev/null 2>&1 || true; "
                             + "pd_step mobiledev openjdk-21-jdk-headless gradle adb fastboot aapt "
                             + "scrcpy android-sdk-libsparse-utils || exit 20; "
-                            // aapt2 is the one piece Google publishes for Intel Linux and
-                            // not for ARM64, and Android's build plugin downloads it from
-                            // Maven -- so a perfectly good build fails on a processor the
-                            // tool was never shipped for. Ubuntu builds its own from the
-                            // same source; installing that and pointing the plugin at it is
-                            // what makes an Android build work on this phone at all.
-                            + "apt-get install -y --no-install-recommends aapt2 >/dev/null 2>&1 || true; "
                             // Where Gradle and every Java tool look for a JDK. Written once, so
                             // an owner who changes it keeps their change.
                             + "if ! grep -q 'JAVA_HOME' /etc/profile.d/pocketdesk-java.sh 2>/dev/null; then "
@@ -429,65 +357,11 @@ final class LinuxApps {
                             + ">> /home/coder/.gradle/gradle.properties; fi; "
                             + "chown -R coder:coder /home/coder/.gradle 2>/dev/null || true; "
                             + "java -version 2>&1 | head -n 1; adb version 2>&1 | head -n 1; "
-                            + "printf 'aapt2: %s\n' \"${pd_aapt2:-not installed (Android builds will need one)}\"",
+                            + "printf 'aapt2: %s\n' \"${pd_aapt2:-not installed}\"",
                     "apt-get remove -y --purge openjdk-21-jdk-headless gradle adb fastboot aapt "
                             + "scrcpy >/dev/null 2>&1 || true; "
                             + "rm -f /etc/profile.d/pocketdesk-java.sh \"$PD_STATE/stage/mobiledev\"; "
                             + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
-                    false),
-
-            // The Windows layer: an app on the Apps tab like any other, so it is the owner's
-            // choice, it can be removed, and it can never slow down or break a set-up that does
-            // not want it.
-            new App("windows", "Windows apps support",
-                    "Wine, so this computer can also run Windows programs built for ARM64. "
-                            + "Experimental: a Windows program may open, may look wrong, or may "
-                            + "not start at all. Nothing on the Linux side changes either way.",
-                    R.drawable.ic_desktop, 0, "about 900 MB", 3 * GB,
-                    "10–25 min", "Windows programs built only for Intel and AMD will not run here, "
-                            + "and the installer says so before it starts.",
-                    "/usr/bin/wine",
-                    WINDOWS_LAYER,
-                    "apt-get remove -y --purge 'wine*' 'hangover*' >/dev/null 2>&1 || true; "
-                            + "rm -rf /home/coder/.pocketdesk-wine /home/coder/.pocketdesk/windows "
-                            + "\"$PD_STATE/windows-layer\" \"$PD_STATE/stage/winelayer\"; "
-                            + "rm -f /home/coder/.local/share/applications/pocketdesk-win-*.desktop "
-                            + "/home/coder/Desktop/pocketdesk-win-*.desktop; "
-                            + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
-                    false),
-
-            // Cursor for Windows, installed the way a Linux app is: one tap, and PocketDesk does
-            // the download itself. Cursor publishes an endpoint that answers with the address of
-            // the current Windows ARM64 build, so nothing here goes stale -- no version number
-            // written into the app, no page to read, no file to find afterwards.
-            new App("cursor-win", "Cursor for Windows",
-                    "The Windows ARM64 build, downloaded and installed for you. Needs Windows "
-                            + "apps support. Experimental: it may open, may look wrong, or may not "
-                            + "start at all.",
-                    R.drawable.ic_terminal, R.drawable.logo_cursor, "about 500 MB", 2 * GB,
-                    "5–15 min", null,
-                    "/home/coder/.local/share/applications/pocketdesk-win-cursorwindows.desktop",
-                    // Wine is not always on the path -- see WINDOWS_LAYER -- so the layer's own
-                    // marker is what says it is there.
-                    "[ -x /usr/local/bin/wine ] || [ -f \"$PD_STATE/windows-layer\" ] || exit 17; "
-                            + "pd_cw=$(curl -fsSL --max-time 60 "
-                            + "'https://cursor.com/api/download?platform=win32-arm64-user&releaseTrack=stable' "
-                            + "2>/dev/null | grep -o '\"downloadUrl\":\"[^\"]*\"' | cut -d'\"' -f4); "
-                            + "[ -n \"$pd_cw\" ] || exit 18; "
-                            + "echo \"PocketDesk: downloading Cursor for Windows\"; "
-                            + "mkdir -p /home/coder/Downloads; "
-                            + "curl -fL --retry 3 --max-time 3600 -o /home/coder/Downloads/cursor-windows-arm64.exe "
-                            + "\"$pd_cw\" || exit 18; "
-                            + "chown coder:coder /home/coder/Downloads/cursor-windows-arm64.exe 2>/dev/null || true; "
-                            // Not "su -": under PRoot that goes through PAM and fails on some
-                            // phones. The installer only needs coder's HOME, so it is given one.
-                            + "HOME=/home/coder USER=coder "
-                            + "/usr/local/bin/pocketdesk-winapp install "
-                            + "/home/coder/Downloads/cursor-windows-arm64.exe 'Cursor Windows' || exit 19; "
-                            + "chown -R coder:coder /home/coder/.pocketdesk /home/coder/.local "
-                            + "/home/coder/Desktop 2>/dev/null || true; "
-                            + "rm -f /home/coder/Downloads/cursor-windows-arm64.exe",
-                    "HOME=/home/coder /usr/local/bin/pocketdesk-winapp remove cursorwindows || true",
                     false),
 
             new App("chatgpt", "ChatGPT",

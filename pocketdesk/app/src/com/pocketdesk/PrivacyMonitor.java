@@ -92,7 +92,7 @@ final class PrivacyMonitor {
 
     /** The permissions the app deliberately does not have, named so their absence is checkable. */
     private static final String[][] NEVER_ASKED = {
-            {"Camera", "PocketDesk never opens the camera itself. Taking a photo for the computer "
+            {"Camera", "PocketLinux never opens the camera itself. Taking a photo for the computer "
                     + "hands you the phone's own camera app, which needs no permission here."},
             {"Location", "Nothing in this app or in the Linux computer is told where you are."},
             {"Contacts", "Never read."},

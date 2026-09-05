@@ -8,6 +8,7 @@ import android.system.Os;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -16,7 +17,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,6 +38,11 @@ final class ContainerRuntime {
     static final String KEY_CRASH_SEEN = "crash_seen_at";
     static final String KEY_DESKTOP_INSTALLED = "desktop_installed";
     static final String KEY_UI_SCALE = "ui_scale_dpi";
+    /** Where new files are saved: ask, the private computer, or the phone's public Download. */
+    static final String KEY_DOWNLOAD_TARGET = "download_target";
+    static final String DOWNLOAD_ASK = "ask";
+    static final String DOWNLOAD_COMPUTER = "computer";
+    static final String DOWNLOAD_PHONE = "phone";
     /** 120 dpi reads like a small PC screen; 168 filled the display with a few huge windows. */
     static final int DEFAULT_UI_SCALE = 120;
     /** Long side of the desktop framebuffer; keeps memory sane on a 4 GB phone. */
@@ -105,60 +110,9 @@ final class ContainerRuntime {
         Os.chmod(tmp.getAbsolutePath(), 0700);
     }
 
-    /**
-     * Stand-ins for the /proc entries Android will not let a normal app read.
-     *
-     * Each is bound over the path it replaces. The values are ordinary, unremarkable ones: the
-     * point is only that the file exists and parses, so software that reads it carries on
-     * instead of failing and then guessing.
-     */
+    /** Compatibility stand-ins only for named /proc entries this Android app cannot read. */
     private static Map<String, String> fakeProcFiles(Context context) throws IOException {
-        Map<String, String> contents = new LinkedHashMap<>();
-        contents.put("/proc/loadavg", "0.32 0.28 0.24 1/512 4096\n");
-        contents.put("/proc/uptime", "1234.56 4321.00\n");
-        contents.put("/proc/version",
-                "Linux version 6.2.1 (pocketdesk@localhost) (gcc 13.2.0) #1 SMP PREEMPT\n");
-        contents.put("/proc/sys/kernel/cap_last_cap", "40\n");
-        // Chromium's file watcher reads this one and logs an error for every process without it.
-        contents.put("/proc/sys/fs/inotify/max_user_watches", "524288\n");
-        contents.put("/proc/stat", statContents());
-        contents.put("/proc/vmstat", vmstatContents());
-
-        File directory = new File(context.getFilesDir(), "proc-fakes");
-        if (!directory.exists() && !directory.mkdirs()) {
-            throw new IOException("Could not create the /proc stand-in directory");
-        }
-        Map<String, String> binds = new LinkedHashMap<>();
-        for (Map.Entry<String, String> entry : contents.entrySet()) {
-            String name = entry.getKey().substring(entry.getKey().lastIndexOf('/') + 1);
-            File file = new File(directory, name);
-            if (!file.exists() || file.length() == 0) {
-                try (FileOutputStream output = new FileOutputStream(file)) {
-                    output.write(entry.getValue().getBytes("UTF-8"));
-                }
-            }
-            binds.put(entry.getKey(), file.getAbsolutePath());
-        }
-        return binds;
-    }
-
-    private static String statContents() {
-        StringBuilder stat = new StringBuilder("cpu  100000 0 50000 900000 0 0 0 0 0 0\n");
-        for (int cpu = 0; cpu < 8; cpu++) {
-            stat.append("cpu").append(cpu).append(" 12500 0 6250 112500 0 0 0 0 0 0\n");
-        }
-        stat.append("intr 0\nctxt 100000\nbtime 1700000000\nprocesses 4096\n")
-                .append("procs_running 1\nprocs_blocked 0\nsoftirq 0\n");
-        return stat.toString();
-    }
-
-    private static String vmstatContents() {
-        String[] keys = {"nr_free_pages", "nr_zone_inactive_anon", "nr_zone_active_anon",
-                "nr_zone_inactive_file", "nr_zone_active_file", "nr_dirty", "nr_writeback",
-                "pgpgin", "pgpgout", "pswpin", "pswpout", "pgfault", "pgmajfault"};
-        StringBuilder vmstat = new StringBuilder();
-        for (String key : keys) vmstat.append(key).append(" 0\n");
-        return vmstat.toString();
+        return ProcFiles.fallbackBinds(new File(context.getFilesDir(), "proc-fakes"));
     }
 
     static Process startContainer(Context context, String command) throws IOException {
@@ -171,7 +125,10 @@ final class ContainerRuntime {
      *                    always-works mode because a failed install costs the whole download again.
      */
     static Process startContainer(Context context, String command, boolean accelerated) throws IOException {
+        // Stop/Open must not start a new :1 display while the old tracer is still cleaning up.
+        ProotProcess.awaitPendingStops();
         File root = rootfs(context);
+        LinuxDns.refresh(context);
         File nativeDirectory = new File(context.getApplicationInfo().nativeLibraryDir);
         File proot = new File(nativeDirectory, "libproot.so");
         File guestShared = shared(context);
@@ -216,7 +173,7 @@ final class ContainerRuntime {
             if (!note.exists()) {
                 try {
                     writeText(note, "This folder shows your phone's own files once Phone files is on:\n"
-                            + "PocketDesk → Settings → Permissions → Phone files.\n"
+                            + "PocketLinux → Settings → Permissions → Phone files.\n"
                             + "Then open the desktop again: Download, DCIM (photos) and Documents appear here,\n"
                             + "and every app's Open dialog lists Phone on the left.\n");
                 } catch (IOException ignored) {
@@ -239,6 +196,10 @@ final class ContainerRuntime {
         // Written into /var/lib/pocketdesk/basics-version, so Settings can offer the basics
         // update only when this version has something newer to install.
         args.add("POCKETDESK_APP_VERSION=" + MainActivity.VERSION);
+        // Include Android's effective compatibility target in the exact install report,
+        // so a vendor policy or a future accidental target bump is diagnosable on the phone.
+        args.add("POCKETDESK_ANDROID_TARGET_SDK="
+                + context.getApplicationInfo().targetSdkVersion);
         // The desktop clock, file times and git commits should be the owner's own time, wherever
         // they are. Read at every start, so it follows the phone across a time zone.
         args.add("POCKETDESK_TZ=" + java.util.TimeZone.getDefault().getID());
@@ -253,23 +214,21 @@ final class ContainerRuntime {
         if (!accelerated) builder.environment().put("PROOT_NO_SECCOMP", "1");
         builder.environment().put("PROOT_NO_MOUNTINFO", "1");
         builder.environment().put("LD_LIBRARY_PATH", nativeDirectory.getAbsolutePath());
-        return builder.start();
+        Process process = builder.start();
+        ProotProcess.track(process);
+        return process;
     }
 
     static int runContainer(Context context, String command, OutputListener listener)
             throws IOException, InterruptedException {
         Process process = startContainer(context, command);
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
+        try {
+            return ProcessOutput.consume(process, line -> {
                 if (listener != null) listener.line(line);
-                if (Thread.currentThread().isInterrupted()) {
-                    process.destroy();
-                    throw new InterruptedException("Interrupted");
-                }
-            }
+            });
+        } finally {
+            ProotProcess.stopAndWait(process);
         }
-        return process.waitFor();
     }
 
     /**
@@ -283,7 +242,10 @@ final class ContainerRuntime {
      */
     static String bootstrapCommand() {
         return "set -eu; "
-                + "rm -f /etc/resolv.conf; printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\n' > /etc/resolv.conf; "
+                // Android supplies the active network's DNS before every launch. Only a rootfs
+                // with no usable resolver gets a fallback; never overwrite carrier DNS here.
+                + "if ! grep -q '^nameserver ' /etc/resolv.conf 2>/dev/null; then "
+                + "rm -f /etc/resolv.conf; printf 'nameserver 1.1.1.1\\nnameserver 8.8.8.8\\noptions timeout:2 attempts:2\\n' > /etc/resolv.conf; fi; "
                 + "printf '127.0.0.1 localhost\\n::1 localhost\\n' > /etc/hosts; "
                 // IPv4 first. A phone network that hands out an IPv6 address it cannot route
                 // left every page "loading" until the IPv6 attempt timed out.
@@ -292,7 +254,7 @@ final class ContainerRuntime {
                 + "pd_repair; "
                 + "pd_update || exit 11; "
                 // The desktop itself: X server, window manager, panel, file manager, terminal.
-                + "pd_step desktop tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 "
+                + "pd_step desktop tigervnc-standalone-server openbox lxterminal pcmanfm tint2 dbus-x11 dbus-system-bus-common "
                 // No xfonts-base: apt runs --no-install-recommends, every font here is named
                 // through fontconfig, and Xtigervnc's font path ends in its own built-ins.
                 + "x11-xserver-utils x11-utils fonts-dejavu-core ca-certificates curl gnupg git nano sudo "
@@ -308,7 +270,7 @@ final class ContainerRuntime {
                 // the owner a desktop, so a failure here is printed into the set-up log and
                 // set-up carries on to a complete computer.
                 + "pd_step tools " + LinuxApps.TOOL_PACKAGES
-                + " || echo 'PocketDesk: some everyday tools did not install this time; "
+                + " || echo 'PocketLinux: some everyday tools did not install this time; "
                 + "Settings, Update the computer basics will add them'; "
                 // The developer tools an agentic development environment needs from the first
                 // minute: a compiler, Python, Node.js, Git and SSH. One set-up, nothing to add.
@@ -327,7 +289,7 @@ final class ContainerRuntime {
                 + "if [ ! -f \"$PD_STATE/stage/chrome\" ]; then "
                 + "( " + LinuxApps.CHROME_INSTALL + " ) || true; "
                 + "if [ -x /usr/bin/google-chrome-stable ]; then : > \"$PD_STATE/stage/chrome\"; "
-                + "else echo 'PocketDesk: Google Chrome did not install this time'; fi; fi; "
+                + "else echo 'PocketLinux: Google Chrome did not install this time'; fi; fi; "
                 // Which app version built these basics, so the phone can offer an update only
                 // when there is one to make.
                 + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"; "
@@ -360,15 +322,10 @@ final class ContainerRuntime {
             case 20: return "The mobile development tools did not finish installing. Check the "
                     + "connection and free space, then tap the row again — what was already "
                     + "installed is kept.";
-            case 17: return "Windows apps support is not installed yet. Add it from the Apps tab "
-                    + "first — it is the layer that runs Windows programs.";
             case 18: return "The download did not finish. Check the internet connection and try "
                     + "again; nothing was half-installed.";
             case 19: return "The file downloaded, but it could not be installed. It may not be the "
                     + "ARM64 build. Nothing on the Linux side was changed.";
-            case 16: return "The Windows layer could not be installed. Nothing on the Linux side "
-                    + "changed, and every app you already have still works. Try again on a better "
-                    + "connection.";
             default: return null;
         }
     }
@@ -401,22 +358,38 @@ final class ContainerRuntime {
     }
 
     static void writeDesktopScripts(Context context) throws IOException, ErrnoException {
+        copyAsset(context, "dbus-system.conf", "usr/local/share/pocketdesk/dbus-system.conf");
         copyAsset(context, "pocketdesk-desktop.sh", "usr/local/bin/pocketdesk-desktop");
+        copyAsset(context, "pocketdesk-browser.sh", "usr/local/bin/pocketdesk-browser");
+        copyAsset(context, "pocketdesk-xdg-open.sh", "usr/local/bin/xdg-open");
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
+        copyAsset(context, "pocketdesk-graphics.py", "usr/local/bin/pocketdesk-graphics.py");
+        // The process helper the app supervisor reads: everything it does is decided from
+        // /proc rather than from a command line, so a shell or the PRoot tracer carrying the
+        // same path in its arguments can never be signalled by mistake.
+        // Where a file that did not come through the browser is placed: the same setting
+        // Chrome is given, applied to whatever an AI app or a build wrote into Downloads.
+        // What can be built for a phone here, how to start it, and how to build-install-open
+        // it on the connected one. Also the honest iPhone answer, in one place.
+        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
+        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
+        copyAsset(context, "pocketdesk-procinfo.py", "usr/local/bin/pocketdesk-procinfo.py");
+        copyAsset(context, "pocketdesk-appprocess.py", "usr/local/bin/pocketdesk-appprocess.py");
+        copyAsset(context, "pocketdesk-childwatch.py", "usr/local/bin/pocketdesk-childwatch.py");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
+        copyAsset(context, "pocketdesk-window-guard.sh", "usr/local/bin/pocketdesk-window-guard");
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
-        // What opens when a downloaded .deb is tapped: PocketDesk's own app installer.
+        // What opens when a downloaded .deb is tapped: PocketLinux's own app installer.
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
         // Storage, and a screenshot, from inside the computer.
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-software.sh", "usr/local/bin/pocketdesk-software");
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
-        copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
-        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
-        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
+        writeProcessPolicyScript(context);
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -428,7 +401,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-phone.png", "usr/share/pixmaps/pocketdesk-phone.png");
         // Tux, the Linux mascot, on the panel's Apps button (Larry Ewing, see the notices).
         copyAsset(context, "pocketdesk-linux.png", "usr/share/pixmaps/pocketdesk-linux.png");
-        // PocketDesk's own mark, in the far corner of the panel. Its own artwork, so no
+        // PocketLinux's own mark, in the far corner of the panel. Its own artwork, so no
         // third-party trademark is involved -- see OPEN_SOURCE_NOTICES.md.
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }
@@ -441,81 +414,110 @@ final class ContainerRuntime {
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             throw new IOException("Could not create " + parent.getName());
         }
-        try (InputStream input = context.getAssets().open(asset);
-             FileOutputStream output = new FileOutputStream(target)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
-            output.getFD().sync();
+        int mode = asset.endsWith(".sh") || asset.endsWith(".py") ? 0755 : 0644;
+        // Every Open desktop refreshes these assets. Rewriting and fsyncing dozens of files
+        // even when the APK has not changed needlessly stalls startup on phone flash storage.
+        // Compare bytes, not version markers: this also repairs a changed/corrupt helper.
+        if (target.isFile() && !java.nio.file.Files.isSymbolicLink(target.toPath())) {
+            try (InputStream assetInput = context.getAssets().open(asset);
+                 InputStream installedInput = new FileInputStream(target)) {
+                if (sameContents(assetInput, installedInput)) {
+                    if ((Os.stat(target.getAbsolutePath()).st_mode & 0777) != mode) {
+                        Os.chmod(target.getAbsolutePath(), mode);
+                    }
+                    return;
+                }
+            }
         }
-        Os.chmod(target.getAbsolutePath(), asset.endsWith(".sh") ? 0755 : 0644);
+        // Menu refresh can run while these shell scripts are executing. Truncating the live
+        // inode changed the remaining instructions underneath a running desktop/launcher.
+        File temporary = File.createTempFile(".pocketdesk-asset-", ".tmp", parent);
+        try {
+            try (InputStream input = context.getAssets().open(asset);
+                 FileOutputStream output = new FileOutputStream(temporary)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+                output.getFD().sync();
+            }
+            Os.chmod(temporary.getAbsolutePath(), mode);
+            Os.rename(temporary.getAbsolutePath(), target.getAbsolutePath());
+        } finally {
+            temporary.delete();
+        }
+    }
+
+    private static boolean sameContents(InputStream expected, InputStream actual) throws IOException {
+        byte[] expectedBytes = new byte[8192];
+        byte[] actualBytes = new byte[8192];
+        int count;
+        while ((count = expected.read(expectedBytes)) != -1) {
+            int total = 0;
+            while (total < count) {
+                int read = actual.read(actualBytes, total, count - total);
+                if (read == -1) return false;
+                total += read;
+            }
+            for (int i = 0; i < count; i++) {
+                if (expectedBytes[i] != actualBytes[i]) return false;
+            }
+        }
+        return actual.read() == -1;
     }
 
     /** Rebuilds the desktop's menu, panel and icons from what is really installed. */
     static void refreshDesktopEntries(Context context) throws IOException, ErrnoException {
+        copyAsset(context, "pocketdesk-browser.sh", "usr/local/bin/pocketdesk-browser");
+        copyAsset(context, "pocketdesk-xdg-open.sh", "usr/local/bin/xdg-open");
         copyAsset(context, "pocketdesk-menu.sh", "usr/local/bin/pocketdesk-menu");
         copyAsset(context, "pocketdesk-open.sh", "usr/local/bin/pocketdesk-open");
+        copyAsset(context, "pocketdesk-graphics.py", "usr/local/bin/pocketdesk-graphics.py");
+        // The process helper the app supervisor reads: everything it does is decided from
+        // /proc rather than from a command line, so a shell or the PRoot tracer carrying the
+        // same path in its arguments can never be signalled by mistake.
+        // Where a file that did not come through the browser is placed: the same setting
+        // Chrome is given, applied to whatever an AI app or a build wrote into Downloads.
+        // What can be built for a phone here, how to start it, and how to build-install-open
+        // it on the connected one. Also the honest iPhone answer, in one place.
+        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
+        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
+        copyAsset(context, "pocketdesk-procinfo.py", "usr/local/bin/pocketdesk-procinfo.py");
+        copyAsset(context, "pocketdesk-appprocess.py", "usr/local/bin/pocketdesk-appprocess.py");
+        copyAsset(context, "pocketdesk-childwatch.py", "usr/local/bin/pocketdesk-childwatch.py");
         copyAsset(context, "pocketdesk-windows.sh", "usr/local/bin/pocketdesk-windows");
+        copyAsset(context, "pocketdesk-window-guard.sh", "usr/local/bin/pocketdesk-window-guard");
         copyAsset(context, "pocketdesk-status.sh", "usr/local/bin/pocketdesk-status");
         copyAsset(context, "pocketdesk-install.sh", "usr/local/bin/pocketdesk-install");
         copyAsset(context, "pocketdesk-storage.sh", "usr/local/bin/pocketdesk-storage");
+        copyAsset(context, "pocketdesk-software.sh", "usr/local/bin/pocketdesk-software");
         copyAsset(context, "pocketdesk-mcp.py", "usr/local/bin/pocketdesk-mcp");
         copyAsset(context, "pocketdesk-agent.sh", "usr/local/bin/pocketdesk-agent");
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
-        copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
-        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
-        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
+        writeProcessPolicyScript(context);
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
+    }
+
+    /** May run before opening the desktop; only this bounded helper needs refreshing. */
+    static void writeProcessPolicyScript(Context context) throws IOException, ErrnoException {
+        copyAsset(context, "pocketdesk-process-policy.py", "usr/local/bin/pocketdesk-process-policy");
+    }
+
+    static String processPolicyCommand(String action) {
+        if (!"status".equals(action) && !"apply".equals(action) && !"restore".equals(action)) {
+            throw new IllegalArgumentException("Unknown Android process policy action");
+        }
+        // Use the desktop user's saved ADB keys and selected device. The helper verifies
+        // this phone before changing anything; no caller-supplied shell arguments are used.
+        return "exec su - coder -c 'exec python3 /usr/local/bin/pocketdesk-process-policy " + action + "'";
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
         return new File(rootfs(context), app.marker.substring(1)).exists();
     }
 
-    /**
-     * Where a downloaded file goes: "computer", "phone" or "ask".
-     *
-     * Kept as a file INSIDE the computer rather than as an Android preference, because both
-     * sides change it and both sides read it: this screen's Settings row, and the desktop's own
-     * Tools menu. One file, one answer, and a change takes effect on the next file rather than
-     * at the next start.
-     */
-    static final String DOWNLOAD_TO_FILE = "home/coder/.pocketdesk/download-to";
-    static final String DOWNLOAD_TO_COMPUTER = "computer";
-    static final String DOWNLOAD_TO_PHONE = "phone";
-    static final String DOWNLOAD_TO_ASK = "ask";
-
-    /** The current answer, defaulting to the computer's own storage, which needs no permission. */
-    static String downloadTo(Context context) {
-        File file = new File(rootfs(context), DOWNLOAD_TO_FILE);
-        if (!file.isFile()) return DOWNLOAD_TO_COMPUTER;
-        try (java.util.Scanner scanner = new java.util.Scanner(file, "UTF-8")) {
-            String value = scanner.hasNext() ? scanner.next().trim() : "";
-            if (DOWNLOAD_TO_PHONE.equals(value) || DOWNLOAD_TO_ASK.equals(value)
-                    || DOWNLOAD_TO_COMPUTER.equals(value)) {
-                return value;
-            }
-        } catch (Exception unreadable) {
-            // A computer that is not set up yet has no file, and the default is right anyway.
-        }
-        return DOWNLOAD_TO_COMPUTER;
-    }
-
-    /** Writes the answer where the desktop reads it. Silent when there is no computer yet. */
-    static void setDownloadTo(Context context, String value) {
-        File file = new File(rootfs(context), DOWNLOAD_TO_FILE);
-        File parent = file.getParentFile();
-        try {
-            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return;
-            writeText(file, value);
-        } catch (Exception unwritable) {
-            // Nothing to recover: the desktop keeps the answer it already had.
-        }
-    }
-
-    /** Removed in 10.0.30; kept so an upgrade can clear the old value. Downloads stay inside. */
+    /** Removed in 10.0.30; kept only so an upgrade can clear the old boolean value. */
     static final String KEY_SHARE_DOWNLOADS = "share_downloads";
     static final String KEY_APP_LOCK = "app_lock";
     /** Set when the app lock switched itself off because the phone's own lock was removed. */
@@ -557,7 +559,7 @@ final class ContainerRuntime {
     static final String KEY_FAST_DESKTOP = "fast_desktop";
 
     static String startDesktopCommand(int width, int height, int dpi) {
-        return startDesktopCommand(width, height, dpi, false);
+        return startDesktopCommand(width, height, dpi, DOWNLOAD_ASK);
     }
 
     /**
@@ -572,21 +574,31 @@ final class ContainerRuntime {
         return portrait ? new int[]{shortSide, longSide} : new int[]{longSide, shortSide};
     }
 
-    static String startDesktopCommand(int width, int height, int dpi, boolean shareDownloads) {
+    /** Only the three compiled-in values may become shell arguments or a managed browser policy. */
+    static String normaliseDownloadTarget(String value) {
+        if (DOWNLOAD_COMPUTER.equals(value) || DOWNLOAD_PHONE.equals(value)) return value;
+        return DOWNLOAD_ASK;
+    }
+
+    static String startDesktopCommand(int width, int height, int dpi, String requestedTarget) {
         int[] safe = safeGeometry(width, height);
         int safeWidth = safe[0];
         int safeHeight = safe[1];
         int safeDpi = Math.max(96, Math.min(dpi, 240));
+        String target = normaliseDownloadTarget(requestedTarget);
+        String downloadDirectory = DOWNLOAD_PHONE.equals(target)
+                ? "/home/coder/Phone/Download/PocketLinux" : "/home/coder/Downloads";
+        String prompt = DOWNLOAD_ASK.equals(target) ? "true" : "false";
         return "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1; "
                 + "mkdir -p /tmp/.X11-unix; chmod 1777 /tmp /tmp/.X11-unix; "
                 // Android hands the container supplementary GIDs that Ubuntu has no names for.
                 // Naming them stops every login shell printing "groups: cannot find name for group ID".
                 + "for gid in $(id -G 2>/dev/null); do "
                 + "getent group \"$gid\" >/dev/null 2>&1 || echo \"android$gid:x:$gid:\" >> /etc/group; done; "
-                // Same rule as the bootstrap: never walk into the two bind mounts.
+                // Bootstrap owns the one recursive ownership pass. Walking the whole home
+                // again visits every browser cache and library on every Open desktop, and
+                // can consume the display startup limit before Xtigervnc is even launched.
                 + "chown coder:coder /home/coder 2>/dev/null || true; "
-                + "find /home/coder -mindepth 1 -maxdepth 1 ! -name Phone ! -name Shared "
-                + "-exec chown -R coder:coder {} + 2>/dev/null || true; " 
                 // The browser on a phone with no graphics driver: hardware acceleration
                 // never (the compositor path stalled for seconds per page here) and a blank
                 // start page (the thumbnail page was the "Page Unresponsive"). Only keys that
@@ -599,8 +611,24 @@ final class ContainerRuntime {
                 // The table of which app answers which link scheme, rebuilt from what is
                 // installed now, so a sign-in that opens in the browser finds its way back.
                 + "command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database /usr/share/applications >/dev/null 2>&1; "
-                + "export POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0) + "; "
-                + "exec su - coder -c 'POCKETDESK_SHARE_DOWNLOADS=" + (shareDownloads ? 1 : 0)
+                // Chrome reads a system policy rather than XDG user-dirs. Write just this one
+                // per-session policy as root; the directory and boolean came from the closed set
+                // above, never from an untrusted string.
+                + "mkdir -p /etc/opt/chrome/policies/managed; "
+                // Rewrite the base policy on every start as well as new Chrome installs. This
+                // removes the old forced download block from already-set-up computers without
+                // reinstalling Chrome or touching any of the owner's files.
+                + "printf '%s\\n' '" + LinuxApps.CHROME_POLICY + "' "
+                + "> /etc/opt/chrome/policies/managed/pocketdesk.json; "
+                + "printf '%s\\n' '{\"PromptForDownloadLocation\":" + prompt
+                + ",\"DownloadDirectory\":\"" + downloadDirectory + "\"}' "
+                + "> /etc/opt/chrome/policies/managed/pocketdesk-downloads.json; "
+                // The system daemon must prepare its socket and messagebus identity before
+                // su. The helper retains a live listener and reports bounded startup failures.
+                + "/usr/local/bin/pocketdesk-desktop --prepare-system-bus || true; "
+                + "exec su - coder -c 'exec env POCKETDESK_DOWNLOAD_TARGET=" + target
+                + " POCKETDESK_DOWNLOAD_DIR=" + downloadDirectory
+                + " POCKETDESK_DOWNLOAD_PROMPT=" + (DOWNLOAD_ASK.equals(target) ? 1 : 0)
                 + " /usr/local/bin/pocketdesk-desktop "
                 + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
     }
@@ -687,8 +715,8 @@ final class ContainerRuntime {
     interface SizeListener { void size(long bytes); }
 
     /**
-     * What the phone itself says PocketDesk is using: the same total Android prints under
-     * Settings -> Apps -> PocketDesk -> Storage. One question to the system, answered from the
+     * What the phone itself says PocketLinux is using: the same total Android prints under
+     * Settings -> Apps -> PocketLinux -> Storage. One question to the system, answered from the
      * filesystem's own accounting, instead of walking 200,000 files of Ubuntu -- and it counts
      * allocated blocks, which a walk over file lengths cannot see. An app needs no permission
      * to ask about itself. -1 when the phone will not answer, and the caller walks instead.

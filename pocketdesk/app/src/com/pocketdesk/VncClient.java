@@ -9,8 +9,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class VncClient {
@@ -36,11 +34,13 @@ final class VncClient {
     private final Listener listener;
     private final Object writeLock = new Object();
     private final AtomicBoolean closed = new AtomicBoolean(false);
-    private Socket socket;
+    private volatile Socket socket;
     private DataInputStream input;
     private DataOutputStream output;
     private volatile int width;
     private volatile int height;
+    private volatile boolean handshakeCompleted;
+    private long connectedAtNanos;
     /** Set once the server advertises ExtendedDesktopSize, which is what allows live resizing. */
     private volatile boolean resizable;
     private volatile int screenId;
@@ -50,7 +50,13 @@ final class VncClient {
      * that -- which is what kept ending the app the moment the desktop was touched.
      */
     private Thread sender;
-    private final LinkedBlockingQueue<WriteTask> outbox = new LinkedBlockingQueue<>(512);
+    private final VncOutbox<WriteTask> outbox = new VncOutbox<>(512);
+    private volatile boolean updatesPaused;
+    // Guarded by writeLock. RFB requests are credits, not polls: an unchanged desktop may
+    // leave one incremental request pending indefinitely. App switching must not add more.
+    private boolean updatePending;
+    private boolean readingFramebuffer;
+    private boolean fullUpdateNeeded = true;
 
     private interface WriteTask { void write() throws IOException; }
     /** Reused across every update. A fresh multi-megabyte array per frame caused real
@@ -68,7 +74,7 @@ final class VncClient {
      * The port stays as a fallback for a container whose Xtigervnc is too old for it.
      */
     private final String socketPath;
-    private android.net.LocalSocket localSocket;
+    private volatile android.net.LocalSocket localSocket;
 
     VncClient(String host, int port, Listener listener) {
         this(host, port, null, listener);
@@ -82,43 +88,77 @@ final class VncClient {
     }
 
     void connectAndRun() throws IOException {
-        java.io.InputStream rawIn = null;
-        java.io.OutputStream rawOut = null;
-        if (socketPath != null && new java.io.File(socketPath).exists()) {
-            android.net.LocalSocket local = new android.net.LocalSocket();
-            try {
-                local.connect(new android.net.LocalSocketAddress(socketPath,
-                        android.net.LocalSocketAddress.Namespace.FILESYSTEM));
-                localSocket = local;
-                rawIn = local.getInputStream();
-                rawOut = local.getOutputStream();
-            } catch (IOException notThere) {
-                // A socket file left behind by a session that died answers nobody. Fall through
-                // to the port rather than retrying this for ever.
-                try { local.close(); } catch (IOException ignored) {}
-                localSocket = null;
-            }
-        }
-        if (rawIn == null) {
-            socket = new Socket();
-            socket.setTcpNoDelay(true);
-            socket.setKeepAlive(true);
-            socket.connect(new InetSocketAddress(host, port), 3000);
-            rawIn = socket.getInputStream();
-            rawOut = socket.getOutputStream();
-        }
-        input = new DataInputStream(new BufferedInputStream(rawIn, 256 * 1024));
-        output = new DataOutputStream(new BufferedOutputStream(rawOut, 64 * 1024));
-        handshake();
-        sender = new Thread(this::drainOutbox, "pocketdesk-vnc-sender");
-        sender.setDaemon(true);
-        sender.start();
-        requestUpdate(false);
+        connectAndRun(20_000);
+    }
+
+    /** A server that accepts but never sends its greeting must not trap the viewer forever. */
+    void connectAndRun(int handshakeTimeoutMs) throws IOException {
+        if (handshakeTimeoutMs <= 0) throw new IllegalArgumentException("Positive handshake timeout required");
         try {
+            if (closed.get()) throw new IOException("Viewer connection was closed");
+            java.io.InputStream rawIn = null;
+            java.io.OutputStream rawOut = null;
+            if (socketPath != null && new java.io.File(socketPath).exists()) {
+                android.net.LocalSocket local = new android.net.LocalSocket();
+                localSocket = local;
+                try {
+                    local.connect(new android.net.LocalSocketAddress(socketPath,
+                            android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+                    local.setSoTimeout(handshakeTimeoutMs);
+                    localSocket = local;
+                    rawIn = local.getInputStream();
+                    rawOut = local.getOutputStream();
+                } catch (IOException notThere) {
+                    // A socket file left behind by a session that died answers nobody. Fall through
+                    // to the port rather than retrying this for ever.
+                    try { local.close(); } catch (IOException ignored) {}
+                    localSocket = null;
+                }
+            }
+            if (rawIn == null) {
+                if (closed.get()) throw new IOException("Viewer connection was closed");
+                socket = new Socket();
+                socket.setTcpNoDelay(true);
+                socket.setKeepAlive(true);
+                socket.connect(new InetSocketAddress(host, port), 3000);
+                socket.setSoTimeout(handshakeTimeoutMs);
+                rawIn = socket.getInputStream();
+                rawOut = socket.getOutputStream();
+            }
+            input = new DataInputStream(new BufferedInputStream(rawIn, 256 * 1024));
+            output = new DataOutputStream(new BufferedOutputStream(rawOut, 64 * 1024));
+            if (closed.get()) throw new IOException("Viewer connection was closed");
+            handshake();
+            connectedAtNanos = System.nanoTime();
+            handshakeCompleted = true;
+            // A quiet desktop can legitimately send no updates for hours. Only the initial
+            // handshake has a read timeout; never disconnect a healthy idle session.
+            if (socket != null) socket.setSoTimeout(0);
+            if (localSocket != null) localSocket.setSoTimeout(0);
+            sender = new Thread(this::drainOutbox, "pocketdesk-vnc-sender");
+            sender.setDaemon(true);
+            sender.start();
+            // fullUpdateNeeded starts true. A resume queued during the handshake may have
+            // requested it already; do not queue a second full refresh in that race.
+            requestUpdate(true);
             readMessages();
         } finally {
             close();
         }
+    }
+
+    private static void validateDesktopSize(int width, int height) throws IOException {
+        // Check before posting a UI-thread bitmap allocation. Rectangle limits alone do not
+        // protect ServerInit or resize events, which can arrive without any pixel payload.
+        if (width <= 0 || height <= 0 || width > 4096 || height > 4096
+                || (long) width * height > 5_000_000L) {
+            throw new IOException("Desktop screen size exceeds this viewer's memory limit");
+        }
+    }
+
+    boolean hasConnected() { return handshakeCompleted; }
+    long connectedMillis() {
+        return handshakeCompleted ? (System.nanoTime() - connectedAtNanos) / 1_000_000L : 0L;
     }
 
     private void handshake() throws IOException {
@@ -143,6 +183,7 @@ final class VncClient {
         output.flush();
         width = input.readUnsignedShort();
         height = input.readUnsignedShort();
+        validateDesktopSize(width, height);
         byte[] originalPixelFormat = new byte[16];
         input.readFully(originalPixelFormat);
         int nameLength = input.readInt();
@@ -212,6 +253,7 @@ final class VncClient {
     }
 
     private void readFramebufferUpdate() throws IOException {
+        synchronized (writeLock) { readingFramebuffer = true; }
         input.readUnsignedByte();
         int rectangles = input.readUnsignedShort();
         for (int rectangle = 0; rectangle < rectangles; rectangle++) {
@@ -246,6 +288,7 @@ final class VncClient {
                     py += rows;
                 }
             } else if (encoding == -223) {
+                validateDesktopSize(w, h);
                 width = w;
                 height = h;
                 listener.onResize(w, h);
@@ -261,6 +304,10 @@ final class VncClient {
             }
         }
         listener.onUpdateComplete();
+        synchronized (writeLock) {
+            readingFramebuffer = false;
+            updatePending = false;
+        }
         requestUpdate(true);
     }
 
@@ -317,6 +364,7 @@ final class VncClient {
         if (screens > 0) screenId = firstId;
         if (reason == 1 && status != 0) return;          // our request was refused
         if (newWidth <= 0 || newHeight <= 0) return;
+        validateDesktopSize(newWidth, newHeight);
         if (newWidth == width && newHeight == height) return;
         width = newWidth;
         height = newHeight;
@@ -377,22 +425,38 @@ final class VncClient {
     }
 
     void requestUpdate(boolean incremental) throws IOException {
-        if (closed.get() || output == null) return;
         synchronized (writeLock) {
+            // A resize can arrive while hidden or among several rectangles. Remember that
+            // its newly allocated buffers need a full frame, but wait for this update to end
+            // so the request uses the final dimensions and cannot race the remaining pixels.
+            if (!incremental) fullUpdateNeeded = true;
+            if (closed.get() || output == null || !handshakeCompleted || updatesPaused
+                    || updatePending || readingFramebuffer) return;
             output.writeByte(3);
-            output.writeByte(incremental ? 1 : 0);
+            output.writeByte(fullUpdateNeeded ? 0 : 1);
             output.writeShort(0);
             output.writeShort(0);
             output.writeShort(width);
             output.writeShort(height);
             output.flush();
+            updatePending = true;
+            fullUpdateNeeded = false;
         }
+    }
+
+    /** Pause pixel requests while the viewer is hidden; the Linux session stays running.
+     * One requested frame may finish. Its pixels are retained, so resume only needs changes
+     * accumulated by the server; the first frame and resize still request all pixels. */
+    void setUpdatesPaused(boolean paused) {
+        boolean wasPaused = updatesPaused;
+        updatesPaused = paused;
+        if (wasPaused && !paused) enqueue(() -> requestUpdate(true));
     }
 
     private void drainOutbox() {
         try {
             while (!closed.get()) {
-                WriteTask task = outbox.poll(500, TimeUnit.MILLISECONDS);
+                WriteTask task = outbox.poll(500);
                 if (task == null) continue;
                 try {
                     task.write();
@@ -406,16 +470,18 @@ final class VncClient {
         }
     }
 
-    /** Full queue means a flood of pointer moves; dropping one is harmless, blocking the UI is not. */
+    /** Never silently lose a key or button release. A stalled connection with 512 discrete
+     * commands closes instead of retaining unbounded input or blocking Android's UI. */
     private void enqueue(WriteTask task) {
         if (closed.get() || output == null) return;
-        outbox.offer(task);
+        if (!outbox.offer(task)) close();
     }
 
     void sendPointer(int x, int y, int buttonMask) {
         final int pointerX = clamp(x, 0, Math.max(0, width - 1));
         final int pointerY = clamp(y, 0, Math.max(0, height - 1));
-        enqueue(() -> {
+        if (closed.get() || output == null) return;
+        WriteTask task = () -> {
             synchronized (writeLock) {
                 output.writeByte(5);
                 output.writeByte(buttonMask & 0xff);
@@ -423,7 +489,8 @@ final class VncClient {
                 output.writeShort(pointerY);
                 output.flush();
             }
-        });
+        };
+        if (!outbox.offerPointer(task, buttonMask)) close();
     }
 
     void sendKey(int keysym, boolean down) {
@@ -439,9 +506,50 @@ final class VncClient {
     }
 
     void typeCodePoint(int codePoint) {
-        int keysym = codePoint <= 0xff ? codePoint : 0x01000000 | codePoint;
-        sendKey(keysym, true);
-        sendKey(keysym, false);
+        final int keysym = codePoint <= 0xff ? codePoint : 0x01000000 | codePoint;
+        enqueue(() -> {
+            synchronized (writeLock) {
+                writeKeyPair(keysym);
+                output.flush();
+            }
+        });
+    }
+
+    private void writeKeyPair(int keysym) throws IOException {
+        for (int down = 1; down >= 0; down--) {
+            output.writeByte(4);
+            output.writeByte(down);
+            output.writeShort(0);
+            output.writeInt(keysym);
+        }
+    }
+
+    /** One IME replacement is one queued command, even for a long pasted prompt. Flush
+     * bounded chunks, allowing framebuffer requests and close between them. */
+    void replaceText(int backspaces, int deletes, String text) {
+        final int before = Math.max(0, backspaces);
+        final int after = Math.max(0, deletes);
+        final String value = text == null ? "" : text;
+        if (before == 0 && after == 0 && value.isEmpty()) return;
+        enqueue(() -> {
+            int remainingBefore = before, remainingAfter = after, offset = 0;
+            while (!closed.get() && (remainingBefore > 0 || remainingAfter > 0 || offset < value.length())) {
+                synchronized (writeLock) {
+                    for (int sent = 0; sent < 128; sent++) {
+                        int keysym;
+                        if (remainingBefore > 0) { remainingBefore--; keysym = 0xff08; }
+                        else if (remainingAfter > 0) { remainingAfter--; keysym = 0xffff; }
+                        else if (offset < value.length()) {
+                            int point = value.codePointAt(offset);
+                            offset += Character.charCount(point);
+                            keysym = point == '\n' ? 0xff0d : point <= 0xff ? point : 0x01000000 | point;
+                        } else break;
+                        writeKeyPair(keysym);
+                    }
+                    output.flush();
+                }
+            }
+        });
     }
 
     void sendClipboard(String text) {
@@ -462,7 +570,10 @@ final class VncClient {
     int getHeight() { return height; }
 
     void close() {
-        if (!closed.compareAndSet(false, true)) return;
+        // A close can race connection setup. Always close a socket published after an earlier
+        // close call; returning merely because the flag is set leaks that late socket.
+        closed.set(true);
+        outbox.clear();
         Thread activeSender = sender;
         if (activeSender != null) activeSender.interrupt();
         try { if (socket != null) socket.close(); } catch (IOException ignored) {}

@@ -5,16 +5,14 @@ import android.app.Application;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.widget.Toast;
 
 /**
- * Installs the crash recorder, keeps a stray UI-thread exception from killing the process, and
- * re-arms the app lock whenever the app leaves the foreground.
+ * Installs the crash recorder and re-arms the app lock whenever the app leaves the foreground.
  *
- * A single unhandled exception on the main thread used to end the whole app: the desktop screen
- * vanished back to the home screen, or Android showed "PocketDesk keeps stopping". Re-entering the
- * main Looper after an exception keeps the app alive and leaves the stack in the error report,
- * which is far more useful than a dead process.
+ * Android owns the main Looper. Starting a second Looper.loop() inside it leaves a failed
+ * ActivityTransaction half executed: the framework can then receive a top-resumed callback for
+ * an Activity record that no longer exists. A fatal UI exception is therefore recorded and handed
+ * back to Android's normal uncaught-exception path, which gives the next launch a clean process.
  */
 public final class App extends Application {
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -24,7 +22,6 @@ public final class App extends Application {
     @Override public void onCreate() {
         super.onCreate();
         Crash.install(this);
-        keepMainThreadAlive();
         watchForeground();
     }
 
@@ -51,46 +48,4 @@ public final class App extends Application {
         });
     }
 
-    /**
-     * How many errors in a row are caught before the app is allowed to die properly.
-     *
-     * Catching for ever sounds safer than it is: an error that repeats every time the looper
-     * turns would spin the processor and empty the battery while the screen looked normal. After
-     * this many in one minute, the next one is left alone -- Android ends the app, the report is
-     * on disk, and the owner opens it instead of watching the phone get hot.
-     */
-    private static final int CAUGHT_BEFORE_GIVING_UP = 12;
-    private static final long CAUGHT_WINDOW_MS = 60_000L;
-
-    private void keepMainThreadAlive() {
-        new Handler(Looper.getMainLooper()).post(() -> {
-            int caught = 0;
-            long since = android.os.SystemClock.elapsedRealtime();
-            while (true) {
-                try {
-                    Looper.loop();
-                    return;                      // the looper quit on purpose
-                } catch (Throwable error) {
-                    long now = android.os.SystemClock.elapsedRealtime();
-                    if (now - since > CAUGHT_WINDOW_MS) {
-                        caught = 0;
-                        since = now;
-                    }
-                    if (++caught > CAUGHT_BEFORE_GIVING_UP) throw error;
-                    Crash.save(this, error);
-                    // Android's own teardown races are recorded but never announced: telling the
-                    // owner their computer hit an error, for something no app can prevent and
-                    // nothing they did caused, is a false alarm about their own phone.
-                    if (Crash.isFrameworkRace(error)) continue;
-                    try {
-                        Toast.makeText(this,
-                                "PocketDesk hit an error and kept running. See Last error report.",
-                                Toast.LENGTH_LONG).show();
-                    } catch (Throwable ignored) {
-                        // Never let the report about a failure cause another one.
-                    }
-                }
-            }
-        });
-    }
 }

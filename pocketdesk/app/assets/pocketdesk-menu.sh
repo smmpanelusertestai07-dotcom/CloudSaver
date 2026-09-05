@@ -20,28 +20,48 @@ mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
          "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone" \
          "$HOME_DIR/.config/pocketdesk" "$HOME_DIR/.themes"
 
+# The desktop session writes the chosen download directory here. A menu refresh may also run as
+# root after an install, so it cannot rely on inherited environment variables. Accept only the
+# two destinations PocketLinux itself writes; a damaged file falls back to private Downloads.
+DOWNLOAD_DIR=$(cat "$HOME_DIR/.config/pocketdesk/download-dir" 2>/dev/null || true)
+case "$DOWNLOAD_DIR" in
+  "$HOME_DIR/Downloads"|"$HOME_DIR/Phone/Download/PocketLinux") ;;
+  *) DOWNLOAD_DIR="$HOME_DIR/Downloads" ;;
+esac
+mkdir -p "$DOWNLOAD_DIR" 2>/dev/null || DOWNLOAD_DIR="$HOME_DIR/Downloads"
+
 # Which edge the bar lives on. The owner's choice, kept outside tint2rc because this script
 # rewrites that file on every start; anything but "top" means the bottom. Read here, at the top,
 # because the root menu offers the opposite edge long before the bar itself is written.
 PANEL_AT=bottom
 [ "$(cat "$HOME_DIR/.config/pocketdesk/panel-edge" 2>/dev/null)" = "top" ] && PANEL_AT=top
 
-field() {   # field <file> <key>  -- the key as the main [Desktop Entry] group sets it
-  awk -F= -v key="$2" '
-    /^\[/ { group++ }
-    group > 1 { exit }
-    $1 == key { sub(/^[^=]*=/, ""); print; exit }
-  ' "$1"
+# Parse installed metadata once. Re-running awk/grep for every favourite used to
+# create thousands of short-lived PRoot children during every desktop start.
+declare -A FIELD_CACHE=() FIELD_FILES=()
+load_fields() {
+  local file="$1" line key group=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case "$line" in
+      \[* ) group=$((group + 1)); [ "$group" -le 1 ] || break ;;
+      *=* ) key=${line%%=*}
+            [ -n "${FIELD_CACHE["$file|$key"]+present}" ] || FIELD_CACHE["$file|$key"]=${line#*=} ;;
+    esac
+  done < "$file"
+  FIELD_FILES["$file"]=1
+}
+field() {
+  if [ -z "${FIELD_FILES["$1"]+present}" ] && [ -f "$1" ]; then load_fields "$1"; fi
+  printf '%s\n' "${FIELD_CACHE["$1|$2"]-}"
 }
 
-# The first token of an Exec line. The desktop-entry spec allows a quoted path, so splitting
-# on whitespace returned "\"/opt/My" for anything installed in a directory with a space in it,
-# and the app then vanished from the menu, the desktop and the panel.
-exec_binary() {   # exec_binary <exec line>
-  case "$1" in
-    \"*) printf '%s' "${1#\"}" | cut -d'"' -f1 ;;
-    "'"*) printf '%s' "${1#\'}" | cut -d"'" -f1 ;;
-    *) printf '%s' "$1" | awk '{print $1}' ;;
+exec_binary() {
+  local value="$1"
+  case "$value" in
+    \"*) value=${value#\"}; printf '%s' "${value%%\"*}" ;;
+    \'*) value=${value#\'}; printf '%s' "${value%%\'*}" ;;
+    *) read -r value _ <<< "$value"; printf '%s' "$value" ;;
   esac
 }
 
@@ -64,12 +84,11 @@ runnable() {   # runnable <desktop file>: its Exec names a program that exists
 }
 
 is_visible() {
-  # mousepad ships a second entry, "Text Editor Settings", with no NoDisplay line of its own.
-  case "$(basename "$1")" in org.xfce.mousepad-settings.desktop) return 1 ;; esac
-  grep -qi '^NoDisplay=true' "$1" && return 1
-  grep -qi '^Hidden=true' "$1" && return 1
-  grep -qi '^Type=Application' "$1" || return 1
-  return 0
+  local value
+  case "${1##*/}" in org.xfce.mousepad-settings.desktop) return 1 ;; esac
+  value=$(field "$1" NoDisplay); [ "${value,,}" != true ] || return 1
+  value=$(field "$1" Hidden); [ "${value,,}" != true ] || return 1
+  value=$(field "$1" Type); [ "${value,,}" = application ]
 }
 
 # Exec lines carry placeholders like %U or %F that a launcher must not pass through.
@@ -81,20 +100,25 @@ xml_escape() {
   printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
 }
 
+
+ENTRY_LIST=()
+for desktop in "$LOCAL_APPS"/*.desktop; do
+  [ ! -f "$desktop" ] || load_fields "$desktop"
+done
+for desktop in "$APPLICATIONS_DIR"/*.desktop; do
+  [ -f "$desktop" ] || continue
+  load_fields "$desktop"
+  is_visible "$desktop" && runnable "$desktop" && ENTRY_LIST+=("$desktop")
+done
 entries() {
-  for desktop in "$APPLICATIONS_DIR"/*.desktop; do
-    [ -f "$desktop" ] || continue
-    is_visible "$desktop" || continue
-    runnable "$desktop" || continue
-    echo "$desktop"
-  done
+  [ "${#ENTRY_LIST[@]}" -eq 0 ] || printf '%s\n' "${ENTRY_LIST[@]}"
 }
 
 # The browser. Google Chrome, which set-up installs; Brave or GNOME Web only on a computer
 # built by an earlier version that still has one of them. One browser on the desktop and
 # the panel, and the same one answers every link, so a sign-in never opens in a second one.
 BROWSER_ENTRY=""
-for candidate in google-chrome.desktop brave-browser.desktop org.gnome.Epiphany.desktop; do
+for candidate in google-chrome.desktop google-chrome-stable.desktop chromium.desktop chromium-browser.desktop brave-browser.desktop org.gnome.Epiphany.desktop firefox.desktop; do
   [ -f "$APPLICATIONS_DIR/$candidate" ] || continue
   runnable "$APPLICATIONS_DIR/$candidate" || continue
   BROWSER_ENTRY=$candidate
@@ -161,7 +185,7 @@ write_entry() {   # write_entry <source> <target> <label> <command>
 {
   echo '<?xml version="1.0" encoding="UTF-8"?>'
   echo '<openbox_menu xmlns="http://openbox.org/3.4/menu">'
-  echo '<menu id="root-menu" label="PocketDesk - Ubuntu 24.04 LTS">'
+  echo '<menu id="root-menu" label="PocketLinux - Ubuntu 24.04 LTS">'
   found=0
   tool_items=""
   while read -r desktop; do
@@ -169,7 +193,9 @@ write_entry() {   # write_entry <source> <target> <label> <command>
     name=$(short_name "$(basename "$desktop" .desktop)" "$(field "$desktop" Name)")
     [ -n "$name" ] || continue
     command=$(strip_codes "$(field "$desktop" Exec)")
-    if [ "$(field "$desktop" Terminal)" = "true" ]; then
+    if [ "$(field "$desktop" X-PocketDesk-Direct)" = "true" ]; then
+      command=$(strip_codes "$(field "$desktop" Exec)")
+    elif [ "$(field "$desktop" Terminal)" = "true" ]; then
       command="lxterminal -e $command"
     else
       command="$OPEN --label \"$(printf '%s' "$name" | tr -d '\"\\\\')\" $command"
@@ -194,9 +220,9 @@ EOF
   echo '    <item label="Screenshot"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></item>'
   echo '    <item label="Screenshot (window in front)"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot window</command></action></item>'
   echo '    <item label="Storage"><action name="Execute"><command>/usr/local/bin/pocketdesk-storage</command></action></item>'
+  echo '    <item label="Software"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
   echo '    <item label="Appshot to the AI app (Super+Space)"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></item>'
   echo '    <item label="AI computer use"><action name="Execute"><command>/usr/local/bin/pocketdesk-agent status</command></action></item>'
-  echo '    <item label="Where downloads go"><action name="Execute"><command>/usr/local/bin/pocketdesk-save --choose</command></action></item>'
   echo '    <separator/>'
   echo '    <menu id="mobile-menu" label="Phone app testing">'
   echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=500 --title="Phone app testing" --text="This computer can install and test an Android app on a real phone — including the one it is running on.\n\nAndroid 11 and later have Wireless debugging, and this computer shares the phone network, so 127.0.0.1 reaches this very phone. Build an APK here, install it here, and it opens on this screen.\n\nAnother phone on the same Wi-Fi works the same way, with its own address.\n\nAn Android EMULATOR cannot run here: it needs hardware virtualisation, which no app on an unrooted phone can have. A real phone is the test device."</command></action></item>'
@@ -206,26 +232,16 @@ EOF
   echo '      <separator/>'
   echo '      <item label="Pair a phone"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb pair</command></action></item>'
   echo '      <item label="Connect"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb connect</command></action></item>'
-  echo '      <item label="Install an APK"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb install</command></action></item>'
-  echo '      <item label="Logs (logcat)"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb logs</command></action></item>'
+  echo '      <item label="Install and open an APK"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb install</command></action></item>'
+  echo '      <item label="App logs (logcat)"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb logs</command></action></item>'
   echo '      <item label="Mirror the phone screen"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb screen</command></action></item>'
   echo '      <item label="What is connected"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb status</command></action></item>'
-  echo '      <item label="Let an AI agent test on the phone"><action name="Execute"><command>zenity --info --no-markup --width=520 --title="An AI agent, testing on a real phone" --text="Once a phone is paired and connected, the AI apps installed here can drive it themselves.\n\nPocketDesk registers its own tool server with Claude Code and Codex, and it carries phone tools alongside the desktop ones: list the devices, install an APK, open an app, take a picture of the phone screen, read the screen as a list of named buttons, tap, swipe, type, press a key, read logcat, and run a shell command on the device.\n\nSo you can say: build this app, install it on my phone, open it, and tell me what is wrong — and the agent does all of it without you touching the phone.\n\nAsk your agent for the tools whose names start with phone_."</command></action></item>'
-  echo '    </menu>'
-  echo '    <menu id="windows-menu" label="Windows apps">'
-  echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=470 --title="Windows apps" --text="This computer can also run Windows programs that were built for ARM64 processors, through Wine.\n\nDownload one in the browser, then open it with Install a downloaded app. PocketDesk reads which processor it was built for FIRST: ARM64 installs, Intel-only is refused before anything is unpacked.\n\nWindows apps here are experimental. Nothing on the Linux side is affected either way."</command></action></item>'
-  echo '      <item label="Get Cursor for Windows (ARM64)"><action name="Execute"><command>xdg-open https://cursor.com/download</command></action></item>'
-  echo '      <item label="Get Antigravity for Windows (ARM64)"><action name="Execute"><command>xdg-open https://antigravity.google/download</command></action></item>'
-  echo '      <item label="Get Claude for Windows (ARM64)"><action name="Execute"><command>xdg-open https://claude.com/download</command></action></item>'
-  echo '      <item label="Get ChatGPT for Windows"><action name="Execute"><command>xdg-open https://chatgpt.com/download</command></action></item>'
-  echo '      <item label="Install a downloaded app"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
-  echo '      <item label="Windows apps installed"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-winapp list; echo; /usr/local/bin/pocketdesk-winapp version; echo; read -p \"Press Enter to close \""</command></action></item>'
   echo '    </menu>'
   echo '  </menu>' 
   echo '  <separator label="Folders"/>'
   echo '  <item label="Phone files"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
   echo '  <item label="Projects"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
-  echo '  <item label="Downloads"><action name="Execute"><command>pcmanfm /home/coder/Downloads</command></action></item>'
+  printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
   echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
@@ -255,6 +271,12 @@ for stale in "$DESKTOP_DIR"/*.desktop; do
   grep -q '^X-PocketDesk=1' "$stale" 2>/dev/null && rm -f "$stale"
 done
 find "$LOCAL_APPS" -maxdepth 1 -name 'pocketdesk-*.desktop' -delete 2>/dev/null || true
+# A computer set up by a version that carried the Windows layer keeps its launchers and its
+# prefixes until this runs once. Nothing else on the computer is touched.
+rm -rf "$HOME_DIR/.pocketdesk/windows" "$HOME_DIR/.pocketdesk-wine" 2>/dev/null || true
+rm -f "$DESKTOP_DIR"/pocketdesk-win-*.desktop "$LOCAL_APPS"/pocketdesk-win-*.desktop \
+      "$DESKTOP_DIR/pocketdesk-real-windows.desktop" \
+      "$LOCAL_APPS/pocketdesk-real-windows.desktop" 2>/dev/null || true
 
 # The panel's first button: the apps menu, behind the Linux mascot. Hidden from the menu it
 # opens, or it would list itself.
@@ -300,14 +322,21 @@ EOF
 done
 
 # The installer that a downloaded app package opens into. Two jobs: it is the handler for
-# .deb files (Chrome's Open, and a double tap in the file manager), and it is a launcher of its
+# .deb packages (Chrome's Open, and a double tap in the file manager), and a launcher of its
 # own so an app can be installed without finding the file first.
-printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install a Linux app package (.deb) you downloaded\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-linux\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
+printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-linux\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
   > "$LOCAL_APPS/pocketdesk-install.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-install.desktop"
 
+# A small Ubuntu software centre: search the signed apt catalogue, review a package, install it,
+# update the computer, or hand a downloaded package to PocketLinux's safety checks.
+printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketdesk-software\nIcon=system-software-install\nTerminal=false\nCategories=System;PackageManager;\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-software.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-software.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-software.desktop" "$DESKTOP_DIR/pocketdesk-software.desktop"
+
 # The phone's own files, as a folder on the desktop and a button on the panel. Empty but for a
-# note until the owner turns Phone files on in PocketDesk's Settings; then Download, DCIM and
+# note until the owner turns Phone files on in PocketLinux's Settings; then Download, DCIM and
 # Documents are in it. Super+P opens it too.
 printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\047s storage, inside the computer\nExec=pcmanfm /home/coder/Phone\nIcon=pocketdesk-phone\nTerminal=false\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-phone.desktop"
@@ -317,19 +346,19 @@ chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 # tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the
 # point sizes are converted here and the bar matches the rest of the desktop at any screen size
-# the owner picks. A missing or odd .Xresources falls straight back to PocketDesk's own default.
+# the owner picks. A missing or odd .Xresources falls straight back to PocketLinux's own default.
 DPI=$(awk -F: '/^Xft\.dpi:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME_DIR/.Xresources" 2>/dev/null)
 case "${DPI:-}" in ''|*[!0-9]*) DPI=120 ;; esac
 [ "$DPI" -lt 96 ] && DPI=96
 [ "$DPI" -gt 240 ] && DPI=240
 pt() { echo $(( $1 * DPI / 96 )); }    # a point size that looked right on a 96 dpi screen
-px() { echo $(( $1 * DPI / 120 )); }   # a length that looked right at PocketDesk's default 120 dpi
+px() { echo $(( $1 * DPI / 120 )); }   # a length that looked right at PocketLinux's default 120 dpi
 
 
 # Which apps get a slot on the bar. The four AI apps are deliberately not here: a 720-pixel bar
 # has room for either nine launchers or the buttons of the windows that are open, and once an app
 # is open its own button is what you need. They keep their desktop icons, the Apps menu (the Tux
-# button, Super+A, a long press on the wallpaper) and PocketDesk's own Apps tab.
+# button, Super+A, a long press on the wallpaper) and PocketLinux's own Apps tab.
 panel_lines=""
 for base in ${BROWSER_BASE:-} pcmanfm lxterminal; do
   [ -n "$base" ] || continue
@@ -376,7 +405,7 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'background_color = #101a2e 100'
   echo 'border_color = #2b3563 100'
   # L launchers (Tux Apps in the corner, then browser, Files, Terminal, Phone files), T the open
-  # windows, S tray, E the phone's own numbers, C clock, P the PocketDesk mark in the far corner.
+  # windows, S tray, E the phone's own numbers, C clock, P the PocketLinux mark in the far corner.
   echo 'panel_items = LTSECP'
   echo "panel_position = $PANEL_AT center horizontal"
   echo 'panel_layer = top'
@@ -388,7 +417,7 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo "panel_size = 100% $(px 58)"
   echo 'panel_margin = 0 0'
   echo "panel_padding = $(px 2) $(px 2) $(px 6)"
-  echo 'panel_window_name = PocketDesk'
+  echo 'panel_window_name = PocketLinux'
   echo 'font_shadow = 0'
   echo 'scale_relative_to_dpi = 0'
   echo 'scale_relative_to_screen_height = 0'
@@ -465,12 +494,12 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'execp_centered = 1'
   echo 'execp_background_id = 0'
   echo 'execp_lclick_command = /usr/local/bin/pocketdesk-storage'
-  # The far corner: PocketDesk's own mark, doing a real job -- show the desktop, tap again to
+  # The far corner: PocketLinux's own mark, doing a real job -- show the desktop, tap again to
   # bring the windows back -- opposite Tux in the other corner. Exactly one "P" above, so
   # exactly one button block here.
   echo 'button = new'
   echo "button_icon = $MARK"
-  echo 'button_tooltip = PocketDesk - show the desktop'
+  echo 'button_tooltip = PocketLinux - show the desktop'
   echo "button_padding = $(px 8) 0 0"
   echo "button_max_icon_size = $(px 26)"
   echo 'button_background_id = 0'
@@ -481,8 +510,8 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   printf '%s\n' "$panel_lines"
 } > "$TINT2_DIR/tint2rc"
 
-printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="$HOME/Downloads"\n' \
-  > "$HOME_DIR/.config/user-dirs.dirs"
+printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="%s"\n' \
+  "$DOWNLOAD_DIR" > "$HOME_DIR/.config/user-dirs.dirs"
 
 # ---- Which app answers which kind of link -------------------------------------------
 # http and https go to the browser -- through its wrapped entry, so Brave gets the sandbox
@@ -491,21 +520,48 @@ printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG
 # cursor://...), which each package declares in its .desktop file; those are copied here so
 # the browser can find them. Without this table the login page said "done" and the app never
 # heard.
-browser_handler=$BROWSER_ENTRY
-[ -n "$BROWSER_ENTRY" ] && [ -f "$LOCAL_APPS/pocketdesk-$BROWSER_ENTRY" ] && browser_handler="pocketdesk-$BROWSER_ENTRY"
+# Protocol registrations are often separate NoDisplay=true entries, including
+# registrations created in ~/.local/share/applications by Electron itself. They
+# still need the launcher flags. Favourites/menu visibility must not decide whether
+# an OAuth callback gets a safe launcher.
+for desktop in "$APPLICATIONS_DIR"/*.desktop "$LOCAL_APPS"/*.desktop; do
+  [ -f "$desktop" ] || continue
+  case "${desktop##*/}" in pocketdesk-*) continue ;; esac
+  grep -qi '^Hidden=true' "$desktop" && continue
+  mime=$(field "$desktop" MimeType)
+  case "$mime" in *x-scheme-handler/*) ;; *) continue ;; esac
+  runnable "$desktop" || continue
+  base=$(basename "$desktop" .desktop)
+  label=$(field "$desktop" Name | tr -d '"\\')
+  write_entry "$desktop" "$LOCAL_APPS/pocketdesk-$base.desktop" "$label" \
+    "$(strip_codes "$(field "$desktop" Exec)")"
+done
+browser_handler=""
+html_handler=""
+if [ -n "$BROWSER_ENTRY" ]; then
+  browser_handler=pocketdesk-browser.desktop
+  # Local HTML files keep the ordinary browser entry. The web dispatcher accepts
+  # HTTP(S) URLs only, so sending a local document through it would break file opens.
+  html_handler="pocketdesk-$BROWSER_ENTRY"
+  [ -f "$LOCAL_APPS/$html_handler" ] || html_handler=$BROWSER_ENTRY
+  printf '[Desktop Entry]\nType=Application\nName=Browser\nExec=/usr/local/bin/pocketdesk-browser %%U\nIcon=%s\nTerminal=false\nNoDisplay=true\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\nX-PocketDesk=1\n' \
+    "$(field "$APPLICATIONS_DIR/$BROWSER_ENTRY" Icon)" > "$LOCAL_APPS/$browser_handler"
+fi
 {
   echo '[Default Applications]'
   if [ -n "$browser_handler" ]; then
     printf 'x-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
-      "$browser_handler" "$browser_handler" "$browser_handler"
+      "$browser_handler" "$browser_handler" "$html_handler"
   fi
-  # A downloaded app package opens PocketDesk's installer, the way tapping an APK opens
+  # A downloaded app package opens PocketLinux's installer, the way tapping an APK opens
   # Android's. Without this line the file does nothing at all when it is tapped.
   printf 'application/vnd.debian.binary-package=pocketdesk-install.desktop\n'
   printf 'application/x-deb=pocketdesk-install.desktop\n'
   printf 'application/x-debian-package=pocketdesk-install.desktop\n'
-  for desktop in "$APPLICATIONS_DIR"/*.desktop; do
+  for desktop in "$APPLICATIONS_DIR"/*.desktop "$LOCAL_APPS"/*.desktop; do
     [ -f "$desktop" ] || continue
+    case "${desktop##*/}" in pocketdesk-*) continue ;; esac
+    grep -qi '^Hidden=true' "$desktop" && continue
     mime=$(field "$desktop" MimeType)
     [ -n "$mime" ] || continue
     handler=$(basename "$desktop")
@@ -525,9 +581,9 @@ fi
 # The window decorations, in the app's own colours. A themerc is text only -- Openbox draws its
 # built-in button glyphs when a theme ships no .xbm -- and if this file is ever unreadable
 # Openbox logs one line and falls back to Clearlooks, which is where we are today.
-mkdir -p "$HOME_DIR/.themes/PocketDesk/openbox-3"
-cat > "$HOME_DIR/.themes/PocketDesk/openbox-3/themerc" <<'THEMERC'
-! PocketDesk -- the same palette as the phone app (see Ui.java).
+mkdir -p "$HOME_DIR/.themes/PocketLinux/openbox-3"
+cat > "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" <<'THEMERC'
+! PocketLinux -- the same palette as the phone app (see Ui.java).
 border.width: 1
 padding.width: 6
 padding.height: 8
@@ -621,6 +677,8 @@ THEMERC
 # (it used to be written once and never touched again, which is why old installs kept
 # floating half-size windows).
 #   - every normal window opens maximised: a floating window is wasted space on a phone;
+#   - dialogs and utility windows open centred, then the boundary guard shrinks either one
+#     only when its decorated edge would cross the current portrait/landscape work area;
 #   - a title bar on every window, Electron apps included, or there is no way to close them;
 #   - the close, minimise and maximise buttons sit at the LEFT edge of the title bar. A
 #     maximised window always starts at the left edge of the screen, so those buttons are
@@ -636,7 +694,7 @@ THEMERC
 #     Super+F does that job instead;
 #   - every font is 14, not 11: Openbox sizes the title buttons from the window font alone, and
 #     at 11 they were about two millimetres on this screen. The root menu gains the same way;
-#   - the decorations use PocketDesk's own theme, written above; an unreadable themerc costs one
+#   - the decorations use PocketLinux's own theme, written above; an unreadable themerc costs one
 #     line in Openbox's log and falls back to the theme Ubuntu ships;
 #   - the keys the phone's toolbar and the panel send: Super+F4 force-closes the window in
 #     front (for an app that stopped answering), Super+Tab lists the open windows, Super+P
@@ -647,20 +705,25 @@ OPENBOX_DEFAULT=${POCKETDESK_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
 if [ -f "$OPENBOX_DEFAULT" ]; then
   sed -e 's|<size>[0-9]*</size>|<size>14</size>|g' \
       -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>ICNL</titleLayout>|' \
-      -e 's|<theme>|<theme>\n    <name>PocketDesk</name>|' \
+      -e 's|<theme>|<theme>\n    <name>PocketLinux</name>|' \
       -e 's|<animateIconify>yes</animateIconify>|<animateIconify>no</animateIconify>|' \
       -e 's|<number>[0-9]*</number>|<number>1</number>|' \
       -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
-      -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>|' \
+      -e 's|<screen_edge_strength>[0-9]*</screen_edge_strength>|<screen_edge_strength>100</screen_edge_strength>|' \
+      -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>\n    <application type="dialog"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>\n    <application type="utility"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>|' \
       -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi
 
-chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
-  "$HOME_DIR/.config/pocketdesk" "$HOME_DIR/.themes" \
+# Own only generated settings and launcher files. Never walk Phone, Projects,
+# Downloads or browser profiles during a menu refresh.
+chown coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+  "$HOME_DIR/.themes" "$HOME_DIR/.themes/PocketLinux" "$HOME_DIR/.themes/PocketLinux/openbox-3" \
+  "$OPENBOX_DIR/menu.xml" "$OPENBOX_DIR/rc.xml" "$TINT2_DIR/tint2rc" \
+  "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" \
   "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \
-  "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone" 2>/dev/null || true
+  "$LOCAL_APPS"/pocketdesk-*.desktop "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 # A desktop that is open right now gets the new list at once. This also runs as root from an
 # install that happens while the desktop is open, so the panel is restarted as the desktop's
@@ -670,7 +733,7 @@ chown -R coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
 display_live() {
   [ -S /tmp/.X11-unix/X1 ] || return 1
   command -v xdpyinfo >/dev/null 2>&1 || return 0
-  DISPLAY=:1 xdpyinfo >/dev/null 2>&1
+  DISPLAY=:1 timeout --foreground --kill-after=1s 3s xdpyinfo >/dev/null 2>&1
 }
 
 if display_live; then
@@ -686,4 +749,5 @@ if display_live; then
     # own user, so a replacement started here belongs to the session and survives.
     DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
   fi
+  DISPLAY=:1 /usr/local/bin/pocketdesk-window-guard once >/dev/null 2>&1 || true
 fi

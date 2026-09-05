@@ -78,7 +78,7 @@ status() {
 
 missing_android() {
   for pd_tool in java gradle adb; do
-    have "$pd_tool" || { say "$pd_tool is not installed. Add 'Mobile app development' from PocketDesk's Apps tab."; return 0; }
+    have "$pd_tool" || { say "$pd_tool is not installed. Add 'Mobile app development' from PocketLinux's Apps tab."; return 0; }
   done
   return 1
 }
@@ -128,7 +128,7 @@ Then, to see it running:
       cd "$target" || exit 1
       # gradle init writes a working, current Android-less skeleton; the Android plugin is added
       # by the agent or the owner. Started this way rather than with a template written into
-      # PocketDesk, which would be out of date the month after it shipped.
+      # PocketLinux, which would be out of date the month after it shipped.
       gradle init --type basic --dsl kotlin --project-name "$name" --no-daemon >/dev/null 2>&1 \
         || say "gradle init did not finish; the folder is there and can be filled in by hand."
       say "Made $target"
@@ -183,7 +183,7 @@ What works, today, with no Mac:
    The same project runs on this Android phone at the same time.
 3. When you need a real iOS build for TestFlight or the App Store, Expo's build service
    compiles it on their Macs from this same project ('eas build -p ios'). That needs an Apple
-   Developer account — Apple's charge, not PocketDesk's.
+   Developer account — Apple's charge, not PocketLinux's.
 
 Android needs none of that: it is built, installed and opened right here."
     ;;

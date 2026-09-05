@@ -82,7 +82,7 @@ final class DeviceCheck {
                 + (arm64 ? "ARM64" : "not ARM64") + " · " + ramGb + " GB RAM · "
                 + DeviceProbe.formatBytes(freeBytes) + " free";
         if (!arm64) {
-            return new Result(false, "This phone cannot run PocketDesk",
+            return new Result(false, "This phone cannot run PocketLinux",
                     facts + "\n\n" + requirements() + "\n\nThis phone reports no 64-bit ARM "
                             + "processor, which nearly every phone made since 2017 has.");
         }

@@ -24,6 +24,8 @@ final class KeyboardInputView extends View {
     interface Listener {
         void typeCodePoint(int codePoint);
         void specialKey(int keysym);
+        /** One ordered IME edit; the transport batches its key events without losing text. */
+        void replaceText(int backspaces, int deletes, String text);
     }
 
     private Listener listener;
@@ -77,17 +79,12 @@ final class KeyboardInputView extends View {
             }
 
             @Override public boolean deleteSurroundingText(int beforeLength, int afterLength) {
-                if (listener == null) return true;
-                // The keyboard deletes what it can see, which for it is only the composing
-                // word; anything beyond that is a backspace on the Linux side per character.
-                if (!composing.isEmpty()) {
-                    int keep = Math.max(0, composing.length() - beforeLength);
-                    beforeLength -= composing.length() - keep;
-                    replaceComposing(composing.substring(0, keep));
-                    composing = keep == 0 ? "" : composing;
-                }
-                for (int i = 0; i < beforeLength; i++) listener.specialKey(0xff08);
-                for (int i = 0; i < afterLength; i++) listener.specialKey(0xffff);
+                deleteText(beforeLength, afterLength, false);
+                return true;
+            }
+
+            @Override public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
+                deleteText(beforeLength, afterLength, true);
                 return true;
             }
 
@@ -132,8 +129,8 @@ final class KeyboardInputView extends View {
             common--;
         }
         int erase = composing.codePointCount(common, composing.length());
-        for (int i = 0; i < erase; i++) listener.specialKey(0xff08);
-        sendText(next.substring(common));
+        String insert = next.substring(common);
+        if (erase != 0 || !insert.isEmpty()) listener.replaceText(erase, 0, insert);
         composing = next;
     }
 
@@ -154,15 +151,22 @@ final class KeyboardInputView extends View {
         return super.onKeyDown(keyCode, event);
     }
 
-    private void sendText(CharSequence text) {
-        if (text == null || listener == null) return;
-        for (int offset = 0; offset < text.length();) {
-            int codePoint = Character.codePointAt(text, offset);
-            // The keyboard's Enter arrives as a newline character on some keyboards.
-            if (codePoint == '\n') listener.specialKey(0xff0d);
-            else listener.typeCodePoint(codePoint);
-            offset += Character.charCount(codePoint);
-        }
+    private void deleteText(int beforeLength, int afterLength, boolean codePoints) {
+        if (listener == null) return;
+        int before = Math.max(0, beforeLength);
+        int after = Math.max(0, afterLength);
+        int available = codePoints ? composing.codePointCount(0, composing.length()) : composing.length();
+        int removed = Math.min(before, available);
+        int keep = codePoints ? composing.offsetByCodePoints(composing.length(), -removed)
+                : composing.length() - removed;
+        // A UTF-16 deletion can request half an emoji. Linux backspace acts on the complete
+        // code point; mirror that rather than retaining an unpaired surrogate as composing text.
+        if (keep > 0 && keep < composing.length()
+                && Character.isHighSurrogate(composing.charAt(keep - 1))
+                && Character.isLowSurrogate(composing.charAt(keep))) keep--;
+        int erase = (before - removed) + composing.codePointCount(keep, composing.length());
+        composing = composing.substring(0, keep);
+        if (erase != 0 || after != 0) listener.replaceText(erase, after, "");
     }
 
     private static int mapAndroidKey(int keyCode) {

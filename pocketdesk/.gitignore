@@ -1,3 +1,5 @@
 /build/
 /app/assets/open-source-notices.md
 *.log
+__pycache__/
+*.pyc

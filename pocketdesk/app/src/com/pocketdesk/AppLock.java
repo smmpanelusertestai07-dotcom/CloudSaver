@@ -19,7 +19,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * The app lock: the phone's own fingerprint or PIN, asked whenever PocketDesk comes back to
+ * The app lock: the phone's own fingerprint or PIN, asked whenever PocketLinux comes back to
  * the front.
  *
  * It covers the whole app. A lock on the home screen alone was a lock someone walked around:
@@ -107,7 +107,7 @@ final class AppLock {
         logo.setImageResource(R.drawable.icon_in_app);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         screen.addView(logo, new LinearLayout.LayoutParams(Ui.dp(context, 72), Ui.dp(context, 72)));
-        TextView title = Ui.bold(context, "PocketDesk is locked", 22, Ui.DARK_TEXT);
+        TextView title = Ui.bold(context, "PocketLinux is locked", 22, Ui.DARK_TEXT);
         title.setGravity(Gravity.CENTER);
         screen.addView(title, Ui.matchWrap(context, 18));
         TextView note = Ui.text(context, "Unlock with your fingerprint or the phone's PIN. "
@@ -168,7 +168,7 @@ final class AppLock {
         try {
             android.hardware.biometrics.BiometricPrompt.Builder builder =
                     new android.hardware.biometrics.BiometricPrompt.Builder(activity)
-                            .setTitle("PocketDesk is locked")
+                            .setTitle("PocketLinux is locked")
                             .setSubtitle("Unlock with your fingerprint or PIN");
             if (Build.VERSION.SDK_INT >= 30) {
                 builder.setAllowedAuthenticators(
@@ -203,7 +203,7 @@ final class AppLock {
     private static boolean credentialScreen(Activity activity, Callback callback) {
         KeyguardManager keyguard = (KeyguardManager) activity.getSystemService(Context.KEYGUARD_SERVICE);
         if (keyguard == null) return false;
-        Intent intent = keyguard.createConfirmDeviceCredentialIntent("PocketDesk is locked",
+        Intent intent = keyguard.createConfirmDeviceCredentialIntent("PocketLinux is locked",
                 "Enter the phone's PIN, pattern or password");
         if (intent == null) return false;
         try {

@@ -42,7 +42,7 @@ public final class VncClientProtocolTest {
                 output.writeByte(8);
                 output.writeByte(0);
                 output.write(new byte[3]);
-                byte[] name = "PocketDesk test".getBytes(StandardCharsets.UTF_8);
+                byte[] name = "PocketLinux test".getBytes(StandardCharsets.UTF_8);
                 output.writeInt(name.length);
                 output.write(name);
                 output.flush();
@@ -138,7 +138,7 @@ public final class VncClientProtocolTest {
         VncClient[] holder = new VncClient[1];
         holder[0] = new VncClient("127.0.0.1", server.getLocalPort(), new VncClient.Listener() {
             @Override public void onConnected(int width, int height, String name) {
-                if (width != 2 || height != 1 || !"PocketDesk test".equals(name)) {
+                if (width != 2 || height != 1 || !"PocketLinux test".equals(name)) {
                     clientError.set(new AssertionError("wrong ServerInit"));
                 }
             }

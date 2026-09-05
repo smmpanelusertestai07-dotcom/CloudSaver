@@ -4,168 +4,179 @@ import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.os.SystemClock;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
 
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileDescriptor;
 import java.io.IOException;
 
 /**
- * The phone's microphone, offered to the Linux computer as an ordinary recording device.
- *
- * The desktop session makes a named pipe inside this app's private storage and asks PulseAudio
- * to read it as a source called "Phone microphone". This class is the other end: it records from
- * the phone with AudioRecord and writes the same raw PCM into that pipe. Everything inside the
- * computer -- a voice reply, a meeting page in the browser, an AI app's dictation -- then finds a
- * working microphone with no idea that it is on a phone.
- *
- * Three rules it keeps, because a microphone is the one thing an owner must never have to guess
- * about:
- *
- *  - It is OFF until the owner turns it on, every session. Nothing is remembered as "always on".
- *  - It records only while the desktop screen is in front. Leaving the desktop stops it.
- *  - With nothing recording, the pipe has no writer, and PulseAudio reads a microphone that is
- *    simply silent -- not one that is listening and discarding.
- *
- * 16 kHz mono is what the pipe is declared as and what speech wants; it is also a sixth of the
- * bytes of the sound going the other way, which matters on a phone that is already tracing every
- * syscall of the container reading them.
+ * Sends the phone's microphone to PulseAudio's private FIFO while the owner enables it.
+ * Each recording owns its recorder and cancellation state. A stopped or replaced recording
+ * cannot keep the microphone open or overwrite the state of a newer recording.
  */
 final class MicBridge {
-    /** Must match the rate and channels module-pipe-source is loaded with. */
+    /** Must match module-pipe-source's 16 kHz, mono, signed 16-bit little-endian format. */
     static final int RATE = 16_000;
+    private static final long WRITE_TIMEOUT_MS = 2000L;
 
-    /**
-     * The context exactly as it was handed over, untouched.
-     *
-     * Untouched is the whole point. This object is a field of the desktop screen, so it is built
-     * inside that Activity's CONSTRUCTOR -- which Android runs before it attaches the Activity to
-     * anything. An Activity at that moment is a Context with no Context behind it: calling
-     * getApplicationContext(), getSystemService() or getResources() on it throws a
-     * NullPointerException from inside the constructor, the screen is never created, and the
-     * phone falls back to the previous one. That is a black flash and a bounce to the home
-     * screen, with Android's own "Activity client record must not be null" recorded afterwards
-     * as if it were the fault. It was not: it was this line.
-     *
-     * So nothing is asked of the context until something actually uses the microphone, by which
-     * time the screen is long since attached.
-     */
-    private final Context given;
-    /** The application context, worked out on first use and kept. */
-    private volatile Context resolved;
-    private volatile Thread worker;
-    private volatile boolean running;
+    private final Context context;
+    private volatile Session active;
     private volatile String lastProblem;
 
-    MicBridge(Context context) {
-        this.given = context;
-    }
+    private static final class Session {
+        volatile boolean cancelled;
+        Thread worker;
+        private AudioRecord recorder;
 
-    /** The application context, or the one given if the phone will not hand one over yet. */
-    private Context context() {
-        Context ready = resolved;
-        if (ready == null) {
-            Context application = given.getApplicationContext();
-            ready = application != null ? application : given;
-            resolved = ready;
+        synchronized boolean begin(AudioRecord candidate) {
+            if (cancelled) {
+                candidate.release();
+                return false;
+            }
+            recorder = candidate;
+            candidate.startRecording();
+            return true;
         }
-        return ready;
+
+        synchronized void closeRecorder() {
+            AudioRecord owned = recorder;
+            recorder = null;
+            if (owned == null) return;
+            try { owned.stop(); } catch (Throwable ignored) {}
+            try { owned.release(); } catch (Throwable ignored) {}
+        }
+
+        void cancel() {
+            cancelled = true;
+            Thread thread = worker;
+            if (thread != null) thread.interrupt();
+            // Release here, rather than waiting for a pipe reader or worker cleanup. begin()
+            // shares this lock, so cancellation cannot race a late startRecording().
+            closeRecorder();
+        }
     }
 
-    /** Where the desktop session's pipe lives, inside the container's own home folder. */
+    MicBridge(Context context) {
+        this.context = context.getApplicationContext();
+    }
+
     static File pipe(Context context) {
         return new File(ContainerRuntime.rootfs(context), "home/coder/.pocketdesk/mic.pipe");
     }
 
-    /** True when the desktop has made the pipe, so there is a microphone to feed at all. */
     static boolean available(Context context) {
-        return Trees.exists(pipe(context));
+        try { return OsConstants.S_ISFIFO(Os.lstat(pipe(context).getAbsolutePath()).st_mode); }
+        catch (ErrnoException unavailable) { return false; }
     }
 
-    boolean isRunning() {
-        return running;
-    }
-
-    /** What went wrong last time, for the screen to show, or null. */
-    String problem() {
-        return lastProblem;
-    }
+    boolean isRunning() { return active != null; }
+    String problem() { return lastProblem; }
 
     synchronized void start() {
-        if (running) return;
+        if (active != null) return;
         lastProblem = null;
-        File target = pipe(context());
-        if (!Trees.exists(target)) {
+        if (!available(context)) {
             lastProblem = "The desktop has not made a microphone yet. Start the desktop, then try again.";
             return;
         }
-        running = true;
-        worker = new Thread(() -> pump(target), "pocketdesk-mic");
-        worker.setDaemon(true);
-        worker.start();
+        Session session = new Session();
+        active = session;
+        session.worker = new Thread(() -> pump(session, pipe(context)), "pocketdesk-mic");
+        session.worker.setDaemon(true);
+        session.worker.start();
     }
 
     synchronized void stop() {
-        running = false;
-        Thread thread = worker;
-        worker = null;
-        if (thread != null) thread.interrupt();
+        Session session = active;
+        active = null;
+        if (session != null) session.cancel();
     }
 
-    private void pump(File target) {
+    private synchronized void failed(Session session, String message) {
+        if (active == session && !session.cancelled) lastProblem = message;
+    }
+
+    private boolean live(Session session) {
+        return !session.cancelled && !Thread.currentThread().isInterrupted();
+    }
+
+    private void pump(Session session, File target) {
+        FileDescriptor pipe = null;
         AudioRecord recorder = null;
-        FileOutputStream out = null;
+        boolean ownedBySession = false;
         try {
+            // Never start recording while waiting for a vanished PulseAudio reader. O_NONBLOCK
+            // makes a FIFO without a reader fail immediately; no regular file is created.
+            pipe = Os.open(target.getAbsolutePath(), OsConstants.O_WRONLY | OsConstants.O_NONBLOCK
+                    | OsConstants.O_CLOEXEC | OsConstants.O_NOFOLLOW, 0);
+            if (!OsConstants.S_ISFIFO(Os.fstat(pipe).st_mode)) {
+                throw new IOException("The desktop microphone endpoint is not a pipe.");
+            }
+            if (!live(session)) return;
             int minimum = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT);
-            if (minimum <= 0) minimum = RATE;              // a phone that will not say; ask for a second
-            int size = Math.max(minimum * 2, RATE);
-            // VOICE_RECOGNITION rather than MIC: Android applies the noise suppression and gain
-            // meant for speech, which is what every use of this is, and skips the effects meant
-            // for recording music.
+            if (minimum <= 0) throw new IOException("The phone does not support this microphone format.");
             recorder = new AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, size);
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                    Math.max(minimum * 2, RATE));
             if (recorder.getState() != AudioRecord.STATE_INITIALIZED) {
-                lastProblem = "This phone would not open its microphone for the desktop.";
-                return;
+                throw new IOException("This phone would not open its microphone for the desktop.");
             }
-            recorder.startRecording();
-            // Opening the pipe for writing blocks until PulseAudio opens the other end, which it
-            // already has: the module is loaded when the session starts.
-            out = new FileOutputStream(target);
+            // begin() owns the candidate even when startRecording throws or cancellation wins.
+            ownedBySession = true;
+            if (!session.begin(recorder)) return;
             byte[] buffer = new byte[2048];
-            while (running && !Thread.currentThread().isInterrupted()) {
-                int read = recorder.read(buffer, 0, buffer.length);
-                if (read <= 0) {
-                    if (read == AudioRecord.ERROR_INVALID_OPERATION || read == AudioRecord.ERROR_BAD_VALUE) break;
-                    continue;
+            while (live(session)) {
+                int read = recorder.read(buffer, 0, buffer.length, AudioRecord.READ_NON_BLOCKING);
+                if (read < 0) {
+                    throw new IOException("The phone's microphone stopped (audio error " + read + ").");
                 }
-                out.write(buffer, 0, read);
+                if (read == 0) { Thread.sleep(20L); continue; }
+                writeChunk(session, pipe, buffer, read);
             }
-            out.flush();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
         } catch (SecurityException noPermission) {
-            lastProblem = "Microphone permission was not granted.";
+            failed(session, "Microphone permission was not granted.");
+        } catch (ErrnoException unavailable) {
+            failed(session, "The desktop microphone is not listening. Reopen the desktop and try again.");
         } catch (IOException broken) {
-            // The desktop stopped, so the reader is gone. Not a fault: the microphone goes with it.
-            if (running) lastProblem = "The desktop stopped listening to the microphone.";
+            failed(session, broken.getMessage());
         } catch (Throwable unexpected) {
-            lastProblem = "The microphone stopped: " + unexpected.getClass().getSimpleName();
+            failed(session, "The microphone stopped: " + unexpected.getClass().getSimpleName());
         } finally {
-            running = false;
-            if (recorder != null) {
-                try {
-                    if (recorder.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) recorder.stop();
-                } catch (Throwable ignored) {
-                    // A phone that will not stop cleanly must not take the desktop down with it.
-                }
-                recorder.release();
+            session.closeRecorder();
+            if (recorder != null && !ownedBySession) {
+                try { recorder.release(); } catch (Throwable ignored) {}
             }
-            if (out != null) {
-                try {
-                    out.close();
-                } catch (IOException ignored) {
-                    // Closing a pipe whose reader has gone is expected.
-                }
+            if (pipe != null) {
+                try { Os.close(pipe); } catch (ErrnoException ignored) {}
             }
+            synchronized (this) {
+                if (active == session) active = null;
+            }
+        }
+    }
+
+    private void writeChunk(Session session, FileDescriptor pipe, byte[] bytes, int length)
+            throws ErrnoException, IOException, InterruptedException {
+        int offset = 0;
+        long deadline = SystemClock.elapsedRealtime() + WRITE_TIMEOUT_MS;
+        while (offset < length && live(session)) {
+            try {
+                int written = Os.write(pipe, bytes, offset, length - offset);
+                if (written > 0) { offset += written; continue; }
+            } catch (ErrnoException blocked) {
+                if (blocked.errno != OsConstants.EAGAIN && blocked.errno != OsConstants.EINTR) throw blocked;
+            }
+            if (SystemClock.elapsedRealtime() >= deadline) {
+                throw new IOException("The desktop stopped reading the microphone. Turn it on again to retry.");
+            }
+            Thread.sleep(10L);
         }
     }
 }

@@ -51,15 +51,16 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.PocketDesk"
+        android:theme="@style/Theme.PocketLinux"
         android:usesCleartextTraffic="false">
 
         <activity
             android:name=".DesktopActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustNothing"
             android:screenOrientation="fullUser"
-            android:theme="@style/Theme.PocketDesk.Desktop" />
+            android:theme="@style/Theme.PocketLinux.Desktop" />
 
         <!-- singleTop, so a shortcut or a notification tapped while the home screen is open
              reaches onNewIntent instead of stacking a second copy of it. -->

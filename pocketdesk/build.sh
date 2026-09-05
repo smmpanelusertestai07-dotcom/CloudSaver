@@ -6,9 +6,9 @@ SDK_ROOT="${ANDROID_SDK_ROOT:-$PROJECT_DIR/../.tooling/android-sdk}"
 BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
 ANDROID_JAR="$SDK_ROOT/platforms/android-35/android.jar"
 BUILD_DIR="$PROJECT_DIR/build"
-APP_BASENAME="PocketDesk"
-VERSION_NAME="10.1.25"
-VERSION_CODE="225"
+APP_BASENAME="PocketLinux"
+VERSION_NAME="11.0.0"
+VERSION_CODE="400"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2
@@ -22,6 +22,19 @@ mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$BUILD_DIR/gen"
 # is the only thing they receive. Settings -> "Open-source notices" reads this copy.
 cp "$PROJECT_DIR/OPEN_SOURCE_NOTICES.md" "$PROJECT_DIR/app/assets/open-source-notices.md"
 
+# Host-side Python tests may leave bytecode beside the helpers. Package only source assets,
+# using a staging copy so a build never removes or changes files in the source tree.
+mkdir -p "$BUILD_DIR/assets"
+cp -a "$PROJECT_DIR/app/assets/." "$BUILD_DIR/assets/"
+find "$BUILD_DIR/assets" -type d -name '__pycache__' -prune -exec rm -rf -- {} +
+find "$BUILD_DIR/assets" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+
+# Compiled and targeted at API 35, and a test locks that down. The app once targeted API 28 --
+# the last compatibility domain Android lets execute files written into app_data_file -- purely
+# so a Windows compatibility layer could map downloaded program code. That layer is gone, and
+# with it the only reason to opt out of a decade of Android's own hardening. Linux programs need
+# nothing of the kind: PRoot and its loader are signed native libraries inside the APK, which
+# the package manager extracts and every modern target permits.
 "$BUILD_TOOLS/aapt2" compile --dir "$PROJECT_DIR/app/res" -o "$BUILD_DIR/compiled.zip"
 "$BUILD_TOOLS/aapt2" link \
   -o "$BUILD_DIR/$APP_BASENAME-unsigned.apk" \
@@ -33,11 +46,11 @@ cp "$PROJECT_DIR/OPEN_SOURCE_NOTICES.md" "$PROJECT_DIR/app/assets/open-source-no
   --version-code "$VERSION_CODE" \
   --version-name "$VERSION_NAME" \
   --auto-add-overlay \
-  -A "$PROJECT_DIR/app/assets" \
+  -A "$BUILD_DIR/assets" \
   "$BUILD_DIR/compiled.zip"
 
-# Android 10+ blocks exec from writable app-private storage for modern target SDKs.
-# PRoot and its loader are therefore signed native APK libraries, extracted by PackageManager.
+# PRoot and its loader ship as signed native APK libraries, extracted by PackageManager, which
+# is what keeps the container bootstrap reliable on a modern target.
 (cd "$PROJECT_DIR/app" && zip -q -0 "$BUILD_DIR/$APP_BASENAME-unsigned.apk" lib/arm64-v8a/*.so)
 
 mapfile -t JAVA_SOURCES < <(find "$PROJECT_DIR/app/src" "$BUILD_DIR/gen" -name '*.java' -type f | sort)
@@ -47,7 +60,7 @@ else
   JAVAC=(java -m jdk.compiler/com.sun.tools.javac.Main)
 fi
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -Xlint:all \
-  -classpath "$ANDROID_JAR" \
+  -bootclasspath "$ANDROID_JAR:$BUILD_TOOLS/core-lambda-stubs.jar" \
   -d "$BUILD_DIR/classes" \
   "${JAVA_SOURCES[@]}"
 
@@ -68,7 +81,7 @@ SUFFIX=""
 if [[ ! -f "$KEYSTORE" ]]; then
   SUFFIX="-devkey"
   echo "WARNING: $KEYSTORE is missing, so this build is signed with a throwaway key." >&2
-  echo "         It CANNOT be installed over an existing PocketDesk; restore the keystore" >&2
+  echo "         It CANNOT be installed over an existing PocketLinux; restore the keystore" >&2
   echo "         (pocketdesk/.signing/) or set POCKETDESK_KEYSTORE before a real release." >&2
 fi
 if [[ ! -f "$KEYSTORE" ]]; then
@@ -76,18 +89,23 @@ if [[ ! -f "$KEYSTORE" ]]; then
   keytool -genkeypair -noprompt \
     -keystore "$KEYSTORE" -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
     -alias pocketdesk -keyalg RSA -keysize 3072 -validity 3650 \
-    -dname "CN=PocketDesk Local Preview, O=PocketDesk, C=IN" >/dev/null 2>&1
+    -dname "CN=PocketLinux Local Preview, O=PocketLinux, C=IN" >/dev/null 2>&1
 fi
 
+# Publish only after verification. A killed signer must not leave a partial file
+# under the final release name. Bound the host JVM used for this small APK.
+FINAL_APK="$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
+SIGNED_APK="$BUILD_DIR/.pocketdesk-signing.apk"
 # v2 + v3 are both enabled so every sideload installer and Android 13 OEM build accepts the APK.
-"$BUILD_TOOLS/apksigner" sign \
+JAVA_OPTS="${JAVA_OPTS:-} -Xmx256m" "$BUILD_TOOLS/apksigner" sign \
   --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
   --ks-key-alias pocketdesk \
   --min-sdk-version 29 --max-sdk-version 35 \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-  --out "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk" \
+  --out "$SIGNED_APK" \
   "$BUILD_DIR/$APP_BASENAME-aligned.apk"
-"$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
-"$BUILD_TOOLS/aapt2" dump badging "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
+JAVA_OPTS="${JAVA_OPTS:-} -Xmx256m" "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$SIGNED_APK"
+"$BUILD_TOOLS/aapt2" dump badging "$SIGNED_APK"
+mv -f "$SIGNED_APK" "$FINAL_APK"
 
 echo "$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME$SUFFIX-release.apk"
