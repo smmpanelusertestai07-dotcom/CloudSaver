@@ -390,15 +390,23 @@ final class LinuxApps {
             // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
             // half-installed SDK is worse than none.
             new App("mobiledev", "Mobile app development",
-                    "Java 21, Gradle, adb, fastboot, aapt and scrcpy — and the pairing helper that "
-                            + "lets this computer install and test an app on THIS phone, or on "
-                            + "another one over Wi-Fi.",
+                    "Java 21, Gradle, adb, fastboot, aapt2 and scrcpy — and the pairing helper "
+                            + "that lets this computer build an app, install it and test it on "
+                            + "THIS phone, or on another one over Wi-Fi. The AI apps installed "
+                            + "here can drive that phone themselves.",
                     R.drawable.ic_terminal, 0, "about 700 MB", 3 * GB,
                     "10–25 min", null,
                     "/usr/bin/adb",
                     "pd_update || exit 11; "
                             + "pd_step mobiledev openjdk-21-jdk-headless gradle adb fastboot aapt "
                             + "scrcpy android-sdk-libsparse-utils || exit 20; "
+                            // aapt2 is the one piece Google publishes for Intel Linux and
+                            // not for ARM64, and Android's build plugin downloads it from
+                            // Maven -- so a perfectly good build fails on a processor the
+                            // tool was never shipped for. Ubuntu builds its own from the
+                            // same source; installing that and pointing the plugin at it is
+                            // what makes an Android build work on this phone at all.
+                            + "apt-get install -y --no-install-recommends aapt2 >/dev/null 2>&1 || true; "
                             // Where Gradle and every Java tool look for a JDK. Written once, so
                             // an owner who changes it keeps their change.
                             + "if ! grep -q 'JAVA_HOME' /etc/profile.d/pocketdesk-java.sh 2>/dev/null; then "
@@ -414,8 +422,14 @@ final class LinuxApps {
                             + "printf 'org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=384m\n"
                             + "org.gradle.daemon=false\norg.gradle.parallel=false\n"
                             + "org.gradle.caching=true\n' > /home/coder/.gradle/gradle.properties; fi; "
+                            + "pd_aapt2=$(command -v aapt2 2>/dev/null); "
+                            + "if [ -n \"$pd_aapt2\" ] && ! grep -q aapt2FromMavenOverride "
+                            + "/home/coder/.gradle/gradle.properties 2>/dev/null; then "
+                            + "printf 'android.aapt2FromMavenOverride=%s\n' \"$pd_aapt2\" "
+                            + ">> /home/coder/.gradle/gradle.properties; fi; "
                             + "chown -R coder:coder /home/coder/.gradle 2>/dev/null || true; "
-                            + "java -version 2>&1 | head -n 1; adb version 2>&1 | head -n 1",
+                            + "java -version 2>&1 | head -n 1; adb version 2>&1 | head -n 1; "
+                            + "printf 'aapt2: %s\n' \"${pd_aapt2:-not installed (Android builds will need one)}\"",
                     "apt-get remove -y --purge openjdk-21-jdk-headless gradle adb fastboot aapt "
                             + "scrcpy >/dev/null 2>&1 || true; "
                             + "rm -f /etc/profile.d/pocketdesk-java.sh \"$PD_STATE/stage/mobiledev\"; "

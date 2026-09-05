@@ -37,8 +37,33 @@ final class Crash {
         return FrameworkRace.is(error);
     }
 
+    /**
+     * How long a real report is protected from being buried by Android's tidying-up race.
+     *
+     * The race is thrown milliseconds after the fault that caused it, so a couple of minutes is
+     * generous. Past that, a race arriving on its own is worth recording: it may be all there is.
+     */
+    private static final long REAL_REPORT_PROTECTED_MS = 2 * 60 * 1000L;
+
+    /**
+     * True when writing this error would replace a report that says more than this one does.
+     *
+     * The order of events is what makes this necessary. A fault kills a screen; Android then
+     * tries to tell that screen it is no longer on top, finds it gone, and throws "Activity
+     * client record must not be null". Two reports, milliseconds apart, and the second one --
+     * the useless one -- used to be the one the owner was left with. This is the whole reason a
+     * black screen could be reported for weeks as a fault in Android rather than a fault here.
+     */
+    private static boolean wouldBuryTheRealOne(Context context, Throwable error) {
+        if (!isFrameworkRace(error)) return false;
+        String existing = read(context);
+        if (existing.isEmpty() || FrameworkRace.isReport(existing)) return false;
+        return System.currentTimeMillis() - recordedAt(context) < REAL_REPORT_PROTECTED_MS;
+    }
+
     static void save(Context context, Throwable error) {
         try {
+            if (wouldBuryTheRealOne(context, error)) return;
             StringWriter buffer = new StringWriter();
             PrintWriter writer = new PrintWriter(buffer);
             writer.println(new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(new Date()));

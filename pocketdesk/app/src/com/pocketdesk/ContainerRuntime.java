@@ -415,6 +415,8 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
+        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
+        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
@@ -462,12 +464,55 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-winapp.sh", "usr/local/bin/pocketdesk-winapp");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
+        copyAsset(context, "pocketdesk-save.sh", "usr/local/bin/pocketdesk-save");
+        copyAsset(context, "pocketdesk-mobile.sh", "usr/local/bin/pocketdesk-mobile");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
         return new File(rootfs(context), app.marker.substring(1)).exists();
+    }
+
+    /**
+     * Where a downloaded file goes: "computer", "phone" or "ask".
+     *
+     * Kept as a file INSIDE the computer rather than as an Android preference, because both
+     * sides change it and both sides read it: this screen's Settings row, and the desktop's own
+     * Tools menu. One file, one answer, and a change takes effect on the next file rather than
+     * at the next start.
+     */
+    static final String DOWNLOAD_TO_FILE = "home/coder/.pocketdesk/download-to";
+    static final String DOWNLOAD_TO_COMPUTER = "computer";
+    static final String DOWNLOAD_TO_PHONE = "phone";
+    static final String DOWNLOAD_TO_ASK = "ask";
+
+    /** The current answer, defaulting to the computer's own storage, which needs no permission. */
+    static String downloadTo(Context context) {
+        File file = new File(rootfs(context), DOWNLOAD_TO_FILE);
+        if (!file.isFile()) return DOWNLOAD_TO_COMPUTER;
+        try (java.util.Scanner scanner = new java.util.Scanner(file, "UTF-8")) {
+            String value = scanner.hasNext() ? scanner.next().trim() : "";
+            if (DOWNLOAD_TO_PHONE.equals(value) || DOWNLOAD_TO_ASK.equals(value)
+                    || DOWNLOAD_TO_COMPUTER.equals(value)) {
+                return value;
+            }
+        } catch (Exception unreadable) {
+            // A computer that is not set up yet has no file, and the default is right anyway.
+        }
+        return DOWNLOAD_TO_COMPUTER;
+    }
+
+    /** Writes the answer where the desktop reads it. Silent when there is no computer yet. */
+    static void setDownloadTo(Context context, String value) {
+        File file = new File(rootfs(context), DOWNLOAD_TO_FILE);
+        File parent = file.getParentFile();
+        try {
+            if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return;
+            writeText(file, value);
+        } catch (Exception unwritable) {
+            // Nothing to recover: the desktop keeps the answer it already had.
+        }
     }
 
     /** Removed in 10.0.30; kept so an upgrade can clear the old value. Downloads stay inside. */

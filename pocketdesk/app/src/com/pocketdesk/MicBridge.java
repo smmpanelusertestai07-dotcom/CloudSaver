@@ -34,13 +34,41 @@ final class MicBridge {
     /** Must match the rate and channels module-pipe-source is loaded with. */
     static final int RATE = 16_000;
 
-    private final Context context;
+    /**
+     * The context exactly as it was handed over, untouched.
+     *
+     * Untouched is the whole point. This object is a field of the desktop screen, so it is built
+     * inside that Activity's CONSTRUCTOR -- which Android runs before it attaches the Activity to
+     * anything. An Activity at that moment is a Context with no Context behind it: calling
+     * getApplicationContext(), getSystemService() or getResources() on it throws a
+     * NullPointerException from inside the constructor, the screen is never created, and the
+     * phone falls back to the previous one. That is a black flash and a bounce to the home
+     * screen, with Android's own "Activity client record must not be null" recorded afterwards
+     * as if it were the fault. It was not: it was this line.
+     *
+     * So nothing is asked of the context until something actually uses the microphone, by which
+     * time the screen is long since attached.
+     */
+    private final Context given;
+    /** The application context, worked out on first use and kept. */
+    private volatile Context resolved;
     private volatile Thread worker;
     private volatile boolean running;
     private volatile String lastProblem;
 
     MicBridge(Context context) {
-        this.context = context.getApplicationContext();
+        this.given = context;
+    }
+
+    /** The application context, or the one given if the phone will not hand one over yet. */
+    private Context context() {
+        Context ready = resolved;
+        if (ready == null) {
+            Context application = given.getApplicationContext();
+            ready = application != null ? application : given;
+            resolved = ready;
+        }
+        return ready;
     }
 
     /** Where the desktop session's pipe lives, inside the container's own home folder. */
@@ -65,7 +93,7 @@ final class MicBridge {
     synchronized void start() {
         if (running) return;
         lastProblem = null;
-        File target = pipe(context);
+        File target = pipe(context());
         if (!Trees.exists(target)) {
             lastProblem = "The desktop has not made a microphone yet. Start the desktop, then try again.";
             return;

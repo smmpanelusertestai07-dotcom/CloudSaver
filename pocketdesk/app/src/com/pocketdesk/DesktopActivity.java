@@ -31,6 +31,7 @@ import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -113,8 +114,48 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     "home/coder/.pocketdesk/audio.sock").getAbsolutePath());
             audio.start();
         } catch (Throwable error) {
-            // Going back to the home screen with the reason recorded beats a crash loop.
+            // Never finish() from here. Ending a screen that has not finished being created is
+            // what leaves Android delivering "you are no longer on top" to a screen it has
+            // already forgotten -- a black flash, a bounce to the home screen, and a report
+            // blaming Android for a fault that was ours. A screen that says what went wrong,
+            // and stays put until the owner taps Back, is both kinder and far easier to fix.
             Crash.save(this, error);
+            showStartupFailure(error);
+        }
+    }
+
+    /**
+     * The screen shown when the desktop screen itself could not be built.
+     *
+     * Deliberately made of nothing: a scrolling column, two pieces of text and a button, with no
+     * theme, no drawable and no preference read. Whatever failed above, this must not fail too.
+     */
+    private void showStartupFailure(Throwable error) {
+        try {
+            ScrollView scroll = new ScrollView(this);
+            scroll.setBackgroundColor(Color.rgb(5, 7, 17));
+            LinearLayout column = new LinearLayout(this);
+            column.setOrientation(LinearLayout.VERTICAL);
+            int pad = Ui.dp(this, 22);
+            column.setPadding(pad, pad + Ui.dp(this, 28), pad, pad);
+            column.addView(Ui.title(this, "The desktop screen could not open", 20f,
+                    Color.rgb(230, 236, 247)));
+            column.addView(Ui.text(this,
+                    "Nothing on the Linux computer was harmed: this is the phone's half of the "
+                            + "app, and your files, apps and sign-ins are exactly as you left them. "
+                            + "The reason is below and is kept in Settings under Last error report, "
+                            + "so it can be read again later.",
+                    14f, Color.rgb(154, 167, 189)));
+            TextView reason = Ui.text(this, String.valueOf(error), 13f, Color.rgb(255, 173, 173));
+            reason.setPadding(0, Ui.dp(this, 14), 0, Ui.dp(this, 18));
+            column.addView(reason);
+            Button back = Ui.primaryButton(this, "Back to PocketDesk", R.drawable.ic_arrow_back);
+            back.setOnClickListener(v -> finish());
+            column.addView(back);
+            scroll.addView(column);
+            setContentView(scroll);
+        } catch (Throwable alsoBroken) {
+            // A phone that cannot draw four views is a phone that cannot show anything: leave.
             finish();
         }
     }

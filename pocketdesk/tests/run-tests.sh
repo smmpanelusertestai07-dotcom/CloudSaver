@@ -37,6 +37,14 @@ java -cp "$OUT" com.pocketdesk.TreesTest
   "$PROJECT_DIR/tests/CrashTest.java"
 java -cp "$OUT" com.pocketdesk.CrashTest
 
+# An Activity is not a usable Context until Android attaches it -- and a field initializer runs
+# before that. One line that forgot it (new MicBridge(this), whose constructor asked for the
+# application context) meant every "Open desktop" died in the constructor: black screen, straight
+# back to the home screen, and Android's own teardown race recorded as if it were the cause.
+"${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
+  "$PROJECT_DIR/tests/ActivityStartupTest.java"
+java -cp "$OUT" com.pocketdesk.ActivityStartupTest "$PROJECT_DIR"
+
 "${JAVAC[@]}" -encoding UTF-8 -source 8 -target 8 -d "$OUT" \
   "$PROJECT_DIR/tests/stub/com/pocketdesk/R.java" \
   "$PROJECT_DIR/app/src/com/pocketdesk/LinuxApps.java" \
@@ -109,7 +117,7 @@ echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
 # that runs after each app install, or a computer built by an earlier version never gets it.
-for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-winapp.sh pocketdesk-adb.sh; do
+for helper in pocketdesk-storage.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-winapp.sh pocketdesk-adb.sh pocketdesk-save.sh pocketdesk-mobile.sh; do
   n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketdesk/ContainerRuntime.java" || true)
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done
@@ -125,10 +133,21 @@ mcp_out=$(printf '%s\n' \
   | python3 "$PROJECT_DIR/app/assets/pocketdesk-mcp.py")
 echo "$mcp_out" | grep -q '"protocolVersion"' \
   || { echo "FAIL McpServer: initialize did not answer with a protocol version"; exit 1; }
-for pd_tool in appshot screenshot list_windows click type_text press_key scroll; do
+for pd_tool in appshot screenshot list_windows click type_text press_key scroll \
+               phone_devices phone_install phone_launch phone_screenshot phone_ui \
+               phone_tap phone_swipe phone_text phone_key phone_logcat phone_shell; do
   echo "$mcp_out" | grep -q "\"$pd_tool\"" \
     || { echo "FAIL McpServer: the $pd_tool tool is not offered"; exit 1; }
 done
+# Every phone tool must refuse gracefully when nothing is connected, because that is the state
+# an agent meets first. A tool that throws instead of saying "pair a phone" reads as a broken
+# computer rather than an unpaired one.
+no_device=$(printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"phone_tap","arguments":{"x":10,"y":10}}}' \
+  | env PATH=/nonexistent "$(command -v python3)" "$PROJECT_DIR/app/assets/pocketdesk-mcp.py" 2>/dev/null || true)
+echo "$no_device" | grep -qi 'adb is not installed\|No phone is connected' \
+  || { echo "FAIL McpServer: a phone tool with no phone must say so, not fail"; exit 1; }
 echo "$mcp_out" | grep -q '"id": 2' \
   || { echo "FAIL McpServer: tools/list did not answer the request it was asked"; exit 1; }
 # An unknown method must be an error, not a crash that takes the agent's session with it.

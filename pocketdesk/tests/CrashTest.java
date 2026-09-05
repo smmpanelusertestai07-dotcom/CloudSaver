@@ -49,6 +49,28 @@ public final class CrashTest {
                 "an ordinary failure must not be treated as Android's");
         require(!FrameworkRace.is(new RuntimeException()), "an empty error is not the race");
 
+        // ---- the same judgement on a report already written to disk ---------------------------
+        //
+        // The race is thrown a few milliseconds AFTER the fault that caused it, so writing it
+        // blindly overwrote the report that said what actually went wrong. Recognising the
+        // report on disk is what lets the recorder keep the real one.
+        require(FrameworkRace.isReport(
+                        "2026-09-04 12:43\nAndroid 13 \u00b7 RMX3197\n"
+                        + "java.lang.IllegalArgumentException: Activity client record must not be "
+                        + "null to execute transaction item: TopResumedActivityChangeItem"),
+                "a stored race report must be recognised as one");
+        require(FrameworkRace.isReport("\tat android.app.servertransaction.TransactionExecutor.execute"),
+                "a stored report with only a servertransaction frame is still the race");
+        require(!FrameworkRace.isReport(
+                        "2026-09-04 13:10\nAndroid 13 \u00b7 RMX3197\n"
+                        + "java.lang.NullPointerException: Attempt to invoke virtual method "
+                        + "'android.content.Context android.content.Context.getApplicationContext()' "
+                        + "on a null object reference\n"
+                        + "\tat com.pocketdesk.MicBridge.<init>(MicBridge.java:43)"),
+                "the real cause of the black screen must NOT be mistaken for Android's race");
+        require(!FrameworkRace.isReport(""), "no report is not a race report");
+        require(!FrameworkRace.isReport(null), "a missing report is not a race report");
+
         System.out.println("PASS CrashTest (framework race told apart from a real fault)");
     }
 

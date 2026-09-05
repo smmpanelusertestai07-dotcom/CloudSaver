@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "10.1.20";
+    static final String VERSION = "10.1.25";
     static final String EXTRA_ROUTE = "com.pocketdesk.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -115,6 +115,7 @@ public final class MainActivity extends Activity {
     private TextView dataNote;
 
     private Ui.Row appearanceRow;
+    private Ui.Row downloadToRow;
     private Ui.Row rotationRow;
     private Ui.Row autoStopRow;
     private Ui.Row desktopScaleRow;
@@ -1184,6 +1185,20 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         appearance.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
+        // Files
+        LinearLayout files = group(page, "Files");
+        downloadToRow = new Ui.Row(this, R.drawable.ic_download, "Where downloads go",
+                labelOf(DOWNLOAD_LABELS, DOWNLOAD_VALUES, ContainerRuntime.downloadTo(this)),
+                R.drawable.ic_chevron, dark, v -> chooseDownloadTo());
+        files.addView(downloadToRow, Ui.matchWrap(this, 0));
+        files.addView(Ui.text(this, "Everything downloaded in the computer -- a file an AI app "
+                        + "writes for you, an app you built, a document from the browser -- is "
+                        + "saved in the computer's own Downloads folder, which nothing else on "
+                        + "the phone can read. Choose \u201cThe phone as well\u201d and a copy "
+                        + "also goes to the phone's Download folder, where every app on the phone "
+                        + "can open it.",
+                12.5f, muted), Ui.matchWrap(this, 8));
+
         // Running
         LinearLayout running = group(page, "Running");
         autoStopRow = new Ui.Row(this, R.drawable.ic_timer, "When to stop by itself",
@@ -1426,6 +1441,52 @@ public final class MainActivity extends Activity {
                         + "and belongs to you. Nothing is uploaded anywhere.", 12.5f, muted),
                 Ui.matchWrap(this, 6));
 
+        addAnswer(card, R.drawable.ic_home, "What is this computer for?",
+                "PocketDesk exists for one thing: to give a phone the computer that the desktop "
+                        + "AI apps need, so somebody with a phone and no PC can do real work with "
+                        + "them.\n\n"
+                        + "ChatGPT with Codex, Claude Desktop with Claude Code, Cursor and "
+                        + "Antigravity are desktop programs. They are built for Linux, macOS and "
+                        + "Windows, and their phone versions are chat windows: they cannot open "
+                        + "your folder, run your code, or change your files. The published Linux "
+                        + "builds are ARM64 — the same processor family as this phone. So the "
+                        + "missing piece was never the hardware. It was a Linux computer to run "
+                        + "them on. That is what this is.\n\n"
+                        + "WHAT YOU GET, AS A COMPUTER\n"
+                        + "\u2022 A desktop: a window manager with real windows you move, resize, "
+                        + "minimise and switch between; a panel with a clock, a tray and the open "
+                        + "windows; a menu of everything installed; and desktop icons\n"
+                        + "\u2022 A file manager with tabs, and the phone's own Download, Photos "
+                        + "and Documents folders inside it when you allow that\n"
+                        + "\u2022 A terminal, a text editor, an archive manager, a picture viewer, "
+                        + "a calculator, a task manager and a sound mixer\n"
+                        + "\u2022 Google Chrome, signed in, with extensions and downloads\n"
+                        + "\u2022 Sound out through the phone's speaker, and the phone's "
+                        + "microphone in\n"
+                        + "\u2022 Copy and paste both ways between the phone and the computer\n"
+                        + "\u2022 Software installed with apt from Ubuntu's own servers, and "
+                        + "downloaded .deb files installed by PocketDesk's own installer\n"
+                        + "\u2022 Files and sign-ins that stay exactly as you left them: closing "
+                        + "the desktop is closing a lid, not throwing the computer away\n\n"
+                        + "WHAT YOU GET, AS A PLACE TO BUILD\n"
+                        + "\u2022 Python, Node.js, Git, SQLite, ripgrep and a C/C++ compiler from "
+                        + "the first minute\n"
+                        + "\u2022 The four AI apps, each the publisher's own official Linux build, "
+                        + "with their agents able to read, write, run and test right here\n"
+                        + "\u2022 PocketDesk's own tools offered to those agents: a picture of the "
+                        + "screen with the words on it, and click, type, key and scroll — so an "
+                        + "agent can work the desktop, not only the files\n"
+                        + "\u2022 Android app development, and a real phone to test on: this one\n"
+                        + "\u2022 Windows programs built for ARM64, through Wine, as a separate "
+                        + "layer that cannot disturb the Linux side\n\n"
+                        + "WHAT IT IS NOT, SO NOTHING IS A SURPRISE\n"
+                        + "It is not a cloud PC — nothing leaves the phone. It is not an emulator "
+                        + "— these are ARM64 programs on an ARM64 processor. It is not a second "
+                        + "operating system and not dual boot — Android keeps running the phone "
+                        + "throughout. And it has no power over Android: it can see nothing of "
+                        + "your other apps, and neither can they see it.",
+                true);
+
         addAnswer(card, R.drawable.ic_desktop, "What exactly is this?",
                 "A real Ubuntu 24.04 LTS system, running on your phone's own processor, inside this "
                         + "app.\n\n"
@@ -1444,7 +1505,7 @@ public final class MainActivity extends Activity {
                         + "drawing), a sound card (sound is streamed to the phone's speaker instead), "
                         + "systemd-style background services, and any power over Android itself. The "
                         + "computer lives in this app's private storage and is removed with the app.",
-                true);
+                false);
 
         addAnswer(card, R.drawable.ic_terminal, "What can I actually build on this computer?",
                 "Everything below was checked against what really installs and runs on an ARM64 "
@@ -1458,23 +1519,35 @@ public final class MainActivity extends Activity {
                         + "with git, ripgrep, SQLite and a C/C++ compiler already installed\n"
                         + "• Scripts, data work, automation, APIs, bots\n"
                         + "• Git and GitHub over SSH or HTTPS\n\n"
-                        + "ANDROID APPS — yes, with one real limit\n"
+                        + "ANDROID APPS — end to end, on this phone\n"
                         + "Apps tab → Mobile app development installs Java 21, Gradle, adb, "
-                        + "fastboot, aapt and scrcpy. Kotlin and Java compile, and Gradle is set "
+                        + "fastboot, aapt2 and scrcpy. Kotlin and Java compile, and Gradle is set "
                         + "up for a 4 GB phone (no daemon, 1 GB heap).\n"
-                        + "You can install and TEST an app on a real phone — including this one: "
-                        + "Android's Wireless debugging listens on the phone's own network, and "
-                        + "this computer shares it, so 127.0.0.1 reaches the phone it is running "
-                        + "on. Desktop → Tools → Phone app testing walks you through it. Another "
+                        + "aapt2 used to be the gap: Google publishes it for Intel Linux and not "
+                        + "for ARM64, and Android's build plugin downloads it from Maven, so the "
+                        + "build stopped there. Ubuntu builds its own aapt2 from the same source; "
+                        + "PocketDesk installs that and points Gradle at it "
+                        + "(android.aapt2FromMavenOverride), so the build finishes here.\n"
+                        + "Then you TEST it on a real phone — including this one. Android's "
+                        + "Wireless debugging listens on the phone's own network, and this "
+                        + "computer shares it, so 127.0.0.1 reaches the phone it is running on. "
+                        + "Desktop → Tools → Phone app testing walks you through it, and another "
                         + "phone on the same Wi-Fi works the same way.\n"
-                        + "The limit: Google publishes no ARM64 Linux build of aapt2, so a full "
-                        + "Android Gradle build may stop there. Compiling, testing on a device, "
-                        + "and everything around it works; that one tool is the gap, and it is "
-                        + "Google's to close.\n\n"
-                        + "iOS APPS — no, and no trick changes it\n"
-                        + "Xcode, the iOS Simulator and SwiftUI previews are macOS-only programs "
-                        + "that need Apple's own frameworks. They cannot run here or on any "
-                        + "phone. Building an iOS app needs a Mac, or a build service.\n\n"
+                        + "The AI apps here can do all of it themselves: PocketDesk gives their "
+                        + "agents phone tools as well as desktop ones — install an app, open it, "
+                        + "photograph the phone screen, read it as a list of named buttons, tap, "
+                        + "swipe, type, press a key, read logcat. \u201cBuild this, put it on my "
+                        + "phone, open it and tell me what is broken\u201d is one instruction.\n\n"
+                        + "iPHONE APPS — written and run here, compiled elsewhere\n"
+                        + "Compiling and signing an iOS app needs Xcode, and Xcode runs only on "
+                        + "macOS. That is Apple's rule and no phone changes it. What does work, "
+                        + "with no Mac anywhere: write the app here as React Native through Expo "
+                        + "(Terminal: pocketdesk-mobile new expo), run \u201cnpx expo start\u201d, "
+                        + "and open it on a real iPhone by scanning the code with Expo Go — the "
+                        + "code is served from this computer, the app runs on the iPhone. The same "
+                        + "project runs on this Android phone at the same time. When it is time "
+                        + "for TestFlight or the App Store, Expo's build service compiles it on "
+                        + "their Macs from this project, which needs an Apple Developer account.\n\n"
                         + "NOT POSSIBLE HERE\n"
                         + "• An Android emulator — it needs hardware virtualisation, which no app "
                         + "on an unrooted phone can have. A real phone is the test device.\n"
@@ -1487,6 +1560,32 @@ public final class MainActivity extends Activity {
                         + "seconds — it finishes, it is just slower. For work bigger than that, "
                         + "the honest answer is a machine with more memory, and the AI agents "
                         + "here can drive one over SSH.", false);
+
+        addAnswer(card, R.drawable.ic_download, "Where do my downloads go?",
+                "Into the computer's own Downloads folder, and you choose whether a copy also "
+                        + "goes to the phone.\n\n"
+                        + "Anything downloaded inside the computer — a file an AI app writes for "
+                        + "you, an app you just built, a document from the browser — lands in the "
+                        + "computer's Downloads folder first. That folder is inside PocketDesk's "
+                        + "private storage: nothing else on the phone can read it, and it needs no "
+                        + "permission at all. For most files that is the whole story.\n\n"
+                        + "Settings → Files → Where downloads go has three answers:\n"
+                        + "\u2022 This computer — keep it here. The default.\n"
+                        + "\u2022 The phone as well — a copy also goes to the phone's own Download "
+                        + "folder, where every app on the phone can open it: send it in a "
+                        + "messaging app, open it in the phone's PDF reader, install an APK you "
+                        + "built. This needs Phone files to be on, because that is Android's own "
+                        + "permission for reaching the phone's storage.\n"
+                        + "\u2022 Ask me each time — a small dialog as each file arrives.\n\n"
+                        + "It is a copy, never a move: a file sent to the phone and then deleted "
+                        + "there is still here. The same setting is in the desktop under Tools → "
+                        + "Where downloads go, and a change takes effect on the next file rather "
+                        + "than at the next start.\n\n"
+                        + "PocketDesk also notices what arrived. A Windows program built for ARM64 "
+                        + "opens the installer by itself; one built only for Intel says so instead "
+                        + "of leaving you to find out; a .deb says it can be installed. Half-"
+                        + "downloaded files are ignored until they are finished.",
+                false);
 
         addAnswer(card, R.drawable.ic_desktop, "Can it run Windows apps too?",
                 "Yes, some of them — and the app tells you which before you download anything.\n\n"
@@ -2041,6 +2140,50 @@ public final class MainActivity extends Activity {
     // rather than three oversized windows.
     private static final String[] SCALE_LABELS = {"Compact · PC-like", "Normal", "Large"};
     private static final int[] SCALE_VALUES = {96, 120, 144};
+
+    /**
+     * Where a downloaded file goes.
+     *
+     * The computer's own Downloads is the default because it is the answer that always works:
+     * it is inside PocketDesk's private storage, no other app on the phone can read it, and it
+     * needs no permission at all. The phone's Download folder is the one every other app on the
+     * phone can open, which is exactly why it needs Phone files to be on first.
+     */
+    private static final String[] DOWNLOAD_LABELS = {
+            "This computer", "The phone as well", "Ask me each time"};
+    private static final String[] DOWNLOAD_VALUES = {
+            ContainerRuntime.DOWNLOAD_TO_COMPUTER,
+            ContainerRuntime.DOWNLOAD_TO_PHONE,
+            ContainerRuntime.DOWNLOAD_TO_ASK};
+    private static final int[] DOWNLOAD_ICONS = {
+            R.drawable.ic_desktop, R.drawable.ic_phone, R.drawable.ic_help};
+
+    private void chooseDownloadTo() {
+        String current = ContainerRuntime.downloadTo(this);
+        int selected = 0;
+        for (int i = 0; i < DOWNLOAD_VALUES.length; i++) {
+            if (DOWNLOAD_VALUES[i].equals(current)) selected = i;
+        }
+        showChooser("Where downloads go", DOWNLOAD_LABELS, DOWNLOAD_ICONS, selected, index -> {
+            ContainerRuntime.setDownloadTo(this, DOWNLOAD_VALUES[index]);
+            if (downloadToRow != null) downloadToRow.setValue(DOWNLOAD_LABELS[index]);
+            if (ContainerRuntime.DOWNLOAD_TO_COMPUTER.equals(DOWNLOAD_VALUES[index])
+                    || PhoneFiles.allowed(this)) {
+                return;
+            }
+            // Choosing the phone without the permission that reaches it would fail silently at
+            // the first download, which is the worst moment to find out.
+            dialogBuilder()
+                    .setTitle("Phone files is off")
+                    .setMessage("A copy can only go to the phone's Download folder while Phone "
+                            + "files is on: that is Android's own permission for reaching the "
+                            + "phone's storage. Until it is on, downloads stay in the computer "
+                            + "and PocketDesk says so each time.")
+                    .setNegativeButton("Later", null)
+                    .setPositiveButton("Turn it on", (d, w) -> PhoneFiles.request(this))
+                    .show();
+        });
+    }
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];

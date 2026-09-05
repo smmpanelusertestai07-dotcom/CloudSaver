@@ -1,3 +1,97 @@
+# PocketDesk 10.1.25 — the black screen, found: one line, one word
+
+**"Open desktop" showed a black screen and threw you back to the home screen.** Every time. The
+error report blamed Android — `IllegalArgumentException: Activity client record must not be null
+to execute transaction item: TopResumedActivityChangeItem` — and that was a red herring the app
+itself had planted. Here is what was really happening.
+
+The desktop screen kept the microphone bridge as a field:
+
+```java
+private final MicBridge microphone = new MicBridge(this);
+```
+
+Java runs field initializers inside the constructor. Android *creates* an Activity first and
+*attaches* it to a context afterwards — so at that moment `this` is a Context with no context
+behind it. `MicBridge`'s constructor asked it for `getApplicationContext()`, which threw a
+`NullPointerException` from inside the constructor, before a single line of `onCreate` ran. The
+screen was never created, the phone fell back to the previous one, and Android's own tidying-up
+then threw "Activity client record must not be null" on top — which the crash recorder wrote over
+the real report. Every symptom pointed at Android. The cause was one word in one field.
+
+**Three fixes, so this cannot happen quietly again**
+
+- `MicBridge` now touches nothing until the microphone is actually used.
+- **A framework race can no longer bury a real report.** Android's teardown error arrives
+  milliseconds *after* the fault that caused it; it is now ignored when a real report was written
+  in the last two minutes. The report you see is the cause, not the tidying-up.
+- **The desktop screen no longer calls `finish()` from `onCreate`.** If it ever fails to build, it
+  shows what went wrong, on a screen with a Back button — instead of a black flash and a bounce.
+
+And a new test, `ActivityStartup`, reads the source for the whole class of bug: any field built
+with `new X(this)` in an Activity, whose constructor calls `getApplicationContext`,
+`getSystemService`, `getResources` or a dozen more, fails the build. It fails on the old code and
+passes on the new one.
+
+---
+
+## What is this computer for? — now answered in the app
+
+A new first entry in **Privacy and your questions**, open by default: why PocketDesk exists (the
+desktop AI apps are desktop programs, their Linux builds are ARM64, so the missing piece was never
+the hardware — it was a Linux computer to run them on), everything you get *as a computer*,
+everything you get *as a place to build*, and what it is not, so nothing is a surprise.
+
+## Testing inside the computer, not on the phone
+
+The AI apps installed here can now drive a real phone themselves. PocketDesk's tool server carries
+**eleven phone tools** beside its desktop ones:
+
+`phone_devices` · `phone_install` · `phone_launch` · `phone_screenshot` · `phone_ui` · `phone_tap`
+· `phone_swipe` · `phone_text` · `phone_key` · `phone_logcat` · `phone_shell`
+
+`phone_ui` is the one that makes it reliable: it reads the phone's screen as a list of named
+elements with the exact point to tap for each, so an agent acts on names rather than guessing at
+pixels. "Build this, put it on my phone, open it and tell me what is broken" is now one
+instruction. With no phone paired, every tool says how to pair one instead of failing.
+
+**The `aapt2` gap is closed.** Google publishes `aapt2` for Intel Linux and not for ARM64, and
+Android's build plugin downloads it from Maven — which is where a perfectly good build used to
+stop. Ubuntu builds its own from the same source; PocketDesk now installs it and points Gradle at
+it (`android.aapt2FromMavenOverride`). Android builds finish here.
+
+**`pocketdesk-mobile`**, a new command and a new Tools submenu: what is installed and what is
+connected, start an Expo or Android project, build, and build-install-open on the connected phone.
+Plus an honest iPhone answer — the app is *written and run* here (React Native through Expo, opened
+on a real iPhone by scanning a code with Expo Go, no Mac anywhere), and *compiled* elsewhere,
+because signing an iOS app needs Xcode and Xcode runs only on macOS. Android needs none of that.
+
+An Android emulator still cannot run here and never will: it needs hardware virtualisation, which
+no app on an unrooted phone can have. A real phone is the device — and the better test.
+
+## Where downloads go: this computer, or the phone as well
+
+**Settings → Files → Where downloads go.** Everything downloaded inside the computer — a file an AI
+app writes for you, an app you just built, a document from the browser — lands in the computer's
+own Downloads folder, which nothing else on the phone can read and which needs no permission.
+Now you choose what happens next:
+
+- **This computer** — keep it here. The default.
+- **The phone as well** — a copy also goes to the phone's own Download folder, where every app on
+  the phone can open it. Needs Phone files on, and PocketDesk offers to turn it on rather than
+  failing at the first download.
+- **Ask me each time** — a small dialog as each file arrives.
+
+It is a copy, never a move. The same setting is in the desktop under **Tools → Where downloads
+go**, and a change takes effect on the next file rather than at the next start.
+
+The Downloads watcher now notices *every* file, not only Windows ones: an ARM64 Windows program
+opens the installer, an Intel-only one says so, a `.deb` says it can be installed, and everything
+else is placed where you asked. Half-finished downloads (`.crdownload`, `.part`, `.tmp`) are left
+alone until they are finished.
+
+---
+
 # PocketDesk 10.1.20 — build an Android app here, and test it on this very phone
 
 **Apps tab → Mobile app development** (about 700 MB) installs Java 21, Gradle, `adb`, `fastboot`,

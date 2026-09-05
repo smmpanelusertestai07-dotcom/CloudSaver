@@ -99,6 +99,8 @@ Settings badalne se kabhi kuch delete nahi hota.
 
 - Kaam: `/home/coder/Projects` (computer ke andar).
 - Downloads: `/home/coder/Downloads` — computer ke andar hi rehta hai, phone ka koi dusra app nahi padh sakta.
+- **Download kahan jaye, ab tum choose kar sakte ho:** Settings → Files → **Where downloads go** — *This computer* (default), *The phone as well* (copy phone ke apne `Download` folder me bhi, Phone files ON chahiye), ya *Ask me each time*. Desktop me bhi hai: **Tools → Where downloads go**. Copy hoti hai, move nahi — phone se delete karo to computer me file rehti hai.
+- **Mobile app banana aur testing:** Apps tab → **Mobile app development**. Phir desktop me **Tools → Phone app testing**: pair karo (is phone ka address `127.0.0.1`), connect karo, APK install karo, logcat dekho. AI app khud bhi kar sakta hai — usse bolo "build karke mere phone pe install karo aur kholo", uske paas `phone_*` tools hain. iPhone ke liye: app yahin likho aur Expo Go se **asli iPhone pe chalao**; final iOS build ke liye Mac ya Expo ka build service chahiye (Apple ka rule hai).
 - Shared: `/home/coder/Shared` — bahar nikalne ka rasta. Yehi ek folder phone ke Files app me `Android/data/com.pocketdesk/files/Shared` par dikhta hai. File manager me bhi bookmark hai.
 - Uninstall karne se poora computer delete ho jata hai — aur `Downloads` aur `Shared` dono app ke hi andar hain, wo bhi jaate hain. Rakhna hai to file **phone ke apne folder** me le jao: Settings → Permissions → **Phone files** ON karke seedha phone ke `Download`/`Documents` me save karo, ya `Shared` me daal kar phone ke Files app se (`Android/data/com.pocketdesk/files/Shared`) apne `Download` me copy kar lo.
 
