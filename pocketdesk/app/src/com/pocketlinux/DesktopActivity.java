@@ -48,11 +48,13 @@ import java.io.IOException;
  */
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
     private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
-            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
-            MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
+            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6,
+            MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
             MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22,
-            MENU_WIDE_WORKSPACE = 23;
+            MENU_WIDE_WORKSPACE = 23, MENU_VOLUME_PANEL = 24, MENU_ROTATION_LOCK = 25,
+            MENU_TOUCH_LOCK = 26, MENU_BIGGER = 27, MENU_AUTO_HIDE = 28, MENU_RESIZE = 29,
+            MENU_CLOUD_FILE = 30;
     private static final String KEY_WIDE_WORKSPACE = "viewer_wide_workspace";
     /** The request code the microphone prompt comes back on; above AppLock's own codes. */
     private static final int REQUEST_MICROPHONE = 4711;
@@ -129,6 +131,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onStart() {
         super.onStart();
+        // onCreate can fail before it has read anything -- that is what the launch-failure screen
+        // exists for -- and Android calls onStart afterwards regardless. Everything below reads
+        // fields that onCreate assigns, so without this the diagnostic screen it just built is
+        // replaced by a crash with no handler at all.
+        if (preferences == null) return;
+        // The rotation setting lives on the other screen; picking it up here is what makes the
+        // change reach the computer without closing the desktop first.
+        applyOrientation();
+        armAutoHide();
         viewerVisible = true;
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(false);
@@ -138,10 +149,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         if (outer != null && AppLock.isLocked(this)) {
             AppLock.show(this, outer, null);
             // The phone keyboard, if it was open, must not keep typing into the desktop.
-            InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (input != null && keyboardInput != null) {
-                input.hideSoftInputFromWindow(keyboardInput.getWindowToken(), 0);
-            }
+            hideKeyboard();
         }
     }
 
@@ -150,8 +158,21 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         super.onPause();
     }
 
+    /**
+     * Nothing posted from this screen may outlive it.
+     *
+     * The auto-hide timer re-posts itself while the desktop is being used, so leaving the screen
+     * with it pending meant it fired several seconds later against views whose Activity had
+     * stopped -- and held that window alive to do it.
+     */
+    private void cancelPostedWork() {
+        main.removeCallbacks(hideBarsSoon);
+        if (volumePanel != null) volumePanel.removeCallbacks(hideVolume);
+    }
+
     @Override protected void onStop() {
         releaseRemoteInput();
+        cancelPostedWork();
         viewerVisible = false;
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(true);
@@ -165,13 +186,71 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
-    /** True while the locked screen covers the desktop: keys and taps stop here. */
+    /** True while something is covering the desktop: keys and taps stop here. */
     private boolean lockedNow() {
-        return outer != null && AppLock.showing(outer);
+        return touchLocked || (outer != null && AppLock.showing(outer));
+    }
+
+    /**
+     * Bring a file in from the phone, or from Drive, or from any other cloud app on it.
+     *
+     * A cloud drive is not a folder and cannot be made into one -- Android exposes it through a
+     * document provider with no path at all, so there is nothing the container could mount. The
+     * picker is the way in, and it lists every cloud app on the phone next to the phone's own
+     * storage. Whatever is chosen becomes an ordinary file in the computer's Cloud folder, which
+     * is in the sidebar of every Open dialog inside Linux -- ChatGPT's attach, Claude's upload,
+     * Cursor's open, the browser's file field.
+     */
+    private void addFileFromPhone() {
+        if (!ContainerRuntime.isInstalled(this)) {
+            showMessage("No computer yet", "Set up the Linux computer first.");
+            return;
+        }
+        if (!CloudFiles.pick(this)) {
+            showMessage("No file picker", "This phone has no app that answers a request for a "
+                    + "file. Turn on Phone files in Settings and use the Phone folder instead.");
+        }
+    }
+
+    /**
+     * Brings the chosen files in, on a thread of its own.
+     *
+     * The picker deliberately lists Drive and every other cloud app, and reading from one of
+     * those blocks while the provider fetches the file -- a 300 MB video, or anything not synced
+     * yet. Doing that where it was being done, straight inside onActivityResult, is the main
+     * thread: the phone would show "PocketLinux isn't responding" and might end the app in the
+     * middle of the copy.
+     */
+    private void copyChosenFiles(java.util.List<android.net.Uri> chosen) {
+        if (chosen.isEmpty()) return;
+        Toast.makeText(this, chosen.size() == 1
+                ? "Bringing the file in\u2026" : "Bringing " + chosen.size() + " files in\u2026",
+                Toast.LENGTH_SHORT).show();
+        final Context appContext = getApplicationContext();
+        new Thread(() -> {
+            final String arrived = CloudFiles.copyIn(appContext, chosen);
+            main.post(() -> {
+                if (finished || isFinishing()) return;
+                if (arrived == null) {
+                    showMessage("Nothing came across", "The file could not be read. A file still "
+                            + "being synced by a cloud app is the usual reason \u2014 open it once "
+                            + "in that app so it is downloaded, then try again.");
+                    return;
+                }
+                showMessage("In the computer's Cloud folder", arrived + "\n\nIt is in the Cloud "
+                        + "folder, which every Open dialog inside Linux lists on the left. Attach "
+                        + "it in ChatGPT or Claude, or open it in Cursor, from there.");
+            });
+        }, "pocketlinux-cloud-copy").start();
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         if (AppLock.handleResult(this, outer, request, result, null)) return;
+        if (request == CloudFiles.REQUEST_PICK) {
+            if (result != RESULT_OK) return;
+            copyChosenFiles(CloudFiles.urisOf(data));
+            return;
+        }
         if (request == REQUEST_PHOTO) {
             if (result == RESULT_OK) savePhoto(data);
             return;
@@ -380,7 +459,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         barRow.addView(home, barItem(88));
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
-        status.setBackground(Ui.tappable(this, Ui.background(Color.rgb(24, 31, 61), 12, this), true));
+        status.setBackground(Ui.tappable(this,
+                Ui.outlined(Color.rgb(24, 31, 61), Color.rgb(52, 66, 108), 16, this), true));
         status.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
         status.setSingleLine(true);
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -392,13 +472,20 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         statusLp.setMarginEnd(Ui.dp(this, 5));
         barRow.addView(status, statusLp);
 
+        // Mute earns a place on the bar because it is the one control that is needed NOW: an
+        // AI app starts talking, or a page plays a video, in a room where it should not.
+        muteBarButton = toolButton("Mute", R.drawable.ic_volume);
+        muteBarButton.setContentDescription("Mute or unmute the computer's sound");
+        muteBarButton.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE));
+        barRow.addView(muteBarButton, barItem(88));
+
         Button screen = toolButton("Screen ▾", R.drawable.ic_fit);
         screen.setContentDescription("Screen: fit, zoom, rotate, full screen, bar position");
         screen.setOnClickListener(v -> showScreenMenu(v));
         barRow.addView(screen, barItem(104));
 
         pointerButton = toolButton("Finger", R.drawable.ic_touch);
-        pointerButton.setContentDescription("Switch between finger and mouse control");
+        pointerButton.setContentDescription("Switch between finger, mouse and screen control");
         pointerButton.setOnClickListener(v -> togglePointerMode());
         barRow.addView(pointerButton, barItem(96));
 
@@ -456,8 +543,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         // ---- The desktop itself -----------------------------------------------------------------
         desktop = new VncView(this);
         desktop.setWideWorkspace(preferences.getBoolean(KEY_WIDE_WORKSPACE, false));
-        desktop.setPointerMode("mouse".equals(preferences.getString(ContainerRuntime.KEY_POINTER_MODE, "finger"))
-                ? VncView.PointerMode.TOUCHPAD : VncView.PointerMode.DIRECT);
+        desktop.setMagnification(preferences.getInt(KEY_MAGNIFICATION, 100));
+        autoHideBars = preferences.getBoolean(KEY_AUTO_HIDE, false);
+        desktop.setPointerMode(pointerModeOf(
+                preferences.getString(ContainerRuntime.KEY_POINTER_MODE, "finger")));
         stylePointerButton();
         desktop.setInputStateListener(this::styleHeldInput);
         desktop.setStateListener((text, connected) -> {
@@ -482,11 +571,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         FrameLayout overlay = new FrameLayout(this);
         overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
         outer.addView(overlay, new FrameLayout.LayoutParams(1, 1));
-        FrameLayout.LayoutParams volumeLp = new FrameLayout.LayoutParams(
+        // The right corner, which is where every phone puts its volume slider and where a
+        // right-handed thumb already is. Below the bar when the bar is at the top.
+        outer.addView(buildVolumePanel(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        volumeLp.topMargin = Ui.dp(this, 74);
-        outer.addView(buildVolumePanel(), volumeLp);
+                Gravity.TOP | Gravity.END));
+        placeVolumePanel();
+        outer.addView(buildTouchLock(), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
         restoreBars.setVisibility(View.GONE);
         // Solid rather than see-through: while the bar is hidden this chip is the only way
@@ -510,7 +602,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private HorizontalScrollView strip() {
         HorizontalScrollView scroller = new HorizontalScrollView(this);
         scroller.setHorizontalScrollBarEnabled(false);
-        scroller.setBackgroundColor(Color.rgb(15, 19, 39));
+        // The same gradient the cards use, squared off: a lit top edge over a darker bottom is
+        // what an iOS tab bar reads as, and it is the only "glass" Android will give a View
+        // without a blur it does not have.
+        android.graphics.drawable.GradientDrawable shelf = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.rgb(23, 30, 58), Color.rgb(11, 15, 32)});
+        scroller.setBackground(shelf);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
@@ -522,8 +620,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** Puts the bar, the key row and the desktop in the order the owner chose. */
     private void layoutBars() {
         column.removeAllViews();
+        // 48 dp is the smallest row that still gives every button a full-size touch target,
+        // and it hands 8 dp of the phone's screen back to the computer -- twice, when the key
+        // row is showing. The buttons are MATCH_PARENT inside it, so nothing shrinks.
         LinearLayout.LayoutParams stripLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56));
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 48));
         LinearLayout.LayoutParams desktopLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
         keyRow.setVisibility(keyRowShown ? View.VISIBLE : View.GONE);
@@ -531,11 +632,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         if (controlsAtTop) {
             column.addView(bar, stripLp);
             column.addView(barDivider, dividerLp());
-            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
+            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 48)));
             column.addView(desktop, desktopLp);
         } else {
             column.addView(desktop, desktopLp);
-            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 56)));
+            column.addView(keyRow, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 48)));
             column.addView(barDivider, dividerLp());
             column.addView(bar, stripLp);
         }
@@ -546,7 +647,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** A one-pixel line between the desktop and the control bar, so the bar reads as a shelf. */
     private View hairline() {
         View line = new View(this);
-        line.setBackgroundColor(Color.rgb(35, 48, 74));
+        // Brighter than the surfaces on both sides of it, so it reads as the lit edge of the
+        // shelf rather than a seam between two dark rectangles.
+        line.setBackgroundColor(Color.rgb(58, 74, 128));
         return line;
     }
 
@@ -563,8 +666,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void styleToggle(Button button, boolean active) {
         button.setBackground(Ui.tappable(this, active
-                ? Ui.outlined(Color.rgb(35, 42, 73), Color.rgb(122, 155, 255), 12, this)
-                : Ui.background(Color.rgb(35, 42, 73), 12, this), true));
+                ? Ui.outlined(Color.rgb(38, 50, 110), Color.rgb(122, 155, 255), 16, this)
+                : Ui.outlined(Color.rgb(32, 40, 70), Color.rgb(52, 66, 108), 16, this), true));
     }
 
     private void showScreenMenu(View anchor) {
@@ -581,14 +684,20 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
                 .setIcon(R.drawable.ic_settings);
-        items.add(0, MENU_VOLUME_UP, 6, "Media volume up").setIcon(R.drawable.ic_volume);
-        items.add(0, MENU_VOLUME_DOWN, 7, "Media volume down").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_BIGGER, 5, "Bigger interface (" + desktop.getMagnification() + " %)")
+                .setIcon(R.drawable.ic_fullscreen);
+        items.add(0, MENU_AUTO_HIDE, 6, autoHideBars
+                ? "Auto-hide the controls: off" : "Auto-hide the controls: on")
+                .setIcon(R.drawable.ic_timer);
+        items.add(0, MENU_ROTATION_LOCK, 6, rotationLocked
+                ? "Rotation lock: off" : "Rotation lock: keep this way up").setIcon(R.drawable.ic_rotate);
+        items.add(0, MENU_TOUCH_LOCK, 7, "Lock the screen: ignore touches").setIcon(R.drawable.ic_lock);
         AudioManager sound = (AudioManager) getSystemService(AUDIO_SERVICE);
         boolean silent = sound != null
                 && (sound.isStreamMute(AudioManager.STREAM_MUSIC)
                     || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
-        items.add(0, MENU_VOLUME_MUTE, 8, silent ? "Media volume: unmute" : "Media volume: mute")
-                .setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_VOLUME_PANEL, 8, silent
+                ? "Volume: muted" : "Volume and mute").setIcon(R.drawable.ic_volume);
         items.add(0, MENU_MICROPHONE, 9, microphone.isRunning()
                         ? "Microphone: turn off" : "Microphone: let the computer hear you")
                 .setIcon(R.drawable.ic_volume);
@@ -614,16 +723,19 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                             : "Workspace matches the phone screen", Toast.LENGTH_LONG).show();
                     return true;
                 }
-                case MENU_ROTATE: toggleOrientation(); return true;
+                case MENU_ROTATE: rotateNow(); return true;
                 case MENU_FULL_SCREEN: setBarsHidden(true); return true;
                 case MENU_BAR_POSITION:
                     controlsAtTop = !controlsAtTop;
                     preferences.edit().putString(ContainerRuntime.KEY_CONTROLS_AT, controlsAtTop ? "top" : "bottom").apply();
                     layoutBars();
+                    placeVolumePanel();
                     return true;
-                case MENU_VOLUME_UP: adjustVolume(AudioManager.ADJUST_RAISE); return true;
-                case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
-                case MENU_VOLUME_MUTE: adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE); return true;
+                case MENU_BIGGER: biggerInterface(); return true;
+                case MENU_AUTO_HIDE: setAutoHideBars(!autoHideBars); return true;
+                case MENU_VOLUME_PANEL: showVolume(null); return true;
+                case MENU_ROTATION_LOCK: setRotationLocked(!rotationLocked); return true;
+                case MENU_TOUCH_LOCK: setTouchLocked(true); return true;
                 case MENU_MICROPHONE: toggleMicrophone(); return true;
                 case MENU_PHOTO: takePhoto(); return true;
                 default: return false;
@@ -642,12 +754,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_ALL_WINDOWS, 1, "All open apps").setIcon(R.drawable.ic_apps);
         items.add(0, MENU_APPS, 2, "Apps menu: every installed app").setIcon(R.drawable.ic_apps);
         items.add(0, MENU_FIT_WINDOW, 3, "Fit this window to the screen").setIcon(R.drawable.ic_fit);
+        items.add(0, MENU_RESIZE, 3, "Resize this window by dragging").setIcon(R.drawable.ic_fullscreen);
         items.add(0, MENU_MINIMISE, 4, "Minimise this window").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_MINIMISE_ALL, 5, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_CLOSE, 6, "Close this window").setIcon(R.drawable.ic_close);
         items.add(0, MENU_FORCE_CLOSE, 7, "Force close (stuck app)").setIcon(R.drawable.ic_stop);
         items.add(0, MENU_PASTE, 8, "Paste from the phone").setIcon(R.drawable.ic_download);
         items.add(0, MENU_PHONE_FILES, 9, "Phone files").setIcon(R.drawable.ic_phone);
+        items.add(0, MENU_CLOUD_FILE, 9, "Add a file from the phone or a cloud drive")
+                .setIcon(R.drawable.ic_download);
         items.add(0, MENU_RELOAD, 10, "Reload the screen").setIcon(R.drawable.ic_rotate);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
@@ -661,8 +776,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 case MENU_PASTE: pasteClipboard(); return true;
                 case MENU_APPS: chord(0xffeb, 'a'); return true;
                 case MENU_PHONE_FILES: chord(0xffeb, 'p'); return true;
+                case MENU_CLOUD_FILE: addFileFromPhone(); return true;
                 case MENU_RELOAD: chord(0xffeb, 'r'); return true;
                 case MENU_FIT_WINDOW: chord(0xffeb, 'f'); return true;
+                case MENU_RESIZE: startWindowResize(); return true;
                 case MENU_MINIMISE: chord(0xffeb, 'm'); return true;
                 default: return false;
             }
@@ -693,44 +810,67 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         showVolume(manager);
     }
 
+    private Button muteBarButton;
     private TextView volumeChip;
     private TextView volumeNote;
     private ProgressBar volumeBar;
+    private Button muteButton;
     private LinearLayout volumePanel;
     private final Runnable hideVolume = () -> {
         if (volumePanel != null) volumePanel.animate().alpha(0f).setDuration(220)
                 .withEndAction(() -> { if (volumePanel != null) volumePanel.setVisibility(View.GONE); }).start();
     };
 
-    /** "Media volume  ·  60 %", a bar and the step, on the desktop, for a second and a half. */
+    /**
+     * The volume readout, in the right-hand corner: which volume it is, the percentage, a bar,
+     * and the three buttons -- quieter, mute, louder -- so it can be changed without hunting for
+     * the phone's own keys or leaving the desktop.
+     *
+     * "Media volume" is named rather than assumed. This app plays the Linux computer's sound on
+     * the media stream and touches no other, so a phone on silent with media turned up still has
+     * sound here, and that surprises people until they are told which volume they are moving.
+     */
     private void showVolume(AudioManager manager) {
-        int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-        int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        boolean silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
-        int percent = silent ? 0 : Math.round(step * 100f / max);
         if (volumePanel == null || outer == null) return;
-        volumeChip.setText(silent ? "Media volume  ·  silent"
-                : "Media volume  ·  " + percent + " %");
+        if (manager == null) manager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int percent = 0;
+        boolean silent = true;
+        if (manager != null) {
+            int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+            int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            percent = Math.round(step * 100f / max);
+            silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
+        }
+        volumeChip.setText(silent ? "Media volume  \u00b7  muted" : "Media volume  \u00b7  " + percent + " %");
         volumeNote.setText(silent
-                ? "Volume up to hear the desktop again"
-                : "Step " + step + " of " + max + " — the desktop plays as media audio");
-        volumeBar.setProgress(percent);
+                ? "The computer cannot be heard"
+                : "The Linux computer plays on this volume");
+        volumeBar.setProgress(silent ? 0 : percent);
+        muteButton.setText(silent ? "Unmute" : "Mute");
+        muteButton.setContentDescription(silent ? "Turn the sound back on" : "Mute the computer");
+        styleToggle(muteButton, silent);
+        if (muteBarButton != null) {
+            muteBarButton.setText(silent ? "Muted" : "Mute");
+            styleToggle(muteBarButton, silent);
+        }
         volumePanel.setVisibility(View.VISIBLE);
         volumePanel.animate().cancel();
         volumePanel.setAlpha(1f);
         volumePanel.removeCallbacks(hideVolume);
-        volumePanel.postDelayed(hideVolume, 1600L);
+        // Long enough to press the buttons that are on it, which the old second and a half
+        // was not: it vanished under the finger reaching for it.
+        volumePanel.postDelayed(hideVolume, 3200L);
     }
 
-    /** The indicator itself: built once, hidden until a volume key is pressed. */
+    /** The indicator itself: built once, hidden until the volume is asked about. */
     private View buildVolumePanel() {
         volumePanel = new LinearLayout(this);
         volumePanel.setOrientation(LinearLayout.VERTICAL);
         volumePanel.setBackground(Ui.outlined(
-                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 14, this));
-        volumePanel.setElevation(Ui.dp(this, 6));
+                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 16, this));
+        volumePanel.setElevation(Ui.dp(this, 8));
         int pad = Ui.dp(this, 14);
-        volumePanel.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 12));
+        volumePanel.setPadding(pad, Ui.dp(this, 11), pad, Ui.dp(this, 12));
         volumeChip = Ui.bold(this, "Media volume", 14, Color.rgb(230, 236, 247));
         volumePanel.addView(volumeChip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -739,7 +879,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         volumeBar.setProgressTintList(ColorStateList.valueOf(Color.rgb(122, 155, 255)));
         volumeBar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.rgb(44, 54, 96)));
         LinearLayout.LayoutParams barLp =
-                new LinearLayout.LayoutParams(Ui.dp(this, 188), Ui.dp(this, 7));
+                new LinearLayout.LayoutParams(Ui.dp(this, 196), Ui.dp(this, 7));
         barLp.topMargin = Ui.dp(this, 9);
         volumePanel.addView(volumeBar, barLp);
         volumeNote = Ui.text(this, "", 11, Color.rgb(158, 172, 208));
@@ -747,8 +887,110 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         noteLp.topMargin = Ui.dp(this, 7);
         volumePanel.addView(volumeNote, noteLp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        Button quieter = toolButton("\u2212", R.drawable.ic_volume);
+        quieter.setContentDescription("Media volume down");
+        quieter.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_LOWER));
+        buttons.addView(quieter, volumeButton(58));
+        muteButton = toolButton("Mute", 0);
+        muteButton.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE));
+        buttons.addView(muteButton, volumeButton(84));
+        Button louder = toolButton("+", R.drawable.ic_volume);
+        louder.setContentDescription("Media volume up");
+        louder.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_RAISE));
+        buttons.addView(louder, volumeButton(58));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 38));
+        rowLp.topMargin = Ui.dp(this, 11);
+        volumePanel.addView(buttons, rowLp);
+
         volumePanel.setVisibility(View.GONE);
         return volumePanel;
+    }
+
+    /**
+     * Keeps the volume corner clear of the control bar, whichever end the bar is at.
+     *
+     * The margin used to be worked out once, when the screen was built. Moving the bar to the top
+     * afterwards left the panel where it was, on top of the bar it was meant to sit below, and it
+     * covered the very buttons it appears next to.
+     */
+    private void placeVolumePanel() {
+        if (volumePanel == null) return;
+        ViewGroup.LayoutParams params = volumePanel.getLayoutParams();
+        if (!(params instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) params;
+        lp.topMargin = Ui.dp(this, controlsAtTop ? 66 : 12);
+        lp.setMarginEnd(Ui.dp(this, 10));
+        volumePanel.setLayoutParams(lp);
+    }
+
+    private LinearLayout.LayoutParams volumeButton(int widthDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                Ui.dp(this, widthDp), ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMarginEnd(Ui.dp(this, 5));
+        return lp;
+    }
+
+    // ---- The screen lock: touches ignored until it is turned off ------------------------------
+
+    private FrameLayout touchLock;
+    private boolean touchLocked;
+
+    /**
+     * A lid over the desktop, so the computer can be watched, read or listened to without a
+     * palm, a pocket or a passenger touching anything. The only thing that answers is the
+     * chip in the middle, and it wants two taps -- one is exactly what a stray touch is.
+     */
+    private View buildTouchLock() {
+        touchLock = new FrameLayout(this);
+        touchLock.setBackgroundColor(Color.argb(56, 3, 5, 12));
+        touchLock.setClickable(true);
+        touchLock.setFocusable(true);
+        touchLock.setVisibility(View.GONE);
+        TextView chip = Ui.bold(this, "Screen locked \u00b7 double tap to unlock", 13,
+                Color.rgb(226, 233, 248));
+        chip.setBackground(Ui.outlined(
+                Color.argb(238, 15, 21, 44), Color.rgb(96, 118, 190), 16, this));
+        chip.setPadding(Ui.dp(this, 16), Ui.dp(this, 11), Ui.dp(this, 16), Ui.dp(this, 11));
+        chip.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams chipLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER);
+        touchLock.addView(chip, chipLp);
+        final long[] lastTap = { 0L };
+        touchLock.setOnClickListener(v -> {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastTap[0] < 700L) {
+                setTouchLocked(false);
+                Toast.makeText(this, "Screen unlocked", Toast.LENGTH_SHORT).show();
+            } else {
+                lastTap[0] = now;
+                chip.animate().cancel();
+                chip.setAlpha(1f);
+                chip.animate().alpha(0.35f).setStartDelay(1400L).setDuration(400L).start();
+            }
+        });
+        return touchLock;
+    }
+
+    boolean isTouchLocked() { return touchLocked; }
+
+    private void setTouchLocked(boolean locked) {
+        touchLocked = locked;
+        if (touchLock == null) return;
+        touchLock.setVisibility(locked ? View.VISIBLE : View.GONE);
+        if (locked) {
+            // Above the full-screen chip and everything else, or the one thing it is meant to
+            // stop -- a stray tap on a control -- would still get through.
+            touchLock.bringToFront();
+            releaseRemoteInput();
+            hideKeyboard();
+            Toast.makeText(this, "Screen locked. Double tap the middle to unlock.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /** What the status label opens: the plain facts about this session and how to drive it. */
@@ -891,7 +1133,78 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         bar.setVisibility(hidden ? View.GONE : View.VISIBLE);
         keyRow.setVisibility(hidden || !keyRowShown ? View.GONE : View.VISIBLE);
         restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
+        if (hidden) main.removeCallbacks(hideBarsSoon); else armAutoHide();
     }
+
+    // ---- Auto-hide: the bar steps out of the way while the computer is being used -----------
+
+    private static final String KEY_AUTO_HIDE = "viewer_auto_hide";
+    private static final long AUTO_HIDE_AFTER_MS = 6_000L;
+    private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
+    private boolean autoHideBars;
+    private long autoHideArmedAt;
+
+    private final Runnable hideBarsSoon = new Runnable() {
+        @Override public void run() {
+            if (!autoHideBars || bar == null || bar.getVisibility() != View.VISIBLE) return;
+            // A touch during the wait re-arms rather than cancels, so this only fires when the
+            // desktop really has been left alone -- and never while a finger is on the glass.
+            long quiet = System.currentTimeMillis() - Math.max(autoHideArmedAt, VncView.lastInteractionAt);
+            if (quiet < AUTO_HIDE_AFTER_MS - 250L) {
+                main.postDelayed(this, AUTO_HIDE_AFTER_MS - quiet);
+                return;
+            }
+            setBarsHidden(true);
+        }
+    };
+
+    private void armAutoHide() {
+        main.removeCallbacks(hideBarsSoon);
+        if (!autoHideBars) return;
+        autoHideArmedAt = System.currentTimeMillis();
+        main.postDelayed(hideBarsSoon, AUTO_HIDE_AFTER_MS);
+    }
+
+    private void setAutoHideBars(boolean on) {
+        autoHideBars = on;
+        preferences.edit().putBoolean(KEY_AUTO_HIDE, on).apply();
+        if (on) {
+            armAutoHide();
+            Toast.makeText(this, "The controls step aside after a few seconds. The chip in the "
+                    + "corner brings them back.", Toast.LENGTH_LONG).show();
+        } else {
+            main.removeCallbacks(hideBarsSoon);
+            setBarsHidden(false);
+        }
+    }
+
+    /**
+     * Everything on the Linux desktop, drawn bigger, at once.
+     *
+     * The screen's dpi is the proper answer and it lives in Settings, but every Linux program
+     * reads it when it starts, so it can only apply to the next session. This asks the desktop
+     * to be smaller than the phone screen and lets the viewer scale it up to fill it -- so type,
+     * icons, title bars and close buttons all grow together, now, with nothing cropped.
+     */
+    private void biggerInterface() {
+        int current = desktop.getMagnification();
+        int next = ViewerSize.STEPS[0];
+        for (int index = 0; index < ViewerSize.STEPS.length; index++) {
+            if (ViewerSize.STEPS[index] == current) {
+                next = ViewerSize.STEPS[(index + 1) % ViewerSize.STEPS.length];
+                break;
+            }
+        }
+        desktop.setMagnification(next);
+        preferences.edit().putInt(KEY_MAGNIFICATION, next).apply();
+        Toast.makeText(this, next == 100
+                        ? "Back to the sharpest size: one Linux pixel per phone pixel."
+                        : "Everything on the desktop is " + next + " % of its size. Sharper "
+                                + "still: Settings \u2192 Desktop text size.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private static final String KEY_MAGNIFICATION = "viewer_magnification";
 
     private void connectWithRetry() {
         // A status-button tap must not race an existing connection reader or start Linux again.
@@ -983,23 +1296,81 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 .getAbsolutePath();
     }
 
+    /** Finger -> Mouse -> Screen -> Finger. Three ways one finger can be a pointer. */
     private void togglePointerMode() {
-        VncView.PointerMode next = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD
-                ? VncView.PointerMode.DIRECT : VncView.PointerMode.TOUCHPAD;
+        VncView.PointerMode next;
+        switch (desktop.getPointerMode()) {
+            case DIRECT:   next = VncView.PointerMode.TOUCHPAD; break;
+            case TOUCHPAD: next = VncView.PointerMode.TOUCH; break;
+            default:       next = VncView.PointerMode.DIRECT; break;
+        }
         desktop.setPointerMode(next);
-        boolean mouse = next == VncView.PointerMode.TOUCHPAD;
-        preferences.edit().putString(ContainerRuntime.KEY_POINTER_MODE, mouse ? "mouse" : "finger").apply();
+        preferences.edit().putString(ContainerRuntime.KEY_POINTER_MODE, pointerModeName(next)).apply();
         stylePointerButton();
-        Toast.makeText(this, mouse
-                        ? "Mouse: move the arrow, then tap Drag to resize an edge. Two fingers scroll."
-                        : "Finger: tap to click, swipe to scroll. Use Drag to hold a divider.",
-                Toast.LENGTH_SHORT).show();
+        String said;
+        switch (next) {
+            case TOUCHPAD:
+                said = "Mouse: move the arrow, then tap Drag to resize an edge. Two fingers scroll.";
+                break;
+            case TOUCH:
+                said = "Screen: the finger holds the button down, so a swipe drags, draws and "
+                        + "plays. Two fingers zoom.";
+                break;
+            default:
+                said = "Finger: tap to click, swipe to scroll either way. Drag holds a divider.";
+                break;
+        }
+        Toast.makeText(this, said, Toast.LENGTH_SHORT).show();
     }
 
-    /** The button shows what is on the screen: an arrow for the mouse, a hand for touch. */
+    static String pointerModeName(VncView.PointerMode mode) {
+        switch (mode) {
+            case TOUCHPAD: return "mouse";
+            case TOUCH: return "touch";
+            default: return "finger";
+        }
+    }
+
+    static VncView.PointerMode pointerModeOf(String saved) {
+        if ("mouse".equals(saved)) return VncView.PointerMode.TOUCHPAD;
+        if ("touch".equals(saved)) return VncView.PointerMode.TOUCH;
+        return VncView.PointerMode.DIRECT;
+    }
+
+    /**
+     * Resize the window in front by dragging anywhere inside it.
+     *
+     * A window edge on a phone screen is about a millimetre wide and there is no cursor to see
+     * it change shape, so aiming at one is not a real option. Openbox's own Alt + right-drag is:
+     * it grabs the whole window, and the corner nearest the finger is the one that moves. The
+     * held-input machinery that already exists for dragging a divider does the rest, so the
+     * button stays down while the thumb lifts and repositions.
+     */
+    private void startWindowResize() {
+        if (lockedNow()) return;
+        if (!desktop.isLive()) {
+            Toast.makeText(this, "Connect to the desktop first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (desktop.isHeldDragging()) {          // already holding something: let it go first
+            desktop.toggleDrag();
+            return;
+        }
+        // Un-maximise first: PocketLinux opens windows full-screen, and a maximised window
+        // cannot be resized -- the drag would appear to do nothing at all.
+        chord(0xffeb, 'u');                       // Super+U: pocketdesk-windows unmaximise
+        desktop.postDelayed(() -> {
+            desktop.toggleDrag(4, 0xffe9);        // Alt held, right button down
+            Toast.makeText(this, "Swipe to resize the window. Tap Release when it is the size "
+                    + "you want.", Toast.LENGTH_LONG).show();
+        }, 220L);
+    }
+
+    /** The button shows what is on the screen: an arrow for the mouse, a hand for the other two. */
     private void stylePointerButton() {
-        boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
-        pointerButton.setText(mouse ? "Mouse" : "Finger");
+        VncView.PointerMode mode = desktop.getPointerMode();
+        boolean mouse = mode == VncView.PointerMode.TOUCHPAD;
+        pointerButton.setText(mouse ? "Mouse" : mode == VncView.PointerMode.TOUCH ? "Screen" : "Finger");
         Ui.setStartIcon(pointerButton, mouse ? R.drawable.ic_cursor : R.drawable.ic_touch,
                 Color.rgb(150, 175, 255), this, 18);
     }
@@ -1008,6 +1379,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         keyboardInput.requestFocus();
         InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         input.showSoftInput(keyboardInput, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    /** Puts the phone keyboard away, so nothing keeps typing into a desktop that is not listening. */
+    private void hideKeyboard() {
+        InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (input != null && keyboardInput != null) {
+            input.hideSoftInputFromWindow(keyboardInput.getWindowToken(), 0);
+        }
     }
 
     private Button addKey(LinearLayout parent, String label, int keysym) {
@@ -1259,7 +1638,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         button.setPadding(Ui.dp(this, 5), 0, Ui.dp(this, 5), 0);
         button.setMinWidth(0);
         button.setMinHeight(0);
-        button.setBackground(Ui.tappable(this, Ui.background(Color.rgb(35, 42, 73), 12, this), true));
+        // A pill, not a rectangle: 16 dp of radius inside a 48 dp row is the shape every phone
+        // bottom bar has settled on, and the hairline is what keeps eight of them from reading
+        // as one grey block.
+        button.setBackground(Ui.tappable(this,
+                Ui.outlined(Color.rgb(32, 40, 70), Color.rgb(52, 66, 108), 16, this), true));
         return button;
     }
 
@@ -1269,28 +1652,65 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return lp;
     }
 
+    /**
+     * The setting made in PocketLinux, applied to this screen -- and through it to the Linux
+     * desktop, which is kept exactly the shape of this view, so Portrait here really is a
+     * portrait computer and not a landscape one squeezed sideways.
+     *
+     * Called from onStart as well as onCreate: the setting is changed on the other screen, and
+     * before this it took closing and reopening the desktop for the change to be seen.
+     */
     private void applyOrientation() {
-        String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
-        if ("portrait".equals(value)) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-            return;
-        }
-        if ("landscape".equals(value)) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-            return;
-        }
-        // FULL_SENSOR, not USER: USER obeys the phone's rotation lock, which is why turning the
-        // phone did nothing until the screen was reopened. The desktop resizes itself to match,
-        // so following the sensor is safe here even when the rest of the system is locked.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        if (rotationLocked) return;      // the viewer's own lock outranks the setting while it is on
+        setRequestedOrientation(ScreenRotation.of(
+                preferences.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO)));
+        // The phone window can already be this way up while the computer inside it is not: a
+        // session started before the setting changed keeps the shape it was born with until it
+        // is asked to match. Posted so the new configuration lands first; if the desktop is
+        // already the right size, nothing is sent.
+        if (desktop != null) desktop.post(desktop::requestDesktopMatch);
     }
 
-    private void toggleOrientation() {
+    /** True while the viewer's rotation lock is holding the screen where it is. */
+    private boolean rotationLocked;
+
+    boolean isRotationLocked() { return rotationLocked; }
+
+    /**
+     * Pins the screen exactly as it is now, or hands it back to the setting.
+     *
+     * This is the phone's rotation lock, for this screen only: a long read or a game in
+     * landscape should not turn over because the phone was put down flat.
+     */
+    private void setRotationLocked(boolean locked) {
+        rotationLocked = locked;
+        if (locked) {
+            boolean landscape = getResources().getConfiguration().orientation
+                    == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            setRequestedOrientation(ScreenRotation.pin(
+                    getWindowManager().getDefaultDisplay().getRotation(), landscape));
+        } else {
+            applyOrientation();
+        }
+    }
+
+    /**
+     * Turn the screen the other way, now, and hold it there.
+     *
+     * Holding it is the point -- a rotation that the sensor undoes the moment the phone moves is
+     * not a rotation. It is the same lock the Screen menu offers, so it can be let go again;
+     * an earlier version set the flag here with nothing that could clear it, which quietly
+     * disabled the Screen rotation setting for the rest of the session.
+     */
+    private void rotateNow() {
         boolean landscape = getResources().getConfiguration().orientation
                 == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        rotationLocked = true;
         setRequestedOrientation(landscape
-                ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
-                : ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        Toast.makeText(this, "Turned, and held this way up. Screen \u25be Rotation lock: off "
+                + "hands it back to the setting.", Toast.LENGTH_LONG).show();
     }
 
     /** Keeps the bar clear of the status bar and the gesture bar, whichever end it sits at. */

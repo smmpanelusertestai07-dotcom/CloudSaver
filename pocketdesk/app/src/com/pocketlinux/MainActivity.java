@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "11.0.5";
+    static final String VERSION = "12.0.0";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -162,6 +162,13 @@ public final class MainActivity extends Activity {
         try {
             preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
             dark = resolveDarkMode();
+            // The window this screen is drawn into was painted before any of this ran, from the
+            // theme in the manifest -- which follows the PHONE's night mode (values/ and
+            // values-night/), not the app's own three-valued Theme setting. When the two disagree
+            // (Theme: Dark on a phone in light mode, or the reverse) that first frame is the
+            // wrong colour, and no amount of care further down repaints it. Setting the window's
+            // own background here does, before the first frame is drawn.
+            getWindow().setBackgroundDrawableResource(dark ? R.color.window_dark : R.color.window_light);
             if (state != null) {
                 selectedTab = state.getInt("tab", TAB_HOME);
                 openAnswer = state.getInt("answer", -1);
@@ -188,6 +195,18 @@ public final class MainActivity extends Activity {
      * a cold start; a rotation or a return from another app skips straight to the lock.
      */
     private void showIntro() {
+        // A shortcut is an instruction, not a visit: someone who long-pressed the icon and chose
+        // "Open desktop" asked for the desktop, and holding that behind three and a half seconds
+        // of brand is the app taking time that is not its to take. Same on a phone Android calls
+        // low-memory, where those seconds are spent on the one thing nobody needs.
+        if (pendingRoute != null || DeviceCheck.isSmallPhone(this)) {
+            introShowing = false;
+            if (started) {
+                if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                else consumeRoute();
+            }
+            return;
+        }
         introShowing = true;
         final FrameLayout intro = new FrameLayout(this);
         intro.setBackgroundColor(Color.rgb(13, 27, 62));
@@ -233,22 +252,31 @@ public final class MainActivity extends Activity {
 
         mark.setScaleX(0.9f); mark.setScaleY(0.9f);
         mark.animate().scaleX(1f).scaleY(1f).setDuration(420).start();
+        // The opening screen must never end without deciding what happens next: with the lock on
+        // it asks, and without it the shortcut the owner tapped is honoured here, because
+        // onResume already ran and skipped it while this was up. Written once and called from
+        // both the timer and a tap, so a tap really does skip it rather than running it twice.
+        final Runnable[] finish = new Runnable[1];
+        finish[0] = () -> {
+            if (!introShowing) return;
+            introShowing = false;
+            intro.animate().alpha(0f).setDuration(220)
+                    .withEndAction(() -> {
+                        shell.removeView(intro);
+                        if (started) {
+                            if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                            else consumeRoute();
+                        }
+                    }).start();
+        };
+        intro.setOnClickListener(v -> finish[0].run());
         handler.postDelayed(() -> {
-            first.animate().alpha(0f).setDuration(260).start();
-            second.animate().alpha(1f).setDuration(420).start();
-        }, 1300L);
-        handler.postDelayed(() -> intro.animate().alpha(0f).setDuration(360)
-                .withEndAction(() -> {
-                    shell.removeView(intro);
-                    introShowing = false;
-                    // The opening screen must never end without deciding what happens next: with
-                    // the lock on, it asks; without it, the shortcut the owner tapped is honoured
-                    // here, because onResume already ran and skipped it while the intro was up.
-                    if (started) {
-                        if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
-                        else consumeRoute();
-                    }
-                }).start(), 3100L);
+            if (!introShowing) return;
+            first.animate().alpha(0f).setDuration(220).start();
+            second.animate().alpha(1f).setDuration(320).start();
+        }, 700L);
+        // 1.6 seconds, not 3.5. Long enough to read the name, short enough that nobody waits.
+        handler.postDelayed(() -> finish[0].run(), 1600L);
     }
 
     private LinearLayout introColumn() {
@@ -724,8 +752,9 @@ public final class MainActivity extends Activity {
         compatibleRow = new Ui.Row(this, check.compatible ? R.drawable.ic_check : R.drawable.ic_stop,
                 check.headline, "Tap for the requirements and what this phone has",
                 R.drawable.ic_chevron, dark, v -> toggleDetail(compatibleRow, phoneDetail, DeviceCheck.run(this).detail));
-        compatibleRow.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
-                check.compatible ? Ui.SUCCESS : Ui.DANGER);
+        compatibleRow.setStatus(!check.compatible ? "NOT COMPATIBLE"
+                        : check.desktopOnly ? "DESKTOP ONLY" : "COMPATIBLE",
+                !check.compatible ? Ui.DANGER : check.desktopOnly ? Ui.WARNING : Ui.SUCCESS);
         card.addView(compatibleRow, Ui.matchWrap(this, 10));
         phoneDetail = detailUnder(card);
         return card;
@@ -797,6 +826,28 @@ public final class MainActivity extends Activity {
                         + ".deb and AppImage builds, and Google publishes Antigravity for Linux. "
                         + "PocketLinux installs exactly those packages, from each publisher's own "
                         + "servers, and every app updates the way its publisher ships updates.", false);
+        addAnswer(card, R.drawable.ic_info, "Some tools only exist on one system \u2014 and the AI ones are on Linux",
+                "Software is not always free to run anywhere. Some of it is tied to one system by "
+                        + "the frameworks it is built on, and sometimes by a licence that says so "
+                        + "outright, and no amount of cleverness moves it.\n\n"
+                        + "• Xcode, the iOS Simulator and SwiftUI previews are macOS programs. "
+                        + "They need Apple's own frameworks and Apple's licence keeps macOS on "
+                        + "Apple hardware, so an iPhone app is signed on a Mac or on someone "
+                        + "else's Mac. Nothing anywhere changes that.\n"
+                        + "• Visual Studio, DirectX and the old .NET Framework are Windows "
+                        + "programs, for the same kind of reason from the other direction.\n"
+                        + "• Containers, systemd, the whole server world: Linux. Docker on a Mac "
+                        + "or on Windows is a Linux machine running quietly underneath \u2014 that "
+                        + "is what it has always been.\n\n"
+                        + "So the system you are on decides what you can build, and that is worth "
+                        + "knowing before you pick one. Here it decided well: every AI desktop app "
+                        + "in this app ships a Linux build, and the two coding agents \u2014 Claude "
+                        + "Code and Codex \u2014 were Linux-shaped from the start, because a Linux "
+                        + "shell is what an agent is given when it is given a computer. This is "
+                        + "not a phone imitating a desktop and hoping the apps follow. It is the "
+                        + "system those apps are written for, on the processor in your hand, with "
+                        + "the same apt, the same packages and the same instructions their own "
+                        + "documentation gives.", false);
         addAnswer(card, R.drawable.ic_check, "Why Linux and not Windows or macOS",
                 "Because on a phone, Linux is the only one of the three that is real \u2014 and, "
                         + "on this processor, it is also the best supported.\n\n"
@@ -1063,8 +1114,15 @@ public final class MainActivity extends Activity {
                     .append(". Free some space first, or uninstall an app you are not using.");
         }
         if (LinuxApps.isAiApp(app) && probe.totalRam > 0) {
-            line.append("\nMemory: ").append(DeviceProbe.formatBytes(probe.totalRam))
-                    .append(" — enough for one AI app at a time.");
+            line.append("\nMemory: ").append(DeviceProbe.formatBytes(probe.totalRam));
+            // A phone below the AI-app threshold is told here, on the row, before it spends an
+            // hour and several gigabytes of mobile data on something that will not stay open.
+            // Saying it only as a badge on the Home screen was not saying it.
+            line.append(DeviceCheck.enoughForAiApps(this)
+                    ? " — enough for one AI app at a time."
+                    : " — below what this app needs. It is a Chromium program and wants about "
+                            + "700 MB of its own; the Linux computer, the terminal and the "
+                            + "development tools run here, this will not stay open.");
         }
         return line.toString();
     }
@@ -1121,7 +1179,7 @@ public final class MainActivity extends Activity {
         appearance.addView(rotationRow, Ui.matchWrap(this, 8));
         desktopScaleRow = new Ui.Row(this, R.drawable.ic_desktop, "Desktop text size",
                 labelOfInt(SCALE_LABELS, SCALE_VALUES,
-                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE)),
+                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE, 0)),
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         appearance.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
@@ -1212,11 +1270,19 @@ public final class MainActivity extends Activity {
                         dialogBuilder()
                                 .setTitle("Show the phone's files inside the computer?")
                                 .setMessage("Android will ask you to allow All files access for PocketLinux. "
-                                        + "With it on, your phone's shared storage — Download, DCIM (photos), Documents and "
-                                        + "other folders appear inside the Linux computer as the Phone folder, "
-                                        + "so ChatGPT, Claude and the browser can attach a file from the phone "
-                                        + "and save one to it. Nothing on the phone is touched unless you "
-                                        + "pick it in an app.\n\nApplies the next time the desktop starts.")
+                                        + "PocketLinux then connects six of the phone's folders — Download, "
+                                        + "DCIM (photos), Documents, Pictures, Music and Movies — into the "
+                                        + "computer as the Phone folder, so ChatGPT, Claude and the browser "
+                                        + "can attach a file from the phone and save one to it.\n\n"
+                                        + "Six, and no more. Android hands over the whole card; PocketLinux "
+                                        + "connects only those, so nothing else on the phone can be reached "
+                                        + "from inside the computer — not another app's data, not its private "
+                                        + "storage, not a backup. What is not connected cannot be named, "
+                                        + "however an app or an AI agent in there asks for it.\n\n"
+                                        + "In those six, changes are real: a file deleted there is deleted on "
+                                        + "the phone. To hand over just one file instead, leave this off and "
+                                        + "use the desktop's Window → Add a file from the phone or a cloud "
+                                        + "drive.\n\nApplies the next time the desktop starts.")
                                 .setNegativeButton("Not now", null)
                                 .setPositiveButton("Allow", (d, w) -> PhoneFiles.request(this))
                                 .show();
@@ -1290,19 +1356,17 @@ public final class MainActivity extends Activity {
                 + "files. Desktop text size applies the next time the desktop starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
+        storage.addView(new Ui.Row(this, R.drawable.ic_shield, "Terms",
+                "What this app is, what it is not, and whose terms apply to what",
+                R.drawable.ic_chevron, dark, v -> showTerms()), Ui.matchWrap(this, 10));
         storage.addView(new Ui.Row(this, R.drawable.ic_info, "Open-source notices",
                 "The licences of everything bundled with this app, including PRoot (GPL-2.0)",
                 R.drawable.ic_chevron, dark, v -> showNotices()), Ui.matchWrap(this, 10));
 
-        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS, downloaded at set-up from "
-                + "Canonical's own ARM64 base image and updated from Ubuntu's own package servers. "
-                + "Ubuntu is a registered trademark of Canonical Ltd; PocketLinux is not affiliated "
-                + "with, endorsed by or sponsored by Canonical, and shows no Canonical logo. Linux "
-                + "is a registered trademark of Linus Torvalds. Tux, the Linux mascot, is by Larry "
-                + "Ewing and The GIMP. The desktop is Openbox, tint2, PCManFM, LXTerminal, dunst and "
-                + "TigerVNC, each under its own licence. App names and logos are the property of "
-                + "their respective owners. The open-source notices ship inside this app — the row "
-                + "above opens them.",
+        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS on the phone's own processor. "
+                + "Ubuntu is a registered trademark of Canonical Ltd and Linux is a registered "
+                + "trademark of Linus Torvalds; PocketLinux is not affiliated with either. Every "
+                + "other name and logo belongs to its owner.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -1419,16 +1483,42 @@ public final class MainActivity extends Activity {
                         + "Android Gradle build may stop there. Compiling, testing on a device, "
                         + "and everything around it works; that one tool is the gap, and it is "
                         + "Google's to close.\n\n"
-                        + "iOS APPS — no, and no trick changes it\n"
+                        + "iOS APPS — written and tried here, built on a Mac\n"
                         + "Xcode, the iOS Simulator and SwiftUI previews are macOS-only programs "
-                        + "that need Apple's own frameworks. They cannot run here or on any "
-                        + "phone. Building an iOS app needs a Mac, or a build service.\n\n"
+                        + "that need Apple's own frameworks. Nothing runs them here or on any "
+                        + "phone. What does work, with no Mac at all: write the app here as React "
+                        + "Native through Expo and run it on a real iPhone by scanning a code with "
+                        + "Expo Go — the code is served from this computer, the app runs on the "
+                        + "iPhone, and the same project runs on this Android phone at the same "
+                        + "time. A real iOS build for TestFlight or the App Store is compiled by "
+                        + "Expo's build service on their Macs, from this same project.\n\n"
+                        + "GAMES, 3D AND DESIGN — yes, on the processor\n"
+                        + "Apps tab → Design and game tools installs Blender, Godot, GIMP and "
+                        + "Inkscape, all ARM64 builds from Ubuntu's own catalogue. There is no "
+                        + "graphics chip in reach — no app in a container on an unrooted phone "
+                        + "has one — so everything draws on the processor. That is a real limit "
+                        + "and it is not the whole story: modelling, sculpting, animating, a 2D "
+                        + "game, a vector drawing and a photo edit are all responsive; a lit 3D "
+                        + "viewport and a full render are slow, and a render can simply be left "
+                        + "to run while the phone is in a pocket. Godot exports Android builds "
+                        + "from here, and you can install them on this phone to play.\n\n"
+                        + "TESTING, INCLUDING FOR AN AI AGENT\n"
+                        + "• Android: a real phone over adb — this one. Build, install, open and "
+                        + "read the logs, all from the Terminal, so an agent can do the whole "
+                        + "loop by itself.\n"
+                        + "• Web and mobile web: the browser here, plus headless Chromium for "
+                        + "automated tests\n"
+                        + "• Everything else: the ordinary test runners — pytest, jest, go test, "
+                        + "cargo test, JUnit through Gradle\n\n"
                         + "NOT POSSIBLE HERE\n"
-                        + "• An Android emulator — it needs hardware virtualisation, which no app "
-                        + "on an unrooted phone can have. A real phone is the test device.\n"
+                        + "• An Android or iOS emulator — an emulator needs hardware "
+                        + "virtualisation, and Android does not give it to apps on an unrooted "
+                        + "phone. This is not a missing feature that could be added: it is a "
+                        + "permission the system holds back. A real phone is the test device, and "
+                        + "for testing an app it is the better one anyway.\n"
                         + "• Docker and virtual machines — same reason\n"
-                        + "• Anything needing a graphics chip: game engines, 3D, video encoding "
-                        + "at speed\n\n"
+                        + "• Hardware-accelerated 3D and fast video encoding — the graphics chip "
+                        + "is out of reach, so both fall back to the processor\n\n"
                         + "HOW HEAVY CAN IT GET\n"
                         + "This phone has 4 GB and no graphics chip. One AI app plus a build is "
                         + "the ceiling. A big compile will take minutes where a laptop takes "
@@ -1635,11 +1725,18 @@ public final class MainActivity extends Activity {
                         + "out of that box, and uninstalling PocketLinux takes all of it with you.\n\n"
                         + "What a bad Linux app could reach: what is inside the computer — your files "
                         + "there and the sign-ins of the AI apps installed there, which are files in "
-                        + "the same home folder — and, only while Phone files is on, your phone's "
-                        + "shared storage: not just Download, DCIM and Documents but everything "
-                        + "beside them, Pictures and Music included, to read and to change. That is "
-                        + "exactly why Phone files is off until you turn it on, and worth turning "
-                        + "off again when you are not using it.\n\n"
+                        + "the same home folder — and, only while Phone files is on, six folders of "
+                        + "the phone: Download, DCIM, Documents, Pictures, Music and Movies, to read "
+                        + "and to change. Six, and no more. Nothing else on the phone is connected "
+                        + "to the computer at all, so no app and no AI agent in there can name it, "
+                        + "however it is asked. Phone files is still off until you turn it on, and "
+                        + "still worth turning off when you are not using it.\n\n"
+                        + "A change in those six folders is a real change: a file deleted there is "
+                        + "deleted on the phone, and Android keeps no bin for it. If you only need "
+                        + "to hand one file to an AI app, do not turn Phone files on at all — the "
+                        + "desktop screen's Window → Add a file from the phone or a cloud drive "
+                        + "opens the phone's own picker, which also lists Drive and every other "
+                        + "cloud app, and copies just that file into the computer.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
                         + "messages, anything outside that shared storage, the camera, your location "
                         + "or your contacts. PocketLinux holds no permission for any of them, so "
@@ -2036,16 +2133,31 @@ public final class MainActivity extends Activity {
 
     // A clock does not know whether you are using the desktop; it only knows how long ago you
     // opened it. Smart watches the phone instead -- it lets a session you are working in run,
-    // and ends one you walked away from, or one the battery can no longer carry.
+    // and ends one you walked away from, or one the battery can no longer carry. "Working in"
+    // counts the computer's own work as well as your fingers: a build, a download or an AI
+    // agent left running with the phone in a pocket is exactly when this matters, and closing
+    // that for "nothing was touched" was closing it at full stretch.
     private static final String[] TIMER_LABELS = {
             "Smart · recommended", "1 hour", "2 hours", "4 hours", "6 hours", "Never stop"};
     private static final int[] TIMER_VALUES = {
             ContainerRuntime.SESSION_SMART, 60, 120, 240, 360, 0};
 
-    // Lower dpi means more of the desktop fits, which is what makes it read like a PC screen
-    // rather than three oversized windows.
-    private static final String[] SCALE_LABELS = {"Compact · PC-like", "Normal", "Large"};
-    private static final int[] SCALE_VALUES = {96, 120, 144};
+    // Lower dpi means more of the desktop fits; higher means type you can actually read at arm's
+    // length from a phone. The default is no longer in this list at all -- it is worked out from
+    // the phone's own screen (ContainerRuntime.defaultUiScale) -- so these are the deliberate
+    // choices around it, and the old three values stay so a stored preference still has a label.
+    private static final String[] SCALE_LABELS = {
+            "Automatic · matches this phone", "Compact · PC-like", "Normal", "Large", "Larger",
+            "Largest"};
+    /**
+     * 0 means "work it out from this phone's screen" -- see ContainerRuntime.defaultUiScale.
+     *
+     * It has to be in this list, and it has to be the default. Leaving the computed size out
+     * meant the row showed the FIRST label instead ("Compact"), because that is what labelOfInt
+     * falls back to, and the chooser opened with that entry highlighted: confirming what it
+     * said the setting already was would have set 96 dpi and made everything smaller.
+     */
+    private static final int[] SCALE_VALUES = {0, 96, 120, 144, 168, 192};
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];
@@ -2090,10 +2202,11 @@ public final class MainActivity extends Activity {
 
     /** Bigger type on the Linux desktop, without shrinking the picture. */
     private void chooseScale() {
-        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE, 0);
         int selected = 0;
         for (int i = 0; i < SCALE_VALUES.length; i++) if (SCALE_VALUES[i] == current) selected = i;
-        int[] icons = {R.drawable.ic_desktop, R.drawable.ic_desktop, R.drawable.ic_desktop};
+        int[] icons = new int[SCALE_VALUES.length];
+        java.util.Arrays.fill(icons, R.drawable.ic_desktop);
         showChooser("Desktop text size", SCALE_LABELS, icons, selected, index -> {
             preferences.edit().putInt(ContainerRuntime.KEY_UI_SCALE, SCALE_VALUES[index]).apply();
             desktopScaleRow.setValue(LinuxService.isDesktopRunning()
@@ -2457,10 +2570,12 @@ public final class MainActivity extends Activity {
             boolean on = PhoneFiles.allowed(this);
             phoneFilesRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.muted(dark));
             phoneFilesRow.setValue(on
-                    ? "On · your phone's storage is the Phone files folder inside the computer"
+                    ? "On · six of the phone's folders are in the computer: Download, DCIM, "
+                    + "Documents, Pictures, Music, Movies"
                     + (LinuxService.isDesktopRunning() ? " (from the next desktop start)" : "")
                     + " · tap to change in Android settings"
-                    : "Off · turn on so ChatGPT, Claude and the browser can attach a file from the phone");
+                    : "Off · for one file at a time use the desktop's Window → Add a file from the "
+                    + "phone or a cloud drive; turn this on for the whole folders");
         }
         if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());
         if (batteryOptimisationRow != null) {
@@ -2667,6 +2782,43 @@ public final class MainActivity extends Activity {
                         + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Set up", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
+                .show();
+    }
+
+    /**
+     * The terms, in the fewest words that are still true.
+     *
+     * There are three different sets of them and confusing the three is how people end up
+     * surprised: PocketLinux's own, Ubuntu's, and the AI companies'. Each paragraph below says
+     * whose is whose, and nothing is padded out with the sort of sentence nobody reads.
+     */
+    private void showTerms() {
+        dialogBuilder()
+                .setTitle("Terms")
+                .setMessage("PocketLinux is provided as it is, with no warranty of any kind. It is a "
+                        + "way to run Ubuntu on your own phone; what you do in it is yours, and so "
+                        + "is the responsibility for it.\n\n"
+                        + "It is not affiliated with, endorsed by or sponsored by Canonical, "
+                        + "OpenAI, Anthropic, Anysphere, Google or the Linux Foundation. Their "
+                        + "names and logos appear here only to identify their software.\n\n"
+                        + "The system is Ubuntu 24.04 LTS, downloaded at set-up from Canonical's "
+                        + "own ARM64 base image and updated from Ubuntu's own servers. Every "
+                        + "package in it stays under its own licence, and PocketLinux changes "
+                        + "none of them.\n\n"
+                        + "The AI apps are not PocketLinux's. Installing one downloads it from its "
+                        + "publisher; using it needs your own account with them; and their terms, "
+                        + "their prices and their usage limits are the ones that apply. What you "
+                        + "type into ChatGPT, Claude, Cursor or Antigravity goes to that company, "
+                        + "exactly as it would on a laptop.\n\n"
+                        + "PocketLinux itself sends nothing anywhere. It has no account, no server "
+                        + "and no analytics; the only things it downloads are Ubuntu, the packages "
+                        + "you ask for, and the apps you choose.\n\n"
+                        + "Parts of this app are other people's free software, PRoot (GPL-2.0-or-"
+                        + "later) among them, and the notices row lists every one with its licence "
+                        + "and where its source is. Removing PocketLinux removes the Linux "
+                        + "computer and everything in it.")
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Open-source notices", (dialog, which) -> showNotices())
                 .show();
     }
 
@@ -2880,12 +3032,21 @@ public final class MainActivity extends Activity {
     }
 
     private void applyOrientation() {
-        String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
-        if ("landscape".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-        else if ("portrait".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-        // "auto" hands rotation back to the phone. Leaving this branch out meant a screen already
-        // pinned to landscape stayed pinned until the app was closed and opened again.
-        else setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        // Portrait is portrait and stays that way up; Landscape works either way round. See
+        // ScreenRotation, which both screens read.
+        //
+        // Auto-rotate is the one that needs care HERE. On the desktop it follows the sensor even
+        // through the phone's own rotation lock, because someone who went into Settings and chose
+        // Auto-rotate said what they wanted. On this screen the same value is also what everyone
+        // who never opened that setting has, and overruling their system rotation lock because
+        // of a default they never chose is not a fix, it is a different bug. So an untouched
+        // setting hands rotation back to the phone.
+        if (!preferences.contains(ContainerRuntime.KEY_ORIENTATION)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            return;
+        }
+        setRequestedOrientation(ScreenRotation.of(
+                preferences.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO)));
     }
 
     private void configureSystemBars() {

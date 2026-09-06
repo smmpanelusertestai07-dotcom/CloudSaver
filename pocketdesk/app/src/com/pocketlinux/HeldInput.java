@@ -16,6 +16,8 @@ final class HeldInput {
     private boolean anchored;
     private double x, y;
     private float lastX, lastY;
+    /** Which mouse button is being held: 1 is the left one, 4 the right one. */
+    private int button = 1;
 
     HeldInput(Output output) { this.output = output; }
 
@@ -34,12 +36,23 @@ final class HeldInput {
     }
 
     void startDrag(int pointerX, int pointerY) {
+        startDrag(pointerX, pointerY, 1);
+    }
+
+    /**
+     * @param mask which button to hold: 1 for the left one (move a divider, drag an item), 4 for
+     *             the right one, which with Alt held is how every window manager -- Openbox
+     *             included -- resizes a window from anywhere inside it rather than from its edge.
+     *             A phone has no window edge worth aiming at, so that is the resize that works.
+     */
+    void startDrag(int pointerX, int pointerY, int mask) {
         if (dragging) return;
         x = pointerX;
         y = pointerY;
         anchored = false;
         dragging = true;
-        output.pointer(pointerX, pointerY, 1);
+        button = mask;
+        output.pointer(pointerX, pointerY, mask);
     }
 
     void beginStroke(float touchX, float touchY) {
@@ -56,7 +69,7 @@ final class HeldInput {
         y = Math.max(0, Math.min(height - 1, y + (touchY - lastY) * sensitivity));
         lastX = touchX;
         lastY = touchY;
-        output.pointer((int) Math.round(x), (int) Math.round(y), 1);
+        output.pointer((int) Math.round(x), (int) Math.round(y), button);
     }
 
     /** Lift/reposition a thumb without releasing the remotely held mouse button. */
@@ -66,6 +79,7 @@ final class HeldInput {
         if (dragging) output.pointer((int) Math.round(x), (int) Math.round(y), 0);
         dragging = false;
         anchored = false;
+        button = 1;
     }
 
     void releaseAll() {

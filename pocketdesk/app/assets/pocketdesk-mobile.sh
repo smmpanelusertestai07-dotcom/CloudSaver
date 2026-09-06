@@ -50,6 +50,57 @@ version_of() {   # version_of <command> <args...>
   if have "$1"; then "$@" 2>&1 | head -n 1; else echo "not installed"; fi
 }
 
+built() {
+  cat <<'BUILT'
+WHAT CAN BE BUILT ON THIS COMPUTER
+
+This is Ubuntu 24.04 LTS on ARM64, running on the phone's own processor. Every tool below is a
+real Linux program compiled for this processor -- nothing is emulated and nothing is remote --
+so the question is never "does it run", it is "how fast".
+
+WEB, BACK END AND SCRIPTS
+  Node and npm, Python 3, Go, Rust, PHP, and any framework on top of them. A local server runs
+  here and opens in the browser here. Git and GitHub over SSH or HTTPS. SQLite, ripgrep, a
+  C/C++ compiler and the ordinary test runners are already installed.
+
+ANYTHING AN AI AGENT WRITES
+  Claude Code, Codex, Cursor's agent and Antigravity's agents all read, write, run and TEST from
+  the Terminal here. That last one is what makes this a development machine rather than an
+  editor: the agent can run the build, run the tests, read the failure and try again, with no
+  other computer involved.
+
+ANDROID APPS, END TO END
+  Java 21, Gradle, adb, fastboot, aapt2 and scrcpy (Apps -> Mobile app development). Build here,
+  install here, open here: Android's Wireless debugging listens on the phone's own network and
+  this computer shares it, so 127.0.0.1 is this very phone. Another phone on the same Wi-Fi
+  works the same way, with its own address.
+
+iPHONE APPS, WITHOUT A MAC IN THE ROOM
+  Write it here as React Native through Expo and run it on a real iPhone by scanning a code with
+  Expo Go. The code is served from this computer; the app runs on the iPhone; the same project
+  runs on this Android phone at the same time. Compiling and signing an iOS build needs Xcode,
+  which runs only on macOS -- so a real build for TestFlight or the App Store is compiled by
+  Expo's build service on their Macs, from this same project.
+
+GAMES, 3D AND DESIGN
+  Blender, Godot, GIMP and Inkscape (Apps -> Design and game tools), all ARM64 builds from
+  Ubuntu's own catalogue. Everything draws on the processor -- see below -- so modelling, 2D
+  work, a game's editor and scripting are responsive, and a lit 3D viewport or a full render is
+  slow and can be left to run. Godot exports an Android build from here, and it can be installed
+  on this phone to play.
+
+WHAT IS NOT HERE, AND WHY
+  An Android or iOS EMULATOR. An emulator needs hardware virtualisation, and Android does not
+  give that to apps on an unrooted phone -- it is a permission the system holds back, not a
+  feature anyone could add. The same rule rules out Docker and virtual machines. A real phone is
+  the test device instead, and for testing an app it is the better one.
+
+  A GRAPHICS CHIP. No app in a container on an unrooted phone has a path to it, so OpenGL runs
+  on the processor. 3D and video encoding work; they are slow.
+
+BUILT
+}
+
 status() {
   say "MOBILE APP DEVELOPMENT ON THIS COMPUTER"
   say ""
@@ -163,6 +214,7 @@ run_on_phone() {
 
 case "${1:-status}" in
   status)  status ;;
+  built)   built ;;
   new)     shift; new_project "$@" ;;
   build)   build_android ;;
   run)     run_on_phone ;;
@@ -189,6 +241,6 @@ Android needs none of that: it is built, installed and opened right here."
     ;;
 
   *)
-    say "usage: pocketdesk-mobile {status|new [expo|android] [name]|build|run|devices|pair|ios}"
+    say "usage: pocketdesk-mobile {status|built|new [expo|android] [name]|build|run|devices|pair|ios}"
     exit 1 ;;
 esac

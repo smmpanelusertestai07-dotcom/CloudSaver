@@ -297,7 +297,12 @@ grep -q '<application type="utility">.*<x>center</x>.*<y>center</y>' "$rc" \
   || fail "tool windows must start centred inside the current screen"
 grep -q '<screen_edge_strength>100</screen_edge_strength>' "$rc" \
   || fail "dragging a floating window must resist crossing a screen edge"
-grep -q '<size>14</size>' "$rc" || fail "the title font must be big enough for the buttons to be tapped"
+# The title font is a constant PIXEL height now, worked out from the desktop's dpi, because
+# Openbox sizes its title BUTTONS from the window font and nothing else. So the point size is
+# expected to move with the screen -- what must never happen is it landing back at a size that
+# makes the close button two millimetres wide.
+grep -qE '<size>(1[0-9]|20)</size>' "$rc" \
+  || fail "the title font must be big enough for the buttons to be tapped"
 grep -q '<name>PocketLinux</name>' "$rc" || fail "the window frames must use the PocketLinux theme"
 [ -f "$WORK/coder/.themes/PocketLinux/openbox-3/themerc" ] || fail "the Openbox theme must be written"
 grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"

@@ -18,6 +18,8 @@ final class VncClient {
         void onRectangle(int x, int y, int width, int height, int[] pixels);
         /** Every rectangle of one framebuffer update has been delivered: put it on screen now. */
         void onUpdateComplete();
+        /** A block already on screen, moved: the whole of a scroll, in six bytes. */
+        void onCopyRect(int sourceX, int sourceY, int x, int y, int width, int height);
         /**
          * The pointer's shape, from the Cursor pseudo-encoding: width*height ARGB pixels, fully
          * transparent where the cursor's mask is clear, with the hotspot at (hotX, hotY). A
@@ -227,8 +229,13 @@ final class VncClient {
         synchronized (writeLock) {
             output.writeByte(2);
             output.writeByte(0);
-            output.writeShort(5);
+            output.writeShort(6);
             output.writeInt(0);        // Raw
+            // CopyRect: "this block is already on your screen, at these other coordinates."
+            // Scrolling a page, dragging a window and switching a tab are all mostly this, and
+            // without it every one of them re-sent every pixel over a local socket, through the
+            // pixel loop and up to the GPU. It is six bytes instead of a megabyte.
+            output.writeInt(1);        // CopyRect
             output.writeInt(-239);     // Cursor: the pointer's shape comes to us, not into the picture
             output.writeInt(-223);     // DesktopSize
             output.writeInt(-224);     // LastRect
@@ -268,25 +275,33 @@ final class VncClient {
                 if (stripPixels == null || stripPixels.length < w * stripCapacity) {
                     stripPixels = new int[w * stripCapacity];
                 }
-                if (rowBytes == null || rowBytes.length < w * 4) rowBytes = new byte[w * 4];
+                // One read per strip rather than one per row: a full-screen update was 120
+                // separate readFully calls into the same buffer, each with its own bounds check
+                // and its own trip through the socket's own buffering.
+                if (rowBytes == null || rowBytes.length < w * 4 * stripCapacity) {
+                    rowBytes = new byte[w * 4 * stripCapacity];
+                }
                 for (int py = 0; py < h; ) {
                     int rows = Math.min(stripCapacity, h - py);
                     int index = 0;
-                    for (int r = 0; r < rows; r++) {
-                        input.readFully(rowBytes, 0, w * 4);
-                        for (int px = 0; px < w; px++) {
-                            int base = px * 4;
-                            int blue = rowBytes[base] & 0xff;
-                            int green = rowBytes[base + 1] & 0xff;
-                            int red = rowBytes[base + 2] & 0xff;
-                            stripPixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
-                        }
+                    input.readFully(rowBytes, 0, w * 4 * rows);
+                    int end = w * rows;
+                    for (int base = 0; index < end; base += 4) {
+                        int blue = rowBytes[base] & 0xff;
+                        int green = rowBytes[base + 1] & 0xff;
+                        int red = rowBytes[base + 2] & 0xff;
+                        stripPixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
                     }
                     // The listener copies the strip into its bitmap before returning, so the
                     // same array can be refilled for the next strip.
                     listener.onRectangle(x, y + py, w, rows, stripPixels);
                     py += rows;
                 }
+            } else if (encoding == 1) {
+                int sourceX = input.readUnsignedShort();
+                int sourceY = input.readUnsignedShort();
+                if (w <= 0 || h <= 0) throw new IOException("Invalid copy rectangle");
+                listener.onCopyRect(sourceX, sourceY, x, y, w, h);
             } else if (encoding == -223) {
                 validateDesktopSize(w, h);
                 width = w;
@@ -303,6 +318,12 @@ final class VncClient {
                 throw new IOException("Unsupported desktop encoding " + encoding);
             }
         }
+        // The order here is deliberate and is load-bearing, so it is written down: the frame is
+        // handed over FIRST, and only then is the next one asked for. Asking first would overlap
+        // the blit with the server's next render, which sounds free -- but the viewer pauses
+        // updates from inside this callback when the phone leaves the desktop screen, and a
+        // request that has already gone out cannot be taken back. One frame of overlap is not
+        // worth a Linux desktop that keeps rendering in someone's pocket.
         listener.onUpdateComplete();
         synchronized (writeLock) {
             readingFramebuffer = false;

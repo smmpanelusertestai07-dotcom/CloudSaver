@@ -343,8 +343,9 @@ public final class LinuxService extends Service {
     private String smartStopReason() {
         long idleMinutes = (System.currentTimeMillis() - lastInteractionAt()) / 60_000L;
         if (idleMinutes >= ContainerRuntime.SMART_IDLE_MINUTES) {
-            return "Nothing was touched for " + idleMinutes + " minutes, so the session was closed "
-                    + "to save battery. Open the desktop again whenever you like.";
+            return "Nothing was touched and the computer was doing nothing for " + idleMinutes
+                    + " minutes, so the session was closed to save battery. Open the desktop "
+                    + "again whenever you like.";
         }
         DeviceProbe probe = DeviceProbe.read(this);
         if (probe.batteryPercent >= 0 && probe.batteryPercent < ContainerRuntime.SMART_BATTERY_FLOOR
@@ -373,10 +374,44 @@ public final class LinuxService extends Service {
     }
 
 
-    /** The last time anything was typed or tapped on the desktop, or when it opened. */
+    /**
+     * The last time anything was typed or tapped on the desktop, the computer inside it did some
+     * real work, or the session opened.
+     *
+     * "Nothing was touched" used to mean exactly that: a finger on the glass. So a session left
+     * to build a project, download a dependency or let an AI agent work -- with the phone in a
+     * pocket, which is precisely when that is worth doing -- was closed for being idle while it
+     * was at full stretch. Work counts as use now, because it is.
+     */
     private long lastInteractionAt() {
         long touched = VncView.lastInteractionAt;
-        return touched > 0 ? Math.max(touched, sessionStartedAt) : sessionStartedAt;
+        long used = Math.max(touched > 0 ? touched : 0L, busySince());
+        return Math.max(used, sessionStartedAt);
+    }
+
+    /**
+     * Ticks of processor time above which the container counts as working rather than sitting.
+     *
+     * The monitor samples every 30 seconds. An idle desktop still spends a little -- a clock
+     * redrawing, a panel repainting -- so this is set well above that: 300 ticks is three
+     * seconds of processor time in thirty, about a tenth of one core.
+     */
+    private static final long BUSY_TICKS = 300;
+    private long lastCpuTicks = -1;
+    private long lastBusyAt;
+
+    private long busySince() {
+        Process running = activeProcess;
+        long ticks = running == null ? -1 : ProotProcess.cpuTicks(running);
+        if (ticks < 0) {
+            lastCpuTicks = -1;
+            return lastBusyAt;
+        }
+        if (lastCpuTicks >= 0 && ticks - lastCpuTicks >= BUSY_TICKS) {
+            lastBusyAt = System.currentTimeMillis();
+        }
+        lastCpuTicks = ticks;
+        return lastBusyAt;
     }
 
     @Override public void onCreate() {
@@ -906,14 +941,18 @@ public final class LinuxService extends Service {
             stopRequested = false;
         }
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
-        // The desktop is born the way the phone is held. It used to start landscape whatever
-        // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
-        // a cropped sideways one in the meantime.
-        if (getResources().getConfiguration().orientation
-                == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
-            geometry = new int[]{geometry[1], geometry[0]};
+        // The desktop is born the way the OWNER asked for, and only Auto-rotate asks the phone
+        // how it is being held. Reading the phone alone was why Screen rotation -> Portrait
+        // changed the phone window and left the computer inside it landscape.
+        if (ScreenRotation.portraitDesktop(
+                prefs.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO),
+                getResources().getConfiguration().orientation
+                        == android.content.res.Configuration.ORIENTATION_PORTRAIT)) {
+            geometry = new int[]{geometry[1], geometry[0]};   // desktopGeometry is long side first
         }
-        int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        // 0, and an absent value, both mean "work it out from this phone's screen".
+        int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, 0);
+        if (dpi <= 0) dpi = ContainerRuntime.defaultUiScale(this);
         String downloadTarget = ContainerRuntime.normaliseDownloadTarget(
                 prefs.getString(ContainerRuntime.KEY_DOWNLOAD_TARGET, ContainerRuntime.DOWNLOAD_ASK));
         // A revoked All files permission must never make Chrome save into an unmounted placeholder.
@@ -922,7 +961,7 @@ public final class LinuxService extends Service {
             downloadTarget = ContainerRuntime.DOWNLOAD_ASK;
         }
         String command = ContainerRuntime.startDesktopCommand(
-                geometry[0], geometry[1], dpi, downloadTarget);
+                geometry[0], geometry[1], dpi, downloadTarget, desktopTheme(prefs));
         geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
         // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
@@ -1441,6 +1480,22 @@ public final class LinuxService extends Service {
     static String lastDetail() { return lastDetail; }
     static int lastProgress() { return lastProgress; }
     static boolean lastWasError() { return lastError; }
+
+    /**
+     * Light or dark for the computer inside, resolved here from the same setting the app uses.
+     *
+     * "System" has to be resolved on this side: the container has no idea what the phone's night
+     * mode is doing, and asking it to guess is how a light phone ended up holding a dark computer.
+     */
+    private String desktopTheme(SharedPreferences prefs) {
+        String mode = prefs.getString(ContainerRuntime.KEY_THEME, "system");
+        if (ContainerRuntime.THEME_LIGHT.equals(mode)) return ContainerRuntime.THEME_LIGHT;
+        if (ContainerRuntime.THEME_DARK.equals(mode)) return ContainerRuntime.THEME_DARK;
+        return (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                ? ContainerRuntime.THEME_DARK : ContainerRuntime.THEME_LIGHT;
+    }
 
     private void status(String message, String detail, int progress, boolean busy, boolean error) {
         synchronized (PRIMARY_TASK) {

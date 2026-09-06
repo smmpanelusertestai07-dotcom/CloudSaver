@@ -220,13 +220,14 @@ EOF
   echo '    <item label="Screenshot"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></item>'
   echo '    <item label="Screenshot (window in front)"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot window</command></action></item>'
   echo '    <item label="Storage"><action name="Execute"><command>/usr/local/bin/pocketdesk-storage</command></action></item>'
-  echo '    <item label="Software"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
+  echo '    <item label="Software" icon="/usr/share/pixmaps/pocketdesk-software.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
   echo '    <item label="Appshot to the AI app (Super+Space)"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></item>'
   echo '    <item label="AI computer use"><action name="Execute"><command>/usr/local/bin/pocketdesk-agent status</command></action></item>'
   echo '    <separator/>'
   echo '    <menu id="mobile-menu" label="Phone app testing">'
   echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=500 --title="Phone app testing" --text="This computer can install and test an Android app on a real phone — including the one it is running on.\n\nAndroid 11 and later have Wireless debugging, and this computer shares the phone network, so 127.0.0.1 reaches this very phone. Build an APK here, install it here, and it opens on this screen.\n\nAnother phone on the same Wi-Fi works the same way, with its own address.\n\nAn Android EMULATOR cannot run here: it needs hardware virtualisation, which no app on an unrooted phone can have. A real phone is the test device."</command></action></item>'
-  echo '      <item label="What can be built here"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile status; echo; read -p \"Press Enter to close \""</command></action></item>'
+  echo '      <item label="What can be built here"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile built; echo; read -p \"Press Enter to close \""</command></action></item>'
+  echo '      <item label="What is installed and connected"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile status; echo; read -p \"Press Enter to close \""</command></action></item>'
   echo '      <item label="Start a new mobile app"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile new; echo; read -p \"Press Enter to close \""</command></action></item>'
   echo '      <item label="Building for iPhone"><action name="Execute"><command>/usr/local/bin/pocketdesk-mobile ios</command></action></item>'
   echo '      <separator/>'
@@ -239,8 +240,8 @@ EOF
   echo '    </menu>'
   echo '  </menu>' 
   echo '  <separator label="Folders"/>'
-  echo '  <item label="Phone files"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
-  echo '  <item label="Projects"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
+  echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
@@ -250,7 +251,8 @@ EOF
   echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
   echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
   echo '  <separator label="Desktop"/>'
-  echo '  <item label="Install a downloaded app"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
+  echo '  <item label="System settings" icon="/usr/share/pixmaps/pocketdesk-settings.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-settings</command></action></item>'
+  echo '  <item label="Install a downloaded app" icon="/usr/share/pixmaps/pocketdesk-package.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
   echo '  <item label="Refresh app list"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
@@ -324,13 +326,13 @@ done
 # The installer that a downloaded app package opens into. Two jobs: it is the handler for
 # .deb packages (Chrome's Open, and a double tap in the file manager), and a launcher of its
 # own so an app can be installed without finding the file first.
-printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-linux\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
+printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-package\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
   > "$LOCAL_APPS/pocketdesk-install.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-install.desktop"
 
 # A small Ubuntu software centre: search the signed apt catalogue, review a package, install it,
 # update the computer, or hand a downloaded package to PocketLinux's safety checks.
-printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketdesk-software\nIcon=system-software-install\nTerminal=false\nCategories=System;PackageManager;\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketdesk-software\nIcon=pocketdesk-software\nTerminal=false\nCategories=System;PackageManager;\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-software.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-software.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-software.desktop" "$DESKTOP_DIR/pocketdesk-software.desktop"
@@ -342,6 +344,22 @@ printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\
   > "$LOCAL_APPS/pocketdesk-phone.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-phone.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-phone.desktop" "$DESKTOP_DIR/pocketdesk-phone.desktop"
+
+# Projects, with an entry of its own. It reached the desktop before only as pcmanfm's "Documents"
+# shortcut -- XDG_DOCUMENTS_DIR points there -- wearing the theme's plain grey folder, in a place
+# pcmanfm chose. Its own entry gives it PocketLinux's folder, a name and a description.
+printf '[Desktop Entry]\nType=Application\nName=Projects\nComment=Where your code and your work live\nExec=pcmanfm /home/coder/Projects\nIcon=pocketdesk-projects\nTerminal=false\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-projects.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-projects.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-projects.desktop" "$DESKTOP_DIR/pocketdesk-projects.desktop"
+
+# System settings. Everything it opens already existed; what did not exist was one place that
+# looked like settings, so the theme, the bar's edge and the sound mixer were each found only by
+# someone who already knew where they were.
+printf '[Desktop Entry]\nType=Application\nName=System settings\nComment=Theme, the bar, sound, storage and software\nExec=/usr/local/bin/pocketdesk-settings\nIcon=pocketdesk-settings\nTerminal=false\nCategories=Settings;System;\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-settings.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-settings.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-settings.desktop" "$DESKTOP_DIR/pocketdesk-settings.desktop"
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 # tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the
@@ -368,7 +386,8 @@ launcher_item_app = $LOCAL_APPS/pocketdesk-$base.desktop"
 done
 
 panel_lines="$panel_lines
-launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop"
+launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop
+launcher_item_app = $LOCAL_APPS/pocketdesk-settings.desktop"
 
 MARK=/usr/share/pixmaps/pocketdesk-mark.png
 [ -f "$MARK" ] || MARK=/usr/share/pixmaps/pocketdesk-linux.png
@@ -383,20 +402,37 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   # Every real background starts with "rounded" -- that is the line tint2 uses to begin a new
   # definition -- and all five come BEFORE the first *_background_id below, because tint2
   # resolves an id the moment it reads it and an id it has not met yet silently becomes 0.
+  # Gradients first: tint2 resolves a gradient_id the moment it reads it, exactly as it does
+  # with a background id, so one declared after the background that names it silently does
+  # nothing. The panel is not see-through -- there is no compositor here to make it so -- and it
+  # does not need to be: a dark-to-darker gradient under a lit top edge is what the eye reads
+  # as glass on a dark wallpaper, and it costs one cached surface.
+  echo 'gradient = vertical'  # 1 the bar
+  echo 'start_color = #1a2143 100'
+  echo 'end_color = #0b0f22 100'
+  echo 'gradient = vertical'  # 2 the app in front
+  echo 'start_color = #334290 100'
+  echo 'end_color = #212c62 100'
   echo 'rounded = 0'          # 1 the bar itself
   echo 'border_width = 1'
   echo 'border_sides = T'
   echo 'background_color = #0f1327 100'
-  echo 'border_color = #232a49 100'
-  echo 'rounded = 8'          # 2 an app that is open, behind
+  echo 'border_color = #3a4a80 100'
+  echo 'gradient_id = 1'
+  echo 'rounded = 10'         # 2 an app that is open, behind
   echo 'border_width = 1'
   echo 'background_color = #161d40 100'
+  echo 'background_color_hover = #1e2752 100'
+  echo 'background_color_pressed = #101736 100'
   echo 'border_color = #2b3563 100'
-  echo 'rounded = 8'          # 3 the app in front
+  echo 'rounded = 10'         # 3 the app in front
   echo 'border_width = 1'
   echo 'background_color = #26326e 100'
+  echo 'background_color_hover = #2d3b80 100'
+  echo 'background_color_pressed = #1c2657 100'
   echo 'border_color = #5878d8 100'
-  echo 'rounded = 8'          # 4 an app that is minimised
+  echo 'gradient_id = 2'
+  echo 'rounded = 10'         # 4 an app that is minimised
   echo 'border_width = 1'
   echo 'background_color = #10163a 100'
   echo 'border_color = #202a52 100'
@@ -414,14 +450,16 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'wm_menu = 1'
   echo 'disable_transparency = 1'
   echo 'panel_background_id = 1'
-  echo "panel_size = 100% $(px 58)"
+  echo "panel_size = 100% $(px 62)"
   echo 'panel_margin = 0 0'
   echo "panel_padding = $(px 2) $(px 2) $(px 6)"
   echo 'panel_window_name = PocketLinux'
   echo 'font_shadow = 0'
   echo 'scale_relative_to_dpi = 0'
   echo 'scale_relative_to_screen_height = 0'
-  echo 'mouse_effects = 0'
+  echo 'mouse_effects = 1'
+  echo 'mouse_hover_icon_asb = 100 0 12'
+  echo 'mouse_pressed_icon_asb = 100 0 -8'
   echo 'urgent_nb_of_blink = 0'
   # The window list. Icon only: a name will not fit beside the launchers on a 720-pixel bar, and
   # tint2 shows a task's name only in a tooltip, which a finger cannot ask for. A tap raises the
@@ -439,7 +477,7 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'task_centered = 1'
   echo 'task_tooltip = 0'
   echo 'task_thumbnail = 0'
-  echo "task_maximum_size = $(px 46) $(px 46)"
+  echo "task_maximum_size = $(px 50) $(px 50)"
   echo "task_padding = $(px 3) $(px 3) $(px 4)"
   echo 'task_background_id = 2'
   echo 'task_active_background_id = 3'
@@ -465,7 +503,7 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo "systray_icon_size = $(px 24)"
   echo 'systray_background_id = 0'
   echo 'systray_sort = left2right'
-  echo "launcher_icon_size = $(px 40)"
+  echo "launcher_icon_size = $(px 44)"
   echo "launcher_padding = $(px 6) $(px 2) $(px 8)"
   echo 'launcher_icon_theme = Adwaita'
   echo 'launcher_icon_theme_override = 1'
@@ -584,6 +622,10 @@ fi
 mkdir -p "$HOME_DIR/.themes/PocketLinux/openbox-3"
 cat > "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" <<'THEMERC'
 ! PocketLinux -- the same palette as the phone app (see Ui.java).
+!
+! Openbox 3's theme format has no corner radius, no alpha and no shadow: the complete surface
+! vocabulary is [flat|raised|sunken] [solid|gradient] plus colours. So depth here is a vertical
+! gradient and a lit border, and nothing else is worth looking for.
 border.width: 1
 padding.width: 6
 padding.height: 8
@@ -599,8 +641,9 @@ menu.separator.padding.width: 6
 menu.separator.padding.height: 4
 osd.border.width: 1
 
-window.active.title.bg: flat solid
-window.active.title.bg.color: #16213f
+window.active.title.bg: flat vertical gradient
+window.active.title.bg.color: #1c2b55
+window.active.title.bg.colorTo: #121c38
 window.active.label.bg: parentrelative
 window.active.label.text.color: #f1f5fb
 window.active.title.separator.color: #1746c4
@@ -625,8 +668,9 @@ window.active.button.close.hover.bg: flat solid
 window.active.button.close.hover.bg.color: #7a2436
 window.active.button.close.hover.image.color: #ffffff
 
-window.inactive.title.bg: flat solid
-window.inactive.title.bg.color: #0d1526
+window.inactive.title.bg: flat vertical gradient
+window.inactive.title.bg.color: #121b30
+window.inactive.title.bg.colorTo: #0c1322
 window.inactive.label.bg: parentrelative
 window.inactive.label.text.color: #9aa7bd
 window.inactive.title.separator.color: #23304a
@@ -648,8 +692,9 @@ window.inactive.button.disabled.bg: parentrelative
 window.inactive.button.disabled.image.color: #3f4863
 
 menu.border.color: #23304a
-menu.title.bg: flat solid
-menu.title.bg.color: #0f1327
+menu.title.bg: flat vertical gradient
+menu.title.bg.color: #1a2143
+menu.title.bg.colorTo: #0d1124
 menu.title.text.color: #7a9bff
 menu.title.text.justify: left
 menu.items.bg: flat solid
@@ -703,7 +748,14 @@ THEMERC
 #     Alt+Tab are Openbox's own defaults and stay.
 OPENBOX_DEFAULT=${POCKETDESK_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
 if [ -f "$OPENBOX_DEFAULT" ]; then
-  sed -e 's|<size>[0-9]*</size>|<size>14</size>|g' \
+  # A constant PIXEL height, not a constant point size. Openbox draws its titles and menus at
+  # Xft.dpi, and the dpi is chosen from the phone's own screen now, so a fixed 14 points came out
+  # half as big again as everything around it. 30 px is about 2.8 mm on any of these screens,
+  # which is where Android's own body text lands.
+  OB_PT=$(( 30 * 72 / DPI ))
+  [ "$OB_PT" -lt 9 ] && OB_PT=9
+  [ "$OB_PT" -gt 20 ] && OB_PT=20
+  sed -e 's|<size>[0-9]*</size>|<size>'"$OB_PT"'</size>|g' \
       -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>ICNL</titleLayout>|' \
       -e 's|<theme>|<theme>\n    <name>PocketLinux</name>|' \
       -e 's|<animateIconify>yes</animateIconify>|<animateIconify>no</animateIconify>|' \
@@ -711,7 +763,7 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
       -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
       -e 's|<screen_edge_strength>[0-9]*</screen_edge_strength>|<screen_edge_strength>100</screen_edge_strength>|' \
       -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>\n    <application type="dialog"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>\n    <application type="utility"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>|' \
-      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Execute"><command>'"$WINDOWS"' unmaximise</command></action></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi

@@ -135,9 +135,9 @@ export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # No screen reader will ever run here, yet every GTK program and web page tried to reach the
 # accessibility bus first and logged "Could not connect to accessibility bus" while it waited.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
-# The last word on the matter, for an app that reads no settings file. If one app ever looks
-# wrong because of it, delete this line: settings.ini alone still gives a dark desktop.
-export GTK_THEME=Adwaita:dark
+# GTK_THEME is exported further down, once the owner's Light/Dark choice has been read: that one
+# word is the last word for an app that reads no settings file, so it has to agree with the
+# settings.ini written from the same choice.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 # One web process for every page: each new one is a 150 MB program started under PRoot, and
 # starting it was most of the wait before a page appeared.
@@ -155,7 +155,7 @@ cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/Pictures" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
          "$HOME/.config/openbox" "$HOME/.config/pcmanfm/LXDE" "$HOME/.config/libfm" \
-         "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
+         "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" "$HOME/Cloud" \
          "$HOME/Downloads" "$HOME/Phone" "$HOME/.pocketdesk/logs"
 
 # SendPrimary off: X11 treats any highlighted text as a selection, and the display server was
@@ -266,13 +266,30 @@ printf '%s\n' "$DOWNLOAD_DIR" > "$HOME/.config/pocketdesk/download-dir"
 
 # The left-hand list of every Open and Save dialog (ChatGPT's "attach", the browser's upload,
 # the file manager): the phone's files and the computer's own, side by side.
-printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
+#
+# "Cloud drives and phone picker" is where a file chosen in Android's own document picker lands.
+# Google Drive, OneDrive and Dropbox have no path on the filesystem -- they are document
+# providers behind content:// addresses -- so no mount can reach them; the picker can, and it
+# lists every one of them. Desktop screen -> Window -> Add a file from the phone or a cloud drive.
+printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud drives and phone picker\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
   "$DOWNLOAD_DIR" > "$HOME/.config/gtk-3.0/bookmarks"
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
 printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #0b1320\n*foreground: #e6ecf7\n' \
   "$DPI" > "$HOME/.Xresources"
+
+# The theme the phone is set to. PocketLinux passes its own Light/Dark/System choice in, already
+# resolved, so the computer inside matches the app around it instead of being permanently dark.
+# A choice made in the computer's own System settings is written to theme and wins from then on,
+# because an owner who opened Settings and picked one meant it.
+DESKTOP_THEME=${POCKETDESK_THEME:-dark}
+case "$(cat "$HOME/.config/pocketdesk/theme" 2>/dev/null)" in
+  light) DESKTOP_THEME=light ;;
+  dark)  DESKTOP_THEME=dark ;;
+esac
+case "$DESKTOP_THEME" in light) PREFER_DARK=0 ; GTK_THEME_SUFFIX="" ;; *) PREFER_DARK=1 ; GTK_THEME_SUFFIX=:dark ;; esac
+export GTK_THEME="Adwaita$GTK_THEME_SUFFIX"
 
 # Adwaita, not "Adwaita-dark": GTK 3 has no theme of that name unless gnome-themes-extra is
 # installed, and asking for a theme GTK cannot find makes it drop the variant and fall back to
@@ -285,8 +302,30 @@ printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hint
 # the marker existed is recognised by the wrong theme name it carries and is taken over once.
 write_gtk_defaults() {
   for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
-    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=1\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\n' \
-      "$((DPI * 1024))" > "$gtk_dir/settings.ini"
+    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Noto Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\ngtk-decoration-layout=close,minimize:\n' \
+      "$PREFER_DARK" "$((DPI * 1024))" > "$gtk_dir/settings.ini"
+    # A stylesheet, which nothing here had. Adwaita is a fine base and this only asks it for the
+    # two things a phone needs and a desktop theme never assumes: rounder corners, and controls
+    # tall enough to hit with a thumb. Every selector below is real GTK 3/4 CSS; an unknown one
+    # is a warning on stderr and nothing else, so this can never stop an app from starting.
+    printf '%s\n' \
+      '/* pocketdesk-default */' \
+      '@define-color theme_bg_color #101a2e;' \
+      '@define-color theme_base_color #0d1526;' \
+      '@define-color theme_fg_color #f1f5fb;' \
+      '@define-color theme_selected_bg_color #1746c4;' \
+      '@define-color borders #23304a;' \
+      'button { border-radius: 10px; min-height: 34px; padding: 4px 12px; }' \
+      'entry { border-radius: 10px; min-height: 36px; }' \
+      'entry:focus, button:focus { outline-offset: -2px; }' \
+      'scrollbar slider { min-width: 16px; min-height: 16px; border-radius: 8px; }' \
+      'menu, .menu, popover, popover.background { border-radius: 12px; }' \
+      'menuitem, modelbutton { min-height: 34px; }' \
+      'headerbar { min-height: 46px; }' \
+      'notebook > header > tabs > tab { min-height: 36px; padding: 2px 10px; }' \
+      'list row { min-height: 34px; }' \
+      'checkbutton check, radiobutton radio { min-width: 20px; min-height: 20px; }' \
+      > "$gtk_dir/gtk.css"
   done
 }
 GTK_INI="$HOME/.config/gtk-3.0/settings.ini"
@@ -308,15 +347,28 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgco
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
 # script - what do you want to do with it?" prompt instead of just launching the app.
-printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=72\nsmall_icon_size=24\nthumbnail_size=128\n' \
-  > "$HOME/.config/libfm/libfm.conf"
+#
+# The icon sizes are pixels, and pcmanfm does not scale them by Xft.dpi the way it scales its
+# text, so on a phone screen they stayed thumbnail-sized however large the type grew. Scaled
+# here from the same dpi as everything else, and clamped: libfm refuses a big icon above 96.
+BIG_ICON=$(( 72 * DPI / 120 ))
+[ "$BIG_ICON" -gt 96 ] && BIG_ICON=96
+SMALL_ICON=$(( 24 * DPI / 120 ))
+[ "$SMALL_ICON" -gt 48 ] && SMALL_ICON=48
+THUMB=$(( 128 * DPI / 120 ))
+[ "$THUMB" -gt 256 ] && THUMB=256
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=%s\nsmall_icon_size=%s\nthumbnail_size=%s\n' \
+  "$BIG_ICON" "$SMALL_ICON" "$THUMB" > "$HOME/.config/libfm/libfm.conf"
 
 # window manager's menu, which lists every installed app, Phone files, the terminal and the
 # window commands, rather than the file manager's own short one.
 # PocketLinux's own wallpaper (a dark-blue square with Tux and the app's name -- Canonical's
 # artwork and the Ubuntu logo are not ours to ship, see OPEN_SOURCE_NOTICES.md); a right-click
 # (a long press, in Finger mode) on it opens the apps menu.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
+# show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
+# XDG Documents folder, which PocketLinux points at Projects, wearing the theme's grey folder in
+# a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"

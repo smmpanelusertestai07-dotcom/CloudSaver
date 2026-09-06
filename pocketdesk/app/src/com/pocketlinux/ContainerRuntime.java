@@ -43,8 +43,23 @@ final class ContainerRuntime {
     static final String DOWNLOAD_ASK = "ask";
     static final String DOWNLOAD_COMPUTER = "computer";
     static final String DOWNLOAD_PHONE = "phone";
-    /** 120 dpi reads like a small PC screen; 168 filled the display with a few huge windows. */
-    static final int DEFAULT_UI_SCALE = 120;
+    /**
+     * How big the Linux desktop's text is, chosen from the phone rather than fixed at 120.
+     *
+     * The desktop is drawn at the phone's own pixel count -- one Linux pixel per phone pixel --
+     * so 120 dpi put Sans 11 at 18 real pixels. On the reference phone, whose screen is about
+     * 270 dpi, that is 1.7 mm of type: roughly two thirds the size of Android's own body text,
+     * and the reason the computer inside reads as "too small" however good the screen is. A
+     * phone screen is not a monitor at arm's length; it is 30 cm from a face.
+     *
+     * 0.56 of the phone's density puts an 11-point face at about 2.6 mm, which is where Android
+     * itself lands. Bounded at both ends: below 120 nothing improves, and above 200 a window's
+     * own minimum width stops fitting on a portrait phone.
+     */
+    static int defaultUiScale(Context context) {
+        int density = context.getResources().getDisplayMetrics().densityDpi;
+        return Math.max(120, Math.min(200, Math.round(density * 0.56f)));
+    }
     /** Long side of the desktop framebuffer; keeps memory sane on a 4 GB phone. */
     static final int GEOMETRY_CAP = 1600;
 
@@ -160,14 +175,14 @@ final class ContainerRuntime {
         }
         args.add("-b");
         args.add(guestShared.getAbsolutePath() + ":/home/coder/Shared");
-        // The phone's storage as the Phone folder, only while the owner allows it. Without the
-        // permission the folder holds one note saying where to turn it on; with it, the bind
-        // hides the note behind the real Download, DCIM and Documents folders.
+        // The phone's own folders, only while the owner allows it, and only the folders a person
+        // means by "my files" -- see PHONE_FOLDERS. Without the permission the folder holds one
+        // note saying where to turn it on.
         File phoneMount = new File(root, "home/coder/Phone");
         if (!phoneMount.exists()) phoneMount.mkdirs();
         if (PhoneFiles.allowed(context)) {
-            args.add("-b");
-            args.add(PhoneFiles.root().getAbsolutePath() + ":/home/coder/Phone");
+            bindPhoneFolders(args, phoneMount);
+            new File(phoneMount, "Phone files are off.txt").delete();
         } else {
             File note = new File(phoneMount, "Phone files are off.txt");
             if (!note.exists()) {
@@ -390,6 +405,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
+        copyAsset(context, "pocketdesk-settings.sh", "usr/local/bin/pocketdesk-settings");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
@@ -403,6 +419,65 @@ final class ContainerRuntime {
         // PocketLinux's own mark, in the far corner of the panel. Its own artwork, so no
         // third-party trademark is involved -- see OPEN_SOURCE_NOTICES.md.
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
+        // Four marks PocketLinux draws itself, because Ubuntu 24.04's Adwaita has no full-colour
+        // application icons at all any more -- only the symbolic set, which GTK will not use for
+        // a launcher. Asking for a theme name here is what left Software wearing a blank sheet.
+        copyAsset(context, "pocketdesk-projects.png", "usr/share/pixmaps/pocketdesk-projects.png");
+        copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
+        copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
+        copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
+    }
+
+    /**
+     * The folders of the phone the computer may see -- and, just as importantly, the ones it
+     * may not.
+     *
+     * The whole storage card used to be bound in one line. That gave every program inside the
+     * container, an AI agent's shell included, a writable path to every app's data folder, every
+     * messaging app's media, every backup: one mistaken "rm -rf" and it was gone, with no Android
+     * bin to recover it from, because deleting a path outright never reaches the trash MediaStore
+     * keeps. Nothing inside a PRoot container can be made read-only -- PRoot rewrites paths, it
+     * does not enforce permissions, and the real write is done by the app's own Android identity
+     * -- so the honest lever is not "allow less", it is "name less". What is not bound cannot be
+     * reached, whatever asks for it and however convincingly.
+     *
+     * These six are the phone's own public folders. Anything else -- Android/data, a messaging
+     * app's media, another app's private storage -- is simply not connected now, and a file from
+     * one of those can still be brought in by hand, one at a time, through
+     * Window -> Add a file from the phone or a cloud drive.
+     */
+    private static final String[] PHONE_FOLDERS = {
+            "Download", "DCIM", "Documents", "Pictures", "Music", "Movies",
+    };
+
+    private static void bindPhoneFolders(List<String> args, File phoneMount) {
+        File card = PhoneFiles.root();
+        for (String folder : PHONE_FOLDERS) {
+            File source = new File(card, folder);
+            if (!source.isDirectory()) continue;          // not every phone has all six
+            File target = new File(phoneMount, folder);
+            if (!target.exists() && !target.mkdirs()) continue;
+            args.add("-b");
+            args.add(source.getAbsolutePath() + ":/home/coder/Phone/" + folder);
+        }
+        try {
+            writeText(new File(phoneMount, "About this folder.txt"),
+                    "These are your phone's own folders, inside the Linux computer.\n"
+                    + "\n"
+                    + "Only these are here: " + String.join(", ", PHONE_FOLDERS) + ".\n"
+                    + "Nothing else on the phone can be reached from the computer at all -- not\n"
+                    + "another app's data, not its private storage, not a backup. They are not\n"
+                    + "hidden: they are not connected, so no program in here can name them.\n"
+                    + "\n"
+                    + "What IS here is the real thing, and a change is a real change: a file\n"
+                    + "deleted in this folder is deleted on the phone, and Android has no bin to\n"
+                    + "take it back from. Keep anything you would miss somewhere the computer\n"
+                    + "cannot see, and hand single files to an AI app through PocketLinux's own\n"
+                    + "picker instead -- the desktop screen, Window, Add a file from the phone or\n"
+                    + "a cloud drive.\n");
+        } catch (IOException ignored) {
+            // The note is a courtesy; the Settings screen says the same thing.
+        }
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -494,7 +569,14 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
+        copyAsset(context, "pocketdesk-settings.sh", "usr/local/bin/pocketdesk-settings");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
+        copyAsset(context, "pocketdesk-files.png", "usr/share/pixmaps/pocketdesk-files.png");
+        copyAsset(context, "pocketdesk-phone.png", "usr/share/pixmaps/pocketdesk-phone.png");
+        copyAsset(context, "pocketdesk-projects.png", "usr/share/pixmaps/pocketdesk-projects.png");
+        copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
+        copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
+        copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
@@ -543,7 +625,7 @@ final class ContainerRuntime {
     static final String KEY_FAST_DESKTOP = "fast_desktop";
 
     static String startDesktopCommand(int width, int height, int dpi) {
-        return startDesktopCommand(width, height, dpi, DOWNLOAD_ASK);
+        return startDesktopCommand(width, height, dpi, DOWNLOAD_ASK, THEME_DARK);
     }
 
     /**
@@ -564,7 +646,16 @@ final class ContainerRuntime {
         return DOWNLOAD_ASK;
     }
 
-    static String startDesktopCommand(int width, int height, int dpi, String requestedTarget) {
+    /** Only "light" and "dark" may become a shell argument; anything else is the dark desktop. */
+    static final String THEME_DARK = "dark";
+    static final String THEME_LIGHT = "light";
+
+    static String normaliseTheme(String value) {
+        return THEME_LIGHT.equals(value) ? THEME_LIGHT : THEME_DARK;
+    }
+
+    static String startDesktopCommand(int width, int height, int dpi, String requestedTarget,
+            String requestedTheme) {
         int[] safe = safeGeometry(width, height);
         int safeWidth = safe[0];
         int safeHeight = safe[1];
@@ -573,6 +664,7 @@ final class ContainerRuntime {
         String downloadDirectory = DOWNLOAD_PHONE.equals(target)
                 ? "/home/coder/Phone/Download/PocketLinux" : "/home/coder/Downloads";
         String prompt = DOWNLOAD_ASK.equals(target) ? "true" : "false";
+        String theme = normaliseTheme(requestedTheme);
         return "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1; "
                 + "mkdir -p /tmp/.X11-unix; chmod 1777 /tmp /tmp/.X11-unix; "
                 // Android hands the container supplementary GIDs that Ubuntu has no names for.
@@ -613,6 +705,9 @@ final class ContainerRuntime {
                 + "exec su - coder -c 'exec env POCKETDESK_DOWNLOAD_TARGET=" + target
                 + " POCKETDESK_DOWNLOAD_DIR=" + downloadDirectory
                 + " POCKETDESK_DOWNLOAD_PROMPT=" + (DOWNLOAD_ASK.equals(target) ? 1 : 0)
+                // The computer looks the way the app around it looks. Light or dark, already
+                // resolved on the phone, so "System" means the phone's own system here too.
+                + " POCKETDESK_THEME=" + theme
                 + " /usr/local/bin/pocketdesk-desktop "
                 + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
     }

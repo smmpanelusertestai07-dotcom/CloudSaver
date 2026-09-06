@@ -285,6 +285,37 @@ final class ProotProcess {
         }
     }
 
+    /**
+     * How much processor time the container has used, in kernel ticks, or -1 when it cannot be
+     * read.
+     *
+     * PRoot traces every process inside the container: every system call any of them makes stops
+     * in PRoot first and is answered by it, so PRoot's own processor time rises and falls with
+     * whatever the computer inside is doing. That is what makes one file worth reading here --
+     * a session that is compiling, downloading or answering an AI agent is busy in this number,
+     * and a desktop sitting on its wallpaper is not.
+     *
+     * Fields 14 and 15 of /proc/<pid>/stat are utime and stime. The command name in field 2 can
+     * contain spaces and brackets, so the fields are counted from after the last ')'.
+     */
+    static long cpuTicks(Process process) {
+        int pid = pidOf(process);
+        if (pid <= 0) return -1;
+        try {
+            byte[] raw = java.nio.file.Files.readAllBytes(
+                    new File("/proc/" + pid + "/stat").toPath());
+            String stat = new String(raw, java.nio.charset.StandardCharsets.US_ASCII);
+            int close = stat.lastIndexOf(')');
+            if (close < 0) return -1;
+            String[] fields = stat.substring(close + 1).trim().split("\\s+");
+            // After the ')' the next field is state, which is field 3, so utime is index 11.
+            if (fields.length < 13) return -1;
+            return Long.parseLong(fields[11]) + Long.parseLong(fields[12]);
+        } catch (IOException | RuntimeException unreadable) {
+            return -1;
+        }
+    }
+
     private static Map<Integer, Identity> ownProcesses() {
         Map<Integer, Identity> found = new HashMap<>();
         File[] entries = new File("/proc").listFiles();

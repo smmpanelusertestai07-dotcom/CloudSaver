@@ -169,6 +169,33 @@ final class LinuxApps {
             + "if pd_update force; then return 0; fi; "
             + "echo \"PocketLinux: the $1 repository did not answer; removing it again\"; "
             + "rm -f \"$pd_f\"; pd_update force || true; return 1; }; "
+            // An app downloaded straight from its publisher, resumably.
+            //
+            // "curl -o /tmp/x.deb --retry 3" starts again from zero every time, and these files
+            // are 200-700 MB on a phone that is usually on mobile data: a download that stopped
+            // at 600 MB cost 600 MB and bought nothing. The part-file lives outside /tmp so it
+            // survives a failed install and the next attempt continues from where it stopped.
+            // A server that will not do ranges falls back to the whole file, which is only ever
+            // what the old code did anyway.
+            + "pd_fetch() { pd_dir=\"$PD_STATE/downloads\"; mkdir -p \"$pd_dir\"; "
+            // The part-file is named after the URL as well as the file, because these are
+            // "latest" addresses whose bytes change when the publisher ships a new build. Keyed
+            // by name alone, an interrupted download resumed after a release would have appended
+            // the new build's bytes at the old offset and produced an archive apt cannot read --
+            // and would have kept doing it until someone deleted the file.
+            + "pd_tag=$(printf '%s' \"$1\" | md5sum | cut -c1-12); "
+            + "pd_out=\"$pd_dir/$pd_tag-$2\"; "
+            // Two attempts, and the order matters. Resuming is tried first and only where there
+            // is something to resume; the whole-file attempt runs only when the part-file is
+            // gone or empty, because curl's -o TRUNCATES -- without that guard the fallback
+            // would throw away the 600 MB the resume was added to keep.
+            + "if [ -s \"$pd_out\" ]; then "
+            + "curl --fail --location --retry 3 --retry-delay 5 -C - -o \"$pd_out\" \"$1\" "
+            + "|| { echo 'PocketLinux: the download stopped; it will carry on from here next time' >&2; "
+            + "return 1; }; "
+            + "else curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\" || return 1; fi; "
+            + "[ -s \"$pd_out\" ] || { echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
+            + "printf '%s' \"$pd_out\"; return 0; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -314,6 +341,40 @@ final class LinuxApps {
                             + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
                     null, true),
 
+            // Making things, as opposed to writing them. Every package here is built for arm64 in
+            // Ubuntu's own catalogue -- Blender 4.0 and Godot 3.5 both are -- so none of it is a
+            // download from somewhere else that may or may not have a build for this processor.
+            //
+            // Drawing happens on the processor, not a graphics chip: no app under PRoot has a
+            // path to the phone's GPU, so llvmpipe renders everything. That is the honest limit
+            // and it is stated on the card rather than discovered. It is also less of a limit
+            // than it sounds: modelling, sculpting, animating, a 2D game, a vector drawing and a
+            // photo edit are all responsive; a lit 3D viewport and a big render are slow, and a
+            // render can simply be left running while the phone is in a pocket.
+            new App("creative", "Design and game tools",
+                    "Blender for 3D, Godot for 2D and 3D games, GIMP for photos and Inkscape for "
+                            + "drawing \u2014 the ARM64 builds from Ubuntu's own catalogue.",
+                    R.drawable.ic_palette, 0, "about 1.6 GB", 4 * GB,
+                    "15\u201340 min",
+                    "There is no graphics chip here: no app in a container on an unrooted phone can "
+                            + "reach one, so everything draws on the processor. Modelling, 2D work, "
+                            + "scripting and a game's editor are fine; a lit 3D viewport and a full "
+                            + "render are slow, and a render can be left to run.",
+                    "/usr/bin/blender",
+                    "pd_update || exit 11; "
+                            + "pd_step creative blender godot3 gimp inkscape || exit 21; "
+                            // Software rendering, said out loud to every GL program, so none of
+                            // them start by looking for a driver that is not there and failing.
+                            + "mkdir -p /etc/profile.d; "
+                            + "if [ ! -f /etc/profile.d/pocketdesk-gl.sh ]; then "
+                            + "printf 'export LIBGL_ALWAYS_SOFTWARE=1\nexport GALLIUM_DRIVER=llvmpipe\n' "
+                            + "> /etc/profile.d/pocketdesk-gl.sh; fi; "
+                            + "blender --version 2>&1 | head -n 1; godot3 --version 2>&1 | head -n 1",
+                    "apt-get remove -y --purge blender godot3 gimp inkscape >/dev/null 2>&1 || true; "
+                            + "rm -f /etc/profile.d/pocketdesk-gl.sh \"$PD_STATE/stage/creative\"; "
+                            + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
+                    true),
+
             // Mobile app development: the tools that really do work on an ARM64 phone, and none
             // that only pretend to. Every package here is in Ubuntu's own archive for arm64 --
             // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
@@ -375,8 +436,8 @@ final class LinuxApps {
                             + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
                             + "apt-get install -y --only-upgrade chatgpt; else "
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
-                            + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
-                            + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi",
+                            + "pd_deb=$(pd_fetch '" + LATEST_CHATGPT + "' chatgpt.deb) || exit 12; "
+                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"; fi",
                     "apt-get remove -y chatgpt", false),
 
             new App("claude", "Claude Desktop",
@@ -410,8 +471,8 @@ final class LinuxApps {
                             + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
                             + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
-                            + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
-                            + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb",
+                            + "pd_deb=$(pd_fetch \"$url\" cursor.deb) || exit 12; "
+                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"",
                     "apt-get remove -y cursor", false),
 
             new App("antigravity", "Antigravity",

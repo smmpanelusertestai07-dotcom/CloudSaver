@@ -59,7 +59,7 @@
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustNothing"
-            android:screenOrientation="fullUser"
+            android:screenOrientation="user"
             android:theme="@style/Theme.PocketLinux.Desktop" />
 
         <!-- singleTop, so a shortcut or a notification tapped while the home screen is open
