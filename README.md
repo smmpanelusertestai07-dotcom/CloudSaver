@@ -57,7 +57,10 @@ Release builds are signed from repository secrets — `KEYSTORE_B64`,
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. **Generate that key on your
 own machine and keep it private.** CI will refuse to publish a release without
 it, because a key that exists only inside one CI run produces an APK Android
-cannot install over any other build.
+cannot install over any other build. With the GitHub CLI signed in as the
+owner, `scripts/set-signing-secrets.sh cloudsaver-release.jks` sets all four
+in one go; it asks for the password without echoing it and writes nothing to
+disk or to the repository.
 
 ## How it is tested
 
