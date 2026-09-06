@@ -1,0 +1,103 @@
+name: calculator
+
+# NovaCalc lives under calculator/ as a standalone Gradle project. This runs its
+# unit tests and builds the release APK as a downloadable artifact.
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "calculator/**"
+      - ".github/workflows/calculator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calculator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Unit tests and release APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: calculator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+
+      # Optional stable signing: NOVACALC_KEYSTORE_B64 (base64 .jks, alias "novacalc"),
+      # NOVACALC_KEYSTORE_PASSWORD and NOVACALC_KEY_PASSWORD as repository secrets.
+      # Without them the build signs with a key generated for this run only.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.NOVACALC_KEYSTORE_B64 }}
+          SECRET_STORE_PASS: ${{ secrets.NOVACALC_KEYSTORE_PASSWORD }}
+          SECRET_KEY_PASS: ${{ secrets.NOVACALC_KEY_PASSWORD }}
+        run: |
+          set -eu
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.jks
+            STORE_PASS="$SECRET_STORE_PASS"
+            KEY_PASS="${SECRET_KEY_PASS:-$STORE_PASS}"
+          else
+            STORE_PASS=$(openssl rand -hex 16)
+            KEY_PASS="$STORE_PASS"
+            keytool -genkeypair -keystore release.jks -alias novacalc -keyalg RSA -keysize 2048 \
+              -validity 10000 -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
+              -dname "CN=NovaCalc CI, O=NovaCalc, C=IN" >/dev/null 2>&1
+          fi
+          {
+            echo "NOVACALC_KEYSTORE=$PWD/release.jks"
+            echo "NOVACALC_KEYSTORE_PASSWORD=$STORE_PASS"
+            echo "NOVACALC_KEY_PASSWORD=$KEY_PASS"
+            echo "NOVACALC_KEY_ALIAS=novacalc"
+          } >> "$GITHUB_ENV"
+
+      - name: Unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Release APK
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaCalc-release-apk
+          path: calculator/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  instrumented:
+    name: Instrumented UI tests (API 30 emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          profile: pixel_6
+          disable-animations: true
+          working-directory: calculator
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
