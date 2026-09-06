@@ -20,7 +20,19 @@ import java.util.List;
 
 
 final class VncView extends View implements VncClient.Listener {
-    enum PointerMode { TOUCHPAD, DIRECT }
+    /**
+     * How a finger reaches the Linux desktop.
+     *
+     * TOUCHPAD ("Mouse") moves an arrow the way a laptop's touchpad does. DIRECT ("Finger") puts
+     * the pointer where the finger lands and turns a swipe into scrolling, which is what a page
+     * wants. TOUCH ("Screen") holds the button down for the whole gesture, so a swipe is a real
+     * drag: a map moves, a canvas draws, a game's control answers.
+     *
+     * None of the three is multi-touch, and none can be: an RFB pointer event carries one x, one
+     * y and a button mask, so two genuine touch points cannot cross the connection at all. What
+     * TOUCH does is make the one point behave the way a phone's does.
+     */
+    enum PointerMode { TOUCHPAD, DIRECT, TOUCH }
     interface StateListener { void state(String text, boolean connected); }
 
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -105,6 +117,8 @@ final class VncView extends View implements VncClient.Listener {
     // Mouse mode dragging: a tap followed at once by a press-and-move holds the left button,
     // the way every laptop touchpad does it. Windows can be moved and text selected on purpose.
     private long lastTapAt = -10_000L;
+    /** Which way this Finger-mode swipe is scrolling: 0 undecided, 1 up and down, 2 sideways. */
+    private int scrollAxis;
     private boolean dragArmed;
     private boolean dragging;
     private int physicalButtons;
@@ -139,7 +153,17 @@ final class VncView extends View implements VncClient.Listener {
         heldInput.releaseModifiers();
         inputChanged();
     }
-    boolean toggleDrag() {
+    boolean isHeldDragging() { return heldInput.isDragging(); }
+
+    boolean toggleDrag() { return toggleDrag(1, 0); }
+
+    /**
+     * @param mask      the mouse button to hold down for the drag
+     * @param withKeysym a key held for as long as the drag lasts, or 0. Alt with the right button
+     *                   is Openbox's own "resize this window from anywhere inside it", which is
+     *                   the only resize a finger can aim at on a phone-sized screen.
+     */
+    boolean toggleDrag(int mask, int withKeysym) {
         if (!live || client == null) return false;
         lastInteractionAt = System.currentTimeMillis();
         stopFling();
@@ -148,7 +172,10 @@ final class VncView extends View implements VncClient.Listener {
         if (heldInput.isDragging()) {
             heldInput.releasePointer();
             heldInput.releaseModifiers();
-        } else heldInput.startDrag(pointerX, pointerY);
+        } else {
+            if (withKeysym != 0) heldInput.toggleModifier(withKeysym);
+            heldInput.startDrag(pointerX, pointerY, mask);
+        }
         inputChanged();
         return heldInput.isDragging();
     }
@@ -220,6 +247,22 @@ final class VncView extends View implements VncClient.Listener {
     private int matchedHeight;
     private boolean wideWorkspace;
 
+    /** How much bigger everything on the Linux desktop is drawn: 100 is one Linux pixel per phone pixel. */
+    private int magnification = 100;
+
+    int getMagnification() { return magnification; }
+
+    /**
+     * Makes everything on the desktop bigger by making the desktop itself smaller and letting
+     * this view scale it back up to fill the screen. Live: nothing restarts, nothing is cropped.
+     */
+    void setMagnification(int percent) {
+        if (percent == magnification) return;
+        magnification = percent;
+        resetView();
+        matchDesktopToScreen();
+    }
+
     boolean isWideWorkspace() { return wideWorkspace; }
     void setWideWorkspace(boolean wide) {
         if (wide == wideWorkspace) return;
@@ -238,7 +281,7 @@ final class VncView extends View implements VncClient.Listener {
         // A rotation changes the WIDTH (and swaps which side is longer). A bar or the key row
         // only ever changes the height, by 56 dp each. Comparing the longer and shorter sides
         // was blind to a rotation, because 720x1600 and 1600x720 have the same pair.
-        int barsHeight = Ui.dp(getContext(), 56 + 56 + 8);
+        int barsHeight = Ui.dp(getContext(), 48 + 48 + 8);
         boolean shapeChanged = firstLayout
                 || width != matchedWidth
                 || Math.abs(height - matchedHeight) > barsHeight;
@@ -261,23 +304,18 @@ final class VncView extends View implements VncClient.Listener {
     /**
      * The keyboard must never resize the Linux desktop. When it opened, the window shrank, the
      * desktop was resized to the sliver above it, every app relaid out, and a tap on a text
-     * field landed somewhere else -- then it all happened again in reverse when it closed. The
-     * window keeps its size now, and the view slides up just enough to keep the pointer above
-     * the keys, exactly as a phone screen scrolls to a text field.
+     * field landed somewhere else -- then it all happened again in reverse when it closed.
+     *
+     * The Linux desktop keeps its size. What changes is only how it is DRAWN: it scales down to
+     * fit the room above the keys, exactly as a phone app's layout moves up, and comes back to
+     * full size when they close. Taps stay accurate because mapX/mapY read the same rectangle.
      */
     void setKeyboardInset(int pixels) {
         if (pixels == keyboardInset) return;
         keyboardInset = Math.max(0, pixels);
-        Bitmap current = bitmap;
-        if (current == null) { invalidate(); return; }
-        if (keyboardInset > 0) {
-            float scale = destination.width() / current.getWidth();
-            float pointerScreenY = destination.top + pointerY * scale;
-            float visibleBottom = getHeight() - keyboardInset - Ui.dp(getContext(), 72);
-            if (pointerScreenY > visibleBottom) panY -= (pointerScreenY - visibleBottom);
-        } else {
-            centreOnNextLayout = true;
-        }
+        // Nothing is sent to the server, so no Linux app relayouts: the whole desktop simply
+        // draws smaller, in the room left above the keys, and springs back when they close.
+        centreOnNextLayout = true;
         invalidate();
     }
 
@@ -319,7 +357,7 @@ final class VncView extends View implements VncClient.Listener {
             int viewWidth = matchedWidth > 0 ? matchedWidth : getWidth();
             int viewHeight = matchedHeight > 0 ? matchedHeight : getHeight();
             if (viewWidth < 320 || viewHeight < 320) return;
-            int[] size = ViewerSize.choose(viewWidth, viewHeight, wideWorkspace);
+            int[] size = ViewerSize.choose(viewWidth, viewHeight, wideWorkspace, magnification);
             viewWidth = size[0];
             viewHeight = size[1];
             if (viewWidth == active.getWidth() && viewHeight == active.getHeight()) return;
@@ -355,8 +393,12 @@ final class VncView extends View implements VncClient.Listener {
     /** Recomputes where the framebuffer lands on screen for the current zoom and pan. */
     private void layoutDestination(Bitmap current) {
         int m = frame();
+        // The keyboard covers the bottom of this view, so the room the desktop has to fit into
+        // is what is left above it. Fitting to the whole view instead put the lower third of
+        // every window behind the keys, and a form was typed into blind.
+        float visibleHeight = Math.max(1f, getHeight() - keyboardInset);
         float availW = Math.max(1f, getWidth() - 2f * m);
-        float availH = Math.max(1f, getHeight() - 2f * m);
+        float availH = Math.max(1f, visibleHeight - 2f * m);
         float fit = Math.min(availW / current.getWidth(), availH / current.getHeight());
         float scale = fit * zoom;
         float shownWidth = current.getWidth() * scale;
@@ -365,7 +407,7 @@ final class VncView extends View implements VncClient.Listener {
         if (centreOnNextLayout) {
             // Open on the middle of the desktop rather than its top-left corner.
             panX = (getWidth() - shownWidth) / 2f;
-            panY = (getHeight() - shownHeight) / 2f;
+            panY = (visibleHeight - shownHeight) / 2f;
             centreOnNextLayout = false;
         }
 
@@ -375,11 +417,10 @@ final class VncView extends View implements VncClient.Listener {
         panX = shownWidth <= getWidth()
                 ? (getWidth() - shownWidth) / 2f
                 : Math.max(getWidth() - shownWidth, Math.min(panX, 0f));
-        if (shownHeight <= getHeight()) {
-            float centred = (getHeight() - shownHeight) / 2f;
-            panY = keyboardInset > 0 ? Math.max(centred - keyboardInset, Math.min(panY, centred)) : centred;
+        if (shownHeight <= visibleHeight) {
+            panY = (visibleHeight - shownHeight) / 2f;
         } else {
-            panY = Math.max(getHeight() - shownHeight - keyboardInset, Math.min(panY, 0f));
+            panY = Math.max(visibleHeight - shownHeight, Math.min(panY, 0f));
         }
         destination.set(panX, panY, panX + shownWidth, panY + shownHeight);
     }
@@ -520,6 +561,7 @@ final class VncView extends View implements VncClient.Listener {
         if (heldInput.isDragging()) return heldDragTouch(event, active);
         zoomDetector.onTouchEvent(event);
         int action = event.getActionMasked();
+        if (pointerMode == PointerMode.TOUCH) return mobileTouch(event, action, active);
 
         if (event.getPointerCount() >= 2) {
             // A second finger ends any one-finger gesture: nothing is held or dragged.
@@ -612,6 +654,64 @@ final class VncView extends View implements VncClient.Listener {
                 dragArmed = false;
                 return true;
             }
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Screen mode: the finger IS the pointer, and the button is down while it is on the glass.
+     *
+     * That one difference is what makes a map drag, a slider move, a canvas draw and a game's
+     * on-screen control answer -- none of which Finger mode can do, because it turns every swipe
+     * into scroll wheel notches, and none of which Mouse mode does naturally, because there the
+     * button has to be armed with a tap first.
+     *
+     * Two fingers still zoom the viewer, as they do everywhere else in this app, and lifting the
+     * second one does not leave the button stuck down.
+     */
+    private boolean mobileTouch(MotionEvent event, int action, VncClient active) {
+        if (event.getPointerCount() >= 2) {
+            if (dragging) {
+                dragging = false;
+                active.sendPointer(pointerX, pointerY, 0);
+                invalidate();
+            }
+            return true;
+        }
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                downX = lastX = event.getX();
+                downY = lastY = event.getY();
+                downAt = System.currentTimeMillis();
+                moved = false;
+                pointerX = mapX(downX, active.getWidth());
+                pointerY = mapY(downY, active.getHeight());
+                dragging = true;
+                active.sendPointer(pointerX, pointerY, 1);
+                ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
+                postInvalidateOnAnimation();
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
+                        > Ui.dp(getContext(), 6)) {
+                    moved = true;
+                }
+                pointerX = mapX(event.getX(), active.getWidth());
+                pointerY = mapY(event.getY(), active.getHeight());
+                active.sendPointer(pointerX, pointerY, dragging ? 1 : 0);
+                invalidate();
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (dragging) {
+                    dragging = false;
+                    active.sendPointer(pointerX, pointerY, 0);
+                }
+                if (!moved && action == MotionEvent.ACTION_UP) performClick();
+                invalidate();
+                return true;
             default:
                 return true;
         }
@@ -746,6 +846,7 @@ final class VncView extends View implements VncClient.Listener {
                 downY = lastY = event.getY();
                 downAt = System.currentTimeMillis();
                 moved = false;
+                scrollAxis = 0;
                 pointerX = mapX(downX, active.getWidth());
                 pointerY = mapY(downY, active.getHeight());
                 active.sendPointer(pointerX, pointerY, 0);
@@ -759,17 +860,42 @@ final class VncView extends View implements VncClient.Listener {
                 }
                 if (!moved) return true;
                 // A swipe is a scroll, in the direction the content moves on any phone screen.
-                float travelled = event.getY() - lastY;
-                int notch = Ui.dp(getContext(), 16);
-                while (travelled <= -notch) {
-                    wheel(active, 16);
-                    lastY -= notch;
-                    travelled += notch;
+                // The axis is decided once, on the first movement, and held for the whole
+                // gesture: without that a swipe down a page that is also wide enough to scroll
+                // sideways jitters between the two and neither goes anywhere.
+                float downwards = event.getY() - lastY;
+                float sideways = event.getX() - lastX;
+                if (scrollAxis == 0) {
+                    scrollAxis = Math.abs(event.getY() - downY) >= Math.abs(event.getX() - downX)
+                            ? 1 : 2;
                 }
-                while (travelled >= notch) {
-                    wheel(active, 8);
-                    lastY += notch;
-                    travelled -= notch;
+                int notch = Ui.dp(getContext(), 16);
+                if (scrollAxis == 1) {
+                    while (downwards <= -notch) {
+                        wheel(active, 16);
+                        lastY -= notch;
+                        downwards += notch;
+                    }
+                    while (downwards >= notch) {
+                        wheel(active, 8);
+                        lastY += notch;
+                        downwards -= notch;
+                    }
+                    lastX = event.getX();
+                } else {
+                    // Buttons 6 and 7: the horizontal wheel every X11 program already understands,
+                    // and the same pair two fingers have always sent here.
+                    while (sideways <= -notch) {
+                        wheel(active, 64);
+                        lastX -= notch;
+                        sideways += notch;
+                    }
+                    while (sideways >= notch) {
+                        wheel(active, 32);
+                        lastX += notch;
+                        sideways -= notch;
+                    }
+                    lastY = event.getY();
                 }
                 return true;
             }
@@ -783,7 +909,8 @@ final class VncView extends View implements VncClient.Listener {
                     ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
                     postInvalidateOnAnimation();
                     performClick();
-                } else if (moved && action == MotionEvent.ACTION_UP && velocity != null) {
+                } else if (moved && scrollAxis != 2 && action == MotionEvent.ACTION_UP
+                        && velocity != null) {
                     velocity.addMovement(event);
                     velocity.computeCurrentVelocity(1000);
                     float speed = velocity.getYVelocity();

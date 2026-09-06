@@ -26,6 +26,29 @@ public final class ViewerSizeTest {
                 }
             }
         }
-        System.out.println("PASS ViewerSize (native, wide, orientation and 84 bounded display cases)");
+        // Bigger interface: the desktop is asked to be smaller than the screen, and the viewer
+        // scales what comes back up to fill it. Every step must stay even, stay inside the
+        // memory budget, and never grow the framebuffer.
+        int[] plain = ViewerSize.choose(720, 1440, false, 100);
+        if (plain[0] != 720 || plain[1] != 1440)
+            throw new AssertionError("100 % must be the size it always was");
+        int previousWidth = Integer.MAX_VALUE;
+        for (int step : ViewerSize.STEPS) {
+            int[] scaled = ViewerSize.choose(720, 1440, false, step);
+            if (scaled[0] > 720 || scaled[1] > 1440)
+                throw new AssertionError("A bigger interface must ask for a SMALLER desktop");
+            if (step > 100 && scaled[0] >= previousWidth)
+                throw new AssertionError("Each step must make the desktop smaller than the last");
+            if ((scaled[0] & 1) != 0 || (scaled[1] & 1) != 0)
+                throw new AssertionError("Odd framebuffer width or height");
+            if ((long) scaled[0] * scaled[1] > ViewerSize.MAX_PIXELS)
+                throw new AssertionError("Framebuffer memory budget exceeded");
+            previousWidth = scaled[0];
+        }
+        // Out-of-range magnification is clamped rather than trusted.
+        int[] silly = ViewerSize.choose(720, 1440, false, 5000);
+        if (silly[0] < 2 || silly[1] < 2 || (long) silly[0] * silly[1] > ViewerSize.MAX_PIXELS)
+            throw new AssertionError("An absurd magnification must still give a usable size");
+        System.out.println("PASS ViewerSize (native, wide, orientation, magnification and 84 bounded display cases)");
     }
 }

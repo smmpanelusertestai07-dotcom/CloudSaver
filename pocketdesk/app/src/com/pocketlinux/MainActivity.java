@@ -1212,11 +1212,19 @@ public final class MainActivity extends Activity {
                         dialogBuilder()
                                 .setTitle("Show the phone's files inside the computer?")
                                 .setMessage("Android will ask you to allow All files access for PocketLinux. "
-                                        + "With it on, your phone's shared storage — Download, DCIM (photos), Documents and "
-                                        + "other folders appear inside the Linux computer as the Phone folder, "
-                                        + "so ChatGPT, Claude and the browser can attach a file from the phone "
-                                        + "and save one to it. Nothing on the phone is touched unless you "
-                                        + "pick it in an app.\n\nApplies the next time the desktop starts.")
+                                        + "PocketLinux then connects six of the phone's folders — Download, "
+                                        + "DCIM (photos), Documents, Pictures, Music and Movies — into the "
+                                        + "computer as the Phone folder, so ChatGPT, Claude and the browser "
+                                        + "can attach a file from the phone and save one to it.\n\n"
+                                        + "Six, and no more. Android hands over the whole card; PocketLinux "
+                                        + "connects only those, so nothing else on the phone can be reached "
+                                        + "from inside the computer — not another app's data, not its private "
+                                        + "storage, not a backup. What is not connected cannot be named, "
+                                        + "however an app or an AI agent in there asks for it.\n\n"
+                                        + "In those six, changes are real: a file deleted there is deleted on "
+                                        + "the phone. To hand over just one file instead, leave this off and "
+                                        + "use the desktop's Window → Add a file from the phone or a cloud "
+                                        + "drive.\n\nApplies the next time the desktop starts.")
                                 .setNegativeButton("Not now", null)
                                 .setPositiveButton("Allow", (d, w) -> PhoneFiles.request(this))
                                 .show();
@@ -1635,11 +1643,18 @@ public final class MainActivity extends Activity {
                         + "out of that box, and uninstalling PocketLinux takes all of it with you.\n\n"
                         + "What a bad Linux app could reach: what is inside the computer — your files "
                         + "there and the sign-ins of the AI apps installed there, which are files in "
-                        + "the same home folder — and, only while Phone files is on, your phone's "
-                        + "shared storage: not just Download, DCIM and Documents but everything "
-                        + "beside them, Pictures and Music included, to read and to change. That is "
-                        + "exactly why Phone files is off until you turn it on, and worth turning "
-                        + "off again when you are not using it.\n\n"
+                        + "the same home folder — and, only while Phone files is on, six folders of "
+                        + "the phone: Download, DCIM, Documents, Pictures, Music and Movies, to read "
+                        + "and to change. Six, and no more. Nothing else on the phone is connected "
+                        + "to the computer at all, so no app and no AI agent in there can name it, "
+                        + "however it is asked. Phone files is still off until you turn it on, and "
+                        + "still worth turning off when you are not using it.\n\n"
+                        + "A change in those six folders is a real change: a file deleted there is "
+                        + "deleted on the phone, and Android keeps no bin for it. If you only need "
+                        + "to hand one file to an AI app, do not turn Phone files on at all — the "
+                        + "desktop screen's Window → Add a file from the phone or a cloud drive "
+                        + "opens the phone's own picker, which also lists Drive and every other "
+                        + "cloud app, and copies just that file into the computer.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
                         + "messages, anything outside that shared storage, the camera, your location "
                         + "or your contacts. PocketLinux holds no permission for any of them, so "
@@ -2457,10 +2472,12 @@ public final class MainActivity extends Activity {
             boolean on = PhoneFiles.allowed(this);
             phoneFilesRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.muted(dark));
             phoneFilesRow.setValue(on
-                    ? "On · your phone's storage is the Phone files folder inside the computer"
+                    ? "On · six of the phone's folders are in the computer: Download, DCIM, "
+                    + "Documents, Pictures, Music, Movies"
                     + (LinuxService.isDesktopRunning() ? " (from the next desktop start)" : "")
                     + " · tap to change in Android settings"
-                    : "Off · turn on so ChatGPT, Claude and the browser can attach a file from the phone");
+                    : "Off · for one file at a time use the desktop's Window → Add a file from the "
+                    + "phone or a cloud drive; turn this on for the whole folders");
         }
         if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());
         if (batteryOptimisationRow != null) {

@@ -33,6 +33,30 @@ java -cp "$OUT" com.pocketlinux.TaskGenerationTest
   "$PROJECT_DIR/tests/ActivityStartupTest.java"
 java -cp "$OUT" com.pocketlinux.ActivityStartupTest "$PROJECT_DIR"
 
+# Every other Java test in tests/, compiled against the app's own sources and the small Android
+# stubs beside them. These existed and were green, but nothing ran them: only the two above were
+# named here, so a change could break any of the other sixteen and the suite still said PASS.
+# Named by glob rather than by list, so a new test file is run the moment it is written.
+JAVA_TESTS=()
+for source in "$PROJECT_DIR"/tests/*Test.java; do
+  name=$(basename "$source" .java)
+  case "$name" in TaskGenerationTest|ActivityStartupTest) continue ;; esac
+  JAVA_TESTS+=("$source")
+done
+if [ ${#JAVA_TESTS[@]} -gt 0 ]; then
+  UNIT="$OUT/unit"
+  mkdir -p "$UNIT"
+  # -sourcepath tests (not tests/android) because the stubs are real packages: tests/android/net
+  # is android.net. app/src supplies the classes under test; tests/stub supplies R.
+  "${JAVAC[@]}" -encoding UTF-8 -nowarn -source 8 -target 8 -d "$UNIT" \
+    -sourcepath "$PROJECT_DIR/app/src:$PROJECT_DIR/tests/stub:$PROJECT_DIR/tests" \
+    "${JAVA_TESTS[@]}"
+  for source in "${JAVA_TESTS[@]}"; do
+    java -cp "$UNIT" "com.pocketlinux.$(basename "$source" .java)"
+  done
+  echo "PASS JavaUnitTests (${#JAVA_TESTS[@]} suites)"
+fi
+
 bash "$PROJECT_DIR/tests/desktop-scripts-test.sh"
 python3 "$PROJECT_DIR/tests/linux-startup-test.py"
 python3 "$PROJECT_DIR/tests/app-log-test.py"
@@ -167,6 +191,23 @@ for helper in pocketdesk-storage.sh pocketdesk-software.sh pocketdesk-shot.sh po
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done
 echo "PASS AssetCopySites"
+
+# The rotation report, kept fixed. Two of Android's constants are named as though they mean
+# "portrait" and "auto-rotate" and do not: USER_PORTRAIT is "portrait, either way up" and
+# FULL_SENSOR exists precisely to add the upside-down rotation a phone would not normally use.
+# Between them they are why the camera ended up at the bottom of the screen. ScreenRotation is
+# the one place allowed to name a reversed orientation, because its lock has to pin the screen
+# exactly where it already is.
+for banned in SCREEN_ORIENTATION_FULL_SENSOR SCREEN_ORIENTATION_USER_PORTRAIT SCREEN_ORIENTATION_FULL_USER; do
+  if grep -rl "$banned" "$PROJECT_DIR/app/src" | grep -qv 'ScreenRotation.java'; then
+    echo "FAIL Rotation: $banned is back -- it allows the upside-down screen"; exit 1
+  fi
+done
+grep -q 'android:screenOrientation="user"' "$PROJECT_DIR/app/AndroidManifest.xml" \
+  || { echo "FAIL Rotation: the desktop window may launch upside-down before onCreate runs"; exit 1; }
+grep -q 'portraitDesktop' "$PROJECT_DIR/app/src/com/pocketlinux/LinuxService.java" \
+  || { echo "FAIL Rotation: the Portrait setting does not reach the Linux desktop's own shape"; exit 1; }
+echo "PASS Rotation (portrait means portrait, on the phone and in the computer)"
 
 # The crash this release exists for. Android 12+ SIGKILLs every forked process of an app once
 # there are more than 32; under PRoot every Linux process is one, so the ceiling is the whole

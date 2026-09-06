@@ -155,7 +155,7 @@ cd "$HOME"
 rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
 mkdir -p "$HOME/Pictures" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" "$HOME/.config/lxterminal" "$HOME/.config/tint2" \
          "$HOME/.config/openbox" "$HOME/.config/pcmanfm/LXDE" "$HOME/.config/libfm" \
-         "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" \
+         "$HOME/.config/dunst" "$HOME/.icons/default" "$HOME/Desktop" "$HOME/Projects" "$HOME/Cloud" \
          "$HOME/Downloads" "$HOME/Phone" "$HOME/.pocketdesk/logs"
 
 # SendPrimary off: X11 treats any highlighted text as a selection, and the display server was
@@ -266,7 +266,12 @@ printf '%s\n' "$DOWNLOAD_DIR" > "$HOME/.config/pocketdesk/download-dir"
 
 # The left-hand list of every Open and Save dialog (ChatGPT's "attach", the browser's upload,
 # the file manager): the phone's files and the computer's own, side by side.
-printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
+#
+# "Cloud drives and phone picker" is where a file chosen in Android's own document picker lands.
+# Google Drive, OneDrive and Dropbox have no path on the filesystem -- they are document
+# providers behind content:// addresses -- so no mount can reach them; the picker can, and it
+# lists every one of them. Desktop screen -> Window -> Add a file from the phone or a cloud drive.
+printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud drives and phone picker\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
   "$DOWNLOAD_DIR" > "$HOME/.config/gtk-3.0/bookmarks"
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's

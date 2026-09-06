@@ -160,14 +160,14 @@ final class ContainerRuntime {
         }
         args.add("-b");
         args.add(guestShared.getAbsolutePath() + ":/home/coder/Shared");
-        // The phone's storage as the Phone folder, only while the owner allows it. Without the
-        // permission the folder holds one note saying where to turn it on; with it, the bind
-        // hides the note behind the real Download, DCIM and Documents folders.
+        // The phone's own folders, only while the owner allows it, and only the folders a person
+        // means by "my files" -- see PHONE_FOLDERS. Without the permission the folder holds one
+        // note saying where to turn it on.
         File phoneMount = new File(root, "home/coder/Phone");
         if (!phoneMount.exists()) phoneMount.mkdirs();
         if (PhoneFiles.allowed(context)) {
-            args.add("-b");
-            args.add(PhoneFiles.root().getAbsolutePath() + ":/home/coder/Phone");
+            bindPhoneFolders(args, phoneMount);
+            new File(phoneMount, "Phone files are off.txt").delete();
         } else {
             File note = new File(phoneMount, "Phone files are off.txt");
             if (!note.exists()) {
@@ -411,6 +411,58 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
         copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
         copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
+    }
+
+    /**
+     * The folders of the phone the computer may see -- and, just as importantly, the ones it
+     * may not.
+     *
+     * The whole storage card used to be bound in one line. That gave every program inside the
+     * container, an AI agent's shell included, a writable path to every app's data folder, every
+     * messaging app's media, every backup: one mistaken "rm -rf" and it was gone, with no Android
+     * bin to recover it from, because deleting a path outright never reaches the trash MediaStore
+     * keeps. Nothing inside a PRoot container can be made read-only -- PRoot rewrites paths, it
+     * does not enforce permissions, and the real write is done by the app's own Android identity
+     * -- so the honest lever is not "allow less", it is "name less". What is not bound cannot be
+     * reached, whatever asks for it and however convincingly.
+     *
+     * These six are the phone's own public folders. Anything else -- Android/data, a messaging
+     * app's media, another app's private storage -- is simply not connected now, and a file from
+     * one of those can still be brought in by hand, one at a time, through
+     * Window -> Add a file from the phone or a cloud drive.
+     */
+    private static final String[] PHONE_FOLDERS = {
+            "Download", "DCIM", "Documents", "Pictures", "Music", "Movies",
+    };
+
+    private static void bindPhoneFolders(List<String> args, File phoneMount) {
+        File card = PhoneFiles.root();
+        for (String folder : PHONE_FOLDERS) {
+            File source = new File(card, folder);
+            if (!source.isDirectory()) continue;          // not every phone has all six
+            File target = new File(phoneMount, folder);
+            if (!target.exists() && !target.mkdirs()) continue;
+            args.add("-b");
+            args.add(source.getAbsolutePath() + ":/home/coder/Phone/" + folder);
+        }
+        try {
+            writeText(new File(phoneMount, "About this folder.txt"),
+                    "These are your phone's own folders, inside the Linux computer.\n"
+                    + "\n"
+                    + "Only these are here: " + String.join(", ", PHONE_FOLDERS) + ".\n"
+                    + "Nothing else on the phone can be reached from the computer at all -- not\n"
+                    + "another app's data, not its private storage, not a backup. They are not\n"
+                    + "hidden: they are not connected, so no program in here can name them.\n"
+                    + "\n"
+                    + "What IS here is the real thing, and a change is a real change: a file\n"
+                    + "deleted in this folder is deleted on the phone, and Android has no bin to\n"
+                    + "take it back from. Keep anything you would miss somewhere the computer\n"
+                    + "cannot see, and hand single files to an AI app through PocketLinux's own\n"
+                    + "picker instead -- the desktop screen, Window, Add a file from the phone or\n"
+                    + "a cloud drive.\n");
+        } catch (IOException ignored) {
+            // The note is a courtesy; the Settings screen says the same thing.
+        }
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */

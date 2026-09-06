@@ -5,7 +5,7 @@
 # than the exception -- which makes "show me what is open" and "close everything" ordinary
 # things to want, not power-user extras.
 #
-# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|fit|minimise|panel-edge|count|menu|refresh
+# Usage: pocketdesk-windows list|minimise-all|close-all|kill-active|fit|unmaximise|minimise|panel-edge|count|menu|refresh
 set -u
 export DISPLAY=${DISPLAY:-:1}
 
@@ -96,6 +96,16 @@ EOF
     xdotool windowmove "$id" 0 0 2>/dev/null || true
     wmctrl -i -r "$hex" -b add,maximized_vert,maximized_horz 2>/dev/null || true
     /usr/local/bin/pocketdesk-window-guard once >/dev/null 2>&1 || true
+    ;;
+  unmaximise)
+    # A maximised window cannot be resized -- the drag looks like it does nothing. The viewer's
+    # "Resize this window by dragging" calls this first so the drag has something to move.
+    command -v xdotool >/dev/null 2>&1 || exit 0
+    id=$(xdotool getactivewindow 2>/dev/null) || exit 0
+    [ -n "$id" ] || exit 0
+    hex=$(printf '0x%08x' "$id" 2>/dev/null) || exit 0
+    is_own_furniture "$hex" && exit 0
+    wmctrl -i -r "$hex" -b remove,maximized_vert,maximized_horz 2>/dev/null || true
     ;;
   minimise)
     command -v xdotool >/dev/null 2>&1 || exit 0
