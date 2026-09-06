@@ -180,7 +180,12 @@ final class VncView extends View implements VncClient.Listener {
             heldInput.releasePointer();
             heldInput.releaseModifiers();
         } else {
-            if (withKeysym != 0) heldInput.toggleModifier(withKeysym);
+            // toggleModifier is a toggle: with Alt already latched from the key row it would
+            // send Alt UP, and the resize would then be a plain right-drag into whatever is under
+            // the pointer -- a context menu, or a selection -- with nothing resized.
+            if (withKeysym != 0 && !heldInput.hasModifier(withKeysym)) {
+                heldInput.toggleModifier(withKeysym);
+            }
             heldInput.startDrag(pointerX, pointerY, mask);
         }
         inputChanged();

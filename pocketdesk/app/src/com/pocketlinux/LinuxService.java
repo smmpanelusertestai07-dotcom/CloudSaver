@@ -950,7 +950,9 @@ public final class LinuxService extends Service {
                         == android.content.res.Configuration.ORIENTATION_PORTRAIT)) {
             geometry = new int[]{geometry[1], geometry[0]};   // desktopGeometry is long side first
         }
-        int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.defaultUiScale(this));
+        // 0, and an absent value, both mean "work it out from this phone's screen".
+        int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, 0);
+        if (dpi <= 0) dpi = ContainerRuntime.defaultUiScale(this);
         String downloadTarget = ContainerRuntime.normaliseDownloadTarget(
                 prefs.getString(ContainerRuntime.KEY_DOWNLOAD_TARGET, ContainerRuntime.DOWNLOAD_ASK));
         // A revoked All files permission must never make Chrome save into an unmounted placeholder.

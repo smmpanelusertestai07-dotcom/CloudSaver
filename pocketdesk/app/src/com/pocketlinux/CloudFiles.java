@@ -113,9 +113,13 @@ final class CloudFiles {
                 // Readable by the container, which runs as its own user inside PRoot.
                 target.setReadable(true, false);
                 arrived.add(target.getName());
-            } catch (IOException | SecurityException | IllegalStateException refused) {
-                // One file that cannot be read must not stop the rest: a cloud app can revoke a
-                // grant, and a file still syncing can be offered before it has finished arriving.
+            } catch (Throwable refused) {
+                // Deliberately everything. openInputStream ends up inside a provider written by
+                // someone else -- a cloud app, an OEM's file provider -- and a stale document
+                // comes back as whatever that provider felt like throwing: IllegalArgumentException
+                // for an unknown URI, UnsupportedOperationException for one that cannot be opened.
+                // One file that cannot be read must not take the screen down with it, and the
+                // loop is written to carry on to the next.
             }
         }
         return arrived.isEmpty() ? null : String.join(", ", arrived);

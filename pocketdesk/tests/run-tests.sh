@@ -209,6 +209,20 @@ grep -q 'portraitDesktop' "$PROJECT_DIR/app/src/com/pocketlinux/LinuxService.jav
   || { echo "FAIL Rotation: the Portrait setting does not reach the Linux desktop's own shape"; exit 1; }
 echo "PASS Rotation (portrait means portrait, on the phone and in the computer)"
 
+# A 700 MB app downloaded over mobile data must resume, and the fallback that does NOT resume
+# must never run over a part-file: curl's -o truncates, so a fallback fired on a dropped
+# connection would throw away exactly what the resume was added to keep.
+apps="$PROJECT_DIR/app/src/com/pocketlinux/LinuxApps.java"
+grep -q 'pd_fetch()' "$apps" \
+  || { echo "FAIL Downloads: the resumable fetch helper is gone"; exit 1; }
+grep -q 'if \[ -s .*pd_out.*\]; then' "$apps" \
+  || { echo "FAIL Downloads: the whole-file fallback is not guarded by an empty part-file"; exit 1; }
+grep -q 'md5sum' "$apps" \
+  || { echo "FAIL Downloads: a part-file keyed by name alone can splice two releases together"; exit 1; }
+grep -q "curl --fail --location --retry 3 '" "$apps" \
+  && { echo "FAIL Downloads: a direct non-resuming download is back"; exit 1; }
+echo "PASS Downloads (resumable, per-URL, no truncating fallback)"
+
 # The crash this release exists for. Android 12+ SIGKILLs every forked process of an app once
 # there are more than 32; under PRoot every Linux process is one, so the ceiling is the whole
 # computer's. A real report showed 36 at peak with 1.2 GB free and lowMemory false -- memory was

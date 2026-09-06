@@ -26,20 +26,30 @@ final class ViewerSize {
 
     static int[] choose(int viewWidth, int viewHeight, boolean wide, int magnification) {
         int percent = Math.max(100, Math.min(magnification, 200));
-        int width = Math.max(2, Math.round(Math.max(2, viewWidth) * 100f / percent));
-        int height = Math.max(2, Math.round(Math.max(2, viewHeight) * 100f / percent));
+        int width = Math.max(2, viewWidth);
+        int height = Math.max(2, viewHeight);
+        // The wide workspace comes FIRST, because it is a floor and magnification is a divide:
+        // dividing before it meant every step fell below WIDE_WIDTH, was pushed back up to it,
+        // and produced the same framebuffer -- the menu counted up, the toast said 130 %, and
+        // nothing on the screen changed size at all.
         if (wide && width < WIDE_WIDTH) {
             height = (int) Math.round(height * (WIDE_WIDTH / (double) width));
             width = WIDE_WIDTH;
+        }
+        if (percent > 100) {
+            width = Math.max(2, Math.round(width * 100f / percent));
+            height = Math.max(2, Math.round(height * 100f / percent));
         }
         long pixels = (long) width * height;
         if (pixels > MAX_PIXELS) {
             double shrink = Math.sqrt(MAX_PIXELS / (double) pixels);
             width = Math.max(2, (int) Math.floor(width * shrink));
             height = Math.max(2, (int) Math.floor(height * shrink));
-            if (wide && width < WIDE_WIDTH) {
+            if (wide && percent <= 100 && width < WIDE_WIDTH) {
                 // On exceptionally tall phones keep useful app width and letterbox the shorter
                 // framebuffer instead of allocating unbounded height or cropping its sides.
+                // Not while magnifying: putting the width back would undo the thing being asked
+                // for, and a magnified desktop is scaled up to fill the screen anyway.
                 width = WIDE_WIDTH;
                 height = (int) (MAX_PIXELS / width);
             }

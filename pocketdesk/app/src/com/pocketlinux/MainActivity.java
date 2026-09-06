@@ -162,6 +162,13 @@ public final class MainActivity extends Activity {
         try {
             preferences = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
             dark = resolveDarkMode();
+            // The window this screen is drawn into was painted before any of this ran, from the
+            // theme in the manifest -- which follows the PHONE's night mode (values/ and
+            // values-night/), not the app's own three-valued Theme setting. When the two disagree
+            // (Theme: Dark on a phone in light mode, or the reverse) that first frame is the
+            // wrong colour, and no amount of care further down repaints it. Setting the window's
+            // own background here does, before the first frame is drawn.
+            getWindow().setBackgroundDrawableResource(dark ? R.color.window_dark : R.color.window_light);
             if (state != null) {
                 selectedTab = state.getInt("tab", TAB_HOME);
                 openAnswer = state.getInt("answer", -1);
@@ -1107,8 +1114,15 @@ public final class MainActivity extends Activity {
                     .append(". Free some space first, or uninstall an app you are not using.");
         }
         if (LinuxApps.isAiApp(app) && probe.totalRam > 0) {
-            line.append("\nMemory: ").append(DeviceProbe.formatBytes(probe.totalRam))
-                    .append(" — enough for one AI app at a time.");
+            line.append("\nMemory: ").append(DeviceProbe.formatBytes(probe.totalRam));
+            // A phone below the AI-app threshold is told here, on the row, before it spends an
+            // hour and several gigabytes of mobile data on something that will not stay open.
+            // Saying it only as a badge on the Home screen was not saying it.
+            line.append(DeviceCheck.enoughForAiApps(this)
+                    ? " — enough for one AI app at a time."
+                    : " — below what this app needs. It is a Chromium program and wants about "
+                            + "700 MB of its own; the Linux computer, the terminal and the "
+                            + "development tools run here, this will not stay open.");
         }
         return line.toString();
     }
@@ -1165,8 +1179,7 @@ public final class MainActivity extends Activity {
         appearance.addView(rotationRow, Ui.matchWrap(this, 8));
         desktopScaleRow = new Ui.Row(this, R.drawable.ic_desktop, "Desktop text size",
                 labelOfInt(SCALE_LABELS, SCALE_VALUES,
-                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE,
-                                ContainerRuntime.defaultUiScale(this))),
+                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE, 0)),
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         appearance.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
@@ -2134,8 +2147,17 @@ public final class MainActivity extends Activity {
     // the phone's own screen (ContainerRuntime.defaultUiScale) -- so these are the deliberate
     // choices around it, and the old three values stay so a stored preference still has a label.
     private static final String[] SCALE_LABELS = {
-            "Compact · PC-like", "Normal", "Large", "Larger", "Largest"};
-    private static final int[] SCALE_VALUES = {96, 120, 144, 168, 192};
+            "Automatic · matches this phone", "Compact · PC-like", "Normal", "Large", "Larger",
+            "Largest"};
+    /**
+     * 0 means "work it out from this phone's screen" -- see ContainerRuntime.defaultUiScale.
+     *
+     * It has to be in this list, and it has to be the default. Leaving the computed size out
+     * meant the row showed the FIRST label instead ("Compact"), because that is what labelOfInt
+     * falls back to, and the chooser opened with that entry highlighted: confirming what it
+     * said the setting already was would have set 96 dpi and made everything smaller.
+     */
+    private static final int[] SCALE_VALUES = {0, 96, 120, 144, 168, 192};
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];
@@ -2180,8 +2202,7 @@ public final class MainActivity extends Activity {
 
     /** Bigger type on the Linux desktop, without shrinking the picture. */
     private void chooseScale() {
-        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE,
-                ContainerRuntime.defaultUiScale(this));
+        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE, 0);
         int selected = 0;
         for (int i = 0; i < SCALE_VALUES.length; i++) if (SCALE_VALUES[i] == current) selected = i;
         int[] icons = new int[SCALE_VALUES.length];
@@ -3011,10 +3032,19 @@ public final class MainActivity extends Activity {
     }
 
     private void applyOrientation() {
-        // One rule for both screens, and it is written down in ScreenRotation: Portrait is
-        // portrait and stays that way up, Landscape works either way round, and Auto-rotate
-        // follows the phone even when the phone's own rotation lock is on -- because picking
-        // Auto-rotate here IS the owner saying what they want.
+        // Portrait is portrait and stays that way up; Landscape works either way round. See
+        // ScreenRotation, which both screens read.
+        //
+        // Auto-rotate is the one that needs care HERE. On the desktop it follows the sensor even
+        // through the phone's own rotation lock, because someone who went into Settings and chose
+        // Auto-rotate said what they wanted. On this screen the same value is also what everyone
+        // who never opened that setting has, and overruling their system rotation lock because
+        // of a default they never chose is not a fix, it is a different bug. So an untouched
+        // setting hands rotation back to the phone.
+        if (!preferences.contains(ContainerRuntime.KEY_ORIENTATION)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            return;
+        }
         setRequestedOrientation(ScreenRotation.of(
                 preferences.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO)));
     }

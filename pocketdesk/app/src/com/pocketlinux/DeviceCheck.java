@@ -34,6 +34,14 @@ final class DeviceCheck {
      * says out loud how much slack the threshold has.
      */
     static final long RAM_TOLERANCE_BYTES = 700_000_000L;
+    /**
+     * The same slack, in proportion, for the 2 GB floor.
+     *
+     * 700 MB off 4 GB is the gap between marketed and reported memory on a 4 GB phone. Taken off
+     * 2 GB it is a third of the threshold, and it would have admitted a 1.4 GB phone to a
+     * requirement the same dialog prints as 2 GB.
+     */
+    static final long DESKTOP_TOLERANCE_BYTES = 250_000_000L;
     /** Decimal, like Android's own Settings screen prints sizes. */
     static final long MIN_FREE_BYTES = 6_000_000_000L;
     /**
@@ -101,6 +109,21 @@ final class DeviceCheck {
      * without asking the owner to find a setting: a smaller framebuffer, a cheaper pixel format,
      * no wide workspace, no opening splash.
      */
+    /**
+     * Whether the four AI desktop apps have room to run here.
+     *
+     * Read by the Apps tab, so a phone that cannot hold them is told on the row rather than after
+     * an hour of downloading. The same comparison the compatibility check makes, in one place so
+     * the two can never drift apart and say different things about the same phone.
+     */
+    static boolean enoughForAiApps(Context context) {
+        ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
+        if (manager != null) manager.getMemoryInfo(memory);
+        if (memory.totalMem <= 0) return true;            // unknown: do not scare anyone off
+        return memory.totalMem >= MIN_RAM_GB * 1_000_000_000L - RAM_TOLERANCE_BYTES;
+    }
+
     static boolean isSmallPhone(Context context) {
         ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         if (manager != null && manager.isLowRamDevice()) return true;
@@ -129,10 +152,9 @@ final class DeviceCheck {
         }
         // Bytes, with a stated tolerance, rather than a rounded gigabyte count: a phone sold as
         // 4 GB reports about 3.6, and rounding turned that into a refusal.
-        boolean enoughForApps = memory.totalMem
-                >= MIN_RAM_GB * 1_000_000_000L - RAM_TOLERANCE_BYTES;
+        boolean enoughForApps = enoughForAiApps(context);
         boolean enoughForDesktop = memory.totalMem
-                >= MIN_RAM_GB_DESKTOP * 1_000_000_000L - RAM_TOLERANCE_BYTES;
+                >= MIN_RAM_GB_DESKTOP * 1_000_000_000L - DESKTOP_TOLERANCE_BYTES;
         if (!enoughForDesktop) {
             return new Result(false, "Not enough memory for a Linux computer",
                     facts + "\n\n" + requirements() + "\n\nWith " + ramGb + " GB of RAM there is "

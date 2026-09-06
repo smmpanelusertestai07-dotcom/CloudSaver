@@ -9,9 +9,11 @@
         fix is a resource the system picks itself, which is this file. Android reads it only when
         the phone is in its dark theme.
 
-        Only the surfaces that exist before the first draw are overridden here. Everything the
-        app draws afterwards follows the owner's own Theme setting, which has three values and is
-        a different question from the phone's night mode.
+        Only the surfaces that exist before the first draw are overridden here, and only from the
+        phone's night mode, because a resource qualifier is all Android will consult that early.
+        The app's own Theme setting has three values and is a different question; where the two
+        disagree, MainActivity.onCreate sets the window background itself, which still happens
+        before the first frame.
     -->
     <style name="Theme.PocketLinux" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>

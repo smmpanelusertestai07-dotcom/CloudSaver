@@ -131,6 +131,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onStart() {
         super.onStart();
+        // onCreate can fail before it has read anything -- that is what the launch-failure screen
+        // exists for -- and Android calls onStart afterwards regardless. Everything below reads
+        // fields that onCreate assigns, so without this the diagnostic screen it just built is
+        // replaced by a crash with no handler at all.
+        if (preferences == null) return;
         // The rotation setting lives on the other screen; picking it up here is what makes the
         // change reach the computer without closing the desktop first.
         applyOrientation();
@@ -153,8 +158,21 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         super.onPause();
     }
 
+    /**
+     * Nothing posted from this screen may outlive it.
+     *
+     * The auto-hide timer re-posts itself while the desktop is being used, so leaving the screen
+     * with it pending meant it fired several seconds later against views whose Activity had
+     * stopped -- and held that window alive to do it.
+     */
+    private void cancelPostedWork() {
+        main.removeCallbacks(hideBarsSoon);
+        if (volumePanel != null) volumePanel.removeCallbacks(hideVolume);
+    }
+
     @Override protected void onStop() {
         releaseRemoteInput();
+        cancelPostedWork();
         viewerVisible = false;
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(true);
@@ -194,20 +212,43 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
+    /**
+     * Brings the chosen files in, on a thread of its own.
+     *
+     * The picker deliberately lists Drive and every other cloud app, and reading from one of
+     * those blocks while the provider fetches the file -- a 300 MB video, or anything not synced
+     * yet. Doing that where it was being done, straight inside onActivityResult, is the main
+     * thread: the phone would show "PocketLinux isn't responding" and might end the app in the
+     * middle of the copy.
+     */
+    private void copyChosenFiles(java.util.List<android.net.Uri> chosen) {
+        if (chosen.isEmpty()) return;
+        Toast.makeText(this, chosen.size() == 1
+                ? "Bringing the file in\u2026" : "Bringing " + chosen.size() + " files in\u2026",
+                Toast.LENGTH_SHORT).show();
+        final Context appContext = getApplicationContext();
+        new Thread(() -> {
+            final String arrived = CloudFiles.copyIn(appContext, chosen);
+            main.post(() -> {
+                if (finished || isFinishing()) return;
+                if (arrived == null) {
+                    showMessage("Nothing came across", "The file could not be read. A file still "
+                            + "being synced by a cloud app is the usual reason \u2014 open it once "
+                            + "in that app so it is downloaded, then try again.");
+                    return;
+                }
+                showMessage("In the computer's Cloud folder", arrived + "\n\nIt is in the Cloud "
+                        + "folder, which every Open dialog inside Linux lists on the left. Attach "
+                        + "it in ChatGPT or Claude, or open it in Cursor, from there.");
+            });
+        }, "pocketlinux-cloud-copy").start();
+    }
+
     @Override protected void onActivityResult(int request, int result, Intent data) {
         if (AppLock.handleResult(this, outer, request, result, null)) return;
         if (request == CloudFiles.REQUEST_PICK) {
             if (result != RESULT_OK) return;
-            String arrived = CloudFiles.copyIn(this, CloudFiles.urisOf(data));
-            if (arrived == null) {
-                showMessage("Nothing came across", "The file could not be read. A file still being "
-                        + "synced by a cloud app is the usual reason -- open it once in that app "
-                        + "so it is downloaded, then try again.");
-                return;
-            }
-            showMessage("In the computer's Cloud folder", arrived + "\n\nIt is in the Cloud "
-                    + "folder, which every Open dialog inside Linux lists on the left. Attach it "
-                    + "in ChatGPT or Claude, or open it in Cursor, from there.");
+            copyChosenFiles(CloudFiles.urisOf(data));
             return;
         }
         if (request == REQUEST_PHOTO) {
@@ -532,12 +573,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         outer.addView(overlay, new FrameLayout.LayoutParams(1, 1));
         // The right corner, which is where every phone puts its volume slider and where a
         // right-handed thumb already is. Below the bar when the bar is at the top.
-        FrameLayout.LayoutParams volumeLp = new FrameLayout.LayoutParams(
+        outer.addView(buildVolumePanel(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.END);
-        volumeLp.topMargin = Ui.dp(this, controlsAtTop ? 74 : 12);
-        volumeLp.setMarginEnd(Ui.dp(this, 10));
-        outer.addView(buildVolumePanel(), volumeLp);
+                Gravity.TOP | Gravity.END));
+        placeVolumePanel();
         outer.addView(buildTouchLock(), new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
@@ -690,6 +729,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     controlsAtTop = !controlsAtTop;
                     preferences.edit().putString(ContainerRuntime.KEY_CONTROLS_AT, controlsAtTop ? "top" : "bottom").apply();
                     layoutBars();
+                    placeVolumePanel();
                     return true;
                 case MENU_BIGGER: biggerInterface(); return true;
                 case MENU_AUTO_HIDE: setAutoHideBars(!autoHideBars); return true;
@@ -868,6 +908,23 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
         volumePanel.setVisibility(View.GONE);
         return volumePanel;
+    }
+
+    /**
+     * Keeps the volume corner clear of the control bar, whichever end the bar is at.
+     *
+     * The margin used to be worked out once, when the screen was built. Moving the bar to the top
+     * afterwards left the panel where it was, on top of the bar it was meant to sit below, and it
+     * covered the very buttons it appears next to.
+     */
+    private void placeVolumePanel() {
+        if (volumePanel == null) return;
+        ViewGroup.LayoutParams params = volumePanel.getLayoutParams();
+        if (!(params instanceof FrameLayout.LayoutParams)) return;
+        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) params;
+        lp.topMargin = Ui.dp(this, controlsAtTop ? 66 : 12);
+        lp.setMarginEnd(Ui.dp(this, 10));
+        volumePanel.setLayoutParams(lp);
     }
 
     private LinearLayout.LayoutParams volumeButton(int widthDp) {

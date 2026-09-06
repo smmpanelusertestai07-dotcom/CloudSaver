@@ -45,6 +45,18 @@ public final class ViewerSizeTest {
                 throw new AssertionError("Framebuffer memory budget exceeded");
             previousWidth = scaled[0];
         }
+        // With the wide workspace on, every step must still shrink. Applying the magnification
+        // before the wide floor made all four produce the same framebuffer: the menu counted up
+        // and nothing on the screen changed size.
+        int previousWide = Integer.MAX_VALUE;
+        for (int step : ViewerSize.STEPS) {
+            int[] scaled = ViewerSize.choose(720, 1440, true, step);
+            if (step > 100 && scaled[0] >= previousWide)
+                throw new AssertionError("Wide workspace swallowed the magnification at " + step);
+            if ((long) scaled[0] * scaled[1] > ViewerSize.MAX_PIXELS)
+                throw new AssertionError("Framebuffer memory budget exceeded");
+            previousWide = scaled[0];
+        }
         // Out-of-range magnification is clamped rather than trusted.
         int[] silly = ViewerSize.choose(720, 1440, false, 5000);
         if (silly[0] < 2 || silly[1] < 2 || (long) silly[0] * silly[1] > ViewerSize.MAX_PIXELS)

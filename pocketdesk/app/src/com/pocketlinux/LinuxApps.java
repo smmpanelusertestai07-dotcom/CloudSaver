@@ -178,11 +178,24 @@ final class LinuxApps {
             // A server that will not do ranges falls back to the whole file, which is only ever
             // what the old code did anyway.
             + "pd_fetch() { pd_dir=\"$PD_STATE/downloads\"; mkdir -p \"$pd_dir\"; "
-            + "pd_out=\"$pd_dir/$2\"; "
-            + "if curl --fail --location --retry 3 --retry-delay 5 -C - -o \"$pd_out\" \"$1\" "
-            + "|| curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\"; then "
-            + "[ -s \"$pd_out\" ] && { printf '%s' \"$pd_out\"; return 0; }; fi; "
-            + "echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
+            // The part-file is named after the URL as well as the file, because these are
+            // "latest" addresses whose bytes change when the publisher ships a new build. Keyed
+            // by name alone, an interrupted download resumed after a release would have appended
+            // the new build's bytes at the old offset and produced an archive apt cannot read --
+            // and would have kept doing it until someone deleted the file.
+            + "pd_tag=$(printf '%s' \"$1\" | md5sum | cut -c1-12); "
+            + "pd_out=\"$pd_dir/$pd_tag-$2\"; "
+            // Two attempts, and the order matters. Resuming is tried first and only where there
+            // is something to resume; the whole-file attempt runs only when the part-file is
+            // gone or empty, because curl's -o TRUNCATES -- without that guard the fallback
+            // would throw away the 600 MB the resume was added to keep.
+            + "if [ -s \"$pd_out\" ]; then "
+            + "curl --fail --location --retry 3 --retry-delay 5 -C - -o \"$pd_out\" \"$1\" "
+            + "|| { echo 'PocketLinux: the download stopped; it will carry on from here next time' >&2; "
+            + "return 1; }; "
+            + "else curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\" || return 1; fi; "
+            + "[ -s \"$pd_out\" ] || { echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
+            + "printf '%s' \"$pd_out\"; return 0; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
