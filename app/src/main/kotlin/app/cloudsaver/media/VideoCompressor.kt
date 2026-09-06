@@ -291,8 +291,17 @@ object VideoCompressor {
                         )
                     )
                     .build()
+                // withAudioAndVideoFrom, and not the item-list constructor Media3
+                // deprecated: read from the library's own bytecode rather than
+                // its name, a sequence's track types are a filter, and the
+                // exporter strips any track the set does not name. The old
+                // constructor named "default", which leaves every track alone;
+                // naming audio and video leaves every track alone too, so a
+                // clip with sound keeps it and a silent clip is not given any.
+                // withVideoFrom would have thrown the sound away, quietly, on
+                // every video this app ever optimised.
                 val composition = Composition.Builder(
-                    EditedMediaItemSequence.Builder(edited).build()
+                    EditedMediaItemSequence.withAudioAndVideoFrom(listOf(edited))
                 ).setHdrMode(hdrMode).build()
                 transformer.start(composition, outFile.absolutePath)
             } catch (t: Throwable) {

@@ -189,6 +189,54 @@ class PipelineE2eTest {
         assertTrue(File(staged.stagePath!!).exists())
     }
 
+    /**
+     * A clip that goes in with sound comes out with sound.
+     *
+     * The export sequence names which tracks it carries, and the exporter
+     * strips any it does not name - so the one-line choice of how that
+     * sequence is built decides whether every optimised video keeps its
+     * audio. The wrong choice would fail no other test: the copy would be
+     * smaller, valid, and silent.
+     */
+    @Test
+    fun videoKeepsItsSound() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(context, "e2e_talkie.mp4", withAudio = true)
+        assertNotNull("the device must be able to produce a clip with an audio track", uri)
+        assertTrue("the fixture itself must carry audio", hasAudioTrack(uri!!.toString()))
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        MediaScanner(context, db).scan()
+        val row = db.items().byState(ItemState.NEW.name)
+            .firstOrNull { it.displayName == "e2e_talkie.mp4" }
+        assertNotNull("scanner must see the clip", row)
+        assertTrue("video staging must succeed", Stager(context, db).stageOne(row!!, options))
+        val staged = db.items().staged().first { it.displayName == "e2e_talkie.mp4" }
+        val path = staged.stagePath!!
+        assertTrue(File(path).exists())
+        assertTrue(
+            "the optimised copy lost its audio track",
+            hasAudioTrack(path)
+        )
+    }
+
+    /** True when the container at [source] (a path or a content URI) has an audio track. */
+    private fun hasAudioTrack(source: String): Boolean {
+        val ex = android.media.MediaExtractor()
+        return try {
+            if (source.startsWith("content:")) {
+                ex.setDataSource(context, android.net.Uri.parse(source), null)
+            } else {
+                ex.setDataSource(source)
+            }
+            (0 until ex.trackCount).any { i ->
+                ex.getTrackFormat(i).getString(android.media.MediaFormat.KEY_MIME)
+                    ?.startsWith("audio/") == true
+            }
+        } finally {
+            runCatching { ex.release() }
+        }
+    }
+
     @Test
     fun skippedAndEmptyStatesDoNotCrash() = runBlockingTest {
         val db = AppDb.get(context)

@@ -118,10 +118,16 @@ fun FilesScreen(vm: AppViewModel) {
     // chips narrow what came back. Both are filters, so the empty state has to
     // treat them the same way.
     val state = ListFilters.State(type, sizeBand, album, query = "")
+    // Null is "the database has not answered yet", and it is drawn as the
+    // loading placeholders below, never as an empty gallery: the list is
+    // shared only while this screen reads it, so the first frame after
+    // opening the tab has no rows to show and must not say so.
     val rows = remember(items, state) {
-        items.filter { ListFilters.matches(it.toCandidate(), state) }
+        items.orEmpty().filter { ListFilters.matches(it.toCandidate(), state) }
     }
-    val albums = remember(items) { ListFilters.albumCounts(items.map { it.toCandidate() }) }
+    val albums = remember(items) {
+        ListFilters.albumCounts(items.orEmpty().map { it.toCandidate() })
+    }
     // Recomputed on a change, not on every frame: this list holds the whole
     // gallery, and the sum used to run again on each tick of a selection.
     val chosen = remember(rows, selection.ids) { rows.filter { it.id in selection } }
@@ -195,7 +201,7 @@ fun FilesScreen(vm: AppViewModel) {
                     album = null
                     vm.filesState.value = null
                 },
-                loading = false,
+                loading = items == null,
                 isEmpty = rows.isEmpty(),
                 emptyContent = {
                     // The empty state gets whatever height is left below the title,

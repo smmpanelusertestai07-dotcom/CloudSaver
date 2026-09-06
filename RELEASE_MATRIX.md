@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **110 instrumented tests across 16 classes**, run on real emulators against a
+- **111 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -350,6 +350,33 @@ source for this release, including the rows that were already marked Done.
   made no difference, because there was nothing to wait for. The tour excludes
   that album now, in the app's own settings, exactly as a person would - and
   its photographs show the product rather than the harness.
+
+- **Whether the two warnings left on purpose were worth leaving.** They were
+  not, once each was read to the bottom instead of around. The usage-access
+  check called a method the compiler reported deprecated while the platform
+  jar seemed not to mark it so; the jar does, further down the method than
+  the first look reached, and it now marks the older `checkOpNoThrow` current
+  again - so that is what is called, with the same answer on every version
+  this app runs on. The video pipeline built its export sequence through a
+  constructor Media3 deprecated, and the fear was that the replacement takes
+  a set of track types and getting it wrong drops the audio from somebody's
+  video. Reading the library's bytecode rather than its names settled it: the
+  set is a filter, the exporter strips any track the set does not name, and
+  naming audio and video strips nothing - exactly what the old constructor's
+  "default" did. To make sure that stays true, the test clip can now carry a
+  genuine AAC track, encoded on the device, and a test asserts the optimised
+  copy still has it: the wrong choice would fail no other test, because the
+  copy would be smaller, valid, and silent.
+- **Whether every screen's query has to run while the screen is not there.**
+  Fourteen flows were collected eagerly, seven of them full-table sums over
+  `items`, and a scan writes one row at a time - so each of them re-ran for
+  every one of twelve thousand files while the user sat on Settings. Ten now
+  run only while a screen reads them; a StateFlow keeps its last value, so a
+  screen that comes back sees what it saw and then the fresh answer, never a
+  blank. The Files list gained the state it had been missing for this to be
+  safe: null until the database answers, drawn as loading placeholders, so the
+  first frame of the tab can no longer read as an empty gallery. What stays
+  eager is what the tab bar and the lock gate read on every screen.
 
 **Not done, and why**
 
