@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The window the phone paints before any of PocketLinux's own code runs.
+
+        Theme.PocketLinux is a light theme, and its windowBackground was light whatever the phone
+        was set to, so opening the app on a phone in dark mode flashed a white rectangle before
+        the first frame was drawn. No code can fix that: the window exists before onCreate. The
+        fix is a resource the system picks itself, which is this file. Android reads it only when
+        the phone is in its dark theme.
+
+        Only the surfaces that exist before the first draw are overridden here. Everything the
+        app draws afterwards follows the owner's own Theme setting, which has three values and is
+        a different question from the phone's night mode.
+    -->
+    <style name="Theme.PocketLinux" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">@color/brand_on_dark</item>
+        <item name="android:windowBackground">@color/window_dark</item>
+        <item name="android:navigationBarColor">#080D1A</item>
+        <item name="android:statusBarColor">#080D1A</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

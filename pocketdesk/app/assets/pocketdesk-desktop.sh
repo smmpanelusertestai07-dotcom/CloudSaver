@@ -302,8 +302,30 @@ export GTK_THEME="Adwaita$GTK_THEME_SUFFIX"
 # the marker existed is recognised by the wrong theme name it carries and is taken over once.
 write_gtk_defaults() {
   for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
-    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Noto Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\n' \
+    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Noto Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\ngtk-decoration-layout=close,minimize:\n' \
       "$PREFER_DARK" "$((DPI * 1024))" > "$gtk_dir/settings.ini"
+    # A stylesheet, which nothing here had. Adwaita is a fine base and this only asks it for the
+    # two things a phone needs and a desktop theme never assumes: rounder corners, and controls
+    # tall enough to hit with a thumb. Every selector below is real GTK 3/4 CSS; an unknown one
+    # is a warning on stderr and nothing else, so this can never stop an app from starting.
+    printf '%s\n' \
+      '/* pocketdesk-default */' \
+      '@define-color theme_bg_color #101a2e;' \
+      '@define-color theme_base_color #0d1526;' \
+      '@define-color theme_fg_color #f1f5fb;' \
+      '@define-color theme_selected_bg_color #1746c4;' \
+      '@define-color borders #23304a;' \
+      'button { border-radius: 10px; min-height: 34px; padding: 4px 12px; }' \
+      'entry { border-radius: 10px; min-height: 36px; }' \
+      'entry:focus, button:focus { outline-offset: -2px; }' \
+      'scrollbar slider { min-width: 16px; min-height: 16px; border-radius: 8px; }' \
+      'menu, .menu, popover, popover.background { border-radius: 12px; }' \
+      'menuitem, modelbutton { min-height: 34px; }' \
+      'headerbar { min-height: 46px; }' \
+      'notebook > header > tabs > tab { min-height: 36px; padding: 2px 10px; }' \
+      'list row { min-height: 34px; }' \
+      'checkbutton check, radiobutton radio { min-width: 20px; min-height: 20px; }' \
+      > "$gtk_dir/gtk.css"
   done
 }
 GTK_INI="$HOME/.config/gtk-3.0/settings.ini"
@@ -325,8 +347,18 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgco
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
 # script - what do you want to do with it?" prompt instead of just launching the app.
-printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=72\nsmall_icon_size=24\nthumbnail_size=128\n' \
-  > "$HOME/.config/libfm/libfm.conf"
+#
+# The icon sizes are pixels, and pcmanfm does not scale them by Xft.dpi the way it scales its
+# text, so on a phone screen they stayed thumbnail-sized however large the type grew. Scaled
+# here from the same dpi as everything else, and clamped: libfm refuses a big icon above 96.
+BIG_ICON=$(( 72 * DPI / 120 ))
+[ "$BIG_ICON" -gt 96 ] && BIG_ICON=96
+SMALL_ICON=$(( 24 * DPI / 120 ))
+[ "$SMALL_ICON" -gt 48 ] && SMALL_ICON=48
+THUMB=$(( 128 * DPI / 120 ))
+[ "$THUMB" -gt 256 ] && THUMB=256
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=%s\nsmall_icon_size=%s\nthumbnail_size=%s\n' \
+  "$BIG_ICON" "$SMALL_ICON" "$THUMB" > "$HOME/.config/libfm/libfm.conf"
 
 # window manager's menu, which lists every installed app, Phone files, the terminal and the
 # window commands, rather than the file manager's own short one.

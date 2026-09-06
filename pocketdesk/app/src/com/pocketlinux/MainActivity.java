@@ -1121,7 +1121,8 @@ public final class MainActivity extends Activity {
         appearance.addView(rotationRow, Ui.matchWrap(this, 8));
         desktopScaleRow = new Ui.Row(this, R.drawable.ic_desktop, "Desktop text size",
                 labelOfInt(SCALE_LABELS, SCALE_VALUES,
-                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE)),
+                        preferences.getInt(ContainerRuntime.KEY_UI_SCALE,
+                                ContainerRuntime.defaultUiScale(this))),
                 R.drawable.ic_chevron, dark, v -> chooseScale());
         appearance.addView(desktopScaleRow, Ui.matchWrap(this, 8));
 
@@ -2057,10 +2058,13 @@ public final class MainActivity extends Activity {
     private static final int[] TIMER_VALUES = {
             ContainerRuntime.SESSION_SMART, 60, 120, 240, 360, 0};
 
-    // Lower dpi means more of the desktop fits, which is what makes it read like a PC screen
-    // rather than three oversized windows.
-    private static final String[] SCALE_LABELS = {"Compact · PC-like", "Normal", "Large"};
-    private static final int[] SCALE_VALUES = {96, 120, 144};
+    // Lower dpi means more of the desktop fits; higher means type you can actually read at arm's
+    // length from a phone. The default is no longer in this list at all -- it is worked out from
+    // the phone's own screen (ContainerRuntime.defaultUiScale) -- so these are the deliberate
+    // choices around it, and the old three values stay so a stored preference still has a label.
+    private static final String[] SCALE_LABELS = {
+            "Compact · PC-like", "Normal", "Large", "Larger", "Largest"};
+    private static final int[] SCALE_VALUES = {96, 120, 144, 168, 192};
 
     private String labelOf(String[] labels, String[] values, String current) {
         for (int i = 0; i < values.length; i++) if (values[i].equals(current)) return labels[i];
@@ -2105,10 +2109,12 @@ public final class MainActivity extends Activity {
 
     /** Bigger type on the Linux desktop, without shrinking the picture. */
     private void chooseScale() {
-        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
+        int current = preferences.getInt(ContainerRuntime.KEY_UI_SCALE,
+                ContainerRuntime.defaultUiScale(this));
         int selected = 0;
         for (int i = 0; i < SCALE_VALUES.length; i++) if (SCALE_VALUES[i] == current) selected = i;
-        int[] icons = {R.drawable.ic_desktop, R.drawable.ic_desktop, R.drawable.ic_desktop};
+        int[] icons = new int[SCALE_VALUES.length];
+        java.util.Arrays.fill(icons, R.drawable.ic_desktop);
         showChooser("Desktop text size", SCALE_LABELS, icons, selected, index -> {
             preferences.edit().putInt(ContainerRuntime.KEY_UI_SCALE, SCALE_VALUES[index]).apply();
             desktopScaleRow.setValue(LinuxService.isDesktopRunning()

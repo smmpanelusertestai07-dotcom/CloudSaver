@@ -101,6 +101,26 @@ final class Ui {
         return drawable;
     }
 
+    /**
+     * The surface everything sits on: a shallow top-to-bottom gradient inside a hairline border.
+     *
+     * Android has no backdrop blur for a View -- RenderEffect blurs a view's own content, not
+     * what is painted behind it -- so real frosted glass is not available here and pretending
+     * otherwise just costs a frame. What actually reads as glass is what glass does to light:
+     * a lit top edge, a slightly darker bottom, and a border thin enough to be a highlight
+     * rather than a box. That is this, and it is a single cached drawable.
+     */
+    static GradientDrawable glass(Context context, boolean dark, float radiusDp) {
+        int top = dark ? Color.rgb(24, 36, 62) : Color.rgb(255, 255, 255);
+        int bottom = dark ? Color.rgb(13, 21, 38) : Color.rgb(243, 246, 251);
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM, new int[]{top, bottom});
+        drawable.setCornerRadius(dp(context, radiusDp));
+        drawable.setStroke(Math.max(1, dp(context, 1)),
+                dark ? Color.rgb(45, 62, 100) : LIGHT_LINE);
+        return drawable;
+    }
+
     static GradientDrawable brandGradient(Context context, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -204,7 +224,7 @@ final class Ui {
         LinearLayout card = new LinearLayout(context);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(context, 16), dp(context, 16), dp(context, 16), dp(context, 16));
-        card.setBackground(outlined(surface(dark), line(dark), 20, context));
+        card.setBackground(glass(context, dark, 20));
         card.setElevation(dark ? 0 : dp(context, 1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -222,7 +242,7 @@ final class Ui {
             setOrientation(VERTICAL);
             setGravity(Gravity.CENTER_HORIZONTAL);
             setPadding(dp(context, 4), dp(context, 11), dp(context, 4), dp(context, 9));
-            setBackground(outlined(surface(dark), line(dark), 16, context));
+            setBackground(glass(context, dark, 16));
             addView(icon(context, iconRes, accent(dark), 19));
             // The reading is what the eye should land on; the category names it underneath, small
             // and spaced, so four of these stay legible side by side on a phone.

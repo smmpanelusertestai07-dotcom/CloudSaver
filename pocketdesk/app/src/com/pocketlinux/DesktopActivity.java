@@ -418,7 +418,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         barRow.addView(home, barItem(88));
 
         status = Ui.text(this, "Starting…", 12.5f, Color.rgb(194, 202, 230));
-        status.setBackground(Ui.tappable(this, Ui.background(Color.rgb(24, 31, 61), 12, this), true));
+        status.setBackground(Ui.tappable(this,
+                Ui.outlined(Color.rgb(24, 31, 61), Color.rgb(52, 66, 108), 16, this), true));
         status.setPadding(Ui.dp(this, 10), 0, Ui.dp(this, 10), 0);
         status.setSingleLine(true);
         status.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -562,7 +563,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private HorizontalScrollView strip() {
         HorizontalScrollView scroller = new HorizontalScrollView(this);
         scroller.setHorizontalScrollBarEnabled(false);
-        scroller.setBackgroundColor(Color.rgb(15, 19, 39));
+        // The same gradient the cards use, squared off: a lit top edge over a darker bottom is
+        // what an iOS tab bar reads as, and it is the only "glass" Android will give a View
+        // without a blur it does not have.
+        android.graphics.drawable.GradientDrawable shelf = new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Color.rgb(23, 30, 58), Color.rgb(11, 15, 32)});
+        scroller.setBackground(shelf);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(Ui.dp(this, 6), Ui.dp(this, 4), Ui.dp(this, 6), Ui.dp(this, 4));
@@ -601,7 +608,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     /** A one-pixel line between the desktop and the control bar, so the bar reads as a shelf. */
     private View hairline() {
         View line = new View(this);
-        line.setBackgroundColor(Color.rgb(35, 48, 74));
+        // Brighter than the surfaces on both sides of it, so it reads as the lit edge of the
+        // shelf rather than a seam between two dark rectangles.
+        line.setBackgroundColor(Color.rgb(58, 74, 128));
         return line;
     }
 
@@ -618,8 +627,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void styleToggle(Button button, boolean active) {
         button.setBackground(Ui.tappable(this, active
-                ? Ui.outlined(Color.rgb(35, 42, 73), Color.rgb(122, 155, 255), 12, this)
-                : Ui.background(Color.rgb(35, 42, 73), 12, this), true));
+                ? Ui.outlined(Color.rgb(38, 50, 110), Color.rgb(122, 155, 255), 16, this)
+                : Ui.outlined(Color.rgb(32, 40, 70), Color.rgb(52, 66, 108), 16, this), true));
     }
 
     private void showScreenMenu(View anchor) {
@@ -1572,7 +1581,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         button.setPadding(Ui.dp(this, 5), 0, Ui.dp(this, 5), 0);
         button.setMinWidth(0);
         button.setMinHeight(0);
-        button.setBackground(Ui.tappable(this, Ui.background(Color.rgb(35, 42, 73), 12, this), true));
+        // A pill, not a rectangle: 16 dp of radius inside a 48 dp row is the shape every phone
+        // bottom bar has settled on, and the hairline is what keeps eight of them from reading
+        // as one grey block.
+        button.setBackground(Ui.tappable(this,
+                Ui.outlined(Color.rgb(32, 40, 70), Color.rgb(52, 66, 108), 16, this), true));
         return button;
     }
 

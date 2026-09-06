@@ -43,8 +43,23 @@ final class ContainerRuntime {
     static final String DOWNLOAD_ASK = "ask";
     static final String DOWNLOAD_COMPUTER = "computer";
     static final String DOWNLOAD_PHONE = "phone";
-    /** 120 dpi reads like a small PC screen; 168 filled the display with a few huge windows. */
-    static final int DEFAULT_UI_SCALE = 120;
+    /**
+     * How big the Linux desktop's text is, chosen from the phone rather than fixed at 120.
+     *
+     * The desktop is drawn at the phone's own pixel count -- one Linux pixel per phone pixel --
+     * so 120 dpi put Sans 11 at 18 real pixels. On the reference phone, whose screen is about
+     * 270 dpi, that is 1.7 mm of type: roughly two thirds the size of Android's own body text,
+     * and the reason the computer inside reads as "too small" however good the screen is. A
+     * phone screen is not a monitor at arm's length; it is 30 cm from a face.
+     *
+     * 0.56 of the phone's density puts an 11-point face at about 2.6 mm, which is where Android
+     * itself lands. Bounded at both ends: below 120 nothing improves, and above 200 a window's
+     * own minimum width stops fitting on a portrait phone.
+     */
+    static int defaultUiScale(Context context) {
+        int density = context.getResources().getDisplayMetrics().densityDpi;
+        return Math.max(120, Math.min(200, Math.round(density * 0.56f)));
+    }
     /** Long side of the desktop framebuffer; keeps memory sane on a 4 GB phone. */
     static final int GEOMETRY_CAP = 1600;
 
