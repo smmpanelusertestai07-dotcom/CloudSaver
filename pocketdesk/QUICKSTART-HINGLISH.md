@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketLinux-v11.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketLinux-v12.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -10,6 +10,34 @@
    install hota hai — Ubuntu, apps, logins sab bache rehte hain, kuch dobara download nahi hota.
    Pehli baar desktop kholne par purane Windows layer ke launchers aur prefixes apne aap saaf ho
    jaate hain; baaki kuch nahi chhua jaata.
+
+### 12.0.0 me kya naya hai
+
+- **Rotation ab sach me kaam karta hai.** Settings → Screen rotation → *Portrait* ka matlab ab
+  sirf phone ki window nahi, andar ka Linux computer bhi portrait. Auto-rotate ab ulta
+  (camera neeche) nahi hota, aur phone ka apna rotation lock use nahi rokta — kyunki tumne
+  PocketLinux me Auto-rotate chuna hai, wahi chalega.
+- **Andar ka text ab padha ja sakta hai.** dpi ab phone ki apni screen se nikalta hai (pehle
+  fix 120 tha, jiski wajah se sab kuch phone ke apne text ka do-tihai dikhta tha). Chalte hue
+  desktop pe turant bada karna ho to: **Screen → Bigger interface**.
+- **Icons theek.** Projects, System settings, Software aur "Install a downloaded app" — sabke
+  apne icon. Ubuntu 24.04 ke Adwaita me app icons rahe hi nahi, isliye Software ka icon khali
+  dikh raha tha.
+- **System settings** ab computer ke andar ek jagah: theme, bar ki position, sound, storage,
+  software. Aur computer ka theme ab app ke Light/Dark/System ko follow karta hai.
+- **Phone files ab sirf 6 folder.** Download, DCIM, Documents, Pictures, Music, Movies — aur
+  kuch bhi computer se reach nahi hota. Sirf ek file deni ho to Phone files on karne ki zarurat
+  hi nahi: **Window → Add a file from the phone or a cloud drive** — ye Android ka apna picker
+  kholta hai, jisme Drive aur baaki cloud apps bhi dikhte hain.
+- **Viewer:** volume right corner me (+ / mute / −), bar pe **Mute** button, **rotation lock**
+  aur **screen lock** (do baar tap se khulta hai), teesra touch mode **Screen** (game/drag ke
+  liye), side-scrolling, window ko drag karke resize, keyboard khulne pe layout upar.
+- **Tez.** CopyRect (scroll pe pura page dobara nahi bhejta), 1:1 sharp blit, splash 1.6 sec.
+- **2 GB phone bhi.** Linux computer chalega, AI apps nahi — app pehle hi bata deta hai.
+- **Background me kaam count hota hai.** Build ya AI agent chal raha ho to "kuch touch nahi
+  kiya" kehke session band nahi hota.
+- **Design and game tools:** Blender, Godot, GIMP, Inkscape (ARM64, Ubuntu se).
+- **Settings → Terms** — chhota, saaf, zaroori jitna.
 
 ### 11.0.5: computer ab khud ko chalta rakhta hai
 

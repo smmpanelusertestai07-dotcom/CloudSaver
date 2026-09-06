@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "11.0.5";
+    static final String VERSION = "12.0.0";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -819,6 +819,28 @@ public final class MainActivity extends Activity {
                         + ".deb and AppImage builds, and Google publishes Antigravity for Linux. "
                         + "PocketLinux installs exactly those packages, from each publisher's own "
                         + "servers, and every app updates the way its publisher ships updates.", false);
+        addAnswer(card, R.drawable.ic_info, "Some tools only exist on one system \u2014 and the AI ones are on Linux",
+                "Software is not always free to run anywhere. Some of it is tied to one system by "
+                        + "the frameworks it is built on, and sometimes by a licence that says so "
+                        + "outright, and no amount of cleverness moves it.\n\n"
+                        + "• Xcode, the iOS Simulator and SwiftUI previews are macOS programs. "
+                        + "They need Apple's own frameworks and Apple's licence keeps macOS on "
+                        + "Apple hardware, so an iPhone app is signed on a Mac or on someone "
+                        + "else's Mac. Nothing anywhere changes that.\n"
+                        + "• Visual Studio, DirectX and the old .NET Framework are Windows "
+                        + "programs, for the same kind of reason from the other direction.\n"
+                        + "• Containers, systemd, the whole server world: Linux. Docker on a Mac "
+                        + "or on Windows is a Linux machine running quietly underneath \u2014 that "
+                        + "is what it has always been.\n\n"
+                        + "So the system you are on decides what you can build, and that is worth "
+                        + "knowing before you pick one. Here it decided well: every AI desktop app "
+                        + "in this app ships a Linux build, and the two coding agents \u2014 Claude "
+                        + "Code and Codex \u2014 were Linux-shaped from the start, because a Linux "
+                        + "shell is what an agent is given when it is given a computer. This is "
+                        + "not a phone imitating a desktop and hoping the apps follow. It is the "
+                        + "system those apps are written for, on the processor in your hand, with "
+                        + "the same apt, the same packages and the same instructions their own "
+                        + "documentation gives.", false);
         addAnswer(card, R.drawable.ic_check, "Why Linux and not Windows or macOS",
                 "Because on a phone, Linux is the only one of the three that is real \u2014 and, "
                         + "on this processor, it is also the best supported.\n\n"
@@ -1321,19 +1343,17 @@ public final class MainActivity extends Activity {
                 + "files. Desktop text size applies the next time the desktop starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
+        storage.addView(new Ui.Row(this, R.drawable.ic_shield, "Terms",
+                "What this app is, what it is not, and whose terms apply to what",
+                R.drawable.ic_chevron, dark, v -> showTerms()), Ui.matchWrap(this, 10));
         storage.addView(new Ui.Row(this, R.drawable.ic_info, "Open-source notices",
                 "The licences of everything bundled with this app, including PRoot (GPL-2.0)",
                 R.drawable.ic_chevron, dark, v -> showNotices()), Ui.matchWrap(this, 10));
 
-        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS, downloaded at set-up from "
-                + "Canonical's own ARM64 base image and updated from Ubuntu's own package servers. "
-                + "Ubuntu is a registered trademark of Canonical Ltd; PocketLinux is not affiliated "
-                + "with, endorsed by or sponsored by Canonical, and shows no Canonical logo. Linux "
-                + "is a registered trademark of Linus Torvalds. Tux, the Linux mascot, is by Larry "
-                + "Ewing and The GIMP. The desktop is Openbox, tint2, PCManFM, LXTerminal, dunst and "
-                + "TigerVNC, each under its own licence. App names and logos are the property of "
-                + "their respective owners. The open-source notices ship inside this app — the row "
-                + "above opens them.",
+        TextView credits = Ui.text(this, "Runs Ubuntu 24.04 LTS on the phone's own processor. "
+                + "Ubuntu is a registered trademark of Canonical Ltd and Linux is a registered "
+                + "trademark of Linus Torvalds; PocketLinux is not affiliated with either. Every "
+                + "other name and logo belongs to its owner.",
                 11.5f, muted);
         credits.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(credits, Ui.matchWrap(this, 10));
@@ -2741,6 +2761,43 @@ public final class MainActivity extends Activity {
                         + warning)
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Set up", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
+                .show();
+    }
+
+    /**
+     * The terms, in the fewest words that are still true.
+     *
+     * There are three different sets of them and confusing the three is how people end up
+     * surprised: PocketLinux's own, Ubuntu's, and the AI companies'. Each paragraph below says
+     * whose is whose, and nothing is padded out with the sort of sentence nobody reads.
+     */
+    private void showTerms() {
+        dialogBuilder()
+                .setTitle("Terms")
+                .setMessage("PocketLinux is provided as it is, with no warranty of any kind. It is a "
+                        + "way to run Ubuntu on your own phone; what you do in it is yours, and so "
+                        + "is the responsibility for it.\n\n"
+                        + "It is not affiliated with, endorsed by or sponsored by Canonical, "
+                        + "OpenAI, Anthropic, Anysphere, Google or the Linux Foundation. Their "
+                        + "names and logos appear here only to identify their software.\n\n"
+                        + "The system is Ubuntu 24.04 LTS, downloaded at set-up from Canonical's "
+                        + "own ARM64 base image and updated from Ubuntu's own servers. Every "
+                        + "package in it stays under its own licence, and PocketLinux changes "
+                        + "none of them.\n\n"
+                        + "The AI apps are not PocketLinux's. Installing one downloads it from its "
+                        + "publisher; using it needs your own account with them; and their terms, "
+                        + "their prices and their usage limits are the ones that apply. What you "
+                        + "type into ChatGPT, Claude, Cursor or Antigravity goes to that company, "
+                        + "exactly as it would on a laptop.\n\n"
+                        + "PocketLinux itself sends nothing anywhere. It has no account, no server "
+                        + "and no analytics; the only things it downloads are Ubuntu, the packages "
+                        + "you ask for, and the apps you choose.\n\n"
+                        + "Parts of this app are other people's free software, PRoot (GPL-2.0-or-"
+                        + "later) among them, and the notices row lists every one with its licence "
+                        + "and where its source is. Removing PocketLinux removes the Linux "
+                        + "computer and everything in it.")
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Open-source notices", (dialog, which) -> showNotices())
                 .show();
     }
 

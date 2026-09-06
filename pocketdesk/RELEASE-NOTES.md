@@ -1,3 +1,175 @@
+# PocketLinux 12.0.0 — the whole thing, finished
+
+Everything in this release came from one long list of things that were wrong, or missing, or
+merely said wrong. They are grouped here by what an owner would notice.
+
+## Rotation, which was two bugs wearing one name
+
+"Portrait" was `SCREEN_ORIENTATION_USER_PORTRAIT`, and that constant does not mean portrait. It
+means *portrait, either way up*. Put the phone down face-up and pick it up the other way and the
+screen turned over: camera at the bottom, gestures coming from the wrong edge. Auto-rotate on the
+desktop was `FULL_SENSOR`, whose entire purpose is to add the upside-down rotation a phone would
+not otherwise use. Between them, that is the whole of the "phone rotate issue".
+
+One rule now lives in `ScreenRotation`, and both screens read it:
+
+* **Portrait** is `SCREEN_ORIENTATION_PORTRAIT`. One way up, the right one.
+* **Landscape** is sensor landscape — a phone held sideways has no natural top.
+* **Auto-rotate** is `SENSOR`: the three rotations a phone really has, and it keeps following
+  them when the phone's own rotation lock is on, because choosing Auto-rotate *in PocketLinux* is
+  the owner saying what they want.
+
+The second half of that report was that the setting never reached the computer at all.
+`LinuxService` took the desktop's shape from the phone's physical configuration alone, so
+Portrait changed the phone window and left a landscape Linux desktop inside it. The setting is
+the primary input now; the viewer asks the desktop to match whenever it is applied; and the one
+resize sent after connecting is retried instead of dropped when the server has not yet said it
+can be resized.
+
+## The interface inside was too small, and it was arithmetic
+
+The desktop is drawn at the phone's own pixel count — one Linux pixel per phone pixel — and the
+dpi was a constant 120. So an 11-point face landed at 18 real pixels: about 1.7 mm on the
+reference phone, roughly two thirds the size of Android's own body text. A phone screen is 30 cm
+from a face, not a monitor at arm's length.
+
+The default is worked out from the phone's density now, and Settings gained two larger steps
+above it. Openbox's title font was the one thing that did *not* follow the dpi — it was rewritten
+to a literal 14 points — so raising the dpi would have overshot it by half; it is a constant pixel
+height now, which is what it was always trying to be, because Openbox sizes the title buttons from
+the window font and nothing else. PCManFM's icon sizes were fixed pixels for the same reason and
+now scale too.
+
+And **Screen → Bigger interface** works on a desktop that is already running: it asks the desktop
+to be smaller than the phone screen and scales it up to fill it, so type, icons, title bars and
+close buttons all grow at once, with nothing cropped and nothing restarted.
+
+## Icons that were not there
+
+Ubuntu 24.04's Adwaita ships no full-colour application icons at all any more — only the symbolic
+set, which GTK will not use for a launcher. So `Icon=system-software-install` resolved to nothing
+and Software wore a blank sheet. PocketLinux draws its own now: Projects, System settings,
+Software, and a parcel for "Install a downloaded app", which had been wearing Tux. Projects and
+Phone files were redrawn to match, and Projects has a launcher of its own instead of arriving as
+pcmanfm's grey "Documents" shortcut.
+
+## System settings, inside the computer
+
+The computer had settings — the theme, the bar's edge, sound, storage, software — and nothing that
+looked like settings, so they were found only by someone who already knew where they were. One
+dialog now opens the tools that already existed, and says plainly which two settings belong to the
+phone rather than to it. The desktop also follows the app's Light/Dark/System theme, resolved on
+the phone side because the container cannot see the phone's night mode.
+
+## The phone's files, and the cloud drives that are not files
+
+One line used to bind the entire storage card, read-write, into the container — where everything
+runs as PRoot fake root with the app's own Android identity. An agent's `rm -rf` reached every
+app's data folder, every backup, every photo, with no Android bin to recover from.
+
+PRoot cannot do a read-only bind — it rewrites paths, it does not enforce permissions, and the
+real write is performed by the app's own identity — and nothing inside a container can police
+itself. So the lever is not "allow less", it is **name less**: six folders are bound now
+(Download, DCIM, Documents, Pictures, Music, Movies) and nothing else on the phone is connected at
+all. What is not bound cannot be named, however convincingly it is asked for.
+
+Cloud drives cannot be mounted, and no permission changes that: Google Drive, OneDrive and Dropbox
+are document providers behind `content://` addresses with no filesystem path for anything to bind.
+What *does* reach them is Android's own picker — so **Window → Add a file from the phone or a cloud
+drive** opens it, lists every cloud app on the phone, and copies what is chosen into the computer's
+Cloud folder, which is in the sidebar of every Open dialog inside Linux.
+
+## The viewer
+
+* The volume readout moved to the right-hand corner and grew the three buttons it was missing:
+  quieter, mute, louder. **Mute is on the bar itself** — it is the one control that is needed the
+  moment it is needed.
+* **Rotation lock** and a **screen lock** that ignores touches. The screen lock wants two taps in
+  the middle to let go, because one tap is exactly what a stray touch is.
+* A third way for a finger to reach Linux, called **Screen**: the button stays down for the whole
+  gesture, so a swipe is a real drag. A map moves, a canvas draws, a game's control answers.
+  Finger mode gained the **sideways scrolling** it never had, with the axis decided once per swipe.
+* **Windows can be resized by dragging anywhere inside them.** A window edge on a phone is about a
+  millimetre wide and there is no cursor to watch change shape, so aiming at one was never real.
+* The **keyboard** no longer hides the bottom third of the desktop: the picture scales into the
+  room above the keys and springs back, with nothing sent to the server and no Linux app relaid
+  out.
+* The bar is 48 dp instead of 56, and can auto-hide.
+
+## Frames
+
+* **CopyRect.** The viewer offered Raw and nothing else, so a page scrolling, a window moving and
+  a tab switching each re-sent every pixel. CopyRect says "that block is already on your screen,
+  at these other coordinates" in six bytes, and that is most of what a scroll is.
+* The desktop was always about **4 % larger** than the rectangle it was drawn into, because the
+  frame around it was subtracted after the size was chosen rather than before. Every frame was
+  resampled and no text was ever sharp. It is 1:1 now, and smoothing is only paid for when
+  something is genuinely being scaled.
+* A full-screen update was 120 separate reads into the same buffer, one per row. It is one read
+  per strip.
+* The opening screen is 1.6 seconds instead of 3.5, a tap skips it, and a shortcut skips it
+  entirely — a shortcut is an instruction, not a visit.
+
+## Smaller phones
+
+A 2 GB phone was refused outright, for something it was never going to be asked to do. The four
+AI apps are Chromium programs needing about 700 MB each, and that is a fact about them; the Linux
+computer underneath runs in a few hundred megabytes. There are two answers now and the phone is
+told which one it gets. Memory is compared in bytes with a stated tolerance rather than rounded
+gigabytes, which used to refuse a phone sold as 4 GB for reporting 3.6. On a phone Android calls
+low-memory the two framebuffers are RGB_565, halving both of them and every frame's upload.
+
+## Running in the background
+
+"Smart" closed a session for being idle when nothing had been *touched* — so a build, a download
+or an AI agent left running with the phone in a pocket, which is exactly when that is worth doing,
+was closed at full stretch. PRoot traces every process in the container, so its own processor time
+rises and falls with whatever the computer inside is doing. **Work counts as use now, because it
+is.**
+
+And an app downloaded straight from its publisher resumes. These files are 200–700 MB, usually
+over mobile data, and a download that stopped at 600 MB cost 600 MB and bought nothing.
+
+## Design and game tools
+
+Blender, Godot, GIMP and Inkscape — all ARM64 builds from Ubuntu's own catalogue. Everything draws
+on the processor, because no app in a container on an unrooted phone has a path to a graphics
+chip, and the card says so before the download starts: modelling, 2D work, a game's editor and
+scripting are responsive; a lit 3D viewport and a full render are slow, and a render can be left
+to run. The FAQ used to say game engines and 3D were "not possible here". They run. They run
+slowly. That is now what it says.
+
+## Terms, in the fewest words that are still true
+
+There are three sets of them and confusing the three is how people end up surprised:
+PocketLinux's own, Ubuntu's, and the AI companies'. Settings → Terms says whose is whose in six
+short paragraphs, and the credits paragraph that used to carry all of it is four lines now.
+
+## The look
+
+A `gtk.css`, which did not exist anywhere and is the one real lever GTK gives: rounder corners and
+controls tall enough for a thumb. Vertical gradients on the panel, the title bars and the menu
+headers, which those theme formats have always had and nothing used. Hover and pressed states on
+the panel. A lit top edge instead of a dark seam. The Android app gets one glass surface behind
+its cards and pill-shaped bar buttons with a hairline.
+
+No compositor, no blur, no rounded window corners: Openbox 3's theme format has no radius, no
+alpha and no shadow, and there is no compositor here to add them. Real backdrop blur is not
+available to an Android View either — `RenderEffect` blurs the view's own content, not what is
+behind it. So the depth comes from gradients and borders, or it does not come at all.
+
+Opening the app on a phone in dark mode no longer flashes a white rectangle. That window exists
+before `onCreate`, so no code could have fixed it; a `values-night` theme could.
+
+## Tests
+
+Sixteen Java test suites existed, were green, and nothing ran them: only two were named in the
+runner. They are picked up by glob now, so a new one runs the moment it is written. The rotation
+fix has a guard of its own — the two Android constants that mean "either way up" may not come
+back.
+
+---
+
 # PocketLinux 11.0.5 — the computer stops stopping
 
 The desktop was ending by itself with "The desktop display ended unexpectedly (exit 137)". The

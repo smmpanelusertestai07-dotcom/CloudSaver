@@ -73,6 +73,8 @@ final class VncView extends View implements VncClient.Listener {
      * Decided once, because it must not change between the pair.
      */
     private Bitmap.Config framebufferConfig;
+    /** Scratch for CopyRect, grown once and reused: a scroll sends many small rectangles. */
+    private int[] copyBuffer;
     private Canvas frontCanvas;
     private final android.graphics.Rect dirty = new android.graphics.Rect();
     private boolean anyDirty;
@@ -1060,15 +1062,19 @@ final class VncView extends View implements VncClient.Listener {
             int safeWidth = Math.min(width, Math.min(target.getWidth() - x, target.getWidth() - sourceX));
             int safeHeight = Math.min(height, Math.min(target.getHeight() - y, target.getHeight() - sourceY));
             if (x < 0 || y < 0 || sourceX < 0 || sourceY < 0 || safeWidth <= 0 || safeHeight <= 0) return;
-            Bitmap scratch = null;
             try {
-                scratch = Bitmap.createBitmap(target, sourceX, sourceY, safeWidth, safeHeight);
-                new Canvas(target).drawBitmap(scratch, x, y, null);
-            } catch (RuntimeException outOfRoom) {
+                // Read the block out, then write it back at the new place. The read is not
+                // optional and it is not a copy for tidiness: a bitmap blitted onto itself with
+                // overlapping source and destination is undefined, and a scroll overlaps every
+                // time. One reused array rather than a scratch Bitmap per rectangle, because a
+                // page scrolling sends a great many of these.
+                int needed = safeWidth * safeHeight;
+                if (copyBuffer == null || copyBuffer.length < needed) copyBuffer = new int[needed];
+                target.getPixels(copyBuffer, 0, safeWidth, sourceX, sourceY, safeWidth, safeHeight);
+                target.setPixels(copyBuffer, 0, safeWidth, x, y, safeWidth, safeHeight);
+            } catch (RuntimeException | OutOfMemoryError refused) {
                 // A copy that cannot be made is not a reason to drop the connection: the next
                 // full update paints the same pixels. Leave the area dirty and carry on.
-            } finally {
-                if (scratch != null) scratch.recycle();
             }
             if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
             else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
