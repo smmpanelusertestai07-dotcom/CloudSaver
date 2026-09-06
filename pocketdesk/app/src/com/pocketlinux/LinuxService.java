@@ -343,8 +343,9 @@ public final class LinuxService extends Service {
     private String smartStopReason() {
         long idleMinutes = (System.currentTimeMillis() - lastInteractionAt()) / 60_000L;
         if (idleMinutes >= ContainerRuntime.SMART_IDLE_MINUTES) {
-            return "Nothing was touched for " + idleMinutes + " minutes, so the session was closed "
-                    + "to save battery. Open the desktop again whenever you like.";
+            return "Nothing was touched and the computer was doing nothing for " + idleMinutes
+                    + " minutes, so the session was closed to save battery. Open the desktop "
+                    + "again whenever you like.";
         }
         DeviceProbe probe = DeviceProbe.read(this);
         if (probe.batteryPercent >= 0 && probe.batteryPercent < ContainerRuntime.SMART_BATTERY_FLOOR
@@ -373,10 +374,44 @@ public final class LinuxService extends Service {
     }
 
 
-    /** The last time anything was typed or tapped on the desktop, or when it opened. */
+    /**
+     * The last time anything was typed or tapped on the desktop, the computer inside it did some
+     * real work, or the session opened.
+     *
+     * "Nothing was touched" used to mean exactly that: a finger on the glass. So a session left
+     * to build a project, download a dependency or let an AI agent work -- with the phone in a
+     * pocket, which is precisely when that is worth doing -- was closed for being idle while it
+     * was at full stretch. Work counts as use now, because it is.
+     */
     private long lastInteractionAt() {
         long touched = VncView.lastInteractionAt;
-        return touched > 0 ? Math.max(touched, sessionStartedAt) : sessionStartedAt;
+        long used = Math.max(touched > 0 ? touched : 0L, busySince());
+        return Math.max(used, sessionStartedAt);
+    }
+
+    /**
+     * Ticks of processor time above which the container counts as working rather than sitting.
+     *
+     * The monitor samples every 30 seconds. An idle desktop still spends a little -- a clock
+     * redrawing, a panel repainting -- so this is set well above that: 300 ticks is three
+     * seconds of processor time in thirty, about a tenth of one core.
+     */
+    private static final long BUSY_TICKS = 300;
+    private long lastCpuTicks = -1;
+    private long lastBusyAt;
+
+    private long busySince() {
+        Process running = activeProcess;
+        long ticks = running == null ? -1 : ProotProcess.cpuTicks(running);
+        if (ticks < 0) {
+            lastCpuTicks = -1;
+            return lastBusyAt;
+        }
+        if (lastCpuTicks >= 0 && ticks - lastCpuTicks >= BUSY_TICKS) {
+            lastBusyAt = System.currentTimeMillis();
+        }
+        lastCpuTicks = ticks;
+        return lastBusyAt;
     }
 
     @Override public void onCreate() {

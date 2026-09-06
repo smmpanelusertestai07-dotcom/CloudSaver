@@ -61,13 +61,17 @@ public final class VncClientProtocolTest {
                 boolean rawOffered = false;
                 boolean resizeOffered = false;
                 boolean cursorOffered = false;
+                boolean copyRectOffered = false;
                 for (int i = 0; i < encodingCount; i++) {
                     encodings[i] = input.readInt();
                     if (encodings[i] == 0) rawOffered = true;
+                    if (encodings[i] == 1) copyRectOffered = true;
                     if (encodings[i] == -308) resizeOffered = true;
                     if (encodings[i] == -239) cursorOffered = true;
                 }
                 require(rawOffered, "Raw encoding must be offered");
+                // Without CopyRect every scroll re-sends every pixel of the page.
+                require(copyRectOffered, "CopyRect must be offered");
                 require(resizeOffered, "ExtendedDesktopSize must be offered so the desktop can resize");
                 // With this the server stops painting its arrow into the picture and sends the
                 // pointer's shape instead, so the viewer can show a hand in Finger mode.
@@ -76,16 +80,25 @@ public final class VncClientProtocolTest {
                 input.readFully(request);
                 require(request[0] == 3 && request[1] == 0, "full framebuffer request missing");
 
-                // One update with two rectangles: the picture, then the pointer's shape.
+                // One update with three rectangles: the picture, a CopyRect that moves the second
+                // pixel over the first, then the pointer's shape.
                 output.writeByte(0);
                 output.writeByte(0);
-                output.writeShort(2);
+                output.writeShort(3);
                 output.writeShort(0);
                 output.writeShort(0);
                 output.writeShort(2);
                 output.writeShort(1);
                 output.writeInt(0);
                 output.write(new byte[]{0, 0, (byte) 255, 0, 0, (byte) 255, 0, 0});
+                // CopyRect: take the 1x1 block at (1,0) and put it at (0,0).
+                output.writeShort(0);
+                output.writeShort(0);
+                output.writeShort(1);
+                output.writeShort(1);
+                output.writeInt(1);
+                output.writeShort(1);
+                output.writeShort(0);
                 // Cursor: hotspot (1,0), 2x1, a red pixel that is part of the cursor and a green
                 // one that the mask leaves out.
                 output.writeShort(1);
@@ -132,6 +145,7 @@ public final class VncClientProtocolTest {
         AtomicReference<Throwable> clientError = new AtomicReference<>();
         AtomicReference<int[]> received = new AtomicReference<>();
         AtomicReference<int[]> cursor = new AtomicReference<>();
+        AtomicReference<int[]> copied = new AtomicReference<>();
         AtomicInteger cursorHotspot = new AtomicInteger(-1);
         AtomicInteger completed = new AtomicInteger();
         AtomicInteger completedBeforeCursor = new AtomicInteger(-1);
@@ -149,6 +163,10 @@ public final class VncClientProtocolTest {
             @Override public void onUpdateComplete() {
                 completed.incrementAndGet();
                 frame.countDown();
+            }
+            @Override public void onCopyRect(int sourceX, int sourceY, int x, int y,
+                    int width, int height) {
+                copied.set(new int[]{sourceX, sourceY, x, y, width, height});
             }
             @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
                 completedBeforeCursor.set(completed.get());
@@ -172,6 +190,12 @@ public final class VncClientProtocolTest {
         holder[0].close();
         client.join(2000);
         server.close();
+        int[] move = copied.get();
+        if (move == null) throw new AssertionError("the CopyRect rectangle never reached the viewer");
+        if (move[0] != 1 || move[1] != 0 || move[2] != 0 || move[3] != 0
+                || move[4] != 1 || move[5] != 1) {
+            throw new AssertionError("CopyRect decoded wrongly: " + java.util.Arrays.toString(move));
+        }
         if (serverError.get() != null) throw new AssertionError("server failed", serverError.get());
         if (clientError.get() != null) throw new AssertionError("client failed", clientError.get());
         int[] pixels = received.get();
@@ -185,7 +209,7 @@ public final class VncClientProtocolTest {
         require(cursorHotspot.get() == 100, "the hotspot rides in the rectangle's x and y");
         require(completedBeforeCursor.get() == 0, "the cursor is delivered before the update is called complete");
         require(completed.get() == 1, "one update, one completion: " + completed.get());
-        System.out.println("PASS VncClientProtocolTest (raw, cursor shape, update completion)");
+        System.out.println("PASS VncClientProtocolTest (raw, CopyRect, cursor shape, update completion)");
     }
 
     private static void require(boolean condition, String message) {

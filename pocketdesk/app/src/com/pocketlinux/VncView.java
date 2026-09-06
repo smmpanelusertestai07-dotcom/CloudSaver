@@ -68,6 +68,11 @@ final class VncView extends View implements VncClient.Listener {
      * on screen was half old and half new -- the tearing seen whenever something scrolled.
      */
     private Bitmap back;
+    /**
+     * The pixel format both framebuffers use: RGB_565 on a small phone, full colour elsewhere.
+     * Decided once, because it must not change between the pair.
+     */
+    private Bitmap.Config framebufferConfig;
     private Canvas frontCanvas;
     private final android.graphics.Rect dirty = new android.graphics.Rect();
     private boolean anyDirty;
@@ -354,8 +359,12 @@ final class VncView extends View implements VncClient.Listener {
             resizeAttempts = 0;
             // A key row can open during the resize debounce. Use the size recorded for the
             // actual screen change, so a temporary toolbar cannot shrink the Linux root.
-            int viewWidth = matchedWidth > 0 ? matchedWidth : getWidth();
-            int viewHeight = matchedHeight > 0 ? matchedHeight : getHeight();
+            // The frame kept around the desktop comes off BEFORE the size is chosen. It was not,
+            // so the desktop was always about 4 % larger than the rectangle it was drawn into,
+            // every frame was resampled on its way to the screen, and no text was ever sharp.
+            int inset = 2 * frame();
+            int viewWidth = (matchedWidth > 0 ? matchedWidth : getWidth()) - inset;
+            int viewHeight = (matchedHeight > 0 ? matchedHeight : getHeight()) - inset;
             if (viewWidth < 320 || viewHeight < 320) return;
             int[] size = ViewerSize.choose(viewWidth, viewHeight, wideWorkspace, magnification);
             viewWidth = size[0];
@@ -442,6 +451,11 @@ final class VncView extends View implements VncClient.Listener {
         layoutDestination(current);
         synchronized (pixelLock) {
             if (current.isRecycled()) return;
+            // Smoothing is only worth paying for when the picture is actually being scaled. At
+            // 100 % the desktop is now exactly the size of the rectangle it is drawn into, and a
+            // filtered 1:1 blit is a blur of perfectly good pixels as well as a slower one.
+            paint.setFilterBitmap(Math.abs(destination.width() - current.getWidth()) > 1f
+                    || Math.abs(destination.height() - current.getHeight()) > 1f);
             canvas.drawBitmap(current, null, destination, paint);
         }
         // A session that has ended keeps its last frame on screen, which looked exactly like a
@@ -997,6 +1011,14 @@ final class VncView extends View implements VncClient.Listener {
         });
     }
 
+    private Bitmap.Config framebufferConfig() {
+        if (framebufferConfig == null) {
+            framebufferConfig = DeviceCheck.isSmallPhone(getContext())
+                    ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
+        }
+        return framebufferConfig;
+    }
+
     /** The desktop's current size in pixels, for the details the status label opens. */
     String desktopSize() {
         Bitmap current = bitmap;
@@ -1015,6 +1037,39 @@ final class VncView extends View implements VncClient.Listener {
             long needed = (long) (safeHeight - 1) * width + safeWidth;
             if (needed > pixels.length) return;
             target.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
+            if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
+            else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
+        }
+    }
+
+    /**
+     * A block of the desktop that is already here, moved somewhere else on it.
+     *
+     * This is what a scroll actually is, and what a window being dragged and a tab being switched
+     * mostly are. The server sends six bytes instead of the pixels, and the copy happens in the
+     * back buffer, on the network thread, under the same lock every other write uses.
+     *
+     * The scratch copy is not optional: a bitmap blitted onto itself with overlapping source and
+     * destination is undefined -- rows can be read after they have been overwritten -- which is
+     * exactly the case a scroll produces every time.
+     */
+    @Override public void onCopyRect(int sourceX, int sourceY, int x, int y, int width, int height) {
+        synchronized (backLock) {
+            Bitmap target = back;
+            if (target == null || target.isRecycled()) return;
+            int safeWidth = Math.min(width, Math.min(target.getWidth() - x, target.getWidth() - sourceX));
+            int safeHeight = Math.min(height, Math.min(target.getHeight() - y, target.getHeight() - sourceY));
+            if (x < 0 || y < 0 || sourceX < 0 || sourceY < 0 || safeWidth <= 0 || safeHeight <= 0) return;
+            Bitmap scratch = null;
+            try {
+                scratch = Bitmap.createBitmap(target, sourceX, sourceY, safeWidth, safeHeight);
+                new Canvas(target).drawBitmap(scratch, x, y, null);
+            } catch (RuntimeException outOfRoom) {
+                // A copy that cannot be made is not a reason to drop the connection: the next
+                // full update paints the same pixels. Leave the area dirty and carry on.
+            } finally {
+                if (scratch != null) scratch.recycle();
+            }
             if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
             else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
         }
@@ -1178,8 +1233,15 @@ final class VncView extends View implements VncClient.Listener {
                 }
                 recycleFramebuffers();
                 try {
-                    bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                    back = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                    // Two full screens are allocated here, and on a small phone they are the
+                    // largest thing this app owns. RGB_565 halves both of them AND halves what
+                    // is pushed to the GPU on every frame; setPixels and drawBitmap convert on
+                    // the way in and out, so nothing else changes. The cost is faint banding in
+                    // a gradient, which is the right trade on a phone that would otherwise be
+                    // swapping. A phone with room keeps the full-colour pair.
+                    Bitmap.Config config = framebufferConfig();
+                    bitmap = Bitmap.createBitmap(width, height, config);
+                    back = Bitmap.createBitmap(width, height, config);
                     return true;
                 } catch (OutOfMemoryError | IllegalArgumentException error) {
                     recycleFramebuffers();

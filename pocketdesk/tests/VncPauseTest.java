@@ -27,6 +27,7 @@ public final class VncPauseTest {
                     holder[0].typeCodePoint('B');
                 }
                 public void onCursor(int x, int y, int w, int h, int[] p) {}
+                public void onCopyRect(int sourceX, int sourceY, int x, int y, int w, int h) {}
                 public void onClipboard(String text) {}
                 public void onDisconnected(String reason) {}
             });

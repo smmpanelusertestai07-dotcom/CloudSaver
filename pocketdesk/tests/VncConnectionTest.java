@@ -47,6 +47,7 @@ public final class VncConnectionTest {
                 public void onRectangle(int x, int y, int w, int h, int[] pixels) {}
                 public void onUpdateComplete() { updates.incrementAndGet(); holder[0].close(); }
                 public void onCursor(int x, int y, int w, int h, int[] pixels) {}
+                public void onCopyRect(int sourceX, int sourceY, int x, int y, int w, int h) {}
                 public void onClipboard(String text) {}
                 public void onDisconnected(String reason) {}
             });

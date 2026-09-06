@@ -188,6 +188,18 @@ public final class MainActivity extends Activity {
      * a cold start; a rotation or a return from another app skips straight to the lock.
      */
     private void showIntro() {
+        // A shortcut is an instruction, not a visit: someone who long-pressed the icon and chose
+        // "Open desktop" asked for the desktop, and holding that behind three and a half seconds
+        // of brand is the app taking time that is not its to take. Same on a phone Android calls
+        // low-memory, where those seconds are spent on the one thing nobody needs.
+        if (pendingRoute != null || DeviceCheck.isSmallPhone(this)) {
+            introShowing = false;
+            if (started) {
+                if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                else consumeRoute();
+            }
+            return;
+        }
         introShowing = true;
         final FrameLayout intro = new FrameLayout(this);
         intro.setBackgroundColor(Color.rgb(13, 27, 62));
@@ -233,22 +245,31 @@ public final class MainActivity extends Activity {
 
         mark.setScaleX(0.9f); mark.setScaleY(0.9f);
         mark.animate().scaleX(1f).scaleY(1f).setDuration(420).start();
+        // The opening screen must never end without deciding what happens next: with the lock on
+        // it asks, and without it the shortcut the owner tapped is honoured here, because
+        // onResume already ran and skipped it while this was up. Written once and called from
+        // both the timer and a tap, so a tap really does skip it rather than running it twice.
+        final Runnable[] finish = new Runnable[1];
+        finish[0] = () -> {
+            if (!introShowing) return;
+            introShowing = false;
+            intro.animate().alpha(0f).setDuration(220)
+                    .withEndAction(() -> {
+                        shell.removeView(intro);
+                        if (started) {
+                            if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
+                            else consumeRoute();
+                        }
+                    }).start();
+        };
+        intro.setOnClickListener(v -> finish[0].run());
         handler.postDelayed(() -> {
-            first.animate().alpha(0f).setDuration(260).start();
-            second.animate().alpha(1f).setDuration(420).start();
-        }, 1300L);
-        handler.postDelayed(() -> intro.animate().alpha(0f).setDuration(360)
-                .withEndAction(() -> {
-                    shell.removeView(intro);
-                    introShowing = false;
-                    // The opening screen must never end without deciding what happens next: with
-                    // the lock on, it asks; without it, the shortcut the owner tapped is honoured
-                    // here, because onResume already ran and skipped it while the intro was up.
-                    if (started) {
-                        if (AppLock.isLocked(this)) AppLock.show(this, shell, this::consumeRoute);
-                        else consumeRoute();
-                    }
-                }).start(), 3100L);
+            if (!introShowing) return;
+            first.animate().alpha(0f).setDuration(220).start();
+            second.animate().alpha(1f).setDuration(320).start();
+        }, 700L);
+        // 1.6 seconds, not 3.5. Long enough to read the name, short enough that nobody waits.
+        handler.postDelayed(() -> finish[0].run(), 1600L);
     }
 
     private LinearLayout introColumn() {
@@ -724,8 +745,9 @@ public final class MainActivity extends Activity {
         compatibleRow = new Ui.Row(this, check.compatible ? R.drawable.ic_check : R.drawable.ic_stop,
                 check.headline, "Tap for the requirements and what this phone has",
                 R.drawable.ic_chevron, dark, v -> toggleDetail(compatibleRow, phoneDetail, DeviceCheck.run(this).detail));
-        compatibleRow.setStatus(check.compatible ? "COMPATIBLE" : "NOT COMPATIBLE",
-                check.compatible ? Ui.SUCCESS : Ui.DANGER);
+        compatibleRow.setStatus(!check.compatible ? "NOT COMPATIBLE"
+                        : check.desktopOnly ? "DESKTOP ONLY" : "COMPATIBLE",
+                !check.compatible ? Ui.DANGER : check.desktopOnly ? Ui.WARNING : Ui.SUCCESS);
         card.addView(compatibleRow, Ui.matchWrap(this, 10));
         phoneDetail = detailUnder(card);
         return card;
@@ -2052,7 +2074,10 @@ public final class MainActivity extends Activity {
 
     // A clock does not know whether you are using the desktop; it only knows how long ago you
     // opened it. Smart watches the phone instead -- it lets a session you are working in run,
-    // and ends one you walked away from, or one the battery can no longer carry.
+    // and ends one you walked away from, or one the battery can no longer carry. "Working in"
+    // counts the computer's own work as well as your fingers: a build, a download or an AI
+    // agent left running with the phone in a pocket is exactly when this matters, and closing
+    // that for "nothing was touched" was closing it at full stretch.
     private static final String[] TIMER_LABELS = {
             "Smart · recommended", "1 hour", "2 hours", "4 hours", "6 hours", "Never stop"};
     private static final int[] TIMER_VALUES = {

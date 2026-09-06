@@ -59,6 +59,7 @@ public final class VncSizeTest {
                 public void onRectangle(int x, int y, int w, int h, int[] pixels) {}
                 public void onUpdateComplete() {}
                 public void onCursor(int x, int y, int w, int h, int[] pixels) {}
+                public void onCopyRect(int sourceX, int sourceY, int x, int y, int w, int h) {}
                 public void onClipboard(String text) {}
                 public void onDisconnected(String reason) {}
             });

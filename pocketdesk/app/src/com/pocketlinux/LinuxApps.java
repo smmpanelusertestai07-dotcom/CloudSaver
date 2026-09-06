@@ -169,6 +169,20 @@ final class LinuxApps {
             + "if pd_update force; then return 0; fi; "
             + "echo \"PocketLinux: the $1 repository did not answer; removing it again\"; "
             + "rm -f \"$pd_f\"; pd_update force || true; return 1; }; "
+            // An app downloaded straight from its publisher, resumably.
+            //
+            // "curl -o /tmp/x.deb --retry 3" starts again from zero every time, and these files
+            // are 200-700 MB on a phone that is usually on mobile data: a download that stopped
+            // at 600 MB cost 600 MB and bought nothing. The part-file lives outside /tmp so it
+            // survives a failed install and the next attempt continues from where it stopped.
+            // A server that will not do ranges falls back to the whole file, which is only ever
+            // what the old code did anyway.
+            + "pd_fetch() { pd_dir=\"$PD_STATE/downloads\"; mkdir -p \"$pd_dir\"; "
+            + "pd_out=\"$pd_dir/$2\"; "
+            + "if curl --fail --location --retry 3 --retry-delay 5 -C - -o \"$pd_out\" \"$1\" "
+            + "|| curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\"; then "
+            + "[ -s \"$pd_out\" ] && { printf '%s' \"$pd_out\"; return 0; }; fi; "
+            + "echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -375,8 +389,8 @@ final class LinuxApps {
                             + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
                             + "apt-get install -y --only-upgrade chatgpt; else "
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
-                            + "curl --fail --location --retry 3 '" + LATEST_CHATGPT + "' -o /tmp/chatgpt.deb; "
-                            + "apt-get install -y /tmp/chatgpt.deb; rm -f /tmp/chatgpt.deb; fi",
+                            + "pd_deb=$(pd_fetch '" + LATEST_CHATGPT + "' chatgpt.deb) || exit 12; "
+                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"; fi",
                     "apt-get remove -y chatgpt", false),
 
             new App("claude", "Claude Desktop",
@@ -410,8 +424,8 @@ final class LinuxApps {
                             + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
                             + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
-                            + "curl --fail --location --retry 3 \"$url\" -o /tmp/cursor.deb; "
-                            + "apt-get install -y /tmp/cursor.deb; rm -f /tmp/cursor.deb",
+                            + "pd_deb=$(pd_fetch \"$url\" cursor.deb) || exit 12; "
+                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"",
                     "apt-get remove -y cursor", false),
 
             new App("antigravity", "Antigravity",
