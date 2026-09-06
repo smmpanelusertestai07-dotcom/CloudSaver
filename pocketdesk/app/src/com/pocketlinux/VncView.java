@@ -456,6 +456,15 @@ final class VncView extends View implements VncClient.Listener {
             return;
         }
         layoutDestination(current);
+        // Connected, but to a desktop that has not been painted yet: the display answers a
+        // minute before the file manager draws the wallpaper, and that minute was a black
+        // rectangle with a cursor in it. The starting card stays up, with what the desktop is
+        // doing, until the desktop's own services have been launched.
+        if (live && (LinuxService.isDesktopRunning() || LinuxService.isDesktopStarting())
+                && !LinuxService.desktopDrawn()) {
+            drawStarting(canvas);
+            return;
+        }
         synchronized (pixelLock) {
             if (current.isRecycled()) return;
             // Smoothing is only worth paying for when the picture is actually being scaled. At
@@ -1198,6 +1207,17 @@ final class VncView extends View implements VncClient.Listener {
             textY += lineHeight;
         }
         postInvalidateOnAnimation();
+    }
+
+    /** The same card as the wait for the display, over the frame, naming the phase the desktop is in. */
+    private void drawStarting(Canvas canvas) {
+        String phase = LinuxService.startupPhase();
+        String saved = status;
+        status = "Starting your Linux computer\u2026 "
+                + (phase == null || phase.isEmpty() ? "" : phase + ".")
+                + " Usually under a minute.";
+        drawWaiting(canvas);
+        status = saved;
     }
 
     /** Greedy word wrap, so a long sentence stays inside the card instead of past the screen. */

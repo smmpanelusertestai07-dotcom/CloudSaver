@@ -227,6 +227,28 @@ if ! wait_for_display 40; then
 fi
 
 
+# The very first thing painted, before any of the minute of preparation that follows: the
+# desktop's own navy. A new X server's root is black, and the viewer connects the moment the
+# display answers, so the owner watched a black rectangle until the file manager painted the
+# wallpaper -- and read it as broken. The same call is made again later, when it is safe to
+# set the cursor too; this one is only about the colour.
+DISPLAY=:1 xsetroot -solid '#0b1320' >/dev/null 2>&1 || true
+
+# How big a Chromium app may draw itself, worked out once here from the geometry and dpi this
+# desktop was started with, and read by pocketdesk-open at every launch. A Chromium app scales
+# its minimum window width with its scale factor, so past a point the window is wider than the
+# phone and its close button is off the edge; this keeps a 560-CSS-pixel window on the screen.
+# Hundredths, written as "1.28": the launcher passes it straight to --force-device-scale-factor.
+SHORT_SIDE=${GEOMETRY%%x*}
+[ "${GEOMETRY#*x}" -lt "$SHORT_SIDE" ] 2>/dev/null && SHORT_SIDE=${GEOMETRY#*x}
+case "$SHORT_SIDE" in ''|*[!0-9]*) SHORT_SIDE=720 ;; esac
+CHROMIUM_SCALE=$(( SHORT_SIDE * 100 / 560 ))
+[ "$CHROMIUM_SCALE" -gt $(( DPI * 100 / 96 )) ] && CHROMIUM_SCALE=$(( DPI * 100 / 96 ))
+[ "$CHROMIUM_SCALE" -lt 100 ] && CHROMIUM_SCALE=100
+[ "$CHROMIUM_SCALE" -gt 200 ] && CHROMIUM_SCALE=200
+mkdir -p "$HOME/.config/pocketdesk"
+printf '%d.%02d\n' $(( CHROMIUM_SCALE / 100 )) $(( CHROMIUM_SCALE % 100 )) > "$HOME/.config/pocketdesk/chromium-scale"
+
 # Keep the computer's Downloads as a real private directory. Very old releases made it a link
 # into Shared; unlinking that link leaves every old file safely in Shared/Downloads and avoids
 # silently moving anything when the owner changes this setting.
@@ -350,15 +372,41 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgco
 #
 # The icon sizes are pixels, and pcmanfm does not scale them by Xft.dpi the way it scales its
 # text, so on a phone screen they stayed thumbnail-sized however large the type grew. Scaled
-# here from the same dpi as everything else, and clamped: libfm refuses a big icon above 96.
-BIG_ICON=$(( 72 * DPI / 120 ))
-[ "$BIG_ICON" -gt 96 ] && BIG_ICON=96
+# here from the same dpi as everything else; libfm does not clamp big_icon_size, so 128 is fine.
+#
+# A desktop icon's label is exactly 100 pixels wide whatever the icon size or the dpi -- that
+# number is a constant in pcmanfm's desktop.c (on_size_allocate: text_w = 100, and the Pango
+# layout is given that width with PANGO_WRAP_WORD_CHAR), and a word wider than it is broken
+# wherever the hundredth pixel falls. At 179 dpi the old 11-point face was 27 pixels tall,
+# "Antigravity" was 150 pixels wide, and the label read "Antigra" over "vity"; "Chrome" came
+# out as "Chro" over "e". So the desktop's OWN font is a fixed 18 pixels tall, whatever the
+# dpi: "Antigravity" -- the longest name that gets a desktop icon -- is 91 pixels of Noto Sans
+# at that size, 99 in the worst case for hinted glyph advances, and 98 even if the type falls
+# back to DejaVu Sans; 19 pixels reaches 99 before hinting and can break. The name a label
+# shows is the one pocketdesk-menu chooses ("Chrome", "Files", "Terminal"); a two-word name
+# wraps between the words, which is where a second line belongs.
+BIG_ICON=$(( 80 * DPI / 120 ))
+[ "$BIG_ICON" -gt 128 ] && BIG_ICON=128
+[ "$BIG_ICON" -lt 64 ] && BIG_ICON=64
 SMALL_ICON=$(( 24 * DPI / 120 ))
 [ "$SMALL_ICON" -gt 48 ] && SMALL_ICON=48
 THUMB=$(( 128 * DPI / 120 ))
 [ "$THUMB" -gt 256 ] && THUMB=256
-printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=%s\nsmall_icon_size=%s\nthumbnail_size=%s\n' \
+DESKTOP_FONT_PX=18
+# The same 18 pixels in points at this dpi, in tenths, because Pango takes "7.2" and a whole
+# point either way is a fifth of the label on a screen this dense. Truncated, never rounded
+# up: 7.2 points at 179 dpi is 17.9 pixels, on the safe side of the label.
+DESKTOP_FONT_PT10=$(( DESKTOP_FONT_PX * 720 / DPI ))
+[ "$DESKTOP_FONT_PT10" -lt 60 ] && DESKTOP_FONT_PT10=60
+[ "$DESKTOP_FONT_PT10" -gt 140 ] && DESKTOP_FONT_PT10=140
+DESKTOP_FONT_PT="$(( DESKTOP_FONT_PT10 / 10 )).$(( DESKTOP_FONT_PT10 % 10 ))"
+# use_trash: Delete moves a file to the Bin instead of ending it, which GLib does for local files
+# with no daemon (the trash: browser needs one, so the Bin on the desktop opens the Trash folder
+# itself). A file on the phone's own folders cannot be trashed across that mount, and pcmanfm
+# then asks before deleting it outright -- which is the honest thing for a phone file.
+printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nuse_trash=1\nterminal=lxterminal\n\n[ui]\nbig_icon_size=%s\nsmall_icon_size=%s\nthumbnail_size=%s\n' \
   "$BIG_ICON" "$SMALL_ICON" "$THUMB" > "$HOME/.config/libfm/libfm.conf"
+mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.local/share/Trash/info" 2>/dev/null || true
 
 # window manager's menu, which lists every installed app, Phone files, the terminal and the
 # window commands, rather than the file manager's own short one.
@@ -368,8 +416,8 @@ printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxtermin
 # show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
 # XDG Documents folder, which PocketLinux points at Projects, wearing the theme's grey folder in
 # a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans 11\n' \
-  > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
+  "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
 

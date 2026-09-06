@@ -515,9 +515,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         barRow.addView(keysButton, barItem(82));
 
         Button window = toolButton("Window ▾", R.drawable.ic_desktop);
-        window.setContentDescription("Window: switch apps, minimise, close, force close, paste");
+        window.setContentDescription("Window: switch apps, minimise, resize, close, force close");
         window.setOnClickListener(v -> showWindowMenu(v));
         barRow.addView(window, barItem(112));
+
+        // The phone's own things -- its volume, its microphone, its camera, its files, its
+        // clipboard -- in one place, so the Screen menu is only about how the picture is shown
+        // and the Window menu only about the computer's windows. Three menus, three owners.
+        Button phone = toolButton("Phone ▾", R.drawable.ic_phone);
+        phone.setContentDescription("Phone: volume, microphone, photo, files, paste, lock touches");
+        phone.setOnClickListener(v -> showPhoneMenu(v));
+        barRow.addView(phone, barItem(100));
 
         // ---- The row of special keys, shown on request ----------------------------------------
         keyRow = strip();
@@ -691,17 +699,6 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 .setIcon(R.drawable.ic_timer);
         items.add(0, MENU_ROTATION_LOCK, 6, rotationLocked
                 ? "Rotation lock: off" : "Rotation lock: keep this way up").setIcon(R.drawable.ic_rotate);
-        items.add(0, MENU_TOUCH_LOCK, 7, "Lock the screen: ignore touches").setIcon(R.drawable.ic_lock);
-        AudioManager sound = (AudioManager) getSystemService(AUDIO_SERVICE);
-        boolean silent = sound != null
-                && (sound.isStreamMute(AudioManager.STREAM_MUSIC)
-                    || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
-        items.add(0, MENU_VOLUME_PANEL, 8, silent
-                ? "Volume: muted" : "Volume and mute").setIcon(R.drawable.ic_volume);
-        items.add(0, MENU_MICROPHONE, 9, microphone.isRunning()
-                        ? "Microphone: turn off" : "Microphone: let the computer hear you")
-                .setIcon(R.drawable.ic_volume);
-        items.add(0, MENU_PHOTO, 10, "Take a photo into the computer").setIcon(R.drawable.ic_phone);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case MENU_FIT:
@@ -733,11 +730,42 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     return true;
                 case MENU_BIGGER: biggerInterface(); return true;
                 case MENU_AUTO_HIDE: setAutoHideBars(!autoHideBars); return true;
-                case MENU_VOLUME_PANEL: showVolume(null); return true;
                 case MENU_ROTATION_LOCK: setRotationLocked(!rotationLocked); return true;
-                case MENU_TOUCH_LOCK: setTouchLocked(true); return true;
+                default: return false;
+            }
+        });
+        menu.show();
+    }
+
+    /** Everything that is the phone's rather than the computer's or the picture's. */
+    private void showPhoneMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.setForceShowIcon(true);
+        Menu items = menu.getMenu();
+        AudioManager sound = (AudioManager) getSystemService(AUDIO_SERVICE);
+        boolean silent = sound != null
+                && (sound.isStreamMute(AudioManager.STREAM_MUSIC)
+                    || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
+        items.add(0, MENU_VOLUME_PANEL, 0, silent
+                ? "Volume: muted" : "Volume and mute").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_MICROPHONE, 1, microphone.isRunning()
+                        ? "Microphone: turn off" : "Microphone: let the computer hear you")
+                .setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_PHOTO, 2, "Take a photo into the computer").setIcon(R.drawable.ic_phone);
+        items.add(0, MENU_CLOUD_FILE, 3, "Add a file from the phone or a cloud drive")
+                .setIcon(R.drawable.ic_download);
+        items.add(0, MENU_PHONE_FILES, 4, "Phone files").setIcon(R.drawable.ic_phone);
+        items.add(0, MENU_PASTE, 5, "Paste from the phone").setIcon(R.drawable.ic_download);
+        items.add(0, MENU_TOUCH_LOCK, 6, "Lock the screen: ignore touches").setIcon(R.drawable.ic_lock);
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case MENU_VOLUME_PANEL: showVolume(null, true); return true;
                 case MENU_MICROPHONE: toggleMicrophone(); return true;
                 case MENU_PHOTO: takePhoto(); return true;
+                case MENU_CLOUD_FILE: addFileFromPhone(); return true;
+                case MENU_PHONE_FILES: chord(0xffeb, 'p'); return true;
+                case MENU_PASTE: pasteClipboard(); return true;
+                case MENU_TOUCH_LOCK: setTouchLocked(true); return true;
                 default: return false;
             }
         });
@@ -759,10 +787,6 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_MINIMISE_ALL, 5, "Minimise all: show the desktop").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_CLOSE, 6, "Close this window").setIcon(R.drawable.ic_close);
         items.add(0, MENU_FORCE_CLOSE, 7, "Force close (stuck app)").setIcon(R.drawable.ic_stop);
-        items.add(0, MENU_PASTE, 8, "Paste from the phone").setIcon(R.drawable.ic_download);
-        items.add(0, MENU_PHONE_FILES, 9, "Phone files").setIcon(R.drawable.ic_phone);
-        items.add(0, MENU_CLOUD_FILE, 9, "Add a file from the phone or a cloud drive")
-                .setIcon(R.drawable.ic_download);
         items.add(0, MENU_RELOAD, 10, "Reload the screen").setIcon(R.drawable.ic_rotate);
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
@@ -773,10 +797,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 case MENU_SWITCH: chord(0xffe9, 0xff09); return true;
                 case MENU_ALL_WINDOWS: chord(0xffeb, 0xff09); return true;
                 case MENU_MINIMISE_ALL: chord(0xffeb, 'd'); return true;
-                case MENU_PASTE: pasteClipboard(); return true;
                 case MENU_APPS: chord(0xffeb, 'a'); return true;
-                case MENU_PHONE_FILES: chord(0xffeb, 'p'); return true;
-                case MENU_CLOUD_FILE: addFileFromPhone(); return true;
                 case MENU_RELOAD: chord(0xffeb, 'r'); return true;
                 case MENU_FIT_WINDOW: chord(0xffeb, 'f'); return true;
                 case MENU_RESIZE: startWindowResize(); return true;
@@ -807,7 +828,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     Toast.LENGTH_LONG).show();
             return;
         }
-        showVolume(manager);
+        showVolume(manager, volumePanel != null && volumePanel.getVisibility() == View.VISIBLE
+                && !volumeAutoHiding);
     }
 
     private Button muteBarButton;
@@ -816,6 +838,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private ProgressBar volumeBar;
     private Button muteButton;
     private LinearLayout volumePanel;
+    /** True while the panel is up only because a volume key nudged it. */
+    private boolean volumeAutoHiding;
     private final Runnable hideVolume = () -> {
         if (volumePanel != null) volumePanel.animate().alpha(0f).setDuration(220)
                 .withEndAction(() -> { if (volumePanel != null) volumePanel.setVisibility(View.GONE); }).start();
@@ -830,7 +854,12 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
      * the media stream and touches no other, so a phone on silent with media turned up still has
      * sound here, and that surprises people until they are told which volume they are moving.
      */
-    private void showVolume(AudioManager manager) {
+    /**
+     * @param opened true when the owner asked for the panel (the Phone menu): it then stays until
+     *               it is closed, with its own button or a tap anywhere else. A volume key shows
+     *               it for a moment only, as every phone does.
+     */
+    private void showVolume(AudioManager manager, boolean opened) {
         if (volumePanel == null || outer == null) return;
         if (manager == null) manager = (AudioManager) getSystemService(AUDIO_SERVICE);
         int percent = 0;
@@ -857,35 +886,84 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         volumePanel.animate().cancel();
         volumePanel.setAlpha(1f);
         volumePanel.removeCallbacks(hideVolume);
-        // Long enough to press the buttons that are on it, which the old second and a half
-        // was not: it vanished under the finger reaching for it.
-        volumePanel.postDelayed(hideVolume, 3200L);
+        // Opened on purpose: it stays. Nudged by a key: long enough to press the buttons that
+        // are on it, which the old second and a half was not.
+        volumeAutoHiding = !opened;
+        if (!opened) volumePanel.postDelayed(hideVolume, 3200L);
+    }
+
+    private void hideVolumeNow() {
+        if (volumePanel == null) return;
+        // The panel is still VISIBLE for the 220 ms fade. A volume key pressed inside that
+        // window used to read "visible and opened on purpose" and bring it straight back, sticky.
+        volumeAutoHiding = true;
+        volumePanel.removeCallbacks(hideVolume);
+        hideVolume.run();
+    }
+
+    /**
+     * A tap anywhere that is not the volume panel puts the panel away, exactly as the phone's
+     * own does. Watched here rather than on the desktop view, because the desktop view must
+     * never know that a panel exists.
+     */
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (volumePanel != null && volumePanel.getVisibility() == View.VISIBLE
+                && event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN) {
+            int[] at = new int[2];
+            volumePanel.getLocationOnScreen(at);
+            float x = event.getRawX();
+            float y = event.getRawY();
+            boolean inside = x >= at[0] && x <= at[0] + volumePanel.getWidth()
+                    && y >= at[1] && y <= at[1] + volumePanel.getHeight();
+            if (!inside) hideVolumeNow();
+        }
+        return super.dispatchTouchEvent(event);
     }
 
     /** The indicator itself: built once, hidden until the volume is asked about. */
     private View buildVolumePanel() {
         volumePanel = new LinearLayout(this);
         volumePanel.setOrientation(LinearLayout.VERTICAL);
-        volumePanel.setBackground(Ui.outlined(
-                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 16, this));
-        volumePanel.setElevation(Ui.dp(this, 8));
-        int pad = Ui.dp(this, 14);
-        volumePanel.setPadding(pad, Ui.dp(this, 11), pad, Ui.dp(this, 12));
-        volumeChip = Ui.bold(this, "Media volume", 14, Color.rgb(230, 236, 247));
-        volumePanel.addView(volumeChip, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // The same glass as the cards and the bar, not a black slab: what is behind it stays
+        // suggested rather than blotted out, and it looks like part of the app it is in.
+        volumePanel.setBackground(Ui.glass(this, true, 18));
+        volumePanel.setElevation(Ui.dp(this, 10));
+        int pad = Ui.dp(this, 12);
+        volumePanel.setPadding(pad, Ui.dp(this, 8), Ui.dp(this, 8), Ui.dp(this, 10));
+
+        // Title and the close button on one row. The panel used to have no way to put it away
+        // but waiting, which on a panel with buttons on it is the one thing it must not lack.
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        volumeChip = Ui.bold(this, "Media volume", 13, Color.rgb(230, 236, 247));
+        LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        chipLp.setMarginEnd(Ui.dp(this, 8));
+        head.addView(volumeChip, chipLp);
+        android.widget.ImageButton close = new android.widget.ImageButton(this);
+        close.setImageResource(R.drawable.ic_close);
+        close.setImageTintList(ColorStateList.valueOf(Color.rgb(170, 186, 224)));
+        close.setBackground(Ui.tappable(this, Ui.background(Color.rgb(32, 42, 74), 14, this), true));
+        close.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+        close.setPadding(Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6), Ui.dp(this, 6));
+        close.setContentDescription("Close the volume panel");
+        close.setOnClickListener(v -> hideVolumeNow());
+        head.addView(close, new LinearLayout.LayoutParams(Ui.dp(this, 30), Ui.dp(this, 30)));
+        volumePanel.addView(head, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         volumeBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         volumeBar.setMax(100);
         volumeBar.setProgressTintList(ColorStateList.valueOf(Color.rgb(122, 155, 255)));
         volumeBar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.rgb(44, 54, 96)));
         LinearLayout.LayoutParams barLp =
-                new LinearLayout.LayoutParams(Ui.dp(this, 196), Ui.dp(this, 7));
-        barLp.topMargin = Ui.dp(this, 9);
+                new LinearLayout.LayoutParams(Ui.dp(this, 186), Ui.dp(this, 6));
+        barLp.topMargin = Ui.dp(this, 8);
         volumePanel.addView(volumeBar, barLp);
         volumeNote = Ui.text(this, "", 11, Color.rgb(158, 172, 208));
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        noteLp.topMargin = Ui.dp(this, 7);
+        noteLp.topMargin = Ui.dp(this, 5);
         volumePanel.addView(volumeNote, noteLp);
 
         LinearLayout buttons = new LinearLayout(this);
@@ -893,17 +971,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         Button quieter = toolButton("\u2212", R.drawable.ic_volume);
         quieter.setContentDescription("Media volume down");
         quieter.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_LOWER));
-        buttons.addView(quieter, volumeButton(58));
+        buttons.addView(quieter, volumeButton(56));
         muteButton = toolButton("Mute", 0);
         muteButton.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE));
-        buttons.addView(muteButton, volumeButton(84));
+        buttons.addView(muteButton, volumeButton(80));
         Button louder = toolButton("+", R.drawable.ic_volume);
         louder.setContentDescription("Media volume up");
         louder.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_RAISE));
-        buttons.addView(louder, volumeButton(58));
+        buttons.addView(louder, volumeButton(56));
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 38));
-        rowLp.topMargin = Ui.dp(this, 11);
+                ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 36));
+        rowLp.topMargin = Ui.dp(this, 9);
         volumePanel.addView(buttons, rowLp);
 
         volumePanel.setVisibility(View.GONE);

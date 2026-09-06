@@ -73,6 +73,32 @@ PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" pla
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" \
   || fail "an app that is not Chromium-based must be started with no extra flags"
 
+# Every Chromium app is told how big to draw itself, and the answer is worked out from the
+# desktop's short side so that its minimum window always fits the screen. With no display to
+# ask (this test has none) the launcher assumes a 720-pixel phone and 120 dpi: 720/560 = 1.28
+# would be the fit, 120/96 = 1.25 is what the dpi allows, and the smaller wins.
+grep -q -- '--force-device-scale-factor=1.25' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "a Chromium app must be started with a device scale that keeps its window on the screen"
+grep -q -- '--disable-3d-apis' "$HOME/.pocketdesk/logs/electronish.log" \
+  && fail "WebGL is switched off only for the VS Code forks, not for every Chromium app"
+
+# The VS Code forks: WebGL off (its software path faulted inside the in-process GPU and took
+# Antigravity down with SIGSEGV), and the editor told the same thing in its own settings.
+mkdir -p "$WORK/usr/lib/antigravity"
+: > "$WORK/usr/lib/antigravity/chrome_100_percent.pak"
+printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/antigravity/antigravity"
+chmod +x "$WORK/usr/lib/antigravity/antigravity"
+ln -sf ../lib/antigravity/antigravity "$WORK/usr/bin/antigravity"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" antigravity >/dev/null 2>&1
+grep -q -- '--disable-3d-apis' "$HOME/.pocketdesk/logs/antigravity.log" \
+  || fail "Antigravity must be started with --disable-3d-apis: software WebGL was its SIGSEGV"
+grep -q '"terminal.integrated.gpuAcceleration": "off"' "$HOME/.config/Antigravity/User/settings.json" \
+  || fail "Antigravity's own terminal renderer must be told to stay off the GPU"
+printf '{ "mine": true }\n' > "$HOME/.config/Antigravity/User/settings.json"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" antigravity >/dev/null 2>&1
+grep -q '"mine": true' "$HOME/.config/Antigravity/User/settings.json" \
+  || fail "an owner's own settings.json must never be overwritten"
+
 # Every ordinary program lives in the same bin directory. Another program from it having a
 # window (or the wallpaper process carrying the file manager's class) must never make the
 # launcher decide that the program being tapped is "already open".

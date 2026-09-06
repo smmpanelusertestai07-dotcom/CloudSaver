@@ -102,7 +102,7 @@ menu() {
     return 0
   fi
   choice=$(zenity --list --radiolist --width=660 --height=470 \
-    --title="System settings" \
+    --title="Settings" \
     --text="The computer's own settings. Phone permissions and the app lock live in PocketLinux." \
     --column="" --column="id" --column="Setting" --column="Now" \
     --hide-column=2 --print-column=2 \

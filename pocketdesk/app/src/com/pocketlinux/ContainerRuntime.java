@@ -480,6 +480,38 @@ final class ContainerRuntime {
         }
     }
 
+    /** Which app version the reports on disk were written by. */
+    static final String KEY_REPORTS_VERSION = "reports_version";
+
+    /**
+     * Once, when a new version of the app first opens the desktop: the reports of the version
+     * before it are cleared.
+     *
+     * A retained failure is kept across restarts on purpose, so a crash that happened yesterday
+     * can still be read today. Across a version whose whole point was to fix it, that same
+     * report is a false alarm: it names a failure this version does not have, and it says so at
+     * the top of every report copied from Settings. The desktop session log, the app logs and
+     * the runtime events are all part of the same picture, so all of them start fresh together.
+     */
+    static void clearReportsFromOlderVersions(Context context) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (MainActivity.VERSION.equals(prefs.getString(KEY_REPORTS_VERSION, ""))) return;
+        File logs = new File(rootfs(context), "home/coder/.pocketdesk/logs");
+        File[] entries = logs.listFiles();
+        if (entries != null) {
+            for (File entry : entries) {
+                String name = entry.getName();
+                if (entry.isFile() && (name.endsWith(".log") || name.endsWith(".failure"))) {
+                    entry.delete();
+                }
+            }
+        }
+        File runtime = RuntimeDiagnostics.file(context);
+        runtime.delete();
+        new File(runtime.getParentFile(), "runtime-events.previous.log").delete();
+        prefs.edit().putString(KEY_REPORTS_VERSION, MainActivity.VERSION).apply();
+    }
+
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
     private static void copyAsset(Context context, String asset, String relativePath)
             throws IOException, ErrnoException {

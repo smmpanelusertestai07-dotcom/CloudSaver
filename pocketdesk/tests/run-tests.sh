@@ -223,6 +223,32 @@ grep -q "curl --fail --location --retry 3 '" "$apps" \
   && { echo "FAIL Downloads: a direct non-resuming download is back"; exit 1; }
 echo "PASS Downloads (resumable, per-URL, no truncating fallback)"
 
+# What the screenshots of 12.0.0 showed, kept fixed. The desktop is painted navy the moment the
+# display answers (it was black for the minute the desktop took to draw); a desktop icon's
+# label is a fixed 100 pixels in pcmanfm whatever the dpi, so the desktop font is a fixed 18
+# pixels -- the largest size at which "Antigravity" is never broken in the middle -- and the
+# Bin exists without a daemon.
+desk="$PROJECT_DIR/app/assets/pocketdesk-desktop.sh"
+first_root=$(grep -n "xsetroot -solid '#0b1320'" "$desk" | head -n 1 | cut -d: -f1)
+draw_phase=$(grep -n 'desktop_phase "Drawing the desktop"' "$desk" | head -n 1 | cut -d: -f1)
+[ -n "$first_root" ] && [ -n "$draw_phase" ] && [ "$first_root" -lt "$draw_phase" ] \
+  || { echo "FAIL DesktopStart: the root must be painted navy before the desktop is drawn, not after"; exit 1; }
+grep -q '^DESKTOP_FONT_PX=18$' "$desk" && grep -q 'DESKTOP_FONT_PT=' "$desk" && grep -q 'desktop_font=Noto Sans %s' "$desk" \
+  || { echo "FAIL DesktopStart: the desktop font must be a fixed 18 pixels, sized in points from the dpi"; exit 1; }
+# The arithmetic itself, at the reference phone's 179 dpi and at the two ends of the scale list.
+for pair in 179:7.2 96:13.5 200:6.4; do
+  dpi=${pair%%:*}; want=${pair#*:}
+  got=$(DPI=$dpi bash -c 'DESKTOP_FONT_PX=18; DESKTOP_FONT_PT10=$(( DESKTOP_FONT_PX * 720 / DPI )); [ "$DESKTOP_FONT_PT10" -lt 60 ] && DESKTOP_FONT_PT10=60; [ "$DESKTOP_FONT_PT10" -gt 140 ] && DESKTOP_FONT_PT10=140; echo "$(( DESKTOP_FONT_PT10 / 10 )).$(( DESKTOP_FONT_PT10 % 10 ))"')
+  [ "$got" = "$want" ] || { echo "FAIL DesktopStart: 18 pixels at $dpi dpi should be $want points, got $got"; exit 1; }
+done
+grep -q 'use_trash=1' "$desk" \
+  || { echo "FAIL DesktopStart: Delete must move a file to the Bin"; exit 1; }
+grep -q 'Name=Bin' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \
+  || { echo "FAIL DesktopStart: the Bin has no launcher"; exit 1; }
+grep -q 'desktopDrawn()' "$PROJECT_DIR/app/src/com/pocketlinux/VncView.java" \
+  || { echo "FAIL DesktopStart: the viewer no longer keeps its starting card up until the desktop is drawn"; exit 1; }
+echo "PASS DesktopStart (navy first, 18-pixel labels that never break a word, a Bin, a starting card)"
+
 # The crash this release exists for. Android 12+ SIGKILLs every forked process of an app once
 # there are more than 32; under PRoot every Linux process is one, so the ceiling is the whole
 # computer's. A real report showed 36 at peak with 1.2 GB free and lowMemory false -- memory was

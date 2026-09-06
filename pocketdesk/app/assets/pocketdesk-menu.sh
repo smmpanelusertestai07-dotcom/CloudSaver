@@ -243,6 +243,8 @@ EOF
   echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
   echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
+  echo '  <item label="Bin"><action name="Execute"><command>pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
+  echo '  <item label="Empty the bin"><action name="Execute"><command>sh -c "rm -rf /home/coder/.local/share/Trash/files/* /home/coder/.local/share/Trash/files/.[!.]* /home/coder/.local/share/Trash/info/* 2>/dev/null; notify-send -a PocketLinux Bin \"The bin is empty.\""</command></action></item>'
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
   echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
@@ -251,7 +253,7 @@ EOF
   echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
   echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
   echo '  <separator label="Desktop"/>'
-  echo '  <item label="System settings" icon="/usr/share/pixmaps/pocketdesk-settings.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-settings</command></action></item>'
+  echo '  <item label="Settings" icon="/usr/share/pixmaps/pocketdesk-settings.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-settings</command></action></item>'
   echo '  <item label="Install a downloaded app" icon="/usr/share/pixmaps/pocketdesk-package.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
@@ -356,10 +358,17 @@ cp -f "$LOCAL_APPS/pocketdesk-projects.desktop" "$DESKTOP_DIR/pocketdesk-project
 # System settings. Everything it opens already existed; what did not exist was one place that
 # looked like settings, so the theme, the bar's edge and the sound mixer were each found only by
 # someone who already knew where they were.
-printf '[Desktop Entry]\nType=Application\nName=System settings\nComment=Theme, the bar, sound, storage and software\nExec=/usr/local/bin/pocketdesk-settings\nIcon=pocketdesk-settings\nTerminal=false\nCategories=Settings;System;\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Settings\nComment=Theme, the bar, sound, storage and software\nExec=/usr/local/bin/pocketdesk-settings\nIcon=pocketdesk-settings\nTerminal=false\nCategories=Settings;System;\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-settings.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-settings.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-settings.desktop" "$DESKTOP_DIR/pocketdesk-settings.desktop"
+
+# The Bin. Delete in the file manager moves a file here (libfm's use_trash); browsing trash:
+# would need a daemon this phone does not run, so the Bin opens the Trash folder directly.
+printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec=pcmanfm /home/coder/.local/share/Trash/files\nIcon=user-trash\nTerminal=false\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-bin.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-bin.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-bin.desktop" "$DESKTOP_DIR/pocketdesk-bin.desktop"
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 # tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the

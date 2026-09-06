@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "12.0.0";
+    static final String VERSION = "12.0.5";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -1585,6 +1585,21 @@ public final class MainActivity extends Activity {
                         + "Everything else is equal: Chat, Codex, Claude Code, MCP, projects, the "
                         + "in-app browser and Chrome extensions all work here.", false);
 
+        addAnswer(card, R.drawable.ic_fullscreen, "An app's text is small, or its window ran off the screen",
+                "Two different dials, and it matters which one you turn.\n\n"
+                        + "The desktop's text size (Settings → Desktop text size, or Screen → Bigger "
+                        + "interface on the desktop) scales everything at once. ChatGPT, Claude, "
+                        + "Cursor, Antigravity and Chrome are all Chromium programs, and a Chromium "
+                        + "program scales its whole window with it — including the smallest width "
+                        + "it will allow, which the desktop cannot shrink. Past a point that width "
+                        + "is wider than the phone, and the window's right-hand edge, close "
+                        + "button included, is off the screen. PocketLinux now caps that scale "
+                        + "from the desktop's own short side so a window always fits.\n\n"
+                        + "To make one app's text bigger, use that app's own zoom: Ctrl and + "
+                        + "inside it (Ctrl and − to go back). Every one of them remembers it, and "
+                        + "it changes the text without touching the window's minimum size. Window "
+                        + "→ Fit this window to the screen puts back a window that was dragged "
+                        + "off the edge.", false);
         addAnswer(card, R.drawable.ic_desktop, "Is the desktop GNOME, KDE or Cinnamon?",
                 "None of them. This desktop is a small set of standard Ubuntu parts, each doing one "
                         + "job, chosen so the phone's memory goes to the apps and not to the "
@@ -1655,6 +1670,10 @@ public final class MainActivity extends Activity {
                         + "Permissions. Saving there puts the file on the phone itself.\n\n"
                         + "Settings → Data and files → Downloads go to chooses Ask every time, "
                         + "Computer, or Phone. Changing it never moves an existing file.\n\n"
+                        + "Delete in the file manager moves a file to the Bin, which is on the "
+                        + "desktop; the right-click menu empties it. A file in the Phone folder "
+                        + "cannot be binned across that mount, so the file manager asks before "
+                        + "deleting it for good. Hidden files: View → Show hidden, or Ctrl+H.\n\n"
                         + "The Linux system itself lives in this app's private storage "
                         + "(/data/data/com.pocketlinux/files/ubuntu-rootfs), which no other app can open.",
                 false);

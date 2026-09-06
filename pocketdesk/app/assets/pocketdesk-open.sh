@@ -430,6 +430,34 @@ if [ "$name" = "chatgpt" ]; then
   export LP_NUM_THREADS=2 OMP_NUM_THREADS=2
 fi
 
+# The two VS Code forks. The report that named this was Antigravity dying with SIGSEGV about a
+# minute after opening, every time, right after "GPU stall due to ReadPixels" and "GPU state
+# invalid after WaitForGetOffsetInRange": its terminal draws with WebGL, WebGL here is
+# SwiftShader on the processor, and with --in-process-gpu a fault in that path is a fault in the
+# whole app. There is no graphics chip for WebGL to use on this phone, so nothing is lost by
+# not offering it: xterm.js notices and falls back to its DOM renderer, which is what the
+# editor's own settings do when gpuAcceleration is off -- written below as well, so the choice
+# survives an update of the app that resets its flags.
+if [ "$name" = cursor ] || [ "$name" = antigravity ]; then
+  [ "${#flags[@]}" -eq 0 ] || flags+=(--disable-3d-apis)
+  vscode_dir=""
+  case "$name" in
+    cursor)      vscode_dir="$HOME/.config/Cursor/User" ;;
+    antigravity) vscode_dir="$HOME/.config/Antigravity/User" ;;
+  esac
+  if [ -n "$vscode_dir" ] && [ ! -f "$vscode_dir/settings.json" ]; then
+    mkdir -p "$vscode_dir" 2>/dev/null && printf '%s\n' \
+      '{' \
+      '  "terminal.integrated.gpuAcceleration": "off",' \
+      '  "window.titleBarStyle": "native",' \
+      '  "editor.minimap.enabled": false,' \
+      '  "workbench.enableExperiments": false,' \
+      '  "update.mode": "manual",' \
+      '  "telemetry.telemetryLevel": "off"' \
+      '}' > "$vscode_dir/settings.json" 2>/dev/null || true
+  fi
+fi
+
 # Linux ChatGPT needs its packaged SwiftShader path, which is independent of and
 # deliberately never inherit the Linux process model.
 if [ "$name" = "chatgpt" ] && [ "${#flags[@]}" -gt 0 ]; then
@@ -448,6 +476,47 @@ if [ "$name" = "chatgpt" ] && [ "${#flags[@]}" -gt 0 ]; then
   # The device's exit 139 is consistent with a native crash, not proof of the faulting module;
   # this restores graphics fault isolation without disabling WebGL or changing other apps.
   flags=("${kept[@]}" --use-gl=angle --use-angle=swiftshader --ignore-gpu-blocklist)
+fi
+
+# How big a Chromium app draws itself, chosen so that its window always fits the screen.
+#
+# Chromium takes its scale from Xft.dpi: 179 dpi is 1.86x, and every one of these apps has a
+# minimum window width in CSS pixels that the window manager cannot shrink below -- 400 for the
+# VS Code forks, more for a browser. 400 x 1.86 is 746 device pixels on a 720-pixel-wide
+# screen, and that is the window whose close button was off the edge and whose right-hand
+# side could not be reached whatever was zoomed. The scale is worked out here from the
+# desktop's own short side instead: as large as the dpi asks for, but never so large that a
+# 560-CSS-pixel window stops fitting. On the reference phone that is about 1.3x. Text inside
+# the app is then made bigger with the app's own zoom (Ctrl and +), which every one of them
+# remembers, and which does not move the window's minimum size.
+chromium_scale() {
+  # Worked out once by pocketdesk-desktop when the desktop starts, from the geometry and dpi
+  # it was given -- an X round trip per app launch, with a five-second stall if the display is
+  # wedged, is not a price worth paying for a number that does not change during a session.
+  local saved
+  saved=$(cat "$HOME/.config/pocketdesk/chromium-scale" 2>/dev/null)
+  case "$saved" in [12].[0-9][0-9]) printf '%s' "$saved"; return 0 ;; esac
+  # A computer whose desktop was started by an older version has no such file yet. The
+  # arithmetic is the same as the desktop's: short side over 560, capped by the dpi.
+  local geometry short dpi scale
+  geometry=$(DISPLAY="${DISPLAY:-:1}" timeout 5 xdpyinfo 2>/dev/null | awk '/dimensions:/ { print $2; exit }')
+  short=${geometry%%x*}
+  case "$geometry" in
+    *x*) [ "${geometry#*x}" -lt "$short" ] 2>/dev/null && short=${geometry#*x} ;;
+    *) short=720 ;;
+  esac
+  case "$short" in ''|*[!0-9]*) short=720 ;; esac
+  dpi=$(awk -F: '/^Xft\.dpi:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME/.Xresources" 2>/dev/null)
+  case "$dpi" in ''|*[!0-9]*) dpi=120 ;; esac
+  # Hundredths, because this shell has no decimals: 130 means 1.30.
+  scale=$(( short * 100 / 560 ))
+  [ "$scale" -gt $(( dpi * 100 / 96 )) ] && scale=$(( dpi * 100 / 96 ))
+  [ "$scale" -lt 100 ] && scale=100
+  [ "$scale" -gt 200 ] && scale=200
+  printf '%d.%02d' $(( scale / 100 )) $(( scale % 100 ))
+}
+if [ "${#flags[@]}" -gt 0 ]; then
+  flags+=("--force-device-scale-factor=$(chromium_scale)")
 fi
 
 # A per-app startup lock covers the gap before Electron creates its own singleton socket.
