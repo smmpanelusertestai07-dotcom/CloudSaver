@@ -328,6 +328,40 @@ final class LinuxApps {
                             + "printf '%s' \"${POCKETDESK_APP_VERSION:-unknown}\" > \"$PD_STATE/basics-version\"",
                     null, true),
 
+            // Making things, as opposed to writing them. Every package here is built for arm64 in
+            // Ubuntu's own catalogue -- Blender 4.0 and Godot 3.5 both are -- so none of it is a
+            // download from somewhere else that may or may not have a build for this processor.
+            //
+            // Drawing happens on the processor, not a graphics chip: no app under PRoot has a
+            // path to the phone's GPU, so llvmpipe renders everything. That is the honest limit
+            // and it is stated on the card rather than discovered. It is also less of a limit
+            // than it sounds: modelling, sculpting, animating, a 2D game, a vector drawing and a
+            // photo edit are all responsive; a lit 3D viewport and a big render are slow, and a
+            // render can simply be left running while the phone is in a pocket.
+            new App("creative", "Design and game tools",
+                    "Blender for 3D, Godot for 2D and 3D games, GIMP for photos and Inkscape for "
+                            + "drawing \u2014 the ARM64 builds from Ubuntu's own catalogue.",
+                    R.drawable.ic_palette, 0, "about 1.6 GB", 4 * GB,
+                    "15\u201340 min",
+                    "There is no graphics chip here: no app in a container on an unrooted phone can "
+                            + "reach one, so everything draws on the processor. Modelling, 2D work, "
+                            + "scripting and a game's editor are fine; a lit 3D viewport and a full "
+                            + "render are slow, and a render can be left to run.",
+                    "/usr/bin/blender",
+                    "pd_update || exit 11; "
+                            + "pd_step creative blender godot3 gimp inkscape || exit 21; "
+                            // Software rendering, said out loud to every GL program, so none of
+                            // them start by looking for a driver that is not there and failing.
+                            + "mkdir -p /etc/profile.d; "
+                            + "if [ ! -f /etc/profile.d/pocketdesk-gl.sh ]; then "
+                            + "printf 'export LIBGL_ALWAYS_SOFTWARE=1\nexport GALLIUM_DRIVER=llvmpipe\n' "
+                            + "> /etc/profile.d/pocketdesk-gl.sh; fi; "
+                            + "blender --version 2>&1 | head -n 1; godot3 --version 2>&1 | head -n 1",
+                    "apt-get remove -y --purge blender godot3 gimp inkscape >/dev/null 2>&1 || true; "
+                            + "rm -f /etc/profile.d/pocketdesk-gl.sh \"$PD_STATE/stage/creative\"; "
+                            + "apt-get -y autoremove --purge >/dev/null 2>&1 || true",
+                    true),
+
             // Mobile app development: the tools that really do work on an ARM64 phone, and none
             // that only pretend to. Every package here is in Ubuntu's own archive for arm64 --
             // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
