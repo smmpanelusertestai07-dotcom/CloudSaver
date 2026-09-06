@@ -10,6 +10,8 @@ on:
       # change what this workflow builds, so running the eight-emulator matrix
       # for it costs half an hour and proves nothing about CloudSaver.
       - "pocketdesk/**"
+      # NovaCalc, the calculator under calculator/, has its own workflow too.
+      - "calculator/**"
   workflow_dispatch:
 
 permissions:
