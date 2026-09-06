@@ -208,7 +208,9 @@ jobs:
               echo 'base64 -w0 cloudsaver-release.jks   # this string is KEYSTORE_B64'
               echo '```'
               echo ""
-              echo "Then in Settings -> Secrets and variables -> Actions add:"
+              echo "Then either run \`scripts/set-signing-secrets.sh cloudsaver-release.jks\` (needs the"
+              echo "GitHub CLI signed in as the owner - it asks for the password and sets all four),"
+              echo "or in Settings -> Secrets and variables -> Actions add by hand:"
               echo "   - \`KEYSTORE_B64\` - the base64 string printed above"
               echo "   - \`KEYSTORE_PASSWORD\` - the store password you chose"
               echo "   - \`KEY_ALIAS\` - cloudsaver"
@@ -359,7 +361,10 @@ jobs:
               -dname "CN=CloudSaver Release, OU=CloudSaver, O=CloudSaver"
             base64 -w0 cloudsaver-release.jks
 
-          Settings -> Secrets and variables -> Actions:
+          One command, with the GitHub CLI signed in as the owner:
+            scripts/set-signing-secrets.sh cloudsaver-release.jks
+
+          Or by hand, Settings -> Secrets and variables -> Actions:
             KEYSTORE_B64        the base64 string
             KEYSTORE_PASSWORD   the store password
             KEY_ALIAS           cloudsaver
