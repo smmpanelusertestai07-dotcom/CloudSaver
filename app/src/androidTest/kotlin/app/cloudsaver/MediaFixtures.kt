@@ -134,10 +134,11 @@ object MediaFixtures {
         width: Int = 1280,
         height: Int = 720,
         frames: Int = 20,
-        captureMillis: Long = 1_600_000_000_000L
+        captureMillis: Long = 1_600_000_000_000L,
+        withAudio: Boolean = false
     ): Uri? {
         val temp = File(context.cacheDir, name)
-        if (!encodeH264(temp, width, height, frames)) {
+        if (!encodeH264(temp, width, height, frames, withAudio)) {
             temp.delete()
             return null
         }
@@ -194,9 +195,26 @@ object MediaFixtures {
         )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
 
     /** Minimal buffer-mode encoder: NV12 frames in, MP4 out. */
-    private fun encodeH264(out: File, width: Int, height: Int, frames: Int): Boolean {
+    /**
+     * A real H.264 clip, and with [withAudio] a real AAC track beside it.
+     *
+     * The audio is silence, encoded through the device's own AAC encoder and
+     * muxed as a second track, because the property under test is that a
+     * track which went in comes out - a clip with no audio can prove nothing
+     * about whether the optimiser keeps sound.
+     */
+    private fun encodeH264(
+        out: File,
+        width: Int,
+        height: Int,
+        frames: Int,
+        withAudio: Boolean = false
+    ): Boolean {
         var codec: MediaCodec? = null
         var muxer: MediaMuxer? = null
+        // Encoded up front so both tracks are known before the muxer starts:
+        // MediaMuxer refuses a track added after start().
+        val audio = if (withAudio) encodeSilentAac(frames * 100_000L) ?: return false else null
         return try {
             val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height)
                 .apply {
@@ -245,8 +263,15 @@ object MediaFixtures {
                 when {
                     outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                         track = muxer.addTrack(codec.outputFormat)
+                        val audioTrack = audio?.let { muxer.addTrack(it.format) } ?: -1
                         muxer.start()
                         muxing = true
+                        audio?.samples?.forEach { (bytes, timeUs) ->
+                            val ai = MediaCodec.BufferInfo().apply {
+                                set(0, bytes.size, timeUs, 0)
+                            }
+                            muxer.writeSampleData(audioTrack, java.nio.ByteBuffer.wrap(bytes), ai)
+                        }
                     }
                     outIndex >= 0 -> {
                         val encoded = codec.getOutputBuffer(outIndex)!!
@@ -270,6 +295,72 @@ object MediaFixtures {
             runCatching { codec?.release() }
             runCatching { muxer?.stop() }
             runCatching { muxer?.release() }
+        }
+    }
+
+    private class AacTrack(val format: MediaFormat, val samples: List<Pair<ByteArray, Long>>)
+
+    /** [durationUs] of silence as AAC-LC, 44.1 kHz mono, ready to mux. */
+    private fun encodeSilentAac(durationUs: Long): AacTrack? {
+        val sampleRate = 44_100
+        val pcmPerFrame = 1024
+        var enc: MediaCodec? = null
+        return try {
+            val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1)
+                .apply {
+                    setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                    setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
+                }
+            enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
+            enc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            enc.start()
+            val pcm = ByteArray(pcmPerFrame * 2) // 16-bit mono, all zero
+            val frameUs = pcmPerFrame * 1_000_000L / sampleRate
+            val total = (durationUs / frameUs).toInt() + 1
+            val info = MediaCodec.BufferInfo()
+            val samples = mutableListOf<Pair<ByteArray, Long>>()
+            var outFormat: MediaFormat? = null
+            var sent = 0
+            var done = false
+            var guard = 0
+            while (!done && guard++ < total * 40) {
+                if (sent <= total) {
+                    val i = enc.dequeueInputBuffer(10_000)
+                    if (i >= 0) {
+                        val b = enc.getInputBuffer(i)!!
+                        b.clear()
+                        if (sent == total) {
+                            enc.queueInputBuffer(i, 0, 0, sent * frameUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        } else {
+                            b.put(pcm)
+                            enc.queueInputBuffer(i, 0, pcm.size, sent * frameUs, 0)
+                        }
+                        sent++
+                    }
+                }
+                val o = enc.dequeueOutputBuffer(info, 10_000)
+                when {
+                    o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> outFormat = enc.outputFormat
+                    o >= 0 -> {
+                        val buf = enc.getOutputBuffer(o)!!
+                        if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                            val bytes = ByteArray(info.size)
+                            buf.position(info.offset)
+                            buf.get(bytes)
+                            samples += bytes to info.presentationTimeUs
+                        }
+                        enc.releaseOutputBuffer(o, false)
+                        if ((info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) done = true
+                    }
+                }
+            }
+            val f = outFormat ?: return null
+            if (samples.isEmpty()) null else AacTrack(f, samples)
+        } catch (e: Exception) {
+            null
+        } finally {
+            runCatching { enc?.stop() }
+            runCatching { enc?.release() }
         }
     }
 

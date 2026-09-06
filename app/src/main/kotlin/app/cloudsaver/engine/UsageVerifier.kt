@@ -15,7 +15,13 @@ object UsageVerifier {
 
     fun hasUsageAccess(context: Context): Boolean = try {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = appOps.unsafeCheckOpNoThrow(
+        // checkOpNoThrow, not unsafeCheckOpNoThrow. Android 10 deprecated the
+        // first in favour of the second; Android 16 reversed that, and the
+        // platform jar this builds against marks unsafeCheckOpNoThrow
+        // deprecated and checkOpNoThrow current. Both exist on every version
+        // this app runs on and both answer the same question - is usage
+        // access granted - without recording an access the way noteOp would.
+        val mode = appOps.checkOpNoThrow(
             AppOpsManager.OPSTR_GET_USAGE_STATS,
             Process.myUid(),
             context.packageName

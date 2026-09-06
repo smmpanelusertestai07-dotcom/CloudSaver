@@ -109,6 +109,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val repo = OptionsRepo.get(ctx)
     private val db = AppDb.get(ctx)
 
+    /**
+     * How a flow that backs one screen is shared: collected while that
+     * screen is on, kept warm for five seconds across a rotation or a quick
+     * tab hop, and stopped otherwise.
+     *
+     * Every Room flow re-runs its query on every write to the table it
+     * reads, and a scan writes one row at a time - so an eagerly collected
+     * aggregate over `items` ran its full-table sum for each of twelve
+     * thousand files while the user was on Settings. Sharing it only while
+     * subscribed costs nothing visible: a StateFlow keeps its last value, so
+     * a screen that comes back sees what it saw and then the fresh answer,
+     * never a blank. What stays eager is what the tab bar and the lock gate
+     * read on every screen, and the options every screen is built from.
+     *
+     * Declared here, first, because a Kotlin property initialiser runs in
+     * source order: a flow above this line that named it would read null.
+     */
+    private val screenLocal = SharingStarted.WhileSubscribed(5_000)
+
     val options: StateFlow<Options> =
         repo.flow.stateIn(viewModelScope, SharingStarted.Eagerly, Options())
 
@@ -176,7 +195,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 db.items().bucketedItemCountFlow()
             ) { inScope, known -> known > 0 && inScope == 0 }
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, screenLocal, false)
 
     val counters: StateFlow<Counters> = combine(
         combine(newInScope, db.items().stateCountsFlow()) { n, s -> n to s },
@@ -203,7 +222,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             skipped = problems,
             duplicates = duplicates
         )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, Counters())
+    }.stateIn(viewModelScope, screenLocal, Counters())
 
     /**
      * The Home status line, slowed to human speed.
@@ -222,13 +241,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // waiting" - so for the first eight hundred milliseconds of every
         // launch Home stated "Everything is backed up" directly above a tile
         // already reading eleven files still to do.
-        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        .stateIn(viewModelScope, screenLocal, null)
 
     val savedBytes: StateFlow<Long> =
-        db.items().savedBytesFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+        db.items().savedBytesFlow().stateIn(viewModelScope, screenLocal, 0L)
 
     val processedCount: StateFlow<Int> =
-        db.items().processedCountFlow().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        db.items().processedCountFlow().stateIn(viewModelScope, screenLocal, 0)
 
     /**
      * Savings split by media kind.
@@ -253,7 +272,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         db.items().savedBytesFlow(true),
         db.items().processedCountFlow(true)
     ) { pb, pc, vb, vc -> Savings(pb, pc, vb, vc) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Savings())
+        .stateIn(viewModelScope, screenLocal, Savings())
 
     /**
      * How much this phone's own files actually shrank.
@@ -350,14 +369,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 atMsOf = { it.atMs }
             )
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        .stateIn(viewModelScope, screenLocal, emptyList())
 
     /** Unread dot on Home: anything logged since the screen was last opened. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val activityUnread: StateFlow<Int> = options
         .map { it.activitySeenAt }
         .flatMapLatest { seen -> db.activity().unreadCountFlow(seen) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, screenLocal, 0)
 
     fun markActivitySeen() {
         viewModelScope.launch {
@@ -465,7 +484,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
-    val items: StateFlow<List<ItemRow>> = combine(
+    val items: StateFlow<List<ItemRow>?> = combine(
         search.debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }.distinctUntilChanged(),
         filesState,
         filesSort,
@@ -493,7 +512,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 limit = FILES_PAGE
             )
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        .stateIn(viewModelScope, screenLocal, null)
 
     // ---- health chips -------------------------------------------------------
 
@@ -892,10 +911,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // These three back one card each, on screens most launches never reach.
-    // Started lazily so a cold start does not pay for three table scans
-    // nobody asked for, and kept alive briefly across a rotation.
-    private val screenLocal = SharingStarted.WhileSubscribed(5_000)
 
     val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
         .map { it.size }
@@ -1660,7 +1675,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         .distinctUntilChanged()
         .flatMapLatest { db.items().waitingPhotoCountFlow(it) }
         .map { it.coerceAtMost(TRIAL_SIZE) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, screenLocal, 0)
 
     /**
      * Detail kept across this phone's optimised files, and the sample it was
