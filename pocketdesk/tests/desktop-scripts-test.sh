@@ -53,17 +53,18 @@ grep -q -- '--no-zygote' "$log" || fail "Chromium apps must start with --no-zygo
 # A stale single-instance lock must be cleared -- and must never leak into the launcher's own
 # variables. This exact setup once made it execute the lock's target, "localhost-16621", as the
 # app: the launch line in the log carried the wrong command and the app exited 127.
-mkdir -p "$HOME/.config/Codex" "$HOME/.config/Live"
-touch "$HOME/.config/Codex/SingletonLock" "$HOME/.config/Codex/SingletonCookie"
+mkdir -p "$HOME/.config/electronish" "$HOME/.config/Codex" "$HOME/.config/Live"
+touch "$HOME/.config/electronish/SingletonLock" "$HOME/.config/electronish/SingletonCookie" "$HOME/.config/Codex/SingletonLock"
 ln -sf "localhost-$$" "$HOME/.config/Live/SingletonLock"
 set +e
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
 status=$?
 set -e
 [ "$status" = 7 ] || fail "with stale locks present the app's own exit code must still come back, got $status"
-grep -q 'clearing stale lock in Codex' "$HOME/.pocketdesk/logs/electronish.log" \
+grep -q 'clearing stale lock in electronish' "$HOME/.pocketdesk/logs/electronish.log" \
   || fail "a dead app's singleton lock must be cleared before launching"
-[ -e "$HOME/.config/Codex/SingletonLock" ] && fail "the stale lock should be gone"
+[ -e "$HOME/.config/electronish/SingletonLock" ] && fail "the stale lock should be gone"
+[ -e "$HOME/.config/Codex/SingletonLock" ] || fail "another app's lock must be kept"
 [ -L "$HOME/.config/Live/SingletonLock" ] || fail "a live app's lock must not be touched"
 grep -q 'launching: .*electronish' "$HOME/.pocketdesk/logs/electronish.log" \
   || fail "the launch line must name the app, not a lock target"
@@ -90,28 +91,23 @@ grep -q 'already open' "$HOME/.pocketdesk/logs/plainish.log" \
   && fail "a plain program must open a new window even when another program from its directory has one"
 grep -q 'ARGS: *$' "$HOME/.pocketdesk/logs/plainish.log" || fail "the plain program must actually run"
 kill -9 "$other" 2>/dev/null || true
+wait "$other" 2>/dev/null || true
 rm -f "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/xdotool" "$WORK/usr/bin/otherish"
 
-# A leftover instance with no window still owns the single-instance socket, so a fresh launch
-# hands over its request and exits 0 at once -- "success" -- and nothing appears. The launcher
-# must find that instance by the directory its binary lives in (ChatGPT's launcher path never
-# appears in the running process) and end it before starting. xdotool and wmctrl are stubbed to
-# report no window so the check runs here.
+# A windowless primary may still be starting or signing in. Tapping again must preserve it.
 printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/wmctrl"; chmod +x "$WORK/usr/bin/wmctrl"
 cp "$(command -v sleep)" "$WORK/usr/lib/electronish/ghostproc"
 "$WORK/usr/lib/electronish/ghostproc" 300 &
 ghost=$!
-cat > "$WORK/usr/lib/electronish/electronish" <<'APP'
-#!/bin/sh
-exit 0
-APP
-set +e
+printf '#!/bin/sh\necho duplicate >> "%s"\nexit 0\n' "$WORK/duplicates" > "$WORK/usr/lib/electronish/electronish"
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
-set -e
-grep -q "ending windowless leftover instance" "$HOME/.pocketdesk/logs/electronish.log" \
-  || fail "a windowless leftover instance in the app's own directory must be ended before launching"
-if kill -0 "$ghost" 2>/dev/null; then kill -9 "$ghost" 2>/dev/null; fail "the leftover instance must actually be gone"; fi
+grep -q 'existing process kept; no duplicate startup' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "a windowless existing instance must be reused"
+[ ! -e "$WORK/duplicates" ] || fail "a second launch must not start another primary"
+kill -0 "$ghost" 2>/dev/null || fail "the existing instance must stay alive"
+kill -9 "$ghost" 2>/dev/null || true
+wait "$ghost" 2>/dev/null || true
 
 # The opposite case, which is the one that ended ChatGPT: the app IS running and HAS a window,
 # but its window is not classed after the launcher's name. A second tap must recognise the
@@ -137,7 +133,8 @@ grep -q "already open" "$HOME/.pocketdesk/logs/electronish.log" \
 grep -q "raised 0x02000003" "$HOME/.pocketdesk/raised" || fail "the open window must be brought to the front"
 kill -0 "$ghost" 2>/dev/null || fail "an app that has a window must never be ended by a second tap"
 kill -9 "$ghost" 2>/dev/null || true
-rm -f "$WORK/usr/bin/xdotool" "$WORK/usr/bin/wmctrl" "$HOME/.pocketdesk/raised"
+wait "$ghost" 2>/dev/null || true
+rm -f "$WORK/usr/bin/xdotool" "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/pgrep" "$HOME/.pocketdesk/raised"
 
 # ChatGPT specifically: its main process asks for GPU info and dies on "access denied", and on
 # this Chromium --disable-gpu alone yields that answer. It must get SwiftShader instead.
@@ -159,6 +156,13 @@ grep -q -- '-SendPrimary=0' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
   || fail "Xtigervnc must be started with -SendPrimary=0"
 grep -q 'openbox/rc.xml' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
   && fail "the window manager settings belong to pocketdesk-menu, which runs on every start"
+grep -q 'pocketdesk-window-guard watch' "$PROJECT_DIR/app/assets/pocketdesk-desktop.sh" \
+  || fail "the desktop must start the portrait/landscape window boundary guard"
+
+# Desktop refresh must never recurse through user data or the mounted phone.
+if grep -q 'chown -R' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh"; then
+  fail "menu refresh must not recursively traverse user data"
+fi
 
 # ---- pocketdesk-menu: launchers route through pocketdesk-open ------------------------
 APPS="$WORK/apps"
@@ -188,6 +192,7 @@ Name=Should Not Appear
 Exec=chatgpt
 Type=Application
 NoDisplay=true
+MimeType=x-scheme-handler/chatgpt-hidden;
 ENTRY
 for binary in chatgpt claude-desktop; do
   printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/$binary"
@@ -205,6 +210,13 @@ entry="$WORK/coder/Desktop/chatgpt.desktop"
 grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt %U$' "$entry" \
   || fail "the desktop icon must launch through pocketdesk-open and still accept a link (%U)"
 grep -q '^Icon=chatgpt$' "$entry" || fail "the package's own icon name must be kept"
+
+# A computer set up by a version that carried the Windows layer must be tidied by one refresh:
+# its launchers and its prefixes go, and nothing else is touched.
+[ ! -e "$WORK/coder/Desktop/pocketdesk-win-chatgpt.desktop" ] \
+  || fail "a menu refresh must remove a leftover Windows launcher"
+[ ! -d "$WORK/coder/.pocketdesk/windows" ] \
+  || fail "a menu refresh must remove the leftover Windows app folder"
 
 claude="$WORK/coder/Desktop/com.anthropic.Claude.desktop"
 [ -f "$claude" ] || fail "Claude should get a desktop icon, looked for $claude"
@@ -233,6 +245,7 @@ cat > "$WORK/rc-default.xml" <<'RC'
   <font place="ActiveWindow"><name>sans</name><size>8</size></font>
   <theme><titleLayout>NLIMC</titleLayout></theme>
   <desktops><number>4</number></desktops>
+  <resistance><strength>10</strength><screen_edge_strength>20</screen_edge_strength></resistance>
   <keyboard>
     <keybind key="W-F1">
       <action name="GoToDesktop"><to>1</to></action>
@@ -262,6 +275,14 @@ Icon=org.gnome.Epiphany
 Type=Application
 MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
 ENTRY
+cat > "$WORK/coder/.local/share/applications/local-chatgpt-auth.desktop" <<'ENTRY'
+[Desktop Entry]
+Name=Local ChatGPT callback
+Exec=env PD_CALLBACK_MODE=desktop chatgpt %U
+Type=Application
+NoDisplay=true
+MimeType=x-scheme-handler/chatgpt-local;
+ENTRY
 printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/epiphany"; chmod +x "$WORK/fakebin/epiphany"
 POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
 rc="$WORK/coder/.config/openbox/rc.xml"
@@ -270,9 +291,15 @@ grep -q '<titleLayout>ICNL</titleLayout>' "$rc" \
   || fail "minimise and close sit at the left edge, where a maximised window always starts"
 grep -q '<application type="normal"><maximized>yes</maximized><decor>yes</decor></application>' "$rc" \
   || fail "every normal window must open maximised with a title bar"
+grep -q '<application type="dialog">.*<x>center</x>.*<y>center</y>' "$rc" \
+  || fail "file pickers and installer dialogs must start centred inside the current screen"
+grep -q '<application type="utility">.*<x>center</x>.*<y>center</y>' "$rc" \
+  || fail "tool windows must start centred inside the current screen"
+grep -q '<screen_edge_strength>100</screen_edge_strength>' "$rc" \
+  || fail "dragging a floating window must resist crossing a screen edge"
 grep -q '<size>14</size>' "$rc" || fail "the title font must be big enough for the buttons to be tapped"
-grep -q '<name>PocketDesk</name>' "$rc" || fail "the window frames must use the PocketDesk theme"
-[ -f "$WORK/coder/.themes/PocketDesk/openbox-3/themerc" ] || fail "the Openbox theme must be written"
+grep -q '<name>PocketLinux</name>' "$rc" || fail "the window frames must use the PocketLinux theme"
+[ -f "$WORK/coder/.themes/PocketLinux/openbox-3/themerc" ] || fail "the Openbox theme must be written"
 grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"
 grep -q 'key="A-F4"' "$rc" || fail "Openbox's own bindings must be kept"
 # Openbox binds Super+F1..F4 to "go to desktop N" by default: Force close on Super+F4 would also
@@ -295,7 +322,7 @@ grep -q 'launcher_item_app = .*pocketdesk-phone.desktop' "$tint" || fail "Phone 
 grep -q 'launcher_item_app = .*pocketdesk-apps.desktop' "$tint" || fail "the panel must carry the Apps button"
 grep -q '^execp_command = /usr/local/bin/pocketdesk-status$' "$tint" || fail "the panel must show the phone's battery, temperature and memory"
 grep -q '^panel_items = LTSECP$' "$tint" \
-  || fail "the bar must be: launchers, the open windows, the tray, the phone's numbers, the clock, the PocketDesk mark"
+  || fail "the bar must be: launchers, the open windows, the tray, the phone's numbers, the clock, the PocketLinux mark"
 grep -q '^panel_position = bottom center horizontal$' "$tint" || fail "the bar starts at the bottom edge"
 grep -q '^panel_layer = top$' "$tint" || fail "the bar must stay visible over a maximised window"
 grep -q '^panel_background_id = 1$' "$tint" \
@@ -308,7 +335,7 @@ grep -q '^panel_background_id = 1$' "$tint" \
 # ordinary user cannot create, so the script's own fallback to the Tux mark is accepted here --
 # what matters is that the far corner is never left empty.
 grep -qE '^button_icon = /usr/share/pixmaps/pocketdesk-(mark|linux)\.png$' "$tint" \
-  || fail "the far corner wears the PocketDesk mark"
+  || fail "the far corner wears the PocketLinux mark"
 grep -q '^button_lclick_command = /usr/local/bin/pocketdesk-windows minimise-all$' "$tint" \
   || fail "the mark in the corner shows the desktop"
 grep -q '^mouse_left = toggle$' "$tint" || fail "a tap on a window button must raise it, never minimise it"
@@ -332,17 +359,78 @@ grep -q 'label="Fit window to the screen"' "$menu" || fail "the menu must offer 
 grep -q 'label="Storage"' "$menu" || fail "the menu must offer Storage"
 grep -q 'id="tools-menu"' "$menu" || fail "the tools belong in a submenu, not at the root beside the AI apps"
 
+# ---- Window boundary guard: floating dialogs stay inside panel + rotation work area ----
+guard_bin="$WORK/guard-bin"
+guard_calls="$WORK/guard-wmctrl-calls"
+mkdir -p "$guard_bin" "$WORK/guard-state"
+cat > "$guard_bin/wmctrl" <<'WM'
+#!/bin/bash
+if [ "${1:-}" = -lG ]; then
+  printf '%s\n' \
+    '0x01000001  0 -20 10 900 1200 phone Oversized dialog' \
+    '0x01000002  0 104 108 300 200 phone Small tool' \
+    '0x01000003  0 -90 -90 1400 1400 phone Desktop furniture' \
+    '0x01000004  0 -90 -90 1400 1400 phone Maximised app' \
+    '0x01000005  0 -90 -90 1400 1400 phone Minimized app'
+  exit 0
+fi
+printf '%s\n' "$*" >> "$POCKETDESK_GUARD_CALLS"
+WM
+cat > "$guard_bin/xprop" <<'XP'
+#!/bin/bash
+if [ "${1:-}" = -root ]; then
+  printf '_NET_WORKAREA(CARDINAL) = 0, 60, 720, 1100\n'
+  exit 0
+fi
+id=${2:-}
+shift 2
+# xprop supports a batch of property names in one invocation.
+for property in "$@"; do
+case "$id:$property" in
+  0x01000001:_NET_WM_WINDOW_TYPE) printf '_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DIALOG\n' ;;
+  0x01000002:_NET_WM_WINDOW_TYPE) printf '_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_UTILITY\n' ;;
+  0x01000003:_NET_WM_WINDOW_TYPE) printf '_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP\n' ;;
+  *:_NET_WM_WINDOW_TYPE) printf '_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_NORMAL\n' ;;
+  0x01000004:_NET_WM_STATE) printf '_NET_WM_STATE(ATOM) = _NET_WM_STATE_MAXIMIZED_VERT, _NET_WM_STATE_MAXIMIZED_HORZ\n' ;;
+  0x01000005:_NET_WM_STATE) printf '_NET_WM_STATE(ATOM) = _NET_WM_STATE_HIDDEN\n' ;;
+  *:_NET_WM_STATE) printf '_NET_WM_STATE(ATOM) = \n' ;;
+  *:_NET_FRAME_EXTENTS) printf '_NET_FRAME_EXTENTS(CARDINAL) = 4, 4, 28, 4\n' ;;
+esac
+done
+XP
+chmod +x "$guard_bin/wmctrl" "$guard_bin/xprop"
+POCKETDESK_GUARD_CALLS="$guard_calls" POCKETDESK_STATE_DIR="$WORK/guard-state" \
+  PATH="$guard_bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-window-guard.sh" once
+grep -qx -- '-i -r 0x01000001 -e 0,0,60,712,1068' "$guard_calls" \
+  || fail "an oversized landscape dialog must be shrunk and moved wholly into the portrait work area"
+[ "$(wc -l < "$guard_calls")" -eq 1 ] \
+  || fail "the guard must leave in-bounds, desktop, maximised and minimised windows alone"
+grep -q 'pocketdesk-window-guard.sh.*usr/local/bin/pocketdesk-window-guard' \
+  "$PROJECT_DIR/app/src/com/pocketlinux/ContainerRuntime.java" \
+  || fail "updating old computers must copy in the new window boundary guard"
+
 # The browser opens links; a sign-in that opened in the browser comes back to the app through
 # the scheme its package declares.
 mime="$WORK/coder/.config/mimeapps.list"
 [ -f "$mime" ] || fail "pocketdesk-menu must write mimeapps.list"
-grep -q '^x-scheme-handler/https=pocketdesk-org.gnome.Epiphany.desktop$' "$mime" \
-  || fail "https must open in the browser through its wrapped entry (the sandbox flags ride on it)"
+grep -q '^x-scheme-handler/https=pocketdesk-browser.desktop$' "$mime" \
+  || fail "https must use the asynchronous wrapped browser route"
+grep -q '^Exec=/usr/local/bin/pocketdesk-browser %U$' "$WORK/coder/.local/share/applications/pocketdesk-browser.desktop" \
+  || fail "the MIME route must preserve complete URL arguments through the browser dispatcher"
 grep -q '^x-scheme-handler/chatgpt=pocketdesk-chatgpt.desktop$' "$mime" \
   || fail "chatgpt:// links must come back to ChatGPT through the wrapped entry"
 grep -q '^x-scheme-handler/codex=pocketdesk-chatgpt.desktop$' "$mime" || fail "every scheme an app declares must be routed"
 grep -q '^MimeType=x-scheme-handler/chatgpt' "$WORK/coder/.local/share/applications/pocketdesk-chatgpt.desktop" \
   || fail "the wrapped entry must keep the schemes the package declares"
+grep -q '^x-scheme-handler/chatgpt-hidden=pocketdesk-nodisplay.desktop$' "$mime" \
+  || fail "hidden system protocol handlers must still receive a wrapped launcher"
+grep -q '^x-scheme-handler/chatgpt-local=pocketdesk-local-chatgpt-auth.desktop$' "$mime" \
+  || fail "per-user protocol registrations must receive a wrapped launcher"
+grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-local-chatgpt-auth.desktop" \
+  || fail "wrapping a hidden callback must preserve its visibility"
+grep -q 'pocketdesk-open --label "Local ChatGPT callback" env PD_CALLBACK_MODE=desktop chatgpt %U' \
+  "$WORK/coder/.local/share/applications/pocketdesk-local-chatgpt-auth.desktop" \
+  || fail "a local protocol callback must keep the publisher env and URL placeholder"
 
 # A link handed to an app that is already open must reach it, not be dropped.
 "$WORK/usr/lib/electronish/ghostproc" 300 &
@@ -353,12 +441,20 @@ case "\$1" in -lp) printf '0x02000004  0 $ghost phone Open Already\\n' ;; esac
 exit 0
 WM
 chmod +x "$WORK/usr/bin/wmctrl"
-printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/electronish/electronish"
+cat > "$WORK/usr/lib/electronish/electronish" <<APP
+#!/bin/sh
+printf '%s\\n' "\$@" > "$WORK/received-callback"
+echo "ARGS: \$*"
+exit 0
+APP
 set +e
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish 'electronish://callback?code=1' >/dev/null 2>&1
 set -e
-grep -q 'ARGS: .*--no-sandbox.*electronish://callback?code=1' "$HOME/.pocketdesk/logs/electronish.log" \
-  || fail "a link for an open app must be handed to it with the sandbox flags"
+grep -q '^electronish://callback?code=1$' "$WORK/received-callback" \
+  || fail "a link for an open app must arrive unchanged"
+grep -q '^--no-sandbox$' "$WORK/received-callback" || fail "callback must use the same sandbox flags"
+grep -q 'code=1' "$HOME/.pocketdesk/logs/electronish.log" && fail "a callback code must not be logged"
+kill -0 "$ghost" || fail "callback must preserve the primary instance"
 kill -9 "$ghost" 2>/dev/null || true
 rm -f "$WORK/usr/bin/wmctrl"
 grep -c '^x-scheme-handler/http=' "$mime" | grep -qx 1 || fail "http must be routed to the browser exactly once"
@@ -388,8 +484,10 @@ sed -e "s#^HOME_DIR=/home/coder#HOME_DIR=$WORK/coder#" \
 sed -i "s#Exec=/usr/bin/brave-browser-stable#Exec=$WORK/fakebin/brave-browser#" "$APPS/brave-browser.desktop"
 printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/brave-browser"; chmod +x "$WORK/fakebin/brave-browser"
 POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
-grep -q '^x-scheme-handler/https=pocketdesk-brave-browser.desktop$' "$mime" \
-  || fail "with Brave installed, links must open in Brave"
+grep -q '^x-scheme-handler/https=pocketdesk-browser.desktop$' "$mime" \
+  || fail "with Brave installed, links must retain the asynchronous browser route"
+grep -q '^Icon=brave-browser$' "$WORK/coder/.local/share/applications/pocketdesk-browser.desktop" \
+  || fail "the browser route must track the chosen browser"
 [ -f "$WORK/coder/Desktop/brave-browser.desktop" ] || fail "Brave must get the browser's desktop icon"
 grep -q '^Name=Brave$' "$WORK/coder/Desktop/brave-browser.desktop" || fail "the icon is labelled Brave"
 [ -f "$WORK/coder/Desktop/org.gnome.Epiphany.desktop" ] && fail "one browser on the desktop, not two"
@@ -407,7 +505,9 @@ MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;
 ENTRY
 printf '#!/bin/sh\ntrue\n' > "$WORK/fakebin/google-chrome-stable"; chmod +x "$WORK/fakebin/google-chrome-stable"
 POCKETDESK_OPENBOX_DEFAULT="$WORK/rc-default.xml" PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
-grep -q '^x-scheme-handler/https=pocketdesk-google-chrome.desktop$' "$mime" || fail "with Chrome installed, links must open in Chrome"
+grep -q '^x-scheme-handler/https=pocketdesk-browser.desktop$' "$mime" || fail "Chrome must keep the asynchronous browser route"
+grep -q '^Icon=google-chrome$' "$WORK/coder/.local/share/applications/pocketdesk-browser.desktop" \
+  || fail "the browser route must identify the chosen Chrome browser"
 [ -f "$WORK/coder/Desktop/google-chrome.desktop" ] || fail "Chrome must get the browser's desktop icon"
 grep -q '^Name=Chrome$' "$WORK/coder/Desktop/google-chrome.desktop" || fail "the icon is labelled Chrome"
 [ -f "$WORK/coder/Desktop/brave-browser.desktop" ] && fail "one browser on the desktop: Chrome, not Brave too"
@@ -425,15 +525,16 @@ chmod +x "$WORK/usr/bin/wmctrl"
 printf '#!/bin/sh\nexit 0\n' > "$WORK/usr/bin/xdotool"; chmod +x "$WORK/usr/bin/xdotool"
 printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/electronish/electronish"
 rm -f "$HOME/.pocketdesk/closed"
-POCKETDESK_FREE_MB=500 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1 || true
-grep -q 'closing the browser to make room' "$HOME/.pocketdesk/logs/electronish.log" \
-  || fail "an AI app started with 500 MB free must close the browser first"
-grep -q 'closed 0x02000007' "$HOME/.pocketdesk/closed" || fail "the browser window must actually be closed"
-rm -f "$HOME/.pocketdesk/closed"
-POCKETDESK_FREE_MB=2000 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1 || true
-grep -q 'closing the browser' "$HOME/.pocketdesk/logs/electronish.log" \
-  && fail "with 2 GB free the browser must be left alone"
-[ -e "$HOME/.pocketdesk/closed" ] && fail "no window may be closed when memory is plentiful"
+set +e
+POCKETDESK_FREE_MB=500 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" = 75 ] || fail "with 500 MB free a cold heavy launch must be deferred"
+grep -q 'startup deferred: 500 MB available' "$HOME/.pocketdesk/logs/electronish.log" \
+  || fail "the report must explain the memory gate"
+[ ! -e "$HOME/.pocketdesk/closed" ] || fail "the launcher must not close another app"
+POCKETDESK_FREE_MB=2000 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1
+[ ! -e "$HOME/.pocketdesk/closed" ] || fail "no browser window may be automatically closed"
 mkdir -p "$WORK/usr/lib/brave-browser"
 : > "$WORK/usr/lib/brave-browser/chrome_100_percent.pak"
 printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/usr/lib/brave-browser/brave-browser"
@@ -451,7 +552,7 @@ printf '#!/bin/sh\necho "ARGS: $*"\nexit 0\n' > "$WORK/opt/google/chrome/google-
 chmod +x "$WORK/opt/google/chrome/google-chrome"
 ln -sf ../../opt/google/chrome/google-chrome "$WORK/usr/bin/google-chrome-stable"
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" google-chrome-stable >/dev/null 2>&1 || true
-chrome_log="$HOME/.pocketdesk/logs/google-chrome-stable.log"
+chrome_log="$HOME/.pocketdesk/logs/google-chrome.log"
 grep -q -- '--no-sandbox' "$chrome_log" || fail "Chrome is Chromium and needs the sandbox flags under PRoot"
 grep -q -- '--disable-extensions' "$chrome_log" && fail "Chrome must keep its extensions"
 rm -f "$WORK/usr/bin/wmctrl" "$WORK/usr/bin/xdotool" "$HOME/.pocketdesk/closed"
@@ -462,7 +563,7 @@ grep -q 'show_wm_menu=1' "$desktop" || fail "a right-click on the wallpaper must
 grep -q 'NO_AT_BRIDGE=1' "$desktop" || fail "the accessibility bus must be switched off (every app waited on it)"
 grep -q 'module-simple-protocol-tcp' "$desktop" || fail "sound must be streamed to the phone"
 grep -q 'source=phone.monitor' "$desktop" || fail "the stream must carry the Phone output"
-audio_port=$(grep -oE 'PORT *= *[0-9]+' "$PROJECT_DIR/app/src/com/pocketdesk/AudioBridge.java" \
+audio_port=$(grep -oE 'PORT *= *[0-9]+' "$PROJECT_DIR/app/src/com/pocketlinux/AudioBridge.java" \
   | head -n 1 | grep -oE '[0-9]+' || true)
 [ -n "$audio_port" ] || fail "AudioBridge.PORT could not be read"
 grep -q "port=$audio_port" "$desktop" || fail "the sound fallback port must match AudioBridge.PORT ($audio_port)"
@@ -474,10 +575,15 @@ grep -q 'backgrounds/pocketdesk.jpg' "$desktop" || fail "the desktop must use th
 # An app that takes a minute to open has to look like it is opening: the round watch pointer and
 # a pulsing window that names the app and how long it usually takes, both gone once it appears.
 opener="$PROJECT_DIR/app/assets/pocketdesk-open.sh"
-grep -q 'zenity --progress --pulsate' "$opener" || fail "opening an app must show a busy indicator"
 grep -q "xsetroot -cursor_name watch" "$opener" || fail "the pointer must show that the desktop is busy"
 grep -q "xsetroot -cursor_name left_ptr" "$opener" || fail "the busy pointer must be put back"
 grep -q 'expected_wait' "$opener" || fail "the wait message must say how long it usually takes"
+# The pointer is the whole indicator on purpose: a progress window would be a second GTK
+# application per launch, and this phone's scarce things are memory and child-process slots.
+grep -q 'zenity --progress' "$opener" \
+  && fail "a per-launch progress window costs a process slot the phone cannot spare"
+grep -q 'notify normal "$label is opening"' "$opener" \
+  || fail "a long launch must still say how it is going, through the notification daemon"
 grep -q 'trap .spinner_stop. EXIT' "$opener" || fail "the busy indicator must go even if the launcher dies"
 awk '/if has_window; then/,/fi/' "$opener" | grep -q 'spinner_stop' \
   || fail "the busy indicator must close as soon as the app has a window"
@@ -495,6 +601,12 @@ grep -q 'application/vnd.debian.binary-package=pocketdesk-install.desktop' "$PRO
   || fail "the file-type table must send .deb files to the installer"
 grep -q 'Install a downloaded app' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \
   || fail "the menu must offer to install a downloaded app"
+grep -q 'Windows programs cannot run here' "$installer" \
+  || fail "a downloaded Windows program must be refused with the reason, not silently"
+grep -q 'hardware virtualisation' "$installer" \
+  || fail "the refusal must say why Windows cannot run here"
+grep -q 'Look for the Linux ARM64 build' "$installer" \
+  || fail "the refusal must point at the build that does work"
 
 if command -v dpkg-deb >/dev/null 2>&1; then
   PKG="$WORK/pkgsrc"
@@ -548,5 +660,6 @@ status_out=$(bash "$PROJECT_DIR/app/assets/pocketdesk-status.sh" 2>"$WORK/status
   || fail "a status line wider than 16 characters squeezes the window list off the bar"
 grep -q 'Storage free' "$WORK/status.err" || fail "the tooltip must say how much storage is free"
 grep -q 'Tap for storage' "$WORK/status.err" || fail "the tooltip must say what tapping the numbers does"
+
 
 echo "PASS DesktopScripts (launcher flags, window detection, memory guard, browser choice, menu wiring, window rules, link routing, sound, panel status)"

@@ -60,7 +60,7 @@ case "${1:-list}" in
     count=$(open_windows | wc -l)
     if [ "$count" = 0 ]; then
       command -v notify-send >/dev/null 2>&1 &&
-        notify-send -a PocketDesk "Nothing to close" "No windows are open." || true
+        notify-send -a PocketLinux "Nothing to close" "No windows are open." || true
       exit 0
     fi
     if command -v zenity >/dev/null 2>&1; then
@@ -95,6 +95,7 @@ EOF
     wmctrl -i -r "$hex" -b remove,maximized_vert,maximized_horz 2>/dev/null || true
     xdotool windowmove "$id" 0 0 2>/dev/null || true
     wmctrl -i -r "$hex" -b add,maximized_vert,maximized_horz 2>/dev/null || true
+    /usr/local/bin/pocketdesk-window-guard once >/dev/null 2>&1 || true
     ;;
   minimise)
     command -v xdotool >/dev/null 2>&1 || exit 0
@@ -113,6 +114,9 @@ EOF
     printf '%s\n' "$edge" > "$HOME/.config/pocketdesk/panel-edge"
     /usr/local/bin/pocketdesk-menu >/dev/null 2>&1 || true
     pkill -USR1 -x tint2 2>/dev/null || true
+    # tint2 publishes the new reserved work area just after it reloads. Fit floating dialogs
+    # once more against that value; the resident guard also receives the property change.
+    ( sleep 0.5; /usr/local/bin/pocketdesk-window-guard once >/dev/null 2>&1 || true ) &
     ;;
   kill-active)
     # Force close: the window in front is ended without asking it, for an app that has stopped
@@ -149,7 +153,7 @@ $(open_windows)
 EOF
     if [ -z "$rows" ]; then
       command -v notify-send >/dev/null 2>&1 &&
-        notify-send -a PocketDesk "No open windows" "Open an app from the desktop or the menu." || true
+        notify-send -a PocketLinux "No open windows" "Open an app from the desktop or the menu." || true
       exit 0
     fi
     command -v zenity >/dev/null 2>&1 || exit 0

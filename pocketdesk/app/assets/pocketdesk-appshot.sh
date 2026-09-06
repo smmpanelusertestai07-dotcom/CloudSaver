@@ -1,5 +1,5 @@
 #!/bin/bash
-# One key, and whatever is on screen goes to the AI app -- PocketDesk's answer to Cmd-Cmd.
+# One key, and whatever is on screen goes to the AI app -- PocketLinux's answer to Cmd-Cmd.
 #
 # On a Mac, Codex's Appshots capture the window in front and hand it to the assistant without
 # being asked. That feature is macOS only and will not come to a phone, so this is it, rebuilt
@@ -19,7 +19,7 @@ mkdir -p "$SHOTS"
 
 note() {   # note <title> <body>
   if command -v notify-send >/dev/null 2>&1; then
-    notify-send -a PocketDesk -i pocketdesk-linux "$1" "$2" 2>/dev/null || true
+    notify-send -a PocketLinux -i pocketdesk-linux "$1" "$2" 2>/dev/null || true
   fi
   printf '%s: %s\n' "$1" "$2"
 }

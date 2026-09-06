@@ -2,7 +2,7 @@
 # What the AI apps on this computer can and cannot do with the screen, and how to prove it.
 #
 # Codex's Appshots are a macOS feature and Claude Desktop's Computer Use is not in the Linux
-# beta, so PocketDesk provides the capability itself, over the Model Context Protocol. This
+# beta, so PocketLinux provides the capability itself, over the Model Context Protocol. This
 # window is where the owner sees whether it is wired up, without opening a terminal.
 set -u
 MCP=/usr/local/bin/pocketdesk-mcp
@@ -13,7 +13,7 @@ line() { printf '%s\n' "$1"; }
 report=""
 if [ -x "$MCP" ]; then
   tools=$(python3 "$MCP" --selftest 2>/dev/null | tr -d '[]"' | sed 's/{tools: //; s/}//')
-  report="PocketDesk gives any AI agent on this computer eyes and hands:
+  report="PocketLinux gives any AI agent on this computer eyes and hands:
 
 • appshot - a picture of the window in front, and the words on it
 • click, type_text, press_key, scroll - working that window

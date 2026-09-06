@@ -15,8 +15,8 @@ if $shot "$file" 2>/dev/null; then
   # xclip must stay alive to own the X selection; it lets go by itself when something else copies.
   command -v xclip >/dev/null 2>&1 &&
     xclip -selection clipboard -t image/png -i "$file" >/dev/null 2>&1 &
-  notify-send -a PocketDesk -i "$file" 'Screenshot saved' "$(basename "$file") - $where" >/dev/null 2>&1 || true
+  notify-send -a PocketLinux -i "$file" 'Screenshot saved' "$(basename "$file") - $where" >/dev/null 2>&1 || true
 else
-  notify-send -a PocketDesk -u critical 'Screenshot failed' \
+  notify-send -a PocketLinux -u critical 'Screenshot failed' \
     'scrot could not read the screen. Tools are installed by Settings -> Update the computer basics.' >/dev/null 2>&1 || true
 fi

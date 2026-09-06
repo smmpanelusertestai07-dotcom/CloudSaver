@@ -33,7 +33,7 @@ image.paste(tux, ((SIZE - tux.width) // 2, 470), tux)
 draw = ImageDraw.Draw(image)
 name = ImageFont.truetype(FONT_BOLD, 76)
 line = ImageFont.truetype(FONT, 34)
-for text, font, y, fill in (("PocketDesk", name, 1055, (230, 236, 247)),
+for text, font, y, fill in (("PocketLinux", name, 1055, (230, 236, 247)),
                             ("Ubuntu 24.04 LTS  ·  Linux", line, 1160, (122, 145, 190))):
     w = draw.textbbox((0, 0), text, font=font)[2]
     draw.text(((SIZE - w) // 2, y), text, font=font, fill=fill)

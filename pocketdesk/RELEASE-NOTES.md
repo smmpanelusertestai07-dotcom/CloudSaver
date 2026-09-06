@@ -1,4 +1,1299 @@
-# PocketDesk 10.0.70 — the microphone, Cmd-Cmd, and sign-ins that are not in plain text
+# PocketLinux 11.0.5 — the computer stops stopping
+
+The desktop was ending by itself with "The desktop display ended unexpectedly (exit 137)". The
+report that came with it named the cause without meaning to:
+
+```
+Host RAM MiB: available=1223 total=3740 lowMemory=false
+sampledLive=32 peak=36
+pid=1076 ppid=630 procState=Z      pid=4036 ppid=630 procState=Z
+pid=630  ppid=1   procState=Z      pid=1995 ppid=630 procState=Z
+pid=4815 ppid=630 procState=Z
+```
+
+**It was never memory.** 1.2 GB was free and `lowMemory` was false. Exit 137 is SIGKILL, and the
+number that mattered is `peak=36`: **Android 12 and later kill every one of an app's forked
+processes once there are more than 32 of them**. Under PRoot each Linux process *is* one of this
+app's Android processes, so that limit is the whole computer's limit — and passing it does not
+slow anything down, it ends the session mid-sentence.
+
+**Five of the seven survivors were zombies** (`procState=Z`), children of an app that had already
+exited. A zombie still holds a process slot. Nothing in a container waits for a reparented
+orphan, because a container has no init to do it — so they accumulated until the session was
+killed for a crowd that was mostly already dead.
+
+## Three fixes, none of them a setting
+
+**Finished processes are cleared, continuously.** The session's last process now makes itself a
+child subreaper, so orphans reparent to it instead of to a pid 1 that does not really exist, and
+it clears them every turn of its loop. Processes that belong to someone — the display, the panel,
+an installer — are looked at with `WNOWAIT` and left exactly as they are, so no owner ever loses a
+child's exit status.
+
+**The computer stays under the ceiling.** At 26 processes held for six seconds, one program is
+closed on purpose — the browser first, because closing it loses a tab rather than a conversation —
+and the owner is told which and why. Six slots of headroom, because opening an app adds several
+processes between two checks, and being killed at 33 is no different, to the owner, from being
+killed at 40. Desktop parts are never candidates: a computer with no panel is not a rescue.
+
+**A session that ends by itself comes back by itself.** Twice, automatically, with the viewer
+showing "The phone stopped the computer. Reopening it — nothing was lost…" instead of throwing
+you to the home screen. A session that ran healthily for five minutes earns the pair back; a
+computer that genuinely cannot start stops after two and says so plainly, rather than looping and
+heating the phone.
+
+## Settings → Running → Android process limit is gone
+
+It needed developer options, it changed a setting for the entire phone, and it did nothing at all
+for anyone who never found it. The computer manages itself now. A test fails the build if that row,
+its helper or its phone-wide policy script ever come back.
+
+## The package identifier is now com.pocketlinux
+
+The name change is complete: label, package, sources, actions and the APK. **This installs as a new
+app rather than an update** — Android treats a different package as a different app — so the Linux
+computer is set up again from scratch and Ubuntu is downloaded once more. Use Wi-Fi for that.
+Remove the old PocketDesk afterwards to get its storage back.
+
+## Also fixed
+
+- **Downloads were only being noticed if they were Windows programs.** The watcher's filter still
+  matched `.exe` only, left over from the removed Windows layer, so a `.deb` never reached the
+  installer offer and no other file was ever placed. It now sees every finished file, and ignores
+  the `.crdownload`, `.part` and `.tmp` files a browser writes while a transfer is still running.
+- **The runtime report stopped quoting a setting nobody can act on.** It said "Android
+  child-process monitor setting: Global override unset; effective policy not verified", which is
+  true and useless. It now states the ceiling and what the computer does to stay under it.
+
+---
+
+# PocketLinux 11.0.0 — one system, and it is Linux
+
+The app is now **PocketLinux**. The name says what it is, and the Windows compatibility layer that
+several earlier releases carried has been removed completely — not disabled, removed: every helper,
+every code path, every catalogue row, and the low Android target it forced on the whole app.
+
+This is a deliberate, final decision, and here is the whole reasoning.
+
+## Why not Windows
+
+**It cannot work on this hardware.** Three separate walls, any one of which is enough:
+
+1. **Real Windows needs a virtual machine.** Android's own virtualisation framework is documented
+   as being for privileged and platform applications — an installed app cannot start one.
+2. **A compatibility layer instead?** The one project that ran Windows programs on ARM64 dropped
+   its Android support.
+3. **This container already traces every system call** with ptrace, and an instruction translator
+   layered on that is the known-broken combination; it reports exactly that when tried.
+
+**And where it does work, it loses.** The two most important apps ship for Windows as store
+packages, which a compatibility layer installs without their package identity — so the sign-in that
+comes back through a custom link may never reach the app, and the app's own updater stops working,
+making every future update a manual download. These are Chromium apps, the hardest kind to
+translate: they lose their sandbox and gain a whole second system's worth of processes, roughly a
+third more memory, on a phone with under four gigabytes.
+
+**The feature people want it for is the first to break.** The one thing the Windows builds have
+that the Linux builds do not is the apps' own Computer Use — which works by driving *Windows*
+programs with *Windows* automation. Inside a compatibility layer on a Linux desktop there are no
+Windows programs to drive. PocketLinux supplies that capability itself instead: appshot with the
+words on screen, plus click, type, key and scroll, offered to any AI agent here, natively.
+
+**On ARM64, Linux is ahead of Windows — not behind it.** Claude's Cowork is not supported on
+Windows ARM64 at all, and Claude Code on Windows ARM64 has an open crash report; both work on Linux
+ARM64. And all four AI desktop apps publish official Linux ARM64 builds. That is the sentence that
+ends the argument: there is nothing to gain and a great deal to lose.
+
+**macOS was never a candidate** — it is licensed only for Apple's own hardware.
+
+## Why Linux is the one that lasts
+
+Ubuntu 24.04 LTS has security updates to **April 2029**, to **April 2036** with Ubuntu Pro (free
+for personal use), and to **April 2039** with the Legacy add-on — fifteen years, on a base that
+never forces an upgrade. Each Windows release gets about twenty-four months before the next one is
+required. For an app meant to be set up once and left alone, that is not a close comparison.
+
+## What removing the layer bought
+
+**The app targets Android API 35 again.** It had been pinned at API 28 — the last compatibility
+domain Android allows to execute files written into an app's own data — purely so a Windows layer
+could map downloaded program code. Nothing else needed it: PRoot and its loader are signed native
+libraries inside the APK, which the package manager extracts and every modern target permits. Being
+back on 35 puts the app inside a decade of Android's own hardening, and keeps it installable as
+Android raises the floor it accepts. A test locks it there.
+
+Gone with it: about 2.4 GB of downloads the Apps tab used to offer, six helper programs, a whole
+Java class, and every "this may not work" caveat attached to them. A new test fails the build if
+any of it returns.
+
+**A computer set up by an older version tidies itself.** The first desktop start after this update
+removes the leftover Windows launchers and prefixes. Nothing else is touched.
+
+## Also in this release
+
+- **Android builds finish here.** `aapt2` is the one piece Google publishes for Intel Linux and not
+  for ARM64, and Android's build plugin fetches it from Maven — which is where a good build used to
+  stop. Ubuntu builds its own from the same source; PocketLinux installs it and points Gradle at it
+  with `android.aapt2FromMavenOverride`.
+- **Eleven phone tools for AI agents**: `phone_devices`, `phone_install`, `phone_launch`,
+  `phone_screenshot`, `phone_ui`, `phone_tap`, `phone_swipe`, `phone_text`, `phone_key`,
+  `phone_logcat`, `phone_shell`. `phone_ui` reads the phone's screen as a list of named elements
+  with the exact point to tap, so an agent acts on names rather than guessing at pixels. "Build
+  this, put it on my phone, open it and tell me what is broken" is one instruction. With nothing
+  paired, every tool says how to pair rather than failing.
+- **Files an AI app writes now obey the download setting too.** Chrome already did, through a
+  managed policy. `pocketdesk-save` applies the same three answers — this computer, the phone as
+  well, or ask — to whatever an app or a build drops into Downloads. It copies, never moves.
+- **A framework race can no longer bury a real crash report.** Android's teardown error arrives
+  milliseconds *after* the fault that caused it; it is now ignored when a real report was written in
+  the last two minutes, so the report you read is the cause rather than the tidying-up.
+- **The test suite pins a UTF-8 locale**, so a machine whose default locale is plain ASCII no longer
+  fails a test for its environment rather than for the code.
+
+## The name
+
+**PocketLinux**, everywhere: the launcher, the opening screen, the notifications, the dialogs, the
+desktop wallpaper and the APK. The package identifier is deliberately unchanged, so this installs
+over an existing copy as an ordinary update — the Ubuntu system, your apps and their sign-ins are
+all kept, and nothing has to be downloaded again.
+
+---
+
+# PocketLinux 10.5.40 — paired-phone process control and quieter background work
+
+The 10.5.35 report shows a desktop root receiving SIGKILL while the Android app
+survives. Its tracked process peak is 38. AOSP Android 13 normally monitors a
+global budget of 32 child processes; pairing alone does not change this policy.
+The report is consistent with process trimming, but does not identify the sender
+of SIGKILL. A prior GPU child failure is separate: Codex continued working afterward.
+
+- Settings → Running → Android process limit now reads the connected phone's
+  effective AOSP override. Apply is an explicit choice: it switches off Android's
+  child-process monitor for all apps on this phone and can increase battery/RAM
+  use. Android's memory and thermal protection remain active. Matching boot IDs
+  verify this exact phone before any setting access. Pairing and desktop startup
+  do not apply this change automatically.
+- Save the previous Global value atomically before Apply, verify readback, and
+  provide Restore. Restore preserves an originally unset value and refuses to
+  overwrite a conflicting later choice. A lost reply displays Unknown until a
+  fresh check; it does not become a false success. Existing connected devices can
+  be rediscovered, but an answering different selected phone is always refused.
+- Bound the ADB action to 24 seconds, individual requests to 5 seconds, and
+  combined command output to 16 KiB. Native Settings work has its own short
+  process and CPU lease; cleanup does not stop the running Linux computer.
+- Replace the permanent desktop Bash waiter with its existing Python watcher.
+  Child-exit signals wake the watcher and app supervisor instead of repeated idle
+  polling. Exact display exit status is retained, and slow optional download
+  inspection cannot hold up display-death handling. Desktop services and app
+  capabilities remain enabled.
+- Resume a retained viewer with incremental pixel updates. Keep one outstanding
+  framebuffer request through repeated app switches; first connection and real
+  framebuffer resize still request complete pixels. Defer requests until all
+  rectangles in the current update are decoded. Input stays independent.
+
+Install as an update over the existing app. Then open Settings → Running →
+Android process limit and review Apply. If Wireless debugging has disconnected,
+use Phone app testing → Connect with its current connection port; an existing
+pairing does not require a new pairing code. The last checked policy is labelled
+as such, and the runtime report no longer treats an unset Global value as proof
+that the firmware default is active.
+
+Profiles, logins, files, downloads, Shift/Drag controls, wider workspace, GPU
+process isolation, and explicit timers are retained. No extra RAM, reduced
+publisher latency, immunity from firmware kills, or crash-free heavy work is
+claimed. See VALIDATION-v10.5.40.txt for host checks and physical-device limits.
+
+# PocketLinux 10.5.35 — drag controls, wider workspace and background runtime
+
+The supplied 10.5.30 report shows a GPU child crash at 16:25:37 with the Codex
+main process still working at 16:32:26. Separate GPU-process containment is kept.
+The desktop root later exits 137; its sender is not established by the report.
+
+- Add Shift and an explicit Drag/Release control. Put the pointer over a divider,
+  tap Drag, swipe to resize, then tap Release. Multiple thumb strokes keep the
+  button held; backgrounding, disconnection and pointer-mode changes release it.
+- Screen → Wider workspace gives narrow phones a wider logical desktop so the
+  publisher's sidebar and settings columns fit. Text becomes smaller; fit, pinch
+  zoom and the original phone-sized mode remain available. Framebuffers remain
+  within the existing 2.3-million-pixel request budget.
+- Toolbar changes now recenter the fitted desktop without becoming delayed Linux
+  screen-size requests. Bitmap replacement completes before decoding the next
+  rectangle, preventing resized updates from being written into obsolete buffers.
+- Preserve mouse button transitions and keys during pointer floods, coalescing
+  only consecutive movement samples. Long IME commits and composition changes
+  are batched, avoiding hundreds of queue entries for a pasted prompt.
+- Hidden viewers stop requesting pixel updates and resume with a full refresh.
+  The desktop service holds its own expiring CPU wake lease while the desktop is
+  alive, independently of installation tasks. This prevents ordinary suspension;
+  it is not extra RAM or immunity from Android process limits.
+- Discard only confirmed exited process identities after collecting descendants.
+  Long sessions no longer revisit every historical helper at each sample; live
+  or unreadable identities remain available for safe cleanup.
+- Window focus changes no longer repeatedly resize existing floating windows.
+  New dialogs and real desktop work-area changes still receive fitting checks.
+- Windows setup distinguishes loss of its X display from missing runtime DLLs.
+  Wine's internal boot-event timeout is a failure even when its wrapper exits 0;
+  these cases retain the download and do not trigger unrelated runtime repairs.
+
+Existing login profiles, Linux files, downloads, graphics isolation and explicit
+safety/timer preferences are preserved. For unattended work, Settings → When to
+stop by itself → Never stop avoids the existing Smart stopping idle timeout.
+Android, firmware and publisher binaries can still fail; Windows ChatGPT and
+long-session physical-device operation are not certified by host tests.
+See VALIDATION-v10.5.35.txt for checks and limits. Install as an update.
+
+# PocketLinux 10.5.30 — isolate native ChatGPT graphics and preserve real resource counters
+
+The new report and video show the ChatGPT/Codex window disappearing with exit
+139 while the Linux desktop remains alive. This differs from the earlier whole
+desktop SIGKILL. The exact native fault is not located by the supplied report.
+
+- Native Linux ChatGPT no longer forces software GPU work into Electron's main
+  process. Packaged ANGLE/SwiftShader stays enabled in Chromium's separate GPU
+  process, allowing its normal GPU crash handling. This contains a class of
+  graphics failures; it does not prove that SwiftShader caused this crash.
+  The tradeoff is an additional GPU process and its memory overhead.
+- Readable host /proc resource entries are no longer hidden by fixed stand-ins.
+  Compatibility files remain for paths Android denies or leaves empty, using an
+  actual bounded read to decide. This restores real counter inputs where available.
+- Failure reports distinguish a direct child's signal from an ordinary numeric
+  exit status. SIGSEGV is identified separately from SIGKILL; neither a WebGL
+  warning nor an updater 404 is relabelled as the proven cause.
+
+Microphone cancellation, bounded logging, retained failure evidence, login
+profiles and the 10.5.20 desktop repairs remain. Windows and browser graphics
+profiles are unchanged. No WebGL/voice/file/model feature is disabled, and no
+unsafe SwiftShader opt-in, watchdog bypass, priority override or heap increase
+is introduced. RAM and CPU capacity remain the phone's physical limits.
+
+See VALIDATION-v10.5.30.txt for evidence, tests and device-testing limits. Install
+as an update, preserving the existing Linux computer and account data.
+
+# PocketLinux 10.5.25 — microphone cancellation and long-session logging
+
+The 10.5.20 report shows the Linux root still alive and ChatGPT reaching its window;
+it does not include the reported typing/model-selection crash. The Chrome fatal
+in that report belongs to an older launch. This release fixes defects found in
+the audio bridge and reduces diagnostic I/O, without claiming that all publisher
+app crashes are resolved.
+
+- Microphone recording now opens a nonblocking, verified FIFO before activating
+  AudioRecord. Stop cancels the owning session and releases its recorder; a stale
+  worker cannot disable a newer recording. Audio errors stop the worker, empty
+  reads wait, and a desktop that stops consuming audio cannot block it forever.
+- PulseAudio reports microphone readiness only after source loading and default
+  selection succeed. Bounded command failures retain their actual output.
+- Linux app stdout is drained continuously and written in batches. Each app has
+  a bounded 2 MiB current log and one rotated log. A full/unwritable log destination
+  does not stop draining the app's output.
+- A separate, redacted failure snapshot survives a successful reopen. Reports
+  distinguish retained failures and app logs from before the current desktop.
+  Main-process memory/thread samples carry timestamps; they are not total app
+  memory and do not identify who sent a kill signal.
+- Existing startup, D-Bus, process-ownership, login handoff, rendering profiles,
+  downloads, installed apps and user profiles are retained. No Android policy,
+  CPU affinity, swap setting, or publisher memory limit is forced.
+
+See VALIDATION-v10.5.25.txt for test results and device-testing limits. Install as
+an update; uninstalling or resetting Linux is unnecessary.
+
+# PocketLinux 10.5.20 — desktop startup and missing D-Bus configuration
+
+The 10.5.15 device report showed a live Linux process spending its startup budget
+before the display launched. A later session reached 38 tracked processes and
+ended with SIGKILL while the sign-in page was already visible.
+
+- Start the private display before per-user settings, app-menu generation and MCP registration.
+- Parse installed app metadata once per menu rebuild and reuse the visible app list.
+- Remove recursive ownership walks through Phone, Downloads, Projects and other user data.
+- Restore an absent D-Bus system configuration offline from unmodified Ubuntu package data;
+  preserve existing policies and live buses. Prepare messagebus identity and machine ID before
+  daemon startup. Fresh installs explicitly include dbus-system-bus-common.
+- Host the Linux Chromium network service in the browser process to reduce utility children.
+  Windows renderer profiles keep their separate flags.
+- Bound the optional Claude MCP registration and menu display probe.
+- Freeze the actual failed startup stage before cleanup; show its reason in the viewer.
+- Keep process state in redacted reports and report the Android child-process monitor setting.
+
+GitHub comparison: CloudSaver main commit 771e6031d02612e57d70256dd93ce425ce3edb57,
+PocketLinux 10.1.20. The older browser and ChatGPT SwiftShader flags were already the
+same in the relevant areas. No GitHub files were changed.
+
+Windows ChatGPT is not fixed or certified by this release: the supplied Wine log
+still did not produce a stable product window. Linux real-device sign-in and sustained
+operation also require verification on RMX3197. SIGKILL does not identify its sender.
+
+# PocketLinux 10.5.15 — process load and forced-exit cleanup
+
+The supplied 10.5.10 report confirms that the failure remains on RMX3197/Android 13.
+Chrome's native executable received the browser request with 1231 MB available at
+launch. Its network service later restarted; at 13:36:23 the established D-Bus
+connection failed and ChatGPT could no longer access /tmp. The desktop returned
+137. These events support a session-wide failure. They do not identify who sent
+SIGKILL or prove that free RAM was sufficient at the instant of failure.
+
+Changes in this update:
+
+- Linux window detection parses and deduplicates window-owner PIDs in Bash,
+  removing awk/sort/tr pipelines and nested polling shells. It keeps executable
+  ownership checks, existing app instances and OAuth callback arguments.
+- The window guard now uses Python plus its xprop event monitor, replacing three
+  persistent processes with two. It batches window property queries and coalesces
+  event bursts, removing sleep/sed/tr/date helpers. Decorated-window fitting,
+  work-area offsets and maximized/minimized/fullscreen exclusions are retained.
+- The panel's status helper reads proc/sysfs/statvfs directly in one process.
+  Battery, temperature, network, free memory, storage and tooltip stay available.
+- One event-driven Python watcher combines completed-download handling and the
+  startup panel check. This removes one persistent process and three during the
+  initial panel-check interval. It preserves the existing Windows installer
+  confirmation, literal filenames, package checks and downloaded files.
+- The system D-Bus initialization runs before switching to the desktop user.
+  Socket connection and a bounded ListNames call replace the previous silent
+  pgrep-based check. A connectable listener is retained even if its readiness
+  call fails. Startup errors appear in the desktop report. The normal system
+  policy remains in place; the system and session buses are kept separate.
+- Android records the identities of native session children while their tracer
+  is alive, with one Java-side inventory shared every two seconds. Unexpected
+  tracer death triggers bounded cleanup of those previously verified children.
+  A new start waits for cleanup. No process is selected by name or merely by UID;
+  another live session and unrelated processes are preserved. No native monitor
+  process is added. Children never observed before tracer death may remain.
+- Runtime samples retain pre-exit memory, process counts, tracking state and
+  explicit stop requests. Readable pressure/OOM-score metadata is context, not
+  a verdict about the killer. Copy all puts this evidence first and limits the
+  combined report to 16000 characters. App sections select their latest launch;
+  old attempts remain in the individual reports. Credential redaction happens
+  before truncation.
+
+Install over the existing app, save work, and restart the phone once to clear
+any untracked descendants left by the previous build. Do not uninstall or clear
+data. Check Chrome and Linux ChatGPT sign-in, then test Windows separately using
+the existing package. No publisher app, profile or downloaded package was replaced.
+
+Validation and limits:
+
+Host tests cover actual process ownership and external SIGKILL cleanup, late-born
+children, another tracked session remaining alive, native launcher polling,
+inotify download completion, panel fallback, window-event coalescing and report
+budgets. X11 commands are test fixtures; no X server is available here. A live
+system D-Bus host test was refused by the host's AF_UNIX policy, so its startup
+state machine is tested with controlled probe/daemon results. No Realme device
+or authenticated publisher app session is connected to this build environment.
+
+Android native-child trimming and memory pressure remain possible explanations
+for the reported SIGKILL. This release reduces concrete sources of process load
+and fixes missing cleanup. It does not prove that the first forced kill is
+prevented, that ChatGPT sign-in succeeds, or that Windows compatibility is complete.
+
+References: [Chromium D-Bus disconnect handling](https://chromium.googlesource.com/chromium/src/+/HEAD/dbus/bus.cc),
+[Android native-child tracking and trimming](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/am/PhantomProcessList.java),
+[Android memory killer](https://source.android.com/docs/core/perf/lmkd),
+[D-Bus daemon options](https://dbus.freedesktop.org/doc/dbus-daemon.1.html).
+
+## 10.5.10 — startup, browser process load and PRoot shutdown repair
+
+The owner reports that 10.5.5 did not resolve Chrome sign-in or desktop failures.
+The supplied Wine diagnostic adds evidence: prefix files continue growing beyond
+the old 120-second cutoff, reach 701 by 200 seconds, then all disappear from the
+process's view along with /usr/bin/timeout. The early cutoff is demonstrably too
+short for that attempt. The later path loss suggests a detached PRoot process;
+it does not prove that a particular Wine DLL is missing or identify who killed PRoot.
+
+This release changes the following integration paths:
+
+- Stop, cancel and startup-failure cleanup first request PRoot's own shutdown, then
+  use a bounded fallback restricted to previously identified same-UID processes,
+  checked by PID and start time. A new container waits for preceding cleanup.
+  The old immediate tracer SIGKILL could leave Linux children running untraced.
+- Removed the recursive ownership walk through every app profile/cache on every
+  desktop open. Unchanged assets are no longer rewritten/fsynced each time.
+  Optional audio starts after the display, with bounded operations; readiness
+  checks use elapsed deadlines. The session bus needs fewer background processes.
+- Chrome's recognized official wrapper can start its adjacent native ELF without
+  two persistent output-pipe children, retaining its required environment.
+  Linux launches no longer need a separate GTK progress process; one supervisor
+  records and redacts output/exit status, and the launcher shell can finish once
+  the app window appears. Window checks inspect window-owner PIDs, not repeated
+  full process scans. These changes reduce overhead and process-count pressure.
+- Fixed env-prefixed desktop commands, catalogue-wrapper sandbox flags and hidden
+  system/per-user protocol entries. HTTP(S) MIME links use the browser dispatcher;
+  OAuth return links preserve the running app and its profile. Chrome aliases
+  share a startup lock/log. The browser handoff report contains no sign-in URL.
+- Viewer handshakes have a timeout, while healthy idle sessions do not. Startup
+  and later connection outages have separate retry budgets. The status control
+  can reconnect without leaving the desktop. Linux is not restarted automatically.
+- Rapid Stop/Open requests carry task ownership: an older worker cannot clear a
+  newer desktop's running state, notification or wake lock. Java and Linux output
+  readers finish after their direct process exits even if a child retains stdout.
+- Wine initialization gets a bounded 480-second ceiling, periodic progress samples
+  and guest-filesystem checks. Lost guest access is reported as exit 76 and stops
+  renderer retries, package repair and unsafe cleanup. Existing downloaded MSIX
+  files remain available. Additional installed-runtime checks cover ARM64 COM,
+  services/setupapi, 32-bit setupapi/rundll32, and wine.inf.
+- Linux app reports now include Chrome, browser handoff, the previous desktop
+  session, and a host-side runtime/viewer report. Copy all gathers bounded reports
+  with URL queries redacted. Runtime metadata excludes argv, environment and tokens.
+- Production compilation uses the Android SDK boot class path, so desktop JDK
+  methods cannot silently compile into an APK that lacks them. Process PID lookup
+  uses the Android-compatible representation and validates /proc identity.
+
+Install as an update. After saving work, restart the phone once before testing:
+that clears any detached children left by earlier force-kill attempts. Do not
+uninstall PocketLinux or clear its data. Open the desktop, check Chrome, then test
+the installed Linux ChatGPT login. Windows setup is a separate test using the
+previously downloaded package. The new Wine ceiling is a limit, not a promise
+that setup must finish in eight minutes.
+
+Host regression tests exercise real subprocess shutdown/ownership, inherited
+output pipes, browser dispatch, callback reuse, Wine stage decisions and VNC
+protocol behavior. No Realme or authenticated publisher session is connected to
+this build environment. Actual Chrome page loading, ChatGPT Linux sign-in,
+ChatGPT Windows compatibility and sustained phone performance remain unverified.
+The Android native-process limit is not disabled, and CPU/thermal safeguards
+remain active. This release does not claim that all reported phone issues are solved.
+
+Implementation references: [PRoot signal handling](https://github.com/termux/proot/blob/master/src/tracee/event.c),
+[Android native-child trimming](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/am/PhantomProcessList.java),
+[Chromium Linux wrapper](https://github.com/chromium/chromium/blob/main/chrome/installer/linux/common/wrapper),
+[Electron URL opening](https://github.com/electron/electron/blob/main/shell/common/platform_util_linux.cc).
+
+## 10.5.5 — Linux browser sign-in and desktop stability
+
+This update addresses source-level causes of failed browser launches and avoidable
+resource pressure. The supplied screenshot shows a disconnected viewer during ChatGPT
+sign-in; it does not include a crash log or establish why the Linux process ended.
+
+- Electron's direct xdg-open calls and the BROWSER fallback now use PocketLinux's
+  browser launcher, with the existing browser profile and PRoot-compatible flags.
+  Browser dispatch returns while the browser remains open. Custom app callbacks still
+  use the installed package's MIME handler and the existing ChatGPT process/profile.
+- Linux resolv.conf now follows the active Android network's IPv4/IPv6 DNS servers,
+  including mobile/Wi-Fi changes. A temporary loss of network information retains the
+  last configuration. Setup no longer overwrites carrier DNS with public DNS.
+- A new browser launch is deferred below 450 MB available RAM; callbacks to an already
+  running browser/app remain allowed. No other app or browser tab is closed to make room.
+- ChatGPT no longer inherits the artificial 384 MB V8 old-space limit. This removes a
+  possible heap-exhaustion cause; V8 selects its own limit. Software Mesa/OpenMP worker
+  pools are limited to two threads. This is not a guarantee against Android memory kills.
+- The keyring and desktop now use one session bus. Asset refresh replaces script files
+  atomically so an app install cannot truncate a script that is still executing.
+- A transport disconnect is distinguished from a stopped Linux computer. Sender-side
+  connection closures now enter the existing bounded reconnect path too.
+
+Install this APK as an update, then stop and reopen the Linux desktop once. Installed
+apps, browser cookies, ChatGPT profile, Linux files, and existing Windows support are
+retained. Reinstalling Linux or downloading ChatGPT again is not required for these fixes.
+
+Host regression tests cover real launcher process reuse, browser URL argument integrity,
+callback delivery at low memory, cold-browser memory rejection, DNS network handover,
+and resolver symlink handling, alongside the existing suite. They do not run the
+publisher's ChatGPT or Chrome ARM64 binaries on a Realme C25s. Actual account sign-in,
+carrier reachability, Android process limits, and sustained device performance still
+require a phone test. Linux DNS uses normal DNS queries; this is not an Android Private
+DNS or VPN implementation. The APK does not make ChatGPT's online service work offline.
+
+Implementation references: [Android network callbacks](https://developer.android.com/reference/android/net/ConnectivityManager.NetworkCallback),
+[V8 old-space limits](https://nodejs.org/api/cli.html#--max-old-space-sizesize-in-mib),
+[Mesa worker settings](https://docs.mesa3d.org/envvars.html).
+
+## 10.5.0 — software rendering during Wine setup and current-attempt reports
+
+The 10:10 report on 10.4.5 shows a Wine prefix timeout before ChatGPT started. EGL is
+now available, but the private VNC display reports unavailable DRI3 acceleration and
+Wine reports COM/RpcSs failures. These warnings do not identify a single proven cause.
+
+The Apps-tab installer previously supplied software rendering only when launching the
+app. It now supplies Mesa software rendering and the X11 platform before the private
+display, setup engine, wineboot and registry configuration start. llvmpipe is limited
+to two rendering threads to avoid its default per-core thread pool on this 4 GB device.
+Fresh prefixes use wineboot --init; existing prefixes use --update. The 120-second
+setup limit and stop-before-renderer behavior are retained.
+
+Wine COM warnings and service startup traces are captured during initialization.
+On failure the report includes the first errors plus a bounded read-only snapshot of
+prefix files and identified Wine processes before cleanup. It does not read registry
+contents or print process arguments/environment. E_NOINTERFACE alone can hide the
+earlier factory/registration failure; the new diagnostic output is intended to expose it.
+
+Settings → Windows install report and Copy now select the latest job, preserving its
+date and final output with a bounded text size. History retains earlier attempts.
+Old SIGSYS logs no longer obscure a later prefix timeout. Saved MSIX packages and
+previously verified apps remain intact on failure.
+
+Host regression tests exercise the installer/opener environment, fresh-prefix mode,
+timeout propagation without renderer retries, read-only diagnosis, latest-job reports,
+and existing download/app preservation. They do not execute the official ChatGPT
+Windows app on RMX3197 or verify sign-in. COM/RpcSs recovery and device performance
+remain unverified; this build does not claim a guaranteed ChatGPT launch.
+
+Upstream references: [Mesa environment variables](https://docs.mesa3d.org/envvars.html),
+[Mesa EGL](https://docs.mesa3d.org/egl.html),
+[Ubuntu wineboot manual](https://manpages.ubuntu.com/manpages/noble/man1/wineboot-stable.1.html),
+[Wine COM marshaling implementation](https://github.com/wine-mirror/wine/blob/master/dlls/combase/marshal.c).
+
+## 10.4.5 — EGL/Mesa repair and accurate Wine setup failures
+
+The 03:04 report on 10.4.0 reused ChatGPT-arm64.msix and started its private X display,
+then wineboot failed to load libEGL.so.1 and timed out with exit 124. ChatGPT's renderer
+never started. The earlier SIGSYS/profile-loop output in that report belongs to an older job.
+
+Windows support now explicitly installs Ubuntu's libegl1, libegl-mesa0, libgl1, libglx-mesa0,
+libgl1-mesa-dri and libgles2. A bounded native loader check resolves EGL/GL dispatch libraries,
+the Mesa EGL vendor configuration and the software DRI driver, including their dependencies.
+This catches optional dlopen libraries that Wine's --version and ldd(winex11.so) cannot prove.
+It requires no display. The readiness marker is revised so older installs receive the check.
+
+A missing graphics dependency repairs that package set before considering a Hangover bundle
+download. Repair uses apt --reinstall --no-remove, retains saved app packages and existing
+profiles, and stops if the native loader check still fails. A failed repair never publishes
+the ready marker. The normal ChatGPT INSTALL job performs the support update automatically.
+
+Missing EGL/GL during wineboot is now recognized as a shared-runtime failure. A Wine profile
+timeout without a missing-runtime signature preserves exit 124 through the installer and queue,
+reports the 120-second profile stage and stops before any renderer profiles. It no longer becomes
+the generic exit 19 or falsely implies that ChatGPT's own window was tested.
+
+Validation covers native dependency errors, Mesa configuration, a complete-layer/missing-EGL
+repair with no Hangover download, failed repair without readiness publication, existing MSIX
+and app preservation, and prefix timeout propagation with no renderer attempt. Host fixtures
+do not prove that the official ChatGPT Windows app or its sign-in works on the Realme C25s.
+The remaining COM/RpcSs errors may have another cause; installing EGL is not proof they are fixed.
+
+Package references: [Ubuntu libegl1](https://packages.ubuntu.com/noble/libegl1),
+[Mesa EGL ARM64 files](https://packages.ubuntu.com/noble/arm64/libegl-mesa0/filelist),
+[Mesa DRI](https://packages.ubuntu.com/noble/libgl1-mesa-dri).
+
+## 10.4.0 — Linux app startup, sign-in handoff and viewer stability
+
+Linux launch supervision now identifies native executables by device/inode, with ancestor/tracer
+exclusion, instead of matching shell command-line substrings. A per-app startup lock suppresses
+repeat icon taps while Electron is starting. A hidden or still-starting instance receives callback
+arguments without being killed. Callback exit codes are preserved, the browser is left open,
+and authorization URL queries are redacted. Native startup output appends instead of replacing
+the earlier crash report. Stale singleton cleanup is scoped to that app's user-data folders.
+
+Removed the Linux no-window/CPU-idle kill and hidden second-instance/SIGKILL restart paths.
+Startup observation is bounded to five minutes, after which a still-running process is kept and
+reported. A new heavy Linux launch is deferred below 700 MB available memory; existing apps and
+sign-in callbacks can still run. This is a guard, not a promise about any app's total memory use.
+Settings → Linux app reports exposes ChatGPT, Claude, Cursor, Antigravity and desktop session logs.
+
+The viewer closes sockets on handshake failure and attempts up to three transport reconnects to
+an already-running desktop. It does not restart Linux. Framebuffers are reused at the same size,
+and old buffers are freed before allocating a resized pair; UI allocation failures produce a
+visible error. ServerInit and resize dimensions are checked before allocating bitmaps. Destroying
+the viewer releases its framebuffers and pending view callbacks.
+
+Validation uses native test processes, X/notification doubles, protocol tests and the existing
+regression suite. These tests do not execute the official ChatGPT app or sign into an account on
+a Realme C25s. Vendor crashes, ARM64/PRoot compatibility, Android process eviction and future
+vendor releases remain outside a guarantee. Existing installed Linux apps and user-data are kept.
+
+Upstream contracts reviewed: Electron's second-instance deep-link handling
+(https://www.electronjs.org/docs/latest/tutorial/launch-app-from-url-in-another-app) and the
+publisher's Linux package/update instructions (https://learn.chatgpt.com/docs/linux/linux-app).
+
+# PocketLinux 10.3.5 — correct Windows launch arguments and isolated cleanup
+
+The 10.3.0 report showed four failed launch profiles followed by a `Bad system call` cascade
+and exit 137. Code inspection found two deterministic launch bugs: Chromium flags were placed
+before the EXE (`wine --no-sandbox ChatGPT.exe`), and the verifier prepared an isolated Wine
+prefix but launched the app with the shared prefix still inherited. Wine now receives
+`wine ChatGPT.exe --no-sandbox …`; preparation, registry setup, launch and cleanup all use the
+same per-app prefix.
+
+Windows cleanup no longer signals command lines merely containing the app's folder. It requires
+an exact prefix and Wine/PE executable identity, protects the supervisor's ancestor/tracer tree,
+and checks PID birth time again before escalation. SIGSYS/blocked syscalls and SIGKILL abort the
+job immediately instead of launching more profiles. The supplied phone log does not prove who
+sent SIGKILL or what caused SIGSYS; these fixes do not claim that every compatibility failure
+has been solved.
+
+On devices with up to 4 GB RAM the smaller-memory profile runs first, using a 384 MB V8 heap limit
+(not a total app-memory cap). Four bounded profiles replace five attempts; a critically low
+available-memory check stops another attempt. Headless verification avoids invisible progress
+dialogs/notifications, prints each attempt's actual errors immediately, and saves successful
+profiles only after a stable product window. Existing downloads and previously verified apps
+survive failed updates. Desktop idle/session timers are deferred while installation is active;
+the job's heat, battery and data guards continue to apply.
+
+Validation covers the real installer-to-opener command/prefix boundary using Wine/X test doubles,
+real native process cleanup isolation, ancestor/tracer/PID-reuse protection, low-memory ordering,
+stop-on-SIGSYS/SIGKILL, previous-install preservation and the existing regression suite. The
+ARM64 Windows ChatGPT binary has **not been run on the user's Realme C25s by this build environment**.
+Official Windows packages remain an experimental Wine/Hangover compatibility path; login, every
+desktop integration, Windows Store updates and future vendor releases are not guaranteed.
+
+# PocketLinux 10.3.0 — display-independent Windows-layer verification
+
+**The exact RMX3197 `nodrv_CreateWindow` report was a verifier error, not another broken
+Hangover installation.** Version 10.2.5 had already passed the package, checksum, private-library
+and runner checks. Its final layer check then launched Windows `cmd.exe` from the Apps-tab
+background job, where no X display intentionally exists. Even a console Windows process starts
+Wine's GUI/RPC services, so Wine correctly reported that no display driver could create a window
+and PocketLinux incorrectly rejected the complete layer.
+
+**Layer setup no longer starts a Windows program without a display.** It now proves every required
+Hangover package and runtime file, validates the X11 module in Wine's private loader context, and
+runs the native `wine --version` plus `wineserver --version` checks only. The existing Windows-app
+queue remains responsible for the stronger end-to-end proof: it starts a private Xtigervnc display,
+launches the actual publisher executable there, and publishes the app icon only after a real mapped
+window stays open. A regression double fails any accidental display-less PE launch with the same
+`nodrv_CreateWindow` text seen on the phone.
+
+The four installed Hangover packages, completed layer bundle and saved ChatGPT MSIX are reused.
+Updating PocketLinux does not remove Ubuntu, Linux apps, app prefixes, downloads or sign-ins.
+
+# PocketLinux 10.2.5 — correct Hangover private-library verification
+
+**Version 10.2.0's new check found the right files but invoked `ldd` in the wrong loader
+environment.** Hangover keeps its Unix-side `ntdll.so` and `win32u.so` beside `winex11.so` under
+`/usr/lib/wine/aarch64-unix`; Wine adds that directory when it loads the driver. Plain `ldd` does
+not, so it printed both sibling modules as “not found” even though the official packages had just
+installed successfully. The RMX3197 report proved this was PocketLinux's false rejection, not
+another failed Hangover download.
+
+**The verifier now recreates Wine's real lookup context.** It prepends the module's own directory
+to `LD_LIBRARY_PATH`, separately requires and package-checks `win32u.so`, then still rejects any
+genuinely unresolved external X11/system dependency. A regression test uses an `ldd` double that
+reports the exact two false “not found” lines unless that private directory is present.
+
+The already installed four Hangover packages and the saved ChatGPT MSIX are reused. Because the
+10.2.0 failure retained the verified layer cache and never published a ready marker, 10.2.5 simply
+rechecks the installed files, runs the Windows boot smoke test and publishes readiness; it does not
+need another app-package download.
+
+# PocketLinux 10.2.0 — verified Windows runtime repair and display gate
+
+**The exact RMX3197 `WINMM.dll` / `WS2_32.dll` / graphics-driver failure is now a layer repair,
+not a ChatGPT failure.** Version 10.1.95 trusted four dpkg status strings and a one-word marker.
+That database can say “installed” after a stopped or mixed same-version package transaction even
+when the files Electron needs are absent. Version 10.2.0 invalidates that old marker and requires
+the official Hangover runner, wineserver, native X11 modules, Windows system DLLs and all three
+FEX/Box64 bridge DLLs to exist. It checks the launch-critical files against dpkg's package
+checksums, rejects unresolved native libraries and runs a fresh `cmd.exe` boot smoke test before
+publishing the new `hangover-runtime-v2` marker.
+
+**Repair restores bytes even when apt says the same version is already installed.** All four
+verified ARM64 packages from the current official Ubuntu 24.04 Hangover bundle are passed back to
+apt with `--reinstall`. The recovery transaction keeps that same local package set attached; it no
+longer runs a generic fallback that could remove Hangover and silently put native-only Ubuntu Wine
+back. Downloads, Linux apps, user files and existing isolated Windows-app data are not changed.
+
+**Wine can no longer be launched with an empty display.** The background installer proves either
+the open desktop display or its private Xtigervnc display first. If neither is ready it stops before
+Wine with an exact report, instead of producing `nodrv_CreateWindow` and blaming ChatGPT. If an app
+launch still exposes a missing core DLL or X11 driver, the queue repairs the verified layer once
+and retries the already-downloaded package once. A second runtime failure stops; it cannot loop.
+
+The Windows layer's displayed storage figure is corrected from 900 MB to about 2.4 GB installed,
+with 4 GB of temporary headroom before a first Windows-app job begins.
+
+# PocketLinux 10.1.95 — Android no-exec policy recovery for Wine
+
+**The new RMX3197/Android 13 report identifies the layer below Wine.** ChatGPT's official ARM64
+MSIX and Hangover both installed, but Android denied executable mappings for Wine's `ntdll.dll`
+and `ChatGPT.exe` with `noexec filesystem`, followed by a stack overflow. PocketLinux was compiled
+for API 35 and targeted API 35; since Android 10, that target policy deliberately removes
+`execute`/`execmod` permission from writable app-private files. PRoot's packaged loader kept normal
+Linux commands working, but Wine must map every dynamically installed Windows PE/DLL section as
+executable and cannot replace that kernel permission with a command-line flag.
+
+**This sideload now uses Android's dedicated compatibility domain for executable containers.** The
+APK still compiles against API 35, still requires Android 10/API 29, and keeps all runtime API
+guards, but its target is intentionally API 28—the last AOSP `untrusted_app_27` policy that permits
+`app_data_file` execute/execmod for terminal-style apps. A build test prevents a future target bump
+from silently breaking Wine again. Updating in place preserves Ubuntu, downloads and logins; some
+OEMs cache the old process policy, so one phone restart after this particular update is required
+before retrying the already-downloaded MSIX.
+
+**Failure is now early and exact.** The Windows report records the effective Android target and
+SELinux process domain. `wineboot` is checked before any of the five renderer profiles; if an OEM
+still returns `noexec filesystem`, the install stops immediately instead of spending nine minutes
+on irrelevant GPU retries and distinguishes “restart once to activate the new domain” from a vendor
+kernel that refuses the mapping even there. The official package remains kept and no false desktop
+icon is published.
+
+# PocketLinux 10.1.90 — Windows ChatGPT real-device launch recovery
+
+**The exact RMX3197/Android 13 exit-19 path is fixed in the launcher.** Version 10.1.85 proved
+that OpenAI's ARM64 MSIX downloaded and unpacked correctly, but then passed a Windows Electron
+binary Linux-only process switches such as `--no-zygote`, `--in-process-gpu`, renderer limits and
+site-isolation changes. Windows apps now use clean, independent profiles. The installer tries
+SwiftShader, standard GPU, software GPU, low-memory and plain modes in a fixed bounded order, and
+saves only the first profile whose real publisher window remains mapped for eight seconds.
+
+**The current official package's startup path was inspected, not guessed.** Its Electron bootstrap
+supports disabling the Windows Store updater with `CODEX_SPARKLE_ENABLED=false`. PocketLinux sets
+that only in local Wine mode because an extracted MSIX has no Microsoft package identity; updates
+still come from the publisher's stable ARM64 MSIX when the Apps row is tapped. Wine's isolated
+prefix is initialized once before Electron is timed and declared as Windows 10, satisfying the
+package's 10.0.19041 manifest floor without pretending that Wine is Microsoft Windows.
+
+**Verification is stricter and its report is useful.** A Wine helper that owns the X window is now
+matched through the app's unique `WINEPREFIX`, avoiding a false “no window” result. Native error
+dialogs cannot count as the product window. Stale Chromium locks are cleared only inside that
+Windows app's prefix, not from Linux Chrome. Every attempt records the exact profile, runner,
+Wine version, prefix, memory, Wine errors and ChatGPT's own newest log; all attempts stop within
+nine minutes and the complete app-install has a 35-minute hard ceiling. The already-downloaded
+MSIX and every existing Linux app remain untouched on failure or retry.
+
+# PocketLinux 10.1.85 — exact ChatGPT branding and real-window verification
+
+**“Unpacked” can no longer masquerade as “Installed.”** For ChatGPT, Claude, Cursor and
+Antigravity, PocketLinux now starts the verified ARM64 entry point on the open desktop or a private
+off-screen X/Openbox display. The app must map a real window and keep it stable for eight seconds
+before its install marker, Android **Installed** state or desktop icon is published. A splash-only
+crash, blank startup or missing packaged API stays a failure; the downloaded file and previous
+working copy remain untouched, and the exact per-app launch log is appended to the Windows report.
+
+**The ChatGPT black-screen launch profile is fixed.** The old Windows wrapper forced
+`--disable-gpu`, while current ChatGPT asks Electron for GPU access during startup. ChatGPT now
+keeps access available through the SwiftShader renderer shipped inside OpenAI's package, with
+software drawing and the Linux-only Ozone flag removed. Already installed verified launchers are
+regenerated from the current APK on every desktop refresh, so launch fixes do not require another
+750 MB download.
+
+**Branding comes from the publisher package.** The row, desktop and menu now use the exact name
+**ChatGPT**, not “ChatGPT + Codex · Windows”. The Android row uses the current official ChatGPT
+mark from OpenAI's stable ARM64 MSIX (package `OpenAI.Codex` 26.901.2854.0 at build time); each new
+MSIX install extracts its own current manifest version and largest official icon automatically.
+The Windows package remains a Wine/Hangover compatibility attempt: Microsoft Store package
+identity and Windows-only services cannot be made 100% equivalent without Windows, so PocketLinux
+now proves what it can actually open instead of promising an untested success.
+
+# PocketLinux 10.1.80 — installed Windows app icons repair themselves
+
+**A desktop refresh no longer deletes Windows-app shortcuts.** The Windows installer correctly
+published ChatGPT/Codex (or another verified app), but `pocketdesk-menu` then treated every
+`pocketdesk-*.desktop` file as a disposable generated wrapper and deleted the permanent
+`pocketdesk-win-*.desktop` entry. The verified program folder and isolated prefix survived, which
+is why Android said Installed while the desktop showed no icon.
+
+Windows launchers are now permanent inputs to the menu refresh, appear both on the desktop and in
+the Tux Apps menu, and are excluded from generated-wrapper cleanup. Every refresh also reconstructs
+a missing launcher from the installed folder's `entrypoint` and executable `launch.sh`; installing
+this APK therefore restores an already-installed ChatGPT/Codex icon without another download or
+setup. New installs retain their display name for the same repair path.
+
+# PocketLinux 10.1.75 — Hangover replaces conflicting Ubuntu Wine reliably
+
+**The exact 10.1.65 device failure is fixed.** The current official Hangover Noble/ARM64 tar has
+four packages, but an older Ubuntu `wine` installation conflicts with `hangover-wine`; the previous
+repair fallback could silently keep native Wine and remove Hangover again. PocketLinux now discovers
+`.deb` files at any depth in the publisher tar, flattens them, verifies package name and ARM64
+architecture, requires Wine plus the ARM64EC, x86 FEX and Box64 engines, removes only the known
+native Wine conflicts, and installs the verified local package set together. Success is published
+only when all engine packages are installed and an executable listed by `hangover-wine` itself is
+found. A stale native `/usr/local/bin/wine` link can no longer win runner selection.
+
+**Retry is resumable and diagnosis is exact.** A partial or already-complete `.part` bundle is
+proved and reused, and the large cache is deleted only after the complete layer passes verification.
+Five named phases appear with the existing elapsed timer. If installation still fails, the report
+contains each required package's real dpkg state and audit output; the earlier native Wine fallback
+is restored without touching Linux apps, downloaded Windows installers, prefixes, sign-ins or files.
+
+# PocketLinux 10.1.70 — every desktop window stays inside the screen
+
+**Chrome, tools, file pickers and Windows installers can no longer keep an off-screen edge after
+rotation.** Normal app windows still open maximised; dialog and utility windows now open centred.
+An event-driven boundary guard reads Openbox/tint2's live usable work area, including a top or
+bottom panel, and shrinks or moves only a floating window whose decorated edge crosses it. It runs
+when a window appears, when portrait/landscape changes and when the panel moves—not in a permanent
+polling loop—so it does not spend battery scanning an idle desktop. Minimized and intentional
+full-screen windows are left alone.
+
+**The rule reaches old Linux computers on their next open.** The current helper and Openbox rules
+are copied into an existing container without reinstalling Ubuntu. “Fit window to the screen” and
+panel-edge changes also trigger an immediate fit, and stronger edge resistance makes it harder to
+drag a floating window beyond the visible boundary.
+
+# PocketLinux 10.1.65 — Windows apps install from the Android Apps tab
+
+**The desktop no longer has to be open for a Windows app install.** ChatGPT+Codex, Claude, Cursor
+and Antigravity now have first-class Windows rows in PocketLinux's Android Apps tab. A completed
+matching EXE/MSIX/AppX in Computer Downloads, Shared or permitted Phone Downloads is discovered
+and shown as **INSTALL** with its filename; the exact file is reused. With no local file, **ADD**
+resolves the publisher's current official ARM64 package, downloads to an atomic resumable `.part`,
+then installs it. The first app automatically adds the full Hangover/Wine layer before continuing.
+When the desktop is closed, Wine Setup receives a small private temporary X display that is removed
+at the end; this avoids the headless setup failure without holding the full desktop in memory.
+
+**It is a real foreground job.** Home and the notification show the current phase, curl percentage
+when available, and elapsed time from the first tap, including a ten-second heartbeat while a
+Windows setup is otherwise silent. The partial download survives interruption, the download has a
+two-hour per-job ceiling, the setup engine has a 22-minute ceiling and the whole app-install stage
+has a 30-minute hard ceiling, accidental second taps are locked out, and a safe wake-lock lets the
+job continue with the screen off or another app in front
+(subject to Android/OEM battery settings, which the confirmation warns about).
+
+**The exact report is outside the desktop too.** Settings → Windows install report reads, copies and
+clears the raw resolver, curl, package-inspection and Wine/setup output. Compatibility-layer output
+from an automatic first install is mirrored there as well. A verified entry point is still required
+before **ADDED** or a desktop icon appears; a failure stays a failure and the downloaded package is
+kept for retry.
+
+# PocketLinux 10.1.60 — bounded Windows setup with visible phase
+
+**A failed setup can no longer keep retrying for hours.** The real-device Cursor attempt exposed
+that three setup formats across three Hangover engines each inherited a 20-minute timeout. Cursor's
+current package is known Inno Setup, so it now receives only Inno flags, the post-install launch is
+disabled, FEX remains first, and the whole setup pipeline has one 22-minute ceiling. Individual
+fallbacks are shorter and the progress window names the engine and its maximum time.
+
+**Stopping and retrying is clean.** A retry removes only disposable `.new` staging siblings left
+by a stopped attempt; the downloaded installer and any published app remain untouched.
+
+# PocketLinux 10.1.55 — local ARM64 EXE and full-trust MSIX installer
+
+**The Windows-package route is local-first again.** PocketLinux now recognises ARM64 `.exe`,
+`.msix`, `.appx` and their bundle formats. NSIS and Inno setup shells are handled separately;
+when Cursor's ARM64 package arrives inside an Intel setup wrapper, the installer explicitly tries
+Hangover's FEX and Box64 setup engines. It publishes an icon only after the actual application
+entry point—not the setup stub or a large helper—has been verified as ARM64.
+
+**ChatGPT/Codex MSIX is handled without pretending Microsoft Store exists.** The package or ARM64
+member of a bundle is extracted with path traversal protection, its AppxManifest executable is
+selected exactly, and that full-trust desktop program is launched through its own Wine prefix.
+Claude and Antigravity setup styles use the same staged pipeline. Each app has a separate prefix,
+settings survive an update, two taps cannot start two installers, progress stays visible, and the
+complete last result is written under App reports.
+
+**The boundary remains explicit.** These are publishers' real Windows ARM64 packages running on
+the phone through a compatibility layer, not a Windows kernel. Microsoft Store identity, native
+Windows notifications/shell services, kernel drivers, Hyper-V, Windows Sandbox and Windows APIs
+not implemented by Wine cannot be promised. The optional real-Windows connection remains available
+as a fallback but is no longer presented as the primary install route.
+
+# PocketLinux 10.1.50 — one honest route for all four genuine Windows apps
+
+**Real Windows connection is now a first-class mode.** The Apps tab can install Ubuntu's ARM64
+FreeRDP client and creates a **Real Windows** desktop icon. It opens a Windows 10/11 Pro or
+Enterprise PC (or ordinary RDP cloud machine) inside PocketLinux, with dynamic sizing, sound,
+microphone, clipboard, automatic reconnect and the Linux `Projects` and permitted `Phone` folders
+shared as Windows drives. The connection form remembers only the address and username; the
+password is requested for each connection and passed to FreeRDP over stdin, never stored or placed
+in the process command line. The server certificate uses trust-on-first-use rather than being
+silently ignored.
+
+**The two Windows routes are no longer mixed together.** Real Windows is the common route for the
+genuine ChatGPT/Codex, Claude, Cursor and Antigravity Windows apps, including Store/MSIX and other
+Windows-only services. Local Wine/Hangover stays available for traditional ARM64 Win32 `.exe`
+files such as Cursor's ARM64 installer, with its experimental boundary still visible. PocketLinux
+does not bundle Windows, a Microsoft licence or a paid cloud computer; the real-Windows mode needs
+a Windows machine the owner already controls, reached over the same Wi-Fi or a private VPN.
+
+# PocketLinux 10.1.45 — current Hangover bundle and visible Windows setup progress
+
+**The Windows-layer update now follows Hangover's current release format.** Hangover 11.16 no
+longer attaches separate `.deb` files: its Ubuntu 24.04 ARM64 release is one `.tar` containing the
+four packages. The old updater searched only for `.deb` URLs, found none, and silently kept
+Ubuntu's native-only Wine. That Wine can run a native ARM64 executable but cannot run Cursor's
+Intel setup wrapper, producing “Cursor's Windows Setup could not run.” PocketLinux now selects the
+exact Noble ARM64 bundle, extracts it, installs all contained packages together, and replaces the
+stale Wine link with Hangover's runner. Older loose-`.deb` releases remain supported.
+
+**A manual Windows install now stays visible and cannot be started twice.** A pulsing desktop
+progress window remains up while the silent setup runs, the result is saved to
+`App reports/windows-install.log`, and an install lock turns an accidental second tap into a clear
+“already running” message. The already downloaded Cursor installer is reused.
+
+# PocketLinux 10.1.40 — current Cursor Windows Setup completes through Hangover
+
+**The exact 3.19.7 failure is fixed without another 195 MB download.** Cursor's current Windows
+ARM64 file is an Inno Setup executable. 7z could open its outer resources but could not expose the
+application, producing "Unpacking Cursor… No program was found inside Cursor." PocketLinux now tries
+safe archive extraction first and, only for an official ARM64-labelled Cursor setup filename, runs
+the small installer silently through the Windows layer into a staging directory. It verifies the
+resulting `Cursor.exe` as ARM64 before replacing an existing install or creating the launcher.
+
+# PocketLinux 10.1.35 — Cursor Windows ARM64 installers are recognised correctly
+
+**Cursor's official Windows ARM64 package is supported by the experimental Windows layer.** Its
+installer may be an Intel NSIS setup stub even though the real Cursor program inside is ARM64.
+PocketLinux previously read only that outside stub and falsely called the whole download Intel/AMD.
+It now recognises the publisher's architecture-bearing filename for preflight, unpacks nested
+Electron payloads, and verifies the actual program's PE architecture before installing. The
+desktop menu links to Cursor's official download page; choose **Windows (ARM64) (User)**. An actual
+x86/x64 program inside is still refused without replacing an existing working install.
+
+# PocketLinux 10.1.30 — Linux package downloads no longer organization-blocked
+
+**The Chrome policy regression shown on the Cursor download page is fixed.** PocketLinux kept
+Enhanced Safe Browsing but also forced Chrome's enterprise dangerous-download restriction. Chrome
+can classify ordinary Linux installer types such as `.deb` as dangerous, so the deliberate,
+official ARM64 download became an unchangeable "Blocked by your organization" result. That forced
+restriction is gone while Safe Browsing remains enabled. Every desktop start rewrites the policy,
+so an existing computer is repaired by updating PocketLinux and restarting it; Chrome, Linux apps,
+accounts and files do not need to be reinstalled.
+
+# PocketLinux 10.1.25 — Android 13 desktop launch fixed, honest installs, complete file flow
+
+**The black screen / return to Home is fixed at its two causes.** `DesktopActivity` created its
+microphone bridge while Java was still constructing the Activity, before Android had attached a
+base context. On Android 13 that could end the Activity before `onCreate`. At the same time the
+Application ran a nested main `Looper.loop()` and swallowed the first lifecycle failure, leaving
+Android to report the secondary `TopResumedActivityChangeItem{onTop=false}` error shown by the
+Realme RMX3197. The bridge is now created after `super.onCreate`, Android owns the only main Looper,
+desktop launches are debounced/singleTop, and a launch failure stays on a recovery screen with its
+original report instead of silently returning Home.
+
+**The disproved Cursor-for-Windows shortcut is removed.** The endpoint labelled ARM64 delivered an
+Intel/AMD program on the reported phone. PocketLinux no longer downloads it or advertises the other
+AI apps' Windows packages. ChatGPT, Claude, Cursor and Antigravity use their supported Linux ARM64
+installs. Wine remains an optional, clearly experimental route for traditional ARM64 Win32 `.exe`
+files. Microsoft Store/App Installer/MSIX/AppX require real Windows services and are now refused
+before anything changes. The Windows layer row also checks the marker its installer really writes.
+
+**Downloads have one explicit destination.** Settings → Data and files → Downloads go to offers
+Ask every time (recommended), private Computer Downloads, or the phone's public
+`Download/PocketLinux`. Chrome policy, XDG file dialogs, Firefox fallback, Files and both installers
+share it. Revoked phone access falls back safely; changing it never moves or deletes an old file.
+
+**The computer is more complete without pretending to be Windows.** Tools → Software searches and
+installs native ARM64 packages from Ubuntu's configured signed apt repositories, updates installed
+software and opens downloaded packages through the safety checker. Phone app testing now installs
+and automatically launches an APK, remembers its package, filters logcat to that app when possible,
+and still supports another real phone and scrcpy over Wireless debugging.
+
+# PocketLinux 10.1.20 — build an Android app here, and test it on this very phone
+
+**Apps tab → Mobile app development** (about 700 MB) installs Java 21, Gradle, `adb`, `fastboot`,
+`aapt` and `scrcpy` — all from Ubuntu's own ARM64 archive, nothing fetched from Google. Gradle is
+configured for a 4 GB phone before it is ever run: no daemon, a 1 GB heap, no parallel workers.
+
+**The part worth having: test on a real phone, including this one**
+
+Android 11 and later have **Wireless debugging**, which listens on the phone's own network — and
+this computer shares that network. So `127.0.0.1` reaches the phone it is running on. Build an APK
+here, install it here, and it opens on the same screen a moment later. No cable, no PC. Another
+phone on the same Wi-Fi is the same steps with its address.
+
+Desktop → **Tools → Phone app testing**: pair a phone (it walks through turning Wireless debugging
+on and takes the pairing code), connect, install an APK, watch logcat, mirror the screen with
+scrcpy, or see what is connected.
+
+**And a straight answer to "what can I actually build here?"**
+
+A new FAQ entry, checked against what really installs and runs on ARM64 rather than what sounds
+good:
+
+- **Works properly** — web and back-end (Node, Python, Go, Rust, PHP), anything an AI agent
+  writes and runs, scripts, data, APIs, bots, Git
+- **Android** — Kotlin and Java compile, and you can install and test on a real device. One real
+  limit: Google publishes no ARM64 Linux `aapt2`, so a full Android Gradle build may stop at that
+  one tool. Said before you install, not after
+- **iOS** — no, and no trick changes it. Xcode and the Simulator are macOS programs
+- **Not possible** — Android emulator, Docker, virtual machines (all need hardware virtualisation
+  no app on an unrooted phone can have), and anything needing a graphics chip
+- **How heavy** — one AI app plus a build is the ceiling on 4 GB; a big compile takes minutes
+  where a laptop takes seconds. It finishes. For more, the agents here can drive a bigger machine
+  over SSH
+
+# PocketLinux 10.1.15 — Wine was installed all along
+
+The report finally said it, in apt's own words:
+
+> `wine64 is already the newest version (9.0~repack-4build3).`
+> `0 upgraded, 0 newly installed, 0 to remove.`
+
+**Wine was installed.** PocketLinux was looking in the wrong place and reporting it as a failed
+download.
+
+Ubuntu's `wine64` package on ARM64 installs exactly two files:
+
+```
+/usr/lib/wine/wine64
+/usr/lib/wine/wineserver64
+```
+
+and **nothing at all in `/usr/bin`**. The launcher lives in the separate `wine` package, and on
+Ubuntu it is not even called `wine` — it is `wine-stable`. So `command -v wine64` found nothing on
+a computer where Wine was complete and working, and the owner was told to try again on a better
+connection, three times, over a download that had already finished.
+
+**Fixed**
+
+- The layer now looks where Wine really is: `/usr/local/bin/wine`, `/usr/bin/wine`,
+  `/usr/bin/wine-stable`, `/usr/lib/wine/wine64`, `/usr/lib/wine/wine`.
+- Both packages are installed, not one: `wine64` is the engine, `wine` is what puts a launcher on
+  the path at all.
+- Whatever the packaging called it, it gets **one name**: `/usr/local/bin/wine` is linked to the
+  real binary, so the installer, the launchers it writes, and the owner in a terminal all say
+  `wine`. `wineserver` too.
+- The installer script looks in the same places, so a computer that already has Wine from
+  somewhere else works without reinstalling anything.
+- The diagnostic that said "ready-made packages found: 1" was counting the word "none". It counts
+  packages now, and a failure also lists what is actually in `/usr/lib/wine`.
+
+**A test that would have caught it.** The finder is lifted out of the install command itself —
+not copied — and pointed at a tree where Wine exists only at `/usr/lib/wine/wine64` with nothing
+on the path. It must find it. Put the old path-only check back and that test fails.
+
+# PocketLinux 10.1.10 — the report now carries what the computer actually said
+
+The Windows layer failed again, and the report said only this:
+
+> *"The Windows layer could not be installed. Nothing on the Linux side changed… Try again on a
+> better conn…"*
+
+That is PocketLinux's own sentence, cut off at 150 characters, and none of it explains anything.
+The container had said exactly what went wrong — and it was thrown away twice over.
+
+**Two faults, both fixed**
+
+1. **The report was being truncated.** The same 150-character trim that keeps the notification to
+   one line was also applied to the copy saved for the report. A notification has to be short; a
+   report has to be whole, or the owner copies out a message ending in an ellipsis and nobody can
+   help them from it. The report is now untrimmed.
+2. **The container's own output never reached it.** Only one of the two places a failure can be
+   caught had the lines, and the Windows layer failed in the other one. The last twelve lines the
+   container printed are now kept in one place that both handlers read, cleared at the start of
+   every job, and recorded whether or not anything was listening — which is exactly when they
+   matter, because the job is about to fail.
+
+So the next failure of anything — a Windows layer, an app install, a set-up — carries **"What the
+computer said last:"** and apt's own words underneath it.
+
+# PocketLinux 10.1.05 — a false alarm about your own phone, silenced
+
+The error the new report screen caught first was not PocketLinux's. It was this, on a Realme phone
+running Android 13:
+
+> `Activity client record must not be null to execute transaction item:`
+> `TopResumedActivityChangeItem{onTop=false}`
+
+That is a race inside Android itself: the system tells a screen it is no longer on top *after*
+that screen's own record has already gone. No app can prevent it, and nothing the owner does
+causes it. PocketLinux survived it — that part worked — but then told the owner their computer had
+hit an error, which was a false alarm about their own phone.
+
+**Now**: Android's own teardown races are still recorded in the report, because a lot of them
+would mean this app is closing screens badly — but the owner is not told. Anything that really is
+PocketLinux's fault still says so.
+
+**And a guard that was missing.** Catching every main-thread error for ever sounds safer than it
+is: an error that repeats on every turn of the loop would spin the processor and empty the
+battery while the screen looked normal. After twelve in one minute, the next one is left alone —
+Android ends the app, the report is on disk, and the owner opens it instead of watching the phone
+get hot.
+
+**A new test, CrashTest**, runs that judgement against the exact error this phone reported, a
+wrapped copy of it, one recognisable only by its frames, and two real faults — because getting it
+wrong in either direction is expensive: a real bug hidden for ever, or crying wolf every time
+Android closes a screen awkwardly.
+
+# PocketLinux 10.1.00 — "See Last error report" now has a report to see
+
+The app has been telling people to look at something that did not exist. When something went
+wrong it saved a full report to `last-crash.txt` — and **nothing in the app ever read it**. The
+message said "See Last error report"; there was no such screen.
+
+**Settings → Permissions → Last error report**
+
+- Says whether anything has gone wrong, and when
+- Opens the whole thing: date, Android version, phone model, PocketLinux version, and the error
+- **Copy** puts it on the clipboard, so it can be pasted into a message. An owner with no PC
+  cannot read a log file, but they can paste one
+- **Clear** empties it
+
+**Failures that were handled are kept too**
+
+A set-up or an install that fails explains itself in a dialog, and the dialog took the
+explanation with it when it was dismissed. Those reasons — including what the container itself
+said last — are now written to the same report, so the answer is still there an hour later.
+
+This is the release to have before reporting anything: whatever goes wrong next, the exact reason
+is one tap and one Copy away.
+
+# PocketLinux 10.0.95 — the Windows layer says why it failed
+
+10.0.90's Windows layer failed on the reference phone with nothing but *"The Windows layer could
+not be installed."* That message is useless, and this release fixes the useless part first.
+
+**Every failure now carries what the computer actually said**
+
+A failed install shows the last few lines the container printed, under **"What the computer said
+last:"**. An install that fails with no reason leaves an owner with nowhere to go; the computer
+almost always said exactly what went wrong one line earlier, and now that line reaches the
+screen.
+
+**The Windows layer itself is more robust and more talkative**
+
+- **Nothing in it can end the command by accident any more.** It runs under `set -e`, where a
+  step that simply finds nothing counts as a failure; every step is now explicitly allowed to
+  come back empty, and the only exit is the deliberate one at the end that knows whether there
+  is a working Wine.
+- **The Hangover package match is looser.** It looked for a name with `ubuntu-24.04` before
+  `arm64`, in that order. Now it takes any ARM64 `.deb` in the release, preferring one that also
+  names this Ubuntu — so a change in how the project names its files cannot break it.
+- **Ubuntu's Wine is tried by name and in two ways**, because the `wine` metapackage cannot be
+  installed on ARM64 at all: it wants a 32-bit half that ARM64 has no version of.
+- **When it still fails it prints why**: how many ready-made packages it found, and the last
+  lines of apt's own error.
+- **No more `su -`.** Under PRoot that goes through PAM and fails on some phones. The Wine folder
+  is created and handed to the owner instead, and Wine builds its own prefix the first time a
+  program starts — which is one fewer thing that can go wrong.
+
+**A test that would have caught it**
+
+The Windows layer is now run for real in the test suite with nothing reachable — no network, apt
+failing — and must reach its own exit 16 *and* say why, rather than dying part-way and being
+reported as a download problem.
+
+# PocketLinux 10.0.90 — a Windows app installs like a Linux one now
+
+The gap this closes: a Linux app was one tap, and a Windows app was "here is a website, good
+luck". Two changes fix that.
+
+**Cursor for Windows: one tap**
+
+A new row on the Apps tab. Cursor publishes an endpoint that answers with the address of its
+*current* Windows ARM64 build, so PocketLinux asks it, downloads the file itself and installs it —
+no page to read, no version written into the app that could go stale, no file to find afterwards.
+It uses the same downloader as everything else, so it resumes, it respects the mobile-data limit,
+and it pauses when the phone gets hot.
+
+**Everything else: the desktop notices the download for you**
+
+Antigravity, Claude and ChatGPT build their download pages in the browser, so there is no fixed
+address to fetch. For those, download inside the desktop's own browser (Tools → Windows apps) —
+and then nothing has to be found:
+
+The desktop now **watches the Downloads folder**. The moment a `.exe`, `.msix`, `.msixbundle` or
+`.appx` lands, it reads which processor the file was built for and:
+
+- **ARM64** → a notification, and the installer opens by itself
+- **Intel / AMD only** → a notification saying it will not run here, so the next download is the
+  right one
+
+It uses inotify, not a timer: it sleeps until the kernel says a file finished writing, so it
+costs nothing while nothing is downloading. Each file is offered once.
+
+**Also**: exit codes 17, 18 and 19 say plainly whether the Windows layer was missing, the
+download failed, or the file was not the ARM64 build — instead of one number.
+
+# PocketLinux 10.0.85 — Windows where you can see it, and the phone's own words for settings
+
+**Windows apps are on the Apps tab now**, in their own card, next to the Linux ones:
+
+- **Windows apps support** — the layer itself, one tap, like any other app
+- **Cursor, Antigravity, Claude and ChatGPT for Windows** — each a row that opens the
+  publisher's own download page, and says honestly how likely it is to work: Cursor's ARM64
+  installer is the best bet, ChatGPT's Store package the worst
+- Every file is still checked before anything is unpacked
+
+The Home screen says so too — the set-up card mentions Windows apps, and the opening screen now
+reads **"Ubuntu 24.04 LTS · Linux and Windows apps · the whole computer is on this phone"**.
+
+**Settings use the phone's own words**
+
+A setting here should read exactly like the same setting on the phone:
+
+- Theme: **"Match phone" → "System default"** — Android's own name for it
+- Screen rotation: **"Automatic" → "Auto-rotate"**
+
+**One thing that had become untrue** was fixed: the "Does not work" list still said Windows `.exe`
+files do not work. They do now, when they are built for ARM64, so the line is gone.
+
+# PocketLinux 10.0.80 — Windows apps, as a separate layer that cannot break anything
+
+A second kind of app can now be installed: **Windows programs built for ARM64**. It sits *beside*
+the Linux side, never on top of it.
+
+**How to use it**
+
+1. Apps tab → **Windows apps support** (about 900 MB). It installs Wine.
+2. In the desktop: **Tools → Windows apps** → pick Cursor, Antigravity, Claude or ChatGPT, and
+   the browser opens their download page.
+3. Open the downloaded file with **Install a downloaded app**, exactly like a `.deb`.
+
+**The processor is checked first, in one second, before anything is unpacked**
+
+PocketLinux reads the file's own PE header — the two bytes that say which processor it was built
+for — and answers before a single megabyte is spent:
+
+- **ARM64** (also ARM64EC) → installs
+- **Intel / AMD only** → refused, with the reason. Translating every instruction is not something
+  this phone can do at a usable speed, so it says so instead of wasting the download
+- **Not a Windows program** → refused rather than guessed at
+
+`.exe`, `.msix`, `.msixbundle`, `.appx` all work. Installers are **unpacked, not run** — an
+installer stub is often 32-bit Intel even when the program inside is ARM64, so running it would
+fail on a file that would itself have worked. A Store bundle holds one program per processor;
+the ARM64 one is taken out.
+
+**Wine comes from Hangover when it can**
+
+Hangover is Wine 11 with the newest ARM64 support and ships packages for Ubuntu 24.04 on arm64.
+The release is looked up **on the phone at install time**, not written into the app, so this keeps
+working when a new Hangover appears. Ubuntu's own `wine64` is the fallback — older, but always
+there.
+
+**It cannot break the computer**
+
+Separate folder, separate prefix, separate launchers, its own stage marker, its own exit code.
+If every line of the Windows layer fails, the computer is exactly as it was. Removing "Windows
+apps support" removes Wine, the prefix and every Windows program with it, and touches nothing
+else.
+
+**Said plainly, in the app**
+
+This is **experimental**. A Windows app may open, may look wrong, or may not start at all — the
+FAQ says so, the install dialog says so, and the Apps row says so. All four AI apps already have
+Linux ARM64 builds that run faster here, so the Windows route is really for programs that have
+no Linux version at all.
+
+**Also**: a new test suite, **WindowsApps**, builds real PE files for ARM64, ARM64EC, x64 and x86
+and checks every verdict, that an Intel-only app is refused *before* unpacking, that a refused
+install leaves nothing behind, and that the installer refuses outright when no Windows layer is
+present.
+
+# PocketLinux 10.0.75 — a privacy monitor, a camera that needs no camera permission, and the honest OS table
+
+**Privacy monitor**
+
+Settings → Permissions → **Privacy monitor** lists every permission this app holds, read off the
+phone's own package rather than a hand-written list — so a permission added in a future version
+appears there by itself. Each says what it is for and whether it is on right now.
+
+It also lists what PocketLinux **never asks for**, so the absence is checkable rather than
+promised: camera, location, contacts, calls, messages, sensors. A cross means the permission is
+not in the app at all, so no dialog for it can ever appear.
+
+Android's own "Only this time" / "While using the app" choice applies to the microphone — the new
+**Microphone** row in Settings shows which one is in force, and both are enough.
+
+**A camera, without a camera permission**
+
+Screen → **Take a photo into the computer** hands you the phone's own camera app and drops the
+picture straight into the computer's Pictures folder. Because it asks the camera app rather than
+the camera, **PocketLinux holds no camera permission at all** — and the Privacy monitor proves it.
+
+A live camera *inside* Linux is not possible and the app now says exactly why rather than leaving
+it vague: Chrome looks for `/dev/video0`, and creating one needs a kernel module, which no app on
+an unrooted phone can load. That is Android's rule, not this app's.
+
+**Live voice and screen share — both work**
+
+With the microphone in place, a live voice conversation runs in the browser: ChatGPT's and
+Claude's own voice modes hear you and answer through the phone's speaker. Chrome can also share
+this desktop's screen or a single window into a meeting, exactly as on a PC. Both are in the FAQ
+with the honest boundary drawn around them.
+
+**"Do Mac, Windows and Linux get the same features?"**
+
+A new answer, because the pattern decides what is worth chasing:
+
+- **Cursor and Antigravity: identical on all three.** Both are VS Code builds — one codebase ships
+  everywhere at once. There is no "Mac first" here.
+- **ChatGPT and Claude: macOS first, Windows next, Linux last.**
+- What stays Mac-only is always the same kind of thing — something calling the OS's own
+  frameworks: Codex Appshots (not even on Windows), the apps' own Computer Use, Claude's
+  Dictation and Cowork, Xcode and the iOS Simulator.
+- PocketLinux answers the first two itself, with its own appshot and its own click/type/scroll.
+
+# PocketLinux 10.0.70 — the microphone, Cmd-Cmd, and sign-ins that are not in plain text
 
 Three of the ⚠️ rows in the feature table become ✅. Everything here is local and free.
 
@@ -7,7 +1302,7 @@ Three of the ⚠️ rows in the feature table become ✅. Everything here is loc
 The phone's microphone is handed to Linux as an ordinary recording device — inside it appears as
 **"Phone microphone"**, and every program finds it: a voice reply in an AI app, a meeting page in
 the browser, dictation. The desktop makes a named pipe, PulseAudio reads it as a source, and
-PocketDesk's Android side records at 16 kHz mono and writes into it.
+PocketLinux's Android side records at 16 kHz mono and writes into it.
 
 Three rules it keeps, because a microphone is the one thing an owner should never have to wonder
 about:
@@ -21,7 +1316,7 @@ about:
 
 Screen → **Microphone** turns it on. Android's own microphone dot shows the whole time.
 
-**Super+Space — PocketDesk's Cmd-Cmd**
+**Super+Space — PocketLinux's Cmd-Cmd**
 
 One key, and whatever is on screen goes to the AI app. It captures the window in front (never
 the AI app's own window), reads its words with Tesseract, puts the picture on the clipboard, then
@@ -40,11 +1335,11 @@ in the clear.
 
 **Honesty, kept**
 
-Two privacy answers said PocketDesk holds no microphone permission. That is no longer true, so
+Two privacy answers said PocketLinux holds no microphone permission. That is no longer true, so
 they now say exactly what is true instead: the microphone is the one permission the app can have,
 it is yours to give, and it is never active after you leave the desktop screen.
 
-# PocketDesk 10.0.65 — set-up that still works in three years
+# PocketLinux 10.0.65 — set-up that still works in three years
 
 The Ubuntu download was pinned to one point release, `24.04.4`, with its digest compiled into the
 app. Canonical eventually prunes older point releases from that directory, and on the day it
@@ -56,7 +1351,7 @@ checks it against the digest published beside it in the same `SHA256SUMS` file, 
 Canonical's own host. The pinned file stays the first choice, so nothing changes while it exists;
 the fallback only runs when it is gone. A download that cannot be verified is still deleted.
 
-# PocketDesk 10.0.60 — the audit release: 17 confirmed defects, including three of my own
+# PocketLinux 10.0.60 — the audit release: 17 confirmed defects, including three of my own
 
 A seven-dimension audit (55 agents, every finding re-checked by a second reviewer told to refute
 it) went over 10.0.55 the day it was built. It confirmed 17 real defects — **four of them
@@ -93,7 +1388,7 @@ There is a regression test that fails if that force is ever removed again.
 
 It read the date on apt's index files — which apt copies from the mirror, so it is the archive's
 publish date, not when this phone last fetched. A list could be called stale minutes after being
-downloaded, or fresh when it was days old. PocketDesk now writes its own stamp when an update
+downloaded, or fresh when it was days old. PocketLinux now writes its own stamp when an update
 actually succeeds, and reads that; a missing, empty, corrupt or future stamp all mean fetch.
 "Update the computer's basics" always forces a real fetch, because finding new versions is its
 whole job.
@@ -121,7 +1416,7 @@ stays as a fallback so a phone already part-way through is not wiped by this upd
 
 `man-db` and the manuals were downloaded and then thrown away: the base image ships its own dpkg
 rule dropping every man page, and dpkg reads the directory in name order, so that rule was read
-after PocketDesk's and won. PocketDesk's fragment is renamed so it is read last. `man git`,
+after PocketLinux's and won. PocketLinux's fragment is renamed so it is read last. `man git`,
 `man apt`, `man bash` — the claim 10.0.50 made is true from this release.
 
 **And two ways out of a dead end**
@@ -131,11 +1426,11 @@ after PocketDesk's and won. PocketDesk's fragment is renamed so it is read last.
 - Settings → **Update the computer's basics** now appears whenever the computer has no browser at
   all, not only when the app version has moved on — so there is a way to try Chrome again.
 
-# PocketDesk 10.0.55 — the set-up finally finishes, and the AI can see the screen
+# PocketLinux 10.0.55 — the set-up finally finishes, and the AI can see the screen
 
 **The set-up that kept stopping**
 
-The cause was PocketDesk's own heat guard. A Helio G85 running `dpkg` under PRoot for half an
+The cause was PocketLinux's own heat guard. A Helio G85 running `dpkg` under PRoot for half an
 hour gets hot — hotter still on the charger the app tells you to use — and at 49 °C the guard
 **ended** the set-up: it destroyed the container mid-`apt`, which is why it stopped part way,
 stopped again near the end on Continue, and why the same packages were paid for twice on mobile
@@ -162,10 +1457,10 @@ stopped for real — and even then nothing is downloaded twice.
 - **The screen now counts the megabytes** as they arrive: "Downloading packages · 180 MB
   downloaded · 12 min so far". You can see it moving, and see it stop.
 
-**PocketDesk's own Appshot and Computer Use**
+**PocketLinux's own Appshot and Computer Use**
 
 Codex's Appshots are macOS-only; Claude Desktop's Computer Use is not in the Linux beta. Neither
-is coming to a phone, so PocketDesk provides the capability itself, over MCP, from parts the
+is coming to a phone, so PocketLinux provides the capability itself, over MCP, from parts the
 desktop already had:
 
 - **appshot** — a picture of the window in front *and* the words on it (read on the phone by
@@ -194,7 +1489,7 @@ starts survives the session being stopped.
   a real `initialize` and `tools/list` over stdin — so a broken one fails the build.
 - Open-source notices now cover the MCP server, Tesseract and tmux.
 
-# PocketDesk 10.0.50 — the desktop release: a finished computer, in its own words
+# PocketLinux 10.0.50 — the desktop release: a finished computer, in its own words
 
 Nine researchers looked at how real Linux desktops are built and what this one was missing, and
 the twenty-three changes they agreed on are here. Nothing needs to be set up again for most of
@@ -204,22 +1499,22 @@ it: start the desktop once and it rebuilds its own bar, theme and menus.
 - **A real bar along the bottom.** Openbox's windows now sit above a tint2 panel that carries the
   Apps button, the browser, Files, the Terminal and your phone's folder; a button for every open
   window; the system tray; this phone's battery, temperature, free memory and free storage; a
-  12-hour clock; and the PocketDesk mark in the far corner, which shows the desktop. Tap a window
+  12-hour clock; and the PocketLinux mark in the far corner, which shows the desktop. Tap a window
   button to raise it, hold it to minimise. **The bar can move to the top**: long-press the
   wallpaper and choose "Move the bar to the top" — the desktop remembers.
-- **A watchdog for the bar.** If tint2 ever refuses PocketDesk's settings, the desktop notices
+- **A watchdog for the bar.** If tint2 ever refuses PocketLinux's settings, the desktop notices
   within twelve seconds, sets that file aside and starts tint2 with its own defaults. There is no
   longer a way to end up with no bar at all.
 - **No more washed-out white.** GTK is told to use Adwaita **dark** — the old line asked for a
   theme called "Adwaita:dark", which does not exist, so every GTK app fell back to white. The
-  root window, the terminal's palette, the on-screen messages, the window frames (a PocketDesk
+  root window, the terminal's palette, the on-screen messages, the window frames (a PocketLinux
   Openbox theme) and the tooltips are all one dark navy set now.
-- **A new wallpaper**, drawn for this release: 1600×1600, PocketDesk's navy with a soft blue
-  glow, Tux, and the words "PocketDesk · Ubuntu 24.04 LTS".
+- **A new wallpaper**, drawn for this release: 1600×1600, PocketLinux's navy with a soft blue
+  glow, Tux, and the words "PocketLinux · Ubuntu 24.04 LTS".
 - **Bigger, tappable title bars** — 14 pt, with minimise and close at the left edge where a
   maximised window always starts.
 - **Both bottom corners do something.** Bottom left is the Apps button; bottom right is the
-  PocketDesk mark that minimises everything and shows the desktop.
+  PocketLinux mark that minimises everything and shows the desktop.
 - **New in the menu:** Fit window to the screen (Super+F), Minimise this window (Super+M),
   Screenshot (Super+S, saved to Pictures), Storage, and a Tools submenu so the four AI apps stay
   at the top where they belong.
@@ -273,7 +1568,7 @@ it: start the desktop once and it rebuilds its own bar, theme and menus.
 - An installed computer with 5 GB free no longer shows an orange "low space" tile: the 6 GB line
   is what set-up needs, not what running needs.
 
-# PocketDesk 10.0.45 — the audit release: 53 confirmed defects fixed
+# PocketLinux 10.0.45 — the audit release: 53 confirmed defects fixed
 
 A ten-dimension audit of the whole app (77 agents, every finding re-checked against the code by
 a second reviewer that tried to refute it) found 53 real defects. All of them are fixed here.
@@ -305,7 +1600,7 @@ The ones that would have cost the owner something:
   Both folders belong to the app and Android deletes them with it; the app and the quick start
   now say to move files onto the phone itself.
 - **Rebuilding the app list no longer deletes files the owner put on their desktop** — only the
-  entries PocketDesk itself wrote are cleared.
+  entries PocketLinux itself wrote are cleared.
 
 **Set-up, installs and the desktop**
 - Set-up no longer fails at the last step when Phone files is on: the final ownership pass used
@@ -356,18 +1651,18 @@ The ones that would have cost the owner something:
 - The open-source notices now ship inside the APK (Settings → Open-source notices) and name this
   app rather than a different product; the credits line that promised them is true.
 - The signing key is kept with the project, and a build that cannot find it says so loudly and
-  names its APK -devkey, so an APK that cannot be installed over an existing PocketDesk can
+  names its APK -devkey, so an APK that cannot be installed over an existing PocketLinux can
   never be handed over as the release.
 - Tests: a version-agreement suite (build.sh, MainActivity and the release notes must match, and
   the number must end in 0 or 5), the sound port is read from the Java constant instead of being
   copied, and the desktop's private sockets are asserted.
 - Version 10.0.45 (code 145).
 
-# PocketDesk 10.0.40 — install an app you downloaded, the way a phone does it
+# PocketLinux 10.0.40 — install an app you downloaded, the way a phone does it
 
 - **An installer for apps you download yourself.** Downloading a .deb in Chrome inside the
   desktop and tapping it used to do nothing at all; the advice was a terminal command. Now it
-  opens PocketDesk's own installer — the screen Android shows for an APK, which a Linux desktop
+  opens PocketLinux's own installer — the screen Android shows for an APK, which a Linux desktop
   has never had. It names the app, its version and its publisher, and shows its size against
   the space this phone has free at that moment.
 - **Four checks before anything is installed**, each with a plain reason:
@@ -386,10 +1681,10 @@ The ones that would have cost the owner something:
   this phone: 74.0 GB free — enough (it needs 4.0 GB)", or, when it is not, what to free. The
   app's own size is the same on every phone; whether it fits is not, and the app no longer
   pretends otherwise.
-- **What protects what, stated exactly.** Google Play Protect scans PocketDesk itself on the
+- **What protects what, stated exactly.** Google Play Protect scans PocketLinux itself on the
   phone, at install and in the background — but it cannot look inside the Linux computer,
   because Android keeps every app's private files private (the same rule that stops any other
-  app reading yours). So the checking inside is PocketDesk's: publisher-signed repositories for
+  app reading yours). So the checking inside is PocketLinux's: publisher-signed repositories for
   the Apps tab, the installer's safety check for anything you download, Chrome's Safe Browsing
   at its Enhanced level for the web, and Ubuntu's security updates with the basics update.
 - New answer: *Can I install an app I downloaded myself?* — the whole flow, the four checks,
@@ -399,15 +1694,15 @@ The ones that would have cost the owner something:
   than the free space is blocked, a hand-downloaded copy of a published app points at the Apps
   tab, and a non-package and an AppImage are refused with their own reasons.
 - **How far a bad app could get, answered honestly.** A new question sets out the boundary:
-  everything in the computer runs as PocketDesk's own Android user inside its private storage,
+  everything in the computer runs as PocketLinux's own Android user inside its private storage,
   so it cannot read another app's data, change the phone's system or become root; what it
   could reach is what is inside the computer, plus the phone folders shared in while Phone
   files is on — which is why that is off until you turn it on; and what it can never reach is
-  the camera, microphone, location, contacts, messages or your other apps, because PocketDesk
+  the camera, microphone, location, contacts, messages or your other apps, because PocketLinux
   holds no permission for any of them.
 - Version 10.0.40 (code 140).
 
-# PocketDesk 10.0.30 — a set-up that continues, and protection that is on by default
+# PocketLinux 10.0.30 — a set-up that continues, and protection that is on by default
 
 - **Set-up continues where it stopped.** It is now a chain of steps that each record when they
   finish, inside the container. Stop it, run out of battery, lose the network or have Android
@@ -430,7 +1725,7 @@ The ones that would have cost the owner something:
   malware protection?*, lays out every layer, including why a separate antivirus is deliberately
   not there on a 4 GB phone.
 - **App lock now comes when it should.** With App lock on, the opening screen plays first and
-  the fingerprint or PIN prompt follows it, then again every time PocketDesk comes back to the
+  the fingerprint or PIN prompt follows it, then again every time PocketLinux comes back to the
   front — the home screen and the desktop both. Before, a locked app skipped its own opening
   screen and the prompt could be missed entirely.
 - **The basics update appears only when there is one.** The computer records which version of
@@ -449,7 +1744,7 @@ The ones that would have cost the owner something:
 - **"Downloads visible to the phone" is gone.** One folder, one rule: what the computer
   downloads stays inside it, where no other app on the phone can read it. The **Shared** folder
   (now bookmarked in the file manager) is the way out to the phone's Files app, and Phone files
-  is the way in. *Where do my files go?* and *What if I uninstall PocketDesk?* say exactly that.
+  is the way in. *Where do my files go?* and *What if I uninstall PocketLinux?* say exactly that.
 - **Why Ubuntu, answered with checked facts.** A new line in the Linux-only card: cloud AI
   agents work in Ubuntu containers (OpenAI's Codex cloud image is built on Ubuntu 24.04 — the
   release in this app), Ubuntu is the Linux developers use most (about 28 % in Stack Overflow's
@@ -464,7 +1759,7 @@ The ones that would have cost the owner something:
   already on the phone (no new download).
 - Version 10.0.30 (code 130).
 
-# PocketDesk 10.0.20 — one set-up does it all
+# PocketLinux 10.0.20 — one set-up does it all
 
 - **Set up Linux installs everything.** The one button on the Home tab now brings the desktop,
   sound, Google Chrome and the developer tools (gcc and make, Python 3 with pip and venv,
@@ -481,14 +1776,14 @@ The ones that would have cost the owner something:
   exactly is this?", and in the honest limits.
 - Version 10.0.20 (code 120).
 
-# PocketDesk 10.0.15 — plain error messages, and CI
+# PocketLinux 10.0.15 — plain error messages, and CI
 
 - **When an app cannot open, the desktop now says so plainly.** One title ("ChatGPT could not
   open"), one reason in ordinary words ("the phone closed it to free memory", "it crashed while
   starting", "it stopped itself with an error", or the error number), and one line of what to
   do. No log lines, no memory figures, no file paths. The other desktop toasts were shortened
   the same way ("ChatGPT is opening · 60 seconds so far. Please wait.").
-- **CI for PocketDesk.** A GitHub Actions workflow (`.github/workflows/pocketdesk.yml`) runs
+- **CI for PocketLinux.** A GitHub Actions workflow (`.github/workflows/pocketdesk.yml`) runs
   the seven test suites on every push that touches `pocketdesk/`, then builds the release APK
   with the Android SDK and publishes it as a downloadable artifact. It signs with the
   repository's key when the `POCKETDESK_KEYSTORE_B64` / `POCKETDESK_STORE_PASS` /
@@ -497,7 +1792,7 @@ The ones that would have cost the owner something:
   share one key).
 - Version 10.0.15 (code 115).
 
-# PocketDesk 10.0.5 — final check pass
+# PocketLinux 10.0.5 — final check pass
 
 - An app install or removal started while the desktop is open now holds a wake lock for its
   duration. The desktop itself holds none once it is up (the screen does while it is on), so a
@@ -506,14 +1801,14 @@ The ones that would have cost the owner something:
   the app's text and the documents; one line in the quick start was still naming Brave.
 - All seven test suites pass; every download endpoint was re-checked live.
 
-# PocketDesk 10.0.1 — hotfix
+# PocketLinux 10.0.1 — hotfix
 
 - The four rows of **Linux only, on purpose** did nothing when tapped: the questions card was
   resetting the page's shared list of expandable answers after those rows had been added, so
   their taps opened the wrong answers far below. The list is now reset once, before the page is
   built. Nothing else changed.
 
-# PocketDesk 10.0.0 — the last release
+# PocketLinux 10.0.0 — the last release
 
 Everything from the final round of device screenshots, and nothing left that was there only for
 testing. This is the version to keep.
@@ -528,7 +1823,7 @@ testing. This is the version to keep.
   Developer tools.
 - **The phone's battery controls, in the phone's own words.** Settings → Permissions now has
   Notifications, Battery usage (Unrestricted), **Background activity** (Allow foreground
-  activity and Allow background activity, on the phone's battery page for PocketDesk),
+  activity and Allow background activity, on the phone's battery page for PocketLinux),
   **Auto-launch** (some phones call it Auto-start), Phone files and App info. The first-launch
   prompt asks for all three battery-related settings. The Background activity row opens the
   ColorOS battery page directly where the phone offers it, else App info.
@@ -550,7 +1845,7 @@ wallpaper, sound to the phone, the phone's battery and memory on the desktop pan
 ## Permanent limits
 Windows or macOS cannot run on a phone. A microphone into the computer is not carried.
 
-# PocketDesk 5.0.0 — the final release: Google Chrome as the computer's browser, and every screen from the device screenshots fixed
+# PocketLinux 5.0.0 — the final release: Google Chrome as the computer's browser, and every screen from the device screenshots fixed
 
 Built from a second round of real-device screenshots. Version 5 because it closes the list.
 
@@ -600,7 +1895,7 @@ the phone, installs beside a running desktop, app lock that cannot throw.
 ## Not possible, permanently
 Windows or macOS on a phone; a microphone into the computer (not carried yet).
 
-# PocketDesk 3.4.0 — the ChatGPT auto-back root cause, one browser, uninstall, and a themed, framed UI
+# PocketLinux 3.4.0 — the ChatGPT auto-back root cause, one browser, uninstall, and a themed, framed UI
 
 This release starts from real-device evidence: a ChatGPT crash log and screenshots from a Realme
 C25s. The log named the cause, so this is a root-cause fix, not another guess.
@@ -661,7 +1956,7 @@ straight to the phone's PIN screen — it can never throw.
 - The app stays plain Java (Gradle-free, reproducible); a Kotlin rewrite would change nothing
   visible and cost every tested behaviour its history.
 
-# PocketDesk 3.3.0 — Linux only, on purpose; sound; a browser with extensions; installs beside a running desktop
+# PocketLinux 3.3.0 — Linux only, on purpose; sound; a browser with extensions; installs beside a running desktop
 
 The virtualisation test is gone from the home screen, and in its place the app says, in checked
 facts, why the computer is Linux and only Linux. Everything else in this release is what the
@@ -739,7 +2034,7 @@ stopped, and a viewer that no longer tears.
 - The Apps tab names things by what they are: two AI assistants (ChatGPT with Codex, Claude
   Desktop with Claude Code) and two AI coding environments (Cursor, an AI code editor; Antigravity,
   Google's agentic development platform), then Computer basics.
-- The APK is named like CloudSaver's: `PocketDesk-v3.3.0-release.apk`.
+- The APK is named like CloudSaver's: `PocketLinux-v3.3.0-release.apk`.
 
 ## Not done, and why
 - **Windows or macOS on the phone:** not possible; the plan file's Wine/Hangover route runs
@@ -748,7 +2043,7 @@ stopped, and a viewer that no longer tears.
 - **Kotlin:** the app stays in plain Java. A rewrite changes nothing the phone can see and would
   cost every tested behaviour its history; the build stays Gradle-free and reproducible.
 
-# PocketDesk 3.2.0 — the last update: every item of the final prompt, done
+# PocketLinux 3.2.0 — the last update: every item of the final prompt, done
 
 The release that closes the list. The home screen is three tabs on a bottom bar, the desktop
 screen is one row of controls, and the reasons behind "the keyboard types elsewhere", "ChatGPT
@@ -849,7 +2144,7 @@ Zoom never goes below 100 %, because 100 % is already the whole desktop; − say
 
 ---
 
-# PocketDesk 3.1.0 — ChatGPT opens; the finishing release
+# PocketLinux 3.1.0 — ChatGPT opens; the finishing release
 
 **ChatGPT's desktop app opens on the Realme C25s** — `window ready-to-show`, Codex CLI initialised,
 the sign-in screen on the phone. The last fault was the GPU: on this Chromium, `--disable-gpu` alone
@@ -880,16 +2175,16 @@ pointer above the keys, as a phone screen scrolls to a text field, and slides ba
   shown on the row.
 - **Downloads visible to the phone** — on (Files app can see them) or off (kept inside the Linux
   computer only); files are moved, never deleted.
-- **App lock** — the phone's own fingerprint or PIN when PocketDesk opens; no separate password.
+- **App lock** — the phone's own fingerprint or PIN when PocketLinux opens; no separate password.
 - Six more answers in the app: offline use, what installs from the browser and what does not, when
   the computer stops by itself and what is kept, accounts and locks, data limits, which phones.
 - The card is **AI coding & desktop apps**, described as the industry's leading tools installed the
   official way, with a note that anything else can be installed from the browser inside Linux.
-- The APK is simply `PocketDesk-<version>.apk`; ARM64 is checked in the app instead.
+- The APK is simply `PocketLinux-<version>.apk`; ARM64 is checked in the app instead.
 
 ---
 
-# PocketDesk 3.0.0 — final
+# PocketLinux 3.0.0 — final
 
 The finished app: an Ubuntu desktop on the phone, the AI desktop apps on it, and an honest
 account of everything in between.
@@ -906,7 +2201,7 @@ account of everything in between.
   precise dragging; a solid, draggable Controls chip.
 - **Smart stopping** — ends a desktop nothing has touched for 25 minutes or one below 15 %
   battery off the charger, and says which. Fixed hours and Never remain.
-- **Downloads reach the phone** — `Android/data/com.pocketdesk/files/Shared/Downloads`.
+- **Downloads reach the phone** — `Android/data/com.pocketlinux/files/Shared/Downloads`.
 - **Privacy answered in the app** — everything local, where logins live, exact paths, the full
   permission list and what is absent, what uninstalling deletes.
 - **Nothing fails silently** — toasts on start, progress with free memory, a dialog naming the
@@ -923,7 +2218,7 @@ not draw, the report now carries ChatGPT's own startup log, which names the step
 
 ---
 
-# PocketDesk 1.6.0
+# PocketLinux 1.6.0
 
 The desktop apps are the point of this, so this release is about making the Electron ones start,
 and about never again being unable to see why one did not.
@@ -956,7 +2251,7 @@ window state is unknown rather than guessing.
 
 ---
 
-# PocketDesk 1.5.0
+# PocketLinux 1.5.0
 
 ChatGPT opens, the browser opens in a couple of seconds, every app row carries the vendor's own
 logo, and the floating **Controls** chip is solid and can be dragged anywhere.
@@ -1045,7 +2340,7 @@ Six suites, all passing.
 
 ---
 
-# PocketDesk 1.4.0
+# PocketLinux 1.4.0
 
 The browser works, apps carry their own real logos, and the desktop reads like a small PC rather
 than three oversized windows.

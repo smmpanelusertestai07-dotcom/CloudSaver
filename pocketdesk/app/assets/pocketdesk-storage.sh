@@ -1,12 +1,12 @@
 #!/bin/bash
 # Storage, from inside the computer.
 #
-# One statfs is the whole measurement. PRoot maps / to PocketDesk's own private folder on the
+# One statfs is the whole measurement. PRoot maps / to PocketLinux's own private folder on the
 # phone, so the kernel answers for the phone's data partition: the same partition Android's own
-# Settings screen counts, and the same free figure the PocketDesk app shows. There is no
-# PocketDesk quota to report, because Android gives an app none. What this computer is itself
+# Settings screen counts, and the same free figure the PocketLinux app shows. There is no
+# PocketLinux quota to report, because Android gives an app none. What this computer is itself
 # using is not shown here -- the only way to get it in the container is a du over gigabytes of
-# Ubuntu, minutes of disk competing with the running apps. PocketDesk -> Settings -> Storage has
+# Ubuntu, minutes of disk competing with the running apps. PocketLinux -> Settings -> Storage has
 # that number, from Android, instantly.
 set -u
 export LC_ALL=C
@@ -24,11 +24,11 @@ total_bytes=${2:-}
 if [ -z "$free_bytes" ]; then
   body="This phone did not report its free space just now.
 
-Open PocketDesk on the phone: the home screen and Settings -> Storage always show it."
+Open PocketLinux on the phone: the home screen and Settings -> Storage always show it."
 else
   advice="There is room here to install another AI app and keep working."
   if [ "$free_bytes" -lt 500000000 ]; then
-    advice="Android is about to start clearing app caches by itself. Free some space now: remove an AI app you are not using from PocketDesk's Apps tab, or empty Downloads."
+    advice="Android is about to start clearing app caches by itself. Free some space now: remove an AI app you are not using from PocketLinux's Apps tab, or empty Downloads."
   elif [ "$free_bytes" -lt 2000000000 ]; then
     advice="Below about 2 GB free, watch it: an app install or a large download can run out part-way."
   fi
@@ -46,13 +46,13 @@ is not touched and the desktop keeps running.
 Projects, Downloads and Pictures are inside the computer. Shared and Phone are on the phone
 itself. All of them count against the same free space.
 
-PocketDesk -> Settings -> Storage on the phone shows what this computer is using."
+PocketLinux -> Settings -> Storage on the phone shows what this computer is using."
 fi
 
 if command -v zenity >/dev/null 2>&1; then
   zenity --info --width=430 --no-markup --title="Storage" --text="$body" >/dev/null 2>&1
 elif command -v notify-send >/dev/null 2>&1; then
-  notify-send -a PocketDesk -u normal "Storage" "$body" >/dev/null 2>&1
+  notify-send -a PocketLinux -u normal "Storage" "$body" >/dev/null 2>&1
 else
   printf '%s\n' "$body"
 fi

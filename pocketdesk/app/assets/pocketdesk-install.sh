@@ -1,5 +1,5 @@
 #!/bin/bash
-# PocketDesk's app installer: what happens when a Linux app package is opened inside the
+# PocketLinux's app installer: what happens when a Linux app package is opened inside the
 # computer, and the answer to "can I install something I downloaded myself?".
 #
 # On a phone, tapping an APK from a website opens Android's installer: it names the app, says
@@ -62,9 +62,15 @@ PUBLISHED="chatgpt claude-desktop cursor antigravity google-chrome-stable"
 
 if [ -z "$FILE" ]; then
   if have zenity; then
+    PICK_DIR=$(cat "$HOME/.config/pocketdesk/download-dir" 2>/dev/null || true)
+    case "$PICK_DIR" in
+      "$HOME/Downloads"|"$HOME/Phone/Download/PocketLinux") ;;
+      *) PICK_DIR="$HOME/Downloads" ;;
+    esac
     FILE=$(zenity --file-selection --title="Install a downloaded app" \
-      --filename="$HOME/Downloads/" \
-      --file-filter="Linux app packages | *.deb" 2>/dev/null) || exit 0
+      --filename="$PICK_DIR/" \
+      --file-filter="Linux app packages | *.deb" \
+      2>/dev/null) || exit 0
   else
     printf 'Usage: pocketdesk-install <file.deb>\n'
     exit 2
@@ -84,12 +90,13 @@ fi
 FILE=$(readlink -f "$FILE" 2>/dev/null || printf '%s' "$FILE")
 
 name_only=$(basename "$FILE")
+lower_name=$(printf '%s' "$name_only" | tr '[:upper:]' '[:lower:]')
 
 # An AppImage is the other thing people download for Linux, and it cannot work here: it mounts
 # itself with FUSE, which a phone container has no way to provide. Saying so beats a silent
 # failure -- and every app in the Apps tab publishes a .deb anyway.
-case "$name_only" in
-  *.AppImage|*.appimage)
+case "$lower_name" in
+  *.appimage)
     say error "AppImage files do not run here" \
 "$name_only is an AppImage. An AppImage mounts itself with FUSE, which needs kernel support that a phone container cannot give it.
 
@@ -97,13 +104,34 @@ Look for the app's .deb build for Linux ARM64 instead, or install it from the Ap
     exit 1 ;;
 esac
 
-case "$name_only" in
+# A Windows program is refused here, and told why once rather than after a long download.
+#
+# Windows programs cannot run on this computer, and this is not a setting that can be turned on.
+# Android keeps hardware virtualisation away from installed apps, so a real Windows machine is
+# not possible; the compatibility layer that once ran Windows programs on ARM64 dropped its
+# Android support; and this container already traces every system call, which is the exact
+# combination an instruction translator cannot work inside. All four AI desktop apps publish
+# official Linux ARM64 builds, which is what the Apps tab installs.
+case "$lower_name" in
+  *.exe|*.msix|*.msixbundle|*.appx|*.appxbundle|*.msi)
+    say error "Windows programs cannot run here" \
+"$name_only is a Windows program, and this is a Linux computer.
+
+Windows itself cannot run on a phone: Android does not give an installed app the hardware virtualisation a Windows machine needs. A compatibility layer is not a way round it either — the project that ran Windows programs on ARM64 dropped Android support, and this container traces every system call, which is what an instruction translator cannot work inside.
+
+Look for the Linux ARM64 build of what you wanted. All four AI desktop apps publish one, and the Apps tab installs them for you.
+
+Nothing was installed and nothing was changed."
+    exit 1 ;;
+esac
+
+case "$lower_name" in
   *.deb) ;;
   *)
     say error "Not an app package" \
 "$name_only is not a Linux app package.
 
-Apps for this computer come as .deb files built for ARM64. The Apps tab installs the four AI apps from their publishers; anything else you download has to be a .deb."
+Apps for this computer come as Linux ARM64 .deb packages. The Apps tab installs the four AI desktop apps from their publishers' own repositories; anything else you download as a .deb opens here."
     exit 1 ;;
 esac
 
@@ -156,7 +184,7 @@ fi
 # 3. The app is one the Apps tab installs from its publisher, signed.
 for known in $PUBLISHED; do
   [ "$PACKAGE" = "$known" ] || continue
-  warn "PocketDesk installs this app itself, from its publisher's own signed repository — the Apps tab, or Settings for Google Chrome. That copy is verified and updates in place; this downloaded one is neither."
+  warn "PocketLinux installs this app itself, from its publisher's own signed repository — the Apps tab, or Settings for Google Chrome. That copy is verified and updates in place; this downloaded one is neither."
 done
 
 # 4. What apt would have to do. The simulation is the only honest way to know whether the
@@ -243,7 +271,7 @@ else
   say error "Cannot ask you first" \
 "This computer is missing the desktop's dialogs, so there is no way to show you what is about to be installed - and nothing is installed without that.
 
-Update the computer's basics in PocketDesk (Settings -> Storage), then open the file again."
+Update the computer's basics in PocketLinux (Settings -> Storage), then open the file again."
   exit 1
 fi
 
@@ -256,7 +284,7 @@ if have zenity; then
   rm -f "$fifo"
   if mkfifo "$fifo" 2>/dev/null; then
     zenity --progress --pulsate --auto-close --no-cancel --width=340 \
-      --title="PocketDesk" --text="Installing ${PACKAGE:-the app}..." < "$fifo" >/dev/null 2>&1 &
+      --title="PocketLinux" --text="Installing ${PACKAGE:-the app}..." < "$fifo" >/dev/null 2>&1 &
     exec 9<>"$fifo"
   else
     fifo=""

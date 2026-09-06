@@ -19,6 +19,7 @@ public class LocalSocket implements java.io.Closeable {
     }
 
     public void setReceiveBufferSize(int size) throws IOException {}
+    public void setSoTimeout(int timeout) throws IOException {}
 
     public InputStream getInputStream() throws IOException { return new ByteArrayInputStream(new byte[0]); }
 

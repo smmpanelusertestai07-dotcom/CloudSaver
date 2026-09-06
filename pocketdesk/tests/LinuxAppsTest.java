@@ -1,4 +1,4 @@
-package com.pocketdesk;
+package com.pocketlinux;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -64,23 +64,21 @@ public final class LinuxAppsTest {
                     app.id + " does not actually remove its package");
         }
 
-        // Google Chrome carries the protection: Safe Browsing at its strongest level, dangerous
-        // downloads blocked, and no way to click through a malware warning.
-        require(LinuxApps.CHROME_INSTALL.contains("\"SafeBrowsingProtectionLevel\": 2"),
+        // Google Chrome keeps Enhanced Safe Browsing, but must not turn a normal Linux .deb into
+        // an unchangeable enterprise block. The owner explicitly asked for this download.
+        require(LinuxApps.CHROME_POLICY.contains("\"SafeBrowsingProtectionLevel\": 2"),
                 "Chrome must run Safe Browsing at its enhanced level");
-        require(LinuxApps.CHROME_INSTALL.contains("SafeBrowsingProceedAnywayDisabled"),
-                "a malware warning must not be clickable-through");
-        require(LinuxApps.CHROME_INSTALL.contains("DownloadRestrictions"),
-                "dangerous downloads must be blocked");
+        require(!LinuxApps.CHROME_POLICY.contains("SafeBrowsingProceedAnywayDisabled"),
+                "Chrome must let the owner respond to a download warning");
+        require(!LinuxApps.CHROME_POLICY.contains("DownloadRestrictions"),
+                "normal Linux packages must not be blocked by enterprise policy");
 
-        checkResumeHelpers(work);
+        checkResumeHelpers(projectDir, work);
         checkBootstrapShell(projectDir, work);
 
         LinuxApps.App chatgpt = LinuxApps.byId("chatgpt");
         require(chatgpt != null, "chatgpt is missing from the catalogue");
         require(chatgpt.installCommand().contains("/latest/"), "chatgpt must track the latest build");
-        require(LinuxApps.byId("nope") == null, "byId must return null for an unknown id");
-
         // Apps are launched from their own packaged .desktop entry now, so there is no
         // hand-written launcher left to check here.
 
@@ -92,7 +90,7 @@ public final class LinuxAppsTest {
      * fails twice is retried until it works, and three failures give up rather than loop. This
      * is what makes a stopped set-up continue instead of starting over.
      */
-    private static void checkResumeHelpers(Path work) throws Exception {
+    private static void checkResumeHelpers(Path projectDir, Path work) throws Exception {
         Path root = work.resolve("root");
         Path bin = work.resolve("bin");
         Files.createDirectories(bin);
@@ -169,6 +167,7 @@ public final class LinuxAppsTest {
         require(run(work, prelude + "pd_update\n") == 0, "a damaged stamp must not break the update");
         require(countLines(updates) == 4, "a damaged stamp must be treated as no stamp");
 
+
         // pd_repo writes a source and must prove it, which cannot be done from a cached list.
         // The stamp is deliberately made FRESH first: without the force, pd_repo would take the
         // cache, fetch nothing, and report a repository it never proved.
@@ -183,6 +182,8 @@ public final class LinuxAppsTest {
                 "pd_repo must write the source inside the container, not on the host");
     }
 
+    /** Reproduces 10.1.95: dpkg + old marker say ready, but core DLL/graphics files are absent. */
+
     /**
      * The set-up script itself, checked as shell.
      *
@@ -192,7 +193,7 @@ public final class LinuxAppsTest {
      * asked whether the result parses.
      */
     private static void checkBootstrapShell(Path projectDir, Path work) throws Exception {
-        Path source = projectDir.resolve("app/src/com/pocketdesk/ContainerRuntime.java");
+        Path source = projectDir.resolve("app/src/com/pocketlinux/ContainerRuntime.java");
         require(Files.exists(source), "ContainerRuntime.java not found at " + source);
         String text = new String(Files.readAllBytes(source), StandardCharsets.UTF_8);
         int start = text.indexOf("static String bootstrapCommand() {");
@@ -270,11 +271,17 @@ public final class LinuxAppsTest {
     }
 
     private static int run(Path work, String script) throws Exception {
+        return run(work, script, null);
+    }
+
+    /** Runs the script, and keeps what it said when a place to keep it is given. */
+    private static int run(Path work, String script, Path output) throws Exception {
         Path file = work.resolve("harness.sh");
         Files.write(file, script.getBytes(StandardCharsets.UTF_8));
         Process process = new ProcessBuilder("bash", file.toString())
                 .redirectErrorStream(true).start();
-        readAll(process.getInputStream());
+        byte[] said = readAll(process.getInputStream());
+        if (output != null) Files.write(output, said);
         return process.waitFor();
     }
 

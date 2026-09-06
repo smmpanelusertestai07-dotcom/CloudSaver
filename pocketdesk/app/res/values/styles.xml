@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.PocketDesk" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="Theme.PocketLinux" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">@color/brand</item>
@@ -16,7 +16,7 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.PocketDesk.Desktop" parent="android:style/Theme.Material.NoActionBar">
+    <style name="Theme.PocketLinux.Desktop" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:colorAccent">@color/brand</item>
@@ -30,21 +30,21 @@
         <item name="android:windowNoTitle">true</item>
     </style>
 
-    <style name="Theme.PocketDesk.Dialog" parent="android:Theme.Material.Dialog.Alert">
+    <style name="Theme.PocketLinux.Dialog" parent="android:Theme.Material.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dialog_bg_dark</item>
         <item name="android:colorAccent">@color/brand_on_dark</item>
         <item name="android:textColorPrimary">@color/text_dark</item>
         <item name="android:textColorSecondary">@color/muted_dark</item>
         <item name="android:colorBackground">@color/card_dark</item>
-        <item name="android:windowTitleStyle">@style/Theme.PocketDesk.Dialog.Title</item>
+        <item name="android:windowTitleStyle">@style/Theme.PocketLinux.Dialog.Title</item>
     </style>
 
-    <style name="Theme.PocketDesk.Dialog.Title" parent="@android:style/TextAppearance.Material.DialogWindowTitle">
+    <style name="Theme.PocketLinux.Dialog.Title" parent="@android:style/TextAppearance.Material.DialogWindowTitle">
         <item name="android:textColor">@color/text_dark</item>
         <item name="android:textSize">19sp</item>
     </style>
 
-    <style name="Theme.PocketDesk.Dialog.Light" parent="android:Theme.Material.Light.Dialog.Alert">
+    <style name="Theme.PocketLinux.Dialog.Light" parent="android:Theme.Material.Light.Dialog.Alert">
         <item name="android:windowBackground">@drawable/dialog_bg_light</item>
         <item name="android:colorAccent">@color/brand</item>
         <item name="android:textColorPrimary">@color/text_light</item>
