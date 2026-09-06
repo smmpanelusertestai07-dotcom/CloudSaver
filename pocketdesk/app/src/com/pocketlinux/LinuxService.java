@@ -906,12 +906,14 @@ public final class LinuxService extends Service {
             stopRequested = false;
         }
         int[] geometry = DeviceProbe.desktopGeometry(this, ContainerRuntime.GEOMETRY_CAP);
-        // The desktop is born the way the phone is held. It used to start landscape whatever
-        // the phone was doing, and the viewer then had to ask for a portrait desktop, showing
-        // a cropped sideways one in the meantime.
-        if (getResources().getConfiguration().orientation
-                == android.content.res.Configuration.ORIENTATION_PORTRAIT) {
-            geometry = new int[]{geometry[1], geometry[0]};
+        // The desktop is born the way the OWNER asked for, and only Auto-rotate asks the phone
+        // how it is being held. Reading the phone alone was why Screen rotation -> Portrait
+        // changed the phone window and left the computer inside it landscape.
+        if (ScreenRotation.portraitDesktop(
+                prefs.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO),
+                getResources().getConfiguration().orientation
+                        == android.content.res.Configuration.ORIENTATION_PORTRAIT)) {
+            geometry = new int[]{geometry[1], geometry[0]};   // desktopGeometry is long side first
         }
         int dpi = prefs.getInt(ContainerRuntime.KEY_UI_SCALE, ContainerRuntime.DEFAULT_UI_SCALE);
         String downloadTarget = ContainerRuntime.normaliseDownloadTarget(
@@ -922,7 +924,7 @@ public final class LinuxService extends Service {
             downloadTarget = ContainerRuntime.DOWNLOAD_ASK;
         }
         String command = ContainerRuntime.startDesktopCommand(
-                geometry[0], geometry[1], dpi, downloadTarget);
+                geometry[0], geometry[1], dpi, downloadTarget, desktopTheme(prefs));
         geometry = ContainerRuntime.safeGeometry(geometry[0], geometry[1]);
 
         // Off by default now: the seccomp accelerator breaks Chromium/Electron apps (see
@@ -1441,6 +1443,22 @@ public final class LinuxService extends Service {
     static String lastDetail() { return lastDetail; }
     static int lastProgress() { return lastProgress; }
     static boolean lastWasError() { return lastError; }
+
+    /**
+     * Light or dark for the computer inside, resolved here from the same setting the app uses.
+     *
+     * "System" has to be resolved on this side: the container has no idea what the phone's night
+     * mode is doing, and asking it to guess is how a light phone ended up holding a dark computer.
+     */
+    private String desktopTheme(SharedPreferences prefs) {
+        String mode = prefs.getString(ContainerRuntime.KEY_THEME, "system");
+        if (ContainerRuntime.THEME_LIGHT.equals(mode)) return ContainerRuntime.THEME_LIGHT;
+        if (ContainerRuntime.THEME_DARK.equals(mode)) return ContainerRuntime.THEME_DARK;
+        return (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES
+                ? ContainerRuntime.THEME_DARK : ContainerRuntime.THEME_LIGHT;
+    }
 
     private void status(String message, String detail, int progress, boolean busy, boolean error) {
         synchronized (PRIMARY_TASK) {

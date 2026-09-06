@@ -390,6 +390,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
+        copyAsset(context, "pocketdesk-settings.sh", "usr/local/bin/pocketdesk-settings");
         // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketdesk.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
@@ -403,6 +404,13 @@ final class ContainerRuntime {
         // PocketLinux's own mark, in the far corner of the panel. Its own artwork, so no
         // third-party trademark is involved -- see OPEN_SOURCE_NOTICES.md.
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
+        // Four marks PocketLinux draws itself, because Ubuntu 24.04's Adwaita has no full-colour
+        // application icons at all any more -- only the symbolic set, which GTK will not use for
+        // a launcher. Asking for a theme name here is what left Software wearing a blank sheet.
+        copyAsset(context, "pocketdesk-projects.png", "usr/share/pixmaps/pocketdesk-projects.png");
+        copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
+        copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
+        copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
     }
 
     /** The desktop scripts live as real shell files in assets, so they can be read and linted. */
@@ -494,7 +502,14 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-appshot.sh", "usr/local/bin/pocketdesk-appshot");
         copyAsset(context, "pocketdesk-adb.sh", "usr/local/bin/pocketdesk-adb");
         copyAsset(context, "pocketdesk-shot.sh", "usr/local/bin/pocketdesk-shot");
+        copyAsset(context, "pocketdesk-settings.sh", "usr/local/bin/pocketdesk-settings");
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
+        copyAsset(context, "pocketdesk-files.png", "usr/share/pixmaps/pocketdesk-files.png");
+        copyAsset(context, "pocketdesk-phone.png", "usr/share/pixmaps/pocketdesk-phone.png");
+        copyAsset(context, "pocketdesk-projects.png", "usr/share/pixmaps/pocketdesk-projects.png");
+        copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
+        copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
+        copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {
@@ -543,7 +558,7 @@ final class ContainerRuntime {
     static final String KEY_FAST_DESKTOP = "fast_desktop";
 
     static String startDesktopCommand(int width, int height, int dpi) {
-        return startDesktopCommand(width, height, dpi, DOWNLOAD_ASK);
+        return startDesktopCommand(width, height, dpi, DOWNLOAD_ASK, THEME_DARK);
     }
 
     /**
@@ -564,7 +579,16 @@ final class ContainerRuntime {
         return DOWNLOAD_ASK;
     }
 
-    static String startDesktopCommand(int width, int height, int dpi, String requestedTarget) {
+    /** Only "light" and "dark" may become a shell argument; anything else is the dark desktop. */
+    static final String THEME_DARK = "dark";
+    static final String THEME_LIGHT = "light";
+
+    static String normaliseTheme(String value) {
+        return THEME_LIGHT.equals(value) ? THEME_LIGHT : THEME_DARK;
+    }
+
+    static String startDesktopCommand(int width, int height, int dpi, String requestedTarget,
+            String requestedTheme) {
         int[] safe = safeGeometry(width, height);
         int safeWidth = safe[0];
         int safeHeight = safe[1];
@@ -573,6 +597,7 @@ final class ContainerRuntime {
         String downloadDirectory = DOWNLOAD_PHONE.equals(target)
                 ? "/home/coder/Phone/Download/PocketLinux" : "/home/coder/Downloads";
         String prompt = DOWNLOAD_ASK.equals(target) ? "true" : "false";
+        String theme = normaliseTheme(requestedTheme);
         return "rm -f /tmp/.X1-lock /tmp/.X11-unix/X1; "
                 + "mkdir -p /tmp/.X11-unix; chmod 1777 /tmp /tmp/.X11-unix; "
                 // Android hands the container supplementary GIDs that Ubuntu has no names for.
@@ -613,6 +638,9 @@ final class ContainerRuntime {
                 + "exec su - coder -c 'exec env POCKETDESK_DOWNLOAD_TARGET=" + target
                 + " POCKETDESK_DOWNLOAD_DIR=" + downloadDirectory
                 + " POCKETDESK_DOWNLOAD_PROMPT=" + (DOWNLOAD_ASK.equals(target) ? 1 : 0)
+                // The computer looks the way the app around it looks. Light or dark, already
+                // resolved on the phone, so "System" means the phone's own system here too.
+                + " POCKETDESK_THEME=" + theme
                 + " /usr/local/bin/pocketdesk-desktop "
                 + safeWidth + "x" + safeHeight + " " + safeDpi + "'";
     }

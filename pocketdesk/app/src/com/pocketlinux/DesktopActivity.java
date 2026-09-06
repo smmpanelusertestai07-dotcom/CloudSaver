@@ -48,11 +48,12 @@ import java.io.IOException;
  */
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
     private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
-            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6, MENU_VOLUME_UP = 7, MENU_VOLUME_DOWN = 8,
-            MENU_VOLUME_MUTE = 9, MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
+            MENU_FULL_SCREEN = 5, MENU_BAR_POSITION = 6,
+            MENU_CLOSE = 10, MENU_FORCE_CLOSE = 11, MENU_SWITCH = 12, MENU_ALL_WINDOWS = 13,
             MENU_MINIMISE_ALL = 14, MENU_PASTE = 15, MENU_APPS = 16, MENU_PHONE_FILES = 17,
             MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22,
-            MENU_WIDE_WORKSPACE = 23;
+            MENU_WIDE_WORKSPACE = 23, MENU_VOLUME_PANEL = 24, MENU_ROTATION_LOCK = 25,
+            MENU_TOUCH_LOCK = 26;
     private static final String KEY_WIDE_WORKSPACE = "viewer_wide_workspace";
     /** The request code the microphone prompt comes back on; above AppLock's own codes. */
     private static final int REQUEST_MICROPHONE = 4711;
@@ -129,6 +130,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     @Override protected void onStart() {
         super.onStart();
+        // The rotation setting lives on the other screen; picking it up here is what makes the
+        // change reach the computer without closing the desktop first.
+        applyOrientation();
         viewerVisible = true;
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(false);
@@ -138,10 +142,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         if (outer != null && AppLock.isLocked(this)) {
             AppLock.show(this, outer, null);
             // The phone keyboard, if it was open, must not keep typing into the desktop.
-            InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
-            if (input != null && keyboardInput != null) {
-                input.hideSoftInputFromWindow(keyboardInput.getWindowToken(), 0);
-            }
+            hideKeyboard();
         }
     }
 
@@ -165,9 +166,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         }
     }
 
-    /** True while the locked screen covers the desktop: keys and taps stop here. */
+    /** True while something is covering the desktop: keys and taps stop here. */
     private boolean lockedNow() {
-        return outer != null && AppLock.showing(outer);
+        return touchLocked || (outer != null && AppLock.showing(outer));
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -482,11 +483,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         FrameLayout overlay = new FrameLayout(this);
         overlay.addView(keyboardInput, new FrameLayout.LayoutParams(1, 1));
         outer.addView(overlay, new FrameLayout.LayoutParams(1, 1));
+        // The right corner, which is where every phone puts its volume slider and where a
+        // right-handed thumb already is. Below the bar when the bar is at the top.
         FrameLayout.LayoutParams volumeLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        volumeLp.topMargin = Ui.dp(this, 74);
+                Gravity.TOP | Gravity.END);
+        volumeLp.topMargin = Ui.dp(this, controlsAtTop ? 74 : 12);
+        volumeLp.setMarginEnd(Ui.dp(this, 10));
         outer.addView(buildVolumePanel(), volumeLp);
+        outer.addView(buildTouchLock(), new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         restoreBars = toolButton("Controls", R.drawable.ic_settings);
         restoreBars.setVisibility(View.GONE);
         // Solid rather than see-through: while the bar is hidden this chip is the only way
@@ -581,14 +587,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_BAR_POSITION, 5, controlsAtTop ? "Move controls to the bottom" : "Move controls to the top")
                 .setIcon(R.drawable.ic_settings);
-        items.add(0, MENU_VOLUME_UP, 6, "Media volume up").setIcon(R.drawable.ic_volume);
-        items.add(0, MENU_VOLUME_DOWN, 7, "Media volume down").setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_ROTATION_LOCK, 6, rotationLocked
+                ? "Rotation lock: off" : "Rotation lock: keep this way up").setIcon(R.drawable.ic_rotate);
+        items.add(0, MENU_TOUCH_LOCK, 7, "Lock the screen: ignore touches").setIcon(R.drawable.ic_lock);
         AudioManager sound = (AudioManager) getSystemService(AUDIO_SERVICE);
         boolean silent = sound != null
                 && (sound.isStreamMute(AudioManager.STREAM_MUSIC)
                     || sound.getStreamVolume(AudioManager.STREAM_MUSIC) == 0);
-        items.add(0, MENU_VOLUME_MUTE, 8, silent ? "Media volume: unmute" : "Media volume: mute")
-                .setIcon(R.drawable.ic_volume);
+        items.add(0, MENU_VOLUME_PANEL, 8, silent
+                ? "Volume: muted" : "Volume and mute").setIcon(R.drawable.ic_volume);
         items.add(0, MENU_MICROPHONE, 9, microphone.isRunning()
                         ? "Microphone: turn off" : "Microphone: let the computer hear you")
                 .setIcon(R.drawable.ic_volume);
@@ -614,16 +621,16 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                             : "Workspace matches the phone screen", Toast.LENGTH_LONG).show();
                     return true;
                 }
-                case MENU_ROTATE: toggleOrientation(); return true;
+                case MENU_ROTATE: rotateNow(); return true;
                 case MENU_FULL_SCREEN: setBarsHidden(true); return true;
                 case MENU_BAR_POSITION:
                     controlsAtTop = !controlsAtTop;
                     preferences.edit().putString(ContainerRuntime.KEY_CONTROLS_AT, controlsAtTop ? "top" : "bottom").apply();
                     layoutBars();
                     return true;
-                case MENU_VOLUME_UP: adjustVolume(AudioManager.ADJUST_RAISE); return true;
-                case MENU_VOLUME_DOWN: adjustVolume(AudioManager.ADJUST_LOWER); return true;
-                case MENU_VOLUME_MUTE: adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE); return true;
+                case MENU_VOLUME_PANEL: showVolume(null); return true;
+                case MENU_ROTATION_LOCK: setRotationLocked(!rotationLocked); return true;
+                case MENU_TOUCH_LOCK: setTouchLocked(true); return true;
                 case MENU_MICROPHONE: toggleMicrophone(); return true;
                 case MENU_PHOTO: takePhoto(); return true;
                 default: return false;
@@ -696,41 +703,59 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private TextView volumeChip;
     private TextView volumeNote;
     private ProgressBar volumeBar;
+    private Button muteButton;
     private LinearLayout volumePanel;
     private final Runnable hideVolume = () -> {
         if (volumePanel != null) volumePanel.animate().alpha(0f).setDuration(220)
                 .withEndAction(() -> { if (volumePanel != null) volumePanel.setVisibility(View.GONE); }).start();
     };
 
-    /** "Media volume  ·  60 %", a bar and the step, on the desktop, for a second and a half. */
+    /**
+     * The volume readout, in the right-hand corner: which volume it is, the percentage, a bar,
+     * and the three buttons -- quieter, mute, louder -- so it can be changed without hunting for
+     * the phone's own keys or leaving the desktop.
+     *
+     * "Media volume" is named rather than assumed. This app plays the Linux computer's sound on
+     * the media stream and touches no other, so a phone on silent with media turned up still has
+     * sound here, and that surprises people until they are told which volume they are moving.
+     */
     private void showVolume(AudioManager manager) {
-        int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
-        int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        boolean silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
-        int percent = silent ? 0 : Math.round(step * 100f / max);
         if (volumePanel == null || outer == null) return;
-        volumeChip.setText(silent ? "Media volume  ·  silent"
-                : "Media volume  ·  " + percent + " %");
+        if (manager == null) manager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int percent = 0;
+        boolean silent = true;
+        if (manager != null) {
+            int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+            int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
+            percent = Math.round(step * 100f / max);
+            silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
+        }
+        volumeChip.setText(silent ? "Media volume  \u00b7  muted" : "Media volume  \u00b7  " + percent + " %");
         volumeNote.setText(silent
-                ? "Volume up to hear the desktop again"
-                : "Step " + step + " of " + max + " — the desktop plays as media audio");
-        volumeBar.setProgress(percent);
+                ? "The computer cannot be heard"
+                : "The Linux computer plays on this volume");
+        volumeBar.setProgress(silent ? 0 : percent);
+        muteButton.setText(silent ? "Unmute" : "Mute");
+        muteButton.setContentDescription(silent ? "Turn the sound back on" : "Mute the computer");
+        styleToggle(muteButton, silent);
         volumePanel.setVisibility(View.VISIBLE);
         volumePanel.animate().cancel();
         volumePanel.setAlpha(1f);
         volumePanel.removeCallbacks(hideVolume);
-        volumePanel.postDelayed(hideVolume, 1600L);
+        // Long enough to press the buttons that are on it, which the old second and a half
+        // was not: it vanished under the finger reaching for it.
+        volumePanel.postDelayed(hideVolume, 3200L);
     }
 
-    /** The indicator itself: built once, hidden until a volume key is pressed. */
+    /** The indicator itself: built once, hidden until the volume is asked about. */
     private View buildVolumePanel() {
         volumePanel = new LinearLayout(this);
         volumePanel.setOrientation(LinearLayout.VERTICAL);
         volumePanel.setBackground(Ui.outlined(
-                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 14, this));
-        volumePanel.setElevation(Ui.dp(this, 6));
+                Color.argb(242, 15, 21, 44), Color.rgb(58, 74, 130), 16, this));
+        volumePanel.setElevation(Ui.dp(this, 8));
         int pad = Ui.dp(this, 14);
-        volumePanel.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 12));
+        volumePanel.setPadding(pad, Ui.dp(this, 11), pad, Ui.dp(this, 12));
         volumeChip = Ui.bold(this, "Media volume", 14, Color.rgb(230, 236, 247));
         volumePanel.addView(volumeChip, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -739,7 +764,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         volumeBar.setProgressTintList(ColorStateList.valueOf(Color.rgb(122, 155, 255)));
         volumeBar.setProgressBackgroundTintList(ColorStateList.valueOf(Color.rgb(44, 54, 96)));
         LinearLayout.LayoutParams barLp =
-                new LinearLayout.LayoutParams(Ui.dp(this, 188), Ui.dp(this, 7));
+                new LinearLayout.LayoutParams(Ui.dp(this, 196), Ui.dp(this, 7));
         barLp.topMargin = Ui.dp(this, 9);
         volumePanel.addView(volumeBar, barLp);
         volumeNote = Ui.text(this, "", 11, Color.rgb(158, 172, 208));
@@ -747,8 +772,93 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         noteLp.topMargin = Ui.dp(this, 7);
         volumePanel.addView(volumeNote, noteLp);
+
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        Button quieter = toolButton("\u2212", R.drawable.ic_volume);
+        quieter.setContentDescription("Media volume down");
+        quieter.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_LOWER));
+        buttons.addView(quieter, volumeButton(58));
+        muteButton = toolButton("Mute", 0);
+        muteButton.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_TOGGLE_MUTE));
+        buttons.addView(muteButton, volumeButton(84));
+        Button louder = toolButton("+", R.drawable.ic_volume);
+        louder.setContentDescription("Media volume up");
+        louder.setOnClickListener(v -> adjustVolume(AudioManager.ADJUST_RAISE));
+        buttons.addView(louder, volumeButton(58));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 38));
+        rowLp.topMargin = Ui.dp(this, 11);
+        volumePanel.addView(buttons, rowLp);
+
         volumePanel.setVisibility(View.GONE);
         return volumePanel;
+    }
+
+    private LinearLayout.LayoutParams volumeButton(int widthDp) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                Ui.dp(this, widthDp), ViewGroup.LayoutParams.MATCH_PARENT);
+        lp.setMarginEnd(Ui.dp(this, 5));
+        return lp;
+    }
+
+    // ---- The screen lock: touches ignored until it is turned off ------------------------------
+
+    private FrameLayout touchLock;
+    private boolean touchLocked;
+
+    /**
+     * A lid over the desktop, so the computer can be watched, read or listened to without a
+     * palm, a pocket or a passenger touching anything. The only thing that answers is the
+     * chip in the middle, and it wants two taps -- one is exactly what a stray touch is.
+     */
+    private View buildTouchLock() {
+        touchLock = new FrameLayout(this);
+        touchLock.setBackgroundColor(Color.argb(56, 3, 5, 12));
+        touchLock.setClickable(true);
+        touchLock.setFocusable(true);
+        touchLock.setVisibility(View.GONE);
+        TextView chip = Ui.bold(this, "Screen locked \u00b7 double tap to unlock", 13,
+                Color.rgb(226, 233, 248));
+        chip.setBackground(Ui.outlined(
+                Color.argb(238, 15, 21, 44), Color.rgb(96, 118, 190), 16, this));
+        chip.setPadding(Ui.dp(this, 16), Ui.dp(this, 11), Ui.dp(this, 16), Ui.dp(this, 11));
+        chip.setGravity(Gravity.CENTER);
+        FrameLayout.LayoutParams chipLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER);
+        touchLock.addView(chip, chipLp);
+        final long[] lastTap = { 0L };
+        touchLock.setOnClickListener(v -> {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastTap[0] < 700L) {
+                setTouchLocked(false);
+                Toast.makeText(this, "Screen unlocked", Toast.LENGTH_SHORT).show();
+            } else {
+                lastTap[0] = now;
+                chip.animate().cancel();
+                chip.setAlpha(1f);
+                chip.animate().alpha(0.35f).setStartDelay(1400L).setDuration(400L).start();
+            }
+        });
+        return touchLock;
+    }
+
+    boolean isTouchLocked() { return touchLocked; }
+
+    private void setTouchLocked(boolean locked) {
+        touchLocked = locked;
+        if (touchLock == null) return;
+        touchLock.setVisibility(locked ? View.VISIBLE : View.GONE);
+        if (locked) {
+            // Above the full-screen chip and everything else, or the one thing it is meant to
+            // stop -- a stray tap on a control -- would still get through.
+            touchLock.bringToFront();
+            releaseRemoteInput();
+            hideKeyboard();
+            Toast.makeText(this, "Screen locked. Double tap the middle to unlock.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /** What the status label opens: the plain facts about this session and how to drive it. */
@@ -1010,6 +1120,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         input.showSoftInput(keyboardInput, InputMethodManager.SHOW_IMPLICIT);
     }
 
+    /** Puts the phone keyboard away, so nothing keeps typing into a desktop that is not listening. */
+    private void hideKeyboard() {
+        InputMethodManager input = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (input != null && keyboardInput != null) {
+            input.hideSoftInputFromWindow(keyboardInput.getWindowToken(), 0);
+        }
+    }
+
     private Button addKey(LinearLayout parent, String label, int keysym) {
         Button button = toolButton(label);
         button.setOnClickListener(v -> specialKey(keysym));
@@ -1269,28 +1387,65 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return lp;
     }
 
+    /**
+     * The setting made in PocketLinux, applied to this screen -- and through it to the Linux
+     * desktop, which is kept exactly the shape of this view, so Portrait here really is a
+     * portrait computer and not a landscape one squeezed sideways.
+     *
+     * Called from onStart as well as onCreate: the setting is changed on the other screen, and
+     * before this it took closing and reopening the desktop for the change to be seen.
+     */
     private void applyOrientation() {
-        String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
-        if ("portrait".equals(value)) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-            return;
-        }
-        if ("landscape".equals(value)) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-            return;
-        }
-        // FULL_SENSOR, not USER: USER obeys the phone's rotation lock, which is why turning the
-        // phone did nothing until the screen was reopened. The desktop resizes itself to match,
-        // so following the sensor is safe here even when the rest of the system is locked.
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+        if (rotationLocked) return;      // the viewer's own lock outranks the setting while it is on
+        setRequestedOrientation(ScreenRotation.of(
+                preferences.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO)));
+        // The phone window can already be this way up while the computer inside it is not: a
+        // session started before the setting changed keeps the shape it was born with until it
+        // is asked to match. Posted so the new configuration lands first; if the desktop is
+        // already the right size, nothing is sent.
+        if (desktop != null) desktop.post(desktop::requestDesktopMatch);
     }
 
-    private void toggleOrientation() {
+    /** True while the viewer's rotation lock is holding the screen where it is. */
+    private boolean rotationLocked;
+
+    boolean isRotationLocked() { return rotationLocked; }
+
+    /**
+     * Pins the screen exactly as it is now, or hands it back to the setting.
+     *
+     * This is the phone's rotation lock, for this screen only: a long read or a game in
+     * landscape should not turn over because the phone was put down flat.
+     */
+    private void setRotationLocked(boolean locked) {
+        rotationLocked = locked;
+        if (locked) {
+            boolean landscape = getResources().getConfiguration().orientation
+                    == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            setRequestedOrientation(ScreenRotation.pin(
+                    getWindowManager().getDefaultDisplay().getRotation(), landscape));
+        } else {
+            applyOrientation();
+        }
+    }
+
+    /**
+     * Turn the screen the other way, now, and hold it there.
+     *
+     * Holding it is the point -- a rotation that the sensor undoes the moment the phone moves is
+     * not a rotation. It is the same lock the Screen menu offers, so it can be let go again;
+     * an earlier version set the flag here with nothing that could clear it, which quietly
+     * disabled the Screen rotation setting for the rest of the session.
+     */
+    private void rotateNow() {
         boolean landscape = getResources().getConfiguration().orientation
                 == android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+        rotationLocked = true;
         setRequestedOrientation(landscape
-                ? ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
-                : ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
+                ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        Toast.makeText(this, "Turned, and held this way up. Screen \u25be Rotation lock: off "
+                + "hands it back to the setting.", Toast.LENGTH_LONG).show();
     }
 
     /** Keeps the bar clear of the status bar and the gesture bar, whichever end it sits at. */

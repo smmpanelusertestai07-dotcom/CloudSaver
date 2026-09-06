@@ -292,13 +292,28 @@ final class VncView extends View implements VncClient.Listener {
      */
     private void matchDesktopToScreen() {
         main.removeCallbacks(desktopResize);
+        resizeAttempts = 0;
         main.postDelayed(desktopResize, 450L);
     }
+
+    /** Ask the Linux desktop to become this shape again -- e.g. after the rotation setting changed. */
+    void requestDesktopMatch() { matchDesktopToScreen(); }
+
+    /** How many times the resize has been put off because the server had not offered it yet. */
+    private int resizeAttempts;
 
     private final Runnable desktopResize = new Runnable() {
         @Override public void run() {
             VncClient active = client;
-            if (active == null || !active.isResizable()) return;
+            if (active == null) return;
+            if (!active.isResizable()) {
+                // The server says it can be resized in its first framebuffer update, and on a
+                // slow phone that arrives after this debounce. Asking again is what makes
+                // Portrait reach the computer; giving up left it the shape it was born.
+                if (++resizeAttempts <= 20) main.postDelayed(this, 500L);
+                return;
+            }
+            resizeAttempts = 0;
             // A key row can open during the resize debounce. Use the size recorded for the
             // actual screen change, so a temporary toolbar cannot shrink the Linux root.
             int viewWidth = matchedWidth > 0 ? matchedWidth : getWidth();

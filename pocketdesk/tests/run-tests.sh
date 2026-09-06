@@ -162,7 +162,7 @@ echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
 # that runs after each app install, or a computer built by an earlier version never gets it.
-for helper in pocketdesk-storage.sh pocketdesk-software.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-graphics.py pocketdesk-appprocess.py pocketdesk-childwatch.py pocketdesk-adb.sh pocketdesk-procinfo.py pocketdesk-save.sh pocketdesk-mobile.sh; do
+for helper in pocketdesk-storage.sh pocketdesk-software.sh pocketdesk-shot.sh pocketdesk-mark.png pocketdesk-mcp.py pocketdesk-agent.sh pocketdesk-appshot.sh pocketdesk-graphics.py pocketdesk-appprocess.py pocketdesk-childwatch.py pocketdesk-adb.sh pocketdesk-procinfo.py pocketdesk-save.sh pocketdesk-mobile.sh pocketdesk-settings.sh pocketdesk-files.png pocketdesk-phone.png pocketdesk-projects.png pocketdesk-settings.png pocketdesk-software.png pocketdesk-package.png; do
   n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketlinux/ContainerRuntime.java" || true)
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done

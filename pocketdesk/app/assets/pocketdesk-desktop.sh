@@ -135,9 +135,9 @@ export WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1
 # No screen reader will ever run here, yet every GTK program and web page tried to reach the
 # accessibility bus first and logged "Could not connect to accessibility bus" while it waited.
 export NO_AT_BRIDGE=1 GTK_A11Y=none
-# The last word on the matter, for an app that reads no settings file. If one app ever looks
-# wrong because of it, delete this line: settings.ini alone still gives a dark desktop.
-export GTK_THEME=Adwaita:dark
+# GTK_THEME is exported further down, once the owner's Light/Dark choice has been read: that one
+# word is the last word for an app that reads no settings file, so it has to agree with the
+# settings.ini written from the same choice.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
 # One web process for every page: each new one is a 150 MB program started under PRoot, and
 # starting it was most of the wait before a page appeared.
@@ -274,6 +274,18 @@ printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Do
 printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #0b1320\n*foreground: #e6ecf7\n' \
   "$DPI" > "$HOME/.Xresources"
 
+# The theme the phone is set to. PocketLinux passes its own Light/Dark/System choice in, already
+# resolved, so the computer inside matches the app around it instead of being permanently dark.
+# A choice made in the computer's own System settings is written to theme and wins from then on,
+# because an owner who opened Settings and picked one meant it.
+DESKTOP_THEME=${POCKETDESK_THEME:-dark}
+case "$(cat "$HOME/.config/pocketdesk/theme" 2>/dev/null)" in
+  light) DESKTOP_THEME=light ;;
+  dark)  DESKTOP_THEME=dark ;;
+esac
+case "$DESKTOP_THEME" in light) PREFER_DARK=0 ; GTK_THEME_SUFFIX="" ;; *) PREFER_DARK=1 ; GTK_THEME_SUFFIX=:dark ;; esac
+export GTK_THEME="Adwaita$GTK_THEME_SUFFIX"
+
 # Adwaita, not "Adwaita-dark": GTK 3 has no theme of that name unless gnome-themes-extra is
 # installed, and asking for a theme GTK cannot find makes it drop the variant and fall back to
 # the default -- light Adwaita. That one word is why every dialog, menu and file window has been
@@ -285,8 +297,8 @@ printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hint
 # the marker existed is recognised by the wrong theme name it carries and is taken over once.
 write_gtk_defaults() {
   for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
-    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=1\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\n' \
-      "$((DPI * 1024))" > "$gtk_dir/settings.ini"
+    printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Noto Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\n' \
+      "$PREFER_DARK" "$((DPI * 1024))" > "$gtk_dir/settings.ini"
   done
 }
 GTK_INI="$HOME/.config/gtk-3.0/settings.ini"
@@ -316,7 +328,10 @@ printf '[config]\nquick_exec=1\nsingle_click=1\nconfirm_del=1\nterminal=lxtermin
 # PocketLinux's own wallpaper (a dark-blue square with Tux and the app's name -- Canonical's
 # artwork and the Ubuntu logo are not ours to ship, see OPEN_SOURCE_NOTICES.md); a right-click
 # (a long press, in Finger mode) on it opens the apps menu.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=1\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Sans 11\n' \
+# show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
+# XDG Documents folder, which PocketLinux points at Projects, wearing the theme's grey folder in
+# a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans 11\n' \
   > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"

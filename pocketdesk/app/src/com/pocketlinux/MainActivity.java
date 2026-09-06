@@ -2880,12 +2880,12 @@ public final class MainActivity extends Activity {
     }
 
     private void applyOrientation() {
-        String value = preferences.getString(ContainerRuntime.KEY_ORIENTATION, "auto");
-        if ("landscape".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-        else if ("portrait".equals(value)) setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-        // "auto" hands rotation back to the phone. Leaving this branch out meant a screen already
-        // pinned to landscape stayed pinned until the app was closed and opened again.
-        else setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        // One rule for both screens, and it is written down in ScreenRotation: Portrait is
+        // portrait and stays that way up, Landscape works either way round, and Auto-rotate
+        // follows the phone even when the phone's own rotation lock is on -- because picking
+        // Auto-rotate here IS the owner saying what they want.
+        setRequestedOrientation(ScreenRotation.of(
+                preferences.getString(ContainerRuntime.KEY_ORIENTATION, ScreenRotation.AUTO)));
     }
 
     private void configureSystemBars() {

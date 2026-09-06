@@ -220,7 +220,7 @@ EOF
   echo '    <item label="Screenshot"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></item>'
   echo '    <item label="Screenshot (window in front)"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot window</command></action></item>'
   echo '    <item label="Storage"><action name="Execute"><command>/usr/local/bin/pocketdesk-storage</command></action></item>'
-  echo '    <item label="Software"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
+  echo '    <item label="Software" icon="/usr/share/pixmaps/pocketdesk-software.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
   echo '    <item label="Appshot to the AI app (Super+Space)"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></item>'
   echo '    <item label="AI computer use"><action name="Execute"><command>/usr/local/bin/pocketdesk-agent status</command></action></item>'
   echo '    <separator/>'
@@ -239,8 +239,8 @@ EOF
   echo '    </menu>'
   echo '  </menu>' 
   echo '  <separator label="Folders"/>'
-  echo '  <item label="Phone files"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
-  echo '  <item label="Projects"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
+  echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
   printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
   echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
@@ -250,7 +250,8 @@ EOF
   echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
   echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
   echo '  <separator label="Desktop"/>'
-  echo '  <item label="Install a downloaded app"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
+  echo '  <item label="System settings" icon="/usr/share/pixmaps/pocketdesk-settings.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-settings</command></action></item>'
+  echo '  <item label="Install a downloaded app" icon="/usr/share/pixmaps/pocketdesk-package.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-install</command></action></item>'
   echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
   echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
   echo '  <item label="Refresh app list"><action name="Execute"><command>/usr/local/bin/pocketdesk-menu</command></action></item>'
@@ -324,13 +325,13 @@ done
 # The installer that a downloaded app package opens into. Two jobs: it is the handler for
 # .deb packages (Chrome's Open, and a double tap in the file manager), and a launcher of its
 # own so an app can be installed without finding the file first.
-printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-linux\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
+printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketdesk-install %%f\nIcon=pocketdesk-package\nTerminal=false\nX-PocketDesk=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
   > "$LOCAL_APPS/pocketdesk-install.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-install.desktop"
 
 # A small Ubuntu software centre: search the signed apt catalogue, review a package, install it,
 # update the computer, or hand a downloaded package to PocketLinux's safety checks.
-printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketdesk-software\nIcon=system-software-install\nTerminal=false\nCategories=System;PackageManager;\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketdesk-software\nIcon=pocketdesk-software\nTerminal=false\nCategories=System;PackageManager;\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-software.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-software.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-software.desktop" "$DESKTOP_DIR/pocketdesk-software.desktop"
@@ -342,6 +343,22 @@ printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\
   > "$LOCAL_APPS/pocketdesk-phone.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-phone.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-phone.desktop" "$DESKTOP_DIR/pocketdesk-phone.desktop"
+
+# Projects, with an entry of its own. It reached the desktop before only as pcmanfm's "Documents"
+# shortcut -- XDG_DOCUMENTS_DIR points there -- wearing the theme's plain grey folder, in a place
+# pcmanfm chose. Its own entry gives it PocketLinux's folder, a name and a description.
+printf '[Desktop Entry]\nType=Application\nName=Projects\nComment=Where your code and your work live\nExec=pcmanfm /home/coder/Projects\nIcon=pocketdesk-projects\nTerminal=false\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-projects.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-projects.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-projects.desktop" "$DESKTOP_DIR/pocketdesk-projects.desktop"
+
+# System settings. Everything it opens already existed; what did not exist was one place that
+# looked like settings, so the theme, the bar's edge and the sound mixer were each found only by
+# someone who already knew where they were.
+printf '[Desktop Entry]\nType=Application\nName=System settings\nComment=Theme, the bar, sound, storage and software\nExec=/usr/local/bin/pocketdesk-settings\nIcon=pocketdesk-settings\nTerminal=false\nCategories=Settings;System;\nX-PocketDesk=1\n' \
+  > "$LOCAL_APPS/pocketdesk-settings.desktop"
+chmod 755 "$LOCAL_APPS/pocketdesk-settings.desktop"
+cp -f "$LOCAL_APPS/pocketdesk-settings.desktop" "$DESKTOP_DIR/pocketdesk-settings.desktop"
 chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
 
 # tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the
@@ -368,7 +385,8 @@ launcher_item_app = $LOCAL_APPS/pocketdesk-$base.desktop"
 done
 
 panel_lines="$panel_lines
-launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop"
+launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop
+launcher_item_app = $LOCAL_APPS/pocketdesk-settings.desktop"
 
 MARK=/usr/share/pixmaps/pocketdesk-mark.png
 [ -f "$MARK" ] || MARK=/usr/share/pixmaps/pocketdesk-linux.png
