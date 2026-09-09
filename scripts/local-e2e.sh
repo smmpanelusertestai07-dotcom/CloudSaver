@@ -83,11 +83,17 @@ if ! "$ADB" get-state >/dev/null 2>&1; then
 fi
 
 # Booted is not usable: under software emulation the system server can lag
-# its own boot flag. Usable means the package manager answers, repeatedly.
+# its own boot flag. Usable means the boot flag is set AND the package
+# manager AND the settings service answer, repeatedly. The package manager
+# alone was not enough: on a fresh AVD's first boot it answers `pm path`
+# while StorageManagerService is still coming up, and the install that
+# followed died inside the system server with a NullPointerException.
 echo "waiting for a stable boot..."
 stable=0
 for _ in $(seq 1 120); do
-  if "$ADB" shell pm path android >/dev/null 2>&1; then
+  if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ] \
+    && "$ADB" shell pm path android >/dev/null 2>&1 \
+    && "$ADB" shell settings get global window_animation_scale >/dev/null 2>&1; then
     stable=$((stable + 1))
   else
     stable=0
