@@ -239,4 +239,15 @@ class RunDeciderTest {
         assertEquals(2 * 60_000L, RunDecider.screenOffWaitMs(SpeedMode.SMART))
         assertEquals(0L, RunDecider.screenOffWaitMs(SpeedMode.FAST))
     }
+
+    @Test
+    fun everyStorageGateHasAReasonHomeCanShow() {
+        // The worker used to stop on a storage gate with a word in the log
+        // and nothing on any screen, while Help promised Home would say so.
+        assertEquals(RunDecider.Wait.SPACE_FULL, RunDecider.waitForResource("extra_full"))
+        assertEquals(RunDecider.Wait.SPACE_FULL, RunDecider.waitForResource("stage_full"))
+        assertEquals(RunDecider.Wait.LOW_SPACE, RunDecider.waitForResource("low_space"))
+        assertEquals(RunDecider.Wait.VOLUME_MISSING, RunDecider.waitForResource("volume_missing"))
+        assertEquals(RunDecider.Wait.NONE, RunDecider.waitForResource("something_new"))
+    }
 }

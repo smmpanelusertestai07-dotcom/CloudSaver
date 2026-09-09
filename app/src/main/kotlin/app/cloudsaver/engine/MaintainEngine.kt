@@ -807,11 +807,20 @@ class MaintainEngine(private val context: Context) {
             val uriString = row.outputUri ?: continue
             // Mark first so a missing file is attributed to us, never to the user.
             db.items().update(row.copy(appDeletedCopy = true, updatedAt = now))
+            // A refusal is not a failure to retry every hour: Android will not
+            // let an app silently delete a file another install made, and a
+            // copy adopted after a reinstall is exactly that. It goes on the
+            // list Home asks about, through Android's own dialog.
+            var refused = false
             val ok = try {
                 context.contentResolver.delete(android.net.Uri.parse(uriString), null, null) > 0
+            } catch (e: SecurityException) {
+                refused = true
+                false
             } catch (e: Exception) {
                 false
             }
+            if (refused) repo.addCopiesNeedingConsent(listOf(id))
             // Re-read rather than reuse: the row was updated a moment ago.
             // If it has gone in the meantime there is nothing to write back,
             // and a background pass must not die of it.

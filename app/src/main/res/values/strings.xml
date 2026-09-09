@@ -142,6 +142,12 @@
     </plurals>
     <string name="old_files_clean">Remove</string>
     <string name="old_files_keep">Keep</string>
+    <string name="consent_copies_title">Copies that need your OK</string>
+    <plurals name="consent_copies_text">
+        <item quantity="one">%1$d copy made before this install is due to be cleared, and only you can remove it now.</item>
+        <item quantity="other">%1$d copies made before this install are due to be cleared, and only you can remove them now.</item>
+    </plurals>
+    <string name="consent_copies_remove">Remove</string>
 
     <!-- tamper evidence (13.A) -->
     <string name="tamper_title">Modified copy</string>
@@ -308,6 +314,7 @@
     <string name="kept_in_place_body">The smaller copy takes the original\'s place: same album, same name, same date, so your gallery timeline does not move. Off, it goes to Pictures/Light copies instead.</string>
     <string name="kept_in_place_warning">The copy carries the original\'s date, camera details and location. Two things do change: a HEIC photo comes back as .jpg, because that is what it was encoded to; and the file in your album is the optimised version, not the byte-for-byte original your cloud holds. Your cloud copy is untouched. If you put an original back from the gallery\'s trash later, it returns beside the smaller copy rather than replacing it.</string>
     <string name="skip_integrity_failed">its copy could not be checked, so the original stays</string>
+    <string name="skip_original_changed">it has changed since it was backed up, so the original stays</string>
     <string name="skip_not_confirmed">not confirmed in Android\'s dialog</string>
     <string name="skip_generic">left alone — nothing was removed</string>
     <string name="reclaim_mode_full">Free up fully</string>
@@ -528,6 +535,9 @@
     <string name="wait_screen">Waiting: will start when the screen has been off a couple of minutes</string>
     <string name="wait_budget">Waiting: today\'s battery budget used - plug in to continue (resets at midnight)</string>
     <string name="wait_photo_cap">Waiting: daily photo limit on battery reached - plug in to continue</string>
+    <string name="wait_space_full">Waiting: the copies folder has reached the space you allowed - it clears as copies are collected or removed</string>
+    <string name="wait_low_space">Waiting: the phone is below the free space you asked CloudSaver to keep</string>
+    <string name="wait_volume_missing">Waiting: the storage location you chose is not available right now</string>
     <string name="opt_daily_cap">Daily upload limit</string>
     <string name="opt_daily_cap_hint">How much CloudSaver adds to the upload folder each day.</string>
     <string name="unlimited">Unlimited</string>
@@ -748,7 +758,7 @@
     <string name="onb_ready_cloud_none">None installed yet</string>
     <string name="about_privacy_hint">What the app stores, and what it never does.</string>
     <string name="about_mission_title">Why CloudSaver exists</string>
-    <string name="about_mission_body">End-to-end encrypted cloud apps keep your photos private, but they upload exactly what you hand them \u2014 almost none of them make a file smaller first. So a library of 4K video fills a paid plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nCloudSaver is the step in between. It optimises your photos and videos on the phone itself, into one folder your cloud app already knows how to back up, so the same library reaches your cloud in a fraction of the space \u2014 a free or small plan goes a great deal further, and you keep the encrypted app you chose rather than the one with the best price.\n\nIt looks after the phone as well as the plan: it works only while the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
+    <string name="about_mission_body">End-to-end encrypted cloud apps keep your photos private, but they upload exactly what you hand them \u2014 almost none of them make a file smaller first. So a library of 4K video fills a paid plan quickly, and the only answer usually on offer is to buy more storage every year.\n\nCloudSaver is the step in between. It optimises your photos and videos on the phone itself, into one folder your cloud app already knows how to back up, so the same library reaches your cloud in a fraction of the space \u2014 a free or small plan goes a great deal further, and you keep the encrypted app you chose rather than the one with the best price.\n\nIt looks after the phone as well as the plan: it saves the heavy work for when the phone is charging, cool and idle, keeps the free space you asked it to keep, finds duplicate files and your largest ones, and never removes an original unless you confirm it yourself.</string>
     <string name="about_text">Works entirely on your phone. No account, no ads, and no internet permission at all.</string>
 
 
@@ -1015,7 +1025,7 @@
     <string name="privacy_b3_title">What the app stores</string>
     <string name="privacy_b3">File names, dates, sizes and a short code that identifies each file \u2014 the details needed to avoid doing the same work twice. Never your photos, and never thumbnails of them. It is all kept on the phone. A small backup of this list lives in the .cloudsaver folders under Download and Documents. That backup lets a reinstall pick up where you left off.</string>
     <string name="privacy_b4_title">What it never does</string>
-    <string name="privacy_b4">It never edits, moves or deletes your originals on its own. The only removals come from you, through Android\'s own confirmation. Nothing is deleted to make room for anything else.</string>
+    <string name="privacy_b4">It never edits, moves or deletes your originals on its own. The only removals of originals come from you, through Android\'s own confirmation. Its own copies are cleared to stay within the space you allow, best-proven and oldest first. No original is ever removed to make room.</string>
     <string name="privacy_b5_title">One honest note</string>
     <string name="privacy_b5">No Android app can be made impossible to inspect, and anyone claiming otherwise is selling something. CloudSaver protects you by holding no secrets worth stealing and by checking that its own code has not been altered.</string>
     <string name="privacy_b6_title">Terms</string>

@@ -1080,6 +1080,7 @@ private fun groupingLabel(grouping: ReclaimViewModel.Grouping): String = when (g
 private fun skipReasonLabel(reason: String?): String = when (reason) {
     "light_copy_failed" -> stringResource(R.string.skip_light_copy_failed)
     "integrity_failed" -> stringResource(R.string.skip_integrity_failed)
+    "original_changed" -> stringResource(R.string.skip_original_changed)
     "not_confirmed" -> stringResource(R.string.skip_not_confirmed)
     else -> stringResource(R.string.skip_generic)
 }

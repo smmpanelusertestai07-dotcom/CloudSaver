@@ -139,23 +139,32 @@ dependencies {
 // the tests reported `testDebugUnitTest UP-TO-DATE` and replayed the previous
 // verdict, so a copy rule could pass over text it had never read - which is
 // exactly how the first proof of two new rules "passed" while the fault sat
-// in the file. CI was only ever safe by accident, because it checks out fresh
-// and has no cache to reuse.
+// in the file. CI is not safe by accident either: the build cache is on in
+// gradle.properties and the Gradle action restores it, so a commit that
+// only touches a file no rule declared could replay the previous verdict.
 //
-// Declared here so a local run tells the truth. If a rule reads a file as
-// text, that file belongs in this list.
+// Declared here so every run tells the truth. If a rule reads a file as
+// text, that file - or its directory - belongs in this list.
 tasks.withType<Test>().configureEach {
     inputs.files(
-        rootProject.file(".github/workflows/build.yml"),
         rootProject.file("RELEASE_MATRIX.md"),
-        file("src/main/AndroidManifest.xml"),
-        file("src/main/res/values/strings.xml")
+        rootProject.file("gradle/wrapper/gradle-wrapper.properties"),
+        file("src/main/AndroidManifest.xml")
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleFiles")
+    inputs.dir(rootProject.file(".github/workflows"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sourceTextRuleWorkflows")
     inputs.dir(file("src/main/kotlin"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleSources")
+    inputs.dir(file("src/main/res"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sourceTextRuleResources")
+    inputs.dir(file("src/androidTest"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("sourceTextRuleInstrumented")
 }
 
 // CI helper: prints the app version name.

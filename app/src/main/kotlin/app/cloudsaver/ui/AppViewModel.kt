@@ -2001,6 +2001,74 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val leftoverUris = MutableStateFlow<List<Uri>>(emptyList())
 
+    /**
+     * Copies the maintenance pass chose to clear and Android would not let it
+     * delete on its own - files an earlier install made, adopted after a
+     * reinstall or a phone move. They count against the space the user
+     * allowed, so with enough of them the resource gate stopped every run,
+     * and nothing in the app could ever remove them. Home asks, once,
+     * through Android's own dialog.
+     */
+    val consentCopies: StateFlow<List<ItemRow>> = options
+        .map { o -> o.copiesNeedConsent.mapNotNull { it.toLongOrNull() } }
+        .distinctUntilChanged()
+        .map { ids ->
+            if (ids.isEmpty()) emptyList() else db.items().byIds(ids).filter { it.outputUri != null }
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, screenLocal, emptyList())
+
+    fun removeConsentCopies() {
+        if (TamperCheck.isModified(ctx)) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val rows = consentCopies.value
+            val uris = rows.mapNotNull { r ->
+                r.outputUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            }
+            if (uris.isEmpty()) {
+                repo.removeCopiesNeedingConsent(rows.map { it.id })
+                return@launch
+            }
+            // Mark first: a copy that leaves through this dialog leaves because
+            // the app asked, and the maintenance pass must not read its
+            // absence as the cloud having collected it.
+            val now = System.currentTimeMillis()
+            for (r in rows) db.items().update(r.copy(appDeletedCopy = true, updatedAt = now))
+            withContext(Dispatchers.Main) {
+                val sender = requestDelete(uris) { deleted ->
+                    finishConsentCopies(rows, deleted.map { it.toString() }.toSet())
+                }
+                if (sender != null) deleteIntent.value = sender
+            }
+        }
+    }
+
+    private fun finishConsentCopies(rows: List<ItemRow>, deleted: Set<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val gone = mutableListOf<Long>()
+            for (r in rows) {
+                val current = db.items().byId(r.id) ?: continue
+                if (r.outputUri != null && r.outputUri in deleted) {
+                    db.items().update(
+                        current.copy(
+                            state = ItemState.DONE.name,
+                            goneReason = app.cloudsaver.core.logic.GoneReason.APP_DELETED.name,
+                            outputUri = null,
+                            updatedAt = now
+                        )
+                    )
+                    gone += r.id
+                } else {
+                    // Refused: the copy stays, and so does the row's claim
+                    // on the list, for the next time the user is asked.
+                    db.items().update(current.copy(appDeletedCopy = false, updatedAt = now))
+                }
+            }
+            repo.removeCopiesNeedingConsent(gone)
+        }
+    }
+
     fun detectLeftoverFiles() {
         viewModelScope.launch(Dispatchers.IO) {
             val o = repo.current()

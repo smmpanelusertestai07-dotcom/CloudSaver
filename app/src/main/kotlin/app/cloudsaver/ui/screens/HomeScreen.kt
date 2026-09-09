@@ -120,6 +120,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val health by vm.health.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
     val leftoverUris by vm.leftoverUris.collectAsStateWithLifecycle()
+    val consentCopies by vm.consentCopies.collectAsStateWithLifecycle()
     val tampered by vm.tampered.collectAsStateWithLifecycle()
     val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
     val crashPending by vm.crashPending.collectAsStateWithLifecycle()
@@ -1107,6 +1108,33 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 }
             }
         }
+
+        // Copies an earlier install made, which the maintenance pass wants
+        // gone and Android will not let this install delete on its own.
+        // Only the user can remove them, and only through Android's dialog.
+        AnimatedVisibility(
+            visible = consentCopies.isNotEmpty() && !tampered,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            AppCard(modifier = Modifier.padding(top = 12.dp)) {
+                Text(
+                    stringResource(R.string.consent_copies_title),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    pluralStringResource(
+                        R.plurals.consent_copies_text, consentCopies.size, consentCopies.size
+                    ),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                FlowRow {
+                    TextButton(onClick = { vm.removeConsentCopies() }) {
+                        Text(stringResource(R.string.consent_copies_remove))
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(28.dp))
     }
 
@@ -1239,6 +1267,9 @@ private fun statusLine(
             RunDecider.Wait.SCREEN_ON -> stringResource(R.string.wait_screen)
             RunDecider.Wait.BUDGET_USED -> stringResource(R.string.wait_budget)
             RunDecider.Wait.PHOTO_CAP -> stringResource(R.string.wait_photo_cap)
+            RunDecider.Wait.SPACE_FULL -> stringResource(R.string.wait_space_full)
+            RunDecider.Wait.LOW_SPACE -> stringResource(R.string.wait_low_space)
+            RunDecider.Wait.VOLUME_MISSING -> stringResource(R.string.wait_volume_missing)
         }
         return reason ?: pluralStringResource(R.plurals.status_working, waiting, waiting)
     }
