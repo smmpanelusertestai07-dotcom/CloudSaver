@@ -49,10 +49,12 @@
          to the account holder's Google Drive - without needing the internet
          permission, because the system does the sending. For an app whose
          first promise is that nothing leaves the phone, that is the promise
-         broken by a default. Cloud backup is therefore off; a phone-to-phone
-         transfer stays allowed, being a local copy between the owner's own
-         devices, and the app's own .cloudsaver history is what a reinstall
-         reads anyway. -->
+         broken by a default. allowBackup="false" switches off BOTH that
+         cloud backup and Android 12's phone-to-phone transfer - the platform
+         offers no way to keep one without the other - so a new phone starts
+         this app empty and rebuilds from the .cloudsaver history file under
+         Download, which the transfer copies as an ordinary file. The rules
+         file below is inert while this stays false; it documents intent. -->
     <application
         android:name=".CloudSaverApp"
         android:allowBackup="false"

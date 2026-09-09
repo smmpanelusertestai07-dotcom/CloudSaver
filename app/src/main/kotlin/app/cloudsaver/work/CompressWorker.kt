@@ -313,7 +313,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     /** FAST re-arms its content trigger after every run (triggers are one-shot). */
     private suspend fun reschedule(context: Context, repo: OptionsRepo) {
         if (repo.current().speed == SpeedMode.FAST) {
-            Scheduler.enqueueContentTrigger(context)
+            // This run consumed the trigger, so a fresh one must replace it.
+            Scheduler.enqueueContentTrigger(context, force = true)
         }
     }
 

@@ -273,7 +273,10 @@ class ProductBoundariesTest {
                 "fun restore(items: List<ReclaimItemRow>) {"
             ),
             "AppViewModel.kt" to listOf(
-                "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {"
+                "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {",
+                // Deletes a gallery file the person kept, with no system
+                // dialog in between. It was the one path the promise missed.
+                "fun removeKeptCopy(row: ItemRow) {"
             )
         )
         val ungated = mutableListOf<String>()
@@ -293,6 +296,28 @@ class ProductBoundariesTest {
             "these remove files without checking the signature first, while the " +
                 "app tells the user deleting is turned off: $ungated",
             ungated.isEmpty()
+        )
+    }
+
+    @Test
+    fun `Home waits for the database before it claims anything`() {
+        // The counts start when Home subscribes, so the first frame was drawn
+        // from the initial value - zeros - and zeros are a statement, not an
+        // absence: "nothing waiting, nothing backed up", written out as a
+        // sentence above a trial offer, one frame before the real numbers
+        // arrived and both vanished. The offer also enumerated the gallery.
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        assertTrue("counters must start unknown", vm.contains("val counters: StateFlow<Counters?>"))
+        assertTrue("processed must start unknown", vm.contains("val processedCount: StateFlow<Int?>"))
+        val home = File("src/main/kotlin/app/cloudsaver/ui/screens/HomeScreen.kt").readText()
+        assertTrue(home.contains("val loaded = countersRead != null && processedRead != null"))
+        assertTrue(
+            "the all-clear sentence waits for the counts",
+            home.contains("if (loaded && counters.waiting == 0 && counters.inFolder == 0 && counters.confirmed == 0)")
+        )
+        assertTrue(
+            "the trial offer, and the gallery read behind it, wait for the counts",
+            home.contains("if (loaded && (processed == 0 || testRunning || !testItems.isNullOrEmpty()))")
         )
     }
 

@@ -17,6 +17,7 @@ import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
+import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
@@ -68,6 +69,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -197,7 +199,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         .stateIn(viewModelScope, screenLocal, false)
 
-    val counters: StateFlow<Counters> = combine(
+    /**
+     * Null until the first read lands. The flow starts when Home subscribes,
+     * so the first frame used to be drawn from the initial value - all zeros
+     * - and zeros are not "unknown": they are "nothing waiting, nothing in
+     * the folder, nothing backed up", which Home dutifully wrote out as a
+     * sentence above a trial card, a frame before the real counts arrived
+     * and both vanished. Home now waits for a value instead.
+     */
+    val counters: StateFlow<Counters?> = combine(
         combine(newInScope, db.items().stateCountsFlow()) { n, s -> n to s },
         db.items().confirmedCountFlow(),
         db.items().verifiedCountFlow(),
@@ -222,7 +232,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             skipped = problems,
             duplicates = duplicates
         )
-    }.stateIn(viewModelScope, screenLocal, Counters())
+    }.stateIn(viewModelScope, screenLocal, null)
 
     /**
      * The Home status line, slowed to human speed.
@@ -234,6 +244,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     val statusWaiting: StateFlow<Int?> = counters
+        .filterNotNull()
         .map { it.waiting }
         .debounce(STATUS_DEBOUNCE_MS)
         // Null until a count actually arrives. This used to start at zero,
@@ -246,8 +257,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val savedBytes: StateFlow<Long> =
         db.items().savedBytesFlow().stateIn(viewModelScope, screenLocal, 0L)
 
-    val processedCount: StateFlow<Int> =
-        db.items().processedCountFlow().stateIn(viewModelScope, screenLocal, 0)
+    /** Null until read, for the same reason as [counters]. */
+    val processedCount: StateFlow<Int?> =
+        db.items().processedCountFlow().stateIn(viewModelScope, screenLocal, null)
 
     /**
      * Savings split by media kind.
@@ -994,8 +1006,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * what is being given up.
      */
     fun removeKeptCopy(row: ItemRow) {
+        // The tamper banner promises that on a modified build deleting is off
+        // and stays off. This is a delete - of a gallery file the user kept -
+        // and it was the one path the promise did not cover.
+        if (TamperCheck.isModified(ctx)) return
         viewModelScope.launch(Dispatchers.IO) {
-            val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            val uri = keptCopyUri(row)
             if (uri != null) runCatching { ctx.contentResolver.delete(uri, null, null) }
             db.items().update(
                 row.copy(
@@ -1011,6 +1027,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * The kept copy's URI, but only when the file there is the copy the row
+     * describes - see [KeptCopies]. A restored row can carry another phone's
+     * MediaStore number, and this is what stands between that number and
+     * `delete()`.
+     */
+    private fun keptCopyUri(row: ItemRow): Uri? {
+        val uri = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null
+        val name = runCatching {
+            ctx.contentResolver.query(
+                uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null
+            )?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull() ?: return null
+        return if (KeptCopies.belongsTo(name, row.displayName, row.fingerprint)) uri else null
+    }
+
+    /**
      * Copies the light copies into a folder the user picked, for anyone who
      * wants them outside any app-created location entirely.
      */
@@ -1023,8 +1055,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             var copied = 0
             for (row in db.items().keptCopies()) {
-                val source = row.keptUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
-                    ?: continue
+                val source = keptCopyUri(row) ?: continue
                 val name = row.outputName ?: row.displayName
                 val target = tree.createFile(row.mimeType, name) ?: continue
                 val ok = runCatching {

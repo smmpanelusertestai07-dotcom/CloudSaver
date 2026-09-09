@@ -197,6 +197,50 @@ class LockBackupE2eTest {
     }
 
     @Test
+    fun aRestoreKeepsTheKeptCopyAndTheExclusion(): Unit = runBlocking {
+        // A scan can rebuild every other column. These two it cannot: a
+        // kept light copy sits under the original's own name, and only its
+        // row's URI says it is not a new photo; "never optimise" is a choice
+        // made once. A restore used to drop both, and the first scan after
+        // it queued every kept copy as an original and sent it up again.
+        val db = AppDb.get(target)
+        val keptUri = "content://media/external/images/media/424242"
+        db.items().insert(
+            row("kept.jpg").copy(
+                state = "FREED_KEPT", evidence = "CONFIRMED_EXACT",
+                outputSha256 = "feed", outputBytes = 500, keptUri = keptUri
+            )
+        )
+        db.items().insert(
+            row("leave-alone.jpg").copy(
+                state = "SKIP", skipReason = "user_excluded", neverOptimise = true
+            )
+        )
+        assertTrue("export must succeed", exportTo(backupFile(), null))
+        db.clearAllTables()
+        assertEquals(0, db.items().count())
+
+        val result = importFrom(backupFile(), null)
+        assertTrue("restore must succeed, got $result", result is SnapshotStore.ImportResult.Success)
+        val kept = db.items().byFingerprint("fp-kept.jpg")
+        assertEquals("the kept copy's address must come back", keptUri, kept?.keptUri)
+        assertEquals("FREED_KEPT", kept?.state)
+        val excluded = db.items().byFingerprint("fp-leave-alone.jpg")
+        assertEquals("the exclusion must come back", true, excluded?.neverOptimise)
+    }
+
+    private fun row(name: String) = app.cloudsaver.data.db.ItemRow(
+        fingerprint = "fp-$name",
+        displayName = name,
+        sizeBytes = 1_000,
+        dateModified = 1_700_000_000,
+        captureAt = 1_700_000_000_000,
+        mimeType = "image/jpeg",
+        isVideo = false,
+        state = "NEW"
+    )
+
+    @Test
     fun theWrongPasswordRestoresNothingAtAll(): Unit = runBlocking {
         repo.setString(OptionsRepo.K.PRESET, Preset.MAX_SAVER.name)
         assertTrue(exportTo(backupFile(), "the real password"))

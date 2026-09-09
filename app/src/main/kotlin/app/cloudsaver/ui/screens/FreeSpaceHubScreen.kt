@@ -61,7 +61,8 @@ import app.cloudsaver.util.Formats
 fun FreeSpaceHubScreen(vm: AppViewModel, nav: NavHostController) {
     val findSpace by vm.findSpace.collectAsStateWithLifecycle()
     val checked by vm.findSpaceChecked.collectAsStateWithLifecycle()
-    val counters by vm.counters.collectAsStateWithLifecycle()
+    val countersRead by vm.counters.collectAsStateWithLifecycle()
+    val counters = countersRead ?: AppViewModel.Counters()
     val stats by vm.storageStats.collectAsStateWithLifecycle()
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val options by vm.options.collectAsStateWithLifecycle()

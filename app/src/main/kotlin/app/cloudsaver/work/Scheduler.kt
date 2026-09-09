@@ -72,8 +72,20 @@ object Scheduler {
         }
     }
 
-    /** FAST mode: react to new gallery items; re-armed after every run. */
-    fun enqueueContentTrigger(context: Context) {
+    /**
+     * FAST mode: react to new gallery items; re-armed after every run.
+     *
+     * [force] is for the worker's re-arm, which must replace the trigger it
+     * has just consumed. Everything else keeps whatever is pending. Every
+     * process start used to REPLACE: the photo that fired the trigger woke
+     * the process, Application.onCreate ran ensure(), and ensure() cancelled
+     * the very run the trigger had started - or was about to - and armed a
+     * fresh one that only fires on the NEXT gallery change. So with the app
+     * cold, which is its normal state, a new photo waited for the half-hourly
+     * pass instead, every time, and the cancelled run was stamped
+     * CANCELLED_BY_APP.
+     */
+    fun enqueueContentTrigger(context: Context, force: Boolean = false) {
         val constraints = Constraints.Builder()
             .setRequiresBatteryNotLow(true)
             .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
@@ -84,8 +96,8 @@ object Scheduler {
         val request = OneTimeWorkRequestBuilder<CompressWorker>()
             .setConstraints(constraints)
             .build()
-        WorkManager.getInstance(context)
-            .enqueueUniqueWork(W_TRIGGER, ExistingWorkPolicy.REPLACE, request)
+        val policy = if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
+        WorkManager.getInstance(context).enqueueUniqueWork(W_TRIGGER, policy, request)
     }
 
     /**

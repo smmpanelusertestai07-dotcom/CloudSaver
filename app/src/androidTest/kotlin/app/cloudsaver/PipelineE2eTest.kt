@@ -20,6 +20,7 @@ import app.cloudsaver.media.Stager
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -216,6 +217,31 @@ class PipelineE2eTest {
         assertTrue(
             "the optimised copy lost its audio track",
             hasAudioTrack(path)
+        )
+    }
+
+    /**
+     * The other half of the promise: a clip that goes in silent comes out
+     * silent. Naming audio in the export sequence makes Media3 generate a
+     * silent track for a clip that has none - a timelapse would come back
+     * with an audio track it never had, larger and lying about itself.
+     */
+    @Test
+    fun videoOnlyClipGainsNoSound() = runBlockingTest {
+        val uri = MediaFixtures.insertVideo(context, "e2e_silent.mp4")
+        assertNotNull("the device must be able to produce a test clip", uri)
+        assertFalse("the fixture itself must be silent", hasAudioTrack(uri!!.toString()))
+        val db = AppDb.get(context)
+        val options = OptionsRepo.get(context).current()
+        MediaScanner(context, db).scan()
+        val row = db.items().byState(ItemState.NEW.name)
+            .firstOrNull { it.displayName == "e2e_silent.mp4" }
+        assertNotNull("scanner must see the clip", row)
+        assertTrue("video staging must succeed", Stager(context, db).stageOne(row!!, options))
+        val staged = db.items().staged().first { it.displayName == "e2e_silent.mp4" }
+        assertFalse(
+            "the optimised copy of a silent clip was given an audio track",
+            hasAudioTrack(staged.stagePath!!)
         )
     }
 

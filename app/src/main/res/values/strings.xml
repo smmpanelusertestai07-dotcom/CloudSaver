@@ -569,6 +569,9 @@
     <string name="opt_verified30">Also offer files verified by upload size</string>
     <string name="opt_verified30_hint">Free up space normally offers an original only when CloudSaver watched your cloud app collect that exact copy. Turn this on and it will also offer files where only the amount your cloud app sent that day added up, and only after a month\u0027s wait. More space to free up, on weaker proof.</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
+    <string name="alerts_need_permission">Alerts are on, but notifications are turned off for CloudSaver, so none can be shown.</string>
+    <string name="alerts_allow">Allow notifications</string>
+    <string name="alerts_open_settings">Open notification settings</string>
     <string name="opt_pause">Pause CloudSaver</string>
     <string name="opt_pause_hint">Stops optimising and stops adding copies to the upload folder. It cannot stop your cloud app \u2014 pause that inside the app itself.</string>
     <string name="recommend_cap">Recommended for this phone: %1$s a day.</string>
@@ -984,7 +987,7 @@
     <string name="faq_a10">Your photos are unaffected. Optimised copies stay in Pictures/CloudSaver until your cloud app collects them, kept light copies stay in your gallery, and your cloud is untouched. CloudSaver\'s own history survives in a hidden file under Documents and Download, so reinstalling restores what it already knew and it does not redo work. On a new phone, install CloudSaver and copy that folder across, or use Save backup in Settings first.</string>
 
     <string name="faq_q11">What does freeing up space do, and can I get files back?</string>
-    <string name="faq_a11">It is the one screen that can remove an original, and it only ever removes what you select. It lists files whose copies your cloud has provably collected, shows the proof for each one, and offers three modes \u2014 keep a light copy in your gallery, remove the original entirely, or just clear the copies waiting on your phone. Removed files go to your gallery trash, where Android keeps them for 30 days, and the Recently freed up screen lists every batch with a Restore button. If you choose the light-copy mode, the copies live in the Pictures/Light copies album \u2014 keep that album out of your cloud app\'s backup, because every file there already reached your cloud once and backing the album up would store it twice.</string>
+    <string name="faq_a11">It is the one screen that can remove an original, and it only ever removes what you select. It lists files whose copies your cloud has provably collected, shows the proof for each one, and offers three modes \u2014 keep a light copy in your gallery, remove the original entirely, or just clear the copies waiting on your phone. Unless you pick Delete permanently, removed files go to your gallery trash, where Android keeps them for 30 days, and the Recently freed up screen lists every batch with a Restore button. Delete permanently skips the trash and cannot be undone. Android 10 has no gallery trash, so there every removal is final and is asked for one file at a time. If you choose the light-copy mode, the copies live in the Pictures/Light copies album \u2014 keep that album out of your cloud app\'s backup, because every file there already reached your cloud once and backing the album up would store it twice.</string>
 
     <string name="faq_q12">Does anything leave my phone?</string>
     <string name="faq_a12">Nothing, from CloudSaver. The internet permission is removed from the app itself, so there is no code path that could send anything anywhere \u2014 not analytics, not crash reports, not your photos. All the network traffic you will see is your own cloud app uploading the folder, exactly as it would for any other folder. You can check this yourself in Android\'s app info screen, where CloudSaver has no network permission to grant or deny.</string>
@@ -1006,9 +1009,9 @@
     <string name="about_network_none">None \u2014 the app does not have the internet permission.</string>
 
     <string name="privacy_b1_title">Nothing leaves your phone</string>
-    <string name="privacy_b1">CloudSaver has no internet permission, so it cannot send anything anywhere. There is no account to create and no sign-in. There are no ads and no analytics of any kind. It also opts out of Android\u2019s own cloud backup, so the system never copies its records to your Google account either \u2014 a phone-to-phone transfer may still carry them, because that copy goes straight to your other phone.</string>
+    <string name="privacy_b1">CloudSaver has no internet permission, so it cannot send anything anywhere. There is no account to create and no sign-in. There are no ads and no analytics of any kind. It also opts out of Android\u2019s own backup and phone-to-phone transfer, so the system never copies its records anywhere. A reinstall or a new phone reads the app\u2019s own hidden history file instead.</string>
     <string name="privacy_b2_title">What the app can see</string>
-    <string name="privacy_b2">Only the albums you included during setup. Albums you leave out are never read. You can change the list at any time in Settings.</string>
+    <string name="privacy_b2">It reads your gallery\u2019s index for every album \u2014 names, sizes and dates \u2014 so it can count and list them. Only the albums you tick are optimised or copied. Albums you leave out are counted, never changed. You can change the list at any time in Settings.</string>
     <string name="privacy_b3_title">What the app stores</string>
     <string name="privacy_b3">File names, dates, sizes and a short code that identifies each file \u2014 the details needed to avoid doing the same work twice. Never your photos, and never thumbnails of them. It is all kept on the phone. A small backup of this list lives in the .cloudsaver folders under Download and Documents. That backup lets a reinstall pick up where you left off.</string>
     <string name="privacy_b4_title">What it never does</string>

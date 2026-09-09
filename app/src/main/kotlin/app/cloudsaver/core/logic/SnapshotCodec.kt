@@ -41,7 +41,22 @@ object SnapshotCodec {
         val outputSha256: String?,
         val outputFolder: OutFolder?,
         val releasedAt: Long?,
-        val confirmedAt: Long?
+        val confirmedAt: Long?,
+        /**
+         * The two facts a scan cannot rebuild, so a restore used to lose them.
+         *
+         * A light copy kept in the original's place carries the original's
+         * name and album, and only its row's content URI tells the scanner
+         * it is not a new photo. Without it, the first scan after a restore
+         * queued every kept copy as an original, and a worse copy of a photo
+         * the cloud already held went back up. "Never optimise" is a choice
+         * the person made once and should not have to make again.
+         *
+         * Both are optional keys, so older files still decode and older
+         * builds still read files that carry them.
+         */
+        val keptUri: String? = null,
+        val neverOptimise: Boolean = false
     )
 
     data class SnapBatch(
@@ -127,6 +142,8 @@ object SnapshotCodec {
             i.outputFolder?.let { o.put("outFolder", it.name) }
             i.releasedAt?.let { o.put("relAt", it) }
             i.confirmedAt?.let { o.put("confAt", it) }
+            i.keptUri?.let { o.put("kept", it) }
+            if (i.neverOptimise) o.put("never", true)
             items.put(o)
         }
         root.put("items", items)
@@ -219,7 +236,9 @@ object SnapshotCodec {
                 outputSha256 = o.optString("outSha", "").ifEmpty { null },
                 outputFolder = enumOrNull<OutFolder>(o.optString("outFolder", "")),
                 releasedAt = if (o.has("relAt")) o.optLong("relAt") else null,
-                confirmedAt = if (o.has("confAt")) o.optLong("confAt") else null
+                confirmedAt = if (o.has("confAt")) o.optLong("confAt") else null,
+                keptUri = o.optString("kept", "").ifEmpty { null },
+                neverOptimise = o.optBoolean("never", false)
             )
         }
         val batches = mutableListOf<SnapBatch>()

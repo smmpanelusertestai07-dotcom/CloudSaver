@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.room.withTransaction
 import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
@@ -96,7 +97,9 @@ class SnapshotStore(
                 outputSha256 = row.outputSha256,
                 outputFolder = enumOrNull<OutFolder>(row.outputFolder),
                 releasedAt = row.releasedAt,
-                confirmedAt = row.confirmedAt
+                confirmedAt = row.confirmedAt,
+                keptUri = row.keptUri,
+                neverOptimise = row.neverOptimise
             )
         }
         val batches = db.batches().all().map { b ->
@@ -401,6 +404,28 @@ class SnapshotStore(
                     "treating as partial and rescanning"
             )
         }
+        // Every row lands in one transaction, or none does.
+        //
+        // The rows used to go in one commit at a time, and the first launch
+        // after a reinstall starts this before setup is finished - the one
+        // moment a person is most likely to swipe the app away, and a phone
+        // that is nearly full (this app's whole audience) is the one most
+        // likely to throw mid-way. Whatever had landed stayed, and the next
+        // launch saw a table that was not empty, wrote RESTORE_DONE and
+        // never looked at the snapshot again: a half-restored history with
+        // no ledger, taken for a finished one. A transaction either lands
+        // the whole snapshot or leaves the table empty for the next launch
+        // to try again. Settings go in after it - they live in DataStore,
+        // which has no part in a Room transaction.
+        val imported = db.withTransaction { mergeRows(snapshot) }
+        if (importOptions && snapshot.options.isNotEmpty()) {
+            optionsRepo.importMap(snapshot.options)
+        }
+        AppLog.log(context, "snapshot", "imported $imported items")
+        return imported
+    }
+
+    private suspend fun mergeRows(snapshot: SnapshotCodec.Snapshot): Int {
         var imported = 0
         val now = System.currentTimeMillis()
         for (raw in snapshot.items) {
@@ -425,18 +450,30 @@ class SnapshotStore(
                     outputFolder = mapped.outputFolder?.name,
                     releasedAt = mapped.releasedAt,
                     confirmedAt = mapped.confirmedAt,
+                    keptUri = mapped.keptUri,
+                    neverOptimise = mapped.neverOptimise,
                     fromImport = true,
                     updatedAt = now
                 )
                 if (db.items().insert(row) != -1L) imported++
             } else {
-                // Upgrade evidence only; never downgrade local knowledge.
+                // Upgrade evidence only; never downgrade local knowledge. A
+                // "never optimise" in the snapshot is honoured too: it only
+                // ever makes the app do less to a file, which is the one
+                // direction an import may move a choice on its own.
                 val existingEv = Evidence.parse(existing.evidence)
-                if (mapped.evidence.ordinal > existingEv.ordinal) {
+                val betterEvidence = mapped.evidence.ordinal > existingEv.ordinal
+                val newlyExcluded = mapped.neverOptimise && !existing.neverOptimise
+                if (betterEvidence || newlyExcluded) {
                     db.items().update(
                         existing.copy(
-                            evidence = mapped.evidence.name,
-                            confirmedAt = mapped.confirmedAt ?: existing.confirmedAt,
+                            evidence = if (betterEvidence) mapped.evidence.name else existing.evidence,
+                            confirmedAt = if (betterEvidence) {
+                                mapped.confirmedAt ?: existing.confirmedAt
+                            } else {
+                                existing.confirmedAt
+                            },
+                            neverOptimise = existing.neverOptimise || mapped.neverOptimise,
                             updatedAt = now
                         )
                     )
@@ -470,10 +507,6 @@ class SnapshotStore(
                 )
             )
         }
-        if (importOptions && snapshot.options.isNotEmpty()) {
-            optionsRepo.importMap(snapshot.options)
-        }
-        AppLog.log(context, "snapshot", "imported $imported items")
         return imported
     }
 

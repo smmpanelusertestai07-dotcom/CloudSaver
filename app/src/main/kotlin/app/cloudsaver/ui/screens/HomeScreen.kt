@@ -106,9 +106,16 @@ import app.cloudsaver.ui.theme.MetricTextStyle
 @Composable
 fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val options by vm.options.collectAsStateWithLifecycle()
-    val counters by vm.counters.collectAsStateWithLifecycle()
+    val countersRead by vm.counters.collectAsStateWithLifecycle()
     val savedBytes by vm.savedBytes.collectAsStateWithLifecycle()
-    val processed by vm.processedCount.collectAsStateWithLifecycle()
+    val processedRead by vm.processedCount.collectAsStateWithLifecycle()
+    // Null means the database has not answered yet. Anything that reads as
+    // a claim - "everything is backed up", the offer to try it on a few
+    // photos - waits for the answer; the tiles draw at zero meanwhile, which
+    // is a number, not a sentence.
+    val loaded = countersRead != null && processedRead != null
+    val counters = countersRead ?: AppViewModel.Counters()
+    val processed = processedRead ?: 0
     val noAlbumsTicked by vm.noAlbumsTicked.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
     val confirmResult by vm.confirmResult.collectAsStateWithLifecycle()
@@ -705,7 +712,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             }
         }
         MetricGrid(progressTiles)
-        if (counters.waiting == 0 && counters.inFolder == 0 && counters.confirmed == 0) {
+        if (loaded && counters.waiting == 0 && counters.inFolder == 0 && counters.confirmed == 0) {
             Text(
                 stringResource(
                     if (options.lastRunAt == 0L) R.string.progress_none_yet
@@ -819,7 +826,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         // `processed` 1 and unmounted this card mid-run - taking the
         // before-and-after sizes with it. The one thing the trial exists to
         // show was destroyed by the trial succeeding.
-        if (processed == 0 || testRunning || !testItems.isNullOrEmpty()) {
+        if (loaded && (processed == 0 || testRunning || !testItems.isNullOrEmpty())) {
             // Reading the album list means enumerating the gallery, so it is
             // done here - once, and only while the trial card can appear -
             // rather than on every visit to Home.

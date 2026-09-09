@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **515 unit tests** on the JVM, covering the pure rules and auditing the
+- **526 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,7 +49,7 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **111 instrumented tests across 16 classes**, run on real emulators against a
+- **113 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
@@ -360,13 +360,18 @@ source for this release, including the rows that were already marked Done.
   this app runs on. The video pipeline built its export sequence through a
   constructor Media3 deprecated, and the fear was that the replacement takes
   a set of track types and getting it wrong drops the audio from somebody's
-  video. Reading the library's bytecode rather than its names settled it: the
-  set is a filter, the exporter strips any track the set does not name, and
-  naming audio and video strips nothing - exactly what the old constructor's
-  "default" did. To make sure that stays true, the test clip can now carry a
-  genuine AAC track, encoded on the device, and a test asserts the optimised
-  copy still has it: the wrong choice would fail no other test, because the
-  copy would be smaller, valid, and silent.
+  video. Reading the library's bytecode rather than its names settled it, in
+  two steps - the second correcting the first. The set is a filter: the
+  exporter strips any track the set does not name. It is also a demand: the
+  exporter *forces* any track the set names, so naming audio and video for a
+  clip that has no audio - a timelapse, a screen recording with the
+  microphone off - gave the copy a silent AAC track the original never had.
+  The sequence now names only the tracks the source actually carries, read
+  off the file before the export starts. Two device tests hold both halves:
+  the test clip can carry a genuine AAC track, encoded on the device, and the
+  optimised copy must keep it; a silent clip must stay silent. Neither wrong
+  choice would fail any other test, because either copy is smaller and
+  valid.
 - **Whether every screen's query has to run while the screen is not there.**
   Fourteen flows were collected eagerly, seven of them full-table sums over
   `items`, and a scan writes one row at a time - so each of them re-ran for
@@ -377,6 +382,64 @@ source for this release, including the rows that were already marked Done.
   safe: null until the database answers, drawn as loading placeholders, so the
   first frame of the tab can no longer read as an empty gallery. What stays
   eager is what the tab bar and the lock gate read on every screen.
+- **Whether Home's first frame is a claim.** Making the counts screen-local
+  moved their first read to the moment Home appears, and the frame before it
+  arrived was drawn from the initial value: zeros. Zeros are not "unknown" -
+  they are "nothing waiting, nothing backed up", which Home wrote out as a
+  sentence above an offer to try the app on a few photos, and the offer read
+  the whole gallery to list albums. One frame later both vanished. The counts
+  now start as null and Home waits for an answer before it says anything; a
+  source rule holds the wait in place.
+- **Whether an interrupted restore looks finished.** The first launch after a
+  reinstall restores the snapshot before setup is complete, one row at a
+  time, each in its own commit. Swipe the app away half-way - or run out of
+  disk, on a phone this app exists for - and whatever had landed stayed; the
+  next launch saw a non-empty table, wrote "restore done" and never read the
+  snapshot again. Half a history with no ledger, taken for the whole. The
+  rows now go in as one Room transaction: the whole snapshot lands, or the
+  table stays empty for the next launch to try again.
+- **Whether a restore remembers what a scan cannot rebuild.** The snapshot
+  carried everything a scan could re-derive and dropped the two things it
+  could not: which files the person said never to touch, and where each
+  kept light copy lives. A kept copy sits under the original's own name in
+  the original's own album, so after any restore the first scan queued every
+  one of them as a new photo and sent a worse copy of it to the cloud - the
+  defect fixed as P1 #25, back through a different door. Both now travel with
+  the row. And because a copy's address is a MediaStore number, which means
+  nothing on another phone, the two things that act on that number - the
+  scanner leaving the file alone and "Remove the light copy" deleting it -
+  first check that the file there is the copy the row describes. A stale
+  number now costs nothing instead of somebody's photograph.
+- **Whether starting the process cancels the run that started it.** In Fast
+  mode a new photo wakes the process to run the content trigger; the process
+  ran `ensure()`, and `ensure()` re-armed that trigger with REPLACE, which
+  cancelled the very run it had been woken for and armed one that only fires
+  on the *next* photo. With the app cold - its normal state - every photo
+  waited for the half-hourly pass instead. Only the worker's own re-arm,
+  after it has consumed the trigger, replaces; everything else keeps.
+- **Whether a switch that says Alerts can show one.** Setup asks for the
+  notification permission once and offers Skip; the system lets it be revoked
+  later. The Alerts switch then sat ON while every alert was dropped at the
+  moment of posting, including the one that says Free-up is holding
+  deletions - the alert a person most needs while they are not in the app.
+  Settings now says when notifications are blocked and offers them again, or
+  the system page once the system has stopped asking.
+- **Whether the help text is true.** Three sentences were not. The privacy
+  page said albums left out are "never read", while the scanner catalogues
+  every album to count and list them - only ticked albums are ever changed,
+  and the page now says exactly that. FAQ 11 promised every removal goes to
+  the gallery trash with a Restore button, which "Delete permanently" and
+  Android 10 both make false, and now says so. And the privacy page and the
+  manifest both said a phone-to-phone transfer still carries the app's
+  records: with cloud backup switched off, Android switches that transfer
+  off with it, and there is no way to keep one without the other. What
+  crosses to a new phone is the hidden history file, as an ordinary file.
+- **Whether CI can still start next month.** GitHub removes the Node 20
+  runtime from its runners on 23 September 2026, and every action both
+  workflows used was pinned to a major that runs on it - the deprecation
+  warning in every log said so. Each pin was moved to the first major whose
+  own `action.yml` declares Node 24, read at the tag rather than assumed, and
+  a unit test now reads the workflows and refuses any pin below that line.
 
 **Not done, and why**
 
