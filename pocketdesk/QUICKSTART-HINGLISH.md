@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketLinux-v12.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketLinux-v12.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -10,6 +10,22 @@
    install hota hai — Ubuntu, apps, logins sab bache rehte hain, kuch dobara download nahi hota.
    Pehli baar desktop kholne par purane Windows layer ke launchers aur prefixes apne aap saaf ho
    jaate hain; baaki kuch nahi chhua jaata.
+
+### 12.0.5: screenshots wale fixes
+
+- **Antigravity crash (SIGSEGV, exit 139) fix.** WebGL software path in-process GPU me fault kar
+  raha tha — Cursor/Antigravity ab `--disable-3d-apis` ke saath khulte hain, terminal DOM renderer
+  use karta hai. Phone pe GPU hai hi nahi, toh kuch khoya nahi.
+- **App window screen se bahar nahi jayegi.** dpi badhne se Chromium apps 1.86x ho gaye the aur
+  unki minimum width screen se badi. Ab scale desktop ki chhoti side se nikalta hai. App ka text
+  bada karna ho to app ke andar **Ctrl aur +**.
+- **Desktop icon ke naam beech me nahi tootenge** — pcmanfm ka label hamesha 100 px chauda hota
+  hai, isliye desktop ka font ab fixed 18 px hai ("Antigravity" bhi ek line me), icon 128 px tak.
+- **Kaala start screen gaya** — pehle second me navy, aur viewer "Starting…" card dikhata hai jab
+  tak desktop bana nahi.
+- **Volume panel** ab glass, **× button**, bahar tap karo to band. **Phone ▾** naya menu: volume,
+  mic, photo, file add, paste, touch lock — Screen menu ab sirf picture ke liye.
+- Purani error reports naye version pe khud saaf; notification category pehle se; **Bin** desktop pe.
 
 ### 12.0.0 me kya naya hai
 

@@ -1,3 +1,53 @@
+# PocketLinux 12.0.5 — what the first screenshots of 12.0.0 showed
+
+Six things, every one of them visible in a screenshot or a report from the reference phone.
+
+**Antigravity died with SIGSEGV a minute after opening, every time.** Its report ended with
+"GPU stall due to ReadPixels" and "GPU state invalid after WaitForGetOffsetInRange": the editor's
+terminal draws with WebGL, WebGL on this phone is SwiftShader on the processor, and with the GPU
+work kept inside the app's own process — which it is, to stay under Android's process ceiling — a
+fault in that path is a fault in the whole app. There is no graphics chip for WebGL to use here,
+so nothing is lost by not offering it: Cursor and Antigravity now start with `--disable-3d-apis`,
+xterm.js falls back to its DOM renderer, and the editor's own settings say the same so the choice
+survives an update. ChatGPT, Claude and Chrome are untouched.
+
+**App windows ran off the screen, close button included.** Raising the desktop's dpi made every
+Chromium app scale itself by 1.86, and a Chromium app scales its *minimum* window width with it —
+400 CSS pixels became 746 device pixels on a 720-pixel screen, and no amount of zooming could
+bring the right-hand edge back. The launcher now works out the scale from the desktop's own short
+side (as large as the dpi asks for, never so large that a 560-CSS-pixel window stops fitting), and
+an app's own zoom — Ctrl and + — is the right dial for its text, because it does not move the
+window's minimum size. The FAQ says so.
+
+**Desktop icon labels broke in the middle of words** — "Chro / e", "Antigra / vity". A desktop
+icon's label is exactly 100 pixels wide in pcmanfm, whatever the icon size or the dpi (a constant
+in its `desktop.c`), and a word wider than that is broken wherever the hundredth pixel falls. At
+179 dpi the 11-point label was 27 pixels tall and "Antigravity" 150 wide. The desktop's own font
+is a fixed 18 pixels now — "Antigravity", the longest name that gets an icon, is 91 pixels of
+Noto Sans at that size, 98 even if the type falls back to DejaVu — so a name is one line, and a
+two-word name wraps between its words. The icon itself is allowed up to 128 pixels (libfm does
+not clamp it), so it is finger-sized without the name paying for it. "System settings" is
+"Settings", on the desktop, in the menu and on the dialog.
+
+**The desktop opened black for a minute.** A new X server's root is black, the viewer connects
+the instant the display answers, and the wallpaper is painted a minute later. The root is painted
+navy in the first second now, and the viewer keeps its starting card up — naming the phase the
+desktop is in — until the desktop's own services have launched.
+
+**The volume panel had no way to close it, and it was a black slab.** It is glass now, with a
+close button; a tap anywhere else puts it away, exactly as the phone's own does; opened from the
+menu it stays, nudged by a volume key it fades. And the phone's things — volume, microphone,
+camera, files, paste, the touch lock — moved out of the Screen menu into a **Phone ▾** menu of
+their own, so Screen is only about how the picture is shown and Window only about the computer's
+windows.
+
+**Housekeeping.** Old reports are cleared once when a new version first opens the desktop, so a
+failure the version was built to fix is not carried over as a retained one; the notification
+category exists from the app's first launch; Delete moves a file to the **Bin**, which is on the
+desktop, with "Empty the bin" in the right-click menu; hidden files are View → Show hidden.
+
+---
+
 # PocketLinux 12.0.0 — the whole thing, finished
 
 Everything in this release came from one long list of things that were wrong, or missing, or

@@ -96,6 +96,31 @@ public final class LinuxService extends Service {
     private volatile long sessionGeneration;
     /** A bounded, fixed-label phase reported by our startup script, never an app URL. */
     private volatile String desktopStartupPhase = "Starting the Linux process";
+    /** The same phase, readable by the viewer, which draws it over the frame until the desktop is painted. */
+    private static volatile String lastStartupPhase = "";
+    /** When the desktop's services were launched, or 0 while they have not been this session. */
+    private static volatile long desktopDrawnAt;
+    static final String PHASE_DRAWN = "Desktop services launched";
+
+    /** What the desktop is doing right now while it comes up, for the viewer's starting card. */
+    static String startupPhase() { return lastStartupPhase; }
+
+    /**
+     * True once the file manager has been started and had a moment to paint the wallpaper.
+     *
+     * The viewer connects the instant the display answers, which is a minute before anything is
+     * drawn on it -- so what it showed for that minute was a black rectangle, and a black
+     * rectangle reads as broken. Until this is true the viewer keeps its starting card up.
+     */
+    static boolean desktopDrawn() {
+        long at = desktopDrawnAt;
+        if (at > 0) return System.currentTimeMillis() - at > 1500L;
+        // Never for ever: a desktop whose phase line went missing still gets shown after a
+        // minute and a half, which is longer than any start on the reference phone takes.
+        long began = startupBeganAt;
+        return began == 0 || System.currentTimeMillis() - began > 90_000L;
+    }
+    private static volatile long startupBeganAt;
     /** Set while the monitor is ending a session for a reason it has already announced. */
     private volatile boolean stoppedForReason;
     /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
@@ -932,6 +957,7 @@ public final class LinuxService extends Service {
         // Refresh the desktop scripts and every installed app's launcher on each start, so a
         // container set up by an older version picks up the current desktop without reinstalling.
         ContainerRuntime.writeDesktopScripts(this);
+        ContainerRuntime.clearReportsFromOlderVersions(this);
         status("Opening the desktop", "Starting your Linux computer…", -1, true, false);
         SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
         synchronized (PRIMARY_TASK) {
@@ -978,6 +1004,9 @@ public final class LinuxService extends Service {
             if (!sessionLog.renameTo(previousLog)) sessionLog.delete();
         }
         desktopStartupPhase = "Starting the Linux process";
+        lastStartupPhase = desktopStartupPhase;
+        desktopDrawnAt = 0L;
+        startupBeganAt = System.currentTimeMillis();
         Process desktopProcess = null;
         for (int attempt = 0; ; attempt++) {
             desktopProcess = ContainerRuntime.startContainer(this, command, accelerated);
@@ -1180,7 +1209,11 @@ public final class LinuxService extends Service {
                         String phase = line.substring("PD_DESKTOP_PHASE: ".length()).trim();
                         synchronized (PRIMARY_TASK) {
                             if (activeProcess == process && phase.length() > 0 && phase.length() <= 100
-                                    && phase.matches("[A-Za-z ]+")) desktopStartupPhase = phase;
+                                    && phase.matches("[A-Za-z ]+")) {
+                                desktopStartupPhase = phase;
+                                lastStartupPhase = phase;
+                                if (PHASE_DRAWN.equals(phase)) desktopDrawnAt = System.currentTimeMillis();
+                            }
                         }
                     }
                     if (!line.trim().isEmpty()) writer.println(line);
@@ -1552,13 +1585,24 @@ public final class LinuxService extends Service {
         return builder.build();
     }
 
-    private void createNotificationChannel() {
+    private void createNotificationChannel() { ensureNotificationChannel(this); }
+
+    /**
+     * Registers the app's one notification category.
+     *
+     * Called from the Application as well as from here: Android only lists a category under
+     * Settings -> Notifications once the app has created it, and creating it only when the
+     * service first started meant the category was missing exactly when someone went looking --
+     * before the first set-up, when they wanted to check what the app would be allowed to show.
+     */
+    static void ensureNotificationChannel(android.content.Context context) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(getString(R.string.notification_channel_description));
+                context.getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription(context.getString(R.string.notification_channel_description));
         channel.setShowBadge(false);
-        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(channel);
+        NotificationManager manager = (NotificationManager) context.getSystemService(NOTIFICATION_SERVICE);
+        if (manager != null) manager.createNotificationChannel(channel);
     }
 
     /**
