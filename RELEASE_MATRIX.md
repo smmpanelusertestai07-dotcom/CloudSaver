@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **526 unit tests** on the JVM, covering the pure rules and auditing the
+- **527 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -440,6 +440,10 @@ source for this release, including the rows that were already marked Done.
   warning in every log said so. Each pin was moved to the first major whose
   own `action.yml` declares Node 24, read at the tag rather than assumed, and
   a unit test now reads the workflows and refuses any pin below that line.
+  The same pass found the Gradle wrapper naming the distribution it
+  downloads but not its checksum, so every fresh runner ran whatever bytes
+  the URL returned; the published SHA-256 is now pinned beside the URL,
+  confirmed against a download, and a rule keeps it there.
 
 **Not done, and why**
 

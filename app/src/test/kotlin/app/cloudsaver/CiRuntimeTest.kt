@@ -41,6 +41,27 @@ class CiRuntimeTest {
     )
 
     @Test
+    fun `the Gradle the wrapper downloads is the Gradle that was tested`() {
+        // Every CI job starts on a fresh runner and downloads Gradle from the
+        // URL below; without a checksum the wrapper runs whatever those bytes
+        // turn out to be, and the release APK - whose hash and signing
+        // fingerprint the release notes ask people to verify - is built by a
+        // toolchain nobody verified. The value is the one services.gradle.org
+        // publishes beside the distribution, confirmed against a download.
+        val root = repoRoot()
+        assertTrue("repository root not found from app/", root != null)
+        val props = File(root, "gradle/wrapper/gradle-wrapper.properties").readLines()
+        val url = props.firstOrNull { it.startsWith("distributionUrl=") }
+        assertTrue("the wrapper must name its distribution", url != null)
+        val sum = props.firstOrNull { it.startsWith("distributionSha256Sum=") }
+            ?.substringAfter("=")
+        assertTrue(
+            "the wrapper must pin the SHA-256 of $url",
+            sum != null && Regex("[0-9a-f]{64}").matches(sum)
+        )
+    }
+
+    @Test
     fun `no action is pinned to a major that loses its runtime`() {
         assertTrue("the workflows directory must be found from app/", workflows.isDirectory)
         val uses = Regex("""uses:\s*([A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-/]+)@v(\d+)""")
