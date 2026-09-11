@@ -1,3 +1,55 @@
+# PocketLinux 13.0.0 — the final update
+
+The last release, made the way the last one should be: every requirement of the brief was audited
+against the code, cluster by cluster, each finding was checked twice before it was acted on, and
+what the phone's own screenshots showed was fixed at its root.
+
+**Signing in to Antigravity came back as "could not open: it stopped with error 127".** The browser
+said "You have successfully authenticated" and handed the `antigravity://` callback to the desktop,
+where xdg-open runs the app's wrapped launcher entry — and xdg-utils splits an Exec line on plain
+whitespace with no quote handling. `--label "Antigravity - URL Handler"` reached the launcher as the
+label `"Antigravity` and the command `-`, which does not exist: exit 127, and the sign-in never
+arrived. No launcher entry carries a label on its Exec line any more; the labels live in one table
+(`~/.config/pocketdesk/labels`), keyed by the name the launcher derives from the command itself, and
+a test now splits an entry exactly the way xdg-open does and checks what is left. ChatGPT's callback
+entry had the same fault waiting.
+
+**Sound.** The volume panel sits below the key row when the bar is at the top and Keys is on (it
+used to cover Esc, Tab and Ctrl); the bar's Mute button reads the phone's real state at every
+start rather than the last key press; Unmute comes back to an audible level when the slider had
+been held down to 0 (Android's toggle only flips a flag, so it used to unmute into silence); and a
+panel a key nudged up no longer outlives the screen it was on.
+
+**Phone files.** With Phone files off, the six empty mount points and the note calling them the
+phone's folders are cleared instead of sitting beside a note saying they are off; a file saved
+into one of them meanwhile is moved aside where it can be seen, not hidden under the mount. A
+plain `.Trash-0` file in each of the six phone folders stops GLib from tucking a deleted phone file
+into a hidden trash folder on the phone (the Bin lives on the computer's own storage, and a trash
+must be on the file's own filesystem) — the file manager asks before deleting for good, as the
+note in that folder promises. A file copied in from the phone or a cloud drive lands under a
+temporary name and takes its real one only when it is whole, so an AI app can never attach a
+truncated or empty copy. The safety answer now says what pairing Wireless debugging (Tools →
+Phone app testing) gives programs in the computer, and when to turn it off.
+
+**The computer's own Settings and Software.** Settings names the app's own rows ("Downloads go
+to", "Data and files"); the Software search's "nothing found" note names an action that exists;
+apt no longer prints "unsandboxed as root" and "delaying package configuration" at every install
+(apt-utils is on the computer, and apt is told not to try to become `_apt` under fake root); a
+theme chosen in the computer's Settings reaches every window opened after it (the launcher reads
+the choice at every start instead of inheriting the session's first word on it); and the panel
+is restarted by a refresh when it has died, which a uid test under fake root could never do.
+
+**Texts.** The help card, the README and the quickstart name the Phone menu for what moved there.
+A new answer compares this computer with Google's own Linux Terminal on Android (a Debian virtual
+machine through the Android Virtualization Framework, Pixel phones first, GPU acceleration only
+on the Pixel 10 so far) and says plainly what each road gives up. The Why-Ubuntu answer says why
+24.04 LTS stays now that 26.04 LTS exists. Every claim about the AI apps' Linux builds was checked
+again on 11 September 2026: ChatGPT's official Linux app (preview, 11 August 2026, x64 and ARM64),
+Claude Desktop for Linux (beta, 30 June 2026, with Chat, Cowork and Claude Code; Cowork needs
+hardware virtualisation a phone cannot give an app), Cursor and Antigravity ARM64 builds.
+
+**Version.** 13.0.0, build 420.
+
 # PocketLinux 12.0.5 — what the first screenshots of 12.0.0 showed
 
 Six things, every one of them visible in a screenshot or a report from the reference phone.

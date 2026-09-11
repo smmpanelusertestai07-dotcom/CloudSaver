@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "12.0.5";
+    static final String VERSION = "13.0.0";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -795,11 +795,37 @@ public final class MainActivity extends Activity {
                         + "what is on this phone.\n"
                         + "• 24.04 LTS is a long-term-support release: Canonical delivers security "
                         + "updates for it until April 2029, so a computer set up today is still "
-                        + "supported years from now.\n\n"
+                        + "supported years from now.\n"
+                        + "• Ubuntu 26.04 LTS came out in April 2026. This computer stays on 24.04 "
+                        + "LTS on purpose: it is the release these Linux apps were built and tested "
+                        + "for first, every publisher here still supports it, and it is supported "
+                        + "until 2029 — nothing is gained by moving yet, and a working computer is "
+                        + "kept.\n\n"
                         + "So this is not a cut-down phone Linux — it is the same Ubuntu 24.04 LTS "
                         + "that developers and AI agents work on every day, running on your phone's "
                         + "own processor.", true);
 
+        addAnswer(card, R.drawable.ic_phone, "Google's own Linux Terminal on Android — how does this compare?",
+                "Google ships a Terminal app in Android (from Android 15 QPR2 in 2025; graphical "
+                        + "Linux apps from Android 16 QPR2) that runs Debian inside a virtual machine "
+                        + "through the Android Virtualization Framework. That is a real virtual "
+                        + "machine with its own kernel — which is why it needs a phone whose hardware "
+                        + "and Android build support it, Pixel phones first, and why GPU-accelerated "
+                        + "graphics for those Linux apps exist so far only on the Pixel 10; on every "
+                        + "other phone the picture is drawn by the processor.\n\n"
+                        + "PocketLinux takes the other road: no virtual machine and no special "
+                        + "hardware. Ubuntu 24.04 LTS runs directly on the phone's own processor "
+                        + "under PRoot, on any ARM64 phone from Android 10 upwards, without root. "
+                        + "That is what lets a phone that is years old run ChatGPT, Claude, Cursor, "
+                        + "Antigravity and Chrome as their makers' own Linux apps, with Ubuntu's "
+                        + "whole software catalogue behind them, and keep running them in the "
+                        + "background.\n\n"
+                        + "The honest trade: a virtual machine has its own kernel, so it can run "
+                        + "Docker and everything else that needs one; PocketLinux shares the phone's "
+                        + "kernel, so it cannot (the answer below names the rest). For what this "
+                        + "computer is for — the AI desktop apps, a browser, the developer tools — "
+                        + "that difference does not show, and the phone does not have to be a "
+                        + "Pixel.", false);
         addAnswer(card, R.drawable.ic_info, "Is this a complete operating system?",
                 "Almost, and here is the honest line. Everything an operating system has above the "
                         + "kernel is here, and it is Ubuntu's own: apt and dpkg, the C library, the "
@@ -1760,6 +1786,13 @@ public final class MainActivity extends Activity {
                         + "messages, anything outside that shared storage, the camera, your location "
                         + "or your contacts. PocketLinux holds no permission for any of them, so "
                         + "nothing inside can ask for one.\n\n"
+                        + "One thing you can open on purpose: Tools → Phone app testing pairs the "
+                        + "computer with this phone's Wireless debugging, so an app built in the "
+                        + "computer can be installed and tested. While that pairing is on, programs "
+                        + "in the computer — an AI agent included — have the debugging bridge's "
+                        + "reach over the phone: install apps, read its logs, read and change its "
+                        + "shared storage. Pair only while you are testing, and turn Wireless "
+                        + "debugging off afterwards; the phone forgets the pairing then.\n\n"
                         + "The microphone is the one exception, and it is yours to give: Phone → "
                         + "Microphone on the desktop hands it over, the phone asks you the first "
                         + "time, it is off at every start, and it stops the moment you leave the "
