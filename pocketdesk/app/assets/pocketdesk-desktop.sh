@@ -292,8 +292,8 @@ printf '%s\n' "$DOWNLOAD_DIR" > "$HOME/.config/pocketdesk/download-dir"
 # "Cloud drives and phone picker" is where a file chosen in Android's own document picker lands.
 # Google Drive, OneDrive and Dropbox have no path on the filesystem -- they are document
 # providers behind content:// addresses -- so no mount can reach them; the picker can, and it
-# lists every one of them. Desktop screen -> Window -> Add a file from the phone or a cloud drive.
-printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud drives and phone picker\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
+# lists every one of them. Desktop screen -> Phone -> Add a file from the phone or a cloud drive.
+printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
   "$DOWNLOAD_DIR" > "$HOME/.config/gtk-3.0/bookmarks"
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's

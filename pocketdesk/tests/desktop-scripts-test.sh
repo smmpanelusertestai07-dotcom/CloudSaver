@@ -56,6 +56,16 @@ grep -q -- '--disable-gpu ' "$log" || fail "missing --disable-gpu"
 grep -q -- '--single-process' "$log" && fail "--single-process re-denies GPU access and must never be passed"
 grep -q -- '--no-zygote' "$log" || fail "Chromium apps must start with --no-zygote (the zygote fails under PRoot)"
 
+# With no --label, the launcher takes its label from the table pocketdesk-menu writes, keyed by
+# the command's name -- that is how a wrapped entry gets a label without carrying one on its
+# Exec line, where xdg-open would split a quoted label into pieces.
+mkdir -p "$HOME/.config/pocketdesk"
+printf 'electronish\tTable Label\n' > "$HOME/.config/pocketdesk/labels"
+PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" electronish >/dev/null 2>&1 || true
+grep -q 'Table Label process ended after' "$log" \
+  || fail "with no --label, the launcher must take its label from ~/.config/pocketdesk/labels"
+rm -f "$HOME/.config/pocketdesk/labels"
+
 # A stale single-instance lock must be cleared -- and must never leak into the launcher's own
 # variables. This exact setup once made it execute the lock's target, "localhost-16621", as the
 # app: the launch line in the log carried the wrong command and the app exited 127.
@@ -239,8 +249,15 @@ PATH="$WORK/fakebin:$PATH" bash "$WORK/menu.sh"
 
 entry="$WORK/coder/Desktop/chatgpt.desktop"
 [ -f "$entry" ] || fail "ChatGPT should get a desktop icon"
-grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt %U$' "$entry" \
+grep -q '^Exec=/usr/local/bin/pocketdesk-open chatgpt %U$' "$entry" \
   || fail "the desktop icon must launch through pocketdesk-open and still accept a link (%U)"
+grep -q '^Exec=.*--label' "$entry" \
+  && fail "no label on an Exec line: xdg-open splits it on whitespace with no quote handling"
+labels="$WORK/coder/.config/pocketdesk/labels"
+grep -q "^chatgpt$(printf '\t')ChatGPT\$" "$labels" \
+  || fail "the launcher's label for chatgpt must be in the labels table"
+grep -q "^claude-desktop$(printf '\t')Claude\$" "$labels" \
+  || fail "the launcher's label for claude-desktop must be in the labels table"
 grep -q '^Icon=chatgpt$' "$entry" || fail "the package's own icon name must be kept"
 
 # A computer set up by a version that carried the Windows layer must be tidied by one refresh:
@@ -254,7 +271,7 @@ claude="$WORK/coder/Desktop/com.anthropic.Claude.desktop"
 [ -f "$claude" ] || fail "Claude should get a desktop icon, looked for $claude"
 grep -q 'Desktop Action' "$claude" && fail "extra action groups would start the app unwrapped"
 grep -q '^Actions=' "$claude" && fail "Actions= must be dropped along with its groups"
-grep -q '^Exec=/usr/local/bin/pocketdesk-open --label "Claude" claude-desktop %U$' "$claude" \
+grep -q '^Exec=/usr/local/bin/pocketdesk-open claude-desktop %U$' "$claude" \
   || fail "Claude's launcher must go through pocketdesk-open too"
 
 menu="$WORK/coder/.config/openbox/menu.xml"
@@ -267,7 +284,7 @@ grep -q 'Should Not Appear' "$menu" && fail "NoDisplay entries must stay out of 
 # window button is what you need. They keep their desktop icon and the Apps menu.
 grep -q 'launcher_item_app = .*pocketdesk-chatgpt.desktop' "$WORK/coder/.config/tint2/tint2rc" \
   && fail "an AI app must not take one of the bar's few pinned slots"
-grep -q 'Exec=/usr/local/bin/pocketdesk-open --label "ChatGPT" chatgpt' \
+grep -q 'Exec=/usr/local/bin/pocketdesk-open chatgpt' \
   "$WORK/coder/.local/share/applications/pocketdesk-chatgpt.desktop" \
   || fail "the app's own entry must point at the wrapped launcher"
 
@@ -465,9 +482,24 @@ grep -q '^x-scheme-handler/chatgpt-local=pocketdesk-local-chatgpt-auth.desktop$'
   || fail "per-user protocol registrations must receive a wrapped launcher"
 grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-local-chatgpt-auth.desktop" \
   || fail "wrapping a hidden callback must preserve its visibility"
-grep -q 'pocketdesk-open --label "Local ChatGPT callback" env PD_CALLBACK_MODE=desktop chatgpt %U' \
-  "$WORK/coder/.local/share/applications/pocketdesk-local-chatgpt-auth.desktop" \
+callback_entry="$WORK/coder/.local/share/applications/pocketdesk-local-chatgpt-auth.desktop"
+grep -q '^Exec=/usr/local/bin/pocketdesk-open env PD_CALLBACK_MODE=desktop chatgpt %U$' "$callback_entry" \
   || fail "a local protocol callback must keep the publisher env and URL placeholder"
+# Split the way xdg-utils' xdg-open splits an Exec line -- plain whitespace, no quote handling --
+# a callback entry must still be wrapper, command, %U and nothing else. A quoted label with a
+# space in it ("Antigravity - URL Handler") is exactly what turned Antigravity's sign-in into
+# "could not open: it stopped with error 127" on the phone.
+set -f
+# shellcheck disable=SC2046
+set -- $(sed -n 's/^Exec=//p' "$callback_entry")
+set +f
+[ "$#" = 5 ] && [ "$1" = /usr/local/bin/pocketdesk-open ] && [ "$2" = env ] \
+  && [ "$3" = PD_CALLBACK_MODE=desktop ] && [ "$4" = chatgpt ] && [ "$5" = %U ] \
+  || fail "split like xdg-open, the callback Exec must be exactly: wrapper env KEY=value chatgpt %U (got: $*)"
+# The callback's own entry name is "Local ChatGPT callback"; the app's launcher was written
+# first, so the launcher's label for chatgpt stays "ChatGPT" and a callback says so too.
+grep -c "^chatgpt$(printf '\t')" "$labels" | grep -qx 1 \
+  || fail "one label per launcher name: the app's own entry wins over its callback entry"
 
 # A link handed to an app that is already open must reach it, not be dropped.
 "$WORK/usr/lib/electronish/ghostproc" 300 &

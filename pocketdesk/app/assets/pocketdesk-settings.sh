@@ -67,13 +67,13 @@ when it starts. Close and open it, or reopen the desktop, to see it change."
 download_note() {
   where=$(cat "$CONFIG/download-dir" 2>/dev/null)
   [ -n "$where" ] || where="$HOME_DIR/Downloads"
-  tell "Where new files are saved" "Right now: $where
+  tell "Downloads go to" "Right now: $where (the folder an app that does not ask uses)
 
 This one belongs to the phone, not to the computer: PocketLinux writes it into the computer every
 time the desktop starts, so a change made here would be replaced the next time you opened it.
 
-Change it in PocketLinux -> Settings -> Where new files are saved. The three choices are the
-computer's own Downloads, the phone's Download folder, or Ask each time."
+Change it in PocketLinux -> Settings -> Data and files -> Downloads go to: Ask every time,
+Computer Downloads or Phone Downloads."
 }
 
 about() {
@@ -113,7 +113,7 @@ menu() {
     FALSE sound      "Sound -- output, input and levels" "pavucontrol" \
     FALSE storage    "Storage -- what is using the space" "" \
     FALSE software   "Software and updates" "" \
-    FALSE downloads  "Where new files are saved" "$(cat "$CONFIG/download-dir" 2>/dev/null || echo "$HOME_DIR/Downloads")" \
+    FALSE downloads  "Downloads go to" "$(cat "$CONFIG/download-dir" 2>/dev/null || echo "$HOME_DIR/Downloads")" \
     FALSE refresh    "Refresh the app list and the desktop" "" \
     FALSE about      "About this computer" "" \
     2>/dev/null) || return 0

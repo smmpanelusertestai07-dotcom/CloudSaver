@@ -99,21 +99,31 @@ final class CloudFiles {
         File cloud = folder(context);
         List<String> arrived = new ArrayList<>();
         for (Uri one : chosen) {
+            File part = null;
             try {
                 File target = freeName(cloud, displayName(context, one));
-                try (InputStream in = context.getContentResolver().openInputStream(one);
-                     OutputStream out = new FileOutputStream(target)) {
+                // Read first, and into a temporary name. An unreadable document used to leave a
+                // 0-byte file with the real name behind, and a copy that broke off half way (a
+                // Drive file that stopped syncing, a grant that lapsed) left a truncated one --
+                // which an AI app then attached as if it were whole.
+                try (InputStream in = context.getContentResolver().openInputStream(one)) {
                     if (in == null) continue;
-                    byte[] buffer = new byte[64 * 1024];
-                    int read;
-                    while ((read = in.read(buffer)) > 0) {
-                        out.write(buffer, 0, read);
+                    part = new File(cloud, target.getName() + ".part");
+                    try (OutputStream out = new FileOutputStream(part)) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int read;
+                        while ((read = in.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
                     }
                 }
+                if (!part.renameTo(target)) throw new IOException("could not name the copied file");
+                part = null;
                 // Readable by the container, which runs as its own user inside PRoot.
                 target.setReadable(true, false);
                 arrived.add(target.getName());
             } catch (Throwable refused) {
+                if (part != null) part.delete();
                 // Deliberately everything. openInputStream ends up inside a provider written by
                 // someone else -- a cloud app, an OEM's file provider -- and a stale document
                 // comes back as whatever that provider felt like throwing: IllegalArgumentException

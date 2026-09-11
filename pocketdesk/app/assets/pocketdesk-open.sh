@@ -66,6 +66,12 @@ fi
 name=${profile:-$(basename "$command_name")}
 # Both names refer to the same Chrome profile and must share the startup lock.
 [ "$name" != google-chrome-stable ] || name=google-chrome
+if [ -z "$label" ]; then
+  # Written by pocketdesk-menu for every wrapped launcher, keyed by this same name. The label
+  # cannot ride on the Exec line: xdg-open, which runs the entry for an app:// sign-in
+  # callback, splits that line on whitespace with no quote handling (see write_entry there).
+  label=$(awk -F '\t' -v k="$name" '$1 == k { print $2; exit }' "$HOME/.config/pocketdesk/labels" 2>/dev/null)
+fi
 [ -n "$label" ] || label=$name
 
 case "$probe_seconds" in
@@ -422,6 +428,15 @@ if is_browser && [ "${#flags[@]}" -gt 0 ]; then
   flags=("${kept[@]}")
 fi
 
+
+# The theme chosen last, read at every launch. The desktop session exported GTK_THEME once, at
+# its start, and GTK lets that one word override settings.ini -- so a Light or Dark chosen later
+# in the computer's own Settings, which rewrites settings.ini, reached nothing opened after it.
+if grep -q '^gtk-application-prefer-dark-theme=0' "$HOME/.config/gtk-3.0/settings.ini" 2>/dev/null; then
+  export GTK_THEME=Adwaita
+elif [ -f "$HOME/.config/gtk-3.0/settings.ini" ]; then
+  export GTK_THEME=Adwaita:dark
+fi
 
 # Keep the same existing user-data directory for both startup and protocol callbacks.
 if [ "$name" = "chatgpt" ]; then

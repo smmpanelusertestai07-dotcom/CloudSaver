@@ -184,12 +184,22 @@ final class ContainerRuntime {
             bindPhoneFolders(args, phoneMount);
             new File(phoneMount, "Phone files are off.txt").delete();
         } else {
+            // Off: the six mount points and the note that calls them the phone's own folders
+            // would otherwise stay, empty, beside a note saying they are off -- and a file saved
+            // into one of them landed on the computer while looking like it went to the phone.
+            new File(phoneMount, "About this folder.txt").delete();
+            for (String folder : PHONE_FOLDERS) {
+                File point = new File(phoneMount, folder);
+                String[] left = point.list();
+                if (left != null && left.length == 0) point.delete();
+            }
             File note = new File(phoneMount, "Phone files are off.txt");
             if (!note.exists()) {
                 try {
                     writeText(note, "This folder shows your phone's own files once Phone files is on:\n"
                             + "PocketLinux → Settings → Permissions → Phone files.\n"
-                            + "Then open the desktop again: Download, DCIM (photos) and Documents appear here,\n"
+                            + "Then open the desktop again: six of the phone's folders appear here --\n"
+                            + String.join(", ", PHONE_FOLDERS) + " --\n"
                             + "and every app's Open dialog lists Phone on the left.\n");
                 } catch (IOException ignored) {
                     // A missing note costs nothing; the Settings row says the same.
@@ -444,7 +454,7 @@ final class ContainerRuntime {
      * These six are the phone's own public folders. Anything else -- Android/data, a messaging
      * app's media, another app's private storage -- is simply not connected now, and a file from
      * one of those can still be brought in by hand, one at a time, through
-     * Window -> Add a file from the phone or a cloud drive.
+     * Phone -> Add a file from the phone or a cloud drive.
      */
     private static final String[] PHONE_FOLDERS = {
             "Download", "DCIM", "Documents", "Pictures", "Music", "Movies",
@@ -455,7 +465,25 @@ final class ContainerRuntime {
         for (String folder : PHONE_FOLDERS) {
             File source = new File(card, folder);
             if (!source.isDirectory()) continue;          // not every phone has all six
+            // Deleting a file on the phone from the computer: the Bin lives on the computer's
+            // own storage and a trash must be on the file's own filesystem, so GLib would make
+            // a hidden .Trash-0 folder on the phone and move the file there -- gone from view,
+            // in nothing's Bin, emptied by nothing. A plain file by that name makes GLib
+            // decline, and the file manager then asks before deleting for good, which is what
+            // the note in this folder promises.
+            try {
+                new File(source, ".Trash-0").createNewFile();
+            } catch (IOException | SecurityException ignored) {
+                // Then GLib does what it does; the folder is still usable.
+            }
             File target = new File(phoneMount, folder);
+            String[] stranded = target.list();
+            if (stranded != null && stranded.length > 0) {
+                // Saved here while Phone files was off: on the computer, not the phone. Moved
+                // aside where it can be seen rather than hidden under the mount.
+                File aside = new File(phoneMount, folder + " (saved while Phone files was off)");
+                if (!aside.exists() && target.renameTo(aside)) target = new File(phoneMount, folder);
+            }
             if (!target.exists() && !target.mkdirs()) continue;
             args.add("-b");
             args.add(source.getAbsolutePath() + ":/home/coder/Phone/" + folder);
@@ -473,8 +501,9 @@ final class ContainerRuntime {
                     + "deleted in this folder is deleted on the phone, and Android has no bin to\n"
                     + "take it back from. Keep anything you would miss somewhere the computer\n"
                     + "cannot see, and hand single files to an AI app through PocketLinux's own\n"
-                    + "picker instead -- the desktop screen, Window, Add a file from the phone or\n"
-                    + "a cloud drive.\n");
+                    + "picker instead -- the desktop screen, Phone, Add a file from the phone or\n"
+                    + "a cloud drive. (The hidden .Trash-0 file in each folder is what stops a\n"
+                    + "deleted file being tucked away on the phone instead of asked about.)\n");
         } catch (IOException ignored) {
             // The note is a courtesy; the Settings screen says the same thing.
         }

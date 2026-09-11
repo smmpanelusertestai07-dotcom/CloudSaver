@@ -172,11 +172,13 @@ Neeche (ya upar, tumhari marzi) **ek hi bar**:
 | --- | --- |
 | Home | PocketLinux home pe wapas (computer chalta rehta hai) |
 | **Linux computer** | status; tap karo to details |
-| **Screen ▾** | Fit, Zoom in/out, Rotate, Full screen, controls upar/neeche, **Volume up/down** |
-| **Finger / Mouse** | Finger = jahan chhuo wahi click, swipe = scroll (tez swipe = aage bhi scroll hota rehta hai), hold = right-click, pointer haath jaisa. Mouse = arrow ghumao, tap = click, do ungli = scroll, tap-then-drag = drag; pointer wahi shape jo desktop dikhata hai (text pe I-beam, link pe haath) |
+| **Mute** | computer ki awaaz ek tap me band/chalu |
+| **Screen ▾** | Fit, Zoom in/out, Wider workspace, Rotate, Full screen, controls upar/neeche, Bigger interface, Auto-hide, Rotation lock |
+| **Finger / Mouse / Screen** | Screen = phone jaisa multi-touch (pinch, do ungli se scroll). Finger = jahan chhuo wahi click, swipe = scroll (tez swipe = aage bhi scroll hota rehta hai), hold = right-click, pointer haath jaisa. Mouse = arrow ghumao, tap = click, do ungli = scroll, tap-then-drag = drag; pointer wahi shape jo desktop dikhata hai (text pe I-beam, link pe haath) |
 | **Keyboard** | phone ka keyboard |
 | **Keys** | Esc, Tab, Ctrl, Alt, Super, arrows, Enter, Del, Home, End, PgUp, PgDn ki row on/off |
-| **Window ▾** | Close, **Force close** (atka hua app), Switch, All windows, Minimise all, Paste from phone, **Apps menu**, **Phone files**, **Reload the screen** |
+| **Window ▾** | Switch, All open apps, **Apps menu**, Fit window, Resize, Minimise, Minimise all, Close, **Force close** (atka hua app), **Reload the screen** |
+| **Phone ▾** | Volume and mute (panel), Microphone, Take a photo, Add a file from the phone or a cloud drive, **Phone files**, Paste from phone, Lock the screen (touch ignore) |
 
 - Desktop ke panel me sabse pehle **Apps** button (Tux) — saare installed apps ki list. Wahi list
   wallpaper pe right-click (Finger mode me long press) se bhi khulti hai, Super+A se bhi.
@@ -216,7 +218,7 @@ Settings badalne se kabhi kuch delete nahi hota.
 ## 6a. Phone ki file ChatGPT/Claude me kaise bheje
 
 1. Settings → Permissions → **Phone files** → Allow (Android "All files access" maangta hai).
-2. Desktop dubara kholo. Ab computer ke andar **Phone files** folder hai (desktop icon, panel button, Super+P) = tumhara poora phone storage.
+2. Desktop dubara kholo. Ab computer ke andar **Phone files** folder hai (desktop icon, panel button, Super+P) = phone ke 6 folder (Download, DCIM, Documents, Pictures, Music, Movies).
 3. ChatGPT me attach (📎) dabao → dialog me left side **Phone**, **Phone Downloads**, **Phone Photos**, **Phone Documents** — wahi se file chuno. Computer ki apni files **Computer Downloads** aur **Projects** me hain.
 4. Phone folder me save karoge to file phone me chali jaati hai. Off karna ho to Settings → Permissions → Phone files tap karo, Android ki page me All files access hata do.
 
