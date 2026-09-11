@@ -138,6 +138,82 @@ class PermanenceTest {
     }
 
     @Test
+    fun `a snapshot restore lands whole or not at all`() {
+        // The first launch after a reinstall restores before setup is done -
+        // the moment a person is most likely to swipe the app away - and the
+        // rows used to go in one commit at a time. Whatever had landed stayed,
+        // the next launch saw a non-empty table, wrote RESTORE_DONE and never
+        // read the snapshot again: half a history, no ledger, taken for done.
+        val store = File(main, "engine/SnapshotStore.kt").readText()
+        val merge = store.substringAfter("private suspend fun mergeLocked(")
+            .substringBefore("private suspend fun mergeRows(")
+        assertTrue(
+            "the rows must go in under db.withTransaction, so an interrupted " +
+                "restore leaves the table empty for the next launch to retry",
+            merge.contains("db.withTransaction { mergeRows(snapshot) }")
+        )
+        val rows = store.substringAfter("private suspend fun mergeRows(")
+        assertFalse(
+            "settings live in DataStore and have no place inside a Room transaction",
+            rows.contains("optionsRepo.importMap")
+        )
+        // And the two facts a scan cannot rebuild travel with the rows.
+        assertTrue(store.contains("keptUri = row.keptUri"))
+        assertTrue(store.contains("neverOptimise = row.neverOptimise"))
+        assertTrue(rows.contains("keptUri = mapped.keptUri"))
+        assertTrue(rows.contains("neverOptimise = mapped.neverOptimise"))
+    }
+
+    @Test
+    fun `a process start does not cancel the run a new photo just triggered`() {
+        // FAST mode's content trigger wakes the process to run; the process
+        // then ran ensure(), and ensure() re-armed the trigger with REPLACE,
+        // cancelling the very run it had been woken for. Only the worker's
+        // own re-arm, after it has consumed the trigger, may replace.
+        val scheduler = File(main, "work/Scheduler.kt").readText()
+        val ensure = scheduler.substringAfter("fun ensure(").substringBefore("fun enqueueContentTrigger(")
+        assertTrue(
+            "ensure() must keep a pending trigger, not replace it",
+            ensure.contains("enqueueContentTrigger(context)") && !ensure.contains("force = true")
+        )
+        val trigger = scheduler.substringAfter("fun enqueueContentTrigger(")
+            .substringBefore("fun cancelAll(")
+        assertTrue(
+            "the trigger policy must be KEEP unless the caller forces a replace",
+            trigger.contains("if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP")
+        )
+        val worker = File(main, "work/CompressWorker.kt").readText()
+        assertTrue(
+            "the worker has consumed its trigger and must replace it",
+            worker.contains("Scheduler.enqueueContentTrigger(context, force = true)")
+        )
+    }
+
+    @Test
+    fun `the Alerts switch says when notifications are blocked`() {
+        // Setup asks for the notification permission once and offers Skip;
+        // the system lets it be revoked later. The switch then sat ON while
+        // every alert was dropped at posting time, and nothing said so.
+        val options = File(main, "ui/screens/OptionsScreen.kt").readText()
+        val afterSwitch = options.substringAfter("checked = o.warningsNotif")
+        assertTrue(
+            "the row that says notifications are off must follow the Alerts switch",
+            afterSwitch.take(200).contains("AlertsPermissionRow(wanted = o.warningsNotif)")
+        )
+        val row = options.substringAfter("private fun AlertsPermissionRow(")
+        assertTrue(row.contains("Permissions.hasNotifications(context)"))
+        assertTrue(
+            "it must re-check on resume, because the permission is granted on another screen",
+            row.contains("LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME)")
+        )
+        assertTrue(row.contains("launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)"))
+        assertTrue(
+            "once the system stops asking, the only way back is its settings page",
+            row.contains("OemPages.openNotificationSettings(context)")
+        )
+    }
+
+    @Test
     fun `the launch self-check runs in the order that survives a bad state`() {
         // Inside onCreate, not the import block above it - the imports are
         // alphabetical and say nothing about what runs first.

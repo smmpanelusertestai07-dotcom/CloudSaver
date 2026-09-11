@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android 12+ transfer rules. Cloud backup is switched off in the manifest,
-  so the cloud-backup section below can never apply; it stays as a statement
-  of intent in case that attribute is ever changed. Device-to-device transfer
-  is a local copy between the owner's own phones, so it is allowed - minus
-  the logs, which are diagnostics and belong to one device.
+  Android 12+ backup and transfer rules. allowBackup="false" in the manifest
+  switches off both cloud backup AND device-to-device transfer, so neither
+  section below applies today; they stay as a statement of intent in case
+  that attribute is ever changed: never the logs, which are diagnostics and
+  belong to one device. What survives a reinstall or a new phone is the
+  app's own .cloudsaver history file under Download.
 -->
 <data-extraction-rules>
     <cloud-backup>

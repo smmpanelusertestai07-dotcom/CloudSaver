@@ -58,10 +58,22 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         // the file. When that happened the copy read as a brand-new photo,
         // was optimised a second time, and a worse copy of a photo the cloud
         // already held went back up. A content URI does not drift.
-        val keptUris = db.items().keptCopies().mapNotNullTo(HashSet()) { it.keptUri }
-        val keptIds = keptUris.mapNotNullTo(HashSet()) { it.substringAfterLast('/').toLongOrNull() }
+        //
+        // The URI is trusted only for the file it names. A row restored from
+        // a snapshot can carry another phone's number (KeptCopies explains),
+        // and a stale number must not hide a real photo from the queue.
+        val kept = db.items().keptCopies()
+        val keptByUri = kept.associateBy { it.keptUri }
+        val keptById = kept.mapNotNull { r ->
+            r.keptUri?.substringAfterLast('/')?.toLongOrNull()?.let { it to r }
+        }.toMap()
         for (f in found) {
-            if (f.uri in keptUris || f.mediaStoreId in keptIds) continue
+            val keptRow = keptByUri[f.uri] ?: keptById[f.mediaStoreId]
+            if (keptRow != null &&
+                app.cloudsaver.core.logic.KeptCopies.belongsTo(
+                    f.displayName, keptRow.displayName, keptRow.fingerprint
+                )
+            ) continue
             // Z4.1: a file named like the app's own output is a copy that
             // came back - from the cloud into Download, from a share, from
             // anywhere. It is recognised by its name, matched to the ledger

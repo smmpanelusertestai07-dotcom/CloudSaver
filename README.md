@@ -64,13 +64,13 @@ disk or to the repository.
 
 ## How it is tested
 
-- 500 unit tests on the JVM. Many are *source-text rules*: they read the
+- 536 unit tests on the JVM. Many are *source-text rules*: they read the
   source and the strings as text and assert properties of them — that no two
   attention chips say the same words, that no button label is cut to one line,
   that the About card names every permission the manifest holds, that the app
   never claims to upload anything, that the release workflow never publishes a
   private key.
-- 108 instrumented tests across 16 classes, on real emulators against a real
+- 112 instrumented tests across 16 classes, on real emulators against a real
   gallery, over API 29 through 36 on every push.
 - Every test failure photographs the screen it failed on.
 

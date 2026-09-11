@@ -112,6 +112,18 @@ data class Options(
     val oldFilesCleaned: Boolean = false,
     val copiesReattached: Boolean = false,
     /**
+     * Row ids of copies the maintenance pass chose to clear and could not.
+     *
+     * A copy adopted after a reinstall or a phone move belongs to the
+     * install that made it, not this one, and Android refuses a silent
+     * delete of somebody else's file. Those copies still counted against
+     * the space the user allowed, so once enough of them piled up the
+     * resource gate stopped every run - for good, because nothing could
+     * ever remove them. They are listed here so Home can ask, once, through
+     * Android's own dialog.
+     */
+    val copiesNeedConsent: Set<String> = emptySet(),
+    /**
      * Consecutive per-file confirmations with no failure in between.
      *
      * The release pacing ladder climbs on this: proving the accounting works
@@ -204,6 +216,7 @@ class OptionsRepo(private val context: Context) {
         val VOLUME_WARNED_AT = longPreferencesKey("volumeWarnedAt")
         val OLD_FILES_CLEANED = booleanPreferencesKey("oldFilesCleaned")
         val COPIES_REATTACHED = booleanPreferencesKey("copiesReattached")
+        val COPIES_NEED_CONSENT = stringSetPreferencesKey("copiesNeedConsent")
         val CLEAN_STREAK = intPreferencesKey("cleanConfirmStreak")
         val RELEASED_SINCE_SAMPLE = intPreferencesKey("releasedSinceSample")
         val RECENT_PACING_FAILURE = booleanPreferencesKey("recentPacingFailure")
@@ -275,6 +288,7 @@ class OptionsRepo(private val context: Context) {
             volumeWarnedAt = p[K.VOLUME_WARNED_AT] ?: 0,
             oldFilesCleaned = p[K.OLD_FILES_CLEANED] ?: false,
             copiesReattached = p[K.COPIES_REATTACHED] ?: false,
+            copiesNeedConsent = p[K.COPIES_NEED_CONSENT] ?: emptySet(),
             cleanConfirmStreak = p[K.CLEAN_STREAK] ?: 0,
             releasedSinceSample = p[K.RELEASED_SINCE_SAMPLE] ?: 0,
             recentPacingFailure = p[K.RECENT_PACING_FAILURE] ?: false,
@@ -329,6 +343,19 @@ class OptionsRepo(private val context: Context) {
         value: Set<String>
     ) {
         write { it[key] = value }
+    }
+
+    /** Remembers copies Android would not let the app delete on its own. */
+    suspend fun addCopiesNeedingConsent(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val strings = ids.map { it.toString() }
+        write { it[K.COPIES_NEED_CONSENT] = (it[K.COPIES_NEED_CONSENT] ?: emptySet()) + strings }
+    }
+
+    suspend fun removeCopiesNeedingConsent(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val strings = ids.map { it.toString() }.toSet()
+        write { it[K.COPIES_NEED_CONSENT] = (it[K.COPIES_NEED_CONSENT] ?: emptySet()) - strings }
     }
 
     /** Options export for the snapshot (user-visible options only). */

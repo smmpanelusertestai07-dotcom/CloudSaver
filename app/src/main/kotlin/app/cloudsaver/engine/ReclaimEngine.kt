@@ -10,6 +10,7 @@ import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.OriginalCheck
 import app.cloudsaver.core.logic.Presets
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.data.db.AppDb
@@ -17,6 +18,7 @@ import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.ReclaimBatchRow
 import app.cloudsaver.data.db.ReclaimItemRow
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.PhotoCompressor
 import app.cloudsaver.media.VideoCompressor
 import app.cloudsaver.util.AppLog
@@ -412,9 +414,18 @@ class ReclaimEngine(private val context: Context) {
             // Mark first, so a copy that vanishes is attributed to us and not
             // read as the user deleting it.
             db.items().update(row.copy(appDeletedCopy = true, updatedAt = now))
-            val ok = runCatching {
+            var refused = false
+            val ok = try {
                 context.contentResolver.delete(uri, null, null) > 0
-            }.getOrDefault(false)
+            } catch (e: SecurityException) {
+                // Another install's file: only Android's dialog can remove
+                // it, and Home offers that once the row is on the list.
+                refused = true
+                false
+            } catch (e: Exception) {
+                false
+            }
+            if (refused) OptionsRepo.get(context).addCopiesNeedingConsent(listOf(row.id))
             // The row is re-read because it was just updated; if it has gone
             // there is nothing to write back and nothing to crash over.
             val current = db.items().byId(row.id)
@@ -509,6 +520,31 @@ class ReclaimEngine(private val context: Context) {
             val original = row.contentUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
             if (original == null) {
                 skipped += Outcome(row.fingerprint, row.displayName, false, "no_original")
+                continue
+            }
+            // The file behind the address must still be the original the
+            // cloud has - see OriginalCheck. A file that cannot be read now
+            // simply stays; one that has changed is retired from this row for
+            // good, because the bytes the cloud holds no longer exist on the
+            // phone and the edited photo has a row of its own.
+            val identity = identityOf(original)
+            if (identity == null) {
+                skipped += Outcome(row.fingerprint, row.displayName, false, "original_changed")
+                continue
+            }
+            if (!OriginalCheck.unchanged(
+                    row.displayName, row.sizeBytes, identity.displayName, identity.sizeBytes
+                )
+            ) {
+                db.items().update(
+                    row.copy(
+                        originalMissing = true,
+                        mediaStoreId = null,
+                        contentUri = null,
+                        updatedAt = now
+                    )
+                )
+                skipped += Outcome(row.fingerprint, row.displayName, false, "original_changed")
                 continue
             }
             if (!copyIsIntact(row)) {

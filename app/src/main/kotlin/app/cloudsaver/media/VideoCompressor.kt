@@ -291,18 +291,25 @@ object VideoCompressor {
                         )
                     )
                     .build()
-                // withAudioAndVideoFrom, and not the item-list constructor Media3
-                // deprecated: read from the library's own bytecode rather than
-                // its name, a sequence's track types are a filter, and the
-                // exporter strips any track the set does not name. The old
-                // constructor named "default", which leaves every track alone;
-                // naming audio and video leaves every track alone too, so a
-                // clip with sound keeps it and a silent clip is not given any.
-                // withVideoFrom would have thrown the sound away, quietly, on
-                // every video this app ever optimised.
-                val composition = Composition.Builder(
+                // The track set is chosen from the clip, not assumed. Read in
+                // Media3's own bytecode, a sequence's track types do two
+                // things: the exporter strips any track the set does not name,
+                // and it FORCES any track the set does name - a set with audio
+                // in it makes forceAudioTrack true, and a clip with no audio
+                // is given a generated silent one. The constructor Media3
+                // deprecated named "default", which neither strips nor forces.
+                // So: video only for a silent clip (a timelapse, a screen
+                // recording with the mic off), both for a clip with sound.
+                // Either way the copy carries exactly the tracks the original
+                // did. Both branches are pinned by instrumented tests against
+                // real clips, because the wrong choice fails nothing else - the
+                // copy is smaller, valid, and either silent or padded.
+                val sequence = if (hasAudioTrack(context, uri)) {
                     EditedMediaItemSequence.withAudioAndVideoFrom(listOf(edited))
-                ).setHdrMode(hdrMode).build()
+                } else {
+                    EditedMediaItemSequence.withVideoFrom(listOf(edited))
+                }
+                val composition = Composition.Builder(sequence).setHdrMode(hdrMode).build()
                 transformer.start(composition, outFile.absolutePath)
             } catch (t: Throwable) {
                 done.complete(null)
@@ -358,6 +365,22 @@ object VideoCompressor {
             null
         } finally {
             runCatching { mmr.release() }
+        }
+    }
+
+    /** True when the container has an audio track; a probe failure reads as none. */
+    fun hasAudioTrack(context: Context, uri: Uri): Boolean {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(context, uri, null)
+            (0 until extractor.trackCount).any { i ->
+                extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
+                    ?.startsWith("audio/") == true
+            }
+        } catch (e: Exception) {
+            false
+        } finally {
+            runCatching { extractor.release() }
         }
     }
 

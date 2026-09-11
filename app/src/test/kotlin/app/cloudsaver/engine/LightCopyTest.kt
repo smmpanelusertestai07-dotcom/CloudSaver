@@ -264,7 +264,14 @@ class LightCopyTest {
         )
         assertTrue(
             "and skip them by content URI or MediaStore id, not by fingerprint",
-            Regex("""f\.uri in keptUris|f\.mediaStoreId in keptIds""").containsMatchIn(scan)
+            Regex("""keptByUri\[f\.uri\]|keptById\[f\.mediaStoreId\]""").containsMatchIn(scan)
+        )
+        // 3. But a number alone is not an identity: a restored row can carry
+        //    another phone's MediaStore id, and that must not hide a real
+        //    photo from the queue. The file has to look like the copy.
+        assertTrue(
+            "the skip must confirm the file is the copy the row describes",
+            scan.contains("KeptCopies.belongsTo(")
         )
     }
 

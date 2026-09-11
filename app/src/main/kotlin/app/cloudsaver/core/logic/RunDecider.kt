@@ -37,7 +37,29 @@ object RunDecider {
         BATTERY_LOW,
         SCREEN_ON,
         BUDGET_USED,
-        PHOTO_CAP
+        PHOTO_CAP,
+        /** The copies folder has reached the space the user allowed. */
+        SPACE_FULL,
+        /** The phone is below the free space the user asked to keep. */
+        LOW_SPACE,
+        /** The chosen storage location (an SD card) is not mounted. */
+        VOLUME_MISSING
+    }
+
+    /**
+     * The storage-side stop reasons, as something Home can say.
+     *
+     * The worker's resource gate stopped a run with a word in the log and
+     * nothing on any screen: Help promises that a full copies folder "says so
+     * on Home", and Home said "N files in the queue" instead, forever, to
+     * exactly the person Help was written for - one with no cloud app to
+     * empty the folder.
+     */
+    fun waitForResource(gate: String): Wait = when (gate) {
+        "extra_full", "stage_full" -> Wait.SPACE_FULL
+        "low_space" -> Wait.LOW_SPACE
+        "volume_missing" -> Wait.VOLUME_MISSING
+        else -> Wait.NONE
     }
 
     /**

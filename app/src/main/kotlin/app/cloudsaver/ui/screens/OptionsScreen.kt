@@ -637,6 +637,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             icon = IconAlerts,
             checked = o.warningsNotif
         ) { vm.setWarningsNotif(it) }
+        AlertsPermissionRow(wanted = o.warningsNotif)
         // The rule this switch turns on has always been written down - a
         // day's byte total says a day's photographs went out, not that this
         // photograph did, so it counts "only behind an explicit opt-in". The
@@ -1171,6 +1172,46 @@ private fun CloudPickRow(
 
 /** A device-aware suggestion the user can take with one tap, or ignore. */
 /** A live figure under a control, so the setting is not an abstraction. */
+/**
+ * The Alerts switch says whether alerts are wanted; on Android 13 and later
+ * the notification permission says whether they can be shown. Setup asks for
+ * that permission once and offers Skip, and the system lets a person revoke
+ * it later, so the switch could sit ON while every alert was dropped at the
+ * moment of posting, with no screen saying so - including the alert that
+ * Free-up is holding deletions, the one a person most needs while they are
+ * not in the app. This row says so, and offers the permission again; once the
+ * system has stopped asking, it offers the page where the switch lives.
+ */
+@Composable
+private fun AlertsPermissionRow(wanted: Boolean) {
+    if (!wanted || android.os.Build.VERSION.SDK_INT < 33) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var granted by remember { mutableStateOf(app.cloudsaver.util.Permissions.hasNotifications(context)) }
+    var refused by remember { mutableStateOf(false) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        granted = app.cloudsaver.util.Permissions.hasNotifications(context)
+    }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { ok ->
+        granted = ok
+        if (!ok) refused = true
+    }
+    if (granted) return
+    WarningText(stringResource(R.string.alerts_need_permission))
+    TextButton(
+        onClick = {
+            if (refused) {
+                app.cloudsaver.util.OemPages.openNotificationSettings(context)
+            } else {
+                launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    ) {
+        Text(stringResource(if (refused) R.string.alerts_open_settings else R.string.alerts_allow))
+    }
+}
+
 @Composable
 private fun LiveValue(text: String) {
     Text(

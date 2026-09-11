@@ -70,11 +70,20 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val manual = inputData.getBoolean(KEY_MANUAL, false)
 
         if (!options.onboardingDone) return Result.success()
-        if (options.pauseAll && !manual) return Result.success()
+        // These two exits consumed the FAST content trigger without arming
+        // the next one, so a phone coming back from a pause - or a
+        // half-granted permission becoming full - reacted to new photos
+        // only at the next half-hourly pass. Re-arm on the way out, as
+        // every other exit does.
+        if (options.pauseAll && !manual) {
+            reschedule(app, repo)
+            return Result.success()
+        }
         // FULL only: under partial access the gallery MediaStore shows is a
         // lie, and a run would scan, queue and release against it (BB1.2).
         if (Permissions.mediaAccess(app) != Permissions.MediaAccess.FULL) {
             AppLog.log(app, "work", "not starting: media access is not full")
+            reschedule(app, repo)
             return Result.success()
         }
 
@@ -156,6 +165,11 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 )
                 if (resource != null) {
                     AppLog.log(app, "work", "resource gate: $resource")
+                    // Home reads this; a gate that stops the run has to be
+                    // a reason on screen, not only a line in the log.
+                    repo.setString(
+                        OptionsRepo.K.WAIT_REASON, RunDecider.waitForResource(resource).name
+                    )
                     break@loop
                 }
 
@@ -313,7 +327,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
     /** FAST re-arms its content trigger after every run (triggers are one-shot). */
     private suspend fun reschedule(context: Context, repo: OptionsRepo) {
         if (repo.current().speed == SpeedMode.FAST) {
-            Scheduler.enqueueContentTrigger(context)
+            // This run consumed the trigger, so a fresh one must replace it.
+            Scheduler.enqueueContentTrigger(context, force = true)
         }
     }
 

@@ -273,7 +273,10 @@ class ProductBoundariesTest {
                 "fun restore(items: List<ReclaimItemRow>) {"
             ),
             "AppViewModel.kt" to listOf(
-                "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {"
+                "fun requestDelete(uris: List<Uri>, onDone: (List<Uri>) -> Unit): IntentSender? {",
+                // Deletes a gallery file the person kept, with no system
+                // dialog in between. It was the one path the promise missed.
+                "fun removeKeptCopy(row: ItemRow) {"
             )
         )
         val ungated = mutableListOf<String>()
@@ -294,6 +297,122 @@ class ProductBoundariesTest {
                 "app tells the user deleting is turned off: $ungated",
             ungated.isEmpty()
         )
+    }
+
+    @Test
+    fun `Home waits for the database before it claims anything`() {
+        // The counts start when Home subscribes, so the first frame was drawn
+        // from the initial value - zeros - and zeros are a statement, not an
+        // absence: "nothing waiting, nothing backed up", written out as a
+        // sentence above a trial offer, one frame before the real numbers
+        // arrived and both vanished. The offer also enumerated the gallery.
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        assertTrue("counters must start unknown", vm.contains("val counters: StateFlow<Counters?>"))
+        assertTrue("processed must start unknown", vm.contains("val processedCount: StateFlow<Int?>"))
+        val home = File("src/main/kotlin/app/cloudsaver/ui/screens/HomeScreen.kt").readText()
+        assertTrue(home.contains("val loaded = countersRead != null && processedRead != null"))
+        assertTrue(
+            "the all-clear sentence waits for the counts",
+            home.contains("if (loaded && counters.waiting == 0 && counters.inFolder == 0 && counters.confirmed == 0)")
+        )
+        assertTrue(
+            "the trial offer, and the gallery read behind it, wait for the counts",
+            home.contains("if (loaded && (processed == 0 || testRunning || !testItems.isNullOrEmpty()))")
+        )
+    }
+
+    @Test
+    fun `an original is read back before it is put in front of the delete dialog`() {
+        // A row finds its original by MediaStore id, and an id survives an
+        // edit: "Save" in a gallery editor rewrites the bytes under the same
+        // number. The old row - whose copy the cloud actually holds - still
+        // pointed at that number, so Free up space offered the EDITED photo
+        // as "the cloud has this", and confirming would have removed the one
+        // version nothing had ever collected.
+        val engine = File("src/main/kotlin/app/cloudsaver/engine/ReclaimEngine.kt").readText()
+        val prepare = engine.substringAfter("suspend fun prepare(").substringBefore("suspend fun finish")
+        val check = prepare.indexOf("OriginalCheck.unchanged(")
+        val offer = prepare.indexOf("uris += original")
+        assertTrue("prepare() must read the original back", check > 0)
+        assertTrue("and must do so before the address is offered", offer > check)
+        assertTrue(
+            "a changed original retires the row for good, ids and all",
+            prepare.substringAfter("OriginalCheck.unchanged(").substringBefore("uris += original")
+                .contains("mediaStoreId = null")
+        )
+        val screen = File("src/main/kotlin/app/cloudsaver/ui/screens/ReclaimScreen.kt").readText()
+        assertTrue(
+            "the reason reaches the user in their own words",
+            screen.contains("\"original_changed\" -> stringResource(R.string.skip_original_changed)")
+        )
+    }
+
+    @Test
+    fun `a copy Android will not let the app delete is asked about, not retried forever`() {
+        // Copies adopted after a reinstall belong to the install that made
+        // them; a silent delete throws, was caught, and was retried every
+        // hour while the copies kept counting against the space allowance -
+        // until the resource gate stopped every run, for good.
+        val maintain = File("src/main/kotlin/app/cloudsaver/engine/MaintainEngine.kt").readText()
+        val lazy = maintain.substringAfter("private suspend fun lazyDelete(")
+        assertTrue(lazy.contains("catch (e: SecurityException)"))
+        assertTrue(lazy.contains("repo.addCopiesNeedingConsent(listOf(id))"))
+        val reclaim = File("src/main/kotlin/app/cloudsaver/engine/ReclaimEngine.kt").readText()
+        val copiesOnly = reclaim.substringAfter("private suspend fun removeCopiesOnlyLocked(")
+            .substringBefore("val batchId")
+        assertTrue(copiesOnly.contains("catch (e: SecurityException)"))
+        assertTrue(copiesOnly.contains("addCopiesNeedingConsent(listOf(row.id))"))
+        // Home asks through Android's own dialog, and the rows are marked as
+        // the app's doing BEFORE the dialog, so the maintenance pass cannot
+        // read the file's absence as the cloud having collected it.
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        val remove = vm.substringAfter("fun removeConsentCopies()").substringBefore("private fun finishConsentCopies")
+        assertTrue(remove.take(400).contains("TamperCheck.isModified"))
+        val mark = remove.indexOf("appDeletedCopy = true")
+        val ask = remove.indexOf("requestDelete(uris)")
+        assertTrue("mark first, then ask", mark in 1 until ask)
+        val home = File("src/main/kotlin/app/cloudsaver/ui/screens/HomeScreen.kt").readText()
+        assertTrue(home.contains("visible = consentCopies.isNotEmpty() && !tampered"))
+        assertTrue(home.contains("vm.removeConsentCopies()"))
+    }
+
+    @Test
+    fun `a storage gate that stops a run is a reason on Home`() {
+        val worker = File("src/main/kotlin/app/cloudsaver/work/CompressWorker.kt").readText()
+        val gate = worker.substringAfter("val resource = Gates.resourceGate(").substringBefore("val batch =")
+        assertTrue(
+            "the resource gate must write the wait reason Home reads",
+            gate.contains("RunDecider.waitForResource(resource).name")
+        )
+        val home = File("src/main/kotlin/app/cloudsaver/ui/screens/HomeScreen.kt").readText()
+        for (wait in listOf("SPACE_FULL", "LOW_SPACE", "VOLUME_MISSING")) {
+            assertTrue("Home must have words for $wait", home.contains("RunDecider.Wait.$wait ->"))
+        }
+        // And a paused or half-permitted run still re-arms the FAST trigger
+        // it consumed, or new photos wait for the half-hourly pass instead.
+        val early = worker.substringAfter("if (!options.onboardingDone) return Result.success()")
+            .substringBefore("val db = AppDb.get(app)")
+        assertEquals("both early exits re-arm", 2, Regex("reschedule\\(app, repo\\)").findAll(early).count())
+    }
+
+    @Test
+    fun `every file a source-text rule reads is a declared test input`() {
+        // The build cache is on and the CI action restores it, so a test
+        // whose inputs Gradle does not know about can replay its previous
+        // verdict over a file it never read - on CI, not only locally.
+        val build = File("build.gradle.kts").readText()
+        val block = build.substringAfter("tasks.withType<Test>().configureEach {").substringBefore("\n}")
+        for (path in listOf(
+            "RELEASE_MATRIX.md",
+            "gradle/wrapper/gradle-wrapper.properties",
+            "src/main/AndroidManifest.xml",
+            ".github/workflows",
+            "src/main/kotlin",
+            "src/main/res",
+            "src/androidTest"
+        )) {
+            assertTrue("$path must be a declared input of the unit tests", block.contains("\"$path\""))
+        }
     }
 
     @Test

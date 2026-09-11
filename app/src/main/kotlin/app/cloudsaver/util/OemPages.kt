@@ -77,6 +77,17 @@ object OemPages {
         false
     }
 
+    /** The system page that holds this app's notification switch. */
+    fun openNotificationSettings(context: Context): Boolean = try {
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        openAppInfo(context)
+    }
+
     fun openUsageAccess(context: Context): Boolean = try {
         context.startActivity(
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
