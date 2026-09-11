@@ -2,7 +2,7 @@
 
 ## 1. Install karo
 
-1. `PocketLinux-v12.0.5-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
+1. `PocketLinux-v13.0.0-release.apk` open karo → *Install* → "unknown apps" ka prompt aaye to allow karo.
 2. Play Protect ka warning aa sakta hai kyunki APK self-signed hai. *More details → Install anyway*.
 3. Purana version upar hi install ho jata hai — Linux computer, apps, logins sab waise ke waise.
    Opening pe pehle app ka logo aur naam, phir Tux ke saath "Powered by Linux · Ubuntu 24.04 LTS", phir Home.
@@ -10,6 +10,23 @@
    install hota hai — Ubuntu, apps, logins sab bache rehte hain, kuch dobara download nahi hota.
    Pehli baar desktop kholne par purane Windows layer ke launchers aur prefixes apne aap saaf ho
    jaate hain; baaki kuch nahi chhua jaata.
+
+### 13.0.0: final update
+
+- **Antigravity sign-in fix.** Chrome me "successfully authenticated" ke baad app "could not open:
+  error 127" bolta tha: xdg-open launcher ki Exec line ko quote samjhe bina todta hai, toh label
+  `"Antigravity` aur command `-` ban gaya. Ab label Exec line pe hai hi nahi (ek table me hai).
+  ChatGPT ke callback me bhi yahi bug tha.
+- **Volume:** panel Keys row ke neeche baithta hai (upar bar hone pe), Mute button start pe phone ki
+  asli state padhta hai, slider 0 pe ho to Unmute sach me awaaz wapas lata hai, key se aaya panel
+  screen chhodne pe band ho jata hai.
+- **Phone files:** off hone pe khali folders/note saaf; phone ke folder me delete karne pe file
+  chhupe `.Trash` me nahi jaati, file manager pehle poochhta hai; phone/cloud se copy hui file
+  poori hone pe hi apna naam leti hai; Wireless debugging pairing ka risk safety answer me likha hai.
+- **Computer Settings/Software:** sahi row names, apt ke faltu warnings gaye (apt-utils + sandbox
+  off), theme change nayi windows pe turant, panel mar jaye to refresh usse wapas lata hai.
+- **Texts:** Google ke Android Linux Terminal se comparison (Pixel-only GPU, VM vs PRoot), Ubuntu
+  24.04 kyun (26.04 aane ke baad bhi), sab AI apps ke Linux builds 11 Sep 2026 ko dobara verify.
 
 ### 12.0.5: screenshots wale fixes
 
