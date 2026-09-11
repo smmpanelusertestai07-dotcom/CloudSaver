@@ -1115,10 +1115,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "open apps lists them by name, with no limit.\n\n"
                 + "Sound: everything the computer plays comes out of this phone as MEDIA audio — "
                 + "there is no call, ring or alarm sound in PocketLinux at all. The phone's volume "
-                + "keys set it while this screen is open and show the level, and Screen → Media "
-                + "volume does the same from the menu. Inside the computer, Tools → Volume and "
+                + "keys set it while this screen is open and show the level, and Phone → Volume "
+                + "and mute does the same from the menu. Inside the computer, Tools → Volume and "
                 + "sound balances one app against another; the phone still decides how loud it "
-                + "ends up. Screen → Microphone hands the phone's microphone to the computer; it "
+                + "ends up. Phone → Microphone hands the phone's microphone to the computer; it "
                 + "is off at every start and stops the moment you leave this screen.\n\n"
                 + "Super+Space takes an appshot — the window in front, its words read, pasted "
                 + "straight into whichever AI app is open.\n\n"
@@ -1776,7 +1776,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
      * Turn the screen the other way, now, and hold it there.
      *
      * Holding it is the point -- a rotation that the sensor undoes the moment the phone moves is
-     * not a rotation. It is the same lock the Screen menu offers, so it can be let go again;
+     * not a rotation. It is the same lock the Phone menu offers, so it can be let go again;
      * an earlier version set the flag here with nothing that could clear it, which quietly
      * disabled the Screen rotation setting for the rest of the session.
      */
