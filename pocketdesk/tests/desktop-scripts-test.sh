@@ -28,6 +28,12 @@ APP
 chmod +x "$WORK/usr/bin/plainish"
 
 export HOME="$WORK/home"
+# The launcher honours the XDG variables, as Electron does, so this environment must own them:
+# GitHub's runner exports XDG_CONFIG_HOME=/home/runner/.config, and with that leaking in the
+# launcher looked for electronish's stale lock under the runner's real config directory,
+# found nothing to clear, and this suite failed on the runner alone.
+export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
+unset XDG_RUNTIME_DIR DISPLAY CODEX_ELECTRON_USER_DATA_PATH
 set +e
 PATH="$WORK/usr/bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-open.sh" \
   --label "Electron App" electronish >/dev/null 2>&1
