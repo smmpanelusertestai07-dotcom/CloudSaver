@@ -1281,7 +1281,7 @@ public final class MainActivity extends Activity {
                                         + "however an app or an AI agent in there asks for it.\n\n"
                                         + "In those six, changes are real: a file deleted there is deleted on "
                                         + "the phone. To hand over just one file instead, leave this off and "
-                                        + "use the desktop's Window → Add a file from the phone or a cloud "
+                                        + "use the desktop's Phone → Add a file from the phone or a cloud "
                                         + "drive.\n\nApplies the next time the desktop starts.")
                                 .setNegativeButton("Not now", null)
                                 .setPositiveButton("Allow", (d, w) -> PhoneFiles.request(this))
@@ -1292,7 +1292,7 @@ public final class MainActivity extends Activity {
         microphoneRow = new Ui.Row(this, R.drawable.ic_volume, "Microphone", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> dialogBuilder()
                         .setTitle("The computer's microphone")
-                        .setMessage("Turn it on from the desktop itself: Screen \u2192 Microphone. "
+                        .setMessage("Turn it on from the desktop itself: Phone \u2192 Microphone. "
                                 + "The phone asks you the first time, and Android offers \u201cOnly "
                                 + "this time\u201d as well as \u201cWhile using the app\u201d \u2014 "
                                 + "either is enough.\n\nIt is off every time the desktop starts, and "
@@ -1753,14 +1753,14 @@ public final class MainActivity extends Activity {
                         + "A change in those six folders is a real change: a file deleted there is "
                         + "deleted on the phone, and Android keeps no bin for it. If you only need "
                         + "to hand one file to an AI app, do not turn Phone files on at all — the "
-                        + "desktop screen's Window → Add a file from the phone or a cloud drive "
+                        + "desktop screen's Phone → Add a file from the phone or a cloud drive "
                         + "opens the phone's own picker, which also lists Drive and every other "
                         + "cloud app, and copies just that file into the computer.\n\n"
                         + "What it cannot reach, at all: your other apps and their data, your "
                         + "messages, anything outside that shared storage, the camera, your location "
                         + "or your contacts. PocketLinux holds no permission for any of them, so "
                         + "nothing inside can ask for one.\n\n"
-                        + "The microphone is the one exception, and it is yours to give: Screen → "
+                        + "The microphone is the one exception, and it is yours to give: Phone → "
                         + "Microphone on the desktop hands it over, the phone asks you the first "
                         + "time, it is off at every start, and it stops the moment you leave the "
                         + "desktop screen. Android's own microphone dot shows the whole time.\n\n"
@@ -1871,13 +1871,13 @@ public final class MainActivity extends Activity {
                         + "camera at /dev/video0. Creating one for it needs a kernel module, and an "
                         + "app on a phone that is not rooted cannot load a kernel module \u2014 no "
                         + "app can, on any phone. It is not a limit of this app.\n\n"
-                        + "What you get instead: Screen \u2192 Take a photo into the computer hands "
+                        + "What you get instead: Phone \u2192 Take a photo into the computer hands "
                         + "you the phone's own camera app and drops the picture straight into the "
                         + "computer's Pictures folder, ready to attach. PocketLinux itself holds no "
                         + "camera permission at all \u2014 the Privacy monitor shows that.", false);
 
         addAnswer(card, R.drawable.ic_volume, "Can the computer hear me? (microphone)",
-                "Yes. Screen → Microphone, on the desktop screen, hands the phone's microphone to "
+                "Yes. Phone → Microphone, on the desktop screen, hands the phone's microphone to "
                         + "the Linux computer as an ordinary recording device — inside it appears as "
                         + "\u201cPhone microphone\u201d, and every program finds it: a voice reply "
                         + "in an AI app, a meeting page in the browser, dictation.\n\n"
@@ -1988,12 +1988,12 @@ public final class MainActivity extends Activity {
                         + "the desktop screen is open.\n\nIt arrives as media audio, which is the "
                         + "only kind this app carries: there is no call, ring or alarm sound "
                         + "involved. The phone's volume keys set it while the desktop is open and "
-                        + "show the level on screen — \u201cMedia volume · 60%\u201d — and Screen → "
-                        + "Media volume does the same from the menu.\n\nInside the computer, Tools "
+                        + "show the level on screen — \u201cMedia volume · 60%\u201d — and Phone → "
+                        + "Volume and mute does the same from the menu.\n\nInside the computer, Tools "
                         + "→ Volume and sound balances one app against another; the desktop's own "
                         + "output is set to full at every start, so your phone's volume keys stay the "
                         + "one control that matters.\n\nThe microphone works both ways now: "
-                        + "Screen → Microphone hands the phone's microphone to the computer as a "
+                        + "Phone → Microphone hands the phone's microphone to the computer as a "
                         + "recording device called \u201cPhone microphone\u201d, so a voice reply, "
                         + "a meeting page in the browser or an AI app's dictation all find one. Off "
                         + "at every start, asks permission the first time, and stops the moment you "
@@ -2593,7 +2593,7 @@ public final class MainActivity extends Activity {
                     + "Documents, Pictures, Music, Movies"
                     + (LinuxService.isDesktopRunning() ? " (from the next desktop start)" : "")
                     + " · tap to change in Android settings"
-                    : "Off · for one file at a time use the desktop's Window → Add a file from the "
+                    : "Off · for one file at a time use the desktop's Phone → Add a file from the "
                     + "phone or a cloud drive; turn this on for the whole folders");
         }
         if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());

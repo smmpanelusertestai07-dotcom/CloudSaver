@@ -2,6 +2,11 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# Run from the project directory whatever the caller's was. Two of the Java suites look for
+# app/src relative to the working directory, so `bash pocketdesk/tests/run-tests.sh` from the
+# repository root -- which is what the workflow does -- failed with "ContainerRuntime.java not
+# found at ./app/src/..." before a single one of their checks had run.
+cd "$PROJECT_DIR"
 # The suite reads and writes UTF-8 on purpose -- one test feeds real Devanagari through a real
 # process -- and the JVM picks its default charset from the locale. On a machine whose locale is
 # plain ASCII (a container's usual default) that test failed for the environment rather than for

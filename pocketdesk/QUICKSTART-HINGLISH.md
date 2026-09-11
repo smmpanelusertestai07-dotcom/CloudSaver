@@ -43,7 +43,7 @@
   software. Aur computer ka theme ab app ke Light/Dark/System ko follow karta hai.
 - **Phone files ab sirf 6 folder.** Download, DCIM, Documents, Pictures, Music, Movies — aur
   kuch bhi computer se reach nahi hota. Sirf ek file deni ho to Phone files on karne ki zarurat
-  hi nahi: **Window → Add a file from the phone or a cloud drive** — ye Android ka apna picker
+  hi nahi: **Phone → Add a file from the phone or a cloud drive** — ye Android ka apna picker
   kholta hai, jisme Drive aur baaki cloud apps bhi dikhte hain.
 - **Viewer:** volume right corner me (+ / mute / −), bar pe **Mute** button, **rotation lock**
   aur **screen lock** (do baar tap se khulta hai), teesra touch mode **Screen** (game/drag ke
@@ -240,4 +240,4 @@ Settings badalne se kabhi kuch delete nahi hota.
 - Windows ya macOS — phone pe koi normal unrooted app hardware virtual machine bana hi nahi sakta, aur macOS sirf Apple ke apne computer pe licensed hai. Compatibility layer bhi option nahi (upar “Windows apps kyun nahi” dekho).
 - Docker, KVM, kernel modules — Android ka kernel share hota hai.
 - amd64-only software, snap, flatpak, AppImage — native ARM64 `.deb` use karo.
-- Microphone: desktop Screen → Microphone se on hota hai; har start pe off aur desktop chhodte hi band.
+- Microphone: desktop Phone → Microphone se on hota hai; har start pe off aur desktop chhodte hi band.

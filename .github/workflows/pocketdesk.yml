@@ -75,9 +75,9 @@ jobs:
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           cd pocketdesk && ./build.sh
       - name: Checksum
-        run: sha256sum pocketdesk/build/PocketDesk-v*-release.apk
+        run: sha256sum pocketdesk/build/PocketLinux-v*-release.apk
       - uses: actions/upload-artifact@v6
         with:
-          name: PocketDesk-apk
-          path: pocketdesk/build/PocketDesk-v*-release.apk
+          name: PocketLinux-apk
+          path: pocketdesk/build/PocketLinux-v*-release.apk
           if-no-files-found: error
