@@ -382,9 +382,9 @@ printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgco
 # out as "Chro" over "e". So the desktop's OWN font is a fixed 18 pixels tall, whatever the
 # dpi: "Antigravity" -- the longest name that gets a desktop icon -- is 91 pixels of Noto Sans
 # at that size, 99 in the worst case for hinted glyph advances, and 98 even if the type falls
-# back to DejaVu Sans; 19 pixels reaches 99 before hinting and can break. The name a label
-# shows is the one pocketdesk-menu chooses ("Chrome", "Files", "Terminal"); a two-word name
-# wraps between the words, which is where a second line belongs.
+# back to DejaVu Sans; at 19 pixels it is already 99 with hinted advances, and can break. The
+# name a label shows is the one pocketdesk-menu chooses ("Chrome", "Files", "Terminal"); a
+# two-word name wraps between the words, which is where a second line belongs.
 BIG_ICON=$(( 80 * DPI / 120 ))
 [ "$BIG_ICON" -gt 128 ] && BIG_ICON=128
 [ "$BIG_ICON" -lt 64 ] && BIG_ICON=64
