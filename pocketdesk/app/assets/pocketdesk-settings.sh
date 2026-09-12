@@ -16,7 +16,16 @@ HOME_DIR=${HOME:-/home/coder}
 CONFIG="$HOME_DIR/.config/pocketdesk"
 WINDOWS=/usr/local/bin/pocketdesk-windows
 
+# The list stays open after a change (see menu), so a row that opens another program has to say
+# so: having Settings pop straight back up on top of the sound mixer it had just started was
+# worse than closing it.
+HANDED_OVER=0
+
 have() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  printf 'usage: pocketdesk-settings [theme|theme-dark|theme-light|theme-system|wallpaper|panel|size|appearance|sound|storage|software|downloads|refresh|about]\n'
+}
 
 tell() {   # tell <title> <text>
   if have zenity; then
@@ -26,8 +35,11 @@ tell() {   # tell <title> <text>
   fi
 }
 
-start() {   # start <command...> -- detached, so Settings does not stay open behind it
-  if have "$1"; then "$@" >/dev/null 2>&1 & else
+start() {   # start <command...> -- detached, and Settings closes behind it
+  if have "$1"; then
+    "$@" >/dev/null 2>&1 &
+    HANDED_OVER=1
+  else
     tell "Not installed" "$1 is not installed on this computer yet. Software can install it."
   fi
 }
@@ -42,26 +54,170 @@ theme_now() {
     && echo light || echo dark
 }
 
-# Light and dark, written the way the desktop's own start-up writes them, so one file is the
-# truth and nothing here invents a second theme system. Windows already open keep the look they
-# started with -- GTK reads this once per program -- and the note says so rather than leaving
-# the owner to wonder why one window did not change.
-set_theme() {   # set_theme dark|light
+# What the owner chose, which is not the same question as what the windows look like right now:
+# "system" means the phone decides, and the phone's answer is whatever it sent in at this
+# desktop's start. A computer that has never been told reads as whatever it is wearing.
+theme_choice() {
+  case "$(cat "$CONFIG/theme" 2>/dev/null)" in
+    light)  echo light ;;
+    dark)   echo dark ;;
+    system) echo system ;;
+    *)      theme_now ;;
+  esac
+}
+
+theme_label() {
+  case "$(theme_choice)" in
+    light)  echo "Light" ;;
+    system) echo "Follow the phone" ;;
+    *)      echo "Dark" ;;
+  esac
+}
+
+theme_pick() {
+  if ! have zenity; then
+    usage
+    return 0
+  fi
+  pick_light=FALSE
+  pick_dark=FALSE
+  pick_system=FALSE
+  case "$(theme_choice)" in
+    light)  pick_light=TRUE ;;
+    system) pick_system=TRUE ;;
+    *)      pick_dark=TRUE ;;
+  esac
+  want=$(zenity --list --radiolist --width=460 --height=300 \
+    --title="Theme" \
+    --text="How the computer's windows look." \
+    --column="" --column="id" --column="Theme" \
+    --hide-column=2 --print-column=2 \
+    "$pick_light"  light  "Light" \
+    "$pick_dark"   dark   "Dark" \
+    "$pick_system" system "Follow the phone" \
+    2>/dev/null) || return 0
+  [ -n "$want" ] || return 0
+  set_theme "$want"
+}
+
+# Light, dark, or whatever the phone is set to, written the way the desktop's own start-up writes
+# them, so one file is the truth and nothing here invents a second theme system.
+#
+# The note used to say "Windows opened from now on use the $want theme", and that was not true.
+# Only a program started through pocketdesk-open is handed the new theme; the bar, the window
+# title bars, the terminal and the on-screen messages are drawn in the app's own dark colours
+# whichever theme is chosen. So the note promises windows and says the bar stays as it is.
+set_theme() {   # set_theme dark|light|system
   want=$1
-  case "$want" in light) prefer=0 ;; *) prefer=1 ;; esac
-  for gtk_dir in "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"; do
-    ini="$gtk_dir/settings.ini"
-    [ -f "$ini" ] || continue
-    tmp="$ini.pocketdesk-new"
-    awk -v prefer="$prefer" '
-      /^gtk-application-prefer-dark-theme=/ { print "gtk-application-prefer-dark-theme=" prefer; next }
-      { print }
-    ' "$ini" > "$tmp" 2>/dev/null && mv -f "$tmp" "$ini"
-  done
+  # "system" has no colour of its own. It uses the answer the phone sent in when this desktop
+  # started, which is the same answer the desktop will ask the phone for again next time. Run
+  # from a terminal with no desktop around it there is no answer, and then nothing is repainted
+  # and only the choice is saved.
+  case "$want" in
+    system) applied=${POCKETDESK_THEME:-} ;;
+    *)      applied=$want ;;
+  esac
+  if [ -n "$applied" ]; then
+    case "$applied" in light) prefer=0 ;; *) prefer=1 ;; esac
+    for gtk_dir in "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"; do
+      ini="$gtk_dir/settings.ini"
+      [ -f "$ini" ] || continue
+      tmp="$ini.pocketdesk-new"
+      awk -v prefer="$prefer" '
+        /^gtk-application-prefer-dark-theme=/ { print "gtk-application-prefer-dark-theme=" prefer; next }
+        { print }
+      ' "$ini" > "$tmp" 2>/dev/null && mv -f "$tmp" "$ini"
+    done
+  fi
   printf '%s\n' "$want" > "$CONFIG/theme"
-  tell "Theme: $want" "Windows opened from now on use the $want theme.
-Anything already open keeps the look it started with -- every Linux program reads the theme once,
-when it starts. Close and open it, or reopen the desktop, to see it change."
+  if [ "$want" = system ]; then
+    tell "Theme" "The computer now follows the phone.
+
+PocketLinux tells it which look to use every time the desktop opens, so Light or Dark on the
+phone changes this too.
+
+A window that is already open keeps the look it has, because every Linux program reads the theme
+once, when it starts. Close it and open it again to see the change."
+  else
+    tell "Theme" "Saved: the $want theme.
+
+A window that is already open keeps the look it has, because every Linux program reads the theme
+once, when it starts. Close it and open it again to see the change.
+
+The bar at the edge of the screen and the window title bars stay in PocketLinux's own dark
+colours in both themes."
+  fi
+}
+
+# The background picture. The file manager paints the desktop, and its own Desktop Preferences
+# cannot be reached from here because a right-click on the desktop opens the apps menu instead,
+# so there was no way at all to change the picture. This row is it.
+#
+# The picture is copied into the computer's own settings folder, and that copy is what is used.
+# The one the owner picks is usually in Phone files or in Downloads: the first disappears when
+# the All files permission is switched off, the second is a folder people empty, and either way
+# the desktop would come back one morning with no background and nothing saying why.
+wallpaper() {
+  if ! have zenity; then
+    printf 'Choose a background picture from the Settings window on the desktop.\n'
+    return 0
+  fi
+  picked=$(zenity --file-selection --title="Choose a background picture" \
+    --filename="$HOME_DIR/Pictures/" \
+    --file-filter="Pictures | *.jpg *.jpeg *.JPG *.JPEG *.png *.PNG" \
+    --file-filter="Every file | *" 2>/dev/null) || return 0
+  [ -n "$picked" ] || return 0
+  if [ ! -f "$picked" ]; then
+    tell "Background" "That picture is not there any more."
+    return 0
+  fi
+  case "$picked" in
+    *.png|*.PNG) kept="$CONFIG/wallpaper.png" ;;
+    *)           kept="$CONFIG/wallpaper.jpg" ;;
+  esac
+  mkdir -p "$CONFIG"
+  # Only ever one kept picture: a jpg left behind after the owner chose a png would sit in the
+  # settings folder for ever, and the older of the two is the one nothing is using.
+  rm -f "$CONFIG/wallpaper.jpg" "$CONFIG/wallpaper.png"
+  if ! cp -f "$picked" "$kept" 2>/dev/null; then
+    tell "Background" "That picture could not be copied. Check the computer has space left:
+Settings, then What is using the space."
+    return 0
+  fi
+  # --set-wallpaper does both halves: it changes the picture on the screen now, and the file
+  # manager writes it into its own settings, so it is still there at the next start.
+  if have pcmanfm; then
+    pcmanfm --set-wallpaper="$kept" --wallpaper-mode=fit >/dev/null 2>&1 || true
+  fi
+  # And the path on its own, for a desktop starting with no file-manager settings yet.
+  printf '%s\n' "$kept" > "$CONFIG/wallpaper"
+  tell "Background" "Done. That picture is the desktop background now.
+
+A copy is kept inside the computer, so the background stays even if you move or delete the
+picture you chose."
+}
+
+wallpaper_label() {
+  if [ -f "$CONFIG/wallpaper.jpg" ] || [ -f "$CONFIG/wallpaper.png" ]; then
+    echo "Your own"
+  else
+    echo "PocketLinux"
+  fi
+}
+
+# The whole folder path is far too wide for a phone screen, and the words the phone's own Settings
+# offered are what the owner picked from in the first place.
+downloads_label() {
+  case "${POCKETDESK_DOWNLOAD_TARGET:-}" in
+    computer) echo "Computer" ;;
+    phone)    echo "Phone" ;;
+    ask)      echo "It asks" ;;
+    *)
+      where=$(cat "$CONFIG/download-dir" 2>/dev/null)
+      [ -n "$where" ] || where="$HOME_DIR/Downloads"
+      basename "$where"
+      ;;
+  esac
 }
 
 download_note() {
@@ -84,48 +240,61 @@ about() {
 Desktop: Openbox and tint2, drawn by PocketLinux.
 Screen: $(printf '%s' "${DISPLAY:-:1}") at $(xdpyinfo 2>/dev/null | awk '/dimensions:/ { print $2; exit }' || echo 'unknown')
 Text size: $(awk -F: '/^Xft\.dpi:/ { gsub(/[^0-9]/, "", $2); print $2 " dpi"; exit }' "$HOME_DIR/.Xresources" 2>/dev/null || echo 'unknown')
-Theme: $(theme_now)
+Theme: $(theme_label)
 PocketLinux basics: $version
 
 Everything here is ordinary Ubuntu. Nothing is emulated and nothing is remote: the programs are
 ARM64 Linux binaries running on this phone's own processor."
 }
 
+# The rows carry a group of their own -- Look, Sound, Storage, Software, About -- because a flat
+# list of eleven settings is a list you read from the top every time, and because the names had
+# to get shorter to fit a phone screen: "Appearance -- icons, fonts, cursors" was cut off in the
+# middle on a portrait screen, and the tool names that used to sit in the Now column
+# ("lxappearance", "pavucontrol") meant nothing to the owner.
+#
+# The list stays open until the owner closes it. It used to show once, do the one thing and
+# exit, so changing the theme and then moving the bar meant finding the Settings icon twice and
+# waiting twice for a fresh dialog to start under PRoot.
 menu() {
-  edge=$(panel_edge)
-  case "$edge" in top) move_to="bottom" ;; *) move_to="top" ;; esac
-  theme=$(theme_now)
-  case "$theme" in light) other_theme="dark" ;; *) other_theme="light" ;; esac
-
   if ! have zenity; then
-    printf 'usage: pocketdesk-settings [theme-dark|theme-light|panel|appearance|sound|storage|software|downloads|about]\n'
+    usage
     return 0
   fi
-  choice=$(zenity --list --radiolist --width=660 --height=470 \
-    --title="Settings" \
-    --text="The computer's own settings. Phone permissions and the app lock live in PocketLinux." \
-    --column="" --column="id" --column="Setting" --column="Now" \
-    --hide-column=2 --print-column=2 \
-    TRUE  theme      "Theme -- switch to the $other_theme theme" "$theme" \
-    FALSE panel      "Where the bar sits -- move it to the $move_to" "$edge" \
-    FALSE size       "Text and icon size" "PocketLinux Settings" \
-    FALSE appearance "Appearance -- icons, fonts, cursors" "lxappearance" \
-    FALSE sound      "Sound -- output, input and levels" "pavucontrol" \
-    FALSE storage    "Storage -- what is using the space" "" \
-    FALSE software   "Software and updates" "" \
-    FALSE downloads  "Downloads go to" "$(cat "$CONFIG/download-dir" 2>/dev/null || echo "$HOME_DIR/Downloads")" \
-    FALSE refresh    "Refresh the app list and the desktop" "" \
-    FALSE about      "About this computer" "" \
-    2>/dev/null) || return 0
-  [ -n "$choice" ] || return 0
-  run "$choice"
+  while :; do
+    HANDED_OVER=0
+    edge=$(panel_edge)
+    case "$edge" in top) move_to="bottom" ;; *) move_to="top" ;; esac
+    choice=$(zenity --list --radiolist --width=720 --height=560 \
+      --title="Settings" \
+      --text="The computer's own settings. Phone permissions and the app lock live in PocketLinux." \
+      --column="" --column="id" --column="Group" --column="Setting" --column="Now" \
+      --hide-column=2 --print-column=2 \
+      TRUE  theme      "Look"     "Theme"                        "$(theme_label)" \
+      FALSE wallpaper  "Look"     "Background picture"           "$(wallpaper_label)" \
+      FALSE size       "Look"     "Text and icon size"           "In PocketLinux" \
+      FALSE panel      "Look"     "Move the bar to the $move_to" "$edge" \
+      FALSE appearance "Look"     "Icons, fonts and pointer"     "" \
+      FALSE sound      "Sound"    "Sound, input and levels"      "" \
+      FALSE storage    "Storage"  "What is using the space"      "" \
+      FALSE downloads  "Storage"  "Downloads go to"              "$(downloads_label)" \
+      FALSE software   "Software" "Software and updates"         "" \
+      FALSE refresh    "Software" "Refresh apps and desktop"     "" \
+      FALSE about      "About"    "About this computer"          "" \
+      2>/dev/null) || return 0
+    [ -n "$choice" ] || return 0
+    run "$choice"
+    [ "$HANDED_OVER" = 1 ] && return 0
+  done
 }
 
 run() {
   case "$1" in
-    theme)      [ "$(theme_now)" = dark ] && set_theme light || set_theme dark ;;
+    theme)      theme_pick ;;
     theme-dark) set_theme dark ;;
     theme-light) set_theme light ;;
+    theme-system) set_theme system ;;
+    wallpaper)  wallpaper ;;
     panel)      "$WINDOWS" panel-edge "$( [ "$(panel_edge)" = top ] && echo bottom || echo top )" ;;
     size)       tell "Text and icon size" "The size of everything on this desktop is set in PocketLinux -> Settings -> Desktop text size.
 
@@ -140,7 +309,10 @@ Inside the desktop screen you can also use Screen -> Bigger interface, which tak
     downloads)  download_note ;;
     refresh)    /usr/local/bin/pocketdesk-menu >/dev/null 2>&1; "$WINDOWS" refresh >/dev/null 2>&1 || true ;;
     about)      about ;;
-    *)          menu ;;
+    menu)       menu ;;
+    # Named on purpose rather than falling through to the list: menu calls run in a loop now, and
+    # a default that re-opened the list would be a loop inside a loop.
+    *)          usage >&2; return 2 ;;
   esac
 }
 

@@ -40,11 +40,13 @@ import java.io.IOException;
 /**
  * The Linux computer's screen, with one row of controls around it.
  *
- * One bar, not two: Home, the computer's status, and then one button per category -- Screen,
- * the pointer, Keyboard, Keys, Window. A category button opens its choices as a vertical list,
- * so nothing is spread along a strip that has to be scrolled to be read. The bar sits at the
- * top or the bottom, the owner's choice, and the row of special keys appears only when asked
- * for. Full screen hides all of it behind one draggable chip.
+ * Five things on that row, and they fit the narrowest phone: Home, the computer's status, the
+ * phone keyboard, the pointer switch, and More. Everything else is in More as one list, so it
+ * is still two taps away. The bar before this one carried ten items at fixed widths, about
+ * three screens of them, inside a scroller with its scrollbar switched off -- Window and Phone
+ * were off the right hand edge with nothing on the glass to say they were there. The bar sits
+ * at the top or the bottom, the owner's choice, and the row of special keys appears only when
+ * asked for. Full screen hides all of it behind one draggable chip.
  */
 public final class DesktopActivity extends Activity implements KeyboardInputView.Listener {
     private static final int MENU_FIT = 1, MENU_ZOOM_IN = 2, MENU_ZOOM_OUT = 3, MENU_ROTATE = 4,
@@ -54,8 +56,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             MENU_RELOAD = 18, MENU_FIT_WINDOW = 19, MENU_MINIMISE = 20, MENU_MICROPHONE = 21, MENU_PHOTO = 22,
             MENU_WIDE_WORKSPACE = 23, MENU_VOLUME_PANEL = 24, MENU_ROTATION_LOCK = 25,
             MENU_TOUCH_LOCK = 26, MENU_BIGGER = 27, MENU_AUTO_HIDE = 28, MENU_RESIZE = 29,
-            MENU_CLOUD_FILE = 30;
+            MENU_CLOUD_FILE = 30, MENU_MUTE = 31, MENU_KEY_ROW = 32, MENU_DRAG = 33;
     private static final String KEY_WIDE_WORKSPACE = "viewer_wide_workspace";
+    /** Said in two places, so it is written once: the bar button, and the same button mid-drag. */
+    private static final String MORE_DESCRIPTION =
+            "More controls: sound, special keys, the picture, windows and the phone";
     /** The request code the microphone prompt comes back on; above AppLock's own codes. */
     private static final int REQUEST_MICROPHONE = 4711;
     /** The request code the phone's camera app comes back on. */
@@ -64,15 +69,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private SharedPreferences preferences;
     private FrameLayout outer;
     private LinearLayout column;
-    private HorizontalScrollView bar;
+    /** A plain row, never a scroller: everything on the bar has to fit the screen it is on. */
+    private LinearLayout bar;
     private HorizontalScrollView keyRow;
     /** The line between the desktop and the bar; it lifts with the bar when the keyboard opens. */
     private View barDivider;
     private VncView desktop;
     private TextView status;
     private Button pointerButton;
-    private Button dragButton;
-    private Button keysButton;
+    private Button moreButton;
     private Button restoreBars;
     private Button ctrlButton;
     private Button altButton;
