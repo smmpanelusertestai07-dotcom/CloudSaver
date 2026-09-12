@@ -195,11 +195,31 @@ final class LinuxApps {
             // would throw away the 600 MB the resume was added to keep.
             + "if [ -s \"$pd_out\" ]; then "
             + "curl --fail --location --retry 3 --retry-delay 5 -C - -o \"$pd_out\" \"$1\" "
-            + "|| { echo 'PocketLinux: the download stopped; it will carry on from here next time' >&2; "
-            + "return 1; }; "
+            + "|| { pd_keep_or_drop \"$pd_out\" || { "
+            + "echo 'PocketLinux: the download stopped; it will carry on from here next time' >&2; "
+            + "return 1; }; }; "
             + "else curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\" || return 1; fi; "
             + "[ -s \"$pd_out\" ] || { echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
             + "printf '%s' \"$pd_out\"; return 0; }; "
+            // A resume that fails on a file which is already whole. It happens after an install
+            // that failed at the apt step: the download stayed, complete, and every later tap
+            // asked the server for bytes past the end -- answered with 416, read as "the
+            // download stopped", for ever. A package apt can read is finished; anything else is
+            // thrown away once so the next tap starts cleanly.
+            + "pd_keep_or_drop() { if dpkg-deb --info \"$1\" >/dev/null 2>&1; then return 0; fi; "
+            + "rm -f \"$1\"; return 1; }; "
+            // Whether the build the publisher is serving now is the one already installed, asked
+            // with a HEAD request -- a few hundred bytes instead of the whole package. Used for
+            // the apps whose address always points at "latest", where there is no version to
+            // compare. The stamp is written only after the install succeeds.
+            + "pd_same_build() { mkdir -p \"$PD_STATE/stamp\"; "
+            + "pd_now=$(curl -fsSIL --max-time 40 \"$2\" 2>/dev/null | tr -d '\\r' "
+            + "| awk 'tolower($1) == \"content-length:\" { l = $2 } "
+            + "tolower($1) == \"last-modified:\" { $1 = \"\"; m = $0 } END { print l \"|\" m }'); "
+            + "case \"$pd_now\" in ''|'|'|'| ') return 1 ;; esac; "
+            + "printf '%s' \"$pd_now\" > \"$PD_STATE/stamp/.$1\"; "
+            + "[ -f \"$PD_STATE/stamp/$1\" ] && [ \"$(cat \"$PD_STATE/stamp/$1\")\" = \"$pd_now\" ]; }; "
+            + "pd_build_installed() { mv -f \"$PD_STATE/stamp/.$1\" \"$PD_STATE/stamp/$1\" 2>/dev/null || true; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -436,12 +456,19 @@ final class LinuxApps {
                     "OpenAI's Linux app is a public preview; that is OpenAI's current scope, and it "
                             + "grows with their updates. Your account's usage limits apply.",
                     "/usr/bin/chatgpt",
+                    // No apt repository publishes this package -- it is a .deb from OpenAI's own
+                    // address -- so "apt-get install --only-upgrade chatgpt" had nothing to find
+                    // and a tap on the row could never update it. The published build is asked
+                    // for with a HEAD request instead, and the 700 MB is spent only when it has
+                    // actually changed.
                     "pd_update || exit 11; "
-                            + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
-                            + "apt-get install -y --only-upgrade chatgpt; else "
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
+                            + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed' "
+                            + "&& pd_same_build chatgpt '" + LATEST_CHATGPT + "'; then "
+                            + "echo 'PocketLinux: ChatGPT is already the build OpenAI publishes; nothing was downloaded'; "
+                            + "exit 0; fi; "
                             + "pd_deb=$(pd_fetch '" + LATEST_CHATGPT + "' chatgpt.deb) || exit 12; "
-                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"; fi",
+                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"; pd_build_installed chatgpt",
                     "apt-get remove -y chatgpt", false),
 
             new App("claude", "Claude Desktop",
@@ -475,6 +502,13 @@ final class LinuxApps {
                             + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
                             + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
+                            // The version is in the address Cursor hands back, so an up-to-date
+                            // editor costs one small request instead of seven hundred megabytes.
+                            + "pd_ver=$(printf '%s' \"$url\" | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -n 1); "
+                            + "if [ -n \"$pd_ver\" ] "
+                            + "&& dpkg-query -W -f='${Version}' cursor 2>/dev/null | grep -qF \"$pd_ver\"; then "
+                            + "echo \"PocketLinux: Cursor $pd_ver is already installed; nothing was downloaded\"; "
+                            + "exit 0; fi; "
                             + "pd_deb=$(pd_fetch \"$url\" cursor.deb) || exit 12; "
                             + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"",
                     "apt-get remove -y cursor", false),
@@ -499,7 +533,12 @@ final class LinuxApps {
                             + "Exec=%s %%U\\nIcon=antigravity\\nType=Application\\nTerminal=false\\n"
                             + "StartupNotify=true\\nCategories=Development;\\n' \"$bin\" "
                             + "> /usr/share/applications/antigravity.desktop; fi",
-                    "apt-get remove -y antigravity; rm -f /etc/apt/sources.list.d/antigravity.list", true),
+                    // The desktop entry is written above when the package ships none, so dpkg
+                    // does not own it and would leave it behind -- with it, the row went on
+                    // reading ADDED after the app had been removed, and the menu kept a dead icon.
+                    "apt-get remove -y antigravity; rm -f /usr/share/applications/antigravity.desktop "
+                            + "/etc/apt/sources.list.d/antigravity.list "
+                            + "/etc/apt/keyrings/antigravity-repo-key.gpg", true),
 
     };
 

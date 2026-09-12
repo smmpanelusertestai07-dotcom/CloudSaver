@@ -1141,15 +1141,31 @@ final class VncView extends View implements VncClient.Listener {
                 target.getPixels(copyBuffer, 0, safeWidth, sourceX, sourceY, safeWidth, safeHeight);
                 target.setPixels(copyBuffer, 0, safeWidth, x, y, safeWidth, safeHeight);
             } catch (RuntimeException | OutOfMemoryError refused) {
-                // A copy that cannot be made is not a reason to drop the connection: the next
-                // full update paints the same pixels. Leave the area dirty and carry on.
+                // A copy that cannot be made is not a reason to drop the connection -- but the
+                // server believes those pixels moved and will not send them again until they
+                // change, so the whole screen is asked for once the update is in.
+                needFullRefresh = true;
             }
             if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
             else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
         }
     }
 
+    /** Set when a CopyRect failed, so the frame is asked for whole rather than left wrong. */
+    private volatile boolean needFullRefresh;
+
     @Override public void onUpdateComplete() {
+        if (needFullRefresh) {
+            needFullRefresh = false;
+            VncClient active = client;
+            if (active != null) {
+                try {
+                    active.requestUpdate(false);
+                } catch (java.io.IOException gone) {
+                    // The connection is ending; the reconnect draws the screen from scratch.
+                }
+            }
+        }
         synchronized (backLock) {
             if (!anyDirty) return;
             anyDirty = false;
@@ -1246,7 +1262,16 @@ final class VncView extends View implements VncClient.Listener {
 
         overlayPaint.setTextSize(Ui.dp(context, 15));
         overlayPaint.setTextAlign(Paint.Align.CENTER);
-        List<String> lines = wrap(status, cardWidth - Ui.dp(context, 32));
+        // Wrapped once per sentence, not once per frame: this card redraws while it waits, and
+        // splitting the text and measuring every word sixty times a second on a phone that is
+        // busy starting a Linux computer is work taken from the thing being waited for.
+        float wrapWidth = cardWidth - Ui.dp(context, 32);
+        if (wrappedLines == null || !status.equals(wrappedFor) || wrapWidth != wrappedWidth) {
+            wrappedLines = wrap(status, wrapWidth);
+            wrappedFor = status;
+            wrappedWidth = wrapWidth;
+        }
+        List<String> lines = wrappedLines;
         float lineHeight = overlayPaint.getFontSpacing();
         float spinner = Ui.dp(context, 18);
         float cardHeight = spinner * 2 + Ui.dp(context, 34) + lines.size() * lineHeight
@@ -1276,16 +1301,28 @@ final class VncView extends View implements VncClient.Listener {
             canvas.drawText(line, centreX, textY, overlayPaint);
             textY += lineHeight;
         }
-        postInvalidateOnAnimation();
+        // 30 frames a second: the spinner turns 120 degrees a second, so nothing is visibly
+        // lost, and the phone spends half as long drawing a card that is only there to wait.
+        postInvalidateDelayed(33L);
     }
+
+    private List<String> wrappedLines;
+    private String wrappedFor;
+    private float wrappedWidth;
+    private String startingPhase;
+    private String startingText;
 
     /** The same card as the wait for the display, over the frame, naming the phase the desktop is in. */
     private void drawStarting(Canvas canvas) {
         String phase = LinuxService.startupPhase();
+        if (startingText == null || !java.util.Objects.equals(phase, startingPhase)) {
+            startingPhase = phase;
+            startingText = "Starting your Linux computer\u2026 "
+                    + (phase == null || phase.isEmpty() ? "" : phase + ".")
+                    + " Usually under a minute.";
+        }
         String saved = status;
-        status = "Starting your Linux computer\u2026 "
-                + (phase == null || phase.isEmpty() ? "" : phase + ".")
-                + " Usually under a minute.";
+        status = startingText;
         drawWaiting(canvas);
         status = saved;
     }

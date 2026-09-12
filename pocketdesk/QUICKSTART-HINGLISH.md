@@ -38,6 +38,14 @@
   Linux se copy phone ke clipboard se compare hota hai; dead keys se accent ban-te hain.
 - **Security:** loopback port (5901/4712) tabhi try hota hai jab desktop khud bole ki fallback
   hua; MCP ka phone_shell sirf app-testing commands chalata hai (am, pm, input, logcat, dumpsys…).
+- **Install ke waqt desktop band nahi hoga:** app install desktop ke saath chal raha ho to garmi/
+  battery guard sirf download ko rokta hai, desktop ko nahi; aur **Stop** dabane se install nahi
+  marta. "Phone is warm" notice thanda hone pe hat jata hai; computer band hone pe screen awake
+  nahi rehti; phone ne band kiya to "1 ghante baad band" wala clock zero se shuru nahi hota.
+- **Data bachaने wale updates:** ChatGPT ka update ab sach me kaam karta hai (pehle apt repo hi
+  nahi tha) aur naya build na ho to 700 MB download nahi hota; Cursor version match kare to kuch
+  download nahi; adhoora part-file ab hamesha ke liye atakta nahi; Antigravity uninstall karne pe
+  uska launcher bhi hat-ta hai; computer ke Software me ab **Remove installed software** hai.
 - **Texts:** Google ke Android Linux Terminal se comparison (Pixel-only GPU, VM vs PRoot), Ubuntu
   24.04 kyun (26.04 aane ke baad bhi), sab AI apps ke Linux builds 11 Sep 2026 ko dobara verify.
 

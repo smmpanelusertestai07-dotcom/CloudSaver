@@ -93,6 +93,10 @@ public final class LinuxService extends Service {
     private volatile PowerManager.WakeLock desktopWakeLock;
     private volatile boolean serviceDestroyed;
     private long sessionStartedAt;
+    /** The owner's own clock, carried across a restart the phone forced, not one they asked for. */
+    private volatile long carriedSessionStartedAt;
+    /** True while the notification says the phone is warm, so it can be taken back once. */
+    private boolean warmNoticeShown;
     private volatile long sessionGeneration;
     /** A bounded, fixed-label phase reported by our startup script, never an app URL. */
     private volatile String desktopStartupPhase = "Starting the Linux process";
@@ -236,7 +240,12 @@ public final class LinuxService extends Service {
     private boolean freezeJobs(boolean freeze) {
         int signal = freeze ? 19 : 18;                       // SIGSTOP / SIGCONT
         boolean any = false;
-        Process[] processes = {activeProcess, installProcess};
+        // Only the job this monitor owns. An install running beside an open desktop used to
+        // SIGSTOP the desktop as well: the owner watched the computer they were using freeze
+        // for up to three quarters of an hour because a download behind it met a warm phone.
+        Process[] processes = besideDesktop()
+                ? new Process[]{installProcess}
+                : new Process[]{activeProcess, installProcess};
         for (Process process : processes) {
             if (process == null) continue;
             try {
@@ -253,9 +262,28 @@ public final class LinuxService extends Service {
         return any;
     }
 
+    /** True when the job this monitor watches is an install running beside a live desktop. */
+    private boolean besideDesktop() {
+        return INSTALLING.get() && isDesktopRunning();
+    }
+
     /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
     private void cancelJobs() {
         RuntimeDiagnostics.sample(this, "Cancel setup/install requested", ProotProcess.trackingSummary());
+        if (besideDesktop()) {
+            // The guard is speaking for the install. The desktop the owner is looking at is not
+            // its to end -- and stopRequested is the desktop's own flag, which would also stop
+            // it from being reopened.
+            if (pausedForHeat) {
+                freezeJobs(false);
+                pausedForHeat = false;
+            }
+            Future<?> installOnly = installTask;
+            if (installOnly != null) installOnly.cancel(true);
+            Process installingOnly = installProcess;
+            if (installingOnly != null) ProotProcess.requestStop(installingOnly);
+            return;
+        }
         stopRequested = true;
         // A frozen container can act on nothing but SIGKILL, so thaw it before ending it --
         // otherwise the stop leaves a live stopped PRoot and a worker blocked in readLine().
@@ -341,7 +369,18 @@ public final class LinuxService extends Service {
                 }
                 if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_SEVERE
                         || (probe.batteryTempC > 0 && probe.batteryTempC >= WARN_TEMPERATURE_C)) {
-                    updateNotification("Phone is warm", "Linux is still running. Take a short break if it gets hotter.", -1);
+                    if (!warmNoticeShown) {
+                        warmNoticeShown = true;
+                        updateNotification("Phone is warm",
+                                "Linux is still running. Take a short break if it gets hotter.", -1);
+                    }
+                } else if (warmNoticeShown) {
+                    // Taken back when the phone cools. It used to stay for the rest of the
+                    // session, which is the only heat news the owner gets with the screen off:
+                    // a notice that never changes is a notice nobody believes.
+                    warmNoticeShown = false;
+                    updateNotification("The Linux computer is running",
+                            "Tap to return \u00b7 the phone has cooled down", 100);
                 }
             }
             // Never behind the heat switch: a flat battery is not a comfort setting, and turning
@@ -1039,7 +1078,11 @@ public final class LinuxService extends Service {
                 ProotProcess.stopAndWait(desktopProcess);
                 throw superseded;
             }
-            sessionStartedAt = System.currentTimeMillis();
+            // A session the phone killed and this app reopened is the same session to the owner:
+            // their "stop after an hour" must not start again from zero each time.
+            sessionStartedAt = carriedSessionStartedAt > 0
+                    ? carriedSessionStartedAt : System.currentTimeMillis();
+            carriedSessionStartedAt = 0L;
             recordOutput(desktopProcess, sessionLog, attempt);
             // Fifteen seconds was never enough: this phone takes half a minute to put the
             // display up, so the wait expired, the session was killed, and the home screen
@@ -1209,6 +1252,7 @@ public final class LinuxService extends Service {
         // the new intent behind a stopSelf() that this same worker was about to run, and Android
         // brought the service down between the two. The desktop came back inside a destroyed
         // service -- no notification, no wake lock, no heartbeat, no DNS following the network.
+        carriedSessionStartedAt = sessionStartedAt;
         reopenPending = true;
         return true;
     }
@@ -1356,14 +1400,43 @@ public final class LinuxService extends Service {
         }
     }
 
+    /** The address the half-finished download came from, or null when it is not recorded. */
+    private static String sourceOfPart(File marker) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new java.io.FileInputStream(marker), "UTF-8"))) {
+            String line = reader.readLine();
+            return line == null ? null : line.trim();
+        } catch (Exception unreadable) {
+            return null;
+        }
+    }
+
+    private static void rememberPartSource(File marker, String source) {
+        try (java.io.OutputStream out = new java.io.FileOutputStream(marker)) {
+            out.write(source.getBytes("UTF-8"));
+        } catch (Exception unwritable) {
+            // Only an optimisation: without it the checksum still refuses a spliced archive.
+        }
+    }
+
     private void download(String[] sources, File destination, String title) throws Exception {
         File part = new File(destination.getAbsolutePath() + ".part");
+        // What the half-finished file was being downloaded from. Canonical prunes a point
+        // release, the set-up falls back to the newer image, and a resume keyed only on the
+        // file's length would have appended the new image's bytes at the old offset -- caught
+        // by the checksum, but only after the whole download had been spent again.
+        File partSource = new File(destination.getAbsolutePath() + ".part.from");
         Exception last = null;
         for (int attempt = 0; attempt < 6; attempt++) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException();
             String source = sources[attempt % sources.length];
             try {
+                if (part.isFile() && !source.equals(sourceOfPart(partSource))) {
+                    part.delete();
+                }
+                rememberPartSource(partSource, source);
                 fetch(source, part, title);
+                partSource.delete();
                 if (destination.exists() && !destination.delete()) {
                     throw new IOException("Could not replace the previous download");
                 }
@@ -1501,12 +1574,17 @@ public final class LinuxService extends Service {
             if (process != null) {
                 ProotProcess.requestStop(process);
             }
-            Process install = installProcess;
-            if (install != null) {
-                ProotProcess.requestStop(install);
+            // An install beside the desktop is the owner's download, not part of this stop --
+            // the branch at the end of this method already keeps the service alive for it, and
+            // ending it here reported their app as failed.
+            if (!INSTALLING.get()) {
+                Process install = installProcess;
+                if (install != null) {
+                    ProotProcess.requestStop(install);
+                }
+                installProcess = null;
             }
             activeProcess = null;
-            installProcess = null;
             desktopRunning = false;
             desktopStarting = false;
             BUSY.set(false);
@@ -1514,6 +1592,8 @@ public final class LinuxService extends Service {
                     .putBoolean(ContainerRuntime.KEY_DESKTOP_ALIVE, false).apply();
             releaseTaskWakeLock();
             releaseDesktopWakeLock();
+            warmNoticeShown = false;
+            carriedSessionStartedAt = 0L;
             if (userRequested) status("The Linux computer is stopped", "Everything on it is kept for the next open.", 100, false, false);
             // An install running beside the desktop keeps the service and its own lock alive.
             if (!INSTALLING.get()) {

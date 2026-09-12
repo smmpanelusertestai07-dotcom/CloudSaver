@@ -153,6 +153,20 @@ public final class LinuxAppsTest {
                 "pd_update must record when it succeeded");
         require(run(work, prelude + "pd_update\n") == 0, "a second update must succeed");
         require(countLines(updates) == 1, "a list fetched moments ago must be reused, not fetched again");
+
+        // pd_same_build compares the build a publisher is serving with the one already
+        // installed, so a tap on an up-to-date row spends a HEAD request instead of 700 MB --
+        // and its name must never collide with pd_fresh, which is what decides whether the apt
+        // package list is young enough to reuse. That collision once made every install fetch
+        // the 40 MB list again.
+        require(prelude.contains("pd_same_build()") && prelude.contains("pd_build_installed()"),
+                "the build-freshness helpers must exist");
+        require(countOccurrences(prelude, "pd_fresh() {") == 1,
+                "pd_fresh must be defined exactly once: a second definition silently replaces it");
+        // A part-file that is already a whole package is not resumed for ever. The 416 answer a
+        // complete file gets used to read as "the download stopped", on every later tap.
+        require(prelude.contains("pd_keep_or_drop()"),
+                "a completed part-file must be recognised rather than resumed again");
         require(run(work, prelude + "pd_update force\n") == 0, "a forced update must succeed");
         require(countLines(updates) == 2, "pd_update force must always reach apt-get");
 
@@ -264,6 +278,12 @@ public final class LinuxAppsTest {
         if ("TOOL_PACKAGES".equals(name)) return LinuxApps.TOOL_PACKAGES;
         if ("PD_TIMEZONE".equals(name)) return LinuxApps.PD_TIMEZONE;
         throw new AssertionError("bootstrapCommand uses an unknown constant: " + name);
+    }
+
+    private static int countOccurrences(String haystack, String needle) {
+        int found = 0;
+        for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + 1)) found++;
+        return found;
     }
 
     private static int countLines(Path file) throws Exception {

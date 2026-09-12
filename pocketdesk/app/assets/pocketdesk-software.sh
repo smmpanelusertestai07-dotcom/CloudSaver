@@ -75,19 +75,52 @@ show_installed() {
   fi
 }
 
+# Uninstall, for the software the owner added themselves. Only packages apt records as
+# manually installed are offered, and the desktop's own set is kept out of the list: removing
+# pcmanfm or tint2 from here would take the desktop with it.
+remove_installed() {
+  have apt-mark || { tell "Not available" "This computer's package tools are incomplete."; return 0; }
+  keep='^(pocketdesk|ubuntu-minimal|ubuntu-keyring|apt|dpkg|bash|coreutils|systemd|sudo|curl|gnupg|ca-certificates|adwaita-icon-theme|dmz-cursor-theme|tzdata|gnome-themes-extra-data|fonts-noto-color-emoji|fonts-noto-core|locales|bash-completion|lsb-release|xdg-utils|x11-xserver-utils|x11-utils|dbus-x11|dbus-system-bus-common|dunst|libnotify-bin|zenity|xdotool|wmctrl|desktop-file-utils|librsvg2-common|lxterminal|pcmanfm|libfm-modules|tint2|pulseaudio|pulseaudio-utils|less|file|unzip|zip|wget|apt-utils|python3|openssh-client|git|nano|vim)$'
+  list=$(apt-mark showmanual 2>/dev/null | grep -Ev "$keep" | sort | head -n 200)
+  if [ -z "$list" ]; then
+    tell "Nothing to remove" "Everything installed here is part of the computer itself. Apps added from PocketLinux are removed on its Apps tab."
+    return 0
+  fi
+  rows=""
+  for package in $list; do
+    version=$(dpkg-query -W -f='${Version}' "$package" 2>/dev/null || echo '')
+    summary=$(apt-cache show "$package" 2>/dev/null | awk -F': ' '/^Description(-en)?: /{ print $2; exit }')
+    rows="$rows
+$package
+${version:-unknown}
+${summary:-Installed package}"
+  done
+  choice=$(printf '%s' "$rows" | sed '1d' | zenity --list --title="Remove installed software" \
+    --width=640 --height=460 --text="Software you added to this computer" \
+    --column="Package" --column="Version" --column="What it is" --print-column=1 2>/dev/null) || return 0
+  [ -n "$choice" ] || return 0
+  case "$choice" in *[!A-Za-z0-9.+-]*) tell "Not a package name" "Nothing was removed."; return 0 ;; esac
+  zenity --question --title="Remove $choice" --width=440 \
+    --text="Remove $choice and anything installed only for it?
+
+Files you made with it are kept." >/dev/null 2>&1 || return 0
+  run_terminal "sudo apt-get remove -y '$choice' && sudo apt-get -y autoremove && sudo /usr/local/bin/pocketdesk-menu"
+}
+
 case "${1:-menu}" in
   search) search_ubuntu ;;
   update) run_terminal "sudo apt-get update && sudo apt-get -y upgrade && sudo /usr/local/bin/pocketdesk-menu" ;;
   install-file) exec /usr/local/bin/pocketdesk-install ;;
   installed) show_installed ;;
-  --selftest) printf 'search\nupdate\ninstall-file\ninstalled\n'; exit 0 ;;
+  remove) remove_installed ;;
+  --selftest) printf 'search\nupdate\ninstall-file\ninstalled\nremove\n'; exit 0 ;;
   menu)
     if ! have apt-cache || ! have apt-get; then
       tell "Software is unavailable" "This Linux computer is missing Ubuntu's package tools. Update Computer basics from PocketLinux Settings."
       exit 1
     fi
     if ! have zenity; then
-      printf 'usage: pocketdesk-software {search|update|install-file|installed}\n'
+      printf 'usage: pocketdesk-software {search|update|install-file|installed|remove}\n'
       exit 2
     fi
     action=$(zenity --list --radiolist --title="Software" --width=600 --height=390 \
@@ -97,13 +130,15 @@ case "${1:-menu}" in
       FALSE "Update installed software" "Security and software updates" \
       FALSE "Install a downloaded package" "Run PocketLinux's file safety checks" \
       FALSE "See installed software" "Names and versions" \
+      FALSE "Remove installed software" "Uninstall something you added" \
       --print-column=2 2>/dev/null) || exit 0
     case "$action" in
       "Find Ubuntu software") search_ubuntu ;;
       "Update installed software") run_terminal "sudo apt-get update && sudo apt-get -y upgrade && sudo /usr/local/bin/pocketdesk-menu" ;;
       "Install a downloaded package") exec /usr/local/bin/pocketdesk-install ;;
       "See installed software") show_installed ;;
+      "Remove installed software") remove_installed ;;
     esac
     ;;
-  *) printf 'usage: pocketdesk-software {search|update|install-file|installed}\n' >&2; exit 2 ;;
+  *) printf 'usage: pocketdesk-software {search|update|install-file|installed|remove}\n' >&2; exit 2 ;;
 esac

@@ -106,8 +106,8 @@ final class DeviceCheck {
      *
      * Android sets the flag on devices configured for the low-RAM profile, which is what an
      * Android (Go edition) phone is, and the whole app can use it to choose smaller defaults
-     * without asking the owner to find a setting: a smaller framebuffer, a cheaper pixel format,
-     * no wide workspace, no opening splash.
+     * without asking the owner to find a setting: a cheaper framebuffer pixel format, and no
+     * opening splash.
      */
     /**
      * Whether the four AI desktop apps have room to run here.

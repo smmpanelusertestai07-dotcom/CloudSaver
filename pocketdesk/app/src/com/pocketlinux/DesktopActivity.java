@@ -111,6 +111,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // ...and taken off again when the session ends, below; a connection puts it back.
             if (Build.VERSION.SDK_INT < 35) {
                 getWindow().setStatusBarColor(Color.rgb(15, 19, 39));
                 getWindow().setNavigationBarColor(Color.rgb(5, 7, 17));
@@ -1191,7 +1192,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         boolean mouse = desktop.getPointerMode() == VncView.PointerMode.TOUCHPAD;
         String text = "Linux computer: Ubuntu 24.04 LTS on this phone's own processor, inside "
                 + "this app — a container, not a virtual machine. The desktop is Openbox for "
-                + "the windows, with the tint2 bar along the bottom.\n\n"
+                + "the windows, with the tint2 bar along the bottom (or the top, if you moved "
+                + "it in the computer's own Settings).\n\n"
                 + "Screen: " + desktop.desktopSize() + " pixels, "
                 + (desktop.isWideWorkspace() ? "wider than this display (Wider workspace), scaled to fit, so "
                         : desktop.getMagnification() > 100
@@ -1408,6 +1410,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             return;
         }
         reconnectWhenIdle = false;
+        // Watching a computer again: hold the screen awake while it is there.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         connectionThread = new Thread(() -> {
             try {
             long startedAt = SystemClock.elapsedRealtime();
@@ -1461,6 +1465,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             }
             if (!finished) {
                 RuntimeDiagnostics.snap(DesktopActivity.this, "viewer-retry-ended: " + lastError);
+                // Nothing left to watch: stop holding the phone's screen awake. It used to be
+                // held until this screen was left -- after a smart stop, a timer, a hot phone or
+                // a flat battery, at full brightness, for as long as the card sat there.
+                if (!LinuxService.isDesktopRunning() && !LinuxService.isDesktopStarting()
+                        && !LinuxService.isReopening()) {
+                    runOnUiThread(() -> getWindow().clearFlags(
+                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON));
+                }
                 String detail = LinuxService.lastDetail();
                 if (!LinuxService.isDesktopRunning() && !LinuxService.isDesktopStarting()
                         && LinuxService.lastWasError() && detail != null && !detail.isEmpty()) {

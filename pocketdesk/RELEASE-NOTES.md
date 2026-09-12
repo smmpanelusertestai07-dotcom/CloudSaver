@@ -88,6 +88,37 @@ in the computer can test an app on the phone, but a prompt-injected one cannot t
 apart. The microphone says when it stops instead of leaving the menu reading "on", and a photo
 from the camera is written off the main thread.
 
+**A download beside the desktop no longer ends the desktop, and Stop no longer ends the download.**
+Installing an app while the computer is open put two jobs under one guard: a warm phone paused
+the computer the owner was using along with the download, for up to three quarters of an hour,
+and a flat battery or a spent data limit ended it outright while the message spoke only of the
+download. Tapping Stop, the other way round, killed a running install and then reported the app
+as failed. Each now ends only what it owns. The "Phone is warm" notice is taken back when the
+phone cools instead of standing for the rest of the session; the screen is no longer held awake
+after the computer has stopped; and a session the phone killed and this app reopened keeps the
+owner's "stop after an hour" clock instead of starting it again.
+
+**Updates that do not re-download what you already have.** ChatGPT is not in any apt repository
+— it is a package from OpenAI's own address — so the "tap to update" command had nothing to
+upgrade and could never update it; it now asks OpenAI what it is serving with a HEAD request and
+spends the 700 MB only when that has changed. Cursor's address carries its version, so an
+up-to-date editor costs one small request instead of the whole download. A part-file that is
+already a complete package is recognised rather than resumed for ever (a failed install used to
+leave one, and every later tap asked for bytes past the end and read the refusal as "the download
+stopped"). The Ubuntu base image's part-file is tied to the address it came from. Uninstalling
+Antigravity removes the launcher this app wrote for it, so the row stops saying ADDED and no dead
+icon is left in the menu. The computer's own Software centre has **Remove installed software**
+for anything you added there.
+
+**Smaller things.** The starting card wraps its text once instead of sixty times a second and
+draws at 30 frames. A CopyRect the phone could not make now asks for the screen again rather
+than leaving it wrong until something else changes. The FAQ says Chrome warns about a dangerous
+site and leaves the choice to you (which is what the policy does), names the Cloud folder among
+the places files go, no longer claims the apps are identical on Windows, and no longer says the
+computer listens on no port at all when a fallback exists. Ubuntu's support dates agree with each
+other. The README gives both memory figures the app uses: 2 GB for the computer, 4 GB for the AI
+apps.
+
 **Texts.** The help card, the README and the quickstart name the Phone menu for what moved there,
 the status card says when the desktop is wider or magnified rather than "the size of this display",
 and the FAQ separates the three dials — Desktop text size, Bigger interface, an app's own zoom.

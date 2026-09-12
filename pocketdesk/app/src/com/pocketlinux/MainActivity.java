@@ -903,7 +903,7 @@ public final class MainActivity extends Activity {
                         + "apps, their logins, your files. No PocketLinux account, no server, no "
                         + "analytics; Android's cloud backup is switched off for this app. Ubuntu "
                         + "24.04 LTS receives security updates from Canonical until April 2029 "
-                        + "(and to 2034 with Ubuntu Pro), so the base does not go stale, and the "
+                        + "(and to April 2036 with Ubuntu Pro), so the base does not go stale, and the "
                         + "AI apps update from their publishers for as long as they ship updates.", false);
         addAnswer(card, R.drawable.ic_bolt, "Fast for a phone, and built to last",
                 "The native Linux apps are ARM64 programs running directly on the "
@@ -1692,6 +1692,8 @@ public final class MainActivity extends Activity {
                 "Inside the computer:\n"
                         + "• Projects — /home/coder/Projects, your work.\n"
                         + "• Computer Downloads — /home/coder/Downloads, private to PocketLinux.\n"
+                        + "• Cloud — /home/coder/Cloud, where a file picked with Phone → Add a file "
+                        + "from the phone or a cloud drive arrives.\n"
                         + "• Phone Downloads — /home/coder/Phone/Download/PocketLinux, the phone's "
                         + "public Download folder when Phone files permission is on.\n"
                         + "• Shared — /home/coder/Shared, the way out: this one folder also appears in "
@@ -1748,19 +1750,20 @@ public final class MainActivity extends Activity {
                         + "that a downloaded file is not signed. See “Can I install an app I "
                         + "downloaded myself?” below.\n"
                         + "• Google Chrome inside the computer runs Safe Browsing at its Enhanced "
-                        + "level: dangerous sites and downloads are blocked before they open, and a "
-                        + "malware or phishing warning cannot be clicked through. That check is done "
-                        + "by Google's Safe Browsing service, exactly as in Chrome on your phone.\n"
+                        + "level: a dangerous site or download is warned about before it opens, and "
+                        + "the final choice stays yours, exactly as in Chrome on your phone. That "
+                        + "check is done by Google's Safe Browsing service.\n"
                         + "• Nothing is installed from a browser or a random link: every app comes "
                         + "from its publisher's own repository and apt refuses a package whose "
                         + "signature does not match.\n"
                         + "• Ubuntu's security updates install with the computer's basics, and "
                         + "Settings → Storage offers that update when a new version brings one.\n"
-                        + "• The computer is sealed in: it lives in this app's private storage, "
-                        + "listens on no network port at all, and reaches the phone's screen and "
-                        + "speaker through sockets inside that private storage that no other app "
-                        + "can open. It cannot see your phone's files unless you turn on Phone "
-                        + "files.\n\n"
+                        + "• The computer is sealed in: it lives in this app's private storage and "
+                        + "reaches the phone's screen and speaker through sockets inside that "
+                        + "storage, which no other app can open. (Only on a container whose display "
+                        + "server cannot make such a socket does it fall back to a port bound to "
+                        + "this phone alone, and it says so in its report.) It cannot see your "
+                        + "phone's files unless you turn on Phone files.\n\n"
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
                         + "need, to look for viruses that cannot run on Linux anyway.", false);
@@ -1981,7 +1984,8 @@ public final class MainActivity extends Activity {
                         + "Home tab shows today's meter while a limit is set.", false);
 
         addAnswer(card, R.drawable.ic_phone, "Which phones and Android versions?",
-                DeviceCheck.requirements() + " That is nearly every phone made since 2017. The "
+                DeviceCheck.requirements() + " Nearly every phone made since 2017 has that "
+                        + "processor, and Android 10 arrived in 2019. The "
                         + "Your phone card above says whether this one qualifies, and the app is "
                         + "built for " + DeviceCheck.releaseName(DeviceCheck.TARGET_SDK) + ".", false);
 
@@ -2016,9 +2020,11 @@ public final class MainActivity extends Activity {
                         + "computers. \u201cWhy Linux and not Windows or macOS\u201d on the Home "
                         + "tab, and \u201cWhy not Windows apps, or a Windows layer?\u201d above, "
                         + "have the whole answer with its evidence. "
-                        + "The AI desktop apps are the same programs on all three systems, so "
-                        + "nothing is missing here that a Windows edition would add. For Windows "
-                        + "or macOS itself, a cloud PC used over remote desktop is the real route.", false);
+                        + "The AI desktop apps are the same programs on all three systems; what a "
+                        + "Windows edition would add is the makers' own Computer Use and Claude's "
+                        + "dictation, and PocketLinux supplies reading and controlling the screen "
+                        + "itself, over MCP. For Windows or macOS itself, a cloud PC used over "
+                        + "remote desktop is the real route.", false);
 
         addAnswer(card, R.drawable.ic_volume, "Does sound work?",
                 "Yes. Whatever the Linux computer plays — a voice reply, a video in the browser, "

@@ -35,7 +35,9 @@ deliberately — see **Why Linux only** below, and the release notes for the ful
 ## Device requirements
 
 - Android 10 (API 29) and above, on any brand of phone with an ARM64 processor — checked live on the home screen ("Your phone is compatible"); the tests check the app's stated minimum against the build's
-- 4 GB RAM minimum; 6 GB or more is better for Electron apps such as ChatGPT
+- 2 GB RAM and 3.5 GB free are enough for the Linux computer, its desktop and the developer
+  tools on their own; the four AI desktop apps are Chromium programs of about 700 MB each and
+  need 4 GB of RAM and 6 GB free. 6 GB or more of RAM is better for them
 - At least 6 GB (decimal, as Android's Settings counts) free before setup; the finished system uses 2–3 GB, and grows into the phone's free space from there (PocketLinux sets no quota of its own)
 - Reference device: Realme C25s, Android 13, 4 GB RAM
 
