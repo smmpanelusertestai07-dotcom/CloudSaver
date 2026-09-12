@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,8 +20,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +52,7 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isFinite
 import app.cloudsaver.R
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.ui.theme.Dimens
@@ -66,12 +70,28 @@ import kotlinx.coroutines.withContext
  * itself as a checkbox with the album's name, so a screen reader hears
  * "Camera, checkbox, ticked" rather than an unnamed box.
  */
+/**
+ * The grid's ceiling, from the space it is actually given.
+ *
+ * A fixed 300 dp was one row of covers plus the header on any phone: a
+ * gallery with three albums showed two, the third sat below the fold, and
+ * nothing said so - it read as a glitch, and as an album that was never
+ * offered. Inside a dialog the box has a height, and the grid takes most of
+ * it; on the setup page, which scrolls itself, the box is unbounded and the
+ * grid takes room for two rows of covers. Either way it says when there is
+ * more below. The window's size is deliberately not consulted: in split
+ * screen or on a folded screen the window and the box are different numbers.
+ */
+private fun gridCeiling(boxMaxHeight: Dp): Dp = when {
+    boxMaxHeight.isFinite -> maxOf(320.dp, boxMaxHeight * 0.7f)
+    else -> 440.dp
+}
+
 @Composable
 fun AlbumGrid(
     albums: List<MediaScanner.Album>,
     excluded: Set<String>,
     onToggle: (String, Boolean) -> Unit,
-    maxHeight: Dp,
     modifier: Modifier = Modifier,
     testTag: String? = null,
     // Full-width rows above and below the tiles, inside the grid's own
@@ -79,49 +99,67 @@ fun AlbumGrid(
     // could not scroll, and on a short screen at a large font whatever sat
     // below the tiles was simply past the edge.
     header: (@Composable () -> Unit)? = null,
-    footer: (@Composable () -> Unit)? = null
+    footer: (@Composable () -> Unit)? = null,
+    state: LazyGridState = rememberLazyGridState()
 ) {
-    LazyVerticalGrid(
-        // Adaptive rather than a fixed count: three tiles on an ordinary
-        // phone, more as the screen widens, without anyone writing the
-        // number down. 100 dp is what puts three across a 360 dp screen -
-        // the size the backup pickers people already know draw their covers.
-        columns = GridCells.Adaptive(minSize = 100.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier
-            .fillMaxWidth()
-            // This grid lives inside things that scroll (the setup page, a
-            // dialog). A lazy container measured with no ceiling there does
-            // not draw - the ceiling is what lets it measure at all; past it,
-            // the grid scrolls its own tiles.
-            .heightIn(max = maxHeight)
-            .let { if (testTag != null) it.testTag(testTag) else it }
-    ) {
-        header?.let {
-            item(key = "header", span = { GridItemSpan(maxLineSpan) }) { it() }
-        }
-        if (albums.isNotEmpty()) {
-            // Long-press is invisible until someone says it exists. One quiet
-            // line above the tiles, in every picker, is how it exists.
-            item(key = "peek-hint", span = { GridItemSpan(maxLineSpan) }) {
-                Text(
-                    stringResource(R.string.album_peek_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 2.dp)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val maxHeight = gridCeiling(this.maxHeight)
+        Column(Modifier.fillMaxWidth()) {
+        LazyVerticalGrid(
+            // Adaptive rather than a fixed count: three tiles on an ordinary
+            // phone, more as the screen widens, without anyone writing the
+            // number down. 100 dp is what puts three across a 360 dp screen -
+            // the size the backup pickers people already know draw their covers.
+            columns = GridCells.Adaptive(minSize = 100.dp),
+            state = state,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                // This grid lives inside things that scroll (the setup page, a
+                // dialog). A lazy container measured with no ceiling there does
+                // not draw - the ceiling is what lets it measure at all; past it,
+                // the grid scrolls its own tiles.
+                .heightIn(max = maxHeight)
+                .let { if (testTag != null) it.testTag(testTag) else it }
+        ) {
+            header?.let {
+                item(key = "header", span = { GridItemSpan(maxLineSpan) }) { it() }
+            }
+            if (albums.isNotEmpty()) {
+                // Long-press is invisible until someone says it exists. One quiet
+                // line above the tiles, in every picker, is how it exists.
+                item(key = "peek-hint", span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        stringResource(R.string.album_peek_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+            }
+            items(albums, key = { it.name }) { album ->
+                AlbumTile(
+                    album = album,
+                    checked = album.name !in excluded,
+                    onToggle = { include -> onToggle(album.name, include) }
                 )
             }
+            footer?.let {
+                item(key = "footer", span = { GridItemSpan(maxLineSpan) }) { it() }
+            }
         }
-        items(albums, key = { it.name }) { album ->
-            AlbumTile(
-                album = album,
-                checked = album.name !in excluded,
-                onToggle = { include -> onToggle(album.name, include) }
+        // Below the fold is invisible until someone says it exists. A grid
+        // that can still scroll says so in one line, with the total, so
+        // "two albums" is never mistaken for the whole gallery.
+        if (state.canScrollForward) {
+            Text(
+                pluralStringResource(R.plurals.album_scroll_hint, albums.size, albums.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 6.dp)
             )
         }
-        footer?.let {
-            item(key = "footer", span = { GridItemSpan(maxLineSpan) }) { it() }
         }
     }
 }
@@ -226,10 +264,15 @@ private fun AlbumTile(
 }
 
 /**
- * Opens the album's newest photo in the phone's own viewer - the default
- * gallery where one is set, a chooser where none is. Read access travels with
- * that one uri only, and a phone with no viewer at all simply does nothing
- * rather than crashing the picker.
+ * Opens the album's newest photo in the phone's own viewer.
+ *
+ * A plain view intent, not a chooser. A chooser forced the full "open with"
+ * sheet - every gallery, WhatsApp, the lot - on every single press, with no
+ * way to say "always this one". A plain intent lets Android do what it does
+ * for every other app: open the default gallery where one is set, and where
+ * none is, offer the list once with "Just once" and "Always" so the choice
+ * sticks. Read access travels with that one uri only, and a phone with no
+ * viewer at all falls back to the sheet rather than crashing the picker.
  */
 private fun peekAlbum(context: Context, coverUri: String) {
     runCatching {
@@ -239,7 +282,11 @@ private fun peekAlbum(context: Context, coverUri: String) {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(view, null))
+        try {
+            context.startActivity(view)
+        } catch (e: android.content.ActivityNotFoundException) {
+            context.startActivity(Intent.createChooser(view, null))
+        }
     }
 }
 

@@ -56,10 +56,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CloudQueue
 import androidx.compose.material3.Icon
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.wrapContentWidth
 import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
@@ -82,6 +79,7 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.AlbumGrid
+import app.cloudsaver.ui.components.CloudAppIcon
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.ListTags
@@ -102,7 +100,6 @@ import app.cloudsaver.ui.components.TrialCard
  * rows at an ordinary text size, so the choice above it, the running count and
  * the button below all stay on screen while the albums scroll between them.
  */
-private val AlbumListMaxHeight = 320.dp
 
 /**
  * One-time setup.
@@ -492,7 +489,6 @@ fun OnboardingScreen(vm: AppViewModel) {
                                 else options.excludedBuckets + name
                             )
                         },
-                        maxHeight = AlbumListMaxHeight,
                         testTag = ListTags.ROWS
                     )
                     // Folders that already hold another app's compressed
@@ -556,6 +552,15 @@ fun OnboardingScreen(vm: AppViewModel) {
                             vm.refreshPowerRequirements()
                         }
                     }
+                    // Nobody has to get this right now: the same rows, with
+                    // the phone-specific path to each switch, live in
+                    // Settings for as long as the app is installed.
+                    Text(
+                        stringResource(R.string.onb3_later),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
                 }
             }
 
@@ -566,17 +571,41 @@ fun OnboardingScreen(vm: AppViewModel) {
             // did - so two buttons of equal weight sat side by side and
             // neither was obviously the way forward. One filled button for
             // the thing to do, one text button for carrying on afterwards.
-            Step.USAGE -> StepCard(
-                title = stringResource(R.string.onb4_title),
-                text = stringResource(R.string.onb4_text),
-                buttonLabel = stringResource(R.string.onb4_grant),
-                onButton = { OemPages.openUsageAccess(context) }
-            ) {
-                TextButton(
-                    onClick = { go(Step.CLOUD) },
-                    modifier = Modifier.padding(top = 6.dp)
-                ) {
-                    Text(stringResource(R.string.onb_done_next))
+            Step.USAGE -> {
+                // The step knows whether it has been done. It used to offer
+                // "Grant usage access" forever, even to someone who had just
+                // granted it on the system page and come back - and the way
+                // on was a text link that did not look like a button at all.
+                // Granted, the one filled button is "Done, next"; not yet,
+                // the grant is the filled button and carrying on without it
+                // is an outlined one, visible as a choice.
+                var usageOn by remember {
+                    mutableStateOf(app.cloudsaver.engine.UsageVerifier.hasUsageAccess(context))
+                }
+                LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                    usageOn = app.cloudsaver.engine.UsageVerifier.hasUsageAccess(context)
+                }
+                if (usageOn) {
+                    StepCard(
+                        title = stringResource(R.string.onb4_title),
+                        text = stringResource(R.string.onb4_granted),
+                        buttonLabel = stringResource(R.string.onb_done_next),
+                        onButton = { go(Step.CLOUD) }
+                    )
+                } else {
+                    StepCard(
+                        title = stringResource(R.string.onb4_title),
+                        text = stringResource(R.string.onb4_text),
+                        buttonLabel = stringResource(R.string.onb4_grant),
+                        onButton = { OemPages.openUsageAccess(context) }
+                    ) {
+                        OutlinedButton(
+                            onClick = { go(Step.CLOUD) },
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) {
+                            Text(stringResource(R.string.onb_done_next))
+                        }
+                    }
                 }
             }
 
@@ -1204,32 +1233,11 @@ private fun CloudPickRowSimple(
         onClick = { onPick(app.id) },
         modifier = Modifier.fillMaxWidth()
     ) {
-        // The app's own icon where the app is on the phone, a neutral glyph
-        // where it is not - so "installed" is legible before the words are
-        // read, and no third-party logo is ever shipped inside this APK.
-        val icon = remember(app.id, installed) {
-            if (installed) CloudApps.iconFor(context, app) else null
-        }
-        if (icon != null) {
-            androidx.compose.foundation.Image(
-                bitmap = remember(icon) {
-                    icon.toBitmap(96, 96).asImageBitmap()
-                },
-                contentDescription = null,
-                modifier = Modifier
-                    .size(28.dp)
-                    .padding(end = 4.dp)
-            )
-        } else {
-            Icon(
-                Icons.Outlined.CloudQueue,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .size(28.dp)
-                    .padding(end = 4.dp)
-            )
-        }
+        // The app's own icon where the app is on the phone, its initial in
+        // a circle where it is not - so "installed" is legible before the
+        // words are read, every row still has a face, and no third-party
+        // logo is ever shipped inside this APK.
+        CloudAppIcon(app = app, installed = installed)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.fillMaxWidth()) {
             Text(
@@ -1389,7 +1397,6 @@ private fun AlbumChooserSheetBody(vm: AppViewModel, modifier: Modifier = Modifie
                 else options.excludedBuckets + name
             )
         },
-        maxHeight = AlbumListMaxHeight,
         modifier = modifier.padding(horizontal = Dimens.Screen),
         testTag = ListTags.ROWS,
         header = {

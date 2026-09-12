@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.CrashLog
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -27,12 +28,14 @@ class CrashLogTest {
     @Before
     fun clean() {
         CrashLog.clearPending(context)
+        CrashLog.clearStartupStreak(context)
         AppLog.clear(context)
     }
 
     @After
     fun tidy() {
         CrashLog.clearPending(context)
+        CrashLog.clearStartupStreak(context)
     }
 
     @Test
@@ -59,5 +62,39 @@ class CrashLogTest {
         CrashLog.clearPending(context)
 
         assertFalse("the card must not come back", CrashLog.crashPending(context))
+    }
+
+    @Test
+    fun twoCrashesSoonAfterLaunchCountAsAFailedLaunch() {
+        // The launcher notes when it started; a crash inside the window is
+        // a launch that could not complete, and two in a row is the signal
+        // the recovery page waits for.
+        CrashLog.noteLaunchStarted(context)
+        assertEquals(0, CrashLog.startupCrashStreak(context))
+
+        CrashLog.simulateForTest(context, IllegalStateException("died at launch"))
+        assertEquals(1, CrashLog.startupCrashStreak(context))
+
+        CrashLog.simulateForTest(context, IllegalStateException("died at launch again"))
+        assertEquals(2, CrashLog.startupCrashStreak(context))
+        assertTrue(
+            "two is the threshold, so the next launch shows the recovery page",
+            CrashLog.startupCrashStreak(context) >= CrashLog.RECOVERY_AFTER
+        )
+
+        // Trying again, or living past the window, ends the streak.
+        CrashLog.clearStartupStreak(context)
+        assertEquals(0, CrashLog.startupCrashStreak(context))
+    }
+
+    @Test
+    fun aCrashWithNoRecentLaunchStartsNoStreak() {
+        // A crash while the app is being used is a bug, not a failed
+        // launch: it must never lock the person out behind the recovery
+        // page. With no launch noted there is no window to be inside of.
+        context.getFileStreamPath("launch_started_at").delete()
+        CrashLog.simulateForTest(context, RuntimeException("died mid-session"))
+        assertEquals(0, CrashLog.startupCrashStreak(context))
+        assertTrue("but the crash card is still raised", CrashLog.crashPending(context))
     }
 }

@@ -1,13 +1,34 @@
 package app.cloudsaver.ui.components
 
+import android.net.Uri
+import android.util.Size
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Science
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
+import app.cloudsaver.ui.theme.Dimens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +76,11 @@ fun TrialCard(
     modifier: Modifier = Modifier,
     albumsChosen: Boolean = true,
     onChooseAlbums: (() -> Unit)? = null,
-    accessFull: Boolean = true
+    accessFull: Boolean = true,
+    /** Tapping a result opens the before-and-after of that photo. */
+    onOpen: ((AppViewModel.TestItem) -> Unit)? = null,
+    /** Throws the trial's copies away and puts the photos back in the queue. */
+    onDiscard: (() -> Unit)? = null
 ) {
     AppCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,17 +147,7 @@ fun TrialCard(
                     color = MaterialTheme.colorScheme.primary
                 )
                 for (item in list) {
-                    KeyValueRow(
-                        item.name,
-                        stringResource(
-                            R.string.files_size_saving,
-                            Formats.bytes(item.before),
-                            Formats.bytes(item.after),
-                            Formats.percentOf(
-                                (item.before - item.after).coerceAtLeast(0), item.before
-                            )
-                        )
-                    )
+                    TrialRow(item, onOpen?.let { open -> { open(item) } })
                 }
                 // What the trial is really for: the quality that survived it.
                 val before = list.sumOf { it.before }
@@ -170,7 +185,108 @@ fun TrialCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+                // When this card leaves, and how to be rid of the copies now.
+                Text(
+                    stringResource(R.string.trial_goes_away),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                onDiscard?.let { discard ->
+                    TextButton(onClick = discard, modifier = Modifier.padding(top = 2.dp)) {
+                        Text(stringResource(R.string.trial_discard))
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * One trial result: the photo, its name on one line, and the saving.
+ *
+ * The card used to print each file name in full - a screenshot's name is
+ * sixty characters and wrapped over five lines - beside the sizes, with
+ * nothing to look at and nothing to tap. Now the row is the photo's own
+ * thumbnail, the name cut in the middle (the start and the extension are the
+ * parts that identify a file), and the whole row opens the before-and-after.
+ */
+@Composable
+private fun TrialRow(item: AppViewModel.TestItem, onOpen: (() -> Unit)?) {
+    val thumb = trialThumb(item.row?.contentUri)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = Dimens.TouchTarget)
+            .clip(RoundedCornerShape(10.dp))
+            .let { if (onOpen != null) it.clickable(onClick = onOpen) else it }
+            .padding(vertical = 6.dp)
+    ) {
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (thumb != null) {
+                Image(
+                    bitmap = thumb,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(48.dp)
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.Image,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .align(Alignment.Center)
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                item.name,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.MiddleEllipsis
+            )
+            Text(
+                stringResource(
+                    R.string.files_size_saving,
+                    Formats.bytes(item.before),
+                    Formats.bytes(item.after),
+                    Formats.percentOf((item.before - item.after).coerceAtLeast(0), item.before)
+                ),
+                style = MaterialTheme.typography.bodySmall.merge(TabularFigures),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (onOpen != null) {
+                Text(
+                    stringResource(R.string.trial_tap_compare),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+/** The original's thumbnail through MediaStore, off the main thread; null is the placeholder. */
+@Composable
+private fun trialThumb(uri: String?): ImageBitmap? {
+    if (uri == null) return null
+    val resolver = LocalContext.current.contentResolver
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, uri) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                resolver.loadThumbnail(Uri.parse(uri), Size(192, 192), null).asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    return bitmap
 }

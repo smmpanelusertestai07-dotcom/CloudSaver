@@ -50,4 +50,39 @@ class PowerPagesTest {
             .first { it.id == PowerPages.ID_BATTERY_UNRESTRICTED }
         assertFalse(battery.satisfied)
     }
+
+    @Test
+    fun `huawei and honor share a skin, and it hides app launch`() {
+        assertEquals(PowerPages.Vendor.HUAWEI, PowerPages.vendor("HUAWEI", "huawei"))
+        assertEquals(PowerPages.Vendor.HUAWEI, PowerPages.vendor("HONOR", "honor"))
+        val ids = PowerPages.requirementsFor(PowerPages.Vendor.HUAWEI, true).map { it.id }
+        assertTrue(PowerPages.ID_AUTO_LAUNCH in ids)
+    }
+
+    @Test
+    fun `every switch Android cannot read comes with the path to it`() {
+        // "Please check it yourself" sent people to a settings app with
+        // hundreds of pages. A row the app cannot read must at least say,
+        // in the phone's own menu names, where the switch lives, and which
+        // app to find there.
+        for (vendor in PowerPages.Vendor.values()) {
+            for (requirement in PowerPages.requirementsFor(vendor, false)) {
+                if (requirement.readable) continue
+                val hint = PowerPages.pathHint(vendor, requirement.id)
+                assertTrue("$vendor ${requirement.id} has no path", !hint.isNullOrBlank())
+                assertTrue("$vendor ${requirement.id} must name the app", hint!!.contains("CloudSaver"))
+                assertTrue("$vendor ${requirement.id} must be a path", hint.contains("›"))
+            }
+        }
+    }
+
+    @Test
+    fun `the battery switch has a path on every phone`() {
+        // Battery optimisation is the one switch Android itself owns, so
+        // even a maker this table has never heard of gets a real path.
+        for (vendor in PowerPages.Vendor.values()) {
+            val hint = PowerPages.pathHint(vendor, PowerPages.ID_BATTERY_UNRESTRICTED)
+            assertTrue("$vendor battery path", !hint.isNullOrBlank() && hint!!.contains("Battery"))
+        }
+    }
 }

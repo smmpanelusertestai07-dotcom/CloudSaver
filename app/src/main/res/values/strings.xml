@@ -172,7 +172,7 @@
     <string name="state_unknown">Unverified (restored)</string>
     <string name="evidence_confirmed_exact">Confirmed - your cloud collected it</string>
     <string name="evidence_confirmed_paced">Confirmed - sent and accounted for</string>
-    <string name="evidence_verified">Verified by upload size</string>
+    <string name="evidence_verified">Counted in a day\'s upload total</string>
     <string name="evidence_aged">Assumed after 10 days</string>
     <string name="evidence_none">Not verified yet</string>
     <string name="detail_open">Open</string>
@@ -260,8 +260,8 @@
     <string name="volume_internal">Internal storage</string>
     <string name="volume_sd_unwritable">Android does not let apps add gallery files to an SD card on this phone, so the upload folder stays on internal storage.</string>
     <string name="volume_sd">SD card</string>
-    <string name="volume_used_line">%1$s used of %2$s</string>
-    <string name="volume_free_line">%1$s free</string>
+    <string name="volume_used_line">%1$s of %2$s used</string>
+    <string name="volume_free_line">%1$s available</string>
     <string name="volume_active_mark">(in use)</string>
     <string name="volume_missing_warning">The chosen SD card is not available. CloudSaver paused safely.</string>
     <string name="volume_sd_note">SD cards are slower and removable - if the SD card is removed, CloudSaver pauses safely.</string>
@@ -482,6 +482,7 @@
     <string name="scope_videos">Videos</string>
     <string name="opt_folders">Albums</string>
     <string name="opt_folders_hint">Choose which gallery albums are included.</string>
+    <string name="opt_folders_title_count">Albums (%1$d)</string>
     <string name="folders_all">All albums</string>
     <plurals name="folders_excluded">
         <item quantity="one">%1$d album excluded</item>
@@ -576,9 +577,42 @@
     <string name="opt_lock">App lock</string>
     <string name="opt_lock_hint">Locks the whole app behind your screen lock \u2014 every tab, every screen, every time you come back to it.</string>
     <string name="opt_warnings">Alerts</string>
-    <string name="opt_verified30">Also offer files verified by upload size</string>
-    <string name="opt_verified30_hint">Free up space normally offers an original only when CloudSaver watched your cloud app collect that exact copy. Turn this on and it will also offer files where only the amount your cloud app sent that day added up, and only after a month\u0027s wait. More space to free up, on weaker proof.</string>
+    <string name="opt_verified30">Accept a day\'s upload total as proof</string>
+    <string name="opt_verified30_hint">Normally Free up space offers an original only when CloudSaver saw your cloud app collect that exact copy. With this on, a copy also counts as collected when the amount your cloud app uploaded that day covers it, after a month\u0027s wait. More to free up, on weaker proof.</string>
     <string name="opt_warnings_hint">Notify me only when something needs attention.</string>
+    <string name="opt_permissions">Permissions and battery</string>
+    <string name="opt_permissions_hint">What the app is allowed to do on this phone, with its current state and where to change it.</string>
+    <string name="opt_permissions_open">Check permissions</string>
+    <string name="perm_title">Permissions and battery</string>
+    <string name="perm_intro">Everything CloudSaver needs from this phone, checked live each time you come back here. A tick means it is fine; anything else has a button to the exact page.</string>
+    <string name="perm_group_access">Access</string>
+    <string name="perm_group_battery">Background work</string>
+    <string name="perm_media">Photos and videos</string>
+    <string name="perm_media_full">Allowed for all photos and videos</string>
+    <string name="perm_media_partial">Only some photos are allowed \u2014 the rest are invisible to the app</string>
+    <string name="perm_media_none">Not allowed \u2014 nothing can be optimised</string>
+    <string name="perm_notifications">Notifications</string>
+    <string name="perm_on">Allowed</string>
+    <string name="perm_notifications_off">Blocked \u2014 alerts cannot be shown</string>
+    <string name="perm_usage">Usage access</string>
+    <string name="perm_usage_on">On \u2014 uploads can be confirmed by the amount your cloud app sends</string>
+    <string name="perm_usage_off">Off \u2014 an upload is confirmed only when its copy disappears from the folder</string>
+    <string name="perm_battery">Battery optimisation</string>
+    <string name="perm_battery_on">No restrictions</string>
+    <string name="perm_battery_off">Restricted \u2014 Android may delay background runs for hours and stop them on battery</string>
+    <string name="perm_auto_launch">Auto-launch</string>
+    <string name="perm_background">Background activity</string>
+    <string name="perm_unknown">Android cannot report this one. Open the page and check the switch is on.</string>
+    <string name="perm_change">Change</string>
+    <string name="perm_open">Open</string>
+    <string name="perm_allow">Allow</string>
+    <string name="perm_why">Battery optimisation is checked by Android itself, so its state above is real, and it matters: restricted, background runs are delayed for hours and stopped on battery. Auto-launch and background activity are the phone maker\u2019s own switches. Android gives apps no way to read them, which is why they cannot say On or Off \u2014 and on Realme, Oppo, Xiaomi and Vivo phones, one of them being off is the usual reason work stops a day after setup.</string>
+    <string name="perm_app_info">Open app info</string>
+    <string name="recovery_title">CloudSaver could not open</string>
+    <string name="recovery_body">It closed unexpectedly twice in a row while starting, so this page is shown instead of trying a third time. Nothing of yours is affected: your photos, the copies and the record of what reached your cloud are all untouched. Share the log to report it, or try again.</string>
+    <string name="recovery_try">Try again</string>
+    <string name="recovery_share">Share log</string>
+    <string name="recovery_app_info">App info</string>
     <string name="alerts_need_permission">Alerts are on, but notifications are turned off for CloudSaver, so none can be shown.</string>
     <string name="alerts_allow">Allow notifications</string>
     <string name="alerts_open_settings">Open notification settings</string>
@@ -676,6 +710,10 @@
         <item quantity="other">%1$d items</item>
     </plurals>
     <string name="album_peek_hint">Tap to tick an album. Press and hold one to peek at its newest photo.</string>
+    <plurals name="album_scroll_hint">
+        <item quantity="one">Scroll to see all of the %1$d album</item>
+        <item quantity="other">Scroll to see all %1$d albums</item>
+    </plurals>
     <string name="albums_sheet_done">Done</string>
     <string name="onb_start">Get started</string>
     <string name="onb_done_next">Done, next</string>
@@ -691,9 +729,11 @@
     <string name="onb2_grant">Allow</string>
     <string name="onb3_title">Keep it running in the background</string>
     <string name="onb3_text">Turn off battery optimization so the phone does not kill background work. On Xiaomi/Oppo/Vivo also enable auto-start.</string>
+    <string name="onb3_later">You can change any of these later in Settings › Permissions and battery, where each one shows its current state.</string>
     <string name="onb4_title">Usage access (recommended)</string>
     <string name="onb4_text">Lets CloudSaver see how much the cloud app uploaded - used to verify uploads.</string>
     <string name="onb4_grant">Grant usage access</string>
+    <string name="onb4_granted">Usage access is on. CloudSaver can confirm uploads by the amount your cloud app sends.</string>
     <string name="onb5_title">Point your cloud app here</string>
     <string name="onb5_open">Open %1$s</string>
     <string name="onb6_running">Optimising\u2026</string>
@@ -1061,6 +1101,9 @@
     <string name="trial_kept">Saved %1$s \u2014 %2$s smaller.</string>
     <string name="trial_kept_detail">Detail kept: %1$d%% of the original pixels.</string>
     <string name="trial_next">The copies are kept inside the app for now, so no CloudSaver album appears in your gallery yet. The first real run adds them to your upload folder — that is when the album appears.</string>
+    <string name="trial_goes_away">This card stays until the first real run has optimised photos; after that, every before-and-after is in Files. The copies are kept inside the app and reused by that run.</string>
+    <string name="trial_discard">Remove trial copies</string>
+    <string name="trial_tap_compare">Tap to compare before and after</string>
     <string name="quality_current_title">Your setting</string>
     <string name="quality_current_limits">Photos up to %1$d MP, video up to %2$d px across, saved at JPEG quality %3$d.</string>
     <string name="quality_looks_storage" formatted="false">Overall: photos keep about 97% of how they look, videos 90\u201395%.</string>

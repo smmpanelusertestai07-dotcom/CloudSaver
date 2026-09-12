@@ -43,7 +43,7 @@ import org.junit.runner.RunWith
 /**
  * Can a person actually get to every screen, and back out of it again?
  *
- * The app declares twenty-one routes. A route nobody can reach by tapping is a
+ * The app declares twenty-two routes. A route nobody can reach by tapping is a
  * screen that does not exist, and a route with no way back is a trap - so
  * every page here is opened the way a user opens it, never by calling
  * navigate() directly, and left again with the system Back gesture.
@@ -240,6 +240,14 @@ class HelpNavA11yE2eTest {
             compose.onNodeWithText(s(R.string.nav_options)).performClick()
             compose.open(s(R.string.nav_activity))
             compose.assertOn(s(R.string.nav_activity))
+            compose.back()
+            compose.onNode(NavTabs.matcher(s(R.string.nav_options))).assertIsSelected()
+
+            // The permissions screen: every state the phone can report, and
+            // Back returns to Settings rather than leaving the app.
+            compose.open(s(R.string.opt_permissions_open))
+            compose.assertOn(s(R.string.perm_intro))
+            compose.assertOn(s(R.string.perm_battery))
             compose.back()
             compose.onNode(NavTabs.matcher(s(R.string.nav_options))).assertIsSelected()
         }

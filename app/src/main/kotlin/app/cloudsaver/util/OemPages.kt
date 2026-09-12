@@ -63,7 +63,18 @@ object OemPages {
         context.startActivity(intent)
         true
     } catch (e: Exception) {
-        openAppInfo(context)
+        // Some skins strip the per-app dialog; the system's own list of
+        // optimised apps still exists everywhere and is one tap from the
+        // switch, which app info is not.
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        } catch (e2: Exception) {
+            openAppInfo(context)
+        }
     }
 
     fun openAppInfo(context: Context): Boolean = try {

@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import app.cloudsaver.util.CrashLog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -226,6 +227,56 @@ class PermanenceTest {
         assertTrue(
             "state must be restored before work is scheduled against it",
             recovery in 1 until schedule
+        )
+    }
+
+    /**
+     * A launch that dies twice in a row must not be tried a third time.
+     *
+     * With no crash reporter, an app that crashes as it opens is a dead
+     * icon whose own log nobody can reach. The launcher notes when it
+     * started before it composes anything, and two deaths inside the
+     * window put a plain recovery page in front of the app: try again,
+     * share the log, open app info. The page uses no stored theme and no
+     * dynamic colour, because reading either may be the thing that dies.
+     */
+    @Test
+    fun `two young crashes in a row open the recovery page instead of the app`() {
+        val activity = File(main, "MainActivity.kt").readText()
+            .substringAfter("override fun onCreate(")
+        val noted = activity.indexOf("CrashLog.noteLaunchStarted(this)")
+        val checked = activity.indexOf("CrashLog.startupCrashStreak(this) >= CrashLog.RECOVERY_AFTER")
+        val recovery = activity.indexOf("RecoveryScreen(")
+        val appIndex = activity.indexOf("App(vm)")
+        assertTrue("the launch must be noted before anything is composed", noted in 0 until checked)
+        assertTrue("the streak is checked before the app is composed", checked in 0 until recovery)
+        assertTrue("the recovery page comes before the app", recovery < appIndex)
+        assertTrue(
+            "trying again must clear the streak, or the page is a trap",
+            activity.substringAfter("RecoveryScreen(").substringBefore("return")
+                .contains("CrashLog.clearStartupStreak(this)")
+        )
+        assertTrue(
+            "a launch that lives past the window ends the streak",
+            activity.contains("CrashLog.STARTUP_WINDOW_MS") &&
+                activity.substringAfter("postDelayed").contains("clearStartupStreak")
+        )
+
+        val page = File(main, "ui/screens/RecoveryScreen.kt").readText()
+        assertTrue("try again", page.contains("R.string.recovery_try"))
+        assertTrue("share the log", page.contains("R.string.recovery_share"))
+        assertTrue("app info", page.contains("R.string.recovery_app_info"))
+        assertTrue(
+            "the page must not depend on the stored theme or dynamic colour",
+            page.contains("CloudSaverTheme(mode = ThemeMode.SYSTEM, dynamicColor = false)")
+        )
+
+        // One crash is an accident; two is a pattern. A single crash must
+        // never lock someone out of the app they were using.
+        assertEquals(2, CrashLog.RECOVERY_AFTER)
+        assertTrue(
+            "the window is seconds, not minutes: a crash while working is not a failed launch",
+            CrashLog.STARTUP_WINDOW_MS in 5_000L..30_000L
         )
     }
 }

@@ -80,7 +80,12 @@ class SetupFlowTest {
         // button riding inside it as spanned rows.
         val sheet = onb.substringAfter("fun AlbumChooserSheetBody")
         assertTrue(sheet.contains("AlbumGrid("))
-        assertTrue(sheet.contains("maxHeight = AlbumListMaxHeight"))
+        // The grid takes its ceiling from the box it is in, never from a
+        // constant: three albums used to show as two with no hint of a third.
+        assertFalse("no fixed ceiling on the grid", sheet.contains("maxHeight ="))
+        val grid = src("ui/components/AlbumPicker.kt")
+        assertTrue(grid.contains("BoxWithConstraints(modifier.fillMaxWidth())"))
+        assertTrue("and it says when there is more below", grid.contains("state.canScrollForward"))
         assertTrue(sheet.contains("footer ="))
         // One rule decides what Back means, and both the gesture and the
         // button go through it; with no detour, it is one card back, always.
@@ -109,7 +114,12 @@ class SetupFlowTest {
             0,
             Regex("""\bButton\(onClick""").findAll(usage).count()
         )
-        assertTrue("and a text button to carry on", usage.contains("TextButton("))
+        // Carrying on without it is an outlined button - a visible choice,
+        // not a text link - and once access is granted the step says so and
+        // offers only the way on.
+        assertTrue("and an outlined button to carry on", usage.contains("OutlinedButton("))
+        assertTrue("granted, the step says so", usage.contains("R.string.onb4_granted"))
+        assertTrue("re-checked on return from the system page", usage.contains("Lifecycle.Event.ON_RESUME"))
         assertFalse("Skip and Continue must not both mean the same thing", usage.contains("onSkip"))
     }
 
@@ -201,7 +211,13 @@ class SetupFlowTest {
         // Still re-armed every time the app leaves the foreground.
         assertTrue(app.contains("Lifecycle.Event.ON_STOP) { unlocked = false }"))
         val locked = src("ui/screens/LockedScreen.kt")
-        assertTrue("the prompt opens itself", locked.contains("LaunchedEffect(Unit) { onUnlock() }"))
+        // On RESUME, not on first composition: the screen composes while the
+        // activity is only started, and a prompt asked for then can be
+        // dropped by the system, leaving a button that looks like the app
+        // forgot to ask.
+        assertTrue("the prompt opens itself", locked.contains("Lifecycle.Event.ON_RESUME"))
+        assertTrue(locked.substringAfter("Lifecycle.Event.ON_RESUME").take(80).contains("onUnlock()"))
+        assertFalse("not from a one-shot effect", locked.contains("LaunchedEffect(Unit) { onUnlock() }"))
         assertTrue("and the screen is not screenshotable", locked.contains("SecureScreen()"))
     }
 
@@ -266,5 +282,22 @@ class SetupFlowTest {
         val requires = stringsNamed("about_requires_min").single().second
         assertTrue("the minimum must be named", requires.contains("Android 10"))
         assertTrue("and what it is tested against", requires.contains("Android 16"))
+    }
+
+    @Test
+    fun `every cloud app in the picker has a face, installed or not`() {
+        // A row with an icon next to a row with nothing reads as broken,
+        // not as "not installed". The one component draws the phone's own
+        // icon for an installed app, a lettered circle for one that is not,
+        // and the plain cloud glyph for "no cloud app" - and both pickers
+        // use it, so setup and Settings cannot drift apart.
+        val icon = File("src/main/kotlin/app/cloudsaver/ui/components/CloudAppIcon.kt").readText()
+        assertTrue(icon.contains("if (installed) CloudApps.iconFor(context, app) else null"))
+        assertTrue(icon.contains("app.packages.isEmpty() -> Icon("))
+        assertTrue("a lettered avatar for the rest", icon.contains("app.label.firstOrNull()?.uppercaseChar()"))
+        for (screen in listOf("OnboardingScreen.kt", "OptionsScreen.kt")) {
+            val text = File("src/main/kotlin/app/cloudsaver/ui/screens/$screen").readText()
+            assertTrue("$screen must use the shared icon", text.contains("CloudAppIcon(app = app, installed = installed)"))
+        }
     }
 }
