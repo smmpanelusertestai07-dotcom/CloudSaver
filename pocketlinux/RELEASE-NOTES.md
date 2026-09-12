@@ -1,3 +1,49 @@
+# PocketLinux 13.0.5 — one name, sign-ins that stay signed in
+
+**Everything is called PocketLinux now.** The name it was born with was still written into 834
+places: the folder, every helper program inside Ubuntu, the settings file, the state directory, the
+sockets the viewer connects to, the workflow, the tests and the docs. A rename alone would have
+been expensive — the app finds its install by reading a settings file by name and looking for
+markers by path, so renaming both would have read as a phone it had never run on: a second 500 MB
+download over mobile data, a second set-up, and every signed-in app inside the container gone. So
+an install made under the old name is carried over once, at the first start after the update:
+every stored setting copied key by key, the four state directories moved, and the old programs,
+pictures, launchers and registrations deleted so nothing points at a file that is no longer there.
+Two strings keep the old spelling on purpose — the signing key's alias and password, because a new
+alias means a differently signed APK and Android refuses to install one of those over the app
+already on the phone.
+
+**Antigravity asking to sign in again, at every start.** The desktop session starts gnome-keyring
+with an unlock key precisely so Electron's safeStorage has a real secret store to keep a token in —
+and then every Electron app was launched with `--password-store=basic`, which tells Electron to
+ignore the keyring that was just started for it. VS Code-based apps (Cursor, Antigravity) treat
+that store as unusable and fall back to holding the token in memory, which is an app that asks you
+to sign in again every time it opens. The store is now chosen by asking the session bus whether the
+secrets service actually answers, with a deadline — because with no daemon at all the lookup blocks
+until it times out, which reads as "the app never opened". The answer is remembered per app: a
+token written into one store cannot be read out of the other, so one session where the keyring came
+up late must not silently downgrade an app that is already signed in.
+
+**The missing model.** Checked against Google's own pricing page and their apt repository:
+Antigravity's free plan does list Gemini 3.8 Flash, alongside 3.7 Flash, 3.6 Flash, Gemini 3.1 Pro,
+Claude Sonnet and Opus 4.6 and gpt-oss-120b — and the ARM64 build is published at the same version
+as the Intel one (1.11.13), so nothing about this phone holds it back. An older installed copy is
+the whole story, and Apps → Antigravity → Update is the fix. The app's row and a new question say
+so, and say which part of the answer is the publisher's list and which part is the account's plan.
+
+**Reports, gone; the record, kept.** A menu of nine log files is a developer's tool, and this app is
+not for developers. Settings now has one row, "If something goes wrong", that says in words what
+stopped and when — with a single button that copies the whole technical record, sign-in web
+addresses removed. That button stays because an owner with no PC has no adb, no logcat and no way
+to read a file inside the container; without it, "something went wrong" would be the end of the
+sentence.
+
+**Auto-launch on more phones.** The table of OEM security-centre pages gained ColorOS's second
+StartupAppList spelling, iQOO's background-start manager, OnePlus's chain-launch list and One UI's
+second BatteryActivity path. These are started as explicit components rather than resolved first:
+from Android 11 on, package visibility hides every one of these packages from `resolveActivity`,
+which answers null on exactly the phones that do have the page.
+
 # PocketLinux 13.0.0 — the final update
 
 The last release, made the way the last one should be: every requirement of the brief was audited

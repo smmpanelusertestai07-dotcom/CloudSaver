@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "13.0.0";
+    static final String VERSION = "13.0.5";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -3115,16 +3115,29 @@ public final class MainActivity extends Activity {
         openAppInfo();
     }
 
-    /** Realme, OPPO, Xiaomi, vivo and Huawei each hide auto-launch in their own security app. */
+    /**
+     * Realme, OPPO, Xiaomi, vivo, OnePlus, Huawei and Samsung each hide auto-launch in their own
+     * security app, under a different name and a different activity, and several moved it between
+     * their own versions -- so both spellings are tried where a skin has had two.
+     *
+     * The components are started rather than resolved first. From Android 11 on, package
+     * visibility hides every one of these security-centre packages from resolveActivity, which
+     * answers null on exactly the phones that do have the page; starting an explicit component is
+     * not filtered that way, and a phone without the page simply throws, which is the same answer.
+     */
     private void openAutoStartSettings() {
         String[][] targets = {
                 {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+                {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},
                 {"com.coloros.safecenter", "com.coloros.privacypermissionsentry.PermissionTopActivity"},
                 {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
                 {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
                 {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
+                {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"},
+                {"com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"},
                 {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
                 {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
+                {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"},
         };
         for (String[] target : targets) {
             Intent intent = new Intent().setComponent(new ComponentName(target[0], target[1]));
