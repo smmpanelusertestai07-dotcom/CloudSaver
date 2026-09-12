@@ -39,7 +39,58 @@ theme chosen in the computer's Settings reaches every window opened after it (th
 the choice at every start instead of inheriting the session's first word on it); and the panel
 is restarted by a refresh when it has died, which a uid test under fake root could never do.
 
-**Texts.** The help card, the README and the quickstart name the Phone menu for what moved there.
+**The keyboard now really lifts the bar on Android 11 to 14.** The listener that moves the bar
+and the key row above the phone's keyboard was written for a window that lays itself out under
+the system bars. This window did not: it let Android fit the bars for it, and Android 11 to 14
+then hand the content a copy of the insets with every one consumed, the keyboard's included, so
+the listener read 0 and the bar stayed under the keyboard — on the reference phone's Android 13
+among others; only Android 15 delivered the real value. The window is edge-to-edge now on every
+version from 11 up (the listener already padded for the status bar, the gesture bar and a cutout),
+and Android 10, which has no keyboard inset at all, is simply resized above the keyboard.
+
+**Windows never run off the edge, at any size.** The Chromium scale cap was worked out once, from
+the size the desktop was born with; Bigger interface then made the desktop narrower and a fresh
+window overflowed it again. The window guard now rewrites the cap every time the desktop's size
+changes (a rotation, Bigger interface, Wider workspace), so the next launch fits the desktop as it
+is, and Bigger interface stops at the step where a window would stop fitting — 115 % upright on a
+720-pixel phone, every step in landscape, and the toast says so. The rotation lock never pins the
+screen upside-down any more (a phone that allows all four rotations could hand the lock that way
+up; locking from there rights the screen instead). Wider workspace says "applies when upright"
+in landscape, where the screen is already wider, instead of promising room it cannot add. The
+title bar's close and minimise buttons are finger-sized (44 pixels, Android's own smallest touch
+target) instead of 3-millimetre squares, and Resize by dragging un-maximises the window with
+Openbox's own action, immediately, rather than through a shell script that landed after the drag
+had begun. Chrome no longer asks "Restore pages?" after every desktop stop.
+
+**The automatic reopen no longer lands in a dead service.** When the desktop ended by itself the
+service asked Android for a new start and then, on the same worker, stopped itself; Android took
+the service down between the two, and the desktop came back with no notification, no wake lock, no
+heartbeat and nothing following the network's DNS. The reopen now goes out from the ending task's
+own tidy-up, before any stop, and a stop can no longer discard a start that is already queued.
+
+**Touch, keys and the clipboard.** Screen mode has two-finger scrolling, and a pinch no longer
+delivers a click to whatever was under the first finger (the press waits 80 ms, or for the finger
+to move). Lifting one finger of two no longer makes the pointer leap or fires a burst of scroll
+notches. The Keys row has F1 to F12. Paste from the phone is typed into the computer instead of
+being sent as Ctrl+V — which in a terminal is readline's quoted-insert, so it pasted nothing and
+ate the next key — and typing carries Hindi, CJK and emoji, which the clipboard protocol's Latin-1
+turns into question marks. A copy from Linux is compared against what the phone holds now, so the
+same text copied again after the phone's clipboard changed lands; it is only taken while this
+screen is in front; and a copy too large for Android's clipboard is skipped instead of ending the
+screen. Dead keys on an international keyboard compose accents again.
+
+**Security.** The loopback fallbacks — the display on port 5901, the sound on 4712 — are only
+tried when the desktop says it had to fall back, which it writes in a file next to its socket.
+Before this the viewer reached for that port during every start, and on Android any app can reach
+loopback. The MCP phone tools' shell runs app-testing commands only (am, pm, input, logcat,
+dumpsys, screencap, uiautomator and the like), one at a time, with no shell operators: an AI agent
+in the computer can test an app on the phone, but a prompt-injected one cannot take the phone
+apart. The microphone says when it stops instead of leaving the menu reading "on", and a photo
+from the camera is written off the main thread.
+
+**Texts.** The help card, the README and the quickstart name the Phone menu for what moved there,
+the status card says when the desktop is wider or magnified rather than "the size of this display",
+and the FAQ separates the three dials — Desktop text size, Bigger interface, an app's own zoom.
 A new answer compares this computer with Google's own Linux Terminal on Android (a Debian virtual
 machine through the Android Virtualization Framework, Pixel phones first, GPU acceleration only
 on the Pixel 10 so far) and says plainly what each road gives up. The Why-Ubuntu answer says why

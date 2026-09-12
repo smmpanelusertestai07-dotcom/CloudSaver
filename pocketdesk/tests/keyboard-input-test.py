@@ -13,6 +13,8 @@ import unittest
 
 PROJECT = Path(__file__).resolve().parents[1]
 SOURCE = PROJECT / 'app/src/com/pocketlinux/KeyboardInputView.java'
+# The dead-key table lives beside it and needs no Android of its own, so it compiles here too.
+DEAD_KEYS = PROJECT / 'app/src/com/pocketlinux/DeadKeys.java'
 KEY_NAMES = sorted(set(re.findall(r'KeyEvent\.(KEYCODE_\w+)', SOURCE.read_text())))
 STUBS = {
     'android/content/Context.java': 'package android.content; public class Context {}',
@@ -117,7 +119,7 @@ class KeyboardInputTests(unittest.TestCase):
     def setUpClass(cls):
         cls.work = tempfile.TemporaryDirectory(prefix='pocketdesk-keyboard-test-')
         cls.root = Path(cls.work.name)
-        sources = [str(SOURCE)]
+        sources = [str(SOURCE), str(DEAD_KEYS)]
         for name, content in STUBS.items():
             path = cls.root / name
             path.parent.mkdir(parents=True, exist_ok=True)

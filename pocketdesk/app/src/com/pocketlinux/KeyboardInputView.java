@@ -142,8 +142,13 @@ final class KeyboardInputView extends View {
             return true;
         }
         int unicode = event.getUnicodeChar();
+        int dead = DeadKeys.keysym(unicode);
+        if (dead != 0) {
+            listener.specialKey(dead);
+            return true;
+        }
         if (unicode != 0) {
-            listener.typeCodePoint(unicode);
+            listener.typeCodePoint(DeadKeys.plain(unicode));
             return true;
         }
         // Anything this field cannot type is the phone's: the volume rocker especially, which

@@ -552,10 +552,29 @@ def tool_phone_logcat(arguments):
     return [{"type": "text", "text": out or "Nothing in the log matched."}], False
 
 
+# What an agent may run on the phone: the commands app testing is made of. adb shell hands its
+# string to the phone's own shell, so without this an injected prompt could read the whole of
+# shared storage, pull other apps' data or uninstall things -- on the owner's real phone, from
+# inside the computer. Anything else the owner runs themselves, from a terminal.
+PHONE_SHELL_ALLOWED = {
+    "am", "pm", "cmd", "input", "logcat", "dumpsys", "getprop", "settings",
+    "screencap", "screenrecord", "uiautomator", "monkey", "wm", "content", "bmgr",
+}
+PHONE_SHELL_FORBIDDEN = ";", "|", "&", "`", "$", ">", "<", "\n", "\r"
+
+
 def tool_phone_shell(arguments):
     command = arguments.get("command")
     if not isinstance(command, str) or not command.strip():
         return [{"type": "text", "text": "Give the command to run on the phone."}], True
+    if any(mark in command for mark in PHONE_SHELL_FORBIDDEN):
+        return [{"type": "text", "text": "One command at a time, with no shell operators "
+                 "(; | & ` $ > <). Run anything else yourself from a terminal."}], True
+    first = command.strip().split()[0]
+    if first not in PHONE_SHELL_ALLOWED:
+        return [{"type": "text", "text": "phone_shell runs app-testing commands only: "
+                 + ", ".join(sorted(PHONE_SHELL_ALLOWED))
+                 + ". Run anything else yourself from a terminal."}], True
     missing = no_device()
     if missing:
         return [{"type": "text", "text": missing}], True
@@ -785,8 +804,9 @@ TOOLS = [
     {
         "name": "phone_shell",
         "description": (
-            "Run one command on the connected phone through adb -- pm list packages, dumpsys, "
-            "am force-stop, and anything else a device needs during testing."
+            "Run one app-testing command on the connected phone through adb: am, pm, cmd, input, "
+            "logcat, dumpsys, getprop, settings, screencap, uiautomator and the like. One command, "
+            "no shell operators; anything else the owner runs themselves from a terminal."
         ),
         "inputSchema": {
             "type": "object",

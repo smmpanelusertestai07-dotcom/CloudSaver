@@ -57,6 +57,48 @@ def work_area():
     return None
 
 
+CONFIG_DIR = Path(os.environ.get("POCKETDESK_CONFIG_DIR", "/home/coder/.config/pocketdesk"))
+
+
+def chromium_scale(width, height):
+    """The same arithmetic as pocketdesk-desktop: short side over 560, capped by the dpi.
+
+    Written here as well because the desktop worked it out once, from the size it was born
+    with, and the viewer resizes the X root afterwards (rotation, Bigger interface, Wider
+    workspace). A Chromium app launched into a narrower desktop with the birth-size scale had
+    its right-hand edge off the screen again."""
+    short = max(1, min(width, height))
+    dpi = 120
+    try:
+        for line in (Path(os.environ.get("HOME", "/home/coder")) / ".Xresources").read_text().splitlines():
+            if line.startswith("Xft.dpi:"):
+                digits = re.sub(r"[^0-9]", "", line.split(":", 1)[1])
+                if digits:
+                    dpi = int(digits)
+                break
+    except (OSError, ValueError):
+        pass
+    scale = min(short * 100 // 560, dpi * 100 // 96)
+    scale = max(100, min(200, scale))
+    return "%d.%02d" % (scale // 100, scale % 100)
+
+
+def write_chromium_scale():
+    dimensions = re.search(r"dimensions:\s*(\d+)x(\d+)", query(["xdpyinfo"]))
+    if not dimensions:
+        return
+    width, height = map(int, dimensions.groups())
+    if width <= 0 or height <= 0:
+        return
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        fresh = CONFIG_DIR / "chromium-scale.new"
+        fresh.write_text(chromium_scale(width, height) + "\n")
+        os.replace(fresh, CONFIG_DIR / "chromium-scale")
+    except OSError:
+        pass
+
+
 def fit_geometry(area, geometry, extents):
     """wmctrl reports client origin/size, but moves the outside decorated frame."""
     work_x, work_y, work_w, work_h = area
@@ -154,6 +196,9 @@ class WindowChanges:
             if area is not None and area != self.area:
                 self.area = area
                 self.all_windows = True
+                # The root was resized (a rotation, Bigger interface, Wider workspace): the
+                # scale a Chromium app is launched with must follow it, before the next launch.
+                write_chromium_scale()
                 return True
         elif line.startswith("_NET_CLIENT_LIST("):
             # Unlike _NET_CLIENT_LIST_STACKING, this property does not change merely
@@ -230,6 +275,7 @@ def watch_changes():
             pass
         pid_file.write_text(str(os.getpid()) + "\n")
         owns_pid = True
+        write_chromium_scale()
         clamp_all()
         while True:
             if shutil.which("xprop"):
@@ -273,6 +319,7 @@ def main():
         except KeyboardInterrupt:
             pass
     else:
+        write_chromium_scale()
         clamp_all()
 
 

@@ -18,7 +18,23 @@ final class ViewerSize {
      */
     static final int[] STEPS = { 100, 115, 130, 150 };
 
+    /**
+     * The narrowest a magnified desktop may be. A Chromium app's smallest window is around 560
+     * pixels at a scale of 1, and the launcher's scale cap keeps a window inside a desktop of
+     * that width; a desktop narrower than it would put the right-hand edge of a fresh window --
+     * close button, sidebar -- back off the screen, which is the one thing Bigger interface must
+     * never do. On a 720-pixel phone that allows 115 % in portrait and every step in landscape.
+     */
+    static final int MIN_MAGNIFIED_WIDTH = 560;
+
     private ViewerSize() { }
+
+    /** The largest magnification this view width allows without breaking the floor above. */
+    static int maxMagnification(int viewWidth, boolean wide) {
+        int width = Math.max(2, viewWidth);
+        if (wide && width < WIDE_WIDTH) width = WIDE_WIDTH;
+        return Math.max(100, Math.min(200, (int) Math.floor(width * 100.0 / MIN_MAGNIFIED_WIDTH)));
+    }
 
     static int[] choose(int viewWidth, int viewHeight, boolean wide) {
         return choose(viewWidth, viewHeight, wide, 100);
@@ -36,6 +52,7 @@ final class ViewerSize {
             height = (int) Math.round(height * (WIDE_WIDTH / (double) width));
             width = WIDE_WIDTH;
         }
+        percent = Math.min(percent, maxMagnification(viewWidth, wide));
         if (percent > 100) {
             width = Math.max(2, Math.round(width * 100f / percent));
             height = Math.max(2, Math.round(height * 100f / percent));
