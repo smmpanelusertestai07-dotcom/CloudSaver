@@ -9,7 +9,7 @@ on:
       # The other project that lives in this repository. Nothing under it can
       # change what this workflow builds, so running the eight-emulator matrix
       # for it costs half an hour and proves nothing about CloudSaver.
-      - "pocketdesk/**"
+      - "pocketlinux/**"
   workflow_dispatch:
 
 permissions:
