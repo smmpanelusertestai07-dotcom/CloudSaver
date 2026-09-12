@@ -1,0 +1,209 @@
+name: pocketlinux
+
+# PocketLinux lives under pocketlinux/ and has its own Gradle-free build: raw aapt2, d8 and
+# apksigner. CloudSaver's own workflow ignores that folder; this one covers it -- the test
+# suites on every push, then a signed release APK, then the published release from main.
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "pocketlinux/**"
+      - ".github/workflows/pocketlinux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pocketlinux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Run the suites
+        run: bash pocketlinux/tests/run-tests.sh
+
+  build:
+    name: Release APK
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      throwaway_key: ${{ steps.signing.outputs.throwaway }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - name: Android platform 35 and build-tools 35.0.0
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      # The release key is never in the repository.
+      #
+      # It was, once: pocketlinux/.signing/pocketlinux-local.jks was committed with its password
+      # in build.sh, in a public repository. Android accepts an update only from the same
+      # signer, so anyone could have built an APK that installed straight over this one and
+      # inherited the Ubuntu container, the apps inside it and their saved sign-ins. The key
+      # comes from a secret now, and a build without one signs with a key that exists only
+      # inside the run -- which the release job below refuses to publish.
+      - name: Signing key from secrets
+        id: signing
+        env:
+          KEYSTORE_B64: ${{ secrets.POCKETLINUX_KEYSTORE_B64 }}
+          STORE_PASS: ${{ secrets.POCKETLINUX_STORE_PASS }}
+          KEY_PASS: ${{ secrets.POCKETLINUX_KEY_PASS }}
+        run: |
+          set -eu
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            # Outside the checkout, so no build step can package it and no artifact can carry it.
+            mkdir -p "$RUNNER_TEMP/signing"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/signing/release.jks"
+            {
+              echo "POCKETLINUX_KEYSTORE=$RUNNER_TEMP/signing/release.jks"
+              echo "POCKETLINUX_STORE_PASS=$STORE_PASS"
+              echo "POCKETLINUX_KEY_PASS=${KEY_PASS:-$STORE_PASS}"
+            } >> "$GITHUB_ENV"
+            echo "throwaway=false" >> "$GITHUB_OUTPUT"
+            echo "Signing with the repository's own key."
+          else
+            echo "throwaway=true" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No signing key::This build is signed with a key that exists only inside this run, so it cannot install over any other PocketLinux. The release step will refuse to publish it."
+          fi
+
+      - name: Build
+        run: |
+          set -eu
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          cd pocketlinux && ./build.sh
+
+      - name: Version, checksum and signer
+        id: version
+        run: |
+          set -eu
+          APK=$(ls pocketlinux/build/PocketLinux-v*-release.apk)
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          BASE=$(basename "$APK")
+          # PocketLinux-v13.0.0-release.apk, or -v13.0.0-devkey-release.apk without a key.
+          VERSION=$(echo "$BASE" | sed -E 's/^PocketLinux-v(.+)-release\.apk$/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sha256sum "$APK"
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/apksigner" verify --print-certs "$APK"
+
+      # Checked on the SIGNED file, because signing rewrites the archive. This APK ships PRoot
+      # and its loader as native libraries, so an entry landing on a 4 KiB-but-not-16 KiB
+      # boundary is exactly what Android 16 puts into a compatibility mode with a dialog at
+      # launch -- a wrong answer here would ship and still look fine in CI.
+      - name: Alignment gate (16 KiB pages, Android 16)
+        run: |
+          set -eu
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/zipalign" -c -P 16 -v 4 "$APK" > /dev/null
+          echo "16 KiB page alignment verified on $APK"
+
+      - name: Size gate (max 25 MB)
+        run: |
+          set -eu
+          SIZE=$(stat -c%s "$APK")
+          echo "APK size: $SIZE bytes ($(( SIZE / 1048576 )) MiB)"
+          if [ "$SIZE" -gt 26214400 ]; then
+            echo "::error::APK exceeds the 25 MB limit"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: PocketLinux-apk
+          path: pocketlinux/build/PocketLinux-v*-release.apk
+          if-no-files-found: error
+
+  publish:
+    name: publish release
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      # A release nobody can install as an update is not a release, and here the cost of a
+      # changed signer is not a reinstall: Android's uninstall takes the whole Ubuntu container
+      # with it, along with every app in it and every sign-in those apps hold.
+      - name: A published release needs a signing key that outlives the run
+        if: needs.build.outputs.throwaway_key == 'true'
+        run: |
+          echo "::error title=No signing key configured::This APK was signed with a key that existed only inside this run, so it cannot install over any other PocketLinux. Refusing to publish it."
+          cat >&2 <<'MSG'
+
+          Generate ONE key on your own machine - never in CI, never into the
+          repository, never into an artifact - and add it as repository secrets:
+
+            keytool -genkeypair -v -keystore pocketlinux-release.jks \
+              -alias pocketlinux -keyalg RSA -keysize 4096 -validity 18250 \
+              -dname "CN=PocketLinux Release, OU=PocketLinux, O=PocketLinux, C=IN"
+            base64 -w0 pocketlinux-release.jks
+
+          Settings -> Secrets and variables -> Actions:
+            POCKETLINUX_KEYSTORE_B64   the base64 string
+            POCKETLINUX_STORE_PASS     the store password
+            POCKETLINUX_KEY_PASS       the key password (same, unless you set another)
+
+          Keep the .jks file somewhere private and backed up. Lose it and no
+          future build can ever update an installed PocketLinux again.
+          MSG
+          exit 1
+
+      - uses: actions/checkout@v5
+
+      - name: Download signed APK
+        uses: actions/download-artifact@v6
+        with:
+          name: PocketLinux-apk
+
+      - name: Publish the GitHub Release, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -eu
+          # Two projects share this repository and CloudSaver owns the plain v* tags, so this
+          # one carries its own prefix. A tag without it would collide the day the version
+          # numbers meet.
+          TAG="pocketlinux-v${VERSION}"
+          APK="PocketLinux-v${VERSION}-release.apk"
+          # A published tag is one binary, for good. The notes print that APK's SHA-256, so
+          # re-uploading over an existing tag would hand a different file, under a different
+          # hash, to whoever downloaded the first one.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::notice::$TAG is already published - leaving it exactly as it is."
+            echo "To publish a new build, raise VERSION_NAME in pocketlinux/build.sh."
+            exit 0
+          fi
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          NOTES="$RUNNER_TEMP/notes.md"
+          {
+            printf 'A whole Ubuntu computer on the phone, with no root and no second device.\n\n'
+            printf 'Install: download %s below and open it on the phone.\n' "$APK"
+            printf 'Play Protect warns about a sideloaded APK; choose "More details" then\n'
+            printf '"Install anyway".\n\n'
+            printf 'APK SHA-256: %s\n\n' "$SHA"
+            printf -- '---\n\n'
+            cat pocketlinux/RELEASE-NOTES.md
+          } > "$NOTES"
+          gh release create "$TAG" "$APK" \
+            pocketlinux/QUICKSTART-HINGLISH.md \
+            --title "PocketLinux v${VERSION}" \
+            --notes-file "$NOTES" \
+            --repo "$GITHUB_REPOSITORY"

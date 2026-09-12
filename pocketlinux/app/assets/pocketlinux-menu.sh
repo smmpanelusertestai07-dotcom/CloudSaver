@@ -1,0 +1,997 @@
+#!/bin/bash
+# Builds the desktop's app list from the applications that are really installed.
+#
+# Reading each package's own .desktop file is what gives every app its real name, its real icon
+# and the launch command its packager intended -- rather than a hand-made entry with a generic
+# icon that has to be kept in step by hand.
+#
+# Every launcher points at pocketlinux-open rather than the app directly, because a Chromium-based
+# app started without --no-sandbox dies before it draws anything and the tap looks ignored.
+set -u
+HOME_DIR=/home/coder
+OPENBOX_DIR="$HOME_DIR/.config/openbox"
+TINT2_DIR="$HOME_DIR/.config/tint2"
+DESKTOP_DIR="$HOME_DIR/Desktop"
+LOCAL_APPS="$HOME_DIR/.local/share/applications"
+APPLICATIONS_DIR=/usr/share/applications
+OPEN=/usr/local/bin/pocketlinux-open
+WINDOWS=/usr/local/bin/pocketlinux-windows
+mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+         "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone" \
+         "$HOME_DIR/.config/pocketlinux" "$HOME_DIR/.themes"
+
+# The label of every wrapped launcher ("ChatGPT", "Chrome", "Files"), keyed by the name
+# pocketlinux-open derives from the command it is given. Rebuilt on every run and moved into
+# place at the end, so a launch in the middle of a refresh still reads a complete table. Why a
+# table and not the Exec line: see write_entry.
+LABELS_NEW="$HOME_DIR/.config/pocketlinux/labels.new"
+: > "$LABELS_NEW"
+
+# The desktop session writes the chosen download directory here. A menu refresh may also run as
+# root after an install, so it cannot rely on inherited environment variables. Accept only the
+# two destinations PocketLinux itself writes; a damaged file falls back to private Downloads.
+DOWNLOAD_DIR=$(cat "$HOME_DIR/.config/pocketlinux/download-dir" 2>/dev/null || true)
+case "$DOWNLOAD_DIR" in
+  "$HOME_DIR/Downloads"|"$HOME_DIR/Phone/Download/PocketLinux") ;;
+  *) DOWNLOAD_DIR="$HOME_DIR/Downloads" ;;
+esac
+mkdir -p "$DOWNLOAD_DIR" 2>/dev/null || DOWNLOAD_DIR="$HOME_DIR/Downloads"
+
+# Which edge the bar lives on. The owner's choice, kept outside tint2rc because this script
+# rewrites that file on every start; anything but "top" means the bottom. Read here, at the top,
+# because the root menu offers the opposite edge long before the bar itself is written.
+PANEL_AT=bottom
+[ "$(cat "$HOME_DIR/.config/pocketlinux/panel-edge" 2>/dev/null)" = "top" ] && PANEL_AT=top
+
+# Parse installed metadata once. Re-running awk/grep for every favourite used to
+# create thousands of short-lived PRoot children during every desktop start.
+declare -A FIELD_CACHE=() FIELD_FILES=()
+load_fields() {
+  local file="$1" line key group=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%$'\r'}
+    case "$line" in
+      \[* ) group=$((group + 1)); [ "$group" -le 1 ] || break ;;
+      *=* ) key=${line%%=*}
+            [ -n "${FIELD_CACHE["$file|$key"]+present}" ] || FIELD_CACHE["$file|$key"]=${line#*=} ;;
+    esac
+  done < "$file"
+  FIELD_FILES["$file"]=1
+}
+field() {
+  if [ -z "${FIELD_FILES["$1"]+present}" ] && [ -f "$1" ]; then load_fields "$1"; fi
+  printf '%s\n' "${FIELD_CACHE["$1|$2"]-}"
+}
+
+exec_binary() {
+  local value="$1"
+  case "$value" in
+    \"*) value=${value#\"}; printf '%s' "${value%%\"*}" ;;
+    \'*) value=${value#\'}; printf '%s' "${value%%\'*}" ;;
+    *) read -r value _ <<< "$value"; printf '%s' "$value" ;;
+  esac
+}
+
+is_tool() {   # is_tool <base>: belongs in the Tools submenu, not at the root of the menu
+  case "$1" in
+    pavucontrol|lxtask|xarchiver|mousepad|org.xfce.mousepad|gpicview|galculator|lxappearance) return 0 ;;
+  esac
+  return 1
+}
+
+runnable() {   # runnable <desktop file>: its Exec names a program that exists
+  local exec_line binary
+  exec_line=$(field "$1" Exec)
+  [ -n "$exec_line" ] || return 1
+  binary=$(exec_binary "$exec_line")
+  case "$binary" in
+    /*) [ -x "$binary" ] ;;
+    *) command -v "$binary" >/dev/null 2>&1 ;;
+  esac
+}
+
+is_visible() {
+  local value
+  case "${1##*/}" in org.xfce.mousepad-settings.desktop) return 1 ;; esac
+  value=$(field "$1" NoDisplay); [ "${value,,}" != true ] || return 1
+  value=$(field "$1" Hidden); [ "${value,,}" != true ] || return 1
+  value=$(field "$1" Type); [ "${value,,}" = application ]
+}
+
+# Exec lines carry placeholders like %U or %F that a launcher must not pass through.
+strip_codes() {
+  printf '%s' "$1" | sed 's/ *%[UufFdDnNickvm]//g'
+}
+
+xml_escape() {
+  printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
+
+
+ENTRY_LIST=()
+for desktop in "$LOCAL_APPS"/*.desktop; do
+  [ ! -f "$desktop" ] || load_fields "$desktop"
+done
+for desktop in "$APPLICATIONS_DIR"/*.desktop; do
+  [ -f "$desktop" ] || continue
+  load_fields "$desktop"
+  is_visible "$desktop" && runnable "$desktop" && ENTRY_LIST+=("$desktop")
+done
+entries() {
+  [ "${#ENTRY_LIST[@]}" -eq 0 ] || printf '%s\n' "${ENTRY_LIST[@]}"
+}
+
+# The browser. Google Chrome, which set-up installs; Brave or GNOME Web only on a computer
+# built by an earlier version that still has one of them. One browser on the desktop and
+# the panel, and the same one answers every link, so a sign-in never opens in a second one.
+BROWSER_ENTRY=""
+for candidate in google-chrome.desktop google-chrome-stable.desktop chromium.desktop chromium-browser.desktop brave-browser.desktop org.gnome.Epiphany.desktop firefox.desktop; do
+  [ -f "$APPLICATIONS_DIR/$candidate" ] || continue
+  runnable "$APPLICATIONS_DIR/$candidate" || continue
+  BROWSER_ENTRY=$candidate
+  break
+done
+BROWSER_BASE=${BROWSER_ENTRY%.desktop}
+
+# What gets a desktop icon and a panel slot: the AI apps, the browser, the files, the terminal.
+# Everything else that is installed stays one right-click (or one tap on Apps) away instead of
+# taking up room on a phone-sized screen.
+FAVOURITES="chatgpt claude-desktop cursor antigravity ${BROWSER_BASE:-org.gnome.Epiphany} pcmanfm lxterminal"
+
+# A copy of the package's own entry with the launch command routed through pocketlinux-open.
+# DBusActivatable would let a file manager start the app behind our back, and extra action groups
+# would start it unwrapped, so both go. %U stays on the end: that is how a sign-in link handed
+# to the app by the browser reaches it (the launcher passes it on to the running instance).
+# "Web" says nothing and "File Manager PCManFM" does not fit under an icon on a phone.
+short_name() {   # short_name <base> <name>
+  case "$1" in
+    org.gnome.Epiphany|epiphany) printf 'Web' ;;
+    google-chrome) printf 'Chrome' ;;
+    brave-browser) printf 'Brave' ;;
+    firefox) printf 'Firefox' ;;
+    pcmanfm) printf 'Files' ;;
+    org.xfce.mousepad|mousepad) printf 'Text Editor' ;;
+    xarchiver) printf 'Archives' ;;
+    gpicview) printf 'Pictures' ;;
+    galculator) printf 'Calculator' ;;
+    lxtask) printf 'Task manager' ;;
+    lxappearance) printf 'Appearance' ;;
+    pavucontrol) printf 'Volume and sound' ;;
+    lxterminal) printf 'Terminal' ;;
+    *) printf '%s' "$2" ;;
+  esac
+}
+
+# Icon overrides where the theme's own mark reads badly on a phone.
+icon_for() {   # icon_for <base> -> icon name or empty to keep the original
+  case "$1" in
+    pcmanfm) printf 'pocketlinux-files' ;;
+    *) printf '' ;;
+  esac
+}
+
+# The name pocketlinux-open will derive from a command: its first word, after any `env
+# KEY=value` prefix, without the directory; the same rule the launcher applies.
+label_key() {   # label_key <command>
+  set -f
+  # shellcheck disable=SC2086
+  set -- $1
+  set +f
+  if [ "$#" -gt 0 ] && [ "${1##*/}" = env ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in [A-Za-z_]*=*) shift ;; *) break ;; esac
+    done
+  fi
+  [ "$#" -gt 0 ] || return 0
+  key=${1##*/}
+  [ "$key" != google-chrome-stable ] || key=google-chrome
+  printf '%s' "$key"
+}
+
+write_entry() {   # write_entry <source> <target> <label> <command>
+  icon_override=$(icon_for "$(basename "$1" .desktop)")
+  # The label is NOT put on the Exec line. xdg-open (xdg-utils 1.1.3), which is what runs a
+  # wrapped entry when the browser hands an app:// sign-in callback back, splits Exec on plain
+  # whitespace with no quote handling: `--label "Antigravity - URL Handler"` reached the
+  # launcher as the label `"Antigravity` and the command `-`, the launcher reported exit 127,
+  # and the sign-in never came back. The label goes into the table instead, keyed by the name
+  # the launcher derives from the command itself; the first entry written for a name wins, and
+  # the app's own launcher is written before its URL handler.
+  key=$(label_key "$4")
+  if [ -n "$key" ] && ! awk -F '\t' -v k="$key" '$1 == k { found = 1 } END { exit !found }' "$LABELS_NEW" 2>/dev/null; then
+    printf '%s\t%s\n' "$key" "$3" >> "$LABELS_NEW"
+  fi
+  awk -v cmd="$4" -v label="$3" -v icon="$icon_override" '
+    /^\[/ { group++ }
+    group > 1 { next }
+    /^Exec=/ { print "Exec=/usr/local/bin/pocketlinux-open " cmd " %U"; next }
+    /^Name=/ { print "Name=" label; next }
+    /^Icon=/ && icon != "" { print "Icon=" icon; next }
+    /^Name\[/ { next }
+    /^(DBusActivatable|TryExec|Actions|X-PocketLinux)=/ { next }
+    { print }
+  ' "$1" > "$2"
+  echo 'X-PocketLinux=1' >> "$2"
+  chmod 755 "$2"
+}
+
+# ---- Openbox menu: every installed app, the folders, the window commands ---------------
+# Opened by a right-click on the wallpaper (a long press in Finger mode), the Apps button on
+# the panel, Super+A, or Window -> Apps menu on the phone.
+{
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<openbox_menu xmlns="http://openbox.org/3.4/menu">'
+  echo '<menu id="root-menu" label="PocketLinux - Ubuntu 24.04 LTS">'
+  found=0
+  tool_items=""
+  while read -r desktop; do
+    [ -n "$desktop" ] || continue
+    name=$(short_name "$(basename "$desktop" .desktop)" "$(field "$desktop" Name)")
+    [ -n "$name" ] || continue
+    command=$(strip_codes "$(field "$desktop" Exec)")
+    if [ "$(field "$desktop" X-PocketLinux-Direct)" = "true" ]; then
+      command=$(strip_codes "$(field "$desktop" Exec)")
+    elif [ "$(field "$desktop" Terminal)" = "true" ]; then
+      command="lxterminal -e $command"
+    else
+      command="$OPEN --label \"$(printf '%s' "$name" | tr -d '\"\\\\')\" $command"
+    fi
+    line=$(printf '  <item label="%s"><action name="Execute"><command>%s</command></action></item>' \
+      "$(xml_escape "$name")" "$(xml_escape "$command")")
+    if is_tool "$(basename "$desktop" .desktop)"; then
+      tool_items="$tool_items$line
+"
+    else
+      printf '%s\n' "$line"
+    fi
+    found=1
+  done <<EOF
+$(entries)
+EOF
+  [ "$found" = 1 ] || echo '  <item label="No apps yet"><action name="Execute"><command>true</command></action></item>'
+  # Everything that is a tool rather than an app goes one level down, so the four AI apps stay
+  # at the top of a menu opened with a thumb.
+  echo '  <menu id="tools-menu" label="Tools">'
+  [ -n "$tool_items" ] && printf '%s' "$tool_items"
+  echo '    <item label="Screenshot"><action name="Execute"><command>/usr/local/bin/pocketlinux-shot screen</command></action></item>'
+  echo '    <item label="Screenshot (window in front)"><action name="Execute"><command>/usr/local/bin/pocketlinux-shot window</command></action></item>'
+  # A message that disappeared before it was read used to be gone for good. The desktop now keeps
+  # the last twenty (history_length in pocketlinux-desktop.sh) and this brings them back, newest
+  # first, one for each tap. Nothing else on the desktop offered them.
+  echo '    <item label="Show the last message again"><action name="Execute"><command>dunstctl history-pop</command></action></item>'
+  echo '    <item label="Storage"><action name="Execute"><command>/usr/local/bin/pocketlinux-storage</command></action></item>'
+  echo '    <item label="Software" icon="/usr/share/pixmaps/pocketlinux-software.png"><action name="Execute"><command>/usr/local/bin/pocketlinux-software</command></action></item>'
+  echo '    <item label="Appshot to the AI app (Super+Space)"><action name="Execute"><command>/usr/local/bin/pocketlinux-appshot</command></action></item>'
+  echo '    <item label="AI computer use"><action name="Execute"><command>/usr/local/bin/pocketlinux-agent status</command></action></item>'
+  echo '    <separator/>'
+  echo '    <menu id="mobile-menu" label="Phone app testing">'
+  echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=500 --title="Phone app testing" --text="This computer can install and test an Android app on a real phone, including the one it is running on.\n\nAndroid 11 and later have Wireless debugging, and this computer shares the phone network, so 127.0.0.1 reaches this very phone. Build an APK here, install it here, and it opens on this screen.\n\nAnother phone on the same Wi-Fi works the same way, with its own address.\n\nAn Android EMULATOR cannot run here: it needs hardware virtualisation, which no app on an unrooted phone can have. A real phone is the test device."</command></action></item>'
+  echo '      <item label="What can be built here"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketlinux-mobile built; echo; read -p \"Press Enter to close \""</command></action></item>'
+  echo '      <item label="What is installed and connected"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketlinux-mobile status; echo; read -p \"Press Enter to close \""</command></action></item>'
+  echo '      <item label="Start a new mobile app"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketlinux-mobile new; echo; read -p \"Press Enter to close \""</command></action></item>'
+  echo '      <item label="Building for iPhone"><action name="Execute"><command>/usr/local/bin/pocketlinux-mobile ios</command></action></item>'
+  echo '      <separator/>'
+  echo '      <item label="Pair a phone"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb pair</command></action></item>'
+  echo '      <item label="Connect"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb connect</command></action></item>'
+  echo '      <item label="Install and open an APK"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb install</command></action></item>'
+  echo '      <item label="App logs (logcat)"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb logs</command></action></item>'
+  echo '      <item label="Mirror the phone screen"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb screen</command></action></item>'
+  echo '      <item label="What is connected"><action name="Execute"><command>/usr/local/bin/pocketlinux-adb status</command></action></item>'
+  echo '    </menu>'
+  echo '  </menu>' 
+  # These open a folder, but what they open it in is the file manager, so they start it the same
+  # way every other app on this computer is started. Naming pcmanfm directly meant a folder
+  # tapped here skipped the theme, the log and the failure message that the Files icon on the bar
+  # gets, so the same app behaved differently depending on where it was started from.
+  echo '  <separator label="Folders"/>'
+  echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketlinux-phone.png"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Phone</command></action></item>'
+  echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketlinux-projects.png"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Cloud"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Cloud</command></action></item>'
+  printf '  <item label="Download destination"><action name="Execute"><command>'"$OPEN"' pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
+  echo '  <item label="Bin"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
+  echo '  <item label="Empty the bin"><action name="Execute"><command>sh -c "rm -rf /home/coder/.local/share/Trash/files/* /home/coder/.local/share/Trash/files/.[!.]* /home/coder/.local/share/Trash/info/* 2>/dev/null; notify-send -a PocketLinux Bin \"The bin is empty.\""</command></action></item>'
+  echo '  <item label="App reports"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.pocketlinux/logs</command></action></item>'
+  echo '  <separator label="Windows"/>'
+  echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
+  echo '  <item label="Fit window to the screen"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></item>'
+  echo '  <item label="Minimise this window"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></item>'
+  echo '  <item label="Minimise all"><action name="ToggleShowDesktop"/></item>'
+  echo '  <item label="Close all"><action name="Execute"><command>'"$WINDOWS"' close-all</command></action></item>'
+  echo '  <separator label="Desktop"/>'
+  echo '  <item label="Settings" icon="/usr/share/pixmaps/pocketlinux-settings.png"><action name="Execute"><command>/usr/local/bin/pocketlinux-settings</command></action></item>'
+  echo '  <item label="Install a downloaded app" icon="/usr/share/pixmaps/pocketlinux-package.png"><action name="Execute"><command>/usr/local/bin/pocketlinux-install</command></action></item>'
+  echo '  <item label="Terminal"><action name="Execute"><command>lxterminal</command></action></item>'
+  echo '  <item label="Reload screen"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></item>'
+  echo '  <item label="Refresh app list"><action name="Execute"><command>/usr/local/bin/pocketlinux-menu</command></action></item>'
+  if [ "$PANEL_AT" = "top" ]; then
+    echo '  <item label="Move the bar to the bottom"><action name="Execute"><command>'"$WINDOWS"' panel-edge bottom</command></action></item>'
+  else
+    echo '  <item label="Move the bar to the top"><action name="Execute"><command>'"$WINDOWS"' panel-edge top</command></action></item>'
+  fi
+  echo '</menu>'
+  echo '</openbox_menu>'
+} > "$OPENBOX_DIR/menu.xml"
+
+# ---- Desktop icons and panel launchers: the favourites, using their own entries -----
+# Only the entries this script wrote (they all carry X-PocketLinux=1). A blanket delete took
+# away anything the owner had put on their own desktop, every time an app was installed.
+for stale in "$DESKTOP_DIR"/*.desktop; do
+  [ -f "$stale" ] || continue
+  grep -q '^X-PocketLinux=1' "$stale" 2>/dev/null && rm -f "$stale"
+done
+find "$LOCAL_APPS" -maxdepth 1 -name 'pocketlinux-*.desktop' -delete 2>/dev/null || true
+# A computer set up by a version that carried the Windows layer keeps its launchers and its
+# prefixes until this runs once. Nothing else on the computer is touched.
+rm -rf "$HOME_DIR/.pocketlinux/windows" "$HOME_DIR/.pocketlinux-wine" 2>/dev/null || true
+rm -f "$DESKTOP_DIR"/pocketlinux-win-*.desktop "$LOCAL_APPS"/pocketlinux-win-*.desktop \
+      "$DESKTOP_DIR/pocketlinux-real-windows.desktop" \
+      "$LOCAL_APPS/pocketlinux-real-windows.desktop" 2>/dev/null || true
+
+# The panel's first button: the apps menu, behind the Linux mascot. Hidden from the menu it
+# opens, or it would list itself.
+printf '[Desktop Entry]\nType=Application\nName=Apps\nComment=Every installed app\nExec=%s menu\nIcon=pocketlinux-linux\nTerminal=false\nNoDisplay=true\nX-PocketLinux=1\n' \
+  "$WINDOWS" > "$LOCAL_APPS/pocketlinux-apps.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-apps.desktop"
+launcher_lines="
+launcher_item_app = $LOCAL_APPS/pocketlinux-apps.desktop"
+
+add_favourite() {   # add_favourite <desktop file>
+  base=$(basename "$1" .desktop)
+  exec_line=$(field "$1" Exec)
+  label=$(short_name "$base" "$(field "$1" Name)" | tr -d '"\\')
+  wrapped="$LOCAL_APPS/pocketlinux-$base.desktop"
+  write_entry "$1" "$wrapped" "$label" "$(strip_codes "$exec_line")"
+  cp -f "$wrapped" "$DESKTOP_DIR/$base.desktop" 2>/dev/null || true
+  taken="$taken $base"
+}
+
+# Several entries can share one command -- the browser itself and the web-app launchers all run
+# epiphany -- so a favourite claims the file named after it first, and only then one by command.
+taken=""
+for wanted in $FAVOURITES; do
+  match=""
+  for pass in base binary; do
+    while read -r desktop; do
+      [ -n "$desktop" ] || continue
+      case " $taken " in *" $(basename "$desktop" .desktop) "*) continue ;; esac
+      case "$pass" in
+        base) candidate=$(basename "$desktop" .desktop) ;;
+        binary) candidate=$(basename "$(exec_binary "$(field "$desktop" Exec)")") ;;
+      esac
+      if [ "$candidate" = "$wanted" ]; then
+        match=$desktop
+        break
+      fi
+    done <<EOF
+$(entries)
+EOF
+    [ -n "$match" ] && break
+  done
+  [ -n "$match" ] && add_favourite "$match"
+done
+
+# The installer that a downloaded app package opens into. Two jobs: it is the handler for
+# .deb packages (Chrome's Open, and a double tap in the file manager), and a launcher of its
+# own so an app can be installed without finding the file first.
+printf '[Desktop Entry]\nType=Application\nName=Install a downloaded app\nComment=Check and install an ARM64 Linux app package\nExec=/usr/local/bin/pocketlinux-install %%f\nIcon=pocketlinux-package\nTerminal=false\nX-PocketLinux=1\nMimeType=application/vnd.debian.binary-package;application/x-deb;application/x-debian-package;\n' \
+  > "$LOCAL_APPS/pocketlinux-install.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-install.desktop"
+
+# A small Ubuntu software centre: search the signed apt catalogue, review a package, install it,
+# update the computer, or hand a downloaded package to PocketLinux's safety checks.
+printf '[Desktop Entry]\nType=Application\nName=Software\nComment=Search and install ARM64 software from Ubuntu\nExec=/usr/local/bin/pocketlinux-software\nIcon=pocketlinux-software\nTerminal=false\nCategories=System;PackageManager;\nX-PocketLinux=1\n' \
+  > "$LOCAL_APPS/pocketlinux-software.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-software.desktop"
+cp -f "$LOCAL_APPS/pocketlinux-software.desktop" "$DESKTOP_DIR/pocketlinux-software.desktop"
+
+# The phone's own files, as a folder on the desktop and a button on the panel. Empty but for a
+# note until the owner turns Phone files on in PocketLinux's Settings; then Download, DCIM and
+# Documents are in it. Super+P opens it too.
+printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\047s storage, inside the computer\nExec='"$OPEN"' pcmanfm /home/coder/Phone\nIcon=pocketlinux-phone\nTerminal=false\nX-PocketLinux=1\n' \
+  > "$LOCAL_APPS/pocketlinux-phone.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-phone.desktop"
+cp -f "$LOCAL_APPS/pocketlinux-phone.desktop" "$DESKTOP_DIR/pocketlinux-phone.desktop"
+
+# Projects, with an entry of its own. It reached the desktop before only as pcmanfm's "Documents"
+# shortcut -- XDG_DOCUMENTS_DIR points there -- wearing the theme's plain grey folder, in a place
+# pcmanfm chose. Its own entry gives it PocketLinux's folder, a name and a description.
+printf '[Desktop Entry]\nType=Application\nName=Projects\nComment=Where your code and your work live\nExec='"$OPEN"' pcmanfm /home/coder/Projects\nIcon=pocketlinux-projects\nTerminal=false\nX-PocketLinux=1\n' \
+  > "$LOCAL_APPS/pocketlinux-projects.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-projects.desktop"
+cp -f "$LOCAL_APPS/pocketlinux-projects.desktop" "$DESKTOP_DIR/pocketlinux-projects.desktop"
+
+# System settings. Everything it opens already existed; what did not exist was one place that
+# looked like settings, so the theme, the bar's edge and the sound mixer were each found only by
+# someone who already knew where they were.
+printf '[Desktop Entry]\nType=Application\nName=Settings\nComment=Theme, the bar, sound, storage and software\nExec=/usr/local/bin/pocketlinux-settings\nIcon=pocketlinux-settings\nTerminal=false\nCategories=Settings;System;\nX-PocketLinux=1\n' \
+  > "$LOCAL_APPS/pocketlinux-settings.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-settings.desktop"
+cp -f "$LOCAL_APPS/pocketlinux-settings.desktop" "$DESKTOP_DIR/pocketlinux-settings.desktop"
+
+# The Bin. Delete in the file manager moves a file here (libfm's use_trash); browsing trash:
+# would need a daemon this phone does not run, so the Bin opens the Trash folder directly.
+#
+# A shipped picture, not the theme name user-trash. Ubuntu 24.04's Adwaita carries no full-colour
+# application icons any more, only the symbolic set, which GTK will not use for a launcher and
+# will not substitute for one -- that is what left Software wearing a blank sheet, and the Bin was
+# the last entry still asking the theme for its mark.
+printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec='"$OPEN"' pcmanfm /home/coder/.local/share/Trash/files\nIcon=pocketlinux-bin\nTerminal=false\nX-PocketLinux=1\n' \
+  > "$LOCAL_APPS/pocketlinux-bin.desktop"
+chmod 755 "$LOCAL_APPS/pocketlinux-bin.desktop"
+cp -f "$LOCAL_APPS/pocketlinux-bin.desktop" "$DESKTOP_DIR/pocketlinux-bin.desktop"
+
+# Make only this script's own entries runnable, and collect them for the chown at the end. A
+# plain glob over the desktop folder also changed the mode of whatever the owner had put there,
+# and chmod has no way to be told not to follow a symlink, so a link on the desktop had its
+# target changed instead. The stale sweep above is careful in the same way: X-PocketLinux=1 is
+# what says this script wrote the file.
+DESKTOP_OWNED=()
+for entry in "$DESKTOP_DIR"/*.desktop; do
+  [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+  grep -q '^X-PocketLinux=1' "$entry" 2>/dev/null || continue
+  chmod 755 "$entry" 2>/dev/null || true
+  DESKTOP_OWNED+=("$entry")
+done
+
+# tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the
+# point sizes are converted here and the bar matches the rest of the desktop at any screen size
+# the owner picks. A missing or odd .Xresources falls straight back to PocketLinux's own default.
+DPI=$(awk -F: '/^Xft\.dpi:/ { gsub(/[^0-9]/, "", $2); print $2; exit }' "$HOME_DIR/.Xresources" 2>/dev/null)
+case "${DPI:-}" in ''|*[!0-9]*) DPI=120 ;; esac
+[ "$DPI" -lt 96 ] && DPI=96
+[ "$DPI" -gt 240 ] && DPI=240
+pt() { echo $(( $1 * DPI / 96 )); }    # a point size that looked right on a 96 dpi screen
+px() { echo $(( $1 * DPI / 120 )); }   # a length that looked right at PocketLinux's default 120 dpi
+
+
+# How wide the bar has to fit. Worked out from the SHORT side of the screen, because this file is
+# written once at start-up and the phone is turned whenever the owner feels like it: a bar laid
+# out for landscape loses its window buttons the moment the phone is held upright. That is the
+# bar in the owner's screenshot -- six launchers, the clock and the phone's numbers came to more
+# pixels than a 720-wide screen has, and tint2 hands the window list whatever is left over, which
+# was nothing at all. A menu refresh started by an app install has no display to ask, so the
+# fallback is the width of an ordinary phone held upright.
+PANEL_W=720
+if [ -S /tmp/.X11-unix/X1 ] && command -v xdpyinfo >/dev/null 2>&1; then
+  screen_size=$(DISPLAY="${DISPLAY:-:1}" timeout --foreground --kill-after=1s 3s xdpyinfo 2>/dev/null \
+    | awk '/dimensions:/ { print $2; exit }')
+  screen_w=${screen_size%%x*}
+  screen_h=${screen_size#*x}
+  case "$screen_w" in ''|*[!0-9]*) screen_w=0 ;; esac
+  case "$screen_h" in ''|*[!0-9]*) screen_h=0 ;; esac
+  [ "$screen_h" -gt 0 ] && [ "$screen_h" -lt "$screen_w" ] && screen_w=$screen_h
+  [ "$screen_w" -ge 320 ] && [ "$screen_w" -le 4096 ] && PANEL_W=$screen_w
+fi
+
+# tint2 draws its text at 96 dpi, so a font of P points is P*4/3 pixels tall. In DejaVu Sans --
+# the face behind "Sans" here -- a line of mixed digits and letters averages about six tenths of
+# that per character, and bold about seven. Rounded up on purpose: when the estimate is out, the
+# window list must not be the item that pays for it.
+text_w() {   # text_w <characters> <point size> <6 plain | 7 bold>
+  echo $(( ($1 * $2 * 4 * $3 + 29) / 30 ))
+}
+
+# A phone held upright has room for the window buttons only if the rest of the bar gives way, so
+# on a narrow bar the clock drops the weekday, the computer's numbers take a smaller font and the
+# launchers come down a size. A tablet, or a phone in a dock, keeps the roomier bar.
+#
+# The width is measured in the same 120-dpi units px() works in, because a bar is narrow in two
+# different ways: a small screen, and a large text size on a big one. A 1080-wide phone at 240
+# dpi is every bit as full as a 720-wide phone at 160, and taking it at face value left that
+# phone with one launcher and no window buttons.
+COMPACT=0
+[ $(( PANEL_W * 120 / DPI )) -le 900 ] && COMPACT=1
+if [ "$COMPACT" = 1 ]; then
+  LAUNCH_ICON=$(px 40); LAUNCH_PAD=$(px 4); LAUNCH_GAP=$(px 6)
+  TIME1_FMT='%I:%M %P'; TIME1_CHARS=8;  TIME1_PT=$(pt 8)
+  TIME2_FMT='%d %b';    TIME2_CHARS=6;  TIME2_PT=$(pt 7)
+  CLOCK_PAD=$(px 5)
+  STATUS_PT=$(pt 7); STATUS_PAD=$(px 5)
+  MARK_ICON=$(px 22); MARK_PAD=$(px 4)
+  TRAY_ICON=$(px 20); TRAY_PAD=$(px 4)
+  PANEL_PAD=$(px 2); PANEL_GAP=$(px 4)
+else
+  LAUNCH_ICON=$(px 44); LAUNCH_PAD=$(px 6); LAUNCH_GAP=$(px 8)
+  TIME1_FMT='%I:%M %P'; TIME1_CHARS=8;  TIME1_PT=$(pt 11)
+  TIME2_FMT='%a %d %b'; TIME2_CHARS=10; TIME2_PT=$(pt 8)
+  CLOCK_PAD=$(px 8)
+  STATUS_PT=$(pt 9); STATUS_PAD=$(px 6)
+  MARK_ICON=$(px 26); MARK_PAD=$(px 8)
+  TRAY_ICON=$(px 24); TRAY_PAD=$(px 6)
+  PANEL_PAD=$(px 2); PANEL_GAP=$(px 6)
+fi
+
+# tint2 draws an execp block at the width of its widest line, so the bar has to hold room for the
+# widest line pocketlinux-status can print: "Storage 1023G", on a phone with a terabyte free.
+STATUS_W=$(( $(text_w 13 "$STATUS_PT" 6) + 2 * STATUS_PAD ))
+CLOCK_W=$(text_w "$TIME1_CHARS" "$TIME1_PT" 7)
+clock_w2=$(text_w "$TIME2_CHARS" "$TIME2_PT" 6)
+[ "$clock_w2" -gt "$CLOCK_W" ] && CLOCK_W=$clock_w2
+CLOCK_W=$(( CLOCK_W + 2 * CLOCK_PAD ))
+
+# panel_items is LTSECP below: six items, so five gaps between them and the bar's own padding at
+# each end. The tray is empty until an app puts something in it, but it keeps its padding.
+FIXED_W=$(( 2 * PANEL_PAD + 5 * PANEL_GAP + 2 * TRAY_PAD + STATUS_W + CLOCK_W \
+            + MARK_ICON + 2 * MARK_PAD ))
+
+# What the window list keeps, whatever else wants the room. tint2 has no minimum of its own --
+# the taskbar is simply given what the other items leave -- so the room for three window buttons
+# is set aside here first, and nothing is pinned below that eats into it. Each of the three is as
+# wide as the icon in it and as tall as the bar. A fourth and a fifth window still get a button:
+# tint2 shares the room it has between the windows that are open.
+TASK_MIN=$(( 3 * $(px 30) + 2 * $(px 4) + 2 * $(px 2) ))
+LAUNCH_ROOM=$(( PANEL_W - FIXED_W - TASK_MIN ))
+
+# The first launcher is the Apps button and it is never dropped: it is the door to everything
+# that is not on the bar. Then, in the order they earn the room: the file manager and the
+# terminal, which the Apps menu cannot replace with one tap, and after them the browser, the
+# phone's files and Settings if the screen is wide enough to hold them. Whatever does not fit
+# keeps its icon on the desktop and its place in the Apps menu. The four AI apps
+# are deliberately not on this list at all: once an app is open, its own window button is what
+# you need, and those buttons are what the bar was leaving no room for.
+LAUNCH_USED=$(( 2 * LAUNCH_PAD + LAUNCH_ICON ))
+panel_lines=""
+for base in pcmanfm lxterminal ${BROWSER_BASE:-} pocketlinux-phone pocketlinux-settings; do
+  case "$base" in
+    pocketlinux-*) pinned="$LOCAL_APPS/$base.desktop" ;;
+    *) pinned="$LOCAL_APPS/pocketlinux-$base.desktop" ;;
+  esac
+  [ -f "$pinned" ] || continue
+  next_used=$(( LAUNCH_USED + LAUNCH_GAP + LAUNCH_ICON ))
+  [ "$next_used" -le "$LAUNCH_ROOM" ] || break
+  LAUNCH_USED=$next_used
+  panel_lines="$panel_lines
+launcher_item_app = $pinned"
+done
+TASK_ROOM=$(( PANEL_W - FIXED_W - LAUNCH_USED ))
+
+MARK=/usr/share/pixmaps/pocketlinux-mark.png
+[ -f "$MARK" ] || MARK=/usr/share/pixmaps/pocketlinux-linux.png
+
+{
+  # Background 0 first, and on purpose. tint2 seeds exactly one background before it reads this
+  # file, and it is the one every element falls back to, so these two lines (which have no
+  # "rounded" above them and therefore edit background 0 itself) keep it the panel's own colour:
+  # anything whose id is wrong still looks right instead of going see-through.
+  echo 'border_width = 0'
+  echo 'background_color = #0f1327 100'
+  # Every real background starts with "rounded" -- that is the line tint2 uses to begin a new
+  # definition -- and all five come BEFORE the first *_background_id below, because tint2
+  # resolves an id the moment it reads it and an id it has not met yet silently becomes 0.
+  # Gradients first: tint2 resolves a gradient_id the moment it reads it, exactly as it does
+  # with a background id, so one declared after the background that names it silently does
+  # nothing. The panel is not see-through -- there is no compositor here to make it so -- and it
+  # does not need to be: a dark-to-darker gradient under a lit top edge is what the eye reads
+  # as glass on a dark wallpaper, and it costs one cached surface.
+  echo 'gradient = vertical'  # 1 the bar
+  echo 'start_color = #1a2143 100'
+  echo 'end_color = #0b0f22 100'
+  echo 'gradient = vertical'  # 2 the app in front
+  echo 'start_color = #334290 100'
+  echo 'end_color = #212c62 100'
+  echo 'rounded = 0'          # 1 the bar itself
+  echo 'border_width = 1'
+  echo 'border_sides = T'
+  echo 'background_color = #0f1327 100'
+  echo 'border_color = #3a4a80 100'
+  echo 'gradient_id = 1'
+  echo 'rounded = 10'         # 2 an app that is open, behind
+  echo 'border_width = 1'
+  echo 'background_color = #161d40 100'
+  echo 'background_color_hover = #1e2752 100'
+  echo 'background_color_pressed = #101736 100'
+  echo 'border_color = #2b3563 100'
+  echo 'rounded = 10'         # 3 the app in front
+  echo 'border_width = 1'
+  echo 'background_color = #26326e 100'
+  echo 'background_color_hover = #2d3b80 100'
+  echo 'background_color_pressed = #1c2657 100'
+  echo 'border_color = #5878d8 100'
+  echo 'gradient_id = 2'
+  echo 'rounded = 10'         # 4 an app that is minimised
+  echo 'border_width = 1'
+  echo 'background_color = #10163a 100'
+  echo 'border_color = #202a52 100'
+  echo 'rounded = 10'         # 5 tooltips
+  echo 'border_width = 1'
+  echo 'background_color = #101a2e 100'
+  echo 'border_color = #2b3563 100'
+  # The sums this bar was laid out from, in pixels, for whoever has to read it next to a
+  # screenshot of a bar that looks wrong.
+  echo "# bar $PANEL_W wide: fixed $FIXED_W, launchers $LAUNCH_USED, window list $TASK_ROOM"
+  # L launchers (Tux Apps in the corner, then as many of Files, Terminal, the browser, Phone
+  # files and Settings as that sum pays for), T the open windows, S tray, E the computer's own
+  # numbers, C clock, P the PocketLinux mark in the far corner.
+  echo 'panel_items = LTSECP'
+  echo "panel_position = $PANEL_AT center horizontal"
+  echo 'panel_layer = top'
+  echo 'strut_policy = follow_size'
+  echo 'autohide = 0'
+  echo 'wm_menu = 1'
+  echo 'disable_transparency = 1'
+  echo 'panel_background_id = 1'
+  echo "panel_size = 100% $(px 62)"
+  echo 'panel_margin = 0 0'
+  echo "panel_padding = $PANEL_PAD $(px 2) $PANEL_GAP"
+  echo 'panel_window_name = PocketLinux'
+  echo 'font_shadow = 0'
+  echo 'scale_relative_to_dpi = 0'
+  echo 'scale_relative_to_screen_height = 0'
+  echo 'mouse_effects = 1'
+  echo 'mouse_hover_icon_asb = 100 0 12'
+  echo 'mouse_pressed_icon_asb = 100 0 -8'
+  echo 'urgent_nb_of_blink = 0'
+  # The window list, and the room set aside for it above is what makes it appear at all. Icon
+  # only: a name will not fit beside the launchers on a 720-pixel bar, and tint2 shows a task's
+  # name only in a tooltip, which a finger cannot ask for. A tap raises the app and never
+  # minimises it by accident; a long press (button 3 in Finger mode) minimises.
+  echo 'taskbar_mode = single_desktop'
+  echo 'taskbar_name = 0'
+  echo 'taskbar_hide_if_empty = 0'
+  echo "taskbar_padding = $(px 2) 0 $(px 4)"
+  echo 'taskbar_background_id = 0'
+  echo 'taskbar_active_background_id = 0'
+  echo 'taskbar_sort_order = none'
+  echo 'task_align = left'
+  echo 'task_icon = 1'
+  echo 'task_text = 0'
+  echo 'task_centered = 1'
+  echo 'task_tooltip = 0'
+  echo 'task_thumbnail = 0'
+  echo "task_maximum_size = $(px 50) $(px 50)"
+  echo "task_padding = $(px 3) $(px 3) $(px 4)"
+  echo 'task_background_id = 2'
+  echo 'task_active_background_id = 3'
+  echo 'task_iconified_background_id = 4'
+  echo 'task_urgent_background_id = 3'
+  echo 'mouse_left = toggle'
+  echo 'mouse_middle = none'
+  echo 'mouse_right = toggle_iconify'
+  echo 'mouse_scroll_up = none'
+  echo 'mouse_scroll_down = none'
+  # 12-hour clock, so 18:06 reads as 06:06 pm. The date is on the bar itself, not only in the
+  # tooltip: the default Finger mode taps and never rests, so no tooltip on this bar can be
+  # raised by a finger at all. Upright the weekday goes and the day and month stay. A tap opens
+  # the full list of open windows, which is what makes the bar's few window buttons acceptable.
+  echo "time1_format = $TIME1_FMT"
+  echo "time2_format = $TIME2_FMT"
+  echo "time1_font = Sans Bold $TIME1_PT"
+  echo "time2_font = Sans $TIME2_PT"
+  echo 'clock_font_color = #e6ecf7 100'
+  echo "clock_padding = $CLOCK_PAD $(px 2)"
+  echo 'clock_background_id = 0'
+  echo 'clock_tooltip = %A %d %B %Y, %I:%M %P'
+  echo 'clock_lclick_command = /usr/local/bin/pocketlinux-windows list'
+  echo "systray_padding = $TRAY_PAD $(px 2) $TRAY_PAD"
+  echo "systray_icon_size = $TRAY_ICON"
+  echo 'systray_background_id = 0'
+  echo 'systray_sort = left2right'
+  echo "launcher_icon_size = $LAUNCH_ICON"
+  echo "launcher_padding = $LAUNCH_PAD $(px 2) $LAUNCH_GAP"
+  echo 'launcher_icon_theme = Adwaita'
+  echo 'launcher_icon_theme_override = 1'
+  # tint2 draws a launcher as an icon and nothing else -- there is no option for a name under it
+  # -- and this tooltip answers only to a resting pointer, which Mouse mode has and Finger mode
+  # does not. So the names are kept where a finger can reach them: under the same icons on the
+  # desktop, and in the Apps menu the first button opens.
+  echo 'launcher_tooltip = 1'
+  echo 'launcher_background_id = 0'
+  echo 'launcher_icon_background_id = 0'
+  echo 'startup_notifications = 0'
+  echo "tooltip_padding = $(px 10) $(px 6)"
+  echo 'tooltip_show_timeout = 0.7'
+  echo 'tooltip_hide_timeout = 0.2'
+  echo 'tooltip_background_id = 5'
+  echo "tooltip_font = Sans $(pt 10)"
+  echo 'tooltip_font_color = #e6ecf7 100'
+  # The computer's own free memory and free storage, two short lines. The battery came off this
+  # block: the phone keeps its own status bar on show above the desktop, so the percentage was on
+  # the screen twice. Once a minute is often enough for two figures that move slowly, and every
+  # reading costs a process under PRoot, which the desktop is already counting against Android's
+  # ceiling.
+  #
+  # A tap opens the sentences behind the numbers -- battery, memory, storage, network -- because
+  # a finger cannot raise a tooltip. There is still no execp_tooltip line, so a mouse gets the
+  # same sentences on hover from the command's standard error, which is where tint2 looks.
+  echo 'execp = new'
+  echo 'execp_command = /usr/local/bin/pocketlinux-status'
+  echo 'execp_interval = 60'
+  echo 'execp_has_icon = 0'
+  echo 'execp_continuous = 0'
+  echo 'execp_markup = 0'
+  echo "execp_font = Sans $STATUS_PT"
+  echo 'execp_font_color = #c2cae6 100'
+  echo "execp_padding = $STATUS_PAD 0 0"
+  echo 'execp_centered = 1'
+  echo 'execp_background_id = 0'
+  echo 'execp_lclick_command = /usr/local/bin/pocketlinux-status detail'
+  # The far corner: PocketLinux's own mark, doing a real job -- show the desktop, tap again to
+  # bring the windows back -- opposite Tux in the other corner. Exactly one "P" above, so
+  # exactly one button block here.
+  echo 'button = new'
+  echo "button_icon = $MARK"
+  echo 'button_tooltip = PocketLinux - show the desktop'
+  echo "button_padding = $MARK_PAD 0 0"
+  echo "button_max_icon_size = $MARK_ICON"
+  echo 'button_background_id = 0'
+  echo 'button_centered = 1'
+  echo 'button_lclick_command = /usr/local/bin/pocketlinux-windows minimise-all'
+  echo 'button_rclick_command = /usr/local/bin/pocketlinux-windows list'
+  printf '%s\n' "$launcher_lines"
+  printf '%s\n' "$panel_lines"
+} > "$TINT2_DIR/tint2rc"
+
+printf 'XDG_DESKTOP_DIR="$HOME/Desktop"\nXDG_DOCUMENTS_DIR="$HOME/Projects"\nXDG_DOWNLOAD_DIR="%s"\n' \
+  "$DOWNLOAD_DIR" > "$HOME_DIR/.config/user-dirs.dirs"
+
+# ---- Which app answers which kind of link -------------------------------------------
+# http and https go to the browser -- through its wrapped entry, so Brave gets the sandbox
+# flags a link needs just as a tap on its icon does. A sign-in that opens in the browser comes
+# back to the app that asked for it through the app's own link scheme (chatgpt://, claude://,
+# cursor://...), which each package declares in its .desktop file; those are copied here so
+# the browser can find them. Without this table the login page said "done" and the app never
+# heard.
+# Protocol registrations are often separate NoDisplay=true entries, including
+# registrations created in ~/.local/share/applications by Electron itself. They
+# still need the launcher flags. Favourites/menu visibility must not decide whether
+# an OAuth callback gets a safe launcher.
+for desktop in "$APPLICATIONS_DIR"/*.desktop "$LOCAL_APPS"/*.desktop; do
+  [ -f "$desktop" ] || continue
+  case "${desktop##*/}" in pocketlinux-*) continue ;; esac
+  grep -qi '^Hidden=true' "$desktop" && continue
+  mime=$(field "$desktop" MimeType)
+  case "$mime" in *x-scheme-handler/*) ;; *) continue ;; esac
+  runnable "$desktop" || continue
+  base=$(basename "$desktop" .desktop)
+  label=$(field "$desktop" Name | tr -d '"\\')
+  write_entry "$desktop" "$LOCAL_APPS/pocketlinux-$base.desktop" "$label" \
+    "$(strip_codes "$(field "$desktop" Exec)")"
+done
+browser_handler=""
+html_handler=""
+if [ -n "$BROWSER_ENTRY" ]; then
+  browser_handler=pocketlinux-browser.desktop
+  # Local HTML files keep the ordinary browser entry. The web dispatcher accepts
+  # HTTP(S) URLs only, so sending a local document through it would break file opens.
+  html_handler="pocketlinux-$BROWSER_ENTRY"
+  [ -f "$LOCAL_APPS/$html_handler" ] || html_handler=$BROWSER_ENTRY
+  printf '[Desktop Entry]\nType=Application\nName=Browser\nExec=/usr/local/bin/pocketlinux-browser %%U\nIcon=%s\nTerminal=false\nNoDisplay=true\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\nX-PocketLinux=1\n' \
+    "$(field "$APPLICATIONS_DIR/$BROWSER_ENTRY" Icon)" > "$LOCAL_APPS/$browser_handler"
+fi
+{
+  echo '[Default Applications]'
+  if [ -n "$browser_handler" ]; then
+    printf 'x-scheme-handler/http=%s\nx-scheme-handler/https=%s\ntext/html=%s\n' \
+      "$browser_handler" "$browser_handler" "$html_handler"
+  fi
+  # A downloaded app package opens PocketLinux's installer, the way tapping an APK opens
+  # Android's. Without this line the file does nothing at all when it is tapped.
+  printf 'application/vnd.debian.binary-package=pocketlinux-install.desktop\n'
+  printf 'application/x-deb=pocketlinux-install.desktop\n'
+  printf 'application/x-debian-package=pocketlinux-install.desktop\n'
+  for desktop in "$APPLICATIONS_DIR"/*.desktop "$LOCAL_APPS"/*.desktop; do
+    [ -f "$desktop" ] || continue
+    case "${desktop##*/}" in pocketlinux-*) continue ;; esac
+    grep -qi '^Hidden=true' "$desktop" && continue
+    mime=$(field "$desktop" MimeType)
+    [ -n "$mime" ] || continue
+    handler=$(basename "$desktop")
+    # The wrapped copy, when there is one, so the link arrives with the sandbox flags too.
+    [ -f "$LOCAL_APPS/pocketlinux-$handler" ] && handler="pocketlinux-$handler"
+    printf '%s' "$mime" | tr ';' '\n' | grep '^x-scheme-handler/' | while read -r scheme; do
+      case "$scheme" in x-scheme-handler/http|x-scheme-handler/https) continue ;; esac
+      printf '%s=%s\n' "$scheme" "$handler"
+    done
+  done
+} > "$HOME_DIR/.config/mimeapps.list"
+if command -v update-desktop-database >/dev/null 2>&1; then
+  [ -w "$APPLICATIONS_DIR" ] && update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1
+  update-desktop-database "$LOCAL_APPS" >/dev/null 2>&1 || true
+fi
+
+# The window decorations, in the app's own colours. A themerc is text only -- Openbox draws its
+# built-in button glyphs when a theme ships no .xbm -- and if this file is ever unreadable
+# Openbox logs one line and falls back to Clearlooks, which is where we are today.
+mkdir -p "$HOME_DIR/.themes/PocketLinux/openbox-3"
+cat > "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" <<'THEMERC'
+! PocketLinux -- the same palette as the phone app (see Ui.java).
+!
+! Openbox 3's theme format has no corner radius, no alpha and no shadow: the complete surface
+! vocabulary is [flat|raised|sunken] [solid|gradient] plus colours. So depth here is a vertical
+! gradient and a lit border, and nothing else is worth looking for.
+border.width: 1
+padding.width: 6
+padding.height: 8
+window.handle.width: 0
+window.client.padding.width: 0
+window.client.padding.height: 0
+window.label.text.justify: left
+menu.border.width: 1
+menu.overlap.x: 0
+menu.overlap.y: 0
+menu.separator.width: 1
+menu.separator.padding.width: 6
+menu.separator.padding.height: 4
+osd.border.width: 1
+
+window.active.title.bg: flat vertical gradient
+window.active.title.bg.color: #1c2b55
+window.active.title.bg.colorTo: #121c38
+window.active.label.bg: parentrelative
+window.active.label.text.color: #f1f5fb
+window.active.title.separator.color: #1746c4
+window.active.border.color: #1746c4
+window.active.client.color: #16213f
+window.active.handle.bg: flat solid
+window.active.handle.bg.color: #16213f
+window.active.grip.bg: flat solid
+window.active.grip.bg.color: #16213f
+window.active.button.unpressed.bg: parentrelative
+window.active.button.unpressed.image.color: #c2cae6
+window.active.button.hover.bg: flat solid
+window.active.button.hover.bg.color: #1746c4
+window.active.button.hover.image.color: #ffffff
+window.active.button.pressed.bg: flat solid
+window.active.button.pressed.bg.color: #7a9bff
+window.active.button.pressed.image.color: #0b1320
+window.active.button.disabled.bg: parentrelative
+window.active.button.disabled.image.color: #55607d
+window.active.button.close.unpressed.image.color: #ff9aa5
+window.active.button.close.hover.bg: flat solid
+window.active.button.close.hover.bg.color: #7a2436
+window.active.button.close.hover.image.color: #ffffff
+
+window.inactive.title.bg: flat vertical gradient
+window.inactive.title.bg.color: #121b30
+window.inactive.title.bg.colorTo: #0c1322
+window.inactive.label.bg: parentrelative
+window.inactive.label.text.color: #9aa7bd
+window.inactive.title.separator.color: #23304a
+window.inactive.border.color: #23304a
+window.inactive.client.color: #0d1526
+window.inactive.handle.bg: flat solid
+window.inactive.handle.bg.color: #0d1526
+window.inactive.grip.bg: flat solid
+window.inactive.grip.bg.color: #0d1526
+window.inactive.button.unpressed.bg: parentrelative
+window.inactive.button.unpressed.image.color: #6b7690
+window.inactive.button.hover.bg: flat solid
+window.inactive.button.hover.bg.color: #23304a
+window.inactive.button.hover.image.color: #e6ecf7
+window.inactive.button.pressed.bg: flat solid
+window.inactive.button.pressed.bg.color: #7a9bff
+window.inactive.button.pressed.image.color: #0b1320
+window.inactive.button.disabled.bg: parentrelative
+window.inactive.button.disabled.image.color: #3f4863
+
+menu.border.color: #23304a
+menu.title.bg: flat vertical gradient
+menu.title.bg.color: #1a2143
+menu.title.bg.colorTo: #0d1124
+menu.title.text.color: #7a9bff
+menu.title.text.justify: left
+menu.items.bg: flat solid
+menu.items.bg.color: #101a2e
+menu.items.text.color: #e6ecf7
+menu.items.disabled.text.color: #6b7690
+menu.items.active.bg: flat solid
+menu.items.active.bg.color: #1746c4
+menu.items.active.text.color: #ffffff
+menu.separator.color: #23304a
+
+osd.bg: flat solid
+osd.bg.color: #101a2e
+osd.border.color: #23304a
+osd.label.bg: parentrelative
+osd.label.text.color: #e6ecf7
+osd.hilight.bg: flat solid
+osd.hilight.bg.color: #1746c4
+osd.unhilight.bg: flat solid
+osd.unhilight.bg.color: #23304a
+THEMERC
+
+# ---- Window manager: Openbox's defaults, adjusted for a phone-sized screen ------------
+# Rewritten on every run, so a container built by an earlier version gets these rules too
+# (it used to be written once and never touched again, which is why old installs kept
+# floating half-size windows).
+#   - every normal window opens maximised: a floating window is wasted space on a phone;
+#   - dialogs and utility windows open centred, then the boundary guard shrinks either one
+#     only when its decorated edge would cross the current portrait/landscape work area;
+#   - a title bar on every window, Electron apps included, or there is no way to close them;
+#   - the close, minimise and maximise buttons sit at the LEFT edge of the title bar. A
+#     maximised window always starts at the left edge of the screen, so those buttons are
+#     always on screen -- at the right edge they vanished whenever an app's smallest allowed
+#     width was wider than a portrait phone screen;
+#   - one desktop, not four: Openbox's defaults bind Super+F1..F4 to "go to desktop N", so a
+#     window could vanish to a desktop the phone has no way to show. Those bindings go, and
+#     the count becomes one;
+#   - the title bar carries the app's icon, close, minimise and the name (ICNL): a maximised
+#     window starts at the left edge, so both buttons are always on screen even for an app whose
+#     smallest width is wider than a portrait phone. There is no maximise button -- every window
+#     opens maximised, so it could only make a floating window a phone cannot put back, and
+#     Super+F does that job instead;
+#   - every font is 14, not 11: Openbox sizes the title buttons from the window font alone, and
+#     at 11 they were about two millimetres on this screen. The root menu gains the same way;
+#   - the decorations use PocketLinux's own theme, written above; an unreadable themerc costs one
+#     line in Openbox's log and falls back to the theme Ubuntu ships;
+#   - the keys the phone's toolbar and the panel send: Super+F4 force-closes the window in
+#     front (for an app that stopped answering), Super+Tab lists the open windows, Super+P
+#     opens Phone files, Super+A opens the apps menu, Super+R redraws the screen, Super+M
+#     minimises, Super+F fits the window to the screen, Super+S takes a screenshot. Alt+F4 and
+#     Alt+Tab are Openbox's own defaults and stay.
+OPENBOX_DEFAULT=${POCKETLINUX_OPENBOX_DEFAULT:-/etc/xdg/openbox/rc.xml}
+if [ -f "$OPENBOX_DEFAULT" ]; then
+  # A constant PIXEL height, not a constant point size. Openbox draws its titles and menus at
+  # Xft.dpi, and the dpi is chosen from the phone's own screen now, so a fixed 14 points came out
+  # half as big again as everything around it. 30 px is about 2.8 mm on any of these screens,
+  # which is where Android's own body text lands.
+  OB_PT=$(( 30 * 72 / DPI ))
+  [ "$OB_PT" -lt 9 ] && OB_PT=9
+  [ "$OB_PT" -gt 20 ] && OB_PT=20
+  # The window title font is sized from a FINGER, not from body text: Openbox draws its title
+  # buttons as tall as the title font, and at 30 px the close and minimise buttons were 3 mm
+  # squares with half a millimetre between them -- a thumb aimed at close landed on the icon
+  # menu or on minimise. 44 px is Android's own smallest touch target. Menus keep OB_PT.
+  OB_TITLE_PT=$(( 44 * 72 / DPI ))
+  [ "$OB_TITLE_PT" -lt 12 ] && OB_TITLE_PT=12
+  [ "$OB_TITLE_PT" -gt 28 ] && OB_TITLE_PT=28
+  sed -e 's|<size>[0-9]*</size>|<size>'"$OB_PT"'</size>|g' \
+      -e '/<font place="ActiveWindow">/,/<\/font>/ s|<size>[0-9]*</size>|<size>'"$OB_TITLE_PT"'</size>|' \
+      -e '/<font place="InactiveWindow">/,/<\/font>/ s|<size>[0-9]*</size>|<size>'"$OB_TITLE_PT"'</size>|' \
+      -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>ICNL</titleLayout>|' \
+      -e 's|<theme>|<theme>\n    <name>PocketLinux</name>|' \
+      -e 's|<animateIconify>yes</animateIconify>|<animateIconify>no</animateIconify>|' \
+      -e 's|<number>[0-9]*</number>|<number>1</number>|' \
+      -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
+      -e 's|<screen_edge_strength>[0-9]*</screen_edge_strength>|<screen_edge_strength>100</screen_edge_strength>|' \
+      -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>\n    <application type="dialog"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>\n    <application type="utility"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Unmaximize"/></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketlinux-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketlinux-appshot</command></action></keybind>|' \
+      "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
+    && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
+fi
+
+mv -f "$LABELS_NEW" "$HOME_DIR/.config/pocketlinux/labels" 2>/dev/null || true
+
+# Own only generated settings and launcher files. Never walk Phone, Projects,
+# Downloads or browser profiles during a menu refresh. On the desktop only this script's own
+# entries, gathered above -- a plain glob there reached the owner's own files, and this runs as
+# root after an app install. -h so a symlink is never followed to whatever it points at.
+chown -h coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+  "$HOME_DIR/.config/pocketlinux/labels" \
+  "$HOME_DIR/.themes" "$HOME_DIR/.themes/PocketLinux" "$HOME_DIR/.themes/PocketLinux/openbox-3" \
+  "$OPENBOX_DIR/menu.xml" "$OPENBOX_DIR/rc.xml" "$TINT2_DIR/tint2rc" \
+  "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" \
+  "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \
+  "$LOCAL_APPS"/pocketlinux-*.desktop 2>/dev/null || true
+[ "${#DESKTOP_OWNED[@]}" -eq 0 ] \
+  || chown -h coder:coder "${DESKTOP_OWNED[@]}" 2>/dev/null || true
+
+# A desktop that is open right now gets the new list at once. This also runs as root from an
+# install that happens while the desktop is open, so the panel is restarted as the desktop's
+# own user: started as root it would read root's (empty) settings and come up blank.
+# The desktop's own X server must be answering -- a stale socket outlives an unclean stop, and
+# starting anything against it hangs. xdpyinfo is in x11-utils, which set-up installs.
+display_live() {
+  [ -S /tmp/.X11-unix/X1 ] || return 1
+  command -v xdpyinfo >/dev/null 2>&1 || return 0
+  DISPLAY=:1 timeout --foreground --kill-after=1s 3s xdpyinfo >/dev/null 2>&1
+}
+
+if display_live; then
+  DISPLAY=:1 openbox --reconfigure 2>/dev/null || true
+  if pgrep -x tint2 >/dev/null 2>&1; then
+    # tint2 re-reads its settings on SIGUSR1. It is never restarted from here: when this script
+    # runs from an app install it is inside that install's own short-lived container, started
+    # with --kill-on-exit, so a panel started here would be killed the moment the install
+    # finished -- and the desktop would sit with no panel until it was closed and opened again.
+    pkill -USR1 -x tint2 2>/dev/null || true
+  elif [ "${DISPLAY:-}" = ":1" ]; then
+    # No panel at all (it crashed, or the phone killed it for memory) and this runs inside the
+    # desktop session itself -- it exported DISPLAY; an install's container never does -- so a
+    # replacement started here belongs to the session and survives. (Every container is
+    # started as fake root, so a uid test could never tell the two apart.)
+    DISPLAY=:1 setsid tint2 >/tmp/pocketlinux-tint2.log 2>&1 &
+  fi
+  DISPLAY=:1 /usr/local/bin/pocketlinux-window-guard once >/dev/null 2>&1 || true
+fi
