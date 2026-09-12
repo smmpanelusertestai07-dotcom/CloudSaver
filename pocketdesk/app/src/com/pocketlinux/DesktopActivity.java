@@ -1234,8 +1234,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "Mouse: drag anywhere to move the arrow, tap to click, hold to right-click, "
                 + "two fingers to scroll, tap then press-and-move to drag.\n"
                 + "Screen: the finger keeps the button down, so a swipe drags, draws and plays. "
-                + "Two fingers zoom the picture here; one touch at a time is what reaches "
-                + "Linux.\n\n"
+                + "Two fingers scroll whatever is under them, or slide the picture when it is "
+                + "zoomed in; a pinch zooms.\n"
+                + "In all three, one touch at a time reaches Linux. A desktop takes a single "
+                + "pointer, so two fingers on the glass are never two touches over there.\n\n"
                 + "The bar holds five things: Home, this status, the phone keyboard, the pointer "
                 + "switch, and More ▾. More ▾ holds the rest, in four parts: what is "
                 + "wanted right now (mute, the special keys row, holding the mouse button down), "
@@ -1522,8 +1524,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     /**
      * Where the desktop's private socket lives, inside this app's own storage. The desktop
-     * script creates it there; nothing outside this app can open it. Null is never returned --
-     * when the socket is absent the client falls back to the old local port by itself.
+     * script creates it there; nothing outside this app can open it. There is no local port
+     * behind it any more: with the socket missing the viewer reports that and stops, because a
+     * desktop on 127.0.0.1 with no password is one every other app on this phone can drive.
      */
     private String vncSocketPath() {
         return new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketdesk/vnc.sock")
@@ -1549,7 +1552,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 break;
             case TOUCH:
                 said = "Screen: the finger holds the button down, so a swipe drags, draws and "
-                        + "plays. Two fingers zoom.";
+                        + "plays. Two fingers scroll, and a pinch zooms.";
                 break;
             default:
                 said = "Finger: tap to click, swipe to scroll either way. To hold a divider, "

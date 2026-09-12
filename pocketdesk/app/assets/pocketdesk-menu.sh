@@ -256,6 +256,10 @@ EOF
   [ -n "$tool_items" ] && printf '%s' "$tool_items"
   echo '    <item label="Screenshot"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></item>'
   echo '    <item label="Screenshot (window in front)"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot window</command></action></item>'
+  # A message that disappeared before it was read used to be gone for good. The desktop now keeps
+  # the last twenty (history_length in pocketdesk-desktop.sh) and this brings them back, newest
+  # first, one for each tap. Nothing else on the desktop offered them.
+  echo '    <item label="Show the last message again"><action name="Execute"><command>dunstctl history-pop</command></action></item>'
   echo '    <item label="Storage"><action name="Execute"><command>/usr/local/bin/pocketdesk-storage</command></action></item>'
   echo '    <item label="Software" icon="/usr/share/pixmaps/pocketdesk-software.png"><action name="Execute"><command>/usr/local/bin/pocketdesk-software</command></action></item>'
   echo '    <item label="Appshot to the AI app (Super+Space)"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></item>'
@@ -276,14 +280,18 @@ EOF
   echo '      <item label="What is connected"><action name="Execute"><command>/usr/local/bin/pocketdesk-adb status</command></action></item>'
   echo '    </menu>'
   echo '  </menu>' 
+  # These open a folder, but what they open it in is the file manager, so they start it the same
+  # way every other app on this computer is started. Naming pcmanfm directly meant a folder
+  # tapped here skipped the theme, the log and the failure message that the Files icon on the bar
+  # gets, so the same app behaved differently depending on where it was started from.
   echo '  <separator label="Folders"/>'
-  echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
-  echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
-  echo '  <item label="Cloud"><action name="Execute"><command>pcmanfm /home/coder/Cloud</command></action></item>'
-  printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
-  echo '  <item label="Bin"><action name="Execute"><command>pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
+  echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Phone</command></action></item>'
+  echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Cloud"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Cloud</command></action></item>'
+  printf '  <item label="Download destination"><action name="Execute"><command>'"$OPEN"' pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
+  echo '  <item label="Bin"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
   echo '  <item label="Empty the bin"><action name="Execute"><command>sh -c "rm -rf /home/coder/.local/share/Trash/files/* /home/coder/.local/share/Trash/files/.[!.]* /home/coder/.local/share/Trash/info/* 2>/dev/null; notify-send -a PocketLinux Bin \"The bin is empty.\""</command></action></item>'
-  echo '  <item label="App reports"><action name="Execute"><command>pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
+  echo '  <item label="App reports"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.pocketdesk/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
   echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
   echo '  <item label="Fit window to the screen"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></item>'
@@ -380,7 +388,7 @@ cp -f "$LOCAL_APPS/pocketdesk-software.desktop" "$DESKTOP_DIR/pocketdesk-softwar
 # The phone's own files, as a folder on the desktop and a button on the panel. Empty but for a
 # note until the owner turns Phone files on in PocketLinux's Settings; then Download, DCIM and
 # Documents are in it. Super+P opens it too.
-printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\047s storage, inside the computer\nExec=pcmanfm /home/coder/Phone\nIcon=pocketdesk-phone\nTerminal=false\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Phone files\nComment=Your phone\047s storage, inside the computer\nExec='"$OPEN"' pcmanfm /home/coder/Phone\nIcon=pocketdesk-phone\nTerminal=false\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-phone.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-phone.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-phone.desktop" "$DESKTOP_DIR/pocketdesk-phone.desktop"
@@ -388,7 +396,7 @@ cp -f "$LOCAL_APPS/pocketdesk-phone.desktop" "$DESKTOP_DIR/pocketdesk-phone.desk
 # Projects, with an entry of its own. It reached the desktop before only as pcmanfm's "Documents"
 # shortcut -- XDG_DOCUMENTS_DIR points there -- wearing the theme's plain grey folder, in a place
 # pcmanfm chose. Its own entry gives it PocketLinux's folder, a name and a description.
-printf '[Desktop Entry]\nType=Application\nName=Projects\nComment=Where your code and your work live\nExec=pcmanfm /home/coder/Projects\nIcon=pocketdesk-projects\nTerminal=false\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Projects\nComment=Where your code and your work live\nExec='"$OPEN"' pcmanfm /home/coder/Projects\nIcon=pocketdesk-projects\nTerminal=false\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-projects.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-projects.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-projects.desktop" "$DESKTOP_DIR/pocketdesk-projects.desktop"
@@ -408,7 +416,7 @@ cp -f "$LOCAL_APPS/pocketdesk-settings.desktop" "$DESKTOP_DIR/pocketdesk-setting
 # application icons any more, only the symbolic set, which GTK will not use for a launcher and
 # will not substitute for one -- that is what left Software wearing a blank sheet, and the Bin was
 # the last entry still asking the theme for its mark.
-printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec=pcmanfm /home/coder/.local/share/Trash/files\nIcon=pocketdesk-bin\nTerminal=false\nX-PocketDesk=1\n' \
+printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec='"$OPEN"' pcmanfm /home/coder/.local/share/Trash/files\nIcon=pocketdesk-bin\nTerminal=false\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-bin.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-bin.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-bin.desktop" "$DESKTOP_DIR/pocketdesk-bin.desktop"
@@ -938,7 +946,7 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
       -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
       -e 's|<screen_edge_strength>[0-9]*</screen_edge_strength>|<screen_edge_strength>100</screen_edge_strength>|' \
       -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>\n    <application type="dialog"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>\n    <application type="utility"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>|' \
-      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Unmaximize"/></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Unmaximize"/></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi

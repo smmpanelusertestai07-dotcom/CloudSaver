@@ -12,12 +12,39 @@ import android.os.Build;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.os.StatFs;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
 import java.util.Locale;
 
 final class DeviceProbe {
+    /**
+     * How long one reading is handed out again before the phone is asked afresh.
+     *
+     * One read registers a sticky battery broadcast, stats the filesystem, and asks the power
+     * and connectivity services: several trips out to Android's own services. The home screen's
+     * timer, the data budget and the background service's guards each used to ask separately
+     * within the same instant, so a single five-second tick cost five full readings and a long
+     * setup on a budget phone ran tens of thousands of them.
+     *
+     * A second and a half is chosen to be shorter than anything the guards react to. Battery
+     * percent, free space, temperature and the network name do not move meaningfully in that
+     * time, so a guard protecting the phone still sees a genuine change on its next look; what
+     * it no longer does is pay for the same reading five times over.
+     */
+    private static final long CACHE_MS = 1_500L;
+
+    /**
+     * The last reading and when it was taken, shared by every caller in the process.
+     *
+     * Everything read here belongs to the phone and the app as a whole, not to one screen, so
+     * which Context asked makes no difference. The time is the boot clock rather than the wall
+     * clock, because a clock correction must not make a stale reading look fresh.
+     */
+    private static volatile DeviceProbe cached;
+    private static volatile long cachedAt;
+
     final String model;
     final String androidVersion;
     final String abi;
@@ -43,6 +70,9 @@ final class DeviceProbe {
     }
 
     static DeviceProbe read(Context context) {
+        DeviceProbe recent = cached;
+        if (recent != null && SystemClock.elapsedRealtime() - cachedAt < CACHE_MS) return recent;
+
         ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo memory = new ActivityManager.MemoryInfo();
         if (am != null) am.getMemoryInfo(memory);
@@ -80,8 +110,14 @@ final class DeviceProbe {
         String niceModel = manufacturer.substring(0, 1).toUpperCase(Locale.ROOT)
                 + manufacturer.substring(1) + " " + deviceModel;
         String abi = Build.SUPPORTED_ABIS.length == 0 ? "unknown" : Build.SUPPORTED_ABIS[0];
-        return new DeviceProbe(niceModel, "Android " + Build.VERSION.RELEASE, abi,
+        DeviceProbe fresh = new DeviceProbe(niceModel, "Android " + Build.VERSION.RELEASE, abi,
                 memory.totalMem, free, level, temp, networkName(context), thermal);
+        // The reading is published before its timestamp on purpose: two threads reading at once
+        // may then both do the work, which is only wasteful, whereas the other order could hand
+        // out an older reading under a fresh time.
+        cached = fresh;
+        cachedAt = SystemClock.elapsedRealtime();
+        return fresh;
     }
 
     /**
@@ -179,7 +215,13 @@ final class DeviceProbe {
         return "about " + ((minutes + 59) / 60) + " hr left";
     }
 
-    /** True when the phone is plugged in, which relaxes the battery guards. */
+    /**
+     * True when the phone is plugged in, which relaxes the battery guards.
+     *
+     * Read fresh every time, unlike the full probe above. This is asked only at the moments a
+     * decision is made -- before a start, before a download -- and never on a timer, and an
+     * owner who plugs the phone in expects the very next tap to work.
+     */
     static boolean isCharging(Context context) {
         try {
             Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));

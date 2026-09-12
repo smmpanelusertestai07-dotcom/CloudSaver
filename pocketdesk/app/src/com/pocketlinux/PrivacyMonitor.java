@@ -53,6 +53,11 @@ final class PrivacyMonitor {
      * What the permission is for, in the owner's words. Anything not named here is shown by its
      * Android name, which is better than hiding it: an unexplained permission the owner can see
      * is safer than one they cannot.
+     *
+     * Only what the manifest declares ever reaches this list, so a line written for a permission
+     * the app does not ask for can never be shown, and it tells the next reader the app can do
+     * something it cannot. Two such lines were here, one for noticing a restart and one for
+     * reading the list of installed apps, and neither permission has ever been in the manifest.
      */
     private static String purposeOf(String permission) {
         switch (permission) {
@@ -81,10 +86,6 @@ final class PrivacyMonitor {
             case "android.permission.FOREGROUND_SERVICE":
             case "android.permission.FOREGROUND_SERVICE_SPECIAL_USE":
                 return "Keep the Linux computer running with a notification you can see.";
-            case "android.permission.RECEIVE_BOOT_COMPLETED":
-                return "Notice that the phone restarted, so a stopped set-up can be continued.";
-            case "android.permission.QUERY_ALL_PACKAGES":
-                return "See which app can open a file you saved, and nothing more.";
             default:
                 return permission;
         }
@@ -161,8 +162,6 @@ final class PrivacyMonitor {
             case Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS: return "Battery usage";
             case "android.permission.FOREGROUND_SERVICE": return "Run in the foreground";
             case "android.permission.FOREGROUND_SERVICE_SPECIAL_USE": return "Run the computer";
-            case "android.permission.RECEIVE_BOOT_COMPLETED": return "Notice a restart";
-            case "android.permission.QUERY_ALL_PACKAGES": return "See installed apps";
             default:
                 int dot = permission.lastIndexOf('.');
                 return dot < 0 ? permission : permission.substring(dot + 1);

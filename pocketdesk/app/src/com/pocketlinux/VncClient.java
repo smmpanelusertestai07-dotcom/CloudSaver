@@ -113,16 +113,30 @@ final class VncClient {
     void setLowColour(boolean low) { lowColour = low; }
 
     /**
-     * The display server's private socket inside this app's storage, when there is one.
+     * The display server's private socket inside this app's storage. This is the only way in.
      *
      * Android does not keep loopback apart between apps, so a TCP port here could be opened by
      * any other app on the phone that holds the internet permission -- and this session has no
      * password. A unix socket in app-private storage cannot be opened by anyone else at all.
-     * The port stays as a fallback for a container whose Xtigervnc is too old for it.
+     *
+     * There is no port behind it any more. The desktop script starts the display with
+     * -rfbport -1 and fails with a reason when the socket will not come up, because a desktop
+     * on 127.0.0.1 with no password is a desktop every other app on the phone can watch and
+     * type into. Do not put the port back as a convenience for an old container: no desktop is
+     * better than one anybody on the phone can drive.
      */
     private final String socketPath;
     private volatile android.net.LocalSocket localSocket;
 
+    /**
+     * Host and port name a loopback address the shipped app never reaches.
+     *
+     * With a socket path set, connectAndRun gives up rather than dialling them, so the only
+     * caller that gets there is one built without a path: the RFB tests, which drive this class
+     * over a plain ServerSocket because that is the only way to exercise the handshake and the
+     * decoders without a container. The pair cannot simply be deleted here -- DesktopActivity
+     * still passes it in and LinuxService still probes the same address.
+     */
     VncClient(String host, int port, Listener listener) {
         this(host, port, null, listener);
     }
@@ -163,11 +177,14 @@ final class VncClient {
                 }
             }
             if (rawIn == null && socketPath != null && !portOffered(socketPath, "vnc.port")) {
-                // The desktop is on its private socket, which is not up yet. Waiting for it beats
-                // reaching for a loopback port every app on this phone can also reach.
+                // Nothing writes vnc.port any more, so a real session always stops here when its
+                // private socket is not up: reporting that beats reaching for a loopback port
+                // every other app on this phone can reach as well.
                 throw new IOException("The desktop's private display socket is not ready");
             }
             if (rawIn == null) {
+                // Only a client built without a socket path arrives here, which is the RFB
+                // tests. A real session has its private socket or has already given up above.
                 if (closed.get()) throw new IOException("Viewer connection was closed");
                 socket = new Socket();
                 socket.setTcpNoDelay(true);
@@ -882,13 +899,13 @@ final class VncClient {
         }
     }
 
-    /** True once the desktop's private socket answers -- the same question, for the new path. */
     /**
-     * True when the desktop said it had to fall back to a loopback port.
+     * True when the desktop wrote the named marker to say it had to fall back to a loopback port.
      *
-     * The marker is written by pocketdesk-desktop only in that branch and removed at every
-     * start, so a missing file means the private socket is the only way in -- and a port that
-     * any other app on the phone could have opened first is never tried.
+     * pocketdesk-desktop deletes every marker at each start and writes one only in a fallback
+     * branch, so a missing file means the private socket is the only way in, and a port another
+     * app on the phone could have opened first is never tried. Only the sound still has such a
+     * branch; the display has none, so vnc.port is never written and this is always false for it.
      */
     static boolean portOffered(String socketPath, String markerName) {
         java.io.File socket = new java.io.File(socketPath);
@@ -896,6 +913,7 @@ final class VncClient {
         return parent != null && new java.io.File(parent, markerName).exists();
     }
 
+    /** True once the desktop's private socket answers: the same question, asked of the socket. */
     static boolean canConnect(String socketPath) {
         if (socketPath == null || !new java.io.File(socketPath).exists()) return false;
         android.net.LocalSocket test = new android.net.LocalSocket();

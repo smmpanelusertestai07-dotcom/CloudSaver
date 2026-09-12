@@ -102,14 +102,6 @@ final class DeviceCheck {
     }
 
     /**
-     * A phone Android itself calls low-memory, or one with under 3 GB.
-     *
-     * Android sets the flag on devices configured for the low-RAM profile, which is what an
-     * Android (Go edition) phone is, and the whole app can use it to choose smaller defaults
-     * without asking the owner to find a setting: a smaller framebuffer, a cheaper pixel format,
-     * no wide workspace, no opening splash.
-     */
-    /**
      * Whether the four AI desktop apps have room to run here.
      *
      * Read by the Apps tab, so a phone that cannot hold them is told on the row rather than after
@@ -124,6 +116,20 @@ final class DeviceCheck {
         return memory.totalMem >= MIN_RAM_GB * 1_000_000_000L - RAM_TOLERANCE_BYTES;
     }
 
+    /**
+     * A phone Android itself calls low-memory, or one with under 3 GB.
+     *
+     * Android sets the flag on devices configured for the low-RAM profile, which is what an
+     * Android (Go edition) phone is, and two choices are made from it without asking the owner
+     * to find a setting: the desktop is held in the cheaper 16-bit pixel format, which halves
+     * both framebuffers (VncView), and the opening splash is skipped (MainActivity), because
+     * three and a half seconds of brand is the one thing nobody on such a phone needs.
+     *
+     * Those two, and no more. This used to promise a smaller desktop and no wide workspace as
+     * well, and neither was ever built: the desktop is capped at the same size on every phone,
+     * and the wide workspace is the owner's own switch in the viewer. A comment that promises
+     * behaviour is quoted as fact in the documentation, so it is kept to what the code does.
+     */
     static boolean isSmallPhone(Context context) {
         ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         if (manager != null && manager.isLowRamDevice()) return true;

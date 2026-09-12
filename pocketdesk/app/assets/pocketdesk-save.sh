@@ -23,9 +23,15 @@ PHONE_DIR=${POCKETDESK_PHONE_DOWNLOAD_DIR:-$HOME_DIR/Phone/Download/PocketLinux}
 have() { command -v "$1" >/dev/null 2>&1; }
 say() { printf '%s\n' "$*"; }
 
+# The full path, not the name "pocketdesk-linux". PocketLinux's icons are installed in
+# /usr/share/pixmaps, which dunst reads as a place an icon THEME may live rather than as a
+# folder of icons, so the bare name matched nothing and these messages arrived with no mark.
+ICON=/usr/share/pixmaps/pocketdesk-linux.png
+[ -f "$ICON" ] || ICON=pocketdesk-linux
+
 note() {   # note <title> <body>
   if have notify-send; then
-    notify-send -a PocketLinux -i pocketdesk-linux "$1" "$2" 2>/dev/null || true
+    notify-send -a PocketLinux -i "$ICON" "$1" "$2" 2>/dev/null || true
   fi
   printf '%s: %s\n' "$1" "$2"
 }

@@ -16,17 +16,22 @@
 #      and that its setup commands run with administrator rights;
 #   4. a check that cannot be argued with (wrong processor, no space, missing dependencies)
 #      blocks the install; a risk the owner can judge offers "Install anyway", exactly as
-#      Android does for an app from outside its store.
+#      Android does for an app from outside its store;
+#   5. and it removes an app again, which is the other half of the Android moment: opening the
+#      file of an app that is already there offers Remove beside Install.
 #
 # Usage: pocketdesk-install [file.deb]      (no file: asks for one, starting in Downloads)
 #        pocketdesk-install --report <file> (prints the checks, installs nothing)
+#        pocketdesk-install --remove <name> (removes an installed app by its package name)
 set -u
 
 REPORT_ONLY=0
-if [ "${1:-}" = "--report" ]; then
-  REPORT_ONLY=1
-  shift
-fi
+REMOVE_MODE=0
+REMOVE_ONLY=""
+case "${1:-}" in
+  --report) REPORT_ONLY=1; shift ;;
+  --remove) REMOVE_MODE=1; REMOVE_ONLY="${2:-}"; shift; [ "$#" -gt 0 ] && shift ;;
+esac
 
 FILE="${1:-}"
 
@@ -60,6 +65,150 @@ field() { dpkg-deb -f "$FILE" "$1" 2>/dev/null | head -n 1; }
 # copy of one of these is always the worse way to get it, so it is called out by name.
 PUBLISHED="chatgpt claude-desktop cursor antigravity google-chrome-stable"
 
+# The packages the computer itself is made of: the X server, the window manager, the panel, the
+# file manager, the terminal, the message bus and the dialogs this script talks through. apt is
+# asked to simulate every removal first, and a removal that would take any of these with it is
+# refused outright. An owner who taps Remove on an app must never be left with a computer that
+# has no window manager to show them the result.
+CORE_PACKAGES="tigervnc-standalone-server tigervnc-common openbox tint2 pcmanfm lxterminal
+dbus-x11 dbus-system-bus-common x11-xserver-utils x11-utils xdotool wmctrl zenity
+desktop-file-utils librsvg2-common pulseaudio pulseaudio-utils xdg-utils
+apt apt-utils dpkg sudo ca-certificates curl gnupg"
+
+# A pulsing window while apt works, in one place because installing and removing both need it.
+# apt with nothing on screen looks like an app that has hung, and the owner taps the file again.
+progress_fifo=""
+progress_start() {   # progress_start <what the window says>
+  have zenity || return 0
+  progress_fifo="/tmp/pocketdesk-install-$$.progress"
+  rm -f "$progress_fifo"
+  if mkfifo "$progress_fifo" 2>/dev/null; then
+    zenity --progress --pulsate --auto-close --no-cancel --width=340 \
+      --title="PocketLinux" --text="$1" < "$progress_fifo" >/dev/null 2>&1 &
+    exec 9<>"$progress_fifo"
+  else
+    progress_fifo=""
+  fi
+}
+progress_stop() {
+  [ -n "$progress_fifo" ] || return 0
+  printf '100\n' >&9 2>/dev/null || true
+  exec 9>&- 2>/dev/null || true
+  rm -f "$progress_fifo"
+  progress_fifo=""
+}
+trap 'progress_stop' EXIT INT TERM
+
+# Removing an app, which is the half that used to be a typed command in a terminal.
+remove_package() {   # remove_package <package name>
+  pkg="$1"
+  case "$pkg" in
+    ""|-*)
+      say error "Cannot remove" "No app was named, so nothing was changed."
+      return 1 ;;
+  esac
+  if ! have apt-get || ! have sudo || ! have dpkg-query; then
+    say error "Cannot remove apps here" \
+"This computer is missing the tools that add and remove software.
+
+Update the computer's basics in PocketLinux (Settings -> Storage), then try again."
+    return 1
+  fi
+  case "$(dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null || true)" in
+    *"ok installed"*) ;;
+    *)
+      say info "$pkg is not on this computer" "There is nothing to remove."
+      return 0 ;;
+  esac
+
+  # --auto-remove in the simulation and in the real run, the same flags in both, so the list
+  # shown to the owner is the list that happens. Simulating without it and then removing with
+  # it would take away packages nobody was shown.
+  rm_log=$(mktemp 2>/dev/null || echo /tmp/pocketdesk-remove-sim.log)
+  if ! sudo apt-get remove -s -y --auto-remove "$pkg" > "$rm_log" 2>&1; then
+    rm -f "$rm_log" 2>/dev/null || true
+    say error "$pkg cannot be removed" \
+"The computer could not work out how to remove it without breaking something else. Nothing was changed."
+    return 1
+  fi
+  going=$(awk '/^Remv /{print $2}' "$rm_log" | sort -u)
+  rm -f "$rm_log" 2>/dev/null || true
+  if [ -z "$going" ]; then
+    # dpkg says it is installed and apt says removing it takes nothing away. The two disagree,
+    # so this stops rather than running a removal nobody could be shown first.
+    say error "$pkg cannot be removed" \
+"The computer could not say what removing $pkg would take away, so nothing was changed."
+    return 1
+  fi
+
+  protected=""
+  for one in $going; do
+    case "$one" in pocketdesk*) protected="$protected $one"; continue ;; esac
+    for keep in $CORE_PACKAGES; do
+      [ "$one" = "$keep" ] && protected="$protected $one"
+    done
+  done
+  if [ -n "$protected" ]; then
+    say error "Removing $pkg would break the computer" \
+"Removing $pkg would also remove:$protected
+
+Those are parts of the Linux computer itself, and without them the desktop would not start again. Nothing was removed."
+    return 1
+  fi
+
+  freed_kb=0
+  for one in $going; do
+    size=$(dpkg-query -W -f='${Installed-Size}' "$one" 2>/dev/null || echo 0)
+    case "$size" in *[!0-9]*|"") size=0 ;; esac
+    freed_kb=$(( freed_kb + size ))
+  done
+  freed=$(human $(( freed_kb * 1024 )))
+  going_line=$(printf '%s' "$going" | tr '\n' ' ')
+  question="Removes: $going_line
+Space freed: $freed
+
+Remove $pkg from the Linux computer?"
+
+  if have zenity; then
+    zenity --question --width=430 --no-markup --title="Remove an app" --text="$question" \
+      --ok-label="Remove" --cancel-label="Cancel" >/dev/null 2>&1 || return 0
+  elif [ -t 0 ]; then
+    printf '%s\n\nType yes to remove: ' "$question"
+    read -r reply
+    case "$reply" in y|Y|yes|YES|Yes) ;; *) printf 'Nothing was removed.\n'; return 0 ;; esac
+  else
+    say error "Cannot ask you first" \
+"This computer is missing the desktop's dialogs, so there is no way to show you what is about to be removed - and nothing is removed without that."
+    return 1
+  fi
+
+  log="$HOME/.pocketdesk/logs/install.log"
+  mkdir -p "$(dirname "$log")" 2>/dev/null || true
+  progress_start "Removing $pkg..."
+  if sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y --auto-remove "$pkg" >> "$log" 2>&1; then
+    progress_stop
+    sudo /usr/local/bin/pocketdesk-menu >/dev/null 2>&1 || true
+    say info "$pkg is removed" \
+"It is gone from the Apps menu, and $freed is free again."
+    return 0
+  fi
+  progress_stop
+  # The same repair the install path makes: a removal that stops half way leaves dpkg unable to
+  # do anything else, and the owner meets that as a mystery a week later.
+  sudo dpkg --configure -a >> "$log" 2>&1 || true
+  sudo apt-get -y -f install >> "$log" 2>&1 || true
+  say error "$pkg was not removed" \
+"The computer could not finish removing it, and it was put back in working order.
+
+The details are in the Apps menu -> App reports -> install.log."
+  return 1
+}
+
+if [ "$REMOVE_MODE" = "1" ]; then
+  remove_package "$REMOVE_ONLY"
+  exit $?
+fi
+
 if [ -z "$FILE" ]; then
   if have zenity; then
     PICK_DIR=$(cat "$HOME/.config/pocketdesk/download-dir" 2>/dev/null || true)
@@ -72,7 +221,7 @@ if [ -z "$FILE" ]; then
       --file-filter="Linux app packages | *.deb" \
       2>/dev/null) || exit 0
   else
-    printf 'Usage: pocketdesk-install <file.deb>\n'
+    printf 'Usage: pocketdesk-install <file.deb>\n       pocketdesk-install --remove <name>\n'
     exit 2
   fi
 fi
@@ -117,7 +266,7 @@ case "$lower_name" in
     say error "Windows programs cannot run here" \
 "$name_only is a Windows program, and this is a Linux computer.
 
-Windows itself cannot run on a phone: Android does not give an installed app the hardware virtualisation a Windows machine needs. A compatibility layer is not a way round it either — the project that ran Windows programs on ARM64 dropped Android support, and this container traces every system call, which is what an instruction translator cannot work inside.
+Windows itself cannot run on a phone: Android does not give an installed app the hardware virtualisation a Windows machine needs. A compatibility layer is not a way round it either -- the project that ran Windows programs on ARM64 dropped Android support, and this container traces every system call, which is what an instruction translator cannot work inside.
 
 Look for the Linux ARM64 build of what you wanted. All four AI desktop apps publish one, and the Apps tab installs them for you.
 
@@ -156,6 +305,24 @@ NEEDS_BYTES=$(( INSTALLED_KB * 1024 * 4 / 3 + FILE_BYTES ))
 FREE_BYTES=$(df -kP / 2>/dev/null | awk 'NR==2 {print $4 * 1024}')
 [ -n "$FREE_BYTES" ] || FREE_BYTES=0
 
+# What opening this file is actually going to do, which is what Android's own installer leads
+# with: it says Update, not Install, when the app is already on the phone.
+INSTALLED_VERSION=""
+if have dpkg-query && [ -n "$PACKAGE" ]; then
+  case "$(dpkg-query -W -f='${Status}' "$PACKAGE" 2>/dev/null || true)" in
+    *"ok installed"*) INSTALLED_VERSION=$(dpkg-query -W -f='${Version}' "$PACKAGE" 2>/dev/null || true) ;;
+  esac
+fi
+if [ -z "$INSTALLED_VERSION" ]; then
+  ACTION="This app is not on the computer yet."
+elif [ "$INSTALLED_VERSION" = "$VERSION" ]; then
+  ACTION="Version $INSTALLED_VERSION is already installed. Installing it again puts the same version back."
+elif have dpkg && dpkg --compare-versions "$VERSION" gt "$INSTALLED_VERSION" 2>/dev/null; then
+  ACTION="Version $INSTALLED_VERSION is installed now. This updates it to $VERSION."
+else
+  ACTION="Version $INSTALLED_VERSION is installed now, which is newer than this one. Installing this puts the older version back."
+fi
+
 verdict=ok
 blockers=""
 warnings=""
@@ -184,13 +351,18 @@ fi
 # 3. The app is one the Apps tab installs from its publisher, signed.
 for known in $PUBLISHED; do
   [ "$PACKAGE" = "$known" ] || continue
-  warn "PocketLinux installs this app itself, from its publisher's own signed repository — the Apps tab, or Settings for Google Chrome. That copy is verified and updates in place; this downloaded one is neither."
+  warn "PocketLinux installs this app itself, from its publisher's own signed repository -- the Apps tab, or Settings for Google Chrome. That copy is verified and updates in place; this downloaded one is neither."
 done
 
 # 4. What apt would have to do. The simulation is the only honest way to know whether the
 #    other software it needs can be found, and it changes nothing on the computer.
+#
+#    This used to be switchable off with an environment variable, which was there for the tests
+#    and shipped in the product with them. A safety check with an off switch is not a safety
+#    check: anything that set the variable turned off the only two things standing between a
+#    tapped file and a computer that no longer starts. The tests drive the real path now.
 sim_log=$(mktemp 2>/dev/null || echo /tmp/pocketdesk-install-sim.log)
-if [ "${POCKETDESK_SIMULATE:-1}" = "1" ] && have apt-get && have sudo; then
+if have apt-get && have sudo; then
   if ! sudo apt-get install -s -y "$FILE" > "$sim_log" 2>&1; then
     missing=$(grep -oE 'Depends: [^ ]+' "$sim_log" | awk '{print $2}' | sort -u | tr '\n' ' ')
     if [ -n "$missing" ]; then
@@ -206,6 +378,10 @@ if [ "${POCKETDESK_SIMULATE:-1}" = "1" ] && have apt-get && have sudo; then
       block "Installing this would delete software already on the computer: $removals"
     fi
   fi
+else
+  # Never silently. A screen headed "Safety check" that stands for a check nobody made is
+  # worse than one that says the check could not be made.
+  warn "The check for other software this app needs could not be run on this computer, so nothing here can say whether it has everything it needs."
 fi
 rm -f "$sim_log" 2>/dev/null || true
 
@@ -231,8 +407,8 @@ Space needed: $(human "$NEEDS_BYTES")
 This phone has free: $(human "$FREE_BYTES")"
 
 if [ "$REPORT_ONLY" = "1" ]; then
-  printf 'verdict=%s\npackage=%s\nversion=%s\narch=%s\nneeds_bytes=%s\nfree_bytes=%s\n' \
-    "$verdict" "$PACKAGE" "$VERSION" "$ARCH" "$NEEDS_BYTES" "$FREE_BYTES"
+  printf 'verdict=%s\npackage=%s\nversion=%s\narch=%s\nneeds_bytes=%s\nfree_bytes=%s\ninstalled=%s\n' \
+    "$verdict" "$PACKAGE" "$VERSION" "$ARCH" "$NEEDS_BYTES" "$FREE_BYTES" "$INSTALLED_VERSION"
   [ -n "$blockers" ] && printf 'blocked:%s\n' "$blockers"
   [ -n "$warnings" ] && printf 'warned:%s\n' "$warnings"
   exit 0
@@ -250,6 +426,8 @@ question="$details
 
 ${SUMMARY:-}
 
+What this does: $ACTION
+
 Safety check:$warnings
 
 Install ${PACKAGE:-this app} on the Linux computer?"
@@ -257,16 +435,39 @@ Install ${PACKAGE:-this app} on the Linux computer?"
 # Nothing is ever installed without a yes. With the desktop's dialogs missing (a computer
 # built before they were part of set-up), a terminal asks; with neither, it stops rather than
 # installing something nobody agreed to.
+# --no-markup, everywhere below: every package's Maintainer field looks like "Name <mail@host>",
+# which Pango cannot parse, and GTK then shows a dialog with no body at all -- no name, no size,
+# no warnings, just two buttons. It also stops a hostile package forging the text.
+#
+# A third button, Remove, is offered when the app is already on the computer, which is the same
+# choice Android gives for an app it already has. Only when this build of zenity has it: an
+# option it does not understand makes it print usage and exit, and that would read as a cancel
+# and leave no way to install anything at all.
 if have zenity; then
-  # --no-markup: every package's Maintainer field looks like "Name <mail@host>", which Pango
-  # cannot parse, and GTK then shows a dialog with no body at all -- no name, no size, no
-  # warnings, just two buttons. It also stops a hostile package forging the text.
-  zenity --question --width=430 --no-markup --title="Install an app" --text="$question" \
-    --ok-label="Install anyway" --cancel-label="Cancel" >/dev/null 2>&1 || exit 0
+  if [ -n "$INSTALLED_VERSION" ] && zenity --help-all 2>/dev/null | grep -q -- '--extra-button'; then
+    answer=$(zenity --question --width=430 --no-markup --title="Install an app" --text="$question" \
+      --ok-label="Install anyway" --cancel-label="Cancel" --extra-button="Remove" 2>/dev/null)
+    case "$?:$answer" in
+      0:*) ;;
+      *:Remove) remove_package "$PACKAGE"; exit $? ;;
+      *) exit 0 ;;
+    esac
+  else
+    zenity --question --width=430 --no-markup --title="Install an app" --text="$question" \
+      --ok-label="Install anyway" --cancel-label="Cancel" >/dev/null 2>&1 || exit 0
+  fi
 elif [ -t 0 ]; then
-  printf '%s\n\nType yes to install: ' "$question"
+  if [ -n "$INSTALLED_VERSION" ]; then
+    printf '%s\n\nType yes to install, or remove to remove it: ' "$question"
+  else
+    printf '%s\n\nType yes to install: ' "$question"
+  fi
   read -r reply
-  case "$reply" in y|Y|yes|YES|Yes) ;; *) printf 'Nothing was installed.\n'; exit 0 ;; esac
+  case "$reply" in
+    y|Y|yes|YES|Yes) ;;
+    r|R|remove|REMOVE|Remove) remove_package "$PACKAGE"; exit $? ;;
+    *) printf 'Nothing was installed.\n'; exit 0 ;;
+  esac
 else
   say error "Cannot ask you first" \
 "This computer is missing the desktop's dialogs, so there is no way to show you what is about to be installed - and nothing is installed without that.
@@ -278,36 +479,18 @@ fi
 log="$HOME/.pocketdesk/logs/install.log"
 mkdir -p "$(dirname "$log")" 2>/dev/null || true
 
-fifo=""
-if have zenity; then
-  fifo="/tmp/pocketdesk-install-$$.progress"
-  rm -f "$fifo"
-  if mkfifo "$fifo" 2>/dev/null; then
-    zenity --progress --pulsate --auto-close --no-cancel --width=340 \
-      --title="PocketLinux" --text="Installing ${PACKAGE:-the app}..." < "$fifo" >/dev/null 2>&1 &
-    exec 9<>"$fifo"
-  else
-    fifo=""
-  fi
-fi
-finish_progress() {
-  [ -n "$fifo" ] || return 0
-  printf '100\n' >&9 2>/dev/null || true
-  exec 9>&- 2>/dev/null || true
-  rm -f "$fifo"
-}
-trap 'finish_progress' EXIT INT TERM
+progress_start "Installing ${PACKAGE:-the app}..."
 
 if sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$FILE" >> "$log" 2>&1; then
-  finish_progress
+  progress_stop
   # The menu, the panel and the desktop icons are rebuilt so the new app is there at once.
   sudo /usr/local/bin/pocketdesk-menu >/dev/null 2>&1 || true
   say info "${PACKAGE:-The app} is installed" \
-"It is in the Apps menu now — the Linux button on the left of the panel.
+"It is in the Apps menu now -- the Linux button on the left of the panel.
 
-To remove it later: open the terminal and run  sudo apt-get remove ${PACKAGE:-the-app}"
+To remove it later, open this file again and choose Remove. If you have deleted the file, the terminal can do it:  sudo apt-get remove ${PACKAGE:-the-app}"
 else
-  finish_progress
+  progress_stop
   # An install fails most often part way through unpacking, which leaves dpkg half-applied and
   # every later install refusing to run. Put that right here rather than leaving it for the
   # owner to meet as a mystery next week.
@@ -316,6 +499,6 @@ else
   say error "${PACKAGE:-The app} did not install" \
 "The computer could not finish installing it. The usual reasons are a package built for a different version of Ubuntu, or software it needs that is not available here.
 
-The computer was put back in working order, and anything half-installed was cleaned up. The details are in the Apps menu → App reports → install.log."
+The computer was put back in working order, and anything half-installed was cleaned up. The details are in the Apps menu -> App reports -> install.log."
   exit 1
 fi

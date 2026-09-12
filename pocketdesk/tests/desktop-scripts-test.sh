@@ -369,7 +369,12 @@ grep -q 'key="W-m".*pocketdesk-windows minimise' "$rc" || fail "Super+M must min
 grep -q 'key="W-s".*pocketdesk-shot' "$rc" || fail "Super+S must take a screenshot"
 phone="$WORK/coder/Desktop/pocketdesk-phone.desktop"
 [ -f "$phone" ] || fail "the desktop must carry a Phone files icon"
-grep -q '^Exec=pcmanfm /home/coder/Phone$' "$phone" || fail "the Phone files icon must open /home/coder/Phone"
+# Through pocketdesk-open, not straight to pcmanfm. Everything else in the product starts that
+# way, and it is where the per-app environment, the theme export and the window rules are
+# applied -- a launcher that skipped it gave a file manager that behaved unlike the same file
+# manager opened from anywhere else.
+grep -q '^Exec=/usr/local/bin/pocketdesk-open pcmanfm /home/coder/Phone$' "$phone" \
+  || fail "the Phone files icon must open /home/coder/Phone through pocketdesk-open"
 grep -q '^Name=Phone files$' "$phone" || fail "the folder is called Phone files, not Phone"
 grep -q '^Icon=pocketdesk-phone$' "$phone" || fail "the Phone files icon must be the phone-with-a-folder mark"
 tint="$WORK/coder/.config/tint2/tint2rc"

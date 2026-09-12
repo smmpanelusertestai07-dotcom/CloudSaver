@@ -33,18 +33,30 @@ final class DataBudget {
 
     /** Mobile-data bytes this app has moved since local midnight, or -1 when Android cannot count. */
     static long usedToday(Context context) {
+        return usedToday(context, onMobile(context));
+    }
+
+    /**
+     * The same reading, for a caller that has already asked which network is in use.
+     *
+     * Which network it is comes from the device probe, and the probe is not cheap. This check
+     * used to ask for it twice in a row -- once to decide whether the cap applies at all, once
+     * again in here -- so the answer is now passed in instead.
+     */
+    private static long usedToday(Context context, boolean mobile) {
         int uid = context.getApplicationInfo().uid;
         long rx = TrafficStats.getUidRxBytes(uid);
         long tx = TrafficStats.getUidTxBytes(uid);
         if (rx == TrafficStats.UNSUPPORTED || tx == TrafficStats.UNSUPPORTED || rx < 0 || tx < 0) return -1;
         long total = rx + tx;
-        boolean mobile = "Mobile data".equals(DeviceProbe.read(context).network);
         SharedPreferences prefs = context.getSharedPreferences(ContainerRuntime.PREFS, Context.MODE_PRIVATE);
         int today = dayStamp();
-        long used = prefs.getLong(KEY_MOBILE_USED, 0L);
+        long storedUsed = prefs.getLong(KEY_MOBILE_USED, 0L);
+        long used = storedUsed;
         long lastTotal = prefs.getLong(KEY_LAST_TOTAL, -1L);
         boolean lastMobile = prefs.getBoolean(KEY_LAST_MOBILE, false);
-        if (prefs.getInt(KEY_DAY, -1) != today) {
+        int lastDay = prefs.getInt(KEY_DAY, -1);
+        if (lastDay != today) {
             // A new day: the total starts again from nothing.
             used = 0L;
         } else if (lastTotal >= 0 && total >= lastTotal && lastMobile && mobile) {
@@ -52,8 +64,13 @@ final class DataBudget {
             used += total - lastTotal;
         }
         // A reboot restarts the counter at zero (total < lastTotal): nothing is attributed.
-        prefs.edit().putInt(KEY_DAY, today).putLong(KEY_MOBILE_USED, used)
-                .putLong(KEY_LAST_TOTAL, total).putBoolean(KEY_LAST_MOBILE, mobile).apply();
+        if (lastDay != today || lastTotal != total || lastMobile != mobile || storedUsed != used) {
+            // While the home screen is open this runs every few seconds. Writing the same four
+            // values back each time is a disk write for nothing, so it is skipped when the
+            // reading has not moved.
+            prefs.edit().putInt(KEY_DAY, today).putLong(KEY_MOBILE_USED, used)
+                    .putLong(KEY_LAST_TOTAL, total).putBoolean(KEY_LAST_MOBILE, mobile).apply();
+        }
         return used;
     }
 
@@ -62,9 +79,14 @@ final class DataBudget {
         SharedPreferences prefs = context.getSharedPreferences(ContainerRuntime.PREFS, Context.MODE_PRIVATE);
         int cap = capMb(prefs);
         if (cap <= 0) return false;
-        if (!"Mobile data".equals(DeviceProbe.read(context).network)) return false;
-        long used = usedToday(context);
+        boolean mobile = onMobile(context);
+        if (!mobile) return false;
+        long used = usedToday(context, mobile);
         return used >= 0 && used >= cap * 1_000_000L;
+    }
+
+    private static boolean onMobile(Context context) {
+        return "Mobile data".equals(DeviceProbe.read(context).network);
     }
 
     private static int dayStamp() {

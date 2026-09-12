@@ -137,10 +137,21 @@ public final class MainActivity extends Activity {
     private TextView appsNote;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
+    /**
+     * The home screen's own refresh, while this screen is in front.
+     *
+     * The tiles carry numbers that really do move -- battery, free space, heat, today's data --
+     * so they are redrawn every five seconds. What buttons work, which apps are installed and
+     * which permissions are on change only when the background service does something, and the
+     * service broadcasts every one of those to statusReceiver, so rereading them here is a
+     * backstop rather than how the screen finds out, and every second tick is enough for that.
+     */
     private final Runnable liveRefresh = new Runnable() {
+        private int ticks;
+
         @Override public void run() {
             refreshLiveTiles();
-            refreshState();
+            if (ticks++ % 2 == 0) refreshState();
             handler.postDelayed(this, 5_000L);
         }
     };
@@ -1304,15 +1315,19 @@ public final class MainActivity extends Activity {
                         dialogBuilder()
                                 .setTitle("Show the phone's files inside the computer?")
                                 .setMessage("Android will ask you to allow All files access for PocketLinux. "
-                                        + "PocketLinux then connects six of the phone's folders — Download, "
-                                        + "DCIM (photos), Documents, Pictures, Music and Movies — into the "
+                                        + "PocketLinux then connects six of the phone's folders -- Download, "
+                                        + "DCIM (photos), Documents, Pictures, Music and Movies -- into the "
                                         + "computer as the Phone folder, so ChatGPT, Claude and the browser "
                                         + "can attach a file from the phone and save one to it.\n\n"
                                         + "Six, and no more. Android hands over the whole card; PocketLinux "
-                                        + "connects only those, so nothing else on the phone can be reached "
-                                        + "from inside the computer — not another app's data, not its private "
-                                        + "storage, not a backup. What is not connected cannot be named, "
-                                        + "however an app or an AI agent in there asks for it.\n\n"
+                                        + "joins only those six, so your other public folders stay out of "
+                                        + "sight and out of every Open and Save box inside the computer. That "
+                                        + "is a curtain rather than a lock, so treat the computer as trusted "
+                                        + "with your public files.\n\n"
+                                        + "The lock is Android's own, and it does not move: one app cannot "
+                                        + "read another app's private files, or a backup. The computer runs "
+                                        + "inside PocketLinux, so that same rule covers it, and All files "
+                                        + "access does not change it.\n\n"
                                         + "In those six, changes are real: a file deleted there is deleted on "
                                         + "the phone. To hand over just one file instead, leave this off and "
                                         + "use the desktop's Phone → Add a file from the phone or a cloud "
@@ -1765,11 +1780,11 @@ public final class MainActivity extends Activity {
                         + "signature does not match.\n"
                         + "• Ubuntu's security updates install with the computer's basics, and "
                         + "Settings → Storage offers that update when a new version brings one.\n"
-                        + "• The computer is sealed in: it lives in this app's private storage, "
-                        + "listens on no network port at all, and reaches the phone's screen and "
-                        + "speaker through sockets inside that private storage that no other app "
-                        + "can open. It cannot see your phone's files unless you turn on Phone "
-                        + "files.\n\n"
+                        + "• Android keeps the computer inside this app: it lives in this app's "
+                        + "private storage, listens on no network port at all, and reaches the "
+                        + "phone's screen and speaker through sockets inside that private storage "
+                        + "that no other app can open. It cannot see your phone's files unless you "
+                        + "turn on Phone files.\n\n"
                         + "A separate antivirus (ClamAV and the like) is deliberately not included: "
                         + "on a 4 GB phone its background scanning would take memory the AI apps "
                         + "need, to look for viruses that cannot run on Linux anyway.", false);
@@ -1780,16 +1795,19 @@ public final class MainActivity extends Activity {
                         + "Everything in the Linux computer runs as PocketLinux's own Android user, "
                         + "inside PocketLinux's private storage. Android gives every app its own user "
                         + "id and keeps them apart, so nothing in there can read another app's data, "
-                        + "change the phone's system, or become root on the phone. There is no way "
-                        + "out of that box, and uninstalling PocketLinux takes all of it with you.\n\n"
+                        + "change the phone's system, or become root on the phone. That box is "
+                        + "Android's own, not something PocketLinux built, which is why it holds. "
+                        + "Uninstalling PocketLinux takes all of it with you.\n\n"
                         + "What a bad Linux app could reach: what is inside the computer — your files "
                         + "there and the sign-ins of the AI apps installed there, which are files in "
                         + "the same home folder — and, only while Phone files is on, six folders of "
                         + "the phone: Download, DCIM, Documents, Pictures, Music and Movies, to read "
-                        + "and to change. Six, and no more. Nothing else on the phone is connected "
-                        + "to the computer at all, so no app and no AI agent in there can name it, "
-                        + "however it is asked. Phone files is still off until you turn it on, and "
-                        + "still worth turning off when you are not using it.\n\n"
+                        + "and to change. Six, and no more. Your other public folders are not joined "
+                        + "to the computer, so they stay out of sight and out of every Open and Save "
+                        + "box in there. Take that as a curtain rather than a lock: what keeps "
+                        + "another app's private files and your backups out is Android itself, and "
+                        + "that holds whatever is asked for. Phone files is still off until you turn "
+                        + "it on, and still worth turning off when you are not using it.\n\n"
                         + "A change in those six folders is a real change: a file deleted there is "
                         + "deleted on the phone, and Android keeps no bin for it. If you only need "
                         + "to hand one file to an AI app, do not turn Phone files on at all — the "
