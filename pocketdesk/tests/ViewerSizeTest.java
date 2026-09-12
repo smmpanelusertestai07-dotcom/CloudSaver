@@ -32,13 +32,26 @@ public final class ViewerSizeTest {
         int[] plain = ViewerSize.choose(720, 1440, false, 100);
         if (plain[0] != 720 || plain[1] != 1440)
             throw new AssertionError("100 % must be the size it always was");
+        // ... and never narrower than a Chromium window's smallest width: a step past that
+        // point is held at the floor (720 wide allows 128 %), so 130 and 150 % come out the
+        // same size as the floor rather than pushing a fresh window's edge off the screen.
+        int limit = ViewerSize.maxMagnification(720, false);
+        if (limit != 128) throw new AssertionError("720 px should allow 128 %, got " + limit);
+        if (ViewerSize.maxMagnification(1572, false) != 200)
+            throw new AssertionError("landscape should allow every step");
+        if (ViewerSize.maxMagnification(360, true) != 196)
+            throw new AssertionError("the wide workspace is the floor's basis, got " + ViewerSize.maxMagnification(360, true));
         int previousWidth = Integer.MAX_VALUE;
         for (int step : ViewerSize.STEPS) {
             int[] scaled = ViewerSize.choose(720, 1440, false, step);
             if (scaled[0] > 720 || scaled[1] > 1440)
                 throw new AssertionError("A bigger interface must ask for a SMALLER desktop");
-            if (step > 100 && scaled[0] >= previousWidth)
-                throw new AssertionError("Each step must make the desktop smaller than the last");
+            if (scaled[0] < ViewerSize.MIN_MAGNIFIED_WIDTH)
+                throw new AssertionError("A magnified desktop must never be narrower than a window's minimum");
+            if (step > 100 && step <= limit && scaled[0] >= previousWidth)
+                throw new AssertionError("Each allowed step must make the desktop smaller than the last");
+            if (step > limit && scaled[0] != ViewerSize.choose(720, 1440, false, limit)[0])
+                throw new AssertionError("A step past the limit must be held at the limit");
             if ((scaled[0] & 1) != 0 || (scaled[1] & 1) != 0)
                 throw new AssertionError("Odd framebuffer width or height");
             if ((long) scaled[0] * scaled[1] > ViewerSize.MAX_PIXELS)

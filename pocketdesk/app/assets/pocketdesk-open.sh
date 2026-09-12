@@ -411,6 +411,10 @@ if is_chromium; then
   managed_app=1
   flags=("${base_flags[@]}")
 fi
+# Chrome asks "Restore pages? Chrome didn't shut down correctly" after every desktop stop,
+# because the stop ends it with a signal rather than a quit, and on a phone screen that bubble
+# sits over the page. Chrome's own switch keeps it away; nothing else about the session changes.
+[ "$name" != google-chrome ] || [ "${#flags[@]}" -eq 0 ] || flags+=(--hide-crash-restore-bubble)
 
 # The old path inherited Linux-only
 # process switches (--no-zygote, --in-process-gpu, site-isolation changes and Ozone/X11), and the

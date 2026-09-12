@@ -276,6 +276,15 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     boolean isWideWorkspace() { return wideWorkspace; }
+
+    /** True when the view is already at least as wide as the wide workspace, as in landscape. */
+    boolean isAlreadyWide() { return getWidth() - 2 * frame() >= ViewerSize.WIDE_WIDTH; }
+
+    /** The largest Bigger-interface step this screen allows without a window overflowing it. */
+    int maxMagnification() {
+        int width = (matchedWidth > 0 ? matchedWidth : getWidth()) - 2 * frame();
+        return ViewerSize.maxMagnification(width, wideWorkspace);
+    }
     void setWideWorkspace(boolean wide) {
         if (wide == wideWorkspace) return;
         releaseInput();

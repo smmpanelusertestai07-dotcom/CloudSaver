@@ -53,9 +53,12 @@ final class ScreenRotation {
     }
 
     /**
-     * The orientation that pins the screen exactly as it is now, for the viewer's rotation lock.
+     * The orientation that pins the screen as it is now, for the viewer's rotation lock.
      * Reverse landscape is kept apart from landscape here: locking is a promise that nothing
      * moves, and a phone held the other way round in landscape must not flip while it is on.
+     * Portrait is the exception on purpose: a phone that allows all four rotations can hand the
+     * sensor setting an upside-down portrait, and a lock taken there used to cement the one way
+     * up this app must never show. Locking from there rights the screen instead.
      */
     static int pin(int currentRotation, boolean landscape) {
         if (landscape) {
@@ -64,8 +67,6 @@ final class ScreenRotation {
                     ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
                     : ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
         }
-        return currentRotation == android.view.Surface.ROTATION_180
-                ? ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
-                : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
     }
 }

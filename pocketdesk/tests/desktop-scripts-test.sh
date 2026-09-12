@@ -346,12 +346,13 @@ grep -q '<application type="utility">.*<x>center</x>.*<y>center</y>' "$rc" \
   || fail "tool windows must start centred inside the current screen"
 grep -q '<screen_edge_strength>100</screen_edge_strength>' "$rc" \
   || fail "dragging a floating window must resist crossing a screen edge"
-# The title font is a constant PIXEL height now, worked out from the desktop's dpi, because
-# Openbox sizes its title BUTTONS from the window font and nothing else. So the point size is
-# expected to move with the screen -- what must never happen is it landing back at a size that
-# makes the close button two millimetres wide.
-grep -qE '<size>(1[0-9]|20)</size>' "$rc" \
-  || fail "the title font must be big enough for the buttons to be tapped"
+# The title font is a constant PIXEL height, worked out from the desktop's dpi, because Openbox
+# sizes its title BUTTONS from the window font and nothing else -- and that height is a finger's
+# (44 px, Android's smallest touch target), not body text's. So the point size moves with the
+# screen (12 to 28 points across the dpi range); what must never happen is it landing back at a
+# size that makes the close button a three-millimetre square.
+grep -qE '<font place="ActiveWindow">.*<size>(1[2-9]|2[0-8])</size>' "$rc" \
+  || fail "the title font must be big enough for the buttons to be tapped with a thumb"
 grep -q '<name>PocketLinux</name>' "$rc" || fail "the window frames must use the PocketLinux theme"
 [ -f "$WORK/coder/.themes/PocketLinux/openbox-3/themerc" ] || fail "the Openbox theme must be written"
 grep -q 'key="W-F4".*pocketdesk-windows kill-active' "$rc" || fail "Super+F4 must force-close the window in front"
@@ -452,9 +453,16 @@ case "$id:$property" in
 esac
 done
 XP
-chmod +x "$guard_bin/wmctrl" "$guard_bin/xprop"
+printf '#!/bin/sh\necho "  dimensions:    720x1100 pixels (190x291 millimeters)"\n' > "$guard_bin/xdpyinfo"
+chmod +x "$guard_bin/wmctrl" "$guard_bin/xprop" "$guard_bin/xdpyinfo"
 POCKETDESK_GUARD_CALLS="$guard_calls" POCKETDESK_STATE_DIR="$WORK/guard-state" \
+  POCKETDESK_CONFIG_DIR="$WORK/guard-config" \
   PATH="$guard_bin:$PATH" bash "$PROJECT_DIR/app/assets/pocketdesk-window-guard.sh" once
+# The scale a Chromium app is launched with follows the desktop's live size: 720 wide asks for
+# 1.28, and with no Xft.dpi on file the 120-dpi cap brings it to 1.25 -- the same sum the
+# desktop makes at birth, made again here every time the root is resized.
+[ "$(cat "$WORK/guard-config/chromium-scale" 2>/dev/null)" = "1.25" ] \
+  || fail "the window guard must rewrite chromium-scale from the live root size (got: $(cat "$WORK/guard-config/chromium-scale" 2>/dev/null))"
 grep -qx -- '-i -r 0x01000001 -e 0,0,60,712,1068' "$guard_calls" \
   || fail "an oversized landscape dialog must be shrunk and moved wholly into the portrait work area"
 [ "$(wc -l < "$guard_calls")" -eq 1 ] \

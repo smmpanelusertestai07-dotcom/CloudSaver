@@ -25,6 +25,12 @@
   poori hone pe hi apna naam leti hai; Wireless debugging pairing ka risk safety answer me likha hai.
 - **Computer Settings/Software:** sahi row names, apt ke faltu warnings gaye (apt-utils + sandbox
   off), theme change nayi windows pe turant, panel mar jaye to refresh usse wapas lata hai.
+- **Keyboard ab sach me bar ko upar uthata hai (Android 11–14):** window edge-to-edge na hone se
+  keyboard ka inset 0 aata tha; ab window edge-to-edge hai, Android 10 pe window resize hoti hai.
+- **Window kabhi screen se bahar nahi:** Chromium scale ab live desktop size ke saath badalta hai
+  (guard likhta hai), Bigger interface wahi tak jaata hai jahan tak window fit ho (portrait 115 %,
+  landscape sab); rotation lock kabhi ulta pin nahi karta; title bar ke close/minimise 44 px ke;
+  Resize by dragging turant; Chrome ka "Restore pages?" bubble nahi.
 - **Texts:** Google ke Android Linux Terminal se comparison (Pixel-only GPU, VM vs PRoot), Ubuntu
   24.04 kyun (26.04 aane ke baad bhi), sab AI apps ke Linux builds 11 Sep 2026 ko dobara verify.
 
@@ -202,9 +208,9 @@ Neeche (ya upar, tumhari marzi) **ek hi bar**:
 - Panel pe: Apps · AI apps · browser · Files · Terminal · **Phone files**. Khule hue windows bhi wahi dikhte hain.
 - Zoom 100 % se neeche nahi jata — 100 % matlab poora desktop pehle se screen pe hai.
 - Full screen me sirf ek **Controls** chip bachta hai; use kahin bhi drag karo, tap karo to bar wapas.
-- Desktop ke andar har window ka close/minimise/maximise **left** side title bar me hai. Koi app
+- Desktop ke andar har window ka close aur minimise button **left** side title bar me hai, ungli ke size ke (maximise button nahi: har app window pehle se poori screen pe khulti hai; Window ▾ → Fit window usse wapas bhar deta hai). Koi app
   cross dabane pe band na ho (hang) to Window ▾ → **Force close**.
-- Chrome, Tools, file picker aur Windows installer ki floating window portrait/landscape badalne
+- Settings, Software, file picker aur .deb installer ki floating window portrait/landscape badalne
   par bhi panel ke neeche ya screen ke bahar nahi jayegi. Boundary guard usko current visible area
   ke andar move/shrink karta hai; manually bhatki window ke liye Window ▾ → **Fit** bhi hai.
 - **Sound** phone ke speaker se aata hai jab desktop screen khuli ho; phone ke volume buttons ab kaam karte hain.

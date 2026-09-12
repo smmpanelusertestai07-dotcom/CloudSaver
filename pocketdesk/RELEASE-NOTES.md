@@ -39,7 +39,32 @@ theme chosen in the computer's Settings reaches every window opened after it (th
 the choice at every start instead of inheriting the session's first word on it); and the panel
 is restarted by a refresh when it has died, which a uid test under fake root could never do.
 
-**Texts.** The help card, the README and the quickstart name the Phone menu for what moved there.
+**The keyboard now really lifts the bar on Android 11 to 14.** The listener that moves the bar
+and the key row above the phone's keyboard was written for a window that lays itself out under
+the system bars. This window did not: it let Android fit the bars for it, and Android 11 to 14
+then hand the content a copy of the insets with every one consumed, the keyboard's included, so
+the listener read 0 and the bar stayed under the keyboard — on the reference phone's Android 13
+among others; only Android 15 delivered the real value. The window is edge-to-edge now on every
+version from 11 up (the listener already padded for the status bar, the gesture bar and a cutout),
+and Android 10, which has no keyboard inset at all, is simply resized above the keyboard.
+
+**Windows never run off the edge, at any size.** The Chromium scale cap was worked out once, from
+the size the desktop was born with; Bigger interface then made the desktop narrower and a fresh
+window overflowed it again. The window guard now rewrites the cap every time the desktop's size
+changes (a rotation, Bigger interface, Wider workspace), so the next launch fits the desktop as it
+is, and Bigger interface stops at the step where a window would stop fitting — 115 % upright on a
+720-pixel phone, every step in landscape, and the toast says so. The rotation lock never pins the
+screen upside-down any more (a phone that allows all four rotations could hand the lock that way
+up; locking from there rights the screen instead). Wider workspace says "applies when upright"
+in landscape, where the screen is already wider, instead of promising room it cannot add. The
+title bar's close and minimise buttons are finger-sized (44 pixels, Android's own smallest touch
+target) instead of 3-millimetre squares, and Resize by dragging un-maximises the window with
+Openbox's own action, immediately, rather than through a shell script that landed after the drag
+had begun. Chrome no longer asks "Restore pages?" after every desktop stop.
+
+**Texts.** The help card, the README and the quickstart name the Phone menu for what moved there,
+the status card says when the desktop is wider or magnified rather than "the size of this display",
+and the FAQ separates the three dials — Desktop text size, Bigger interface, an app's own zoom.
 A new answer compares this computer with Google's own Linux Terminal on Android (a Debian virtual
 machine through the Android Virtualization Framework, Pixel phones first, GPU acceleration only
 on the Pixel 10 so far) and says plainly what each road gives up. The Why-Ubuntu answer says why

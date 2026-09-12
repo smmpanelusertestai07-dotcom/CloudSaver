@@ -115,6 +115,17 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 getWindow().setStatusBarColor(Color.rgb(15, 19, 39));
                 getWindow().setNavigationBarColor(Color.rgb(5, 7, 17));
             }
+            // The window lays itself out under the system bars, and the listener below pads
+            // for them. Insets arrive whole only that way: while the decor fitted the bars for
+            // us, Android 11 to 14 handed the content a copy with every inset consumed, the
+            // keyboard's included, so the listener read 0 and the bar sat under the keyboard
+            // on those versions -- the reference phone's among them. Android 10 has no keyboard
+            // inset type at all; there the window is simply resized above the keyboard.
+            if (Build.VERSION.SDK_INT >= 30) {
+                getWindow().setDecorFitsSystemWindows(false);
+            } else {
+                getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+            }
             View content = buildScreen();
             setContentView(content);
             applySystemInsets(content);
@@ -696,7 +707,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(0, MENU_ZOOM_IN, 1, "Zoom in (" + desktop.zoomPercent() + " %)").setIcon(R.drawable.ic_fullscreen);
         items.add(0, MENU_ZOOM_OUT, 2, "Zoom out").setIcon(R.drawable.ic_fullscreen);
         items.add(0, MENU_WIDE_WORKSPACE, 3, desktop.isWideWorkspace()
-                ? "Phone-sized workspace" : "Wider workspace: more room, smaller text")
+                ? "Phone-sized workspace"
+                : desktop.isAlreadyWide() ? "Wider workspace (applies when upright)"
+                : "Wider workspace: more room, smaller text")
                 .setIcon(R.drawable.ic_desktop);
         items.add(0, MENU_ROTATE, 4, "Rotate").setIcon(R.drawable.ic_rotate);
         items.add(0, MENU_FULL_SCREEN, 4, "Full screen: hide the controls").setIcon(R.drawable.ic_desktop);
@@ -725,9 +738,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                     boolean wide = !desktop.isWideWorkspace();
                     desktop.setWideWorkspace(wide);
                     preferences.edit().putBoolean(KEY_WIDE_WORKSPACE, wide).apply();
-                    Toast.makeText(this, wide
-                            ? "More room for sidebars and settings. Pinch to enlarge the text."
-                            : "Workspace matches the phone screen", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, !wide ? "Workspace matches the phone screen"
+                            : desktop.isAlreadyWide()
+                            ? "Landscape is already wider than that; it applies when the phone is upright."
+                            : "More room for sidebars and settings. Pinch to enlarge the text.",
+                            Toast.LENGTH_LONG).show();
                     return true;
                 }
                 case MENU_ROTATE: rotateNow(); return true;
@@ -1153,7 +1168,11 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         String text = "Linux computer: Ubuntu 24.04 LTS on this phone's own processor, inside "
                 + "this app — a container, not a virtual machine. The desktop is Openbox for "
                 + "the windows, with the tint2 bar along the bottom.\n\n"
-                + "Screen: " + desktop.desktopSize() + " pixels, the size of this display, so "
+                + "Screen: " + desktop.desktopSize() + " pixels, "
+                + (desktop.isWideWorkspace() ? "wider than this display (Wider workspace), scaled to fit, so "
+                        : desktop.getMagnification() > 100
+                        ? desktop.getMagnification() + " % of this display's pixels (Bigger interface), scaled up to fill it, so "
+                        : "the size of this display, so ")
                 + "the whole desktop fits at 100 %. Zoom " + desktop.zoomPercent() + " %. Pinch, "
                 + "or Screen → Zoom, to look closer; Fit brings it all back.\n\n"
                 + "Pointer: " + (mouse ? "Mouse" : "Finger") + ".\n"
@@ -1162,8 +1181,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "Mouse — drag anywhere to move the arrow, tap to click, hold to right-click, "
                 + "two fingers to scroll, tap then press-and-move to drag.\n\n"
                 + "Keyboard opens the phone keyboard; Keys adds Esc, Tab, Ctrl, arrows and more. "
-                + "Window switches between open apps, minimises or closes the one in front, "
-                + "fits a stray window back to the screen and opens the apps menu. Phone has "
+                + "Window switches between open apps, minimises, resizes or closes the one in "
+                + "front, fits a stray window back to the screen and opens the apps menu. Phone has "
                 + "the phone's own things: volume and mute, the microphone, a photo, a file "
                 + "from the phone or a cloud drive, Phone files, paste and the touch lock.\n\n"
                 + "Several apps at once: one AI app at a time, plus Files, the Terminal and a "
@@ -1324,6 +1343,10 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
      */
     private void biggerInterface() {
         int current = desktop.getMagnification();
+        // Only the steps this screen allows: a step that would make the desktop narrower than a
+        // Chromium window's smallest width is skipped, or the window's edge is off the screen
+        // again -- the very thing the scale cap exists to prevent. Landscape allows them all.
+        int limit = desktop.maxMagnification();
         int next = ViewerSize.STEPS[0];
         for (int index = 0; index < ViewerSize.STEPS.length; index++) {
             if (ViewerSize.STEPS[index] == current) {
@@ -1331,13 +1354,24 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 break;
             }
         }
+        if (next > limit) next = ViewerSize.STEPS[0];
         desktop.setMagnification(next);
         preferences.edit().putInt(KEY_MAGNIFICATION, next).apply();
+        boolean capped = next != ViewerSize.STEPS[0] && next == largestStepWithin(limit)
+                && limit < ViewerSize.STEPS[ViewerSize.STEPS.length - 1];
         Toast.makeText(this, next == 100
                         ? "Back to the sharpest size: one Linux pixel per phone pixel."
-                        : "Everything on the desktop is " + next + " % of its size. Sharper "
-                                + "still: Settings \u2192 Desktop text size.",
-                Toast.LENGTH_SHORT).show();
+                        : "Everything on the desktop is " + next + " % of its size."
+                                + (capped ? " The largest this screen's width allows with every app "
+                                + "window still fitting; landscape allows more." : "")
+                                + " Sharper still: Settings \u2192 Desktop text size.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    private static int largestStepWithin(int limit) {
+        int best = ViewerSize.STEPS[0];
+        for (int step : ViewerSize.STEPS) if (step <= limit) best = step;
+        return best;
     }
 
     private static final String KEY_MAGNIFICATION = "viewer_magnification";

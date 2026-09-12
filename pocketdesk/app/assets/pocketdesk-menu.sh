@@ -802,7 +802,16 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
   OB_PT=$(( 30 * 72 / DPI ))
   [ "$OB_PT" -lt 9 ] && OB_PT=9
   [ "$OB_PT" -gt 20 ] && OB_PT=20
+  # The window title font is sized from a FINGER, not from body text: Openbox draws its title
+  # buttons as tall as the title font, and at 30 px the close and minimise buttons were 3 mm
+  # squares with half a millimetre between them -- a thumb aimed at close landed on the icon
+  # menu or on minimise. 44 px is Android's own smallest touch target. Menus keep OB_PT.
+  OB_TITLE_PT=$(( 44 * 72 / DPI ))
+  [ "$OB_TITLE_PT" -lt 12 ] && OB_TITLE_PT=12
+  [ "$OB_TITLE_PT" -gt 28 ] && OB_TITLE_PT=28
   sed -e 's|<size>[0-9]*</size>|<size>'"$OB_PT"'</size>|g' \
+      -e '/<font place="ActiveWindow">/,/<\/font>/ s|<size>[0-9]*</size>|<size>'"$OB_TITLE_PT"'</size>|' \
+      -e '/<font place="InactiveWindow">/,/<\/font>/ s|<size>[0-9]*</size>|<size>'"$OB_TITLE_PT"'</size>|' \
       -e 's|<titleLayout>[^<]*</titleLayout>|<titleLayout>ICNL</titleLayout>|' \
       -e 's|<theme>|<theme>\n    <name>PocketLinux</name>|' \
       -e 's|<animateIconify>yes</animateIconify>|<animateIconify>no</animateIconify>|' \
@@ -810,7 +819,7 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
       -e '/<keybind key="W-F[1-4]">/,/<\/keybind>/d' \
       -e 's|<screen_edge_strength>[0-9]*</screen_edge_strength>|<screen_edge_strength>100</screen_edge_strength>|' \
       -e 's|<applications>|<applications>\n    <application type="normal"><maximized>yes</maximized><decor>yes</decor></application>\n    <application type="dialog"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>\n    <application type="utility"><decor>yes</decor><position force="yes"><x>center</x><y>center</y><monitor>1</monitor></position></application>|' \
-      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Execute"><command>'"$WINDOWS"' unmaximise</command></action></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
+      -e 's|<keyboard>|<keyboard>\n    <keybind key="W-F4"><action name="Execute"><command>'"$WINDOWS"' kill-active</command></action></keybind>\n    <keybind key="W-Tab"><action name="Execute"><command>'"$WINDOWS"' list</command></action></keybind>\n    <keybind key="W-p"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></keybind>\n    <keybind key="W-a"><action name="ShowMenu"><menu>root-menu</menu></action></keybind>\n    <keybind key="W-r"><action name="Execute"><command>'"$WINDOWS"' refresh</command></action></keybind>\n    <keybind key="W-m"><action name="Execute"><command>'"$WINDOWS"' minimise</command></action></keybind>\n    <keybind key="W-f"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></keybind>\n    <keybind key="W-u"><action name="Unmaximize"/></keybind>\n    <keybind key="W-s"><action name="Execute"><command>/usr/local/bin/pocketdesk-shot screen</command></action></keybind>\n    <keybind key="W-space"><action name="Execute"><command>/usr/local/bin/pocketdesk-appshot</command></action></keybind>|' \
       "$OPENBOX_DEFAULT" > "$OPENBOX_DIR/rc.xml.new" \
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi
