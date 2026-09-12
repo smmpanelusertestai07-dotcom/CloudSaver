@@ -165,21 +165,25 @@ mkdir -p "$HOME/Pictures" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" "$HOME
 # The display server listens on a unix socket in this app's private storage, which no other
 # app on the phone can open, instead of a TCP port on loopback, which any of them could:
 # Android does not keep loopback apart between apps, and this session has no password on it.
-# If this build of Xtigervnc has no -rfbunixpath, the old port is used instead so the desktop
-# still comes up -- PocketLinux's viewer tries the socket first and the port second.
+# There is no port to fall back to any more. A desktop on 127.0.0.1:5901 with no password was
+# a desktop any other app on the phone could open, watch and type into, so the start now fails
+# with the reason instead: no desktop is better than one anybody can drive.
 mkdir -p "$HOME/.pocketdesk"
 chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
-# vnc.port exists only while the display really is on a port. The viewer tries the port only
-# when it does: without that it fell back to 127.0.0.1:5901 during every start, before the
-# socket appeared -- and on Android any app can reach loopback, so a listener sitting on that
-# port would have been handed the desktop.
+# vnc.port is what told the viewer it may try 127.0.0.1:5901. Nothing writes it now; it is
+# still removed here because a computer set up by an older PocketLinux can have one left
+# behind, and the viewer would keep reaching for that port for the life of the session.
 rm -f "$HOME/.pocketdesk/vnc.sock" "$HOME/.pocketdesk/vnc.port" \
       /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
 
 start_display() {   # start_display <extra args...>
   # Output stays on this script's stdout, which PocketLinux records for the session: a display
   # that refuses to start has to be able to say why where the phone can read it.
-  /usr/bin/Xtigervnc :1 "$@" -SecurityTypes None -ac -AlwaysShared \
+  #
+  # No -ac. That flag turns the X server's access control off altogether. The programs inside
+  # this container reach the display over its local socket, which is allowed without it, so the
+  # flag bought nothing and left the server willing to accept anything that could reach it.
+  /usr/bin/Xtigervnc :1 "$@" -SecurityTypes None -AlwaysShared \
     -SendPrimary=0 -geometry "$GEOMETRY" -depth 24 -dpi "$DPI" -desktop 'PocketLinux' &
   VNC_PID=$!
 }
@@ -188,7 +192,7 @@ display_ready() {
   [ -S /tmp/.X11-unix/X1 ] || return 1
   command -v xdpyinfo >/dev/null 2>&1 || return 0
   # timeout, because a server wedged mid-start leaves xdpyinfo waiting for ever and the whole
-  # start would hang here instead of falling back.
+  # start would hang here instead of ending with a reason.
   if command -v timeout >/dev/null 2>&1; then
     DISPLAY=:1 timeout 5 xdpyinfo >/dev/null 2>&1
   else
@@ -210,10 +214,15 @@ wait_for_display() {   # wait_for_display <seconds>
 
 desktop_phase "Starting the private display"
 start_display -rfbunixpath "$HOME/.pocketdesk/vnc.sock" -rfbunixmode 0600 -rfbport -1
-if ! wait_for_display 40; then
-  echo "display: the private socket did not come up; using the local port instead"
+# The whole budget goes to the one display there is. It used to be 40 seconds here and another
+# 90 on the port; with no port left, a slow phone gets all of it on the socket.
+if ! wait_for_display 130; then
+  desktop_phase "The display could not start"
+  echo "display: the private display socket did not come up, so the desktop cannot start."
+  echo "display: PocketLinux will not put the desktop on a local port instead. Every app on"
+  echo "display: this phone shares 127.0.0.1, so that desktop would be open to all of them."
   kill "$VNC_PID" 2>/dev/null || true
-  # A wedged display may ignore TERM; never wait forever before the fallback.
+  # A wedged display may ignore TERM; never wait forever before giving up.
   for n in 1 2 3 4 5; do
     kill -0 "$VNC_PID" 2>/dev/null || break
     sleep 0.2
@@ -221,15 +230,7 @@ if ! wait_for_display 40; then
   kill -KILL "$VNC_PID" 2>/dev/null || true
   wait "$VNC_PID" 2>/dev/null || true
   rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X11-unix/X1-lock /tmp/.X1-lock 2>/dev/null || true
-  desktop_phase "Starting the fallback display"
-  echo 5901 > "$HOME/.pocketdesk/vnc.port"
-  start_display -rfbport 5901 -localhost yes
-  if ! wait_for_display 90; then
-    echo "display: did not start"
-    kill -KILL "$VNC_PID" 2>/dev/null || true
-    wait "$VNC_PID" 2>/dev/null || true
-    exit 1
-  fi
+  exit 1
 fi
 
 
@@ -299,8 +300,44 @@ printf '%s\n' "$DOWNLOAD_DIR" > "$HOME/.config/pocketdesk/download-dir"
 # Google Drive, OneDrive and Dropbox have no path on the filesystem -- they are document
 # providers behind content:// addresses -- so no mount can reach them; the picker can, and it
 # lists every one of them. Desktop screen -> Phone -> Add a file from the phone or a cloud drive.
-printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
-  "$DOWNLOAD_DIR" > "$HOME/.config/gtk-3.0/bookmarks"
+#
+# Written once, on a computer that has no list yet. This file is also where the file manager
+# keeps a folder the owner added themselves, and rewriting it at every start took those away
+# again -- so from then on only two things are touched: a folder that has been deleted is
+# dropped, and the download destination is kept pointing where downloads really go.
+BOOKMARKS="$HOME/.config/gtk-3.0/bookmarks"
+if [ ! -f "$BOOKMARKS" ]; then
+  printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Downloads\nfile:///home/coder/Cloud Cloud\nfile:///home/coder/Phone Phone files\nfile:///home/coder/Phone/Download Phone Downloads\nfile:///home/coder/Phone/DCIM Phone Photos\nfile:///home/coder/Phone/Documents Phone Documents\nfile:///home/coder/Pictures Pictures\nfile:///home/coder/Projects Projects\nfile:///home/coder/Shared App shared folder\n' \
+    "$DOWNLOAD_DIR" > "$BOOKMARKS"
+else
+  bookmarks_new="$BOOKMARKS.pocketdesk-new"
+  : > "$bookmarks_new"
+  while IFS= read -r bookmark || [ -n "$bookmark" ]; do
+    case "$bookmark" in
+      *' Download destination')
+        printf 'file://%s Download destination\n' "$DOWNLOAD_DIR" >> "$bookmarks_new"
+        continue
+        ;;
+      file:///home/coder/Phone*)
+        # The phone's own folders come and go with the All files permission. Dropping one while
+        # it is switched off would mean it never came back, so these are left alone.
+        ;;
+      file://*)
+        bookmark_path=${bookmark%% *}
+        bookmark_path=${bookmark_path#file://}
+        # GTK writes a space or an accent in a path as %20 and friends. Put those back before
+        # asking whether the folder is still there, or a real folder reads as a deleted one.
+        case "$bookmark_path" in
+          *%*) bookmark_path=$(printf '%b' "$(printf '%s' "$bookmark_path" | sed 's/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')") ;;
+        esac
+        [ -d "$bookmark_path" ] || continue
+        ;;
+    esac
+    printf '%s\n' "$bookmark" >> "$bookmarks_new"
+  done < "$BOOKMARKS"
+  mv -f "$bookmarks_new" "$BOOKMARKS"
+  rm -f "$bookmarks_new" 2>/dev/null || true
+fi
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
@@ -311,10 +348,16 @@ printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hint
 # resolved, so the computer inside matches the app around it instead of being permanently dark.
 # A choice made in the computer's own System settings is written to theme and wins from then on,
 # because an owner who opened Settings and picked one meant it.
+#
+# "system" in that file is how the owner gives the choice back to the phone. Without a word for
+# that, the file only ever said light or dark, and the first use of the switch inside the
+# computer left the phone's own Light/Dark/System setting ignored for ever with nothing anywhere
+# to undo it.
 DESKTOP_THEME=${POCKETDESK_THEME:-dark}
 case "$(cat "$HOME/.config/pocketdesk/theme" 2>/dev/null)" in
-  light) DESKTOP_THEME=light ;;
-  dark)  DESKTOP_THEME=dark ;;
+  light)  DESKTOP_THEME=light ;;
+  dark)   DESKTOP_THEME=dark ;;
+  system) : ;;
 esac
 case "$DESKTOP_THEME" in light) PREFER_DARK=0 ; GTK_THEME_SUFFIX="" ;; *) PREFER_DARK=1 ; GTK_THEME_SUFFIX=:dark ;; esac
 export GTK_THEME="Adwaita$GTK_THEME_SUFFIX"
@@ -329,6 +372,14 @@ export GTK_THEME="Adwaita$GTK_THEME_SUFFIX"
 # and from then on the owner's own choice is what starts. A file written by a PocketLinux before
 # the marker existed is recognised by the wrong theme name it carries and is taken over once.
 write_gtk_defaults() {
+  # The stylesheet below used to name the dark colours whatever the owner had chosen, so half a
+  # Light desktop came out dark. One palette per theme, picked here from the same answer that
+  # sets prefer-dark, and both keep the one blue the rest of PocketLinux uses.
+  if [ "$PREFER_DARK" = 1 ]; then
+    CSS_BG=#101a2e ; CSS_BASE=#0d1526 ; CSS_FG=#f1f5fb ; CSS_BORDER=#23304a
+  else
+    CSS_BG=#eef1f7 ; CSS_BASE=#ffffff ; CSS_FG=#10182a ; CSS_BORDER=#c6cfe0
+  fi
   for gtk_dir in "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0"; do
     printf '# pocketdesk-default\n[Settings]\ngtk-theme-name=Adwaita\ngtk-application-prefer-dark-theme=%s\ngtk-icon-theme-name=Adwaita\ngtk-cursor-theme-name=Adwaita\ngtk-cursor-theme-size=32\ngtk-font-name=Noto Sans 11\ngtk-xft-dpi=%s\ngtk-xft-antialias=1\ngtk-xft-hinting=1\ngtk-xft-hintstyle=hintslight\ngtk-xft-rgba=none\ngtk-enable-animations=0\ngtk-decoration-layout=close,minimize:\n' \
       "$PREFER_DARK" "$((DPI * 1024))" > "$gtk_dir/settings.ini"
@@ -338,11 +389,11 @@ write_gtk_defaults() {
     # is a warning on stderr and nothing else, so this can never stop an app from starting.
     printf '%s\n' \
       '/* pocketdesk-default */' \
-      '@define-color theme_bg_color #101a2e;' \
-      '@define-color theme_base_color #0d1526;' \
-      '@define-color theme_fg_color #f1f5fb;' \
+      "@define-color theme_bg_color $CSS_BG;" \
+      "@define-color theme_base_color $CSS_BASE;" \
+      "@define-color theme_fg_color $CSS_FG;" \
       '@define-color theme_selected_bg_color #1746c4;' \
-      '@define-color borders #23304a;' \
+      "@define-color borders $CSS_BORDER;" \
       'button { border-radius: 10px; min-height: 34px; padding: 4px 12px; }' \
       'entry { border-radius: 10px; min-height: 36px; }' \
       'entry:focus, button:focus { outline-offset: -2px; }' \
@@ -422,8 +473,33 @@ mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.local/share/Trash/info" 2>/dev
 # show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
 # XDG Documents folder, which PocketLinux points at Projects, wearing the theme's grey folder in
 # a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
-  "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
+#
+# Written once. pcmanfm keeps a section per desktop icon in this same file with the x and y the
+# owner dragged it to, and the wallpaper they chose, so replacing the whole file at every start
+# put every icon back on the grid and the picture back to ours. After the first time only the
+# label size is brought up to date, because that one is worked out from the phone's dpi and has
+# to follow Settings -> Desktop text size.
+DESKTOP_ITEMS="$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
+if [ ! -f "$DESKTOP_ITEMS" ]; then
+  printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
+    "$DESKTOP_FONT_PT" > "$DESKTOP_ITEMS"
+else
+  desktop_items_new="$DESKTOP_ITEMS.pocketdesk-new"
+  awk -v font="Noto Sans $DESKTOP_FONT_PT" '
+    /^\[/ {
+      if (in_star && !written) { print "desktop_font=" font; written = 1 }
+      in_star = ($0 == "[*]")
+      print; next
+    }
+    in_star && /^desktop_font=/ {
+      if (!written) { print "desktop_font=" font; written = 1 }
+      next
+    }
+    { print }
+    END { if (in_star && !written) print "desktop_font=" font }
+  ' "$DESKTOP_ITEMS" > "$desktop_items_new" 2>/dev/null && mv -f "$desktop_items_new" "$DESKTOP_ITEMS"
+  rm -f "$desktop_items_new" 2>/dev/null || true
+fi
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
 
@@ -434,9 +510,40 @@ printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removabl
 # pocketdesk-menu below from the packages that are really installed.
 
 # Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
-# Toasts in the desktop's own colours. timeout belongs to the urgency sections -- dunst does not
-# read it from [global] -- and the panel is at the bottom, so these sit at the top right.
-printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#2b3563"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#101a2e"\nforeground = "#9aa7bd"\nframe_color = "#23304a"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#101a2e"\nforeground = "#f1f5fb"\nframe_color = "#2b3563"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
+# timeout belongs to the urgency sections -- dunst does not read it from [global] -- and the
+# panel is at the bottom, so these sit at the top right.
+#
+# Every size below used to be a plain number written for a 96-dpi screen, which is how a message
+# ended up in a 320-pixel column on a 720-pixel phone. They are grown from the phone's own dpi
+# now, the same way pocketdesk-menu grows the panel's: a length that looked right at
+# PocketLinux's default 120 dpi, scaled to this screen.
+#
+# The font is the one number that stays put. dunst asks the display server for Xft.dpi, which
+# this script sets a few lines up from the same phone dpi, so "Sans 10" is already drawn at the
+# size of the panel's clock. Scaling it here as well would draw it twice as large.
+toast_px() { echo $(( $1 * DPI / 120 )); }
+TOAST_OFFSET=$(toast_px 12)
+TOAST_GAP=$(toast_px 6)
+TOAST_PADDING=$(toast_px 10)
+TOAST_HPADDING=$(toast_px 12)
+TOAST_MIN_ICON=$(toast_px 24)
+TOAST_MAX_ICON=$(toast_px 40)
+TOAST_WIDTH=$(toast_px 320)
+# Measured against the short side, because the phone can be turned while the desktop is running
+# and a toast wider than the screen sits half off the edge.
+TOAST_WIDEST=$(( SHORT_SIDE - 2 * TOAST_OFFSET - 8 ))
+[ "$TOAST_WIDTH" -gt "$TOAST_WIDEST" ] && TOAST_WIDTH=$TOAST_WIDEST
+# enable_recursive_icon_lookup is what makes icon_theme mean anything at all: without it dunst
+# never looks inside an icon theme, so a message that names its icon arrives with a blank space
+# where the icon should be. The desktop's own messages pass a full path instead (see notify
+# below), because PocketLinux's icons live in /usr/share/pixmaps, which is not an icon theme.
+#
+# history_length and sticky_history are what let a missed message be brought back at all: dunst
+# keeps the last twenty, and one recalled with dunstctl history-pop waits on screen instead of
+# timing out again while it is being read.
+printf '[global]\nfont = Sans 10\nwidth = %s\norigin = top-right\noffset = %sx%s\ngap_size = %s\nnotification_limit = 3\nframe_width = 1\nframe_color = "#2b3563"\nseparator_color = frame\ncorner_radius = 12\npadding = %s\nhorizontal_padding = %s\nword_wrap = yes\nenable_recursive_icon_lookup = true\nicon_theme = Adwaita\nmin_icon_size = %s\nmax_icon_size = %s\nhistory_length = 20\nsticky_history = yes\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#101a2e"\nforeground = "#9aa7bd"\nframe_color = "#23304a"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#101a2e"\nforeground = "#f1f5fb"\nframe_color = "#2b3563"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
+  "$TOAST_WIDTH" "$TOAST_OFFSET" "$TOAST_OFFSET" "$TOAST_GAP" "$TOAST_PADDING" "$TOAST_HPADDING" \
+  "$TOAST_MIN_ICON" "$TOAST_MAX_ICON" \
   > "$HOME/.config/dunst/dunstrc"
 
 # Firefox: no sandbox, no separate content processes, software rendering.
@@ -767,7 +874,13 @@ def completed_downloads(data, directory):
 
 
 def notify(title, body, critical=False):
-    command = ["notify-send", "-a", "PocketLinux", "-i", "pocketdesk-linux"]
+    # The full path, not the name "pocketdesk-linux". PocketLinux's icons are installed in
+    # /usr/share/pixmaps, which is not an icon theme directory, so no theme lookup ever found
+    # them and the download, installer and "closed an app" messages arrived with no icon.
+    icon = "/usr/share/pixmaps/pocketdesk-linux.png"
+    if not os.path.exists(icon):
+        icon = "pocketdesk-linux"
+    command = ["notify-send", "-a", "PocketLinux", "-i", icon]
     if critical:
         command += ["-u", "critical"]
     try:

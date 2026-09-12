@@ -212,11 +212,15 @@ class PhoneStatusTests(unittest.TestCase):
                 stat.assert_called_once_with('/')
             output, tooltip = io.StringIO(), io.StringIO()
             self.status.render(values, output, tooltip)
-            self.assertEqual(output.getvalue(), '84% · 65.5G\n37°C · 1.2G\n')
-            self.assertTrue(tooltip.getvalue().startswith('\033[2JThis phone, right now\n'))
+            self.assertEqual(output.getvalue(), 'Memory 1.2G\nStorage 65.5G\n37 C\n')
+            # No escape sequence at the head of the tooltip. tint2 hands an execp command's
+            # standard error to Pango verbatim, and Pango drew a terminal's screen-clearing
+            # escape as two boxes of gibberish before the first word.
+            self.assertTrue(tooltip.getvalue().startswith('This phone, right now\n'))
+            self.assertNotIn('\033', tooltip.getvalue())
             self.assertIn('Battery: 84%, charging', tooltip.getvalue())
             self.assertIn('Network: Wi-Fi', tooltip.getvalue())
-            self.assertIn('Tap for storage.', tooltip.getvalue())
+            self.assertIn('Tap for storage, memory and battery.', tooltip.getvalue())
             self.assertTrue(all(len(line) <= 16 for line in output.getvalue().splitlines()))
 
     def test_missing_invalid_counters_and_zero_free_storage(self):
@@ -252,7 +256,7 @@ class PhoneStatusTests(unittest.TestCase):
                                 capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0)
         self.assertLessEqual(len(result.stdout.splitlines()), 2)
-        self.assertIn('Tap for storage.', result.stderr)
+        self.assertIn('Tap for storage, memory and battery.', result.stderr)
 
 
 if __name__ == '__main__':

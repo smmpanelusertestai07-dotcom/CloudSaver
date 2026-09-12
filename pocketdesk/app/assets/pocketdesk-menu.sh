@@ -262,7 +262,7 @@ EOF
   echo '    <item label="AI computer use"><action name="Execute"><command>/usr/local/bin/pocketdesk-agent status</command></action></item>'
   echo '    <separator/>'
   echo '    <menu id="mobile-menu" label="Phone app testing">'
-  echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=500 --title="Phone app testing" --text="This computer can install and test an Android app on a real phone — including the one it is running on.\n\nAndroid 11 and later have Wireless debugging, and this computer shares the phone network, so 127.0.0.1 reaches this very phone. Build an APK here, install it here, and it opens on this screen.\n\nAnother phone on the same Wi-Fi works the same way, with its own address.\n\nAn Android EMULATOR cannot run here: it needs hardware virtualisation, which no app on an unrooted phone can have. A real phone is the test device."</command></action></item>'
+  echo '      <item label="How this works"><action name="Execute"><command>zenity --info --no-markup --width=500 --title="Phone app testing" --text="This computer can install and test an Android app on a real phone, including the one it is running on.\n\nAndroid 11 and later have Wireless debugging, and this computer shares the phone network, so 127.0.0.1 reaches this very phone. Build an APK here, install it here, and it opens on this screen.\n\nAnother phone on the same Wi-Fi works the same way, with its own address.\n\nAn Android EMULATOR cannot run here: it needs hardware virtualisation, which no app on an unrooted phone can have. A real phone is the test device."</command></action></item>'
   echo '      <item label="What can be built here"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile built; echo; read -p \"Press Enter to close \""</command></action></item>'
   echo '      <item label="What is installed and connected"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile status; echo; read -p \"Press Enter to close \""</command></action></item>'
   echo '      <item label="Start a new mobile app"><action name="Execute"><command>lxterminal -e bash -lc "/usr/local/bin/pocketdesk-mobile new; echo; read -p \"Press Enter to close \""</command></action></item>'
@@ -403,11 +403,28 @@ cp -f "$LOCAL_APPS/pocketdesk-settings.desktop" "$DESKTOP_DIR/pocketdesk-setting
 
 # The Bin. Delete in the file manager moves a file here (libfm's use_trash); browsing trash:
 # would need a daemon this phone does not run, so the Bin opens the Trash folder directly.
-printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec=pcmanfm /home/coder/.local/share/Trash/files\nIcon=user-trash\nTerminal=false\nX-PocketDesk=1\n' \
+#
+# A shipped picture, not the theme name user-trash. Ubuntu 24.04's Adwaita carries no full-colour
+# application icons any more, only the symbolic set, which GTK will not use for a launcher and
+# will not substitute for one -- that is what left Software wearing a blank sheet, and the Bin was
+# the last entry still asking the theme for its mark.
+printf '[Desktop Entry]\nType=Application\nName=Bin\nComment=Deleted files, until the bin is emptied\nExec=pcmanfm /home/coder/.local/share/Trash/files\nIcon=pocketdesk-bin\nTerminal=false\nX-PocketDesk=1\n' \
   > "$LOCAL_APPS/pocketdesk-bin.desktop"
 chmod 755 "$LOCAL_APPS/pocketdesk-bin.desktop"
 cp -f "$LOCAL_APPS/pocketdesk-bin.desktop" "$DESKTOP_DIR/pocketdesk-bin.desktop"
-chmod 755 "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
+
+# Make only this script's own entries runnable, and collect them for the chown at the end. A
+# plain glob over the desktop folder also changed the mode of whatever the owner had put there,
+# and chmod has no way to be told not to follow a symlink, so a link on the desktop had its
+# target changed instead. The stale sweep above is careful in the same way: X-PocketDesk=1 is
+# what says this script wrote the file.
+DESKTOP_OWNED=()
+for entry in "$DESKTOP_DIR"/*.desktop; do
+  [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+  grep -q '^X-PocketDesk=1' "$entry" 2>/dev/null || continue
+  chmod 755 "$entry" 2>/dev/null || true
+  DESKTOP_OWNED+=("$entry")
+done
 
 # tint2 draws its text at a fixed 96 dpi while windows, menus and titles draw at Xft.dpi, so the
 # point sizes are converted here and the bar matches the rest of the desktop at any screen size
@@ -420,21 +437,106 @@ pt() { echo $(( $1 * DPI / 96 )); }    # a point size that looked right on a 96 
 px() { echo $(( $1 * DPI / 120 )); }   # a length that looked right at PocketLinux's default 120 dpi
 
 
-# Which apps get a slot on the bar. The four AI apps are deliberately not here: a 720-pixel bar
-# has room for either nine launchers or the buttons of the windows that are open, and once an app
-# is open its own button is what you need. They keep their desktop icons, the Apps menu (the Tux
-# button, Super+A, a long press on the wallpaper) and PocketLinux's own Apps tab.
-panel_lines=""
-for base in ${BROWSER_BASE:-} pcmanfm lxterminal; do
-  [ -n "$base" ] || continue
-  [ -f "$LOCAL_APPS/pocketdesk-$base.desktop" ] || continue
-  panel_lines="$panel_lines
-launcher_item_app = $LOCAL_APPS/pocketdesk-$base.desktop"
-done
+# How wide the bar has to fit. Worked out from the SHORT side of the screen, because this file is
+# written once at start-up and the phone is turned whenever the owner feels like it: a bar laid
+# out for landscape loses its window buttons the moment the phone is held upright. That is the
+# bar in the owner's screenshot -- six launchers, the clock and the phone's numbers came to more
+# pixels than a 720-wide screen has, and tint2 hands the window list whatever is left over, which
+# was nothing at all. A menu refresh started by an app install has no display to ask, so the
+# fallback is the width of an ordinary phone held upright.
+PANEL_W=720
+if [ -S /tmp/.X11-unix/X1 ] && command -v xdpyinfo >/dev/null 2>&1; then
+  screen_size=$(DISPLAY="${DISPLAY:-:1}" timeout --foreground --kill-after=1s 3s xdpyinfo 2>/dev/null \
+    | awk '/dimensions:/ { print $2; exit }')
+  screen_w=${screen_size%%x*}
+  screen_h=${screen_size#*x}
+  case "$screen_w" in ''|*[!0-9]*) screen_w=0 ;; esac
+  case "$screen_h" in ''|*[!0-9]*) screen_h=0 ;; esac
+  [ "$screen_h" -gt 0 ] && [ "$screen_h" -lt "$screen_w" ] && screen_w=$screen_h
+  [ "$screen_w" -ge 320 ] && [ "$screen_w" -le 4096 ] && PANEL_W=$screen_w
+fi
 
-panel_lines="$panel_lines
-launcher_item_app = $LOCAL_APPS/pocketdesk-phone.desktop
-launcher_item_app = $LOCAL_APPS/pocketdesk-settings.desktop"
+# tint2 draws its text at 96 dpi, so a font of P points is P*4/3 pixels tall. In DejaVu Sans --
+# the face behind "Sans" here -- a line of mixed digits and letters averages about six tenths of
+# that per character, and bold about seven. Rounded up on purpose: when the estimate is out, the
+# window list must not be the item that pays for it.
+text_w() {   # text_w <characters> <point size> <6 plain | 7 bold>
+  echo $(( ($1 * $2 * 4 * $3 + 29) / 30 ))
+}
+
+# A phone held upright has room for the window buttons only if the rest of the bar gives way, so
+# on a narrow bar the clock drops the weekday, the computer's numbers take a smaller font and the
+# launchers come down a size. A tablet, or a phone in a dock, keeps the roomier bar.
+#
+# The width is measured in the same 120-dpi units px() works in, because a bar is narrow in two
+# different ways: a small screen, and a large text size on a big one. A 1080-wide phone at 240
+# dpi is every bit as full as a 720-wide phone at 160, and taking it at face value left that
+# phone with one launcher and no window buttons.
+COMPACT=0
+[ $(( PANEL_W * 120 / DPI )) -le 900 ] && COMPACT=1
+if [ "$COMPACT" = 1 ]; then
+  LAUNCH_ICON=$(px 40); LAUNCH_PAD=$(px 4); LAUNCH_GAP=$(px 6)
+  TIME1_FMT='%I:%M %P'; TIME1_CHARS=8;  TIME1_PT=$(pt 8)
+  TIME2_FMT='%d %b';    TIME2_CHARS=6;  TIME2_PT=$(pt 7)
+  CLOCK_PAD=$(px 5)
+  STATUS_PT=$(pt 7); STATUS_PAD=$(px 5)
+  MARK_ICON=$(px 22); MARK_PAD=$(px 4)
+  TRAY_ICON=$(px 20); TRAY_PAD=$(px 4)
+  PANEL_PAD=$(px 2); PANEL_GAP=$(px 4)
+else
+  LAUNCH_ICON=$(px 44); LAUNCH_PAD=$(px 6); LAUNCH_GAP=$(px 8)
+  TIME1_FMT='%I:%M %P'; TIME1_CHARS=8;  TIME1_PT=$(pt 11)
+  TIME2_FMT='%a %d %b'; TIME2_CHARS=10; TIME2_PT=$(pt 8)
+  CLOCK_PAD=$(px 8)
+  STATUS_PT=$(pt 9); STATUS_PAD=$(px 6)
+  MARK_ICON=$(px 26); MARK_PAD=$(px 8)
+  TRAY_ICON=$(px 24); TRAY_PAD=$(px 6)
+  PANEL_PAD=$(px 2); PANEL_GAP=$(px 6)
+fi
+
+# tint2 draws an execp block at the width of its widest line, so the bar has to hold room for the
+# widest line pocketdesk-status can print: "Storage 1023G", on a phone with a terabyte free.
+STATUS_W=$(( $(text_w 13 "$STATUS_PT" 6) + 2 * STATUS_PAD ))
+CLOCK_W=$(text_w "$TIME1_CHARS" "$TIME1_PT" 7)
+clock_w2=$(text_w "$TIME2_CHARS" "$TIME2_PT" 6)
+[ "$clock_w2" -gt "$CLOCK_W" ] && CLOCK_W=$clock_w2
+CLOCK_W=$(( CLOCK_W + 2 * CLOCK_PAD ))
+
+# panel_items is LTSECP below: six items, so five gaps between them and the bar's own padding at
+# each end. The tray is empty until an app puts something in it, but it keeps its padding.
+FIXED_W=$(( 2 * PANEL_PAD + 5 * PANEL_GAP + 2 * TRAY_PAD + STATUS_W + CLOCK_W \
+            + MARK_ICON + 2 * MARK_PAD ))
+
+# What the window list keeps, whatever else wants the room. tint2 has no minimum of its own --
+# the taskbar is simply given what the other items leave -- so the room for three window buttons
+# is set aside here first, and nothing is pinned below that eats into it. Each of the three is as
+# wide as the icon in it and as tall as the bar. A fourth and a fifth window still get a button:
+# tint2 shares the room it has between the windows that are open.
+TASK_MIN=$(( 3 * $(px 30) + 2 * $(px 4) + 2 * $(px 2) ))
+LAUNCH_ROOM=$(( PANEL_W - FIXED_W - TASK_MIN ))
+
+# The first launcher is the Apps button and it is never dropped: it is the door to everything
+# that is not on the bar. Then, in the order they earn the room: the file manager and the
+# terminal, which the Apps menu cannot replace with one tap, and after them the browser, the
+# phone's files and Settings if the screen is wide enough to hold them. Whatever does not fit
+# keeps its icon on the desktop and its place in the Apps menu. The four AI apps
+# are deliberately not on this list at all: once an app is open, its own window button is what
+# you need, and those buttons are what the bar was leaving no room for.
+LAUNCH_USED=$(( 2 * LAUNCH_PAD + LAUNCH_ICON ))
+panel_lines=""
+for base in pcmanfm lxterminal ${BROWSER_BASE:-} pocketdesk-phone pocketdesk-settings; do
+  case "$base" in
+    pocketdesk-*) pinned="$LOCAL_APPS/$base.desktop" ;;
+    *) pinned="$LOCAL_APPS/pocketdesk-$base.desktop" ;;
+  esac
+  [ -f "$pinned" ] || continue
+  next_used=$(( LAUNCH_USED + LAUNCH_GAP + LAUNCH_ICON ))
+  [ "$next_used" -le "$LAUNCH_ROOM" ] || break
+  LAUNCH_USED=$next_used
+  panel_lines="$panel_lines
+launcher_item_app = $pinned"
+done
+TASK_ROOM=$(( PANEL_W - FIXED_W - LAUNCH_USED ))
 
 MARK=/usr/share/pixmaps/pocketdesk-mark.png
 [ -f "$MARK" ] || MARK=/usr/share/pixmaps/pocketdesk-linux.png
@@ -487,8 +589,12 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'border_width = 1'
   echo 'background_color = #101a2e 100'
   echo 'border_color = #2b3563 100'
-  # L launchers (Tux Apps in the corner, then browser, Files, Terminal, Phone files), T the open
-  # windows, S tray, E the phone's own numbers, C clock, P the PocketLinux mark in the far corner.
+  # The sums this bar was laid out from, in pixels, for whoever has to read it next to a
+  # screenshot of a bar that looks wrong.
+  echo "# bar $PANEL_W wide: fixed $FIXED_W, launchers $LAUNCH_USED, window list $TASK_ROOM"
+  # L launchers (Tux Apps in the corner, then as many of Files, Terminal, the browser, Phone
+  # files and Settings as that sum pays for), T the open windows, S tray, E the computer's own
+  # numbers, C clock, P the PocketLinux mark in the far corner.
   echo 'panel_items = LTSECP'
   echo "panel_position = $PANEL_AT center horizontal"
   echo 'panel_layer = top'
@@ -499,7 +605,7 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'panel_background_id = 1'
   echo "panel_size = 100% $(px 62)"
   echo 'panel_margin = 0 0'
-  echo "panel_padding = $(px 2) $(px 2) $(px 6)"
+  echo "panel_padding = $PANEL_PAD $(px 2) $PANEL_GAP"
   echo 'panel_window_name = PocketLinux'
   echo 'font_shadow = 0'
   echo 'scale_relative_to_dpi = 0'
@@ -508,9 +614,10 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'mouse_hover_icon_asb = 100 0 12'
   echo 'mouse_pressed_icon_asb = 100 0 -8'
   echo 'urgent_nb_of_blink = 0'
-  # The window list. Icon only: a name will not fit beside the launchers on a 720-pixel bar, and
-  # tint2 shows a task's name only in a tooltip, which a finger cannot ask for. A tap raises the
-  # app and never minimises it by accident; a long press (button 3 in Finger mode) minimises.
+  # The window list, and the room set aside for it above is what makes it appear at all. Icon
+  # only: a name will not fit beside the launchers on a 720-pixel bar, and tint2 shows a task's
+  # name only in a tooltip, which a finger cannot ask for. A tap raises the app and never
+  # minimises it by accident; a long press (button 3 in Finger mode) minimises.
   echo 'taskbar_mode = single_desktop'
   echo 'taskbar_name = 0'
   echo 'taskbar_hide_if_empty = 0'
@@ -535,25 +642,31 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'mouse_right = toggle_iconify'
   echo 'mouse_scroll_up = none'
   echo 'mouse_scroll_down = none'
-  # 12-hour clock, so 18:06 reads as 06:06 pm. A tap opens the full list of open windows, which
-  # is what makes the bar's own limit of three or four buttons acceptable.
-  echo 'time1_format = %I:%M %P'
-  echo 'time2_format = %a %d %b'
-  echo "time1_font = Sans Bold $(pt 11)"
-  echo "time2_font = Sans $(pt 8)"
+  # 12-hour clock, so 18:06 reads as 06:06 pm. The date is on the bar itself, not only in the
+  # tooltip: the default Finger mode taps and never rests, so no tooltip on this bar can be
+  # raised by a finger at all. Upright the weekday goes and the day and month stay. A tap opens
+  # the full list of open windows, which is what makes the bar's few window buttons acceptable.
+  echo "time1_format = $TIME1_FMT"
+  echo "time2_format = $TIME2_FMT"
+  echo "time1_font = Sans Bold $TIME1_PT"
+  echo "time2_font = Sans $TIME2_PT"
   echo 'clock_font_color = #e6ecf7 100'
-  echo "clock_padding = $(px 8) $(px 2)"
+  echo "clock_padding = $CLOCK_PAD $(px 2)"
   echo 'clock_background_id = 0'
   echo 'clock_tooltip = %A %d %B %Y, %I:%M %P'
   echo 'clock_lclick_command = /usr/local/bin/pocketdesk-windows list'
-  echo "systray_padding = $(px 6) $(px 2) $(px 6)"
-  echo "systray_icon_size = $(px 24)"
+  echo "systray_padding = $TRAY_PAD $(px 2) $TRAY_PAD"
+  echo "systray_icon_size = $TRAY_ICON"
   echo 'systray_background_id = 0'
   echo 'systray_sort = left2right'
-  echo "launcher_icon_size = $(px 44)"
-  echo "launcher_padding = $(px 6) $(px 2) $(px 8)"
+  echo "launcher_icon_size = $LAUNCH_ICON"
+  echo "launcher_padding = $LAUNCH_PAD $(px 2) $LAUNCH_GAP"
   echo 'launcher_icon_theme = Adwaita'
   echo 'launcher_icon_theme_override = 1'
+  # tint2 draws a launcher as an icon and nothing else -- there is no option for a name under it
+  # -- and this tooltip answers only to a resting pointer, which Mouse mode has and Finger mode
+  # does not. So the names are kept where a finger can reach them: under the same icons on the
+  # desktop, and in the Apps menu the first button opens.
   echo 'launcher_tooltip = 1'
   echo 'launcher_background_id = 0'
   echo 'launcher_icon_background_id = 0'
@@ -564,29 +677,35 @@ MARK=/usr/share/pixmaps/pocketdesk-mark.png
   echo 'tooltip_background_id = 5'
   echo "tooltip_font = Sans $(pt 10)"
   echo 'tooltip_font_color = #e6ecf7 100'
-  # The phone's own numbers, two short lines, refreshed every 30 seconds. There is no
-  # execp_tooltip line on purpose: without one tint2 shows the command's standard error as the
-  # tooltip, and pocketdesk-status writes the full sentence there. A tap opens Storage.
+  # The computer's own free memory and free storage, two short lines. The battery came off this
+  # block: the phone keeps its own status bar on show above the desktop, so the percentage was on
+  # the screen twice. Once a minute is often enough for two figures that move slowly, and every
+  # reading costs a process under PRoot, which the desktop is already counting against Android's
+  # ceiling.
+  #
+  # A tap opens the sentences behind the numbers -- battery, memory, storage, network -- because
+  # a finger cannot raise a tooltip. There is still no execp_tooltip line, so a mouse gets the
+  # same sentences on hover from the command's standard error, which is where tint2 looks.
   echo 'execp = new'
   echo 'execp_command = /usr/local/bin/pocketdesk-status'
-  echo 'execp_interval = 30'
+  echo 'execp_interval = 60'
   echo 'execp_has_icon = 0'
   echo 'execp_continuous = 0'
   echo 'execp_markup = 0'
-  echo "execp_font = Sans $(pt 9)"
+  echo "execp_font = Sans $STATUS_PT"
   echo 'execp_font_color = #c2cae6 100'
-  echo "execp_padding = $(px 6) 0 0"
+  echo "execp_padding = $STATUS_PAD 0 0"
   echo 'execp_centered = 1'
   echo 'execp_background_id = 0'
-  echo 'execp_lclick_command = /usr/local/bin/pocketdesk-storage'
+  echo 'execp_lclick_command = /usr/local/bin/pocketdesk-status detail'
   # The far corner: PocketLinux's own mark, doing a real job -- show the desktop, tap again to
   # bring the windows back -- opposite Tux in the other corner. Exactly one "P" above, so
   # exactly one button block here.
   echo 'button = new'
   echo "button_icon = $MARK"
   echo 'button_tooltip = PocketLinux - show the desktop'
-  echo "button_padding = $(px 8) 0 0"
-  echo "button_max_icon_size = $(px 26)"
+  echo "button_padding = $MARK_PAD 0 0"
+  echo "button_max_icon_size = $MARK_ICON"
   echo 'button_background_id = 0'
   echo 'button_centered = 1'
   echo 'button_lclick_command = /usr/local/bin/pocketdesk-windows minimise-all'
@@ -827,14 +946,18 @@ fi
 mv -f "$LABELS_NEW" "$HOME_DIR/.config/pocketdesk/labels" 2>/dev/null || true
 
 # Own only generated settings and launcher files. Never walk Phone, Projects,
-# Downloads or browser profiles during a menu refresh.
-chown coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+# Downloads or browser profiles during a menu refresh. On the desktop only this script's own
+# entries, gathered above -- a plain glob there reached the owner's own files, and this runs as
+# root after an app install. -h so a symlink is never followed to whatever it points at.
+chown -h coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
   "$HOME_DIR/.config/pocketdesk/labels" \
   "$HOME_DIR/.themes" "$HOME_DIR/.themes/PocketLinux" "$HOME_DIR/.themes/PocketLinux/openbox-3" \
   "$OPENBOX_DIR/menu.xml" "$OPENBOX_DIR/rc.xml" "$TINT2_DIR/tint2rc" \
   "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" \
   "$HOME_DIR/.config/user-dirs.dirs" "$HOME_DIR/.config/mimeapps.list" \
-  "$LOCAL_APPS"/pocketdesk-*.desktop "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
+  "$LOCAL_APPS"/pocketdesk-*.desktop 2>/dev/null || true
+[ "${#DESKTOP_OWNED[@]}" -eq 0 ] \
+  || chown -h coder:coder "${DESKTOP_OWNED[@]}" 2>/dev/null || true
 
 # A desktop that is open right now gets the new list at once. This also runs as root from an
 # install that happens while the desktop is open, so the panel is restarted as the desktop's

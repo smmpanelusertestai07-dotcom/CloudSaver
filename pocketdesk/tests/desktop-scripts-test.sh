@@ -400,9 +400,22 @@ grep -q '^clock_tooltip = ' "$tint" \
 grep -q '^time_tooltip_format' "$tint" && fail "time_tooltip_format is not a tint2 config key"
 grep -q '^execp_tooltip' "$tint" \
   && fail "a fixed execp_tooltip blocks the live one tint2 builds from the script's standard error"
-grep -q '^execp_interval = 30$' "$tint" || fail "the phone's numbers refresh every 30 seconds"
-grep -q '^execp_lclick_command = /usr/local/bin/pocketdesk-storage$' "$tint" \
-  || fail "tapping the panel's numbers must open the storage dialog"
+grep -q '^execp_interval = 60$' "$tint" \
+  || fail "the computer's numbers refresh every 60 seconds, not every 30"
+# Every refresh is a PRoot-traced process, and the readout no longer repeats the battery
+# percentage that Android's own status bar shows a finger's width above it. What is left is
+# the computer's own memory and disk, which do not move fast enough to be worth twice the cost.
+grep -q 'battery' "$tint" && fail "the panel must not repeat the phone's own battery readout"
+grep -q '^execp_lclick_command = /usr/local/bin/pocketdesk-status detail$' "$tint" \
+  || fail "tapping the panel's numbers must open the dialog that explains them"
+# The numbers used to lead straight to Storage, which answered a question nobody had asked:
+# what the two figures on the bar MEAN was written only in a hover tooltip, and the default
+# Finger mode taps and lifts, so no pointer ever rests long enough to raise one. The tap now
+# opens the sentences, and that dialog carries a button through to Storage.
+grep -q 'More about storage' "$PROJECT_DIR/app/assets/pocketdesk-status.sh" \
+  || fail "the numbers dialog must still lead to Storage"
+grep -q '/usr/local/bin/pocketdesk-storage' "$PROJECT_DIR/app/assets/pocketdesk-status.sh" \
+  || fail "the numbers dialog must name the storage app it opens"
 grep -q '^Icon=pocketdesk-linux$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
   || fail "the Apps button wears Tux"
 grep -q '^NoDisplay=true$' "$WORK/coder/.local/share/applications/pocketdesk-apps.desktop" \
