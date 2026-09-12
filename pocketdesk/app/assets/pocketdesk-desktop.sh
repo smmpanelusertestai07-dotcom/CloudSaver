@@ -422,8 +422,15 @@ mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.local/share/Trash/info" 2>/dev
 # show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
 # XDG Documents folder, which PocketLinux points at Projects, wearing the theme's grey folder in
 # a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketdesk.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
-  "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
+# A picture the owner chose in the computer's own Settings wins. This file is rewritten at
+# every start, so their choice has to be read back in rather than living only in here.
+WALLPAPER=/usr/share/backgrounds/pocketdesk.jpg
+CHOSEN_WALLPAPER=$(cat "$HOME/.config/pocketdesk/wallpaper" 2>/dev/null || true)
+case "$CHOSEN_WALLPAPER" in
+  /*) [ -r "$CHOSEN_WALLPAPER" ] && WALLPAPER=$CHOSEN_WALLPAPER ;;
+esac
+printf '[*]\nwallpaper_mode=fit\nwallpaper=%s\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
+  "$WALLPAPER" "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
 

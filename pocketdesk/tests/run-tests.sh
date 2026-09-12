@@ -246,6 +246,9 @@ for pair in 179:7.2 96:13.5 200:6.4; do
   got=$(DPI=$dpi bash -c 'DESKTOP_FONT_PX=18; DESKTOP_FONT_PT10=$(( DESKTOP_FONT_PX * 720 / DPI )); [ "$DESKTOP_FONT_PT10" -lt 60 ] && DESKTOP_FONT_PT10=60; [ "$DESKTOP_FONT_PT10" -gt 140 ] && DESKTOP_FONT_PT10=140; echo "$(( DESKTOP_FONT_PT10 / 10 )).$(( DESKTOP_FONT_PT10 % 10 ))"')
   [ "$got" = "$want" ] || { echo "FAIL DesktopStart: 18 pixels at $dpi dpi should be $want points, got $got"; exit 1; }
 done
+grep -q 'wallpaper=%s' "$desk" && grep -q 'config/pocketdesk/wallpaper' "$desk" \
+  && grep -q 'set_wallpaper()' "$PROJECT_DIR/app/assets/pocketdesk-settings.sh" \
+  || { echo "FAIL DesktopStart: a wallpaper the owner chose must survive the next start"; exit 1; }
 grep -q 'use_trash=1' "$desk" \
   || { echo "FAIL DesktopStart: Delete must move a file to the Bin"; exit 1; }
 grep -q 'Name=Bin' "$PROJECT_DIR/app/assets/pocketdesk-menu.sh" \

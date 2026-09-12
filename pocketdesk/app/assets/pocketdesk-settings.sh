@@ -37,6 +37,44 @@ panel_edge() {
   case "$edge" in top) echo top ;; *) echo bottom ;; esac
 }
 
+# The chosen wallpaper, by name, or the shipped one. Kept in PocketLinux's own settings rather
+# than in pcmanfm's, because the desktop rewrites pcmanfm's file at every start.
+wallpaper_now() {
+  chosen=$(cat "$CONFIG/wallpaper" 2>/dev/null)
+  if [ -n "$chosen" ] && [ -r "$chosen" ]; then basename "$chosen"; else echo "PocketLinux"; fi
+}
+
+apply_wallpaper() {
+  if command -v pcmanfm >/dev/null 2>&1; then
+    DISPLAY="${DISPLAY:-:1}" pcmanfm --set-wallpaper="$1" --wallpaper-mode=fit >/dev/null 2>&1 || true
+  fi
+}
+
+set_wallpaper() {
+  chosen=$(cat "$CONFIG/wallpaper" 2>/dev/null)
+  if [ -n "$chosen" ] && [ -r "$chosen" ]; then
+    if ! zenity --question --title="Wallpaper" --width=430 \
+        --text="The wallpaper is $(basename "$chosen"). Choose another picture, or put the PocketLinux one back?" \
+        --ok-label="Choose another" --cancel-label="PocketLinux one" >/dev/null 2>&1; then
+      rm -f "$CONFIG/wallpaper"
+      apply_wallpaper /usr/share/backgrounds/pocketdesk.jpg
+      tell "Wallpaper" "The PocketLinux wallpaper is back."
+      return 0
+    fi
+  fi
+  picture=$(zenity --file-selection --title="Choose a picture" \
+    --filename="$HOME_DIR/Pictures/" \
+    --file-filter="Pictures | *.jpg *.jpeg *.png *.JPG *.JPEG *.PNG *.webp *.bmp" 2>/dev/null) || return 0
+  [ -n "$picture" ] && [ -r "$picture" ] || return 0
+  case "$picture" in
+    *.jpg|*.jpeg|*.png|*.JPG|*.JPEG|*.PNG|*.webp|*.bmp) ;;
+    *) tell "Not a picture" "Choose a JPEG, PNG, WebP or BMP file."; return 0 ;;
+  esac
+  printf '%s' "$picture" > "$CONFIG/wallpaper"
+  apply_wallpaper "$picture"
+  tell "Wallpaper" "$(basename "$picture") is the wallpaper now, and it stays after a restart."
+}
+
 theme_now() {
   grep -q '^gtk-application-prefer-dark-theme=0' "$HOME_DIR/.config/gtk-3.0/settings.ini" 2>/dev/null \
     && echo light || echo dark
@@ -108,6 +146,7 @@ menu() {
     --hide-column=2 --print-column=2 \
     TRUE  theme      "Theme -- switch to the $other_theme theme" "$theme" \
     FALSE panel      "Where the bar sits -- move it to the $move_to" "$edge" \
+    FALSE wallpaper  "Wallpaper -- a picture of your own" "$(wallpaper_now)" \
     FALSE size       "Text and icon size" "PocketLinux Settings" \
     FALSE appearance "Appearance -- icons, fonts, cursors" "lxappearance" \
     FALSE sound      "Sound -- output, input and levels" "pavucontrol" \
@@ -137,6 +176,7 @@ Inside the desktop screen you can also use Screen -> Bigger interface, which tak
     sound)      start pavucontrol ;;
     storage)    start /usr/local/bin/pocketdesk-storage ;;
     software)   start /usr/local/bin/pocketdesk-software ;;
+    wallpaper)  set_wallpaper ;;
     downloads)  download_note ;;
     refresh)    /usr/local/bin/pocketdesk-menu >/dev/null 2>&1; "$WINDOWS" refresh >/dev/null 2>&1 || true ;;
     about)      about ;;

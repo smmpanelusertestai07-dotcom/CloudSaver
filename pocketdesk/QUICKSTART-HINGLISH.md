@@ -46,6 +46,8 @@
   nahi tha) aur naya build na ho to 700 MB download nahi hota; Cursor version match kare to kuch
   download nahi; adhoora part-file ab hamesha ke liye atakta nahi; Antigravity uninstall karne pe
   uska launcher bhi hat-ta hai; computer ke Software me ab **Remove installed software** hai.
+- **Apna wallpaper:** computer ke Settings me **Wallpaper** row — koi bhi picture chuno, restart
+  ke baad bhi wahi rehta hai; wahi se PocketLinux wala wapas bhi.
 - **Texts:** Google ke Android Linux Terminal se comparison (Pixel-only GPU, VM vs PRoot), Ubuntu
   24.04 kyun (26.04 aane ke baad bhi), sab AI apps ke Linux builds 11 Sep 2026 ko dobara verify.
 

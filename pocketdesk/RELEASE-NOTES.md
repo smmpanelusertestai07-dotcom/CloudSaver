@@ -110,6 +110,10 @@ Antigravity removes the launcher this app wrote for it, so the row stops saying 
 icon is left in the menu. The computer's own Software centre has **Remove installed software**
 for anything you added there.
 
+**A wallpaper of your own.** The computer's Settings has a Wallpaper row: pick any picture in the
+computer (the phone's, once Phone files is on), and it stays through restarts. The same row puts
+the PocketLinux one back.
+
 **Smaller things.** The starting card wraps its text once instead of sixty times a second and
 draws at 30 frames. A CopyRect the phone could not make now asks for the screen again rather
 than leaving it wrong until something else changes. The FAQ says Chrome warns about a dangerous
