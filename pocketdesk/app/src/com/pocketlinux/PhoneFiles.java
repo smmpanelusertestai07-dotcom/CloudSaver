@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.Settings;
+import android.widget.Toast;
 
 import java.io.File;
 
@@ -41,21 +42,36 @@ final class PhoneFiles {
     /** Opens the place Android grants it, or asks directly on Android 10. */
     static void request(Activity activity) {
         if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                activity.startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                        Uri.parse("package:" + activity.getPackageName())));
-            } catch (Throwable error) {
-                try {
-                    activity.startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-                } catch (Throwable ignored) {
-                    activity.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.parse("package:" + activity.getPackageName())));
-                }
+            // Three pages to try, the closest to the switch first. The last one used to be started
+            // outside every try: on a phone with none of them -- a cut-down Android Go build, a
+            // work phone with Settings locked down -- it threw from inside the catch and ended the
+            // app on the tap. When there is nowhere left to send the owner, they are told so.
+            if (open(activity, new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + activity.getPackageName())))) {
+                return;
             }
+            if (open(activity, new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))) return;
+            if (open(activity, new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + activity.getPackageName())))) {
+                return;
+            }
+            Toast.makeText(activity, "This phone has no settings page for All files access, so the "
+                    + "phone's folders cannot be shown inside the computer. You can still bring in "
+                    + "one file at a time from the desktop's Phone menu.", Toast.LENGTH_LONG).show();
             return;
         }
         activity.requestPermissions(new String[]{
                 Manifest.permission.READ_EXTERNAL_STORAGE,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE);
+    }
+
+    /** Starts a settings page, or reports that this phone does not have it. */
+    private static boolean open(Activity activity, Intent intent) {
+        try {
+            activity.startActivity(intent);
+            return true;
+        } catch (Throwable missing) {
+            return false;
+        }
     }
 }

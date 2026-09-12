@@ -445,13 +445,14 @@ final class ContainerRuntime {
         // PocketLinux's own mark, in the far corner of the panel. Its own artwork, so no
         // third-party trademark is involved -- see OPEN_SOURCE_NOTICES.md.
         copyAsset(context, "pocketdesk-mark.png", "usr/share/pixmaps/pocketdesk-mark.png");
-        // Four marks PocketLinux draws itself, because Ubuntu 24.04's Adwaita has no full-colour
+        // Five marks PocketLinux draws itself, because Ubuntu 24.04's Adwaita has no full-colour
         // application icons at all any more -- only the symbolic set, which GTK will not use for
         // a launcher. Asking for a theme name here is what left Software wearing a blank sheet.
         copyAsset(context, "pocketdesk-projects.png", "usr/share/pixmaps/pocketdesk-projects.png");
         copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
         copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
         copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
+        copyAsset(context, "pocketdesk-bin.png", "usr/share/pixmaps/pocketdesk-bin.png");
     }
 
     /**
@@ -559,9 +560,27 @@ final class ContainerRuntime {
         for (String folder : PHONE_FOLDERS) {
             for (String guard : guards) {
                 File file = new File(new File(card, folder), guard);
-                if (file.isFile()) file.delete();
+                // Only this app's own guard, which is an empty file, is taken away. A FOLDER by
+                // that name is a real bin with the owner's deleted files inside, and a file with
+                // anything in it was not written here, so neither is touched.
+                if (file.isFile() && file.length() == 0L) file.delete();
             }
         }
+    }
+
+    /**
+     * Takes the guards out of the owner's phone folders for good, on the way to deleting the
+     * Linux computer.
+     *
+     * Call this BEFORE the rootfs is deleted. The guard's name carries coder's user id and that
+     * number is read from the computer's own /etc/passwd, so once the system is gone the name
+     * can only be guessed at, and a guard with any other number in it would be left sitting in
+     * Download and DCIM for good -- hidden, belonging to nothing, with no screen left in this
+     * app that knows about it. It is also the last moment the app still has the All files
+     * permission these folders need.
+     */
+    static void clearTrashGuards(Context context) {
+        removeTrashGuards(trashGuardNames(rootfs(context)));
     }
 
     private static void bindPhoneFolders(List<String> args, File phoneMount, String[] trashGuards) {
@@ -745,6 +764,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketdesk-settings.png", "usr/share/pixmaps/pocketdesk-settings.png");
         copyAsset(context, "pocketdesk-software.png", "usr/share/pixmaps/pocketdesk-software.png");
         copyAsset(context, "pocketdesk-package.png", "usr/share/pixmaps/pocketdesk-package.png");
+        copyAsset(context, "pocketdesk-bin.png", "usr/share/pixmaps/pocketdesk-bin.png");
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {

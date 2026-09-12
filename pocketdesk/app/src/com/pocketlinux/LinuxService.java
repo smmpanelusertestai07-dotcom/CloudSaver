@@ -1114,9 +1114,13 @@ public final class LinuxService extends Service {
                 }
                 String vncSocket = new File(ContainerRuntime.rootfs(this),
                         "home/coder/.pocketdesk/vnc.sock").getAbsolutePath();
-                if (VncClient.canConnect(vncSocket)
-                        || (VncClient.portOffered(vncSocket, "vnc.port")
-                            && VncClient.canConnect("127.0.0.1", 5901, 250))) {
+                // The Unix socket is the only way in. The old fallback also tried
+                // 127.0.0.1:5901 whenever a vnc.port marker existed; that marker is no longer
+                // written by anything, and the desktop start deletes it, so the test could
+                // never pass. Do not put it back: a TCP port would offer the desktop to every
+                // other app on the phone, which is what the socket was moved to in the first
+                // place.
+                if (VncClient.canConnect(vncSocket)) {
                     ready = true;
                     break;
                 }
@@ -1554,6 +1558,12 @@ public final class LinuxService extends Service {
     private void removeLinux() throws Exception {
         if (isDesktopRunning()) throw new IOException("Stop the Linux computer before deleting it.");
         status("Deleting Linux", "Deleting the Ubuntu system…", -1, true, false);
+        // The small guard files this app planted in Download, DCIM and the other phone folders
+        // go with it. They belong to the computer, and this is the last moment the app both has
+        // the All files permission they need and knows which folders they are in. It has to come
+        // before the rootfs is deleted, because the guard's name is built from a user id read
+        // from inside it -- see ContainerRuntime.clearTrashGuards.
+        ContainerRuntime.clearTrashGuards(this);
         ContainerRuntime.deleteTree(ContainerRuntime.rootfs(this));
         File archive = ContainerRuntime.downloadFile(this);
         if (archive.exists()) archive.delete();
