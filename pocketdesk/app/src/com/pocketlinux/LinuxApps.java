@@ -106,6 +106,10 @@ final class LinuxApps {
             // mobile data was being spent twice. One request at a time is slightly slower per
             // package and very much cheaper overall.
             + "Acquire::ForceIPv4 \"true\";\nAcquire::http::Pipeline-Depth \"0\";\n"
+            // Under PRoot's fake root apt cannot drop to _apt, and said so ("Download is
+            // performed unsandboxed as root") at every install; apt-utils below is what debconf
+            // wanted before it would stop "delaying package configuration".
+            + "APT::Sandbox::User \"root\";\n"
             + "APT::Install-Suggests \"false\";\nquiet \"1\";\n"
             + "Dpkg::Options {\"--force-confdef\";\"--force-confold\";};\n' "
             + "> \"$PD_ROOT/etc/apt/apt.conf.d/99pocketdesk\"; "
@@ -283,7 +287,7 @@ final class LinuxApps {
 
     /** The desktop and its tools: what set-up installs, and what the Settings row refreshes. */
     static final String DESKTOP_PACKAGES =
-            "curl gnupg ca-certificates adwaita-icon-theme dmz-cursor-theme tzdata "
+            "curl gnupg ca-certificates apt-utils adwaita-icon-theme dmz-cursor-theme tzdata "
             + "gnome-themes-extra-data fonts-noto-color-emoji fonts-noto-core "
             + "locales bash-completion lsb-release "
             + "xdg-utils x11-xserver-utils x11-utils dbus-x11 dbus-system-bus-common "

@@ -140,6 +140,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         // change reach the computer without closing the desktop first.
         applyOrientation();
         armAutoHide();
+        refreshMuteLabels();
         viewerVisible = true;
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(false);
@@ -167,7 +168,15 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
      */
     private void cancelPostedWork() {
         main.removeCallbacks(hideBarsSoon);
-        if (volumePanel != null) volumePanel.removeCallbacks(hideVolume);
+        if (volumePanel != null) {
+            volumePanel.removeCallbacks(hideVolume);
+            // A panel a key nudged up fades on that timer. With the timer cancelled it would
+            // still be there, at full alpha, when the desktop is next opened -- and stay.
+            if (volumeAutoHiding && volumePanel.getVisibility() == View.VISIBLE) {
+                volumePanel.animate().cancel();
+                volumePanel.setVisibility(View.GONE);
+            }
+        }
     }
 
     @Override protected void onStop() {
@@ -670,6 +679,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         preferences.edit().putBoolean(ContainerRuntime.KEY_KEY_ROW, shown).apply();
         keyRow.setVisibility(shown ? View.VISIBLE : View.GONE);
         styleToggle(keysButton, shown);
+        placeVolumePanel();
     }
 
     private void styleToggle(Button button, boolean active) {
@@ -819,7 +829,22 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (manager == null) return;
         try {
-            manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+            if (direction == AudioManager.ADJUST_TOGGLE_MUTE) {
+                // Android's toggle only flips the mute flag. A slider held down to 0 is silent
+                // without the flag, and flipping the flag on and off again leaves it at 0, so
+                // "Unmute" did nothing anyone could hear. Muted: unmute, and if that leaves 0,
+                // come back to a level. At 0: come back to a level. Audible: mute.
+                if (manager.isStreamMute(AudioManager.STREAM_MUSIC)) {
+                    manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
+                    if (manager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) restoreAudible(manager);
+                } else if (manager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) {
+                    restoreAudible(manager);
+                } else {
+                    manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
+                }
+            } else {
+                manager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+            }
         } catch (RuntimeException blocked) {
             // Do Not Disturb can put media under the notification policy, and Android then
             // refuses the change to an app without policy access instead of ignoring it.
@@ -837,6 +862,8 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
     private TextView volumeNote;
     private ProgressBar volumeBar;
     private Button muteButton;
+    /** The last media level above zero, to come back to when Unmute finds the slider at 0. */
+    private int lastAudibleStep;
     private LinearLayout volumePanel;
     /** True while the panel is up only because a volume key nudged it. */
     private boolean volumeAutoHiding;
@@ -869,19 +896,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             int step = manager.getStreamVolume(AudioManager.STREAM_MUSIC);
             percent = Math.round(step * 100f / max);
             silent = step == 0 || manager.isStreamMute(AudioManager.STREAM_MUSIC);
+            if (step > 0) lastAudibleStep = step;
         }
         volumeChip.setText(silent ? "Media volume  \u00b7  muted" : "Media volume  \u00b7  " + percent + " %");
         volumeNote.setText(silent
                 ? "The computer cannot be heard"
                 : "The Linux computer plays on this volume");
         volumeBar.setProgress(silent ? 0 : percent);
-        muteButton.setText(silent ? "Unmute" : "Mute");
-        muteButton.setContentDescription(silent ? "Turn the sound back on" : "Mute the computer");
-        styleToggle(muteButton, silent);
-        if (muteBarButton != null) {
-            muteBarButton.setText(silent ? "Muted" : "Mute");
-            styleToggle(muteBarButton, silent);
-        }
+        applyMuteLabels(silent);
         volumePanel.setVisibility(View.VISIBLE);
         volumePanel.animate().cancel();
         volumePanel.setAlpha(1f);
@@ -988,6 +1010,33 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         return volumePanel;
     }
 
+    /** The last audible level, or half way when there has not been one this session. */
+    private void restoreAudible(AudioManager manager) {
+        int max = Math.max(1, manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        int to = lastAudibleStep > 0 ? Math.min(lastAudibleStep, max) : Math.max(1, max / 2);
+        manager.setStreamVolume(AudioManager.STREAM_MUSIC, to, 0);
+    }
+
+    /** Mute reads "Muted" only while the phone's media really is silent, not since the last key. */
+    private void refreshMuteLabels() {
+        AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        boolean silent = manager != null && (manager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
+                || manager.isStreamMute(AudioManager.STREAM_MUSIC));
+        applyMuteLabels(silent);
+    }
+
+    private void applyMuteLabels(boolean silent) {
+        if (muteButton != null) {
+            muteButton.setText(silent ? "Unmute" : "Mute");
+            muteButton.setContentDescription(silent ? "Turn the sound back on" : "Mute the computer");
+            styleToggle(muteButton, silent);
+        }
+        if (muteBarButton != null) {
+            muteBarButton.setText(silent ? "Muted" : "Mute");
+            styleToggle(muteBarButton, silent);
+        }
+    }
+
     /**
      * Keeps the volume corner clear of the control bar, whichever end the bar is at.
      *
@@ -1000,7 +1049,14 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         ViewGroup.LayoutParams params = volumePanel.getLayoutParams();
         if (!(params instanceof FrameLayout.LayoutParams)) return;
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) params;
-        lp.topMargin = Ui.dp(this, controlsAtTop ? 66 : 12);
+        // Below whatever is actually stacked at the top -- the bar, and the key row when it is
+        // shown. A fixed 66 dp put the panel on top of Esc, Tab and Ctrl whenever Keys was on.
+        int above = 0;
+        if (controlsAtTop && bar != null && bar.getVisibility() == View.VISIBLE) {
+            above += 48 + 1;
+            if (keyRow != null && keyRow.getVisibility() == View.VISIBLE) above += 48;
+        }
+        lp.topMargin = Ui.dp(this, above > 0 ? above + 17 : 12);
         lp.setMarginEnd(Ui.dp(this, 10));
         volumePanel.setLayoutParams(lp);
     }
@@ -1107,8 +1163,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                 + "two fingers to scroll, tap then press-and-move to drag.\n\n"
                 + "Keyboard opens the phone keyboard; Keys adds Esc, Tab, Ctrl, arrows and more. "
                 + "Window switches between open apps, minimises or closes the one in front, "
-                + "fits a stray window back to the screen, opens the apps menu or Phone files, "
-                + "and pastes from the phone.\n\n"
+                + "fits a stray window back to the screen and opens the apps menu. Phone has "
+                + "the phone's own things: volume and mute, the microphone, a photo, a file "
+                + "from the phone or a cloud drive, Phone files, paste and the touch lock.\n\n"
                 + "Several apps at once: one AI app at a time, plus Files, the Terminal and a "
                 + "browser page — four windows in all. Every open window has a button on the bar "
                 + "at the bottom of the desktop: tap to switch, hold to minimise. Window → All "
@@ -1211,6 +1268,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         bar.setVisibility(hidden ? View.GONE : View.VISIBLE);
         keyRow.setVisibility(hidden || !keyRowShown ? View.GONE : View.VISIBLE);
         restoreBars.setVisibility(hidden ? View.VISIBLE : View.GONE);
+        placeVolumePanel();
         if (hidden) main.removeCallbacks(hideBarsSoon); else armAutoHide();
     }
 

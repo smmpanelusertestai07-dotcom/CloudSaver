@@ -39,7 +39,7 @@ search_ubuntu() {
     | awk -F' - ' 'NF >= 2 { name=$1; $1=""; sub(/^ - /, ""); print name "\t" $0 }' \
     | head -n 100)
   if [ -z "$results" ]; then
-    tell "Nothing found" "Ubuntu's configured repositories have no package matching: $query\n\nTry a shorter word, or choose Update package list and search again."
+    tell "Nothing found" "Ubuntu's configured repositories have no package matching: $query\n\nTry a shorter word, or choose Update installed software (which also refreshes the package list) and search again."
     return 0
   fi
 

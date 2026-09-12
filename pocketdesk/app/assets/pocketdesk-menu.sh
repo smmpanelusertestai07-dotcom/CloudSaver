@@ -20,6 +20,13 @@ mkdir -p "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
          "$HOME_DIR/Projects" "$HOME_DIR/Downloads" "$HOME_DIR/Phone" \
          "$HOME_DIR/.config/pocketdesk" "$HOME_DIR/.themes"
 
+# The label of every wrapped launcher ("ChatGPT", "Chrome", "Files"), keyed by the name
+# pocketdesk-open derives from the command it is given. Rebuilt on every run and moved into
+# place at the end, so a launch in the middle of a refresh still reads a complete table. Why a
+# table and not the Exec line: see write_entry.
+LABELS_NEW="$HOME_DIR/.config/pocketdesk/labels.new"
+: > "$LABELS_NEW"
+
 # The desktop session writes the chosen download directory here. A menu refresh may also run as
 # root after an install, so it cannot rely on inherited environment variables. Accept only the
 # two destinations PocketLinux itself writes; a damaged file falls back to private Downloads.
@@ -163,12 +170,42 @@ icon_for() {   # icon_for <base> -> icon name or empty to keep the original
   esac
 }
 
+# The name pocketdesk-open will derive from a command: its first word, after any `env
+# KEY=value` prefix, without the directory; the same rule the launcher applies.
+label_key() {   # label_key <command>
+  set -f
+  # shellcheck disable=SC2086
+  set -- $1
+  set +f
+  if [ "$#" -gt 0 ] && [ "${1##*/}" = env ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+      case "$1" in [A-Za-z_]*=*) shift ;; *) break ;; esac
+    done
+  fi
+  [ "$#" -gt 0 ] || return 0
+  key=${1##*/}
+  [ "$key" != google-chrome-stable ] || key=google-chrome
+  printf '%s' "$key"
+}
+
 write_entry() {   # write_entry <source> <target> <label> <command>
   icon_override=$(icon_for "$(basename "$1" .desktop)")
+  # The label is NOT put on the Exec line. xdg-open (xdg-utils 1.1.3), which is what runs a
+  # wrapped entry when the browser hands an app:// sign-in callback back, splits Exec on plain
+  # whitespace with no quote handling: `--label "Antigravity - URL Handler"` reached the
+  # launcher as the label `"Antigravity` and the command `-`, the launcher reported exit 127,
+  # and the sign-in never came back. The label goes into the table instead, keyed by the name
+  # the launcher derives from the command itself; the first entry written for a name wins, and
+  # the app's own launcher is written before its URL handler.
+  key=$(label_key "$4")
+  if [ -n "$key" ] && ! awk -F '\t' -v k="$key" '$1 == k { found = 1 } END { exit !found }' "$LABELS_NEW" 2>/dev/null; then
+    printf '%s\t%s\n' "$key" "$3" >> "$LABELS_NEW"
+  fi
   awk -v cmd="$4" -v label="$3" -v icon="$icon_override" '
     /^\[/ { group++ }
     group > 1 { next }
-    /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open --label \"" label "\" " cmd " %U"; next }
+    /^Exec=/ { print "Exec=/usr/local/bin/pocketdesk-open " cmd " %U"; next }
     /^Name=/ { print "Name=" label; next }
     /^Icon=/ && icon != "" { print "Icon=" icon; next }
     /^Name\[/ { next }
@@ -242,6 +279,7 @@ EOF
   echo '  <separator label="Folders"/>'
   echo '  <item label="Phone files" icon="/usr/share/pixmaps/pocketdesk-phone.png"><action name="Execute"><command>pcmanfm /home/coder/Phone</command></action></item>'
   echo '  <item label="Projects" icon="/usr/share/pixmaps/pocketdesk-projects.png"><action name="Execute"><command>pcmanfm /home/coder/Projects</command></action></item>'
+  echo '  <item label="Cloud"><action name="Execute"><command>pcmanfm /home/coder/Cloud</command></action></item>'
   printf '  <item label="Download destination"><action name="Execute"><command>pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
   echo '  <item label="Bin"><action name="Execute"><command>pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
   echo '  <item label="Empty the bin"><action name="Execute"><command>sh -c "rm -rf /home/coder/.local/share/Trash/files/* /home/coder/.local/share/Trash/files/.[!.]* /home/coder/.local/share/Trash/info/* 2>/dev/null; notify-send -a PocketLinux Bin \"The bin is empty.\""</command></action></item>'
@@ -777,9 +815,12 @@ if [ -f "$OPENBOX_DEFAULT" ]; then
     && mv -f "$OPENBOX_DIR/rc.xml.new" "$OPENBOX_DIR/rc.xml"
 fi
 
+mv -f "$LABELS_NEW" "$HOME_DIR/.config/pocketdesk/labels" 2>/dev/null || true
+
 # Own only generated settings and launcher files. Never walk Phone, Projects,
 # Downloads or browser profiles during a menu refresh.
 chown coder:coder "$OPENBOX_DIR" "$TINT2_DIR" "$DESKTOP_DIR" "$LOCAL_APPS" \
+  "$HOME_DIR/.config/pocketdesk/labels" \
   "$HOME_DIR/.themes" "$HOME_DIR/.themes/PocketLinux" "$HOME_DIR/.themes/PocketLinux/openbox-3" \
   "$OPENBOX_DIR/menu.xml" "$OPENBOX_DIR/rc.xml" "$TINT2_DIR/tint2rc" \
   "$HOME_DIR/.themes/PocketLinux/openbox-3/themerc" \
@@ -805,9 +846,11 @@ if display_live; then
     # with --kill-on-exit, so a panel started here would be killed the moment the install
     # finished -- and the desktop would sit with no panel until it was closed and opened again.
     pkill -USR1 -x tint2 2>/dev/null || true
-  elif [ "$(id -u)" != 0 ]; then
-    # No panel at all (it crashed, or the phone killed it for memory) and we are the desktop's
-    # own user, so a replacement started here belongs to the session and survives.
+  elif [ "${DISPLAY:-}" = ":1" ]; then
+    # No panel at all (it crashed, or the phone killed it for memory) and this runs inside the
+    # desktop session itself -- it exported DISPLAY; an install's container never does -- so a
+    # replacement started here belongs to the session and survives. (Every container is
+    # started as fake root, so a uid test could never tell the two apart.)
     DISPLAY=:1 setsid tint2 >/tmp/pocketdesk-tint2.log 2>&1 &
   fi
   DISPLAY=:1 /usr/local/bin/pocketdesk-window-guard once >/dev/null 2>&1 || true
