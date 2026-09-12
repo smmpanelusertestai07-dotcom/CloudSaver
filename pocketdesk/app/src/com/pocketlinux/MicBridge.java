@@ -76,6 +76,10 @@ final class MicBridge {
     boolean isRunning() { return active != null; }
     String problem() { return lastProblem; }
 
+    /** Told when a recorder that started stops on its own, so the screen can say what happened. */
+    private volatile Runnable onFailed;
+    void onFailed(Runnable listener) { onFailed = listener; }
+
     synchronized void start() {
         if (active != null) return;
         lastProblem = null;
@@ -96,8 +100,15 @@ final class MicBridge {
         if (session != null) session.cancel();
     }
 
-    private synchronized void failed(Session session, String message) {
-        if (active == session && !session.cancelled) lastProblem = message;
+    private void failed(Session session, String message) {
+        Runnable tell = null;
+        synchronized (this) {
+            if (active == session && !session.cancelled) {
+                lastProblem = message;
+                tell = onFailed;
+            }
+        }
+        if (tell != null) tell.run();
     }
 
     private boolean live(Session session) {

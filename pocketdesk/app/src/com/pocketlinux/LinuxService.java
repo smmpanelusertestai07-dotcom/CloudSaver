@@ -449,6 +449,7 @@ public final class LinuxService extends Service {
     private LinuxDns linuxDns;
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        lastStartId = startId;
         String action = intent == null ? null : intent.getAction();
         final String appId = intent == null ? null : intent.getStringExtra(EXTRA_APP_ID);
         if (Build.VERSION.SDK_INT >= 34) {
@@ -501,7 +502,7 @@ public final class LinuxService extends Service {
                     releaseInstallWakeLock();
                     if (!desktopRunning && !BUSY.get()) {
                         stopForeground(STOP_FOREGROUND_REMOVE);
-                        stopSelf();
+                        stopSelf(lastStartId);
                     }
                 }
             });
@@ -605,11 +606,30 @@ public final class LinuxService extends Service {
                     if (ACTION_START_DESKTOP.equals(action)) desktopStarting = false;
                     BUSY.set(false);
                     releaseTaskWakeLock();
+                    // The automatic reopen goes out here, with this task's busy flag already
+                    // cleared and before any stop: the service stays up, and the new session
+                    // gets the notification, the wake lock and the monitor it needs.
+                    if (reopenPending) {
+                        reopenPending = false;
+                        try {
+                            android.content.Intent again = new android.content.Intent(
+                                    LinuxService.this, LinuxService.class).setAction(ACTION_START_DESKTOP);
+                            if (Build.VERSION.SDK_INT >= 26) startForegroundService(again);
+                            else startService(again);
+                            return;
+                        } catch (Throwable refused) {
+                            // Android would not let a background start through. Say so instead.
+                            reopeningUntil = 0L;
+                            automaticReopens = AUTOMATIC_REOPENS;
+                            status("The Linux computer is stopped", "It ended by itself and could "
+                                    + "not be reopened automatically; open it again.", 100, false, false);
+                        }
+                    }
                     // A new Open can already be queued after Stop. Only this task's generation
                     // may clear busy/starting, release its lock or end the foreground service.
                     if (!desktopRunning && !INSTALLING.get()) {
                         stopForeground(STOP_FOREGROUND_REMOVE);
-                        stopSelf();
+                        stopSelf(lastStartId);
                     }
                 });
                 workerGeneration.remove();
@@ -1035,9 +1055,11 @@ public final class LinuxService extends Service {
                     ProotProcess.stopAndWait(desktopProcess);
                     throw new InterruptedException("Desktop start cancelled");
                 }
-                if (VncClient.canConnect(new File(ContainerRuntime.rootfs(this),
-                                "home/coder/.pocketdesk/vnc.sock").getAbsolutePath())
-                        || VncClient.canConnect("127.0.0.1", 5901, 250)) {
+                String vncSocket = new File(ContainerRuntime.rootfs(this),
+                        "home/coder/.pocketdesk/vnc.sock").getAbsolutePath();
+                if (VncClient.canConnect(vncSocket)
+                        || (VncClient.portOffered(vncSocket, "vnc.port")
+                            && VncClient.canConnect("127.0.0.1", 5901, 250))) {
                     ready = true;
                     break;
                 }
@@ -1167,6 +1189,11 @@ public final class LinuxService extends Service {
      * for five minutes before dying earns the pair back, because that is a phone having a bad
      * moment rather than a computer that cannot start.
      */
+    /** Set by bringItBack; the ending task queues the reopen once its own state is clear. */
+    private volatile boolean reopenPending;
+    /** The newest start Android has dispatched, so a stop can never discard a queued one. */
+    private volatile int lastStartId;
+
     private boolean bringItBack(int exitCode) {
         long now = System.currentTimeMillis();
         if (now - lastAutomaticReopenAt > HEALTHY_SESSION_MS) automaticReopens = 0;
@@ -1178,18 +1205,12 @@ public final class LinuxService extends Service {
         status("Reopening the desktop",
                 "It stopped by itself" + (exitCode == 137 ? " because Android ended it" : "")
                         + ". Everything on it was kept; opening it again\u2026", -1, true, false);
-        // Through the ordinary action, so one path starts a session and one generation owns it.
-        try {
-            android.content.Intent again = new android.content.Intent(this, LinuxService.class)
-                    .setAction(ACTION_START_DESKTOP);
-            if (Build.VERSION.SDK_INT >= 26) startForegroundService(again); else startService(again);
-            return true;
-        } catch (Throwable refused) {
-            // Android would not let a background start through. Fall back to saying what happened.
-            reopeningUntil = 0L;
-            automaticReopens = AUTOMATIC_REOPENS;
-            return false;
-        }
+        // Asked for here, started in the ending task's own finally: starting it from here put
+        // the new intent behind a stopSelf() that this same worker was about to run, and Android
+        // brought the service down between the two. The desktop came back inside a destroyed
+        // service -- no notification, no wake lock, no heartbeat, no DNS following the network.
+        reopenPending = true;
+        return true;
     }
 
     /**
@@ -1497,7 +1518,7 @@ public final class LinuxService extends Service {
             // An install running beside the desktop keeps the service and its own lock alive.
             if (!INSTALLING.get()) {
                 stopForeground(STOP_FOREGROUND_REMOVE);
-                stopSelf();
+                stopSelf(lastStartId);
             }
         }
     }

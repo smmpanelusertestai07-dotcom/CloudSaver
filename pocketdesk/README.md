@@ -55,9 +55,14 @@ chmod +x build.sh
 ./build.sh
 ```
 
-Requires JDK 17 or newer and `zip`. The script creates a reusable local preview key under
-`.signing/`. For a public release supply your own keystore through `POCKETDESK_KEYSTORE`,
-`POCKETDESK_STORE_PASS` and `POCKETDESK_KEY_PASS`, and never publish the private key.
+Requires JDK 17 or newer and `zip`. The keystore in `.signing/` (password `pocketdesk-local`) is
+committed on purpose: Android installs an update only when it carries the same signature, and
+uninstalling PocketLinux deletes the whole Ubuntu container, so every build — local, fork or CI
+artifact — has to be signed with that one key. Because it is public, an APK's signature proves
+nothing about who built it: install PocketLinux only from a source you trust. For a release of
+your own, sign with a private keystore through `POCKETDESK_KEYSTORE`, `POCKETDESK_STORE_PASS` and
+`POCKETDESK_KEY_PASS` (or the repository secrets `POCKETDESK_KEYSTORE_B64`, `POCKETDESK_STORE_PASS`
+and `POCKETDESK_KEY_PASS`, which the workflow picks up), and keep that key private.
 
 Run the static tests with `bash tests/run-tests.sh`. GitHub Actions runs the same suites and builds the release APK as an artifact on every push that touches `pocketdesk/` (`.github/workflows/pocketdesk.yml`); add `POCKETDESK_KEYSTORE_B64`, `POCKETDESK_STORE_PASS` and `POCKETDESK_KEY_PASS` as repository secrets to sign CI builds with one fixed key.
 

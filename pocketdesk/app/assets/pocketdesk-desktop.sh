@@ -169,7 +169,12 @@ mkdir -p "$HOME/Pictures" "$HOME/.config/gtk-3.0" "$HOME/.config/gtk-4.0" "$HOME
 # still comes up -- PocketLinux's viewer tries the socket first and the port second.
 mkdir -p "$HOME/.pocketdesk"
 chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
-rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
+# vnc.port exists only while the display really is on a port. The viewer tries the port only
+# when it does: without that it fell back to 127.0.0.1:5901 during every start, before the
+# socket appeared -- and on Android any app can reach loopback, so a listener sitting on that
+# port would have been handed the desktop.
+rm -f "$HOME/.pocketdesk/vnc.sock" "$HOME/.pocketdesk/vnc.port" \
+      /tmp/.X11-unix/X1 /tmp/.X1-lock 2>/dev/null || true
 
 start_display() {   # start_display <extra args...>
   # Output stays on this script's stdout, which PocketLinux records for the session: a display
@@ -217,6 +222,7 @@ if ! wait_for_display 40; then
   wait "$VNC_PID" 2>/dev/null || true
   rm -f "$HOME/.pocketdesk/vnc.sock" /tmp/.X11-unix/X1 /tmp/.X11-unix/X1-lock /tmp/.X1-lock 2>/dev/null || true
   desktop_phase "Starting the fallback display"
+  echo 5901 > "$HOME/.pocketdesk/vnc.port"
   start_display -rfbport 5901 -localhost yes
   if ! wait_for_display 90; then
     echo "display: did not start"
@@ -638,7 +644,7 @@ if command -v pulseaudio >/dev/null 2>&1; then
 
   mkdir -p "$HOME/.pocketdesk"
   chmod 700 "$HOME/.pocketdesk" 2>/dev/null || true
-  rm -f "$HOME/.pocketdesk/audio.sock"
+  rm -f "$HOME/.pocketdesk/audio.sock" "$HOME/.pocketdesk/audio.port"
   if audio_call pactl load-module module-simple-protocol-unix rate=44100 format=s16le channels=2 \
       source=phone.monitor record=true playback=false \
       socket="$HOME/.pocketdesk/audio.sock" >/dev/null 2>&1; then
@@ -646,6 +652,7 @@ if command -v pulseaudio >/dev/null 2>&1; then
     echo "sound: private socket" >> /tmp/pocketdesk-pulse.log
   else
     echo "sound: falling back to the local port" >> /tmp/pocketdesk-pulse.log
+    echo 4712 > "$HOME/.pocketdesk/audio.port"
     audio_call pactl load-module module-simple-protocol-tcp rate=44100 format=s16le channels=2 \
       source=phone.monitor record=true playback=false listen=127.0.0.1 port=4712 >/dev/null 2>&1 || true
   fi

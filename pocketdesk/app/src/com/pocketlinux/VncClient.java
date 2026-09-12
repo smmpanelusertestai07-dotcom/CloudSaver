@@ -117,6 +117,11 @@ final class VncClient {
                     localSocket = null;
                 }
             }
+            if (rawIn == null && socketPath != null && !portOffered(socketPath, "vnc.port")) {
+                // The desktop is on its private socket, which is not up yet. Waiting for it beats
+                // reaching for a loopback port every app on this phone can also reach.
+                throw new IOException("The desktop's private display socket is not ready");
+            }
             if (rawIn == null) {
                 if (closed.get()) throw new IOException("Viewer connection was closed");
                 socket = new Socket();
@@ -611,6 +616,19 @@ final class VncClient {
     }
 
     /** True once the desktop's private socket answers -- the same question, for the new path. */
+    /**
+     * True when the desktop said it had to fall back to a loopback port.
+     *
+     * The marker is written by pocketdesk-desktop only in that branch and removed at every
+     * start, so a missing file means the private socket is the only way in -- and a port that
+     * any other app on the phone could have opened first is never tried.
+     */
+    static boolean portOffered(String socketPath, String markerName) {
+        java.io.File socket = new java.io.File(socketPath);
+        java.io.File parent = socket.getParentFile();
+        return parent != null && new java.io.File(parent, markerName).exists();
+    }
+
     static boolean canConnect(String socketPath) {
         if (socketPath == null || !new java.io.File(socketPath).exists()) return false;
         android.net.LocalSocket test = new android.net.LocalSocket();

@@ -88,6 +88,10 @@ final class AudioBridge {
                     try { local.close(); } catch (IOException ignored) {}
                 }
             }
+            if (!playedLocally && socketPath != null
+                    && !VncClient.portOffered(socketPath, "audio.port")) {
+                return;                       // the private socket is the only sound path here
+            }
             if (!playedLocally) {
                 try (Socket connection = new Socket()) {
                     socket = connection;

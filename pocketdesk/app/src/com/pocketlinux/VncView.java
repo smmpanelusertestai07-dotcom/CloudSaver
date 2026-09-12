@@ -610,42 +610,7 @@ final class VncView extends View implements VncClient.Listener {
             }
             dragArmed = false;
             moved = true;
-            if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
-                twoFingerX = averageX(event);
-                twoFingerY = averageY(event);
-                // Scroll the window under the fingers, as a phone does: X sends the wheel to
-                // whatever is under the pointer, so the pointer goes there first.
-                pointerX = mapX(twoFingerX, active.getWidth());
-                pointerY = mapY(twoFingerY, active.getHeight());
-                active.sendPointer(pointerX, pointerY, 0);
-            } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
-                float x = averageX(event);
-                float y = averageY(event);
-                // Two fingers always scroll in Mouse mode -- the arrow is what moves the view
-                // when zoomed in. In Finger mode one finger already scrolls, so two fingers
-                // pan a zoomed-in picture instead.
-                if (pointerMode == PointerMode.DIRECT && zoomedIn()) {
-                    panX += x - twoFingerX;
-                    panY += y - twoFingerY;
-                    twoFingerX = x;
-                    twoFingerY = y;
-                    invalidate();
-                } else {
-                    // Fingers up, content up: wheel down. Several notches for a fast swipe.
-                    int notch = Ui.dp(getContext(), 16);
-                    float dy = y - twoFingerY;
-                    float dx = x - twoFingerX;
-                    if (Math.abs(dy) >= Math.abs(dx)) {
-                        while (dy <= -notch) { wheel(active, 16); twoFingerY -= notch; dy += notch; }
-                        while (dy >= notch) { wheel(active, 8); twoFingerY += notch; dy -= notch; }
-                        if (Math.abs(dy) < notch) twoFingerX = x;
-                    } else {
-                        while (dx <= -notch) { wheel(active, 64); twoFingerX -= notch; dx += notch; }
-                        while (dx >= notch) { wheel(active, 32); twoFingerX += notch; dx -= notch; }
-                        twoFingerY = y;
-                    }
-                }
-            }
+            twoFingerScroll(event, action, active, pointerMode == PointerMode.DIRECT && zoomedIn());
             return true;
         }
         if (pointerMode == PointerMode.DIRECT) return directTouch(event, action, active);
@@ -699,6 +664,61 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     /**
+     * Two fingers: scroll what is under them, or pan the picture when it is zoomed in.
+     *
+     * Shared by all three modes. Screen mode reached this only after it had already returned,
+     * so two fingers there zoomed the viewer and scrolled nothing -- which is not what a phone
+     * does, and not what the app said it did.
+     */
+    private void twoFingerScroll(MotionEvent event, int action, VncClient active, boolean pan) {
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+            twoFingerX = averageX(event);
+            twoFingerY = averageY(event);
+            // Scroll the window under the fingers, as a phone does: X sends the wheel to
+            // whatever is under the pointer, so the pointer goes there first.
+            pointerX = mapX(twoFingerX, active.getWidth());
+            pointerY = mapY(twoFingerY, active.getHeight());
+            active.sendPointer(pointerX, pointerY, 0);
+        } else if (action == MotionEvent.ACTION_POINTER_UP) {
+            // The finger that stays down becomes the origin. Without this the next single-finger
+            // move was measured from where the FIRST finger landed: the arrow leapt across the
+            // screen in Mouse mode, and Finger mode fired a burst of wheel notches.
+            int index = event.getActionIndex() == 0 ? 1 : 0;
+            if (index < event.getPointerCount()) {
+                downX = lastX = event.getX(index);
+                downY = lastY = event.getY(index);
+            }
+        } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
+            float x = averageX(event);
+            float y = averageY(event);
+            // Two fingers always scroll in Mouse mode -- the arrow is what moves the view
+            // when zoomed in. In Finger and Screen mode one finger already moves things, so
+            // two fingers pan a zoomed-in picture instead.
+            if (pan) {
+                panX += x - twoFingerX;
+                panY += y - twoFingerY;
+                twoFingerX = x;
+                twoFingerY = y;
+                invalidate();
+            } else {
+                // Fingers up, content up: wheel down. Several notches for a fast swipe.
+                int notch = Ui.dp(getContext(), 16);
+                float dy = y - twoFingerY;
+                float dx = x - twoFingerX;
+                if (Math.abs(dy) >= Math.abs(dx)) {
+                    while (dy <= -notch) { wheel(active, 16); twoFingerY -= notch; dy += notch; }
+                    while (dy >= notch) { wheel(active, 8); twoFingerY += notch; dy -= notch; }
+                    if (Math.abs(dy) < notch) twoFingerX = x;
+                } else {
+                    while (dx <= -notch) { wheel(active, 64); twoFingerX -= notch; dx += notch; }
+                    while (dx >= notch) { wheel(active, 32); twoFingerX += notch; dx -= notch; }
+                    twoFingerY = y;
+                }
+            }
+        }
+    }
+
+    /**
      * Screen mode: the finger IS the pointer, and the button is down while it is on the glass.
      *
      * That one difference is what makes a map drag, a slider move, a canvas draw and a game's
@@ -711,11 +731,14 @@ final class VncView extends View implements VncClient.Listener {
      */
     private boolean mobileTouch(MotionEvent event, int action, VncClient active) {
         if (event.getPointerCount() >= 2) {
+            main.removeCallbacks(pressAfterSlop);
             if (dragging) {
                 dragging = false;
                 active.sendPointer(pointerX, pointerY, 0);
                 invalidate();
             }
+            moved = true;
+            twoFingerScroll(event, action, active, zoomedIn());
             return true;
         }
         switch (action) {
@@ -726,8 +749,12 @@ final class VncView extends View implements VncClient.Listener {
                 moved = false;
                 pointerX = mapX(downX, active.getWidth());
                 pointerY = mapY(downY, active.getHeight());
-                dragging = true;
-                active.sendPointer(pointerX, pointerY, 1);
+                // The button waits: a pinch starts with one finger landing, and pressing at
+                // once delivered a full click to whatever was under it -- a link, a toggle --
+                // every time the owner zoomed. 80 ms is under the time a second finger takes.
+                dragging = false;
+                main.removeCallbacks(pressAfterSlop);
+                main.postDelayed(pressAfterSlop, 80L);
                 ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
                 postInvalidateOnAnimation();
                 return true;
@@ -735,6 +762,7 @@ final class VncView extends View implements VncClient.Listener {
                 if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
                         > Ui.dp(getContext(), 6)) {
                     moved = true;
+                    pressNow();
                 }
                 pointerX = mapX(event.getX(), active.getWidth());
                 pointerY = mapY(event.getY(), active.getHeight());
@@ -744,8 +772,13 @@ final class VncView extends View implements VncClient.Listener {
             }
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
+                main.removeCallbacks(pressAfterSlop);
                 if (dragging) {
                     dragging = false;
+                    active.sendPointer(pointerX, pointerY, 0);
+                } else if (action == MotionEvent.ACTION_UP) {
+                    // Lifted before the press went out: a tap, sent as one press and release.
+                    active.sendPointer(pointerX, pointerY, 1);
                     active.sendPointer(pointerX, pointerY, 0);
                 }
                 if (!moved && action == MotionEvent.ACTION_UP) performClick();
@@ -754,6 +787,18 @@ final class VncView extends View implements VncClient.Listener {
             default:
                 return true;
         }
+    }
+
+    /** Screen mode's held press, once the finger has proved it is not half of a pinch. */
+    private final Runnable pressAfterSlop = this::pressNow;
+
+    private void pressNow() {
+        if (dragging) return;
+        VncClient active = client;
+        if (active == null || !live) return;
+        main.removeCallbacks(pressAfterSlop);
+        dragging = true;
+        active.sendPointer(pointerX, pointerY, 1);
     }
 
     private boolean heldDragTouch(MotionEvent event, VncClient active) {
@@ -1140,15 +1185,31 @@ final class VncView extends View implements VncClient.Listener {
      * longer forwards every highlighted word), so the phone's "Copied" bubble appears when
      * something was actually copied and not whenever text was selected.
      */
-    private String lastClip;
+    private volatile boolean viewerInFront = true;
+
+    /** The screen in front may take the phone's clipboard; a background session may not. */
+    void setViewerInFront(boolean inFront) { viewerInFront = inFront; }
 
     @Override public void onClipboard(String text) {
-        if (text == null || text.isEmpty() || text.equals(lastClip)) return;
-        lastClip = text;
+        if (text == null || text.isEmpty() || !viewerInFront) return;
         main.post(() -> {
             android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
                     getContext().getSystemService(Context.CLIPBOARD_SERVICE);
-            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux computer", text));
+            if (clipboard == null) return;
+            try {
+                // Compared against what the phone holds NOW, not against the last text seen:
+                // copying the same thing again after the phone's clipboard changed used to be
+                // dropped, and the phone kept the other text.
+                android.content.ClipData current = clipboard.getPrimaryClip();
+                if (current != null && current.getItemCount() > 0) {
+                    CharSequence held = current.getItemAt(0).getText();
+                    if (held != null && text.contentEquals(held)) return;
+                }
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux computer", text));
+            } catch (RuntimeException refused) {
+                // A copy too large for the binder transaction, or a clipboard service that said
+                // no: the session carries on rather than the screen ending.
+            }
         });
     }
 

@@ -62,6 +62,32 @@ target) instead of 3-millimetre squares, and Resize by dragging un-maximises the
 Openbox's own action, immediately, rather than through a shell script that landed after the drag
 had begun. Chrome no longer asks "Restore pages?" after every desktop stop.
 
+**The automatic reopen no longer lands in a dead service.** When the desktop ended by itself the
+service asked Android for a new start and then, on the same worker, stopped itself; Android took
+the service down between the two, and the desktop came back with no notification, no wake lock, no
+heartbeat and nothing following the network's DNS. The reopen now goes out from the ending task's
+own tidy-up, before any stop, and a stop can no longer discard a start that is already queued.
+
+**Touch, keys and the clipboard.** Screen mode has two-finger scrolling, and a pinch no longer
+delivers a click to whatever was under the first finger (the press waits 80 ms, or for the finger
+to move). Lifting one finger of two no longer makes the pointer leap or fires a burst of scroll
+notches. The Keys row has F1 to F12. Paste from the phone is typed into the computer instead of
+being sent as Ctrl+V — which in a terminal is readline's quoted-insert, so it pasted nothing and
+ate the next key — and typing carries Hindi, CJK and emoji, which the clipboard protocol's Latin-1
+turns into question marks. A copy from Linux is compared against what the phone holds now, so the
+same text copied again after the phone's clipboard changed lands; it is only taken while this
+screen is in front; and a copy too large for Android's clipboard is skipped instead of ending the
+screen. Dead keys on an international keyboard compose accents again.
+
+**Security.** The loopback fallbacks — the display on port 5901, the sound on 4712 — are only
+tried when the desktop says it had to fall back, which it writes in a file next to its socket.
+Before this the viewer reached for that port during every start, and on Android any app can reach
+loopback. The MCP phone tools' shell runs app-testing commands only (am, pm, input, logcat,
+dumpsys, screencap, uiautomator and the like), one at a time, with no shell operators: an AI agent
+in the computer can test an app on the phone, but a prompt-injected one cannot take the phone
+apart. The microphone says when it stops instead of leaving the menu reading "on", and a photo
+from the camera is written off the main thread.
+
 **Texts.** The help card, the README and the quickstart name the Phone menu for what moved there,
 the status card says when the desktop is wider or magnified rather than "the size of this display",
 and the FAQ separates the three dials — Desktop text size, Bigger interface, an app's own zoom.

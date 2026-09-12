@@ -31,6 +31,13 @@
   (guard likhta hai), Bigger interface wahi tak jaata hai jahan tak window fit ho (portrait 115 %,
   landscape sab); rotation lock kabhi ulta pin nahi karta; title bar ke close/minimise 44 px ke;
   Resize by dragging turant; Chrome ka "Restore pages?" bubble nahi.
+- **Auto-reopen fix:** desktop khud band ho jaye to reopen ab zinda service me hota hai (pehle
+  notification, wake lock aur heartbeat ke bina chalta tha).
+- **Touch/keys/clipboard:** Screen mode me do ungli se scroll, pinch pe galat click nahi; Keys row
+  me **F1–F12**; phone se paste ab type hota hai (terminal me bhi chalta hai, Hindi/emoji bhi);
+  Linux se copy phone ke clipboard se compare hota hai; dead keys se accent ban-te hain.
+- **Security:** loopback port (5901/4712) tabhi try hota hai jab desktop khud bole ki fallback
+  hua; MCP ka phone_shell sirf app-testing commands chalata hai (am, pm, input, logcat, dumpsys…).
 - **Texts:** Google ke Android Linux Terminal se comparison (Pixel-only GPU, VM vs PRoot), Ubuntu
   24.04 kyun (26.04 aane ke baad bhi), sab AI apps ke Linux builds 11 Sep 2026 ko dobara verify.
 

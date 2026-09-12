@@ -153,6 +153,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         armAutoHide();
         refreshMuteLabels();
         viewerVisible = true;
+        if (desktop != null) desktop.setViewerInFront(true);
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(false);
         AppLock.applyWindowSecurity(this);
@@ -194,6 +195,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         releaseRemoteInput();
         cancelPostedWork();
         viewerVisible = false;
+        if (desktop != null) desktop.setViewerInFront(false);
         VncClient active = desktop == null ? null : desktop.getClient();
         if (active != null) active.setUpdatesPaused(true);
         super.onStop();
@@ -363,18 +365,30 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             showMessage("Could not save it", "The computer's Pictures folder could not be opened.");
             return;
         }
-        java.io.File file = new java.io.File(pictures,
+        final java.io.File file = new java.io.File(pictures,
                 "photo-" + System.currentTimeMillis() + ".png");
-        try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
-            photo.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, out);
-            out.getFD().sync();
-        } catch (java.io.IOException problem) {
-            showMessage("Could not save it", problem.getMessage() == null
-                    ? "The photo could not be written." : problem.getMessage());
-            return;
-        }
-        Toast.makeText(this, "Saved in the computer's Pictures as " + file.getName(),
-                Toast.LENGTH_LONG).show();
+        // Encoding a camera bitmap to PNG and flushing it to this phone's flash takes long
+        // enough to freeze the screen; the file picker's copy was moved off the main thread for
+        // the same reason.
+        new Thread(() -> {
+            String failure = null;
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(file)) {
+                photo.compress(android.graphics.Bitmap.CompressFormat.PNG, 95, out);
+                out.getFD().sync();
+            } catch (java.io.IOException problem) {
+                failure = problem.getMessage() == null
+                        ? "The photo could not be written." : problem.getMessage();
+            } catch (RuntimeException problem) {
+                failure = "The photo could not be written.";
+            }
+            final String said = failure;
+            main.post(() -> {
+                if (finished || isFinishing()) return;
+                if (said != null) showMessage("Could not save it", said);
+                else Toast.makeText(this, "Saved in the computer's Pictures as " + file.getName(),
+                        Toast.LENGTH_LONG).show();
+            });
+        }, "pocketlinux-photo").start();
     }
 
     /** One themed dialog, in the viewer's own style, for the microphone's few honest answers. */
@@ -388,6 +402,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
 
     private void startMicrophone() {
         if (microphone == null) return;
+        // A recorder that stops later -- another app takes the microphone, the desktop's pipe
+        // closes -- says so instead of leaving the menu reading "on".
+        microphone.onFailed(() -> main.post(() -> {
+            if (finished || isFinishing()) return;
+            String late = microphone.problem();
+            if (late != null) showMessage("The microphone stopped", late);
+        }));
         microphone.start();
         String problem = microphone.problem();
         if (problem != null) {
@@ -567,6 +588,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         addKey(keys, "End", 0xff57);
         addKey(keys, "PgUp", 0xff55);
         addKey(keys, "PgDn", 0xff56);
+        // F1 to F12: rename in the file manager, reload a page, full screen in an app, and the
+        // shortcuts editors are built around. The row scrolls, so they cost nothing to carry.
+        for (int f = 1; f <= 12; f++) addKey(keys, "F" + f, 0xffbd + f);
 
         // ---- The desktop itself -----------------------------------------------------------------
         desktop = new VncView(this);
@@ -1759,6 +1783,9 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             default:
                 int codePoint = event.getUnicodeChar(0);
                 if (codePoint == 0) codePoint = event.getUnicodeChar();
+                int dead = DeadKeys.keysym(codePoint);
+                if (dead != 0) return dead;
+                codePoint = DeadKeys.plain(codePoint);
                 return codePoint <= 0xff ? codePoint : (codePoint == 0 ? 0 : 0x01000000 | codePoint);
         }
     }
@@ -1783,11 +1810,13 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         CharSequence text = clip.getItemAt(0).coerceToText(this);
         VncClient client = desktop.getClient();
         if (client == null || text == null) return;
+        // The clipboard is filled as well, for anything in there that reads the X selection.
         client.sendClipboard(text.toString());
-        client.sendKey(0xffe3, true);
-        client.sendKey('v', true);
-        client.sendKey('v', false);
-        client.sendKey(0xffe3, false);
+        // ...but the text is typed rather than pasted with Ctrl+V. Ctrl+V in a terminal is
+        // readline's quoted-insert: it pasted nothing and swallowed the next key. Typing also
+        // carries Hindi, CJK and emoji, which the clipboard's Latin-1 protocol turns into
+        // question marks.
+        client.replaceText(0, 0, text.toString().replace("\r\n", "\n").replace('\r', '\n'));
     }
 
     private Button toolButton(String label) {
