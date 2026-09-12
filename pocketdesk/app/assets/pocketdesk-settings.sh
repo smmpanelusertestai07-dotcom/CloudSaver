@@ -176,8 +176,8 @@ wallpaper() {
     *)           kept="$CONFIG/wallpaper.jpg" ;;
   esac
   mkdir -p "$CONFIG"
-  # Only ever one kept picture: a jpg left behind after the owner chose a png would sit in the
-  # settings folder for ever, and the older of the two is the one nothing is using.
+  # One kept picture at a time. Choosing a png after a jpg would otherwise leave the jpg in the
+  # settings folder for ever, with nothing using it.
   rm -f "$CONFIG/wallpaper.jpg" "$CONFIG/wallpaper.png"
   if ! cp -f "$picked" "$kept" 2>/dev/null; then
     tell "Background" "That picture could not be copied. Check the computer has space left:
@@ -309,9 +309,9 @@ Inside the desktop screen you can also use Screen -> Bigger interface, which tak
     downloads)  download_note ;;
     refresh)    /usr/local/bin/pocketdesk-menu >/dev/null 2>&1; "$WINDOWS" refresh >/dev/null 2>&1 || true ;;
     about)      about ;;
+    # The list is named here rather than left to the default, because menu calls run in a loop
+    # now: a default that re-opened the list would be a loop inside a loop.
     menu)       menu ;;
-    # Named on purpose rather than falling through to the list: menu calls run in a loop now, and
-    # a default that re-opened the list would be a loop inside a loop.
     *)          usage >&2; return 2 ;;
   esac
 }

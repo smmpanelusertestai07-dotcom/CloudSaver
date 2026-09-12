@@ -125,6 +125,11 @@ public final class LinuxService extends Service {
     private volatile boolean stoppedForReason;
     /** Set when the owner (the Stop button, the notification) asked for the desktop to end. */
     private volatile boolean stopRequested;
+    /**
+     * Set when a guard has already told the owner why an install beside the desktop ended, so
+     * the install's own "Cancelled" notice does not replace that reason a moment later.
+     */
+    private volatile boolean installStoppedForReason;
     /** Set while a set-up or install is frozen because the phone is too hot. */
     private volatile boolean pausedForHeat;
     private volatile long pausedSince;
@@ -139,10 +144,18 @@ public final class LinuxService extends Service {
      * the longest, hottest, most data-hungry thing this app ever does and used to run with no
      * guard at all: no idle or session timer (those belong to a desktop session), but heat, a
      * flat battery and today's mobile-data limit all still stop it, and it can be continued.
+     *
+     * When the job is an install running beside an open desktop, these stops end the install
+     * and nothing else. The one exception is a phone hot enough for a desktop session to close
+     * itself, which is handled below.
      */
     private final Runnable jobMonitor = new Runnable() {
         @Override public void run() {
             if (!BUSY.get() && !INSTALLING.get()) return;   // nothing to guard any more
+            // An install can be running beside a desktop the owner is working in. These stops
+            // belong to the download, so they end the download: pausing or closing the session
+            // as well took away someone's work because something was fetching behind it.
+            boolean besideDesktop = INSTALLING.get() && isDesktopRunning();
             SharedPreferences prefs = getSharedPreferences(ContainerRuntime.PREFS, MODE_PRIVATE);
             DeviceProbe probe = DeviceProbe.read(LinuxService.this);
             String reason = null;
@@ -155,8 +168,13 @@ public final class LinuxService extends Service {
                         + "carries on over Wi-Fi, after midnight, or with a higher limit in Settings.";
             }
             if (reason != null) {
-                status("Stopped to protect the phone", reason, -1, false, true);
-                recordStop(reason);
+                status(besideDesktop ? "The download was stopped" : "Stopped to protect the phone",
+                        reason, -1, false, true);
+                // The home screen's "stopped by itself" story is about the computer. Recording
+                // one here while the desktop is still open had it report a session as ended
+                // that the owner was looking at.
+                if (besideDesktop) installStoppedForReason = true;
+                else recordStop(reason);
                 cancelJobs();
                 return;
             }
@@ -167,6 +185,24 @@ public final class LinuxService extends Service {
             boolean hot = prefs.getBoolean(ContainerRuntime.KEY_THERMAL_GUARD, true)
                     && (probe.thermalStatus >= PowerManager.THERMAL_STATUS_CRITICAL
                         || (probe.batteryTempC > 0 && probe.batteryTempC >= STOP_TEMPERATURE_C));
+            if (hot && besideDesktop) {
+                // The one stop that may still take the desktop with it. These are the readings
+                // at which a desktop session closes itself, and that check stands down while an
+                // install runs, so nothing else is watching the phone; and pausing a download
+                // would not cool a phone that is running a whole desktop as well.
+                String tooHot = (probe.batteryTempC > 0
+                        ? "The battery reached " + Math.round(probe.batteryTempC) + "°C. "
+                        : "The phone reached its heat limit. ")
+                        + "The desktop was closed and the download was stopped so the phone can "
+                        + "cool. Let it cool for a few minutes, then open the desktop and start the "
+                        + "download again. Nothing is downloaded twice.";
+                status("Stopped to cool down", tooHot, -1, false, true);
+                recordStop(tooHot);
+                installStoppedForReason = true;
+                cancelJobs();
+                stopEverything(false);
+                return;
+            }
             if (hot && !pausedForHeat) {
                 if (freezeJobs(true)) {
                     pausedForHeat = true;
@@ -224,6 +260,19 @@ public final class LinuxService extends Service {
     };
 
     /**
+     * The container processes these guards may act on.
+     *
+     * A set-up, or an install with no desktop open, is the only thing running, so it is the
+     * job. An install started while the desktop is open is not: the desktop is the session the
+     * owner is working in, and signalling it because a background download ran into heat or the
+     * daily data limit froze the screen they were looking at and then ended their work.
+     */
+    private Process[] guardedJobs() {
+        if (INSTALLING.get() && isDesktopRunning()) return new Process[]{installProcess};
+        return new Process[]{activeProcess, installProcess};
+    }
+
+    /**
      * Freezes or thaws the container of a running set-up or install.
      *
      * SIGSTOP on PRoot is enough to still everything inside it: PRoot traces every syscall its
@@ -236,7 +285,7 @@ public final class LinuxService extends Service {
     private boolean freezeJobs(boolean freeze) {
         int signal = freeze ? 19 : 18;                       // SIGSTOP / SIGCONT
         boolean any = false;
-        Process[] processes = {activeProcess, installProcess};
+        Process[] processes = guardedJobs();
         for (Process process : processes) {
             if (process == null) continue;
             try {
@@ -253,26 +302,32 @@ public final class LinuxService extends Service {
         return any;
     }
 
-    /** Ends a running set-up or install: the same path the Stop button uses for the desktop. */
+    /** Ends a running set-up or install. A desktop session running beside it is left alone. */
     private void cancelJobs() {
         RuntimeDiagnostics.sample(this, "Cancel setup/install requested", ProotProcess.trackingSummary());
-        stopRequested = true;
+        boolean besideDesktop = INSTALLING.get() && isDesktopRunning();
         // A frozen container can act on nothing but SIGKILL, so thaw it before ending it --
         // otherwise the stop leaves a live stopped PRoot and a worker blocked in readLine().
         if (pausedForHeat) {
             freezeJobs(false);
             pausedForHeat = false;
         }
-        Thread worker = workerThread;
-        if (worker != null) worker.interrupt();
-        Future<?> task = currentTask;
-        if (task != null) task.cancel(true);
+        // A live desktop session keeps its own worker, its own process and its own flags:
+        // ending a download used to take all three, and stopRequested alone is enough to end
+        // the session, because its renewed wake lease stops with it.
+        if (!besideDesktop) {
+            stopRequested = true;
+            Thread worker = workerThread;
+            if (worker != null) worker.interrupt();
+            Future<?> task = currentTask;
+            if (task != null) task.cancel(true);
+            Process active = activeProcess;
+            if (active != null) {
+                ProotProcess.requestStop(active);
+            }
+        }
         Future<?> install = installTask;
         if (install != null) install.cancel(true);
-        Process active = activeProcess;
-        if (active != null) {
-            ProotProcess.requestStop(active);
-        }
         Process installing = installProcess;
         if (installing != null) {
             ProotProcess.requestStop(installing);
@@ -480,6 +535,7 @@ public final class LinuxService extends Service {
             // so the download takes one, or the package fetch would stall with the screen off.
             acquireInstallWakeLock();
             stopRequested = false;
+            installStoppedForReason = false;
             pausedForHeat = false;
             pausedSince = 0L;
             handler.removeCallbacks(jobMonitor);
@@ -490,13 +546,20 @@ public final class LinuxService extends Service {
                     else installApp(appId);
                 } catch (InterruptedException cancelled) {
                     Thread.currentThread().interrupt();
-                    status("Cancelled", "The desktop is still running.", -1, false, false);
+                    // A guard that ended this install has already said why, in its own words.
+                    if (!installStoppedForReason) {
+                        status("Cancelled", "The desktop is still running.", -1, false, false);
+                    }
                 } catch (Exception error) {
-                    status("Could not complete task", cleanError(error), -1, false, true);
-                    // The dialog goes when it is dismissed; the reason should not go with it.
-                    Crash.note(LinuxService.this,
-                            (removing ? "Removing " : "Installing ") + appId + " failed",
-                            fullError(error));
+                    // Same again: a container pulled out from under the worker by a guard is
+                    // that stop, not a failure of its own to report.
+                    if (!installStoppedForReason) {
+                        status("Could not complete task", cleanError(error), -1, false, true);
+                        // The dialog goes when it is dismissed; the reason should not go with it.
+                        Crash.note(LinuxService.this,
+                                (removing ? "Removing " : "Installing ") + appId + " failed",
+                                fullError(error));
+                    }
                 } finally {
                     INSTALLING.set(false);
                     releaseInstallWakeLock();
@@ -943,12 +1006,6 @@ public final class LinuxService extends Service {
     }
 
 
-
-    /** POSIX single-quote escaping for values placed into the root container command. */
-    private static String shellQuote(String value) {
-        return "'" + (value == null ? "" : value.replace("'", "'\"'\"'")) + "'";
-    }
-
     /** A container command for an install: its own process, so the desktop's is untouched. */
     private int runInstall(String command, ContainerRuntime.OutputListener listener)
             throws IOException, InterruptedException {
@@ -1309,6 +1366,9 @@ public final class LinuxService extends Service {
         }
     }
 
+    private static final String BASE_IMAGE_PREFIX = "ubuntu-base-";
+    private static final String BASE_IMAGE_SUFFIX = "-base-arm64.tar.gz";
+
     /**
      * Downloads with resume and mirror failover. A dropped mobile-data connection continues
      * from the byte it stopped at instead of starting the whole archive again.
@@ -1330,7 +1390,7 @@ public final class LinuxService extends Service {
             connection.setReadTimeout(40_000);
             connection.setRequestProperty("User-Agent", "PocketLinux");
             if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) return null;
-            String best = null, digest = null;
+            String best = null, bestVersion = null, digest = null;
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(connection.getInputStream(), "UTF-8"))) {
                 String line;
@@ -1339,10 +1399,18 @@ public final class LinuxService extends Service {
                     String[] parts = line.trim().split("\\s+");
                     if (parts.length != 2 || parts[0].length() != 64) continue;
                     String name = parts[1].startsWith("*") ? parts[1].substring(1) : parts[1];
-                    if (!name.startsWith("ubuntu-base-") || !name.endsWith("-base-arm64.tar.gz")) continue;
-                    // Plain text order is enough: the names differ only in the point number.
-                    if (best == null || name.compareTo(best) > 0) {
+                    if (!name.startsWith(BASE_IMAGE_PREFIX) || !name.endsWith(BASE_IMAGE_SUFFIX)
+                            || name.length() <= BASE_IMAGE_PREFIX.length() + BASE_IMAGE_SUFFIX.length()) {
+                        continue;
+                    }
+                    String version = name.substring(BASE_IMAGE_PREFIX.length(),
+                            name.length() - BASE_IMAGE_SUFFIX.length());
+                    // Number by number, not letter by letter. As text 24.04.10 sorts below
+                    // 24.04.4, so the first two-digit point release would have chosen the older
+                    // image -- which is the very file whose absence sends us here.
+                    if (best == null || compareVersions(version, bestVersion) > 0) {
                         best = name;
+                        bestVersion = version;
                         digest = parts[0];
                     }
                 }
@@ -1353,6 +1421,33 @@ public final class LinuxService extends Service {
             return null;
         } finally {
             if (connection != null) connection.disconnect();
+        }
+    }
+
+    /**
+     * Compares two "24.04.4"-style versions component by component.
+     *
+     * @return above zero when the first version is the newer of the two
+     */
+    private static int compareVersions(String first, String second) {
+        String[] left = first.split("\\.");
+        String[] right = second.split("\\.");
+        int components = Math.max(left.length, right.length);
+        for (int i = 0; i < components; i++) {
+            int one = versionPart(left, i);
+            int two = versionPart(right, i);
+            if (one != two) return one < two ? -1 : 1;
+        }
+        return 0;
+    }
+
+    /** One component of a version as a number; a missing or unreadable one counts as zero. */
+    private static int versionPart(String[] components, int index) {
+        if (index >= components.length) return 0;
+        try {
+            return Integer.parseInt(components[index].trim());
+        } catch (NumberFormatException notANumber) {
+            return 0;
         }
     }
 
@@ -1551,13 +1646,29 @@ public final class LinuxService extends Service {
                 ? ContainerRuntime.THEME_DARK : ContainerRuntime.THEME_LIGHT;
     }
 
+    /**
+     * How often the daily mobile-data total is brought up to date while work reports progress.
+     *
+     * Every report used to do it, and a download reports once or twice a second: each reading
+     * registers a sticky battery broadcast, measures free space and writes preferences, which
+     * over a three-quarter-hour set-up is tens of thousands of them on a phone that is meant
+     * to be resting while it downloads. The total moves in kilobytes, not in milliseconds.
+     */
+    private static final long DATA_SAMPLE_MS = 5_000L;
+    private long dataSampledAt;
+
     private void status(String message, String detail, int progress, boolean busy, boolean error) {
         synchronized (PRIMARY_TASK) {
             Long generation = workerGeneration.get();
             if (generation != null && !PRIMARY_TASK.isCurrent(generation)) return;
-            // Every report is a chance to attribute the bytes moved since the last one to the
-            // network they moved on; the daily limit counts mobile data only.
-            DataBudget.usedToday(this);
+            // Attribute the bytes moved since the last reading to the network they moved on;
+            // the daily limit counts mobile data only. Spaced out: see DATA_SAMPLE_MS. The
+            // limit itself is still checked every half minute by the monitors.
+            long sampledAt = SystemClock.elapsedRealtime();
+            if (sampledAt - dataSampledAt >= DATA_SAMPLE_MS) {
+                dataSampledAt = sampledAt;
+                DataBudget.usedToday(this);
+            }
             lastMessage = message;
             lastDetail = detail;
             lastProgress = progress;
@@ -1796,27 +1907,6 @@ public final class LinuxService extends Service {
         long totalSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         if (totalSeconds < 60L) return totalSeconds + " sec so far";
         return (totalSeconds / 60L) + "m " + (totalSeconds % 60L) + "s so far";
-    }
-
-    /** curl --progress-bar's final numeric token, or -1 for an ordinary setup line. */
-    static int transferPercent(String line) {
-        if (line == null) return -1;
-        int percent = line.lastIndexOf('%');
-        if (percent < 1) return -1;
-        int start = percent - 1;
-        while (start >= 0) {
-            char value = line.charAt(start);
-            if ((value >= '0' && value <= '9') || value == '.') start--;
-            else break;
-        }
-        String number = line.substring(start + 1, percent);
-        if (number.isEmpty()) return -1;
-        try {
-            int value = (int) Double.parseDouble(number);
-            return value >= 0 && value <= 100 ? value : -1;
-        } catch (NumberFormatException error) {
-            return -1;
-        }
     }
 
     /** True for a curl/wget progress line, which is a wall of numbers rather than a status. */

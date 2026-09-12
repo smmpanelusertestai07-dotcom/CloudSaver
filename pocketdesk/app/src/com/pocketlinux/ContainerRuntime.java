@@ -100,8 +100,18 @@ final class ContainerRuntime {
         return result;
     }
 
+    /**
+     * The 30 MB base archive, kept beside the system it becomes rather than in the cache folder.
+     *
+     * It used to live in the cache. Android empties app caches first when the phone runs short
+     * of room, and that is exactly the state set-up puts the phone in while it unpacks 2-3 GB of
+     * Ubuntu, so the part-finished download this app resumes from could be taken away in the
+     * middle of a 15-45 minute transfer and the whole thing would start again. The partial
+     * transfer is this file's ".part" sibling, so it moves with it, and set-up deletes both by
+     * hand once the unpacking has finished.
+     */
     static File downloadFile(Context context) {
-        return new File(context.getCacheDir(), "ubuntu-base-24.04.4-arm64.tar.gz");
+        return new File(context.getFilesDir(), "ubuntu-base-24.04.4-arm64.tar.gz");
     }
 
     static boolean isInstalled(Context context) {
@@ -175,19 +185,25 @@ final class ContainerRuntime {
         }
         args.add("-b");
         args.add(guestShared.getAbsolutePath() + ":/home/coder/Shared");
+        String[] trashGuards = trashGuardNames(root);
+        // Shared is the phone's own storage as well (it is the app's folder under Android/data),
+        // and it is not on the same disk as the Bin, so a delete there needs the same guard the
+        // Phone folders get -- see trashGuardNames.
+        blockHiddenTrash(guestShared, trashGuards);
         // The phone's own folders, only while the owner allows it, and only the folders a person
         // means by "my files" -- see PHONE_FOLDERS. Without the permission the folder holds one
         // note saying where to turn it on.
         File phoneMount = new File(root, "home/coder/Phone");
         if (!phoneMount.exists()) phoneMount.mkdirs();
         if (PhoneFiles.allowed(context)) {
-            bindPhoneFolders(args, phoneMount);
+            bindPhoneFolders(args, phoneMount, trashGuards);
             new File(phoneMount, "Phone files are off.txt").delete();
         } else {
             // Off: the six mount points and the note that calls them the phone's own folders
             // would otherwise stay, empty, beside a note saying they are off -- and a file saved
             // into one of them landed on the computer while looking like it went to the phone.
             new File(phoneMount, "About this folder.txt").delete();
+            removeTrashGuards(trashGuards);
             for (String folder : PHONE_FOLDERS) {
                 File point = new File(phoneMount, folder);
                 String[] left = point.list();
@@ -334,9 +350,9 @@ final class ContainerRuntime {
     static String setupFailureReason(int code) {
         switch (code) {
             case 11: return "The Ubuntu package servers could not be reached. Check the internet "
-                    + "connection, then tap Continue set-up — it carries on from where it stopped.";
+                    + "connection, then tap Continue set-up; it carries on from where it stopped.";
             case 12: return "The desktop packages did not finish downloading. Check the connection "
-                    + "and free space, then tap Continue set-up — the parts already installed are kept.";
+                    + "and free space, then tap Continue set-up; the parts already installed are kept.";
             case 13: return "The desktop's icons, sound and tools did not finish installing. Tap "
                     + "Continue set-up to finish that step; nothing already done is repeated.";
             case 14: return "The developer tools did not finish installing. Tap Continue set-up to "
@@ -345,7 +361,7 @@ final class ContainerRuntime {
                     + "rather than left to break later installs. Check the internet connection and "
                     + "try again; everything else that was installed is kept.";
             case 20: return "The mobile development tools did not finish installing. Check the "
-                    + "connection and free space, then tap the row again — what was already "
+                    + "connection and free space, then tap the row again; what was already "
                     + "installed is kept.";
             case 18: return "The download did not finish. Check the internet connection and try "
                     + "again; nothing was half-installed.";
@@ -448,8 +464,12 @@ final class ContainerRuntime {
      * bin to recover it from, because deleting a path outright never reaches the trash MediaStore
      * keeps. Nothing inside a PRoot container can be made read-only -- PRoot rewrites paths, it
      * does not enforce permissions, and the real write is done by the app's own Android identity
-     * -- so the honest lever is not "allow less", it is "name less". What is not bound cannot be
-     * reached, whatever asks for it and however convincingly.
+     * -- so the honest lever is not "allow less", it is "name less". What is not bound is not
+     * there to be opened, listed or asked for by name, which is what every ordinary program and
+     * every file dialog goes by. It is not a wall: PRoot only rewrites the paths it is given,
+     * and a program that goes looking for a path of its own gets whatever this Android app's own
+     * identity can reach. The wall is Android's own -- one app cannot read another app's private
+     * files -- and the note written into the Phone folder says it in those terms and no stronger.
      *
      * These six are the phone's own public folders. Anything else -- Android/data, a messaging
      * app's media, another app's private storage -- is simply not connected now, and a file from
@@ -460,22 +480,98 @@ final class ContainerRuntime {
             "Download", "DCIM", "Documents", "Pictures", "Music", "Movies",
     };
 
-    private static void bindPhoneFolders(List<String> args, File phoneMount) {
+    /**
+     * The hidden names a bin would be given on the phone's own storage: the desktop's own
+     * user first, then root.
+     *
+     * A bin has to sit on the same disk as the file, and the desktop's Bin is on the computer's
+     * storage, so deleting a photo in one of these folders would have GLib make a hidden
+     * .Trash-<user id> folder on the phone and move the file into it: gone from view, in
+     * nothing's Bin, emptied by nothing. A plain FILE by that name makes GLib give up, and the
+     * file manager then asks before deleting for good, which is what the note in the Phone
+     * folder says happens.
+     *
+     * The name only blocks anything if it carries the user id the desktop really runs as. That
+     * is coder, not root -- startDesktopCommand ends with "su - coder" -- and coder is made by a
+     * plain useradd in bootstrapCommand, so the number is Ubuntu's to choose and is read back
+     * from the rootfs here rather than assumed. ".Trash-0" is blocked as well, because a
+     * terminal inside the computer can still become root, and root deletes files too.
+     */
+    private static String[] trashGuardNames(File root) {
+        int uid = guestUid(root);
+        return uid == 0 ? new String[]{".Trash-0"} : new String[]{".Trash-" + uid, ".Trash-0"};
+    }
+
+    /** coder's user id inside the computer, read from its own /etc/passwd. */
+    private static int guestUid(File root) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(new File(root, "etc/passwd")), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("coder:")) continue;
+                String[] fields = line.split(":");
+                if (fields.length > 2) return Integer.parseInt(fields[2].trim());
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            // No system on the phone yet, or a line that is not a number. 1000 is what useradd
+            // hands the first account it makes, so it is the right guess until there is a file.
+        }
+        return 1000;
+    }
+
+    /**
+     * Puts the guards into one folder of the phone's storage, and only where they are missing.
+     *
+     * This is the owner's own Download and DCIM, not this app's scratch space, so nothing is
+     * rewritten on a folder that is already guarded.
+     */
+    private static void blockHiddenTrash(File folder, String[] guards) {
+        for (String guard : guards) {
+            File file = new File(folder, guard);
+            if (file.isDirectory()) {
+                // A bin GLib made here before the guard carried the right user id. Empty, it is
+                // only in the way. With anything in it, those are the owner's own deleted files
+                // and throwing them away is not this code's decision, so the bin stays and the
+                // guard waits until it is empty.
+                String[] inside = file.list();
+                if (inside == null || inside.length > 0 || !file.delete()) continue;
+            } else if (file.exists()) {
+                continue;
+            }
+            try {
+                file.createNewFile();
+            } catch (IOException | SecurityException ignored) {
+                // Then GLib does what it does; the folder is still usable.
+            }
+        }
+    }
+
+    /**
+     * Takes the guards back out of the phone's folders once Phone files is off.
+     *
+     * They are this app's files sitting in the owner's own folders, and with nothing connected
+     * they have no job. This can only be attempted, not promised: Android takes the All files
+     * permission away at the same moment, and without it these folders cannot be written to at
+     * all -- what stays behind is one empty hidden file per folder.
+     */
+    private static void removeTrashGuards(String[] guards) {
+        File card = PhoneFiles.root();
+        for (String folder : PHONE_FOLDERS) {
+            for (String guard : guards) {
+                File file = new File(new File(card, folder), guard);
+                if (file.isFile()) file.delete();
+            }
+        }
+    }
+
+    private static void bindPhoneFolders(List<String> args, File phoneMount, String[] trashGuards) {
         File card = PhoneFiles.root();
         for (String folder : PHONE_FOLDERS) {
             File source = new File(card, folder);
             if (!source.isDirectory()) continue;          // not every phone has all six
-            // Deleting a file on the phone from the computer: the Bin lives on the computer's
-            // own storage and a trash must be on the file's own filesystem, so GLib would make
-            // a hidden .Trash-0 folder on the phone and move the file there -- gone from view,
-            // in nothing's Bin, emptied by nothing. A plain file by that name makes GLib
-            // decline, and the file manager then asks before deleting for good, which is what
-            // the note in this folder promises.
-            try {
-                new File(source, ".Trash-0").createNewFile();
-            } catch (IOException | SecurityException ignored) {
-                // Then GLib does what it does; the folder is still usable.
-            }
+            // A delete in here must be asked about, not tucked away in a hidden bin on the
+            // phone that nothing in this product ever shows or empties -- see trashGuardNames.
+            blockHiddenTrash(source, trashGuards);
             File target = new File(phoneMount, folder);
             String[] stranded = target.list();
             if (stranded != null && stranded.length > 0) {
@@ -493,17 +589,28 @@ final class ContainerRuntime {
                     "These are your phone's own folders, inside the Linux computer.\n"
                     + "\n"
                     + "Only these are here: " + String.join(", ", PHONE_FOLDERS) + ".\n"
-                    + "Nothing else on the phone can be reached from the computer at all -- not\n"
-                    + "another app's data, not its private storage, not a backup. They are not\n"
-                    + "hidden: they are not connected, so no program in here can name them.\n"
+                    + "Nothing else on the phone is joined to the computer, so the programs in\n"
+                    + "here, and every Open and Save box, see these folders and the computer's\n"
+                    + "own files.\n"
+                    + "\n"
+                    + "The rest of the phone is kept out by Android itself. PocketLinux is one\n"
+                    + "app, and Android does not let one app read another app's private files,\n"
+                    + "or a backup. The computer runs inside PocketLinux, so that same rule\n"
+                    + "covers it. Your other public folders are simply not joined here, which\n"
+                    + "keeps them out of sight and out of every Open box -- that is a curtain\n"
+                    + "rather than a lock, so treat the computer as trusted with your public\n"
+                    + "files, not as sealed off from them.\n"
                     + "\n"
                     + "What IS here is the real thing, and a change is a real change: a file\n"
                     + "deleted in this folder is deleted on the phone, and Android has no bin to\n"
                     + "take it back from. Keep anything you would miss somewhere the computer\n"
                     + "cannot see, and hand single files to an AI app through PocketLinux's own\n"
                     + "picker instead -- the desktop screen, Phone, Add a file from the phone or\n"
-                    + "a cloud drive. (The hidden .Trash-0 file in each folder is what stops a\n"
-                    + "deleted file being tucked away on the phone instead of asked about.)\n");
+                    + "a cloud drive.\n"
+                    + "\n"
+                    + "In each of these folders there is a small hidden file called\n"
+                    + trashGuards[0] + ". That is what stops a deleted file being tucked away\n"
+                    + "on the phone instead of asked about. Leave it where it is.\n");
         } catch (IOException ignored) {
             // The note is a courtesy; the Settings screen says the same thing.
         }

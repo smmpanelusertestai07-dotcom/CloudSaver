@@ -23,6 +23,50 @@ run_terminal() { # run_terminal <trusted command assembled below>
   fi
 }
 
+# Ubuntu's own updates for everything already installed.
+#
+# This used to be a bare "sudo apt-get update && sudo apt-get -y upgrade" -- the one place in the
+# app that reached apt on its own. Everything else goes through the helpers in LinuxApps.java,
+# and two of the things they do matter here. They finish a half-applied install first, because
+# dpkg refuses every later command until that is done. And they skip fetching the package lists
+# when the lists this phone already has are only hours old: that fetch is about 40 MB of mobile
+# data, and paying it on every tap also left no record that it had been paid, so the next install
+# from the Apps tab paid it all over again.
+#
+# Those helpers are a Java string, which no shell script can source. What is shared instead is
+# the one thing they keep on disk -- the stamp that says when this phone last fetched the lists
+# -- and the same POCKETDESK_LIST_HOURS window, so neither side downloads again what the other
+# has just fetched. The rest of what apt needs here (retries, timeouts, one request at a time,
+# keeping the owner's own config files) is in /etc/apt/apt.conf.d/99pocketdesk, which those same
+# helpers wrote during set-up and which every apt command inside this computer reads.
+#
+# POCKETDESK_TEST_ROOT is empty on the phone, so this is the real path; the test suite points it
+# at a temporary folder, the same way it does for the helpers themselves.
+APT_STATE="${POCKETDESK_TEST_ROOT:-}/var/lib/pocketdesk"
+APT_STAMP="$APT_STATE/apt-updated-at"
+
+list_is_fresh() {
+  hours=${POCKETDESK_LIST_HOURS:-12}
+  case "$hours" in ''|*[!0-9]*) hours=12 ;; esac
+  # The age that matters is when THIS phone last fetched. The dates on apt's own index files are
+  # the archive's publish dates, so they say nothing about it.
+  at=$(cat "$APT_STAMP" 2>/dev/null || true)
+  case "$at" in ''|*[!0-9]*) return 1 ;; esac
+  age=$(( $(date +%s) - at ))
+  [ "$age" -ge 0 ] && [ "$age" -lt $(( hours * 3600 )) ]
+}
+
+update_software() {
+  if list_is_fresh; then
+    refresh="echo 'The list of new versions was fetched recently, so nothing needs downloading.'"
+  else
+    refresh="sudo mkdir -p $APT_STATE && sudo apt-get update && date +%s | sudo tee $APT_STAMP >/dev/null || echo 'The list of new versions could not be downloaded. Carrying on with the list already on this phone.'"
+  fi
+  # apt-get clean at the end for the same reason every install ends with it: the packages it
+  # downloaded are 300 MB of archives the computer will never read again.
+  run_terminal "sudo dpkg --configure -a >/dev/null 2>&1; sudo apt-get -y -f install >/dev/null 2>&1; $refresh; sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade; sudo apt-get clean; sudo /usr/local/bin/pocketdesk-menu"
+}
+
 search_ubuntu() {
   if have zenity; then
     query=$(zenity --entry --title="Find Ubuntu software" \
@@ -77,10 +121,9 @@ show_installed() {
 
 case "${1:-menu}" in
   search) search_ubuntu ;;
-  update) run_terminal "sudo apt-get update && sudo apt-get -y upgrade && sudo /usr/local/bin/pocketdesk-menu" ;;
+  update) update_software ;;
   install-file) exec /usr/local/bin/pocketdesk-install ;;
   installed) show_installed ;;
-  --selftest) printf 'search\nupdate\ninstall-file\ninstalled\n'; exit 0 ;;
   menu)
     if ! have apt-cache || ! have apt-get; then
       tell "Software is unavailable" "This Linux computer is missing Ubuntu's package tools. Update Computer basics from PocketLinux Settings."
@@ -100,7 +143,7 @@ case "${1:-menu}" in
       --print-column=2 2>/dev/null) || exit 0
     case "$action" in
       "Find Ubuntu software") search_ubuntu ;;
-      "Update installed software") run_terminal "sudo apt-get update && sudo apt-get -y upgrade && sudo /usr/local/bin/pocketdesk-menu" ;;
+      "Update installed software") update_software ;;
       "Install a downloaded package") exec /usr/local/bin/pocketdesk-install ;;
       "See installed software") show_installed ;;
     esac

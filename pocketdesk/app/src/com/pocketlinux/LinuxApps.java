@@ -5,8 +5,10 @@ package com.pocketlinux;
  *
  * Every entry installs the newest build each time it runs, so "install" and "update" are the same
  * action: apt repositories upgrade in place, and the direct downloads all resolve a "latest" URL
- * rather than a pinned version. Every app comes from its publisher's own apt repository or
- * download endpoint, never from a third party.
+ * rather than a pinned version. Nothing is fetched twice for nothing: a row whose app is already
+ * the newest build says so and stops, which on mobile data is the difference between an update
+ * costing a few kilobytes and costing a few hundred megabytes. Every app comes from its
+ * publisher's own apt repository or download endpoint, never from a third party.
  */
 final class LinuxApps {
 
@@ -163,16 +165,35 @@ final class LinuxApps {
             + "echo \"PocketLinux: $(basename \\\"$pd_l\\\") is not answering and was set aside\"; "
             + "mv \"$pd_l\" \"$pd_l.unreachable\"; fi; done; fi; "
             + "sleep \"${POCKETDESK_RETRY_SLEEP:-5}\"; pd_u=$((pd_u+1)); done; return 1; }; "
+            // Tapping a row that is already installed is how the owner updates it, and that tap
+            // must not be answered from a list fetched hours ago: apt reads the old index, says
+            // "already the newest version", and the row reports success having changed nothing.
+            // A first install still takes the cached list, because there it is only being read
+            // for the app's dependencies and the 40 MB is worth saving. A refresh that fails is
+            // not fatal for an app already here -- the list on the phone is still worth trying.
+            + "pd_installed() { dpkg-query -W -f='${Status}' \"$1\" 2>/dev/null "
+            + "| grep -q 'ok installed'; }; "
+            + "pd_update_for() { if pd_installed \"$1\"; then pd_update force "
+            + "|| echo 'PocketLinux: the package list could not be refreshed; "
+            + "using the one already on this phone'; "
+            + "else pd_update; fi; }; "
             // A repository is written, proved, and rolled back if it does not answer: an
             // unproven source must never be left behind to break every later install.
             + "pd_repo() { pd_f=\"$PD_ROOT/etc/apt/sources.list.d/$1\"; "
-            + "mkdir -p \"$PD_ROOT/etc/apt/sources.list.d\"; printf '%s\n' \"$2\" > \"$pd_f\"; "
+            + "pd_done=\"$PD_STATE/repo-$1\"; mkdir -p \"$PD_ROOT/etc/apt/sources.list.d\"; "
             // A source written a second ago is in no index that has been fetched, so its
-            // packages stay invisible to apt until the lists are fetched again. Past the
-            // freshness check, always: this is the one call that must not be cached.
-            + "if pd_update force; then return 0; fi; "
+            // packages stay invisible to apt until the lists are fetched again, past the
+            // freshness check. But a source file that is already there word for word, and was
+            // proved once, describes an index apt already has: forcing then was a second full
+            // round of the package lists at every single install, on top of the one the row
+            // had just done. The proof mark is what tells the two apart -- a file written by a
+            // run that was stopped before its update has no mark, and is proved again.
+            + "if [ \"$(cat \"$pd_f\" 2>/dev/null || true)\" = \"$2\" ] && [ -f \"$pd_done\" ]; then "
+            + "return 0; fi; "
+            + "printf '%s\n' \"$2\" > \"$pd_f\"; "
+            + "if pd_update force; then : > \"$pd_done\"; return 0; fi; "
             + "echo \"PocketLinux: the $1 repository did not answer; removing it again\"; "
-            + "rm -f \"$pd_f\"; pd_update force || true; return 1; }; "
+            + "rm -f \"$pd_f\" \"$pd_done\"; pd_update force || true; return 1; }; "
             // An app downloaded straight from its publisher, resumably.
             //
             // "curl -o /tmp/x.deb --retry 3" starts again from zero every time, and these files
@@ -200,6 +221,21 @@ final class LinuxApps {
             + "else curl --fail --location --retry 3 --retry-delay 5 -o \"$pd_out\" \"$1\" || return 1; fi; "
             + "[ -s \"$pd_out\" ] || { echo 'PocketLinux: the download did not finish' >&2; return 1; }; "
             + "printf '%s' \"$pd_out\"; return 0; }; "
+            // The version of a .deb that has not been downloaded.
+            //
+            // A package's control information sits at the very front of the archive -- about
+            // 3 KB in, however large the rest of the file is -- so asking the server for only
+            // the first part of it is enough for dpkg-deb to read the version out. This is what
+            // lets Update on an app that is already the newest cost a few kilobytes instead of
+            // the whole download again. A server that ignores the range would answer with the
+            // entire file, which is what the size limit ends; the caller then downloads and
+            // installs as it always did.
+            + "pd_deb_version() { pd_hv=\"$PD_STATE/deb-head\"; rm -f \"$pd_hv\"; "
+            + "curl --fail --location --silent --max-time 120 --max-filesize 1048576 "
+            + "--range 0-262143 -o \"$pd_hv\" \"$1\" || { rm -f \"$pd_hv\"; return 1; }; "
+            + "pd_v=$(dpkg-deb -f \"$pd_hv\" Version 2>/dev/null) "
+            + "|| { rm -f \"$pd_hv\"; return 1; }; "
+            + "rm -f \"$pd_hv\"; [ -n \"$pd_v\" ] || return 1; printf '%s' \"$pd_v\"; }; "
             + "pd_step() { pd_stage=$1; shift; "
             + "if [ -f \"$PD_STATE/stage/$pd_stage\" ]; then echo \"PocketLinux: $pd_stage is already done\"; return 0; fi; "
             + "pd_try=1; while [ $pd_try -le 3 ]; do "
@@ -357,7 +393,7 @@ final class LinuxApps {
             // render can simply be left running while the phone is in a pocket.
             new App("creative", "Design and game tools",
                     "Blender for 3D, Godot for 2D and 3D games, GIMP for photos and Inkscape for "
-                            + "drawing \u2014 the ARM64 builds from Ubuntu's own catalogue.",
+                            + "drawing, all ARM64 builds from Ubuntu's own catalogue.",
                     R.drawable.ic_palette, 0, "about 1.6 GB", 4 * GB,
                     "15\u201340 min",
                     "There is no graphics chip here: no app in a container on an unrooted phone can "
@@ -365,7 +401,13 @@ final class LinuxApps {
                             + "scripting and a game's editor are fine; a lit 3D viewport and a full "
                             + "render are slow, and a render can be left to run.",
                     "/usr/bin/blender",
-                    "pd_update || exit 11; "
+                    "pd_update_for blender || exit 11; "
+                            // A tap on an installed row is an update, and pd_step skips a step it
+                            // has already recorded: with the mark left in place the tap printed
+                            // "creative is already done" and changed nothing. The mark is there
+                            // to let a stopped set-up carry on, and a row of one step has
+                            // nothing to carry on from, so clearing it costs nothing.
+                            + "rm -f \"$PD_STATE/stage/creative\"; "
                             + "pd_step creative blender godot3 gimp inkscape || exit 21; "
                             // Software rendering, said out loud to every GL program, so none of
                             // them start by looking for a driver that is not there and failing.
@@ -384,13 +426,16 @@ final class LinuxApps {
             // no Google SDK download, because Google publishes no ARM64 Linux build-tools and a
             // half-installed SDK is worse than none.
             new App("mobiledev", "Mobile app development",
-                    "Java 21, Gradle, adb, fastboot, aapt2 and scrcpy — and the pairing helper that "
+                    "Java 21, Gradle, adb, fastboot, aapt2 and scrcpy, plus the pairing helper that "
                             + "lets this computer install and test an app on THIS phone, or on "
                             + "another one over Wi-Fi.",
                     R.drawable.ic_terminal, 0, "about 700 MB", 3 * GB,
                     "10–25 min", null,
                     "/usr/bin/adb",
-                    "pd_update || exit 11; "
+                    "pd_update_for adb || exit 11; "
+                            // Same as the creative row: the finished-step mark would turn a tap
+                            // meant to update these tools into a message saying they are done.
+                            + "rm -f \"$PD_STATE/stage/mobiledev\"; "
                             // aapt2 is the one piece Google publishes for Intel Linux and not for
                             // ARM64, and Android's build plugin fetches it from Maven -- so a
                             // perfectly good build failed on a processor the tool was never
@@ -437,11 +482,28 @@ final class LinuxApps {
                             + "grows with their updates. Your account's usage limits apply.",
                     "/usr/bin/chatgpt",
                     "pd_update || exit 11; "
-                            + "if dpkg-query -W -f='${Status}' chatgpt 2>/dev/null | grep -q 'ok installed'; then "
-                            + "apt-get install -y --only-upgrade chatgpt; else "
                             + "apt-get install -y --no-install-recommends curl ca-certificates; "
-                            + "pd_deb=$(pd_fetch '" + LATEST_CHATGPT + "' chatgpt.deb) || exit 12; "
-                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"; fi",
+                            // OpenAI publish this app as one .deb on their own site and put it in
+                            // no apt repository, so there is nothing for apt to upgrade from:
+                            // "apt-get install --only-upgrade chatgpt" reported success every
+                            // time and left the old build in place for ever. Updating it means
+                            // fetching what OpenAI publish now -- and at about 380 MB, that is
+                            // only worth fetching when it is newer than what is installed.
+                            + "pd_have=''; pd_new=''; if pd_installed chatgpt; then "
+                            + "pd_have=$(dpkg-query -W -f='${Version}' chatgpt 2>/dev/null || true); "
+                            + "pd_new=$(pd_deb_version '" + LATEST_CHATGPT + "' || true); fi; "
+                            + "if [ -n \"$pd_have\" ] && [ -n \"$pd_new\" ] "
+                            + "&& ! dpkg --compare-versions \"$pd_new\" gt \"$pd_have\"; then "
+                            + "echo \"PocketLinux: ChatGPT $pd_have is the newest build; nothing to download\"; "
+                            // 18 and 19, not the set-up codes: a row that failed here must say
+                            // "the download did not finish", not "tap Continue set-up".
+                            + "else pd_deb=$(pd_fetch '" + LATEST_CHATGPT + "' chatgpt.deb) || exit 18; "
+                            + "pd_rc=0; apt-get install -y \"$pd_deb\" || pd_rc=$?; "
+                            // The .deb goes whether or not the install worked. Left behind, the
+                            // next attempt resumes a file that is already whole, the server
+                            // answers "range not satisfiable", and the row could never install
+                            // again -- with nothing on screen to say which file to delete.
+                            + "rm -f \"$pd_deb\"; [ \"$pd_rc\" -eq 0 ] || exit 19; fi",
                     "apt-get remove -y chatgpt", false),
 
             new App("claude", "Claude Desktop",
@@ -455,7 +517,8 @@ final class LinuxApps {
                     // libglib2.0-bin satisfies claude-desktop's "kde-cli-tools | ... | gvfs" choice with
                     // one 200 KB package; without it apt takes the first name on that list and pulls in
                     // 149 KDE and Qt5 packages, about 154 MB, onto a phone.
-                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates libglib2.0-bin; "
+                    "pd_update_for claude-desktop || exit 11; "
+                            + "apt-get install -y --no-install-recommends curl gnupg ca-certificates libglib2.0-bin; "
                             + "curl -fsSLo /usr/share/keyrings/claude-desktop-archive-keyring.asc '" + CLAUDE_KEY + "'; "
                             + "gpg --show-keys --with-colons /usr/share/keyrings/claude-desktop-archive-keyring.asc "
                             + "| grep -q '" + CLAUDE_FINGERPRINT + "' "
@@ -475,8 +538,27 @@ final class LinuxApps {
                             + "url=$(curl -fsSL 'https://api2.cursor.sh/updates/api/download/stable/linux-arm64/cursor' "
                             + "| grep -oE 'https://[^\"]*arm64[^\"]*\\.deb' | head -n 1); "
                             + "[ -n \"$url\" ] || { echo 'Could not find the Linux ARM64 build on cursor.com'; exit 1; }; "
-                            + "pd_deb=$(pd_fetch \"$url\" cursor.deb) || exit 12; "
-                            + "apt-get install -y \"$pd_deb\"; rm -f \"$pd_deb\"",
+                            // Cursor's package is about 200 MB to download and about 700 MB once
+                            // unpacked. This row used to fetch and install it every single time
+                            // it was tapped, so an Update on a phone with 1.5 GB of data for the
+                            // day spent 200 MB of it re-installing the build already here. The
+                            // published version is read from the front of the .deb instead and
+                            // compared with the installed one. Cursor's own address gives a
+                            // version too, but it is the short one (3.20.17) while the package's
+                            // is 3.20.17-1789185870, so the two would never match.
+                            + "pd_have=''; pd_new=''; if pd_installed cursor; then "
+                            + "pd_have=$(dpkg-query -W -f='${Version}' cursor 2>/dev/null || true); "
+                            + "pd_new=$(pd_deb_version \"$url\" || true); fi; "
+                            + "if [ -n \"$pd_have\" ] && [ -n \"$pd_new\" ] "
+                            + "&& ! dpkg --compare-versions \"$pd_new\" gt \"$pd_have\"; then "
+                            + "echo \"PocketLinux: Cursor $pd_have is the newest build; nothing to download\"; "
+                            + "else pd_deb=$(pd_fetch \"$url\" cursor.deb) || exit 18; "
+                            + "pd_rc=0; apt-get install -y \"$pd_deb\" || pd_rc=$?; "
+                            // Same as ChatGPT, and the same two codes: a finished download that
+                            // failed to install must not be left to be resumed, or every later
+                            // attempt asks for bytes past the end of a whole file and fails for
+                            // good.
+                            + "rm -f \"$pd_deb\"; [ \"$pd_rc\" -eq 0 ] || exit 19; fi",
                     "apt-get remove -y cursor", false),
 
             new App("antigravity", "Antigravity",
@@ -485,7 +567,8 @@ final class LinuxApps {
                     "5–20 min",
                     "Installed from Google's own apt repository, so a tap on this row updates it in place.",
                     "/usr/share/applications/antigravity.desktop",
-                    "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates "
+                    "pd_update_for antigravity || exit 11; "
+                            + "apt-get install -y --no-install-recommends curl gnupg ca-certificates "
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "
                             + "libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2t64 libgtk-3-0; "
                             + fetchKey(ANTIGRAVITY_KEY, "/etc/apt/keyrings/antigravity-repo-key.gpg")

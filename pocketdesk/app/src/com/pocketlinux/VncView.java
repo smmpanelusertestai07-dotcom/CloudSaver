@@ -46,9 +46,11 @@ final class VncView extends View implements VncClient.Listener {
         main.removeCallbacksAndMessages(null);
         stopFling();
         synchronized (backLock) {
-            synchronized (pixelLock) { recycleFramebuffers(); }
+            synchronized (pixelLock) { releaseFramebuffers(); }
         }
-        if (cursorBitmap != null) { cursorBitmap.recycle(); cursorBitmap = null; }
+        // Let go of the pointer's shape rather than recycling it, for the same reason the front
+        // framebuffer is only let go of: it has been drawn, and the drawing of it outlives this.
+        cursorBitmap = null;
         client = null;
     }
     /**
@@ -327,16 +329,18 @@ final class VncView extends View implements VncClient.Listener {
      * desktop was resized to the sliver above it, every app relaid out, and a tap on a text
      * field landed somewhere else -- then it all happened again in reverse when it closed.
      *
-     * The Linux desktop keeps its size. What changes is only how it is DRAWN: it scales down to
-     * fit the room above the keys, exactly as a phone app's layout moves up, and comes back to
-     * full size when they close. Taps stay accurate because mapX/mapY read the same rectangle.
+     * The Linux desktop keeps its size AND the size it is drawn at. What changes is only WHERE
+     * it is drawn: it slides up, the way a phone app slides its content up, far enough to bring
+     * the place last tapped out from behind the keys, and slides back when they close. Taps stay
+     * accurate because mapX/mapY read the same rectangle.
      */
     void setKeyboardInset(int pixels) {
         if (pixels == keyboardInset) return;
         keyboardInset = Math.max(0, pixels);
-        // Nothing is sent to the server, so no Linux app relayouts: the whole desktop simply
-        // draws smaller, in the room left above the keys, and springs back when they close.
-        centreOnNextLayout = true;
+        // Nothing is sent to the server, so no Linux app relayouts. Opening the keys must not
+        // re-centre either: that would throw away wherever the owner had panned to. Closing them
+        // puts the picture back in the middle of the screen.
+        if (keyboardInset == 0) centreOnNextLayout = true;
         invalidate();
     }
 
@@ -418,12 +422,15 @@ final class VncView extends View implements VncClient.Listener {
     /** Recomputes where the framebuffer lands on screen for the current zoom and pan. */
     private void layoutDestination(Bitmap current) {
         int m = frame();
-        // The keyboard covers the bottom of this view, so the room the desktop has to fit into
-        // is what is left above it. Fitting to the whole view instead put the lower third of
-        // every window behind the keys, and a form was typed into blind.
+        // The keyboard covers the bottom of this view, and what is left above it is the room the
+        // picture has to sit in. The SIZE it is drawn at is measured against the whole view all
+        // the same, keyboard or no keyboard: measuring the fit against the room left above the
+        // keys drew a 1400 px desktop into about 600 px, so the type went smallest at exactly
+        // the moment it was being typed. The picture slides up instead, which is what a phone
+        // app does with its own content.
         float visibleHeight = Math.max(1f, getHeight() - keyboardInset);
         float availW = Math.max(1f, getWidth() - 2f * m);
-        float availH = Math.max(1f, visibleHeight - 2f * m);
+        float availH = Math.max(1f, getHeight() - 2f * m);
         float fit = Math.min(availW / current.getWidth(), availH / current.getHeight());
         float scale = fit * zoom;
         float shownWidth = current.getWidth() * scale;
@@ -432,25 +439,59 @@ final class VncView extends View implements VncClient.Listener {
         if (centreOnNextLayout) {
             // Open on the middle of the desktop rather than its top-left corner.
             panX = (getWidth() - shownWidth) / 2f;
-            panY = (visibleHeight - shownHeight) / 2f;
+            panY = (getHeight() - shownHeight) / 2f;
             centreOnNextLayout = false;
         }
 
-        // Centre whatever is smaller than the screen; otherwise keep the edges flush with it.
-        // While the keyboard is up the view may also sit higher by up to the keyboard's height,
-        // so the field being typed into can be brought out from under it.
+        // Centre whatever is smaller than the room it has; otherwise keep its edges flush with
+        // that room, so the picture can slide but never floats with a gap beside it.
         panX = shownWidth <= getWidth()
                 ? (getWidth() - shownWidth) / 2f
                 : Math.max(getWidth() - shownWidth, Math.min(panX, 0f));
+        float highestPan;
+        float lowestPan;
         if (shownHeight <= visibleHeight) {
-            panY = (visibleHeight - shownHeight) / 2f;
+            highestPan = lowestPan = (visibleHeight - shownHeight) / 2f;
         } else {
-            panY = Math.max(visibleHeight - shownHeight, Math.min(panY, 0f));
+            highestPan = visibleHeight - shownHeight;   // bottom edge against the keyboard
+            lowestPan = 0f;                             // top edge against the top of the screen
+        }
+        panY = Math.max(highestPan, Math.min(panY, lowestPan));
+        if (keyboardInset > 0 && shownHeight > visibleHeight) {
+            // Slide far enough that the place last tapped -- which is the field being typed into
+            // -- is out from behind the keys. Sliding without this keeps the TOP of the desktop
+            // on screen and leaves the field hidden, which is the complaint itself.
+            float margin = Ui.dp(getContext(), 40);
+            float focus = panY + pointerY * scale;
+            if (focus > visibleHeight - margin) panY -= focus - (visibleHeight - margin);
+            else if (focus < margin) panY += margin - focus;
+            panY = Math.max(highestPan, Math.min(panY, lowestPan));
         }
         destination.set(panX, panY, panX + shownWidth, panY + shownHeight);
     }
 
-    void setClient(VncClient client) { this.client = client; }
+    /** The phone's own frame interval, read once the view is on a screen. 60 Hz until then. */
+    private volatile int frameIntervalMillis = 16;
+
+    @Override protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        android.view.Display display = getDisplay();
+        float rate = display == null ? 60f : display.getRefreshRate();
+        if (rate < 24f || rate > 240f) rate = 60f;
+        frameIntervalMillis = Math.max(8, Math.round(1000f / rate));
+        VncClient active = client;
+        if (active != null) active.setFrameInterval(frameIntervalMillis);
+    }
+
+    void setClient(VncClient client) {
+        this.client = client;
+        if (client == null) return;
+        // Ask for 16-bit colour when 16 bits is all this framebuffer keeps. Full colour was
+        // being sent and then thrown away on exactly the phones that could least afford it:
+        // twice the bytes over the socket and twice the bytes to unpack, for the same picture.
+        client.setLowColour(framebufferConfig() == Bitmap.Config.RGB_565);
+        client.setFrameInterval(frameIntervalMillis);
+    }
     VncClient getClient() { return client; }
     void setStateListener(StateListener listener) { this.stateListener = listener; }
     boolean isLive() { return live; }
@@ -726,8 +767,9 @@ final class VncView extends View implements VncClient.Listener {
      * into scroll wheel notches, and none of which Mouse mode does naturally, because there the
      * button has to be armed with a tap first.
      *
-     * Two fingers still zoom the viewer, as they do everywhere else in this app, and lifting the
-     * second one does not leave the button stuck down.
+     * A pinch still zooms the viewer, as it does everywhere else in this app. Two fingers moving
+     * together do what they do in the other modes: they scroll whatever is under them, or slide
+     * the picture once it is zoomed in. Lifting the second one does not leave the button down.
      */
     private boolean mobileTouch(MotionEvent event, int action, VncClient active) {
         if (event.getPointerCount() >= 2) {
@@ -1162,7 +1204,10 @@ final class VncView extends View implements VncClient.Listener {
                 frontCanvas.drawBitmap(source, dirty, dirty, null);
             }
         }
-        postInvalidate();
+        // On the phone's next frame, not this instant. A busy desktop sends several updates
+        // between two frames of the screen, and each one used to order a full repaint that
+        // nobody could ever see; they collapse into one here.
+        postInvalidateOnAnimation();
     }
 
     @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
@@ -1171,11 +1216,13 @@ final class VncView extends View implements VncClient.Listener {
                 ? Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888) : null;
         main.post(() -> {
             if (released) { if (shape != null) shape.recycle(); return; }
-            Bitmap old = cursorBitmap;
             cursorBitmap = shape;
             cursorHotX = hotX;
             cursorHotY = hotY;
-            if (old != null) old.recycle();
+            // The shape being replaced is not recycled: onDraw has recorded it and the render
+            // thread reads it after that, so freeing it here was a crash waiting for a pointer
+            // that changed shape at the wrong moment. A cursor is a few kilobytes; letting go
+            // of it is enough.
             invalidate();
         });
     }
@@ -1310,13 +1357,23 @@ final class VncView extends View implements VncClient.Listener {
     }
 
     /** Called with both bitmap locks held, or on the UI thread after network use has stopped. */
-    private void recycleFramebuffers() {
-        if (bitmap != null) bitmap.recycle();
-        if (back != null) back.recycle();
+    private void releaseFramebuffers() {
+        // The front copy is deliberately NOT recycled. onDraw only RECORDS canvas.drawBitmap;
+        // the window is hardware accelerated, so the render thread reads those pixels after
+        // onDraw has returned and after this method may already have run. Freeing them here
+        // ended the app with "trying to use a recycled bitmap" on close and on rotate. Dropping
+        // the reference is enough -- the memory comes back once nothing is drawing it.
         bitmap = null;
+        // The back copy never reaches the view's canvas: it is only read and written here, and
+        // blitted by a software canvas that has finished by the time it returns. So it can go at
+        // once, which is what keeps a resize from holding four screens of pixels.
+        if (back != null) back.recycle();
         back = null;
         frontCanvas = null;
         anyDirty = false;
+        // The scroll scratch grows to the largest block the desktop ever moved and then sat
+        // there, a full screen of ints, for the life of the viewer. It goes with the rest.
+        copyBuffer = null;
     }
 
     private boolean replaceBitmap(int width, int height) {
@@ -1332,7 +1389,7 @@ final class VncView extends View implements VncClient.Listener {
                     anyDirty = false;
                     return true;
                 }
-                recycleFramebuffers();
+                releaseFramebuffers();
                 try {
                     // Two full screens are allocated here, and on a small phone they are the
                     // largest thing this app owns. RGB_565 halves both of them AND halves what
@@ -1345,7 +1402,7 @@ final class VncView extends View implements VncClient.Listener {
                     back = Bitmap.createBitmap(width, height, config);
                     return true;
                 } catch (OutOfMemoryError | IllegalArgumentException error) {
-                    recycleFramebuffers();
+                    releaseFramebuffers();
                     fatalError = "Not enough viewer memory for this screen. Close other apps and reopen the desktop.";
                     live = false;
                     VncClient active = client;

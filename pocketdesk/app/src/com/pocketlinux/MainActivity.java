@@ -893,17 +893,18 @@ public final class MainActivity extends Activity {
                         + "the ones that lean hardest.\n\n"
                         + "macOS IS NOT LICENSED TO RUN ANYWHERE BUT APPLE'S OWN HARDWARE, so it "
                         + "was never a candidate.\n\n"
-                        + "AND LINUX IS THE ONE THAT LASTS. Ubuntu 24.04 LTS has security updates "
-                        + "to April 2029, to April 2036 with Ubuntu Pro (free for personal use), "
-                        + "and to April 2039 with the Legacy add-on \u2014 fifteen years, on a "
-                        + "base that never forces an upgrade. Each Windows release gets about "
-                        + "twenty-four months before the next one is required.", false);
+                        + "AND LINUX IS THE ONE THAT LASTS. Canonical gives Ubuntu 24.04 LTS free "
+                        + "security updates until April 2029, to April 2034 with Ubuntu Pro (free "
+                        + "for personal use on up to five machines), and to April 2036 with "
+                        + "Canonical's paid Legacy add-on on top of that. Nothing here ever forces "
+                        + "an upgrade. Each Windows release gets about twenty-four months before "
+                        + "the next one is required.", false);
         addAnswer(card, R.drawable.ic_shield, "Safe, private, and yours",
                 "Everything lives in this app's private storage on this phone: the system, the "
                         + "apps, their logins, your files. No PocketLinux account, no server, no "
                         + "analytics; Android's cloud backup is switched off for this app. Ubuntu "
-                        + "24.04 LTS receives security updates from Canonical until April 2029 "
-                        + "(and to 2034 with Ubuntu Pro), so the base does not go stale, and the "
+                        + "24.04 LTS goes on getting security updates from Canonical for years yet "
+                        + "(the answer above has the dates), so the base does not go stale, and the "
                         + "AI apps update from their publishers for as long as they ship updates.", false);
         addAnswer(card, R.drawable.ic_bolt, "Fast for a phone, and built to last",
                 "The native Linux apps are ARM64 programs running directly on the "
@@ -993,10 +994,10 @@ public final class MainActivity extends Activity {
                         + "you through turning Wireless debugging on and takes the pairing code.",
                 12.5f, muted), Ui.matchWrap(this, 6));
         card.addView(Ui.text(this,
-                "Two honest limits. Google publishes no ARM64 Linux build of aapt2, so a full "
-                        + "Android Gradle build may stop at that one tool — compiling and testing "
-                        + "on a device work, and that gap is Google's to close. And an Android "
-                        + "emulator cannot run here at all: it needs hardware virtualisation, "
+                "One thing handled for you, one real limit. Google publishes no ARM64 Linux build "
+                        + "of aapt2, the tool that packs an app's resources, so PocketLinux installs "
+                        + "Ubuntu's own build of it and points Gradle at it while the tools go in. "
+                        + "The limit is the Android emulator: it needs hardware virtualisation, "
                         + "which no app on an unrooted phone can have. A real phone is the test "
                         + "device.",
                 12.5f, Ui.WARNING), Ui.matchWrap(this, 10));
@@ -1280,9 +1281,16 @@ public final class MainActivity extends Activity {
                 R.drawable.ic_open_in_new, dark, v -> openBackgroundActivitySettings());
         backgroundRow.setStatus("CHECK", Ui.muted(dark));
         permissions.addView(backgroundRow, Ui.matchWrap(this, 8));
+        // This row used to promise that a set-up continued after the phone restarted. Nothing
+        // continues: PocketLinux has no boot receiver, on purpose, because a 40-minute download
+        // starting by itself on mobile data with nobody holding the phone is worse than asking
+        // for one tap. What the switch really buys is the phone leaving the app alone while it
+        // works, so that is what the row says now.
         autoStartRow = new Ui.Row(this, R.drawable.ic_power, "Auto-launch",
-                "Turn ON Allow auto-launch (some phones call it Auto-start), so a long set-up can "
-                        + "continue after the phone restarts",
+                "Turn ON Allow auto-launch (some phones call it Auto-start). On many phones this is "
+                        + "the switch that lets PocketLinux keep working after you leave the screen, "
+                        + "so a long download is not stopped. After a restart, open PocketLinux and "
+                        + "tap Continue set-up",
                 R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
         autoStartRow.setStatus("CHECK", Ui.muted(dark));
         permissions.addView(autoStartRow, Ui.matchWrap(this, 8));
@@ -1496,7 +1504,7 @@ public final class MainActivity extends Activity {
                         + "with git, ripgrep, SQLite and a C/C++ compiler already installed\n"
                         + "• Scripts, data work, automation, APIs, bots\n"
                         + "• Git and GitHub over SSH or HTTPS\n\n"
-                        + "ANDROID APPS — yes, with one real limit\n"
+                        + "ANDROID APPS — yes, built and tested on this phone\n"
                         + "Apps tab → Mobile app development installs Java 21, Gradle, adb, "
                         + "fastboot, aapt and scrcpy. Kotlin and Java compile, and Gradle is set "
                         + "up for a 4 GB phone (no daemon, 1 GB heap).\n"
@@ -1505,10 +1513,9 @@ public final class MainActivity extends Activity {
                         + "this computer shares it, so 127.0.0.1 reaches the phone it is running "
                         + "on. Desktop → Tools → Phone app testing walks you through it. Another "
                         + "phone on the same Wi-Fi works the same way.\n"
-                        + "The limit: Google publishes no ARM64 Linux build of aapt2, so a full "
-                        + "Android Gradle build may stop there. Compiling, testing on a device, "
-                        + "and everything around it works; that one tool is the gap, and it is "
-                        + "Google's to close.\n\n"
+                        + "Google publishes no ARM64 Linux build of aapt2, the tool that packs an "
+                        + "app's resources, so PocketLinux installs Ubuntu's own build of it and "
+                        + "points Gradle at it. That is done for you when the tools go in.\n\n"
                         + "iOS APPS — written and tried here, built on a Mac\n"
                         + "Xcode, the iOS Simulator and SwiftUI previews are macOS-only programs "
                         + "that need Apple's own frameworks. Nothing runs them here or on any "
@@ -1546,8 +1553,9 @@ public final class MainActivity extends Activity {
                         + "• Hardware-accelerated 3D and fast video encoding — the graphics chip "
                         + "is out of reach, so both fall back to the processor\n\n"
                         + "HOW HEAVY CAN IT GET\n"
-                        + "This phone has 4 GB and no graphics chip. One AI app plus a build is "
-                        + "the ceiling. A big compile will take minutes where a laptop takes "
+                        + "With no graphics chip, and 4 GB of memory on a typical phone, one AI app "
+                        + "plus a build is the ceiling. A big compile will take minutes where a "
+                        + "laptop takes "
                         + "seconds — it finishes, it is just slower. For work bigger than that, "
                         + "the honest answer is a machine with more memory, and the AI agents "
                         + "here can drive one over SSH.", false);
@@ -1584,8 +1592,9 @@ public final class MainActivity extends Activity {
                         + "offered to any AI agent here, natively.\n\n"
                         + "ALL FOUR APPS SHIP FOR LINUX ARM64 OFFICIALLY. That is the sentence "
                         + "that ends the argument: there is nothing to gain and a great deal to "
-                        + "lose. The Linux builds are native, auto-updating, and on this processor "
-                        + "better supported than the Windows ones.", false);
+                        + "lose. The Linux builds are native, they update with one tap on their row "
+                        + "in the Apps tab, and on this processor they are better supported than the "
+                        + "Windows ones.", false);
 
         addAnswer(card, R.drawable.ic_info, "Do Mac, Windows and Linux get the same features?",
                 "No, and the pattern is worth knowing before you choose anything.\n\n"
@@ -1956,10 +1965,12 @@ public final class MainActivity extends Activity {
                         + "that everything fits. Android may stop a process under memory pressure. "
                         + "Save your work regularly. PocketLinux checks available memory before a new "
                         + "heavy Linux launch and leaves existing apps and sign-in pages open.\n\n"
-                        + "Every open window gets a button on the bar at the bottom of the desktop — "
-                        + "about four of them fit across a portrait screen, more in landscape. Tap one "
-                        + "to bring it forward, hold it to minimise it, and tap the clock for the full "
-                        + "list, which has no limit. There is one desktop, not four: on a phone there "
+                        + "Every open window gets a button on the bar at the bottom of the desktop. "
+                        + "The bar keeps room for three of them in portrait and more in landscape; "
+                        + "open more than that and the buttons share the room and grow narrower. Tap "
+                        + "one to bring it forward, hold it to minimise it, and tap the clock for the "
+                        + "full list, which has no limit. There is one desktop, not four: on a "
+                        + "phone there "
                         + "is no way to reach a second one, so nothing can go missing on it.\n\n"
                         + "The bar itself can move: long-press the wallpaper and choose Move the bar to "
                         + "the top. The desktop remembers it.", false);

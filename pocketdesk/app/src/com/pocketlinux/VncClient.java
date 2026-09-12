@@ -38,7 +38,12 @@ final class VncClient {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private volatile Socket socket;
     private DataInputStream input;
-    private DataOutputStream output;
+    /**
+     * Volatile because it is published by the network thread and then read by the UI thread on
+     * every tap and key: enqueue and sendPointer both test it for null before queueing. It was
+     * the one cross-thread field in this class that was not.
+     */
+    private volatile DataOutputStream output;
     private volatile int width;
     private volatile int height;
     private volatile boolean handshakeCompleted;
@@ -66,6 +71,46 @@ final class VncClient {
     private int[] stripPixels;
     private byte[] rowBytes;
     private static final int STRIP_ROWS = 120;
+
+    /**
+     * How many bytes one pixel takes on the wire: 4 for full colour, 2 for 16-bit 5-6-5. Fixed
+     * at the handshake, because it is what the server was told and every decoder below reads it.
+     */
+    private int wirePixelBytes = 4;
+    /** Set by the viewer before connecting, when its own framebuffer only keeps 16-bit colour. */
+    private volatile boolean lowColour;
+
+    /**
+     * ZRLE's zlib stream and the window its tiles are parsed out of.
+     *
+     * One stream serves the whole connection, which is how the encoding is specified, so it is
+     * created once, never reset between rectangles, and rectangles have to be decoded in the
+     * order they arrive. The window is deliberately small: a full screen of unpacked tiles would
+     * be megabytes, and nothing here needs more than the bytes it is reading right now.
+     */
+    private java.util.zip.Inflater inflater;
+    private byte[] zrleCompressed;
+    private byte[] zrleWindow;
+    private int zrleFill;
+    private int zrlePos;
+    private int[] tilePixels;
+    private int[] tilePalette;
+
+    /**
+     * The shortest gap between asking for one frame and asking for the next. Without it a
+     * desktop playing an animation kept the reader, the unpacking loop and the screen working
+     * flat out at whatever rate the server could manage, and the picture was no smoother for it.
+     */
+    private volatile int frameIntervalMillis = 16;
+    private long nextRequestAtNanos;
+
+    /** The viewer passes the phone's own frame interval, so frames nobody can see are not built. */
+    void setFrameInterval(int millis) {
+        if (millis >= 4 && millis <= 60) frameIntervalMillis = millis;
+    }
+
+    /** Called before connecting: true when the viewer stores RGB_565 and full colour is waste. */
+    void setLowColour(boolean low) { lowColour = low; }
 
     /**
      * The display server's private socket inside this app's storage, when there is one.
@@ -151,6 +196,10 @@ final class VncClient {
             readMessages();
         } finally {
             close();
+            // The zlib stream holds memory the Java heap does not account for. This is the
+            // thread that was decoding with it, and it has stopped, so nothing can be inside
+            // inflate() while this runs.
+            if (inflater != null) { inflater.end(); inflater = null; }
         }
     }
 
@@ -211,20 +260,41 @@ final class VncClient {
         return new String(reason, StandardCharsets.UTF_8);
     }
 
+    /**
+     * The format every pixel then arrives in.
+     *
+     * A phone whose framebuffer only keeps 16-bit colour was still being sent 32 bits a pixel
+     * and throwing half of each one away. It asks for 16-bit 5-6-5 when that is what it keeps:
+     * half the bytes over the socket and half the bytes the unpacking loop has to walk.
+     */
     private void setPixelFormat() throws IOException {
+        wirePixelBytes = lowColour ? 2 : 4;
         synchronized (writeLock) {
             output.writeByte(0);
             output.write(new byte[3]);
-            output.writeByte(32);
-            output.writeByte(24);
-            output.writeByte(0);
-            output.writeByte(1);
-            output.writeShort(255);
-            output.writeShort(255);
-            output.writeShort(255);
-            output.writeByte(16);
-            output.writeByte(8);
-            output.writeByte(0);
+            if (wirePixelBytes == 2) {
+                output.writeByte(16);      // bits per pixel
+                output.writeByte(16);      // depth
+                output.writeByte(0);       // little endian, which is how the loops below read it
+                output.writeByte(1);       // true colour
+                output.writeShort(31);
+                output.writeShort(63);
+                output.writeShort(31);
+                output.writeByte(11);
+                output.writeByte(5);
+                output.writeByte(0);
+            } else {
+                output.writeByte(32);
+                output.writeByte(24);
+                output.writeByte(0);
+                output.writeByte(1);
+                output.writeShort(255);
+                output.writeShort(255);
+                output.writeShort(255);
+                output.writeByte(16);
+                output.writeByte(8);
+                output.writeByte(0);
+            }
             output.write(new byte[3]);
             output.flush();
         }
@@ -234,13 +304,19 @@ final class VncClient {
         synchronized (writeLock) {
             output.writeByte(2);
             output.writeByte(0);
-            output.writeShort(6);
-            output.writeInt(0);        // Raw
+            output.writeShort(7);
+            // Most wanted first. ZRLE is zlib over 64x64 tiles that are themselves reduced to a
+            // small palette or to runs of one colour, and a desktop is mostly flat colour, so
+            // most of a change costs a small fraction of the pixels Raw was sending. Raw comes
+            // after it and is still offered: the server drops back to it when compressing a
+            // rectangle would not pay, and it is the one encoding every server can always send.
+            output.writeInt(16);       // ZRLE
             // CopyRect: "this block is already on your screen, at these other coordinates."
             // Scrolling a page, dragging a window and switching a tab are all mostly this, and
             // without it every one of them re-sent every pixel over a local socket, through the
             // pixel loop and up to the GPU. It is six bytes instead of a megabyte.
             output.writeInt(1);        // CopyRect
+            output.writeInt(0);        // Raw
             output.writeInt(-239);     // Cursor: the pointer's shape comes to us, not into the picture
             output.writeInt(-223);     // DesktopSize
             output.writeInt(-224);     // LastRect
@@ -275,33 +351,9 @@ final class VncClient {
             int h = input.readUnsignedShort();
             int encoding = input.readInt();
             if (encoding == 0) {
-                if (w <= 0 || h <= 0 || (long) w * h > 5_000_000L) throw new IOException("Invalid desktop rectangle");
-                int stripCapacity = Math.min(h, STRIP_ROWS);
-                if (stripPixels == null || stripPixels.length < w * stripCapacity) {
-                    stripPixels = new int[w * stripCapacity];
-                }
-                // One read per strip rather than one per row: a full-screen update was 120
-                // separate readFully calls into the same buffer, each with its own bounds check
-                // and its own trip through the socket's own buffering.
-                if (rowBytes == null || rowBytes.length < w * 4 * stripCapacity) {
-                    rowBytes = new byte[w * 4 * stripCapacity];
-                }
-                for (int py = 0; py < h; ) {
-                    int rows = Math.min(stripCapacity, h - py);
-                    int index = 0;
-                    input.readFully(rowBytes, 0, w * 4 * rows);
-                    int end = w * rows;
-                    for (int base = 0; index < end; base += 4) {
-                        int blue = rowBytes[base] & 0xff;
-                        int green = rowBytes[base + 1] & 0xff;
-                        int red = rowBytes[base + 2] & 0xff;
-                        stripPixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
-                    }
-                    // The listener copies the strip into its bitmap before returning, so the
-                    // same array can be refilled for the next strip.
-                    listener.onRectangle(x, y + py, w, rows, stripPixels);
-                    py += rows;
-                }
+                readRaw(x, y, w, h);
+            } else if (encoding == 16) {
+                readZrle(x, y, w, h);
             } else if (encoding == 1) {
                 int sourceX = input.readUnsignedShort();
                 int sourceY = input.readUnsignedShort();
@@ -334,7 +386,213 @@ final class VncClient {
             readingFramebuffer = false;
             updatePending = false;
         }
+        // Never ask for the next frame sooner than the phone can show one. A desktop with an
+        // animation on it used to hand back a frame and ask for another in the same breath, so
+        // the reader, the unpacking loop and the screen all ran flat out for frames nobody ever
+        // saw. Waiting here is what paces the whole chain; input rides its own thread and is
+        // not held up by it.
+        long waitNanos = nextRequestAtNanos - System.nanoTime();
+        if (waitNanos > 0) {
+            try {
+                Thread.sleep(waitNanos / 1_000_000L, (int) (waitNanos % 1_000_000L));
+            } catch (InterruptedException stopped) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        nextRequestAtNanos = System.nanoTime() + frameIntervalMillis * 1_000_000L;
         requestUpdate(true);
+    }
+
+    private void readRaw(int x, int y, int w, int h) throws IOException {
+        if (w <= 0 || h <= 0 || (long) w * h > 5_000_000L) throw new IOException("Invalid desktop rectangle");
+        int perPixel = wirePixelBytes;
+        int stripCapacity = Math.min(h, STRIP_ROWS);
+        if (stripPixels == null || stripPixels.length < w * stripCapacity) {
+            stripPixels = new int[w * stripCapacity];
+        }
+        // One read per strip rather than one per row: a full-screen update was 120
+        // separate readFully calls into the same buffer, each with its own bounds check
+        // and its own trip through the socket's own buffering.
+        if (rowBytes == null || rowBytes.length < w * perPixel * stripCapacity) {
+            rowBytes = new byte[w * perPixel * stripCapacity];
+        }
+        for (int py = 0; py < h; ) {
+            int rows = Math.min(stripCapacity, h - py);
+            int index = 0;
+            input.readFully(rowBytes, 0, w * perPixel * rows);
+            int end = w * rows;
+            if (perPixel == 4) {
+                for (int base = 0; index < end; base += 4) {
+                    int blue = rowBytes[base] & 0xff;
+                    int green = rowBytes[base + 1] & 0xff;
+                    int red = rowBytes[base + 2] & 0xff;
+                    stripPixels[index++] = 0xff000000 | (red << 16) | (green << 8) | blue;
+                }
+            } else {
+                for (int base = 0; index < end; base += 2) {
+                    stripPixels[index++] =
+                            widen565((rowBytes[base] & 0xff) | ((rowBytes[base + 1] & 0xff) << 8));
+                }
+            }
+            // The listener copies the strip into its bitmap before returning, so the
+            // same array can be refilled for the next strip.
+            listener.onRectangle(x, y + py, w, rows, stripPixels);
+            py += rows;
+        }
+    }
+
+    /**
+     * A 16-bit 5-6-5 pixel opened out to full colour.
+     *
+     * The top bits are repeated into the bottom ones. Shifting alone would have made the
+     * brightest red 0xf8 rather than 0xff, so white came out slightly grey and every light
+     * colour was a shade off.
+     */
+    private static int widen565(int value) {
+        int red = (value >> 11) & 0x1f;
+        int green = (value >> 5) & 0x3f;
+        int blue = value & 0x1f;
+        return 0xff000000
+                | (((red << 3) | (red >> 2)) << 16)
+                | (((green << 2) | (green >> 4)) << 8)
+                | ((blue << 3) | (blue >> 2));
+    }
+
+    /**
+     * ZRLE: the whole rectangle arrives as one zlib block that unpacks into 64x64 tiles.
+     *
+     * Each tile says how it was stored -- plain pixels, one solid colour, a small palette packed
+     * down to a few bits a pixel, or runs of a repeated colour -- and a desktop is mostly flat
+     * colour, so most tiles come to a handful of bytes. Tiles are handed over one at a time, so
+     * nothing here ever holds more than 64x64 pixels of unpacked picture.
+     */
+    private void readZrle(int x, int y, int w, int h) throws IOException {
+        if (w <= 0 || h <= 0 || (long) w * h > 5_000_000L) throw new IOException("Invalid desktop rectangle");
+        int length = input.readInt();
+        if (length < 0 || length > 32 * 1024 * 1024) throw new IOException("Invalid compressed rectangle");
+        if (zrleCompressed == null || zrleCompressed.length < length) {
+            zrleCompressed = new byte[Math.max(length, 64 * 1024)];
+        }
+        input.readFully(zrleCompressed, 0, length);
+        if (inflater == null) inflater = new java.util.zip.Inflater();
+        inflater.setInput(zrleCompressed, 0, length);
+        zrleFill = 0;
+        zrlePos = 0;
+        if (tilePixels == null) {
+            tilePixels = new int[64 * 64];
+            tilePalette = new int[128];
+        }
+        for (int tileY = 0; tileY < h; tileY += 64) {
+            int tileHeight = Math.min(64, h - tileY);
+            for (int tileX = 0; tileX < w; tileX += 64) {
+                int tileWidth = Math.min(64, w - tileX);
+                readZrleTile(tileWidth, tileHeight);
+                listener.onRectangle(x + tileX, y + tileY, tileWidth, tileHeight, tilePixels);
+            }
+        }
+    }
+
+    private void readZrleTile(int w, int h) throws IOException {
+        int count = w * h;
+        int subencoding = zrleByte();
+        boolean runs = (subencoding & 128) != 0;
+        int paletteSize = subencoding & 127;
+        if (!runs && paletteSize == 0) {
+            for (int i = 0; i < count; i++) tilePixels[i] = readTilePixel();
+            return;
+        }
+        if (!runs && paletteSize == 1) {
+            java.util.Arrays.fill(tilePixels, 0, count, readTilePixel());
+            return;
+        }
+        // 17 to 127 without runs, and 129, are defined as unused. A tile claiming one of them
+        // means this reader and the server have lost each other, and going on would paint noise.
+        if ((!runs && paletteSize > 16) || (runs && paletteSize == 1)) {
+            throw new IOException("Unsupported desktop tile " + subencoding);
+        }
+        for (int i = 0; i < paletteSize; i++) tilePalette[i] = readTilePixel();
+        if (!runs) {
+            // A palette of 2 takes one bit a pixel, 3 or 4 take two, 5 to 16 take four, most
+            // significant bits first -- and every ROW starts again on a fresh byte.
+            int bits = paletteSize == 2 ? 1 : paletteSize <= 4 ? 2 : 4;
+            int mask = (1 << bits) - 1;
+            for (int row = 0; row < h; row++) {
+                int packed = 0;
+                int shift = -1;
+                for (int column = 0; column < w; column++) {
+                    if (shift < 0) {
+                        packed = zrleByte();
+                        shift = 8 - bits;
+                    }
+                    tilePixels[row * w + column] = tilePalette[(packed >> shift) & mask];
+                    shift -= bits;
+                }
+            }
+            return;
+        }
+        int filled = 0;
+        while (filled < count) {
+            int colour;
+            int run;
+            if (paletteSize == 0) {
+                colour = readTilePixel();
+                run = readRunLength();
+            } else {
+                int index = zrleByte();
+                run = 1;
+                if ((index & 128) != 0) {
+                    index &= 127;
+                    run = readRunLength();
+                }
+                if (index >= paletteSize) throw new IOException("Invalid desktop tile colour");
+                colour = tilePalette[index];
+            }
+            if (run > count - filled) throw new IOException("Invalid desktop tile run");
+            java.util.Arrays.fill(tilePixels, filled, filled + run, colour);
+            filled += run;
+        }
+    }
+
+    /** A run length: one more than the sum of the bytes, every 255 saying another byte follows. */
+    private int readRunLength() throws IOException {
+        int length = 1;
+        int part;
+        do {
+            part = zrleByte();
+            length += part;
+            if (length > 64 * 64) throw new IOException("Invalid desktop tile run");
+        } while (part == 255);
+        return length;
+    }
+
+    /**
+     * One pixel inside a tile. At 32 bits a pixel the fourth byte carries nothing, so ZRLE
+     * leaves it out and sends three; at 16 bits there is nothing spare and it sends two.
+     */
+    private int readTilePixel() throws IOException {
+        if (wirePixelBytes == 4) {
+            int blue = zrleByte();
+            int green = zrleByte();
+            int red = zrleByte();
+            return 0xff000000 | (red << 16) | (green << 8) | blue;
+        }
+        int low = zrleByte();
+        int high = zrleByte();
+        return widen565(low | (high << 8));
+    }
+
+    private int zrleByte() throws IOException {
+        if (zrlePos >= zrleFill) {
+            if (zrleWindow == null) zrleWindow = new byte[16 * 1024];
+            zrlePos = 0;
+            try {
+                zrleFill = inflater.inflate(zrleWindow);
+            } catch (java.util.zip.DataFormatException broken) {
+                throw new IOException("The desktop's compressed picture could not be read");
+            }
+            if (zrleFill <= 0) throw new IOException("Truncated compressed rectangle");
+        }
+        return zrleWindow[zrlePos++] & 0xff;
     }
 
     /**
@@ -349,7 +607,10 @@ final class VncClient {
             listener.onCursor(0, 0, 0, 0, null);
             return;
         }
-        byte[] pixels = new byte[count * 4];
+        // The cursor's pixels come in the same format as everything else, so they are two bytes
+        // each once 16-bit colour has been asked for.
+        int perPixel = wirePixelBytes;
+        byte[] pixels = new byte[count * perPixel];
         input.readFully(pixels);
         int maskRow = (w + 7) / 8;
         byte[] mask = new byte[maskRow * h];
@@ -358,11 +619,17 @@ final class VncClient {
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {
                 boolean opaque = (mask[y * maskRow + x / 8] & (0x80 >> (x % 8))) != 0;
-                int base = (y * w + x) * 4;
-                int blue = pixels[base] & 0xff;
-                int green = pixels[base + 1] & 0xff;
-                int red = pixels[base + 2] & 0xff;
-                argb[y * w + x] = opaque ? 0xff000000 | (red << 16) | (green << 8) | blue : 0;
+                int base = (y * w + x) * perPixel;
+                int colour;
+                if (perPixel == 4) {
+                    int blue = pixels[base] & 0xff;
+                    int green = pixels[base + 1] & 0xff;
+                    int red = pixels[base + 2] & 0xff;
+                    colour = 0xff000000 | (red << 16) | (green << 8) | blue;
+                } else {
+                    colour = widen565((pixels[base] & 0xff) | ((pixels[base + 1] & 0xff) << 8));
+                }
+                argb[y * w + x] = opaque ? colour : 0;
             }
         }
         listener.onCursor(hotX, hotY, w, h, argb);

@@ -13,8 +13,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- A one-tap prompt for background battery use. Setup downloads for 10-30 minutes and
-         Android's battery saver otherwise kills it; the user is always asked, never forced. -->
+    <!-- A one-tap prompt for background battery use. Setup downloads for 15 to 45 minutes, the
+         same figure the set-up dialog gives, and Android's battery saver otherwise kills it part
+         way through; the user is always asked, never forced. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- The app lock's fingerprint prompt. A normal permission, granted at install; without it
          the prompt throws and only the PIN screen could ever be shown. -->

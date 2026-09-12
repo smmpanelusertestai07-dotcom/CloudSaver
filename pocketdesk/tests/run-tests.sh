@@ -152,8 +152,17 @@ grep -q 'Windows programs cannot run here' "$PROJECT_DIR/app/assets/pocketdesk-i
   || { echo "FAIL Installer: a downloaded Windows program must be refused with its reason"; exit 1; }
 grep -q -- '--use-angle=swiftshader' "$PROJECT_DIR/app/assets/pocketdesk-open.sh" \
   || { echo "FAIL Installer: ChatGPT's software renderer profile is missing"; exit 1; }
-grep -q '^installed$' < <(bash "$PROJECT_DIR/app/assets/pocketdesk-software.sh" --selftest) \
-  || { echo "FAIL Software: the Ubuntu software centre did not self-test"; exit 1; }
+# The software centre used to carry a --selftest branch purely so this line could call it. A
+# product that ships a test mode the owner can reach is not finished, so the branch is gone and
+# the four actions are asserted where they actually live: the dispatch table the menu calls.
+for pd_action in search update install-file installed; do
+  grep -q "^  $pd_action)" "$PROJECT_DIR/app/assets/pocketdesk-software.sh" \
+    || { echo "FAIL Software: the centre cannot $pd_action"; exit 1; }
+done
+grep -q -- '--selftest' "$PROJECT_DIR/app/assets/pocketdesk-software.sh" \
+  && { echo "FAIL Software: a test mode is reachable in the shipped software centre"; exit 1; }
+grep -q 'apt-get update' "$PROJECT_DIR/app/assets/pocketdesk-software.sh" \
+  || { echo "FAIL Software: updates must go through apt, not a second package system"; exit 1; }
 grep -q 'shell monkey' "$PROJECT_DIR/app/assets/pocketdesk-adb.sh" \
   || { echo "FAIL PhoneTesting: an installed APK must be launched for testing"; exit 1; }
 echo "PASS CompletedComputerFeatures"

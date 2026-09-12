@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Draws PocketLinux's own desktop icons.
 
-The desktop borrows Adwaita for everything Ubuntu ships, but the four entries PocketLinux adds
+The desktop borrows Adwaita for everything Ubuntu ships, but the seven entries PocketLinux adds
 itself have no theme icon that fits: Projects had none at all and fell back to a blank sheet,
 Software asked for "system-software-install" (a name Adwaita does not always carry, which is the
-grey question mark on the desktop), and Settings did not exist. These are drawn here instead of
-being taken from a theme, so they are the same on any Ubuntu the container ends up with.
+grey question mark on the desktop), the Bin asked for "user-trash" and came up empty on the
+phones whose Adwaita has no full-colour copy of it, and Settings did not exist. So all seven are
+drawn here instead of being taken from a theme -- Projects, Settings, Software, the installer,
+Phone files, Files and the Bin -- and they are the same on any Ubuntu the container ends up with.
+
+Tux on the panel's Apps button and the PocketLinux mark in the panel corner are shipped pictures,
+not drawn by this script.
 
 Drawn at 4x and scaled down, which is the whole anti-aliasing story: Pillow's draw has no
 smoothing of its own, and a 128-pixel icon drawn directly has ragged edges on a phone screen.
@@ -29,9 +34,8 @@ INK = (23, 32, 61, 255)
 BLUE = (58, 92, 214, 255)
 BLUE_DEEP = (36, 60, 152, 255)
 STEEL = (108, 132, 190, 255)
+STEEL_DEEP = (74, 96, 150, 255)
 WHITE = (255, 255, 255, 255)
-ORANGE = (233, 84, 32, 255)
-ORANGE_DEEP = (188, 60, 16, 255)
 SLATE = (44, 56, 92, 255)
 
 
@@ -90,17 +94,24 @@ def settings():
 
 
 def software():
-    """Software: a box being opened, with the arrow that means "bring it down and install it"."""
+    """Software: a shop bag carrying a grid of app tiles, which is the place you go to get apps.
+
+    It was a saturated orange box with a heavy white down-arrow, and the owner asked whether it
+    was a warning. Two things were wrong with it. Saturated orange is the colour a phone warns
+    you in, and every other icon here is amber, blue or brown. And the installer beside it is
+    also a container carrying the same white arrow, so the two easiest things to mix up on the
+    desktop looked alike. The arrow is the installer's alone now.
+    """
     image, draw = canvas()
-    draw.rounded_rectangle([s(30), s(92), s(226), s(224)], radius=s(20), fill=ORANGE)
-    draw.rounded_rectangle([s(30), s(92), s(226), s(126)], radius=s(16), fill=ORANGE_DEEP)
-    # The handle: a strap over the lid, so it is a box and not a plain rectangle.
-    draw.arc([s(88), s(38), s(168), s(126)], start=180, end=360, fill=ORANGE_DEEP, width=s(13))
-    pen = s(15)
-    draw.line([(s(128), s(140)), (s(128), s(190))], fill=WHITE, width=pen)
-    draw.line([(s(100), s(166)), (s(128), s(194)), (s(156), s(166))], fill=WHITE,
-              width=pen, joint="curve")
-    draw.line([(s(92), s(210)), (s(164), s(210))], fill=WHITE, width=s(12))
+    draw.rounded_rectangle([s(44), s(86), s(212), s(226)], radius=s(18), fill=BLUE)
+    draw.rounded_rectangle([s(44), s(86), s(212), s(120)], radius=s(14), fill=BLUE_DEEP)
+    # The handle over the mouth, which is what makes it a bag and not another parcel. Its ends run
+    # below the top edge so the stroke joins the bag instead of floating above it.
+    draw.arc([s(92), s(36), s(164), s(140)], start=180, end=360, fill=BLUE_DEEP, width=s(13))
+    # Four tiles: the app grid every phone owner reads as "apps" without being told.
+    for top in (s(128), s(180)):
+        for left in (s(82), s(134)):
+            draw.rounded_rectangle([left, top, left + s(40), top + s(40)], radius=s(6), fill=WHITE)
     save(image, "pocketdesk-software.png")
 
 
@@ -146,6 +157,24 @@ def home_files():
     save(image, "pocketdesk-files.png")
 
 
+def bin_icon():
+    """The Bin: a lid, a body and three ribs.
+
+    The Bin was the last launcher still asking the icon theme for a name, and on the phones whose
+    Adwaita carries no full-colour user-trash it came up blank, which is the whole reason this
+    file exists. Grey-blue rather than the amber of the folders, because what is in here is on its
+    way out.
+    """
+    image, draw = canvas()
+    draw.rounded_rectangle([s(106), s(40), s(150), s(58)], radius=s(6), fill=STEEL_DEEP)
+    draw.rounded_rectangle([s(40), s(58), s(216), s(90)], radius=s(12), fill=STEEL_DEEP)
+    draw.rounded_rectangle([s(56), s(96), s(200), s(224)], radius=s(18), fill=STEEL)
+    # The ribs down the front. Without them the body is a plain cup at panel size.
+    for left in (s(84), s(122), s(160)):
+        draw.rounded_rectangle([left, s(124), left + s(14), s(196)], radius=s(7), fill=WHITE)
+    save(image, "pocketdesk-bin.png")
+
+
 if __name__ == "__main__":
     projects()
     settings()
@@ -153,3 +182,4 @@ if __name__ == "__main__":
     package()
     phone_files()
     home_files()
+    bin_icon()
