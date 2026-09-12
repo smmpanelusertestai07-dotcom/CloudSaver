@@ -55,16 +55,26 @@ chmod +x build.sh
 ./build.sh
 ```
 
-Requires JDK 17 or newer and `zip`. The keystore in `.signing/` (password `pocketdesk-local`) is
-committed on purpose: Android installs an update only when it carries the same signature, and
-uninstalling PocketLinux deletes the whole Ubuntu container, so every build — local, fork or CI
-artifact — has to be signed with that one key. Because it is public, an APK's signature proves
-nothing about who built it: install PocketLinux only from a source you trust. For a release of
-your own, sign with a private keystore through `POCKETDESK_KEYSTORE`, `POCKETDESK_STORE_PASS` and
-`POCKETDESK_KEY_PASS` (or the repository secrets `POCKETDESK_KEYSTORE_B64`, `POCKETDESK_STORE_PASS`
-and `POCKETDESK_KEY_PASS`, which the workflow picks up), and keep that key private.
+Requires JDK 17 or newer and `zip`. The build needs a signing key, and this repository does not
+contain one. It used to: a keystore sat in `.signing/` with its password written in `build.sh`,
+on the reasoning that Android installs an update only when it carries the same signature and
+uninstalling PocketLinux deletes the whole Ubuntu container. That reasoning is real but the
+conclusion was wrong. A key everyone can read is not a key: anyone at all could sign an APK that
+installed straight over an existing PocketLinux and inherited the container, the apps inside it,
+those apps' saved sign-ins, and the phone folders the computer can reach. It is gone, and it must
+be treated as compromised wherever it was used.
 
-Run the static tests with `bash tests/run-tests.sh`. GitHub Actions runs the same suites and builds the release APK as an artifact on every push that touches `pocketdesk/` (`.github/workflows/pocketdesk.yml`); add `POCKETDESK_KEYSTORE_B64`, `POCKETDESK_STORE_PASS` and `POCKETDESK_KEY_PASS` as repository secrets to sign CI builds with one fixed key.
+Set `POCKETLINUX_KEYSTORE`, `POCKETLINUX_STORE_PASS` and `POCKETLINUX_KEY_PASS` (key alias
+`pocketlinux`, or set `POCKETLINUX_KEY_ALIAS`) to sign with your own key. With none set the build
+still produces an installable APK, signed with a key that exists only for that build and named
+`-devkey` so it can never be handed over as a release.
+
+Run the static tests with `bash tests/run-tests.sh`. GitHub Actions runs the same suites, builds
+the signed APK and, from `main`, publishes it as a release tagged `pocketlinux-v<version>`
+(`.github/workflows/pocketdesk.yml`). It signs with the repository secrets
+`POCKETLINUX_KEYSTORE_B64`, `POCKETLINUX_STORE_PASS` and `POCKETLINUX_KEY_PASS`, and refuses to
+publish a release at all when they are absent, because an APK signed with a throwaway key cannot
+update anyone's install.
 
 ## Permissions
 

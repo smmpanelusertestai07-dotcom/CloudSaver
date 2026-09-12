@@ -67,29 +67,43 @@ fi
 mapfile -t CLASS_FILES < <(find "$BUILD_DIR/classes" -name '*.class' -type f | sort)
 "$BUILD_TOOLS/d8" --lib "$ANDROID_JAR" --min-api 29 --output "$BUILD_DIR/dex" "${CLASS_FILES[@]}"
 zip -q -j "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/dex/classes.dex"
-"$BUILD_TOOLS/zipalign" -f -p 4 "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/$APP_BASENAME-aligned.apk"
+# -P 16, not -p. -p is the old 4 KiB rule; Android 16 runs an app whose .so files are not
+# 16 KiB aligned in a compatibility mode with a dialog at launch rather than refusing it, so a
+# wrong answer here ships and looks fine. -P takes the page size in KiB and the 4 stays as the
+# positional argument. This APK ships PRoot and its loader as native libraries, so it is
+# precisely the case that rule is about.
+"$BUILD_TOOLS/zipalign" -f -P 16 4 "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/$APP_BASENAME-aligned.apk"
 
-KEYSTORE="${POCKETDESK_KEYSTORE:-$PROJECT_DIR/.signing/pocketdesk-local.jks}"
-STORE_PASS="${POCKETDESK_STORE_PASS:-pocketdesk-local}"
-KEY_PASS="${POCKETDESK_KEY_PASS:-$STORE_PASS}"
-# Android refuses an update signed with a different key, and the only way to take it would be
-# to uninstall -- which deletes the whole Ubuntu container, its apps and their sign-ins. So the
-# key that signed every previous release lives in the repository, and a build that has to mint
-# a new one says so loudly and names its APK differently, so it can never be handed over as the
-# release by mistake.
+# The release key is supplied from outside this repository and is never in it.
+#
+# It used to be: .signing/pocketdesk-local.jks was committed, with its password written three
+# lines above, in a public repository. Android accepts an update only from the same signer, so
+# anyone at all could have built an APK that installed straight over this one -- inheriting the
+# Ubuntu container, every app inside it, those apps' saved sign-ins, and the phone folders the
+# computer can reach. A key everyone has is not a key. It is gone, and the release key now
+# comes from POCKETLINUX_KEYSTORE, which CI fills from a repository secret.
+KEYSTORE="${POCKETLINUX_KEYSTORE:-${POCKETDESK_KEYSTORE:-}}"
+STORE_PASS="${POCKETLINUX_STORE_PASS:-${POCKETDESK_STORE_PASS:-}}"
+KEY_PASS="${POCKETLINUX_KEY_PASS:-${POCKETDESK_KEY_PASS:-$STORE_PASS}}"
+KEY_ALIAS="${POCKETLINUX_KEY_ALIAS:-pocketlinux}"
+# A build with no key still has to produce something installable, or there is no way to try a
+# change on a phone. It mints one for this build only and carries "-devkey" in its filename for
+# good: the suffix is decided here, and the throwaway lives under its own name, so a second
+# build cannot find the first one's key and quietly drop the warning.
 SUFFIX=""
-if [[ ! -f "$KEYSTORE" ]]; then
+if [[ -z "$KEYSTORE" || ! -f "$KEYSTORE" ]]; then
   SUFFIX="-devkey"
-  echo "WARNING: $KEYSTORE is missing, so this build is signed with a throwaway key." >&2
-  echo "         It CANNOT be installed over an existing PocketLinux; restore the keystore" >&2
-  echo "         (pocketdesk/.signing/) or set POCKETDESK_KEYSTORE before a real release." >&2
-fi
-if [[ ! -f "$KEYSTORE" ]]; then
-  mkdir -p "$(dirname "$KEYSTORE")"
+  KEYSTORE="$BUILD_DIR/devkey.jks"
+  STORE_PASS="devkey-$RANDOM$RANDOM"
+  KEY_PASS="$STORE_PASS"
+  KEY_ALIAS="devkey"
+  echo "WARNING: no release keystore, so this build is signed with a throwaway key." >&2
+  echo "         It CANNOT be installed over an existing PocketLinux, and the release job" >&2
+  echo "         refuses to publish it. Set POCKETLINUX_KEYSTORE for a real release." >&2
   keytool -genkeypair -noprompt \
     -keystore "$KEYSTORE" -storepass "$STORE_PASS" -keypass "$KEY_PASS" \
-    -alias pocketdesk -keyalg RSA -keysize 3072 -validity 3650 \
-    -dname "CN=PocketLinux Local Preview, O=PocketLinux, C=IN" >/dev/null 2>&1
+    -alias "$KEY_ALIAS" -keyalg RSA -keysize 3072 -validity 3650 \
+    -dname "CN=PocketLinux Development Build, O=PocketLinux, C=IN" >/dev/null 2>&1
 fi
 
 # Publish only after verification. A killed signer must not leave a partial file
@@ -99,6 +113,7 @@ SIGNED_APK="$BUILD_DIR/.pocketdesk-signing.apk"
 # v2 + v3 are both enabled so every sideload installer and Android 13 OEM build accepts the APK.
 JAVA_OPTS="${JAVA_OPTS:-} -Xmx256m" "$BUILD_TOOLS/apksigner" sign \
   --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
+  --ks-key-alias "$KEY_ALIAS" \
   --ks-key-alias pocketdesk \
   --min-sdk-version 29 --max-sdk-version 35 \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
