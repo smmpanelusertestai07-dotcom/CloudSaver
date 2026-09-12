@@ -183,6 +183,43 @@ is_chromium() {
   return 1
 }
 
+# Where an Electron app keeps its sign-in.
+#
+# The session starts gnome-keyring precisely so these apps have a real secret store; forcing
+# --password-store=basic on top of that threw the keyring away and left VS Code-based apps
+# (Cursor, Antigravity) holding a secret store they treat as unusable -- which is an app that
+# asks you to sign in again at every start. So the store is chosen by asking the session bus
+# whether the secrets service actually answers, with a deadline, because with no daemon at all
+# the lookup blocks until it times out and the app reads as "never opened".
+#
+# The answer is remembered per app. A token written into one store cannot be read out of the
+# other, so a single session where the keyring came up late must not silently downgrade an app
+# that is already signed in.
+password_store() {
+    store_dir="$HOME/.config/pocketlinux/password-store"
+    remembered="$store_dir/$1"
+    if [ -s "$remembered" ]; then
+        cat "$remembered"
+        return 0
+    fi
+    chosen=basic
+    if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        if command -v gdbus >/dev/null 2>&1; then
+            timeout --foreground --kill-after=1s 5s gdbus call --session \
+                --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+                --method org.freedesktop.DBus.NameHasOwner org.freedesktop.secrets 2>/dev/null \
+              | grep -q true && chosen=gnome-libsecret
+        elif pgrep -x gnome-keyring-d >/dev/null 2>&1; then
+            # No gdbus in this container yet. The daemon this session started is the same
+            # evidence, one step less direct.
+            chosen=gnome-libsecret
+        fi
+    fi
+    mkdir -p "$store_dir" 2>/dev/null || true
+    printf '%s' "$chosen" > "$remembered" 2>/dev/null || true
+    printf '%s' "$chosen"
+}
+
 base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             --disable-dev-shm-usage
             # No zygote: under PRoot the zygote's forked children reset their signal handlers,
@@ -214,9 +251,6 @@ base_flags=(--no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox
             # window was ever created. Claude never asks, which is why only one of them opened.
             --disable-gpu --disable-gpu-compositing
             --ozone-platform=x11
-            # Without a keyring daemon the secret-service lookup blocks until it times out,
-            # which reads as "the app never opened".
-            --password-store=basic
             --js-flags=--max-old-space-size=384
             --disable-extensions
             --disable-background-networking
@@ -362,7 +396,7 @@ run_attempt() {
       return 124
     fi
     echo "still running after ${elapsed}s without a detected window · process kept · $(free_mb) MB free" >> "$log"
-    notify normal "$label is still starting" "Its process is still running. Settings → Linux app reports has the startup output."
+    notify normal "$label is still starting" "Its process is still running. Settings → If something goes wrong keeps the startup output."
     return 0
   fi
   wait "$pid" 2>/dev/null
@@ -409,7 +443,7 @@ flags=()
 managed_app=0
 if is_chromium; then
   managed_app=1
-  flags=("${base_flags[@]}")
+  flags=("${base_flags[@]}" "--password-store=$(password_store "$name")")
 fi
 # Chrome asks "Restore pages? Chrome didn't shut down correctly" after every desktop stop,
 # because the stop ends it with a signal rather than a quit, and on a phone screen that bubble
@@ -620,7 +654,7 @@ if [ "$managed_app" = 1 ] && { [ -n "$open_id$existing_pids" ] \
     exit "$status"
   fi
   if true; then
-    [ -n "$open_id" ] || notify normal "$label is already running" "Its window is not ready yet. See Settings → Linux app reports."
+    [ -n "$open_id" ] || notify normal "$label is already running" "Its window is not ready yet. See Settings → If something goes wrong."
     echo 'existing process kept; no duplicate startup' >> "$log"
     exit 0
   fi
@@ -665,7 +699,7 @@ record_end() {
   if [ "$end" = 137 ] || [ "$end" = 9 ]; then
     notify critical "$label was stopped" "Its process received SIGKILL. Memory pressure or another forced stop may be responsible. See the app report."
   elif [ "$end" != 0 ] && [ "$end" != 143 ]; then
-    notify critical "$label stopped with an error" "Exit $end. Settings → Linux app reports has the last output."
+    notify critical "$label stopped with an error" "Exit $end. Settings → If something goes wrong has the last output."
   fi
 }
 
@@ -741,7 +775,7 @@ case "$status" in
   137|9) reason="its process was killed (SIGKILL); memory pressure is one possible cause"
          advice="Close the browser and any other app, then open $label again." ;;
   159)   reason="Linux reported a blocked system call or lost runtime"
-         advice="Open Settings → Linux app reports; stop this session before retrying." ;;
+         advice="Open Settings → If something goes wrong; stop this session before retrying." ;;
   124)   reason="it reached the launch time limit"
          advice="Open the app report for the last startup output." ;;
   139)   reason="it crashed while starting"

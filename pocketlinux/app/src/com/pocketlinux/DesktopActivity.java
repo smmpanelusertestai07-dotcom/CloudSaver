@@ -460,7 +460,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
             TextView detail = new TextView(this);
             String reason = error.getMessage();
             detail.setText("Nothing in the Linux computer was changed. The original error was saved "
-                    + "under Settings → Last error report.\n\n"
+                    + "under Settings → If something goes wrong.\n\n"
                     + error.getClass().getSimpleName()
                     + (reason == null || reason.trim().isEmpty() ? "" : ": " + reason));
             detail.setTextColor(Color.rgb(190, 204, 240));
@@ -1178,7 +1178,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
                             "The desktop connection ended. Your installed apps and saved files are kept.");
             new AlertDialog.Builder(this, R.style.Theme_PocketLinux_Dialog)
                     .setTitle("Desktop connection")
-                    .setMessage(reason + "\n\nSettings → Linux app reports includes the desktop and viewer reports.")
+                    .setMessage(reason + "\n\nSettings → If something goes wrong has the details, and one button that copies them.")
                     .setNegativeButton("Close", null)
                     .setPositiveButton(active ? "Reconnect" : "Open desktop", (dialog, which) -> {
                         if (!LinuxService.isDesktopRunning() && !LinuxService.isDesktopStarting()) {

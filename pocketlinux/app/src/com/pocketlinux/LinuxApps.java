@@ -327,6 +327,10 @@ final class LinuxApps {
             // writing the token in plain text. This is what makes the four AI apps store their
             // sign-ins the way they do on a Mac.
             + "gnome-keyring libsecret-1-0 libsecret-tools "
+            // gdbus, from the same package Chrome and the AI apps already pull in. It is
+            // how a launch asks the session bus whether the keyring is really answering
+            // before telling an Electron app to keep its sign-in there.
+            + "libglib2.0-bin "
             // The words on the screen, for PocketLinux's own Appshot: an agent gets the text of a
             // window as well as its picture. About 35 MB with the English data, and it only runs
             // when an agent actually asks for a reading.
@@ -517,7 +521,12 @@ final class LinuxApps {
                     "Google's agentic development platform: AI agents plan, write, run and test software.",
                     R.drawable.ic_desktop, R.drawable.logo_antigravity, "230 MB", 3 * GB,
                     "5–20 min",
-                    "Installed from Google's own apt repository, so a tap on this row updates it in place.",
+                    "Installed from Google's own apt repository, which publishes the ARM64 build "
+                            + "beside the Intel one at the same version, so a tap on this row updates it "
+                            + "in place. Which models it offers is Google's list, not this app's: the free "
+                            + "plan covers Gemini 3.8 Flash, 3.7 Flash, 3.6 Flash, Gemini 3.1 Pro, Claude "
+                            + "Sonnet and Opus 4.6 and gpt-oss-120b. A newer model shows up once the app "
+                            + "itself is updated here.",
                     "/usr/share/applications/antigravity.desktop",
                     "pd_update || exit 11; apt-get install -y --no-install-recommends curl gnupg ca-certificates "
                             + "libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 "

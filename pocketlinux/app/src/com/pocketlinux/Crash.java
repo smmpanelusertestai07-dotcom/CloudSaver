@@ -83,7 +83,7 @@ final class Crash {
      *
      * A set-up or an install that fails says why in a dialog, and the dialog is gone the moment
      * it is dismissed -- taking with it the one line that would have explained the failure. This
-     * keeps it, so "Last error report" answers for both kinds of trouble.
+     * keeps it, so "If something goes wrong" answers for both kinds of trouble.
      */
     static void note(Context context, String title, String detail) {
         try {

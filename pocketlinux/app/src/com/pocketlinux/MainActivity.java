@@ -1332,14 +1332,12 @@ public final class MainActivity extends Activity {
                 PrivacyMonitor.summary(this), R.drawable.ic_chevron, dark, v -> showPrivacyMonitor());
         privacyRow.setStatus("SEE", Ui.muted(dark));
         permissions.addView(privacyRow, Ui.matchWrap(this, 8));
-        // "See Last error report" was on screen with nothing behind it: the report was written
-        // and never read by anything. This is the screen the app was pointing at.
-        errorReportRow = new Ui.Row(this, R.drawable.ic_stop, "Last error report",
-                "Checking…", R.drawable.ic_chevron, dark, v -> showErrorReport());
+        // One row, not a menu of log files. An owner with no PC still needs a way to hand on
+        // what happened, but reading a session log is not a thing this app should ask of them:
+        // it says in words what stopped, and Copy details carries the whole technical record.
+        errorReportRow = new Ui.Row(this, R.drawable.ic_shield, "If something goes wrong",
+                "Checking…", R.drawable.ic_chevron, dark, v -> showWhatWentWrong());
         permissions.addView(errorReportRow, Ui.matchWrap(this, 8));
-        permissions.addView(new Ui.Row(this, R.drawable.ic_terminal, "Linux app reports",
-                "Startup, sign-in handoff and exit logs for Linux apps",
-                R.drawable.ic_chevron, dark, v -> showLinuxAppReports()), Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketLinux",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
@@ -1870,6 +1868,23 @@ public final class MainActivity extends Activity {
                         + "without you choosing it.",
                 false);
 
+        addAnswer(card, R.drawable.ic_apps, "A model is missing from Antigravity, Cursor or ChatGPT",
+                "The model list belongs to the publisher, not to PocketLinux. Each app asks its "
+                        + "own service which models your account may use and draws that list "
+                        + "itself \u2014 the same list the same account sees on a laptop.\n\n"
+                        + "Two things decide what you get. The first is the plan: Antigravity's "
+                        + "free tier lists Gemini 3.8 Flash, 3.7 Flash, 3.6 Flash, Gemini 3.1 Pro, "
+                        + "Claude Sonnet and Opus 4.6 and gpt-oss-120b (Google's published free "
+                        + "plan, September 2026). The second is the build you are running: a "
+                        + "model added after your copy was installed only appears once the app "
+                        + "itself is newer. Antigravity's ARM64 build is published beside the "
+                        + "Intel one at the same version, so there is nothing to wait for \u2014 "
+                        + "open Apps, tap Antigravity, and Update takes it to Google's newest "
+                        + "release with your sign-in kept.\n\nIf a model is still missing after "
+                        + "that, it is the account, not the phone: sign in inside the app with "
+                        + "the account that has the plan.",
+                false);
+
         addAnswer(card, R.drawable.ic_wifi, "Does it work without internet?",
                 "The Linux computer itself runs fully offline — desktop, files, browser for "
                         + "saved pages, and any app that does not need the internet. The AI apps "
@@ -1895,9 +1910,9 @@ public final class MainActivity extends Activity {
                         + "when you have finished using them.\n\n"
                         + "PocketLinux preserves a running app during repeated taps and sign-in "
                         + "callbacks. If available memory is very low, a new heavy Linux app waits "
-                        + "until you free memory and retry. The browser stays open. Settings → Linux "
-                        + "app reports has startup and exit output; Home records desktop stops. "
-                        + "Saved files remain, but unsaved work may need recovery.", false);
+                        + "until you free memory and retry. The browser stays open. Settings → If "
+                        + "something goes wrong keeps the startup and exit output; Home records "
+                        + "desktop stops. Saved files remain, but unsaved work may need recovery.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Live voice, camera and screen share \u2014 what works?",
                 "Voice: YES. Now that the microphone works, a live voice conversation runs in the "
@@ -2556,108 +2571,95 @@ public final class MainActivity extends Activity {
         openAppInfo();
     }
 
+    /** Every report this app keeps, in the order a person would want them. */
+    private static final String[] REPORT_NAMES = {"ChatGPT", "Chrome", "Browser sign-in handoff",
+            "Claude", "Cursor", "Antigravity", "Desktop session", "Previous desktop session",
+            "Runtime and viewer"};
+    private static final String[] REPORT_FILES = {"chatgpt.log", "google-chrome.log",
+            "browser-handoff.log", "claude-desktop.log", "cursor.log", "antigravity.log",
+            "desktop-session.log", "desktop-session.previous.log", "runtime-events.log"};
+    /** Entries above this index are sessions, not apps, and carry no retained-failure file. */
+    private static final int REPORT_APPS = 6;
+
     /**
-     * The last thing that went wrong, in full, with a way to hand it on.
+     * What went wrong, said in words, with one button that hands on the whole technical record.
      *
-     * A message that says "see the report" and then has no report is worse than no message: the
-     * owner is told there is an answer and given no way to it. The Copy button is the point --
-     * an owner with no PC cannot read a log file, but they can paste one.
+     * This replaced a menu of nine log files. Choosing between "cursor.log" and
+     * "runtime-events.log" is a developer's job, and this app is not for developers; but an owner
+     * with no PC has no adb, no logcat and no way to read a file inside the container, so the
+     * record itself has to stay. So: a sentence anyone can act on, and Copy details for the rest.
      */
-    private void showErrorReport() {
-        String report = Crash.read(this);
-        if (report.isEmpty()) {
-            showMessage("No error report", "Nothing has gone wrong since this was last cleared.");
-            return;
+    private void showWhatWentWrong() {
+        long at = Crash.recordedAt(this);
+        String stop = preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON, "");
+        StringBuilder said = new StringBuilder();
+        if (at > 0) {
+            said.append("The app itself stopped ").append(clock(at)).append(".\n\n")
+                    .append("It reopens normally, and nothing in the Linux computer is lost when "
+                            + "this happens \u2014 the computer and its files live in their own "
+                            + "storage, not in the part of the app that stopped.");
+        } else if (stop != null && !stop.isEmpty()) {
+            said.append("Nothing has gone wrong with the app.\n\nThe last time the desktop "
+                    + "closed, the reason was: ").append(stop);
+        } else {
+            said.append("Nothing has gone wrong.\n\nIf the app or the desktop ever stops on its "
+                    + "own, this is where it is explained \u2014 in words, not in a log.");
         }
-        dialogBuilder()
-                .setTitle("Last error report")
-                .setMessage(report)
-                .setNeutralButton("Clear", (d, w) -> {
-                    Crash.clear(this);
-                    refreshPermissionRows();
-                })
+        said.append("\n\nCopy details puts everything on record onto the clipboard: what "
+                + "stopped, and the startup and exit output of the desktop and each Linux app. "
+                + "Sign-in web addresses are removed from it first. Paste it wherever you are "
+                + "asking for help.");
+        android.app.AlertDialog.Builder builder = dialogBuilder()
+                .setTitle(at > 0 ? "Something stopped" : "If something goes wrong")
+                .setMessage(said.toString())
                 .setNegativeButton("Close", null)
-                .setPositiveButton("Copy", (d, w) -> {
-                    android.content.ClipboardManager board =
-                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    if (board != null) {
-                        board.setPrimaryClip(android.content.ClipData.newPlainText(
-                                "PocketLinux error report", report));
-                        android.widget.Toast.makeText(this, "Copied. Paste it wherever you are "
-                                + "asking for help.", android.widget.Toast.LENGTH_LONG).show();
-                    }
-                })
-                .show();
+                .setPositiveButton("Copy details", (d, w) -> copyEverythingOnRecord());
+        if (at > 0) {
+            builder.setNeutralButton("Clear", (d, w) -> {
+                Crash.clear(this);
+                refreshPermissionRows();
+            });
+        }
+        builder.show();
     }
 
-
-
-    private void showLinuxAppReports() {
-        final String[] names = {"ChatGPT", "Chrome", "Browser sign-in handoff", "Claude", "Cursor",
-                "Antigravity", "Desktop session", "Previous desktop session", "Runtime and viewer"};
-        final String[] files = {"chatgpt.log", "google-chrome.log", "browser-handoff.log", "claude-desktop.log",
-                "cursor.log", "antigravity.log", "desktop-session.log", "desktop-session.previous.log", "runtime-events.log"};
-        dialogBuilder().setTitle("Linux app reports").setItems(names, (dialog, index) -> {
-            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this),
-                    "home/coder/.pocketlinux/logs");
-            java.io.File reportFile = index == files.length - 1 ? RuntimeDiagnostics.file(this)
-                    : new java.io.File(folder, files[index]);
-            String output = readReportTail(reportFile);
-            if (output.isEmpty()) output = "No startup report yet. Open this Linux app once, then check here.";
-            if (index < 6) {
-                long desktopOpenedAt = preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L);
-                output = DiagnosticReport.ageNotice(reportFile.lastModified(), desktopOpenedAt) + output;
-                java.io.File failureFile = new java.io.File(folder, files[index] + ".failure");
-                String failure = readReportTail(failureFile);
-                if (!failure.isEmpty()) {
-                    output += "\n\n=== " + names[index] + " · retained failure ===\n"
-                            + DiagnosticReport.failureNotice(failureFile.lastModified()) + failure;
-                }
+    /** The app's own record plus every Linux report, combined and redacted, in one paste. */
+    private void copyEverythingOnRecord() {
+        StringBuilder header = new StringBuilder("PocketLinux " + VERSION + " | Android "
+                + android.os.Build.VERSION.RELEASE + " | " + android.os.Build.MODEL + "\n");
+        String reason = preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON, "");
+        if (reason != null && !reason.isEmpty()) header.append("Last stop: ").append(reason).append('\n');
+        java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketlinux/logs");
+        String[] reports = new String[REPORT_FILES.length];
+        String[] failures = new String[REPORT_APPS];
+        long[] modifiedAt = new long[REPORT_APPS];
+        long[] failureModifiedAt = new long[REPORT_APPS];
+        for (int i = 0; i < REPORT_FILES.length; i++) {
+            java.io.File reportFile = i == REPORT_FILES.length - 1 ? RuntimeDiagnostics.file(this)
+                    : new java.io.File(folder, REPORT_FILES[i]);
+            reports[i] = readReportTail(reportFile);
+            if (i < REPORT_APPS) {
+                modifiedAt[i] = reportFile.lastModified();
+                java.io.File failureFile = new java.io.File(folder, REPORT_FILES[i] + ".failure");
+                failures[i] = readReportTail(failureFile);
+                failureModifiedAt[i] = failureFile.lastModified();
             }
-            // Old launcher versions could echo OAuth URLs. Redact their queries when displaying
-            // and copying too, so existing reports do not expose sign-in credentials.
-            output = DiagnosticReport.redact(output);
-            final String report = "PocketLinux " + VERSION + " · " + names[index] + " (Linux)\n\n" + output;
-            dialogBuilder().setTitle(names[index] + " · Linux report").setMessage(report)
-                    .setNegativeButton("Close", null)
-                    .setPositiveButton("Copy", (entry, which) -> {
-                        android.content.ClipboardManager board =
-                                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        if (board != null) {
-                            board.setPrimaryClip(android.content.ClipData.newPlainText(
-                                    "PocketLinux Linux app report", report));
-                            android.widget.Toast.makeText(this, "Linux app report copied.", android.widget.Toast.LENGTH_SHORT).show();
-                        }
-                    }).show();
-        }).setNegativeButton("Close", null).setPositiveButton("Copy all", (dialog, which) -> {
-            StringBuilder combined = new StringBuilder("PocketLinux " + VERSION + " | Android "
-                    + android.os.Build.VERSION.RELEASE + " | " + android.os.Build.MODEL + "\n");
-            String reason = preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON, "");
-            if (reason != null && !reason.isEmpty()) combined.append("Last stop: ").append(reason).append('\n');
-            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketlinux/logs");
-            String[] reports = new String[files.length];
-            String[] failures = new String[6];
-            long[] modifiedAt = new long[6];
-            long[] failureModifiedAt = new long[6];
-            for (int i = 0; i < files.length; i++) {
-                java.io.File reportFile = i == files.length - 1 ? RuntimeDiagnostics.file(this)
-                        : new java.io.File(folder, files[i]);
-                reports[i] = readReportTail(reportFile);
-                if (i < 6) {
-                    modifiedAt[i] = reportFile.lastModified();
-                    java.io.File failureFile = new java.io.File(folder, files[i] + ".failure");
-                    failures[i] = readReportTail(failureFile);
-                    failureModifiedAt[i] = failureFile.lastModified();
-                }
-            }
-            String report = DiagnosticReport.combine(combined.toString(), names, reports, failures,
-                    modifiedAt, failureModifiedAt, preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L));
-            android.content.ClipboardManager board = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (board != null) {
-                board.setPrimaryClip(android.content.ClipData.newPlainText("PocketLinux Linux reports", report));
-                android.widget.Toast.makeText(this, "Linux reports copied.", android.widget.Toast.LENGTH_SHORT).show();
-            }
-        }).show();
+        }
+        String report = DiagnosticReport.combine(header.toString(), REPORT_NAMES, reports, failures,
+                modifiedAt, failureModifiedAt, preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L));
+        // The app's own record goes in whole, above the Linux sections. It is not squeezed into
+        // combine's header budget: that budget exists to stop nine log tails from adding up, and
+        // truncating the one thing that says why the app stopped would defeat the paste.
+        String crash = Crash.read(this);
+        if (!crash.isEmpty()) {
+            report = DiagnosticReport.redact(crash).trim() + "\n\n" + report;
+        }
+        android.content.ClipboardManager board =
+                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (board == null) return;
+        board.setPrimaryClip(android.content.ClipData.newPlainText("PocketLinux details", report));
+        android.widget.Toast.makeText(this, "Copied. Paste it wherever you are asking for help.",
+                android.widget.Toast.LENGTH_LONG).show();
     }
 
 
@@ -2686,10 +2688,10 @@ public final class MainActivity extends Activity {
         if (errorReportRow != null) {
             long at = Crash.recordedAt(this);
             boolean any = at > 0;
-            errorReportRow.setStatus(any ? "SEE" : "NONE", any ? Ui.WARNING : Ui.muted(dark));
+            errorReportRow.setStatus(any ? "SEE" : "FINE", any ? Ui.WARNING : Ui.SUCCESS);
             errorReportRow.setValue(any
-                    ? "Something went wrong " + clock(at) + ". Tap to read it, and to copy it."
-                    : "Nothing has gone wrong. Anything that does is kept here.");
+                    ? "Something stopped " + clock(at) + ". Tap to see what, and to copy the details."
+                    : "Nothing has gone wrong. If anything does, it is explained here.");
         }
         if (microphoneRow != null) {
             boolean on = checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -3038,7 +3040,7 @@ public final class MainActivity extends Activity {
             if (startButton != null) startButton.setEnabled(true);
             Crash.save(this, error);
             showMessage("The desktop did not open", "Android refused to open the desktop screen. "
-                    + "The error is saved under Settings → Last error report.");
+                    + "The error is saved under Settings → If something goes wrong.");
         }
     }
 

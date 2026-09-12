@@ -354,7 +354,7 @@ def supervise(log_path, label, command):
             try:
                 subprocess.run(['notify-send', '-a', 'PocketLinux', '-u', 'critical',
                                 label + ' stopped with an error',
-                                f'Exit {status}. Settings → Linux app reports keeps the failure.'],
+                                f'Exit {status}. Settings → If something goes wrong keeps the failure.'],
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, timeout=3)
             except (OSError, subprocess.TimeoutExpired):

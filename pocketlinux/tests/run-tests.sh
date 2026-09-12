@@ -219,6 +219,20 @@ grep -q 'mcp_servers.pocketdesk' "$PROJECT_DIR/app/assets/pocketlinux-desktop.sh
   || { echo "FAIL Rename: a Codex registration under the old name would point at a missing program"; exit 1; }
 echo "PASS Rename (one name everywhere, an old install carried over, the signing key untouched)"
 
+# Nothing in the shipped app may read as a testing tool. The one record an owner with no PC
+# still needs stays -- said in words, with a single button that copies the technical detail --
+# but the menu of nine log files, and every sentence that pointed at it, are gone.
+grep -q '"If something goes wrong"' "$PROJECT_DIR/app/src/com/pocketlinux/MainActivity.java" \
+  || { echo "FAIL ProductionSurfaces: the one plain-language record is missing"; exit 1; }
+grep -q 'copyEverythingOnRecord' "$PROJECT_DIR/app/src/com/pocketlinux/MainActivity.java" \
+  || { echo "FAIL ProductionSurfaces: nothing hands the details on, so the record cannot be used"; exit 1; }
+for gone in 'showLinuxAppReports' 'Last error report' 'Linux app reports'; do
+  if grep -rqI -- "$gone" "$PROJECT_DIR/app" "$PROJECT_DIR/README.md" 2>/dev/null; then
+    echo "FAIL ProductionSurfaces: \"$gone\" is still in the shipped app"; exit 1
+  fi
+done
+echo "PASS ProductionSurfaces (one record in plain words, no log-file menu)"
+
 # The rotation report, kept fixed. Two of Android's constants are named as though they mean
 # "portrait" and "auto-rotate" and do not: USER_PORTRAIT is "portrait, either way up" and
 # FULL_SENSOR exists precisely to add the upside-down rotation a phone would not normally use.
