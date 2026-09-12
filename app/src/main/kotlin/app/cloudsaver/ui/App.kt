@@ -51,6 +51,7 @@ import app.cloudsaver.R
 import app.cloudsaver.ui.components.AppBackground
 import app.cloudsaver.ui.screens.ActivityScreen
 import app.cloudsaver.ui.screens.HelpCloudScreen
+import app.cloudsaver.ui.screens.PermissionsScreen
 import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.FreeSpaceHubScreen
 import app.cloudsaver.ui.screens.BiggestFilesScreen
@@ -97,6 +98,7 @@ object Routes {
     const val HELP_PRIVACY = "help_privacy"
     const val HELP_LICENSES = "help_licenses"
     const val HELP_ABOUT = "help_about"
+    const val PERMISSIONS = "permissions"
 
     /** The four bottom-bar destinations. */
     val TABS = setOf(HOME, FILES, STORAGE, OPTIONS)
@@ -116,7 +118,7 @@ object Routes {
         HOME, FILES, STORAGE, OPTIONS, FREE_UP, FREE_SPACE_HUB, ACTIVITY,
         RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT, CALCULATOR, HELP,
         HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_LOGS, HELP_CLOUD,
-        HELP_PRIVACY, HELP_LICENSES, HELP_ABOUT
+        HELP_PRIVACY, HELP_LICENSES, HELP_ABOUT, PERMISSIONS
     )
 
     /** True only for a route this app can be asked to open from outside. */
@@ -351,6 +353,7 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }
                 composable(Routes.HELP_LICENSES) { HelpLicensesScreen(nav) }
                 composable(Routes.HELP_ABOUT) { HelpAboutScreen(vm, nav) }
+                composable(Routes.PERMISSIONS) { PermissionsScreen(vm, nav) }
             }
         }
     }

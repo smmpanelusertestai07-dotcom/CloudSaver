@@ -31,6 +31,9 @@ cloud. The app itself has no code path that deletes an original.
 ## Install
 
 Download the APK from [Releases](../../releases) and open it on your phone.
+A step-by-step guide in Hinglish, including where each phone maker hides the
+battery and auto-launch switches, is in
+[QUICKSTART-HINGLISH.md](QUICKSTART-HINGLISH.md).
 
 Two things to know:
 
@@ -64,13 +67,13 @@ disk or to the repository.
 
 ## How it is tested
 
-- 536 unit tests on the JVM. Many are *source-text rules*: they read the
+- 548 unit tests on the JVM. Many are *source-text rules*: they read the
   source and the strings as text and assert properties of them — that no two
   attention chips say the same words, that no button label is cut to one line,
   that the About card names every permission the manifest holds, that the app
   never claims to upload anything, that the release workflow never publishes a
   private key.
-- 112 instrumented tests across 16 classes, on real emulators against a real
+- 115 instrumented tests across 16 classes, on real emulators against a real
   gallery, over API 29 through 36 on every push.
 - Every test failure photographs the screen it failed on.
 

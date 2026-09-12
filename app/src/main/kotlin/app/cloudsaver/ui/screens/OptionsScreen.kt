@@ -94,6 +94,7 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.AlbumGrid
+import app.cloudsaver.ui.components.CloudAppIcon
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.ui.components.MeterBar
@@ -118,7 +119,6 @@ import app.cloudsaver.util.Formats
 // Shorter than the setup step's cap on purpose: this grid shares a dialog
 // with the size line and the auto-excluded folders, and the dialog body does
 // not scroll - the grid does. What the ceiling leaves over is theirs.
-private val FolderListMaxHeight = 300.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -591,6 +591,18 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 
         SectionHeader(stringResource(R.string.opt_group_privacy))
+        // Every permission and battery switch this app depends on, with its
+        // live state and the phone-maker's own path to it - the "permission
+        // manager" a sideloaded app has to be for itself.
+        OptionCard(
+            stringResource(R.string.opt_permissions),
+            stringResource(R.string.opt_permissions_hint),
+            icon = Icons.Outlined.PhoneAndroid
+        ) {
+            OutlinedButton(onClick = { nav.goTo(Routes.PERMISSIONS) }) {
+                Text(stringResource(R.string.opt_permissions_open))
+            }
+        }
         // Switches sit on the row itself. Wrapping one in a card that repeats
         // its own title read as two settings with the same name.
         // Enabling the lock proves identity first - turning on a gate you
@@ -893,7 +905,14 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             confirmButton = {
                 TextButton(onClick = { showFolders = false }) { Text(stringResource(R.string.ok)) }
             },
-            title = { Text(stringResource(R.string.opt_folders)) },
+            // The total is in the title, so two visible tiles are never
+            // mistaken for the whole gallery.
+            title = {
+                Text(
+                    if (buckets.isEmpty()) stringResource(R.string.opt_folders)
+                    else stringResource(R.string.opt_folders_title_count, buckets.size)
+                )
+            },
             text = {
                 // The same grid the setup step draws, because the two pickers
                 // are one decision seen from two doors. The body is a plain
@@ -939,7 +958,6 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
                                 else o.excludedBuckets + name
                             )
                         },
-                        maxHeight = FolderListMaxHeight,
                         testTag = ListTags.ROWS,
                         header = {
                             // The same running count and select-all the setup
@@ -1119,6 +1137,10 @@ private fun CloudPickRow(
             )
     ) {
         RadioButton(selected = app.id == current, onClick = null)
+        // The same face the setup picker shows, so the two lists cannot
+        // disagree about which app is on the phone.
+        CloudAppIcon(app = app, installed = installed)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             // The tag has no weight and the name is arbitrarily long, so in a
             // Row the name took the whole line and "Recommended" was measured

@@ -11,7 +11,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -27,7 +26,17 @@ fun LockedScreen(
     onUnlock: () -> Unit
 ) {
     app.cloudsaver.ui.components.SecureScreen()
-    LaunchedEffect(Unit) { onUnlock() }
+    // The prompt appears by itself, the way every locked app behaves - and
+    // it appears on RESUME, not on first composition. A biometric prompt
+    // asked for while the activity is only started (the lock is re-armed on
+    // STOP, so that is exactly when this screen first composes on a return)
+    // can be dropped by the system without a word, leaving a screen with a
+    // button that looks like the app forgot to ask. Resume is the moment the
+    // window is in front and the prompt can attach to it. The button stays
+    // for a refused or cancelled prompt.
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        onUnlock()
+    }
     Column(
         modifier = modifier
             .fillMaxSize()

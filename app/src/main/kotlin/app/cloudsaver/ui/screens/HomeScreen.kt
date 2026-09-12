@@ -96,6 +96,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Bolt
 import app.cloudsaver.core.logic.HomeAction
 import app.cloudsaver.ui.components.TrialCard
+import app.cloudsaver.data.db.ItemRow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -646,9 +647,14 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     // The phone stopped running us. Nothing else on this row
                     // would show it, and the app would just look idle.
+                    // To the screen that shows every switch with its state
+                    // and the phone-maker's path to it - not straight into
+                    // one system dialog, which Android closes on its own when
+                    // the app is already exempt and the maker's own switch is
+                    // the one doing the killing.
                     if (health.backgroundWorkStopped) {
                         StatusChip(stringResource(R.string.chip_stopped)) {
-                            vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                            nav.goTo(Routes.PERMISSIONS)
                         }
                     }
                     // Something is in the upload folder that CloudSaver did
@@ -834,6 +840,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
             LaunchedEffect(Unit) { vm.loadBuckets() }
             val trialAlbums by vm.buckets.collectAsStateWithLifecycle()
             Spacer(Modifier.height(14.dp))
+            // A tapped result opens the same before-and-after slider the
+            // Free-up screen uses, over the trial's own staged copy.
+            var compare by remember { mutableStateOf<ItemRow?>(null) }
             TrialCard(
                 size = trialSize,
                 running = testRunning,
@@ -842,8 +851,13 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 albumsChosen = trialAlbums.isEmpty() ||
                     trialAlbums.any { it !in options.excludedBuckets },
                 onChooseAlbums = { nav.goTo(Routes.OPTIONS) },
-                accessFull = mediaAccess == Permissions.MediaAccess.FULL
+                accessFull = mediaAccess == Permissions.MediaAccess.FULL,
+                onOpen = { item -> compare = item.row },
+                onDiscard = { vm.discardTrial() }
             )
+            compare?.let { row ->
+                CompareSheet(row = row, onDismiss = { compare = null })
+            }
         }
 
         // Today's upload allowance, and when it refills. Without this, an app

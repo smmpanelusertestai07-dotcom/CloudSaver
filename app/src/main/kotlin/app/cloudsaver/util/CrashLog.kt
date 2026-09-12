@@ -21,6 +21,16 @@ object CrashLog {
 
     private const val FLAG_FILE = "crash_pending"
 
+    /** When the current launch began, and how many launches in a row died young. */
+    private const val LAUNCH_FILE = "launch_started_at"
+    private const val STREAK_FILE = "startup_crash_streak"
+
+    /** A crash this soon after launch counts as the launch itself failing. */
+    const val STARTUP_WINDOW_MS = 15_000L
+
+    /** Two young deaths in a row and the next launch shows the recovery page. */
+    const val RECOVERY_AFTER = 2
+
     fun install(context: Context) {
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
@@ -46,6 +56,34 @@ object CrashLog {
         // A plain file flag rather than prefs: DataStore cannot be written
         // synchronously, and the process is about to die.
         context.getFileStreamPath(FLAG_FILE).createNewFile()
+        // A crash within seconds of launch is a launch that cannot complete.
+        // Two of those in a row and the next start must not try the same
+        // screen a third time: it shows the recovery page instead, so the
+        // log can still be shared and the app is never a dead icon.
+        val startedAt = runCatching {
+            context.getFileStreamPath(LAUNCH_FILE).readText().trim().toLong()
+        }.getOrNull()
+        val young = startedAt != null && System.currentTimeMillis() - startedAt < STARTUP_WINDOW_MS
+        val streakFile = context.getFileStreamPath(STREAK_FILE)
+        val streak = if (young) startupCrashStreak(context) + 1 else 0
+        streakFile.writeText(streak.toString())
+    }
+
+    /** Called at the top of the launcher activity's onCreate. */
+    fun noteLaunchStarted(context: Context) {
+        runCatching {
+            context.getFileStreamPath(LAUNCH_FILE).writeText(System.currentTimeMillis().toString())
+        }
+    }
+
+    /** How many launches in a row have died within [STARTUP_WINDOW_MS]. */
+    fun startupCrashStreak(context: Context): Int = runCatching {
+        context.getFileStreamPath(STREAK_FILE).readText().trim().toInt()
+    }.getOrDefault(0)
+
+    /** A launch that lived past the window, or a person choosing to try again. */
+    fun clearStartupStreak(context: Context) {
+        runCatching { context.getFileStreamPath(STREAK_FILE).delete() }
     }
 
     /** True once, on the launch after a crash. */

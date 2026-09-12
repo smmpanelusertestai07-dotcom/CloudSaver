@@ -18,7 +18,7 @@ source for this release, including the rows that were already marked Done.
 | R10 | Self-heal: unsent copy remade twice then skipped with a reason, sent copy counts as proof, folder recreated, snapshots rebuilt daily, foreign files flagged and never touched | Done | `EvidenceRules.onCopyMissing` (RESEND → GIVE_UP at two), anchor rule in `pacedRelease`, `dailySnapshot` + `sharedTargetsPresent`, bounded so a very large gallery cannot silently break snapshot writing while every evidenced row is still kept whole, `MaintainEngine.foreignFiles` counts and reports without a single write path to those files; UserMistakeShieldTest asserts the pass stays inert |
 | R11 | SMART scheduling with every wait state explained; Optimise now bypasses the schedule, never the safety limits | Done | `RunDecider.decide` (charge/battery/saver/thermal/screen/budget) as a pure function with RunDeciderTest; Home prints the current `Wait` in plain words with its reset; `optimise_now_override_*` strings name what the button will and will not skip |
 | R12 | Survives reboot, update, clear-data, reinstall, phone change, SD removal, partial access and OS updates | Done | WorkManager `ensure` on every launch; `StartupRecovery` (crash handler → snapshot restore → purge → schedule) with restore now once per install; Room migrations 1..6 with MigrationTest; `Volumes.probeWritable` gates the SD option and the releaser verifies the landing volume; `Permissions.mediaAccess` blocks scanning under partial access and shows waiting text instead of a number; PermanenceTest, MediaAccessTest, VolumeRulesTest |
-| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | the app's mark is the launcher's own two adaptive layers, scaled by the launcher's own 108/72 and clipped to a rounded tile, rather than a second flat PNG that drifted from it - the icon in the app and the icon on the home screen are one object; `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 45 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme; and the app now fits the phone it is on rather than the phone it was written on - every screen walked at 320 dp and at 200% text, in landscape, behind a notch and in a mirrored language: chips and button pairs wrap instead of running off the edge, text that shares a row carries a weight so it shrinks rather than pushing its neighbour out, the tile grid takes its column count from the width it actually has, the headline figure stops growing where it would stop fitting, the list header travels with the list instead of taking the screen in landscape, and nothing holding words is pinned to a height; LayoutRulesTest holds all sixteen rules - the one forbidding a button label cut to one line is the class of fault the owner's own phone reported and eight emulators did not, and it was proved by making it fail before it was trusted; and the labels a real phone caught mid-word are gone as a class - the list action bar flows so its button drops under the sentence instead of losing its own verb to an ellipsis, "Select all (37)" replaced a sentence that lost its count, the saving note says "about 92 MB after" in full, a file row showing a checkbox stacks its size under the name at every font size so selection mode cannot squeeze the name to one word, and a duplicate row names its album rather than printing the content:// address of the file, and a file row now asks the row how wide it is rather than only how large the text is - at ordinary text size on a 320 dp phone the size column had about 42 dp and printed "643" over "KB" while the name it displaced was cut to "tour_photo...", on a screen where every file begins "tour_photo", so the row named nothing at all; below the width the two columns need, the size goes under the name and takes the whole row, which is what selection mode already did |
+| R13 | One design system: icon-led rows, one palette, one type scale, one formatter, both themes structurally identical, plurals, no zero states | Done | the app's mark is the launcher's own two adaptive layers, scaled by the launcher's own 108/72 and clipped to a rounded tile, rather than a second flat PNG that drifted from it - the icon in the app and the icon on the home screen are one object; `Theme.kt` tokens + `Dimens`; ThemePurityTest (no colour literals outside the palette) and ContrastTest (WCAG in both themes); `Formats` is the only number formatter; 46 plurals all complete; Home keeps the hero card, health chips, lifecycle tiles, allowance and the state-aware button; the insets controller follows the painted palette so the status bar is readable in every theme; and the app now fits the phone it is on rather than the phone it was written on - every screen walked at 320 dp and at 200% text, in landscape, behind a notch and in a mirrored language: chips and button pairs wrap instead of running off the edge, text that shares a row carries a weight so it shrinks rather than pushing its neighbour out, the tile grid takes its column count from the width it actually has, the headline figure stops growing where it would stop fitting, the list header travels with the list instead of taking the screen in landscape, and nothing holding words is pinned to a height; LayoutRulesTest holds all sixteen rules - the one forbidding a button label cut to one line is the class of fault the owner's own phone reported and eight emulators did not, and it was proved by making it fail before it was trusted; and the labels a real phone caught mid-word are gone as a class - the list action bar flows so its button drops under the sentence instead of losing its own verb to an ellipsis, "Select all (37)" replaced a sentence that lost its count, the saving note says "about 92 MB after" in full, a file row showing a checkbox stacks its size under the name at every font size so selection mode cannot squeeze the name to one word, and a duplicate row names its album rather than printing the content:// address of the file, and a file row now asks the row how wide it is rather than only how large the text is - at ordinary text size on a 320 dp phone the size column had about 42 dp and printed "643" over "KB" while the name it displaced was cut to "tour_photo...", on a screen where every file begins "tour_photo", so the row named nothing at all; below the width the two columns need, the size goes under the name and takes the whole row, which is what selection mode already did |
 | R14 | Help: FAQ, "If something is deleted", Quality explained with live preset compare, Privacy, About, Activity, Logs, crash card | Done | `HelpScreens.kt` — 18 FAQ answers including what happens with no cloud app and why Files is scoped where Free up space is not, a mission card that says outright why the app exists (encrypted clouds upload what they are handed and do not make it smaller, so a plan fills up and the usual answer is to pay for more) and what it does about the phone as well as the plan, where the per-phone recommended figures come from and what keeping a copy in its own album does, the six-condition deleted map, the live preset comparison, six privacy blocks, About with the requirement line, the permissions statement and the no-network promise — the build-chain facts (package name, build number, signing fingerprint) ship in the release notes, where the person comparing a downloaded file actually is; `ActivityScreen` (30 days, plain sentences); `HelpLogsScreen`; HelpContentTest |
 | R15 | The manual set is exactly: albums, cloud app, Optimise now, Pause, the Free up actions, per-item actions, Save/Restore | Done | Pause stops this app optimising and adding copies, and says outright that it cannot reach the cloud app - a setting may not promise an effect this app has no permission to have, which `HelpContentTest` now enforces as a copy rule. Nothing else in the app starts, stops or removes anything: the scheduler, the scanner, the stager, the releaser, evidence, snapshots and cleanup all run themselves; `RowActions` decides per-item offers from state; "Keep it in the same album" is a property of the replace mode, offered where that mode is chosen and off by default; one attention chip carries the cloud state rather than two chips repeating the same four words, pinned on the JVM by a rule that no two chips may say the same thing; Home no longer claims "Everything is backed up" over a queue that is empty because nothing was ticked or nothing was ever processed - three states, three sentences; the Free up hub says it is still checking rather than answering zero while it hashes; Files says which setting emptied it; the trial is the one extra tap and it only optimises three photos, from the ticked albums only, kept inside the app - no gallery album appears until the first real run publishes copies, and the trial card says so. The two launcher shortcuts (Free up space, Activity) are doors to screens that already exist, through the same route extra an alert tap uses - behind the app lock like everything else, starting nothing |
 | R16 | Permanently refused features are absent | Done | ProductBoundariesTest scans every source file with comments stripped for similar-photo detection, blur or quality scoring, automatic deletion, cloud recommendations or prices, and re-optimise-everything, and holds the worker set to jobs that do work rather than remind; the only mention of any refused feature in the codebase is the comment explaining the refusal |
@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **536 unit tests** on the JVM, covering the pure rules and auditing the
+- **548 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -49,14 +49,14 @@ source for this release, including the rows that were already marked Done.
   emulator jobs across eight Android versions all reported at once while
   every unit test stayed green. Each is a property of the source, so it
   costs a second on every build rather than an emulator matrix.
-- **113 instrumented tests across 16 classes**, run on real emulators against a
+- **115 instrumented tests across 16 classes**, run on real emulators against a
   real gallery: the fixtures generate genuine JPEGs with EXIF and GPS and a
   genuine H.264 clip through MediaCodec on the device itself, so the pipeline
   is exercised on real files rather than on mocks. They walk setup step by
   step, change every setting and check it survives a restart, filter and sort
   and multi-select the real lists, drive Android's own trash and delete
   confirmation through UiAutomator, round-trip the encrypted backup file, and
-  open all twenty-one routes by tapping and leave each one with the Back gesture.
+  open all twenty-two routes by tapping and leave each one with the Back gesture.
 - **What a list holds is asked of the list, not read off the screen.** A
   LazyColumn composes only the rows that fit, so a row below the fold has no
   node, no text and no position. Membership and order come from the list's own
@@ -481,6 +481,46 @@ source for this release, including the rows that were already marked Done.
   which is which. The About page said the app works only while charging,
   cool and idle, while Smart mode allows a few photos a day on battery; it
   now says the heavy work waits for those conditions.
+
+- **Whether a tap does what the words promise.** The owner's phone, not an
+  emulator, reported this round: a long-press on an album put the whole "Open
+  with" sheet in front of the person every time, with no way to say Always,
+  because the view intent was wrapped in a chooser; setup step six ended in a
+  text link where every other step ends in a button; a cloud app that was not
+  installed had no icon beside one that was; the album list in Settings showed
+  two of three albums and nothing said so; the lock screen waited to be tapped
+  before it asked; the storage line printed a number with no total; the trial
+  card was three wrapped file names with nothing to tap; and the weaker-proof
+  switch carried a title nobody could parse. Each is fixed and pinned:
+  ProductBoundariesTest holds that a file opens in the phone's chosen viewer
+  and the chooser is only the fallback for a phone with no viewer at all;
+  SetupFlowTest holds the button, the shared picker face for installed and
+  uninstalled apps alike, the grid ceiling read from the box the grid is in
+  rather than from the window, the "scroll to see all N albums" line and the
+  lock prompt that arrives on resume; TrialCardTest holds the thumbnail, the
+  tap that opens the before-and-after, and the button that removes the trial
+  copies; PlainEnglishTest and HelpContentTest hold the words.
+- **Whether the phone will let the app run at all.** Android's own battery
+  switch can be read and is. The maker's auto-launch and background switches
+  (realme, Oppo, OnePlus, Xiaomi, Vivo, Huawei, Samsung) cannot be read by any
+  app, so the app used to say "check this" and open app info, which is a
+  settings tree with hundreds of pages. There is now one Permissions and
+  battery screen - reached from the stopped chip on Home, from setup and from
+  Settings - that re-reads every state the moment the person comes back,
+  says Unknown rather than Off for the switches it cannot read, and prints
+  the path to each in the phone's own menu names; PermissionsCenterTest and
+  PowerPagesTest hold it. The battery tap no longer dies silently on a phone
+  that has already exempted the app - Android closes that dialog without a
+  word - it opens the maker's page instead.
+- **Whether the app can be opened after it crashes while opening.** Two
+  crashes within fifteen seconds of launch now put a recovery page in front
+  of the app - try again, share the log, app info - instead of composing the
+  same screen a third time and leaving a dead icon with its own log out of
+  reach; PermanenceTest pins the order of the launcher and CrashLogTest the
+  count. This was adopted from the sibling PocketLinux project after reading
+  it end to end, along with its refresh of settings state on resume, its
+  per-maker component table for the battery pages, and a Hinglish quickstart
+  that now ships beside the APK in every release.
 
 **Not done, and why**
 

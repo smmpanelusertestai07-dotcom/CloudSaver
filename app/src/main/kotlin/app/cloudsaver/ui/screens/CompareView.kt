@@ -70,8 +70,12 @@ fun CompareSheet(
     val original by produceState<Bitmap?>(null, row.contentUri) {
         value = loadThumb(context, row.contentUri)
     }
-    val optimised by produceState<Bitmap?>(null, row.outputUri, row.keptUri) {
+    // A copy that is only staged - the trial's, or one waiting for its
+    // pacing slot - has no gallery address yet; it is a file inside the app,
+    // and the comparison reads it from there.
+    val optimised by produceState<Bitmap?>(null, row.outputUri, row.keptUri, row.stagePath) {
         value = loadThumb(context, row.outputUri ?: row.keptUri)
+            ?: loadFileThumb(row.stagePath)
     }
 
     AlertDialog(
@@ -225,6 +229,24 @@ fun CompareSheet(
  * user is scrolling a list of things they are about to delete, and a 60 MP
  * decode there would stutter or run out of heap.
  */
+/** A staged copy, decoded from the app's own file at roughly thumbnail size. */
+private suspend fun loadFileThumb(path: String?): Bitmap? {
+    if (path == null) return null
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val file = java.io.File(path)
+            if (!file.isFile) return@runCatching null
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(path, bounds)
+            var sample = 1
+            while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
+            android.graphics.BitmapFactory.decodeFile(
+                path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            )
+        }.getOrNull()
+    }
+}
+
 private suspend fun loadThumb(
     context: android.content.Context,
     uriString: String?

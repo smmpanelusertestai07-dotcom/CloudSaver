@@ -12,6 +12,8 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import app.cloudsaver.ui.App
 import app.cloudsaver.ui.AppViewModel
+import app.cloudsaver.ui.screens.RecoveryScreen
+import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Notifications
 
 class MainActivity : AppCompatActivity() {
@@ -27,6 +29,28 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // A launch that dies twice in a row within seconds is a launch that
+        // would die a third time. Composing the same screen again would make
+        // the app a dead icon with its own log out of reach; the recovery
+        // page keeps the log shareable and offers the retry as a choice.
+        CrashLog.noteLaunchStarted(this)
+        if (CrashLog.startupCrashStreak(this) >= CrashLog.RECOVERY_AFTER) {
+            setContent {
+                RecoveryScreen(
+                    onTryAgain = {
+                        CrashLog.clearStartupStreak(this)
+                        recreate()
+                    }
+                )
+            }
+            return
+        }
+        // Alive past the window, the streak is over: the next crash starts
+        // its own count rather than adding to an old one.
+        Handler(Looper.getMainLooper()).postDelayed(
+            { if (!isFinishing) CrashLog.clearStartupStreak(this) },
+            CrashLog.STARTUP_WINDOW_MS
+        )
         vm.consumeDeepLink(intent?.getStringExtra(Notifications.EXTRA_ROUTE))
         setContent {
             App(vm)

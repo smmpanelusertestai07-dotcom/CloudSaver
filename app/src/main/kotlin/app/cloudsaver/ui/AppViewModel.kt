@@ -1236,6 +1236,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onResumed() {
+        // The battery rows are re-read on every return to the app, so a
+        // switch flipped on the system page shows as Allowed the moment the
+        // person is back - not, as before, only after the next tap.
+        refreshPowerRequirements()
         noteScreenOn()
         if (confirmPending) {
             confirmPending = false
@@ -1691,7 +1695,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val before: Long,
         val after: Long,
         /** Pixels kept, or null when the encoder did not record them. */
-        val keptPercent: Int? = null
+        val keptPercent: Int? = null,
+        /**
+         * The row as it stood after staging: the original's address for the
+         * thumbnail, the staged copy's path for the comparison. The card
+         * used to list three long file names and nothing to look at, on a
+         * feature whose whole point is looking.
+         */
+        val row: ItemRow? = null
     )
 
     /**
@@ -1748,7 +1759,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             after = updated?.outputBytes ?: row.sizeBytes,
                             keptPercent = updated?.let {
                                 QualityKept.measuredDetailKeptPercent(it.srcPixels, it.outPixels)
-                            }
+                            },
+                            row = updated ?: row
                         )
                     }
                 }
@@ -1764,6 +1776,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 testRunning.value = false
             }
+        }
+    }
+
+    /**
+     * Throws the trial's copies away and puts the photos back in the queue.
+     *
+     * The copies live inside the app, and the first real run publishes them
+     * rather than remaking them - so keeping them costs nothing but a little
+     * space and is the default. This is for the person who would rather not
+     * keep them at all. Only a row that is still exactly the trial's staged
+     * copy is touched: one a real run has released since is that run's now.
+     */
+    fun discardTrial() {
+        val items = testRun.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            for (item in items) {
+                val id = item.row?.id ?: continue
+                val current = db.items().byId(id) ?: continue
+                val path = current.stagePath
+                if (current.state != ItemState.STAGED.name || path == null) continue
+                runCatching { java.io.File(path).delete() }
+                db.items().update(
+                    current.copy(
+                        state = ItemState.NEW.name,
+                        stagePath = null,
+                        outputName = null,
+                        outputBytes = null,
+                        outputSha256 = null,
+                        updatedAt = now
+                    )
+                )
+            }
+            testRun.value = null
         }
     }
 
@@ -1802,8 +1848,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      *
      * Prefers the released copy when there is one - that is the file the user
      * is being told about - and falls back to the original. Read permission is
-     * granted to the receiving app for that one uri only, and the chooser is
-     * used so it works even where no default viewer is set.
+     * granted to the receiving app for that one uri only.
+     *
+     * A plain view intent, so the phone's default viewer opens - and where
+     * none is set, Android asks once with "Just once" and "Always" and then
+     * remembers. The forced chooser this used to send put the whole "open
+     * with" sheet up on every tap and never let the choice stick; it is kept
+     * only as the fallback for a phone with no viewer registered at all.
      */
     fun openInViewer(row: ItemRow): Boolean {
         val uriString = row.outputUri ?: row.contentUri ?: return false
@@ -1816,10 +1867,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     android.content.Intent.FLAG_ACTIVITY_NEW_TASK
             )
         }
-        val chooser = android.content.Intent.createChooser(view, null).apply {
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            ctx.startActivity(view)
+            true
+        } catch (e: android.content.ActivityNotFoundException) {
+            val chooser = android.content.Intent.createChooser(view, null).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching { ctx.startActivity(chooser) }.isSuccess
+        } catch (e: Exception) {
+            false
         }
-        return runCatching { ctx.startActivity(chooser) }.isSuccess
     }
 
     /** Clears the one-time notice about the removed legacy placeholder. */

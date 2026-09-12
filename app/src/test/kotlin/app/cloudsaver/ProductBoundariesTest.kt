@@ -519,4 +519,33 @@ class ProductBoundariesTest {
             options.contains("vm.setFreeUpVerified30(")
         )
     }
+
+    /**
+     * Opening a photo goes to the viewer the phone already chose.
+     *
+     * Wrapping the view intent in `createChooser` put the full "Open with"
+     * sheet - WhatsApp, Drive, the lot - in front of every long-press on an
+     * album, every time, with no way to say "always". A plain `ACTION_VIEW`
+     * is what Android's own "Just once / Always" dialog is for; the chooser
+     * is kept only for a phone with no viewer at all, where the plain start
+     * throws.
+     */
+    @Test
+    fun `a file opens in the phone's chosen viewer and the chooser is only the fallback`() {
+        val peek = File(main, "ui/components/AlbumPicker.kt").readText()
+            .substringAfter("private fun peekAlbum(")
+            .substringBefore("\n}\n")
+        val viewer = File(main, "ui/AppViewModel.kt").readText()
+            .substringAfter("fun openInViewer(")
+            .substringBefore("\n    }\n")
+        for ((name, body) in listOf("peekAlbum" to peek, "openInViewer" to viewer)) {
+            val plain = body.indexOf("startActivity(view)")
+            val fallback = body.indexOf("catch (e: android.content.ActivityNotFoundException)")
+            val chooser = body.indexOf("createChooser(view")
+            assertTrue("$name must start the view intent as it is", plain >= 0)
+            assertTrue("$name must keep a fallback for a phone with no viewer", fallback > plain)
+            assertTrue("$name may only use the chooser as that fallback", chooser > fallback)
+            assertEquals("$name wraps the first attempt in a chooser", 1, Regex("createChooser").findAll(body).count())
+        }
+    }
 }
