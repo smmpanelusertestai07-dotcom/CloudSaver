@@ -1,6 +1,45 @@
-# PocketAgent 16.1.0 — what is safe, said out loud
+# PocketAgent 16.1.5 — a long wait that shows its work
 
-Version **16.1.0**, code **610**, application ID `com.pocketagent.doors`.
+Version **16.1.5**, code **615**, application ID `com.pocketagent.doors`.
+
+## 16.1.5: half an hour of black screen
+
+From a real phone, mid-install: one sentence at the top, then a black rectangle with a spinner
+reading **"Waiting for the Linux computer…"**. Two things wrong at once.
+
+The words were the other app's. This one runs an editor, not a desktop, and every string the
+viewer brought across from PocketLinux now says so.
+
+The screen was worse. The first agent's install is about a gigabyte, apt gives no progress line
+per file, and there was nothing to look at for the length of it. Half an hour of that is
+indistinguishable from a hang — and closing the app during a long silence is **precisely** what
+leaves dpkg half-applied and breaks the next attempt before it starts. The screen was quietly
+teaching people to cause the bug 16.0.5 had just fixed.
+
+So until the editor is actually drawing, the screen shows what is happening: a status card that
+says what is being downloaded and how big it is, and the workspace's own transcript underneath,
+scrolled to the newest line. The editor takes over only when there is a picture of one — not
+when the script says READY, because the display answers a moment before anything is drawn into
+it. The key row stays hidden until then; a row of keys that does nothing is a row somebody
+presses before concluding the app is broken.
+
+## 16.1.5: a test that failed one run in five
+
+While fixing that, `DpkgRepairs` failed once, was re-run, passed, and was written off as "a
+stale state". It was not. It failed about **one run in five**.
+
+`in_code` — the helper added in 16.0.5 so checks stop matching their own comments — piped `sed`
+into `grep -q`. `grep -q` exits the moment it matches; `sed` is then left writing into a closed
+pipe; and `set -o pipefail` turns that SIGPIPE into a failure for the whole pipeline. So a check
+that had just **succeeded** reported failure, and only when the timing went that way.
+
+An intermittent check is worse than a broken one, because it teaches everyone to wave failures
+away — which is exactly what happened here, in the same session that added it. The output is
+captured before matching now, and the suite was run ten times to prove it.
+
+---
+
+# Earlier releases
 
 ## 16.1.0: the signing key is published, and the app now says so
 

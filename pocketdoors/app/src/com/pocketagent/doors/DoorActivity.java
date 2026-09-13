@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.KeyEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.LinearLayout;
@@ -34,6 +35,10 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
     private VncView screen;
     private TextView status;
     private KeyBar keys;
+    /** What fills the screen while there is no editor to fill it: a state and a transcript. */
+    private android.widget.ScrollView waiting;
+    private TextView stateLabel;
+    private TextView log;
     private Doors.Agent agent;
     private volatile VncClient client;
     private volatile boolean finished;
@@ -60,21 +65,38 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         root.addView(status, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // Something to look at while a gigabyte arrives.
+        //
+        // The first run installs the editor and this agent's extension, and apt gives no
+        // progress line per file. Without this the owner watches a black rectangle with one
+        // sentence above it for half an hour, which is indistinguishable from a hang -- and
+        // closing the app during a long silence is exactly what leaves dpkg half-applied and
+        // makes the next attempt fail before it starts.
+        root.addView(buildWaiting(dark), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
         screen = new VncView(this);
+        // The one moment the screen changes hands: connected means there is a picture, and only
+        // then is the editor worth showing instead of what it is doing.
         screen.setStateListener((text, connected) -> runOnUiThread(() -> {
             if (connected) {
+                showEditor();
                 status.setTextColor(Ui.muted(Ui.dark(this)));
                 status.setText(agent.name + " · running on this phone");
             } else if (text != null && !text.isEmpty()) {
                 status.setText(text);
             }
         }));
+        screen.setVisibility(View.GONE);
         root.addView(screen, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         root.addView(Ui.divider(this, dark), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 1))));
         keys = new KeyBar(this, this);
+        // Hidden until there is something to type into. A row of keys that does nothing is a row
+        // somebody presses and concludes the app is broken.
+        keys.setVisibility(View.GONE);
         root.addView(keys, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -82,6 +104,43 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
 
         listen();
         DoorService.start(this, agent.id);
+    }
+
+    /** The status card and transcript that stand in for the editor until it is running. */
+    private android.widget.ScrollView buildWaiting(boolean dark) {
+        waiting = new android.widget.ScrollView(this);
+        LinearLayout inner = Ui.column(this);
+        int side = Ui.dp(this, 16);
+        inner.setPadding(side, Ui.dp(this, 6), side, Ui.dp(this, 20));
+        waiting.addView(inner, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout card = Ui.card(this, dark);
+        stateLabel = Ui.sectionLabel(this, "Starting", dark);
+        card.addView(stateLabel);
+        card.addView(Ui.bold(this, agent.name, 20, Ui.text(dark)), Ui.wide(this, 4));
+        card.addView(Ui.text(this,
+                "The first run downloads Google's editor and this agent's own extension -- about "
+                        + "a gigabyte over this connection, once. apt gives no progress line per "
+                        + "file, so the list below is what is actually happening. Leave the phone "
+                        + "plugged in; closing the app part way through is the thing that has to "
+                        + "be repaired afterwards.", 13.5f, Ui.muted(dark)), Ui.wide(this, 8));
+        inner.addView(card);
+
+        inner.addView(Ui.sectionLabel(this, "Progress", dark), Ui.wide(this, 20));
+        log = Ui.mono(this, "", 12, Ui.muted(dark));
+        int pad = Ui.dp(this, 14);
+        log.setPadding(pad, pad, pad, pad);
+        log.setBackground(Ui.glass(this, dark, 14));
+        inner.addView(log, Ui.wide(this, 8));
+        return waiting;
+    }
+
+    /** Hands the screen to the editor, once there is a picture of one. */
+    private void showEditor() {
+        if (waiting != null) waiting.setVisibility(View.GONE);
+        screen.setVisibility(View.VISIBLE);
+        keys.setVisibility(View.VISIBLE);
     }
 
     private void listen() {
@@ -93,6 +152,10 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
                 if (line != null) {
                     status.setText(line);
                     note(line);
+                }
+                if ("failed".equals(state) && stateLabel != null) {
+                    stateLabel.setText("STOPPED");
+                    stateLabel.setTextColor(Ui.FAILED);
                 }
                 if ("ready".equals(state) && where != null && !where.isEmpty()) connect(where);
                 if ("failed".equals(state)) showFailure(line);
@@ -157,10 +220,15 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         runOnUiThread(() -> { if (!finished) status.setText(words); });
     }
 
-    /** Keeps the last part of what the workspace has said, which is all a phone screen holds. */
+    /** Keeps the last part of what the workspace has said, and puts it on the screen. */
     private void note(String line) {
         conversation.append(line).append('\n');
         if (conversation.length() > 8000) conversation.delete(0, conversation.length() - 8000);
+        if (log == null) return;
+        log.setText(conversation.toString().trim());
+        // The newest line is the one worth seeing; a transcript that must be scrolled to be read
+        // is one nobody reads.
+        if (waiting != null) waiting.post(() -> waiting.fullScroll(View.FOCUS_DOWN));
     }
 
     private void showFailure(String line) {

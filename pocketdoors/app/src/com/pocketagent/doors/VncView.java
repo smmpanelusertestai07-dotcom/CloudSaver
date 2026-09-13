@@ -111,9 +111,9 @@ final class VncView extends View implements VncClient.Listener {
     private boolean moved;
     private float twoFingerY;
     private float twoFingerX;
-    private String status = "Waiting for the Linux computer…";
+    private String status = "Waiting for the editor…";
 
-    /** 1.0 means "the whole desktop fits the screen"; above that the user has zoomed in. */
+    /** 1.0 means "the whole editor fits the screen"; above that the user has zoomed in. */
     private float zoom = 1f;
     private float panX;
     private float panY;
@@ -212,7 +212,7 @@ final class VncView extends View implements VncClient.Listener {
         // letters were dropped and the keyboard went full-screen in landscape.
         setFocusable(false);
         setFocusableInTouchMode(false);
-        setContentDescription("Linux computer");
+        setContentDescription("The editor running on this phone");
         // A deep, calm backdrop, so at 100 % the framed desktop sits on colour, not black.
         setBackgroundColor(Color.rgb(9, 14, 26));
         overlayPaint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
@@ -499,7 +499,7 @@ final class VncView extends View implements VncClient.Listener {
                     centreX, centreY - Ui.dp(getContext(), 6), overlayPaint);
             overlayPaint.setTextSize(Ui.dp(getContext(), 12.5f));
             overlayPaint.setColor(Color.rgb(150, 166, 205));
-            canvas.drawText(running ? (status.startsWith("Reconnecting") ? "Reconnecting to your desktop…"
+            canvas.drawText(running ? (status.startsWith("Reconnecting") ? "Reconnecting to the editor…"
                             : "Tap the status below to reconnect")
                             : "Tap Home to see the stop reason and reopen",
                     centreX, centreY + Ui.dp(getContext(), 16), overlayPaint);
@@ -1060,7 +1060,7 @@ final class VncView extends View implements VncClient.Listener {
             centreOnNextLayout = true;
             status = "Connected";
             matchDesktopToScreen();
-            if (stateListener != null) stateListener.state("Linux computer", true);
+            if (stateListener != null) stateListener.state("Editor", true);
             invalidate();
         });
     }
@@ -1076,7 +1076,7 @@ final class VncView extends View implements VncClient.Listener {
             pointerY = Math.min(pointerY, height - 1);
             VncClient active = client;
             if (active != null) active.sendPointer(pointerX, pointerY, 0);
-            if (stateListener != null) stateListener.state("Linux computer", true);
+            if (stateListener != null) stateListener.state("Editor", true);
             invalidate();
         });
     }
@@ -1221,7 +1221,7 @@ final class VncView extends View implements VncClient.Listener {
                     CharSequence held = current.getItemAt(0).getText();
                     if (held != null && text.contentEquals(held)) return;
                 }
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux computer", text));
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Editor", text));
             } catch (RuntimeException refused) {
                 // A copy too large for the binder transaction, or a clipboard service that said
                 // no: the session carries on rather than the screen ending.
@@ -1264,7 +1264,7 @@ final class VncView extends View implements VncClient.Listener {
         overlayPaint.setTextAlign(Paint.Align.CENTER);
         // Wrapped once per sentence, not once per frame: this card redraws while it waits, and
         // splitting the text and measuring every word sixty times a second on a phone that is
-        // busy starting a Linux computer is work taken from the thing being waited for.
+        // busy starting an editor is work taken from the thing being waited for.
         float wrapWidth = cardWidth - Ui.dp(context, 32);
         if (wrappedLines == null || !status.equals(wrappedFor) || wrapWidth != wrappedWidth) {
             wrappedLines = wrap(status, wrapWidth);
@@ -1383,7 +1383,7 @@ final class VncView extends View implements VncClient.Listener {
                     return true;
                 } catch (OutOfMemoryError | IllegalArgumentException error) {
                     recycleFramebuffers();
-                    fatalError = "Not enough viewer memory for this screen. Close other apps and reopen the desktop.";
+                    fatalError = "Not enough memory to draw the editor. Close other apps and open it again.";
                     live = false;
                     VncClient active = client;
                     if (active != null) active.close();

@@ -27,9 +27,17 @@ fail() { echo "FAIL $1"; exit 1; }
 # Comments in this project explain failures, so they quote the very strings a gate looks for.
 # That makes a bare grep across a whole file the wrong tool by default, not by accident. This
 # strips full-line comments and everything after an unquoted # before matching.
+#
+# No pipe into grep -q. That form failed about one run in five: grep -q exits the moment it
+# matches, sed is left writing into a closed pipe, and `set -o pipefail` turns sed's SIGPIPE
+# into a failure for the whole pipeline -- so a check that had just SUCCEEDED reported failure,
+# and only when the timing went that way. An intermittent check is worse than a broken one,
+# because it teaches everyone to wave failures away: this one was waved away once already, in
+# this session, as "a stale state". The output is captured first instead.
 in_code() {   # in_code <pattern> <file...>
   pattern="$1"; shift
-  sed 's/[[:space:]]#[^"'"'"']*$//; s/^[[:space:]]*#.*$//' "$@" | grep -qE "$pattern"
+  code=$(sed 's/[[:space:]]#[^"'"'"']*$//; s/^[[:space:]]*#.*$//' "$@")
+  printf '%s\n' "$code" | grep -qE "$pattern"
 }
 
 # ---------------------------------------------------------------- shell, before it reaches a phone
@@ -492,6 +500,35 @@ grep -q 'dpkg was interrupted' "$SRC/Trouble.java" \
 grep -q '"Details"' "$SRC/SetupActivity.java" \
   || fail "OneDesign: the raw output is not labelled as detail, so it reads as the explanation"
 echo "PASS OneDesign (one panel, one touch target, and failures explained before they are dumped)"
+
+# ---------------------------------------------------------------- a long wait shows its work
+# From a real phone: the first agent's install is about a gigabyte, apt gives no progress line
+# per file, and the screen showed one sentence above a black rectangle with a spinner reading
+# "Waiting for the Linux computer…" -- wrong words, and no sign of what was happening. Half an
+# hour of that is indistinguishable from a hang, and closing the app during a long silence is
+# precisely what leaves dpkg half-applied and breaks the next attempt before it starts.
+grep -q 'buildWaiting' "$SRC/DoorActivity.java" \
+  || fail "ShowsItsWork: nothing fills the screen while the editor is being installed"
+in_code 'log.setText\(conversation' "$SRC/DoorActivity.java" \
+  || fail "ShowsItsWork: what the workspace says is collected but never put on the screen"
+# And it must hand over only when there is a picture, not when the script says READY: the
+# display can answer a moment before the editor has drawn anything into it.
+in_code 'showEditor\(\);' "$SRC/DoorActivity.java" \
+  || fail "ShowsItsWork: the editor never replaces the waiting screen"
+hand_at=$(grep -n 'showEditor();' "$SRC/DoorActivity.java" | head -n1 | cut -d: -f1 || true)
+conn_at=$(grep -n 'if (connected) {' "$SRC/DoorActivity.java" | head -n1 | cut -d: -f1 || true)
+[ -n "$hand_at" ] && [ -n "$conn_at" ] && [ "$conn_at" -lt "$hand_at" ] \
+  || fail "ShowsItsWork: the screen is handed over before anything has connected"
+# The key row is useless until there is something to type into, and a row of dead keys reads as
+# a broken app.
+in_code 'keys.setVisibility\(View.GONE\)' "$SRC/DoorActivity.java" \
+  || fail "ShowsItsWork: the key row is offered before there is anything to type into"
+# Wording from the other app must not survive the port. "Linux computer" is PocketLinux's name
+# for a whole desktop; here there is one editor.
+if grep -n 'Linux computer' "$SRC"/*.java; then
+  fail "ShowsItsWork: the viewer still calls this a Linux computer"
+fi
+echo "PASS ShowsItsWork (a long install shows what it is doing, in this app's own words)"
 
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2)
