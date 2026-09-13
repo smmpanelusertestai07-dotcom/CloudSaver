@@ -1,0 +1,172 @@
+package com.pocketide;
+
+import android.content.Context;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * What the agents can reach beyond the editor: a browser, screenshots, video, a build toolchain.
+ *
+ * None of it is installed at set-up, and that is the design. Set-up is already 410 MB and
+ * twenty minutes; a browser is another 120 and Playwright another 60 on top, and most people do
+ * not need either on their first day. So this is a switch that says what it will cost before it
+ * spends anything.
+ *
+ * Everything it can offer was checked against what arm64 Linux under PRoot actually does, and
+ * two of the answers are no:
+ *
+ *   The Android emulator cannot run here and never will. Google publishes no linux-aarch64
+ *   emulator at all, and even a self-built one needs /dev/kvm, which Android's own SELinux
+ *   policy denies to every app on an unrooted phone. The phone itself is the test device
+ *   instead -- build the APK, install it, run it.
+ *
+ *   Apps with C or C++ in them cannot be built here, because Google publishes no arm64 NDK.
+ *   Java-only Android projects can be, after four of Google's own x86-64 tools are replaced.
+ *
+ * Saying both of those on the screen is the point. An owner who discovers them half way through
+ * a task has been misled by silence.
+ */
+final class Tools {
+
+    /** What the script reports, as the screen needs it. */
+    static final class State {
+        final boolean browser;
+        final boolean playwright;
+        final boolean android;
+        final String chromiumVersion;
+
+        State(boolean browser, boolean playwright, boolean android, String chromiumVersion) {
+            this.browser = browser;
+            this.playwright = playwright;
+            this.android = android;
+            this.chromiumVersion = chromiumVersion;
+        }
+
+        boolean anything() { return browser || playwright || android; }
+    }
+
+    /** What each layer costs, so the screen can say it before the download starts. */
+    static final long BROWSER_BYTES = 120L * 1000 * 1000;
+    static final long PLAYWRIGHT_BYTES = 60L * 1000 * 1000;
+    static final long ANDROID_BYTES = 340L * 1000 * 1000;
+
+    private Tools() {}
+
+    /**
+     * Asks the workspace what is present.
+     *
+     * Runs the script rather than remembering a preference, because the workspace is a real
+     * Linux that the owner can also change from the editor's own terminal -- apt remove chromium
+     * in there has to be reflected here, and a preference would go on claiming a browser that
+     * is gone.
+     */
+    static State read(Context context) {
+        Map<String, String> values = run(context, "check");
+        return new State(
+                "yes".equals(values.get("browser")),
+                "yes".equals(values.get("playwright")),
+                "yes".equals(values.get("android")),
+                values.getOrDefault("chromium", ""));
+    }
+
+    /** Installs one layer, reporting each line as it arrives. Call from a background thread. */
+    static boolean install(Context context, String layer, Workspace.Progress progress) {
+        if (!Workspace.installed(context)) {
+            progress.line("The workspace is not set up yet.");
+            return false;
+        }
+        try {
+            Process process = Workspace.start(context,
+                    "bash /opt/pocketide/pocketide-tools.sh " + layer);
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (!line.trim().isEmpty()) progress.line(line);
+                }
+            }
+            return process.waitFor() == 0;
+        } catch (Throwable failed) {
+            progress.line(failed.getMessage() == null
+                    ? failed.getClass().getSimpleName() : failed.getMessage());
+            return false;
+        }
+    }
+
+    /** Loads a page and screenshots it, so "installed" can be proved rather than claimed. */
+    static boolean smokeTest(Context context, Workspace.Progress progress) {
+        return install(context, "smoke", progress);
+    }
+
+    private static Map<String, String> run(Context context, String command) {
+        Map<String, String> values = new HashMap<>();
+        if (!Workspace.installed(context)) return values;
+        try {
+            Process process = Workspace.start(context,
+                    "bash /opt/pocketide/pocketide-tools.sh " + command);
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    int equals = line.indexOf('=');
+                    if (equals > 0) {
+                        values.put(line.substring(0, equals).trim(),
+                                line.substring(equals + 1).trim());
+                    }
+                }
+            }
+            process.waitFor();
+        } catch (Throwable unreadable) {
+            // A workspace that will not answer is reported as having nothing rather than as an
+            // error: the screen's next line offers to install it, which is the right next step
+            // either way.
+        }
+        return values;
+    }
+
+    /**
+     * The honest account of what this phone can and cannot build, shown in full on the screen.
+     *
+     * Written as findings rather than marketing because every line of it was a specific
+     * question with a checkable answer, and two of the answers are permanent noes that an owner
+     * is better off reading here than discovering at the end of an afternoon.
+     */
+    static final String WHAT_CAN_BE_BUILT =
+            "Websites and web apps.\n"
+                    + "Fully. Node, Deno, Python, Ruby, PHP, Go and Rust all have first-class "
+                    + "arm64 builds, and an agent can run a dev server, open it in the browser "
+                    + "installed here, screenshot it and read the page back.\n\n"
+
+                    + "Programs and services.\n"
+                    + "Fully. Anything that compiles for arm64 Linux compiles here, including "
+                    + "C and C++ for this machine itself.\n\n"
+
+                    + "Android apps, with one line through them.\n"
+                    + "Java and Kotlin projects can be built into a real, signed, installable "
+                    + "APK — but only after Google's aapt2, aidl, zipalign and split-select are "
+                    + "replaced, because Google ships those as x86-64 only. Apps containing C "
+                    + "or C++ cannot be built at all: there is no arm64 Android NDK, and that "
+                    + "is Google's decision rather than a limit of this phone.\n\n"
+
+                    + "Testing an Android app.\n"
+                    + "The emulator cannot run here. Google publishes no linux-aarch64 "
+                    + "emulator, and even a self-built one needs /dev/kvm, which Android's "
+                    + "security policy denies to every app on a phone that is not rooted. "
+                    + "Nothing installable changes that.\n"
+                    + "What works instead is better on a phone anyway: the phone IS the test "
+                    + "device. An agent builds the APK, hands it to Android's own installer, "
+                    + "and the app runs on real hardware rather than a simulation of it. JVM "
+                    + "and Robolectric unit tests run here natively as well.\n\n"
+
+                    + "iOS apps.\n"
+                    + "No, and not for a reason this app could fix: Apple requires its own "
+                    + "toolchain on macOS to build and sign them.\n\n"
+
+                    + "Machine learning.\n"
+                    + "Small models and ordinary data work, yes. Training anything large needs "
+                    + "a GPU this phone will not give a Linux process.";
+}

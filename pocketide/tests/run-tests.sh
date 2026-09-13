@@ -171,6 +171,15 @@ check "NoAffiliationClaimed" $? "the terms do not disclaim affiliation with the 
 
 # ---------------------------------------------------------------- the interface
 
+# Android 15 brought devices with 16 KB memory pages and Android 16 made them the default on
+# new hardware. Two separate conditions have to hold for a bundled .so there, and the second --
+# where GNU_RELRO ends -- is the one nothing else checks.
+python3 "$HERE/native_alignment.py" "$APP" && pass "NativeAlignment" \
+  || fail "NativeAlignment" "a bundled native library would fault on a 16 KB page device"
+
+python3 "$HERE/native_alignment.py" "$APP" --self-test >/dev/null && pass "AlignmentGateWorks" \
+  || fail "AlignmentGateWorks" "the alignment gate does not catch the layout it exists for"
+
 echo
 echo "Safety"
 # The app lock and the phone's files are promises rather than features: "locked" and "off by

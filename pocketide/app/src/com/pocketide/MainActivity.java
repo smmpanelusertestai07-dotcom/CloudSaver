@@ -13,25 +13,28 @@ import java.util.List;
 /**
  * The app's one home: a bar along the bottom, a pane in the middle, the name and mark on top.
  *
- * Four destinations live here. The fifth -- the editor -- is not a pane and deliberately so.
- * Visual Studio Code at phone width needs every pixel of the screen, and a navigation bar
- * across the bottom of it would take eighty of them from the terminal and put a row of app
- * chrome between the owner and the thing they opened the app to use. So Editor starts its own
- * full-screen window, and coming back lands here on the destination that was showing before.
+ * Four destinations, and the editor is not one of them.
  *
- * Order is by how often a destination is wanted, which is also the order they were listed in
- * when the app was described: what is my phone doing, take me to the editor, what is running
- * right now, which agents are installed, everything else.
+ * That is Material's rule rather than a preference: navigation bars belong to primary pages and
+ * toolbars to the pages reached from them, and the two must never share a screen. Visual Studio
+ * Code at phone width also needs every pixel it can get -- a bar across the bottom would take
+ * sixty-four of them from the terminal and put a row of app chrome between the owner and the
+ * thing they opened the app for. So the editor is a full-screen window with its own toolbar and
+ * no navigation bar, reached from the button on Home and from the action in the top bar, which
+ * appears on every destination the moment the workspace is running. One tap from anywhere,
+ * which is what a tab would have given, without breaking the rule to get it.
+ *
+ * Order is by how often a destination is wanted: is it ready, what is it doing, what is
+ * installed, everything else.
  */
 public final class MainActivity extends Activity {
 
     static final String EXTRA_TAB = "com.pocketide.tab";
 
     private static final int HOME = 0;
-    private static final int EDITOR = 1;
-    private static final int ACTIVITY = 2;
-    private static final int AGENTS = 3;
-    private static final int SETTINGS = 4;
+    private static final int ACTIVITY = 1;
+    private static final int AGENTS = 2;
+    private static final int SETTINGS = 3;
 
     private final List<Pane> panes = new ArrayList<>();
     private int selected = HOME;
@@ -43,8 +46,6 @@ public final class MainActivity extends Activity {
         return Arrays.asList(
                 new Shell.Tab("Home", R.drawable.ic_home,
                         "Home. Whether the workspace is ready, and the phone it runs on."),
-                new Shell.Tab("Editor", R.drawable.ic_code,
-                        "Editor. Opens Visual Studio Code full screen."),
                 new Shell.Tab("Activity", R.drawable.ic_pulse,
                         "Activity. What the workspace and the agents are doing right now."),
                 new Shell.Tab("Agents", R.drawable.ic_extension,
@@ -58,14 +59,13 @@ public final class MainActivity extends Activity {
         Theme.apply(this);
         panes.clear();
         panes.add(new HomePane());
-        panes.add(null);                 // Editor is a window, not a pane. See the note above.
         panes.add(new ActivityPane());
         panes.add(new AgentsPane());
         panes.add(new SettingsPane());
 
         if (state != null) selected = state.getInt(EXTRA_TAB, HOME);
         int asked = getIntent().getIntExtra(EXTRA_TAB, -1);
-        if (asked >= 0 && asked < panes.size() && asked != EDITOR) selected = asked;
+        if (asked >= 0 && asked < panes.size()) selected = asked;
 
         AppLock.applyWindowSecurity(this);
         render();
@@ -93,7 +93,7 @@ public final class MainActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         int asked = intent.getIntExtra(EXTRA_TAB, -1);
-        if (asked >= 0 && asked < panes.size() && asked != EDITOR) {
+        if (asked >= 0 && asked < panes.size()) {
             selected = asked;
             render();
         }
@@ -143,10 +143,7 @@ public final class MainActivity extends Activity {
 
     private void render() {
         if (showing != null) showing.hidden(this);
-        // select() and both intent paths already refuse to leave EDITOR selected, because it has
-        // no pane. Belt and braces: a null here would be a blank screen with a bar under it,
-        // which is the kind of fault that reaches a phone rather than a review.
-        if (selected == EDITOR || selected < 0 || selected >= panes.size()) selected = HOME;
+        if (selected < 0 || selected >= panes.size()) selected = HOME;
         Pane pane = panes.get(selected);
         slot = new FrameLayout(this);
         View content = pane.build(this);
@@ -154,7 +151,7 @@ public final class MainActivity extends Activity {
         // The lock lives in a frame of its own above everything, so it covers the bars as well
         // as the pane. A lock the bottom bar sticks out from under is not a lock.
         lockRoot = new FrameLayout(this);
-        lockRoot.addView(Shell.frame(this, slot, tabs(), selected, this::select, null));
+        lockRoot.addView(Shell.frame(this, slot, tabs(), selected, this::select, editorAction()));
         setContentView(lockRoot);
         showing = pane;
         pane.shown(this);
@@ -162,13 +159,34 @@ public final class MainActivity extends Activity {
     }
 
     private void select(int index) {
-        if (index == EDITOR) {
-            // Not a pane: its own window, with the bars gone.
-            startActivity(new Intent(this, WorkspaceActivity.class));
-            return;
-        }
         selected = index;
         render();
+    }
+
+    /**
+     * The one action in the top bar: open the editor, shown only once there is one to open.
+     *
+     * A control that is present but does nothing teaches an owner to distrust the whole bar, so
+     * before the workspace exists there is simply nothing here and the primary button on Home
+     * is the only way forward.
+     */
+    private View editorAction() {
+        if (!WorkspaceService.editorRunning() && !Workspace.installed(this)) return null;
+        boolean dark = Ui.dark(this);
+        android.widget.ImageView open = new android.widget.ImageView(this);
+        open.setImageResource(R.drawable.ic_code);
+        open.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.accent(dark)));
+        int target = Ui.dp(this, Ui.TOUCH_TARGET_DP);
+        int pad = Ui.dp(this, 12);
+        open.setPadding(pad, pad, pad, pad);
+        open.setBackground(Ui.tappable(this,
+                Ui.fill(this, android.graphics.Color.TRANSPARENT, 999), dark));
+        open.setClickable(true);
+        open.setFocusable(true);
+        open.setContentDescription("Open the editor");
+        open.setOnClickListener(v -> startActivity(new Intent(this, WorkspaceActivity.class)));
+        open.setLayoutParams(new android.widget.LinearLayout.LayoutParams(target, target));
+        return open;
     }
 
     /**

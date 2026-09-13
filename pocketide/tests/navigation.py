@@ -39,8 +39,8 @@ if not 3 <= len(tabs) <= 5:
     problems.append("%d destinations on the bottom bar; Material 3 specifies three to five, "
                     "and anything more belongs inside one of them" % len(tabs))
 
-for name, expected in (("NAV_BAR_DP", 80), ("TOP_BAR_DP", 64), ("ICON_DP", 24),
-                       ("INDICATOR_W_DP", 64), ("INDICATOR_H_DP", 32)):
+for name, expected in (("NAV_BAR_DP", 64), ("TOP_BAR_DP", 64), ("ICON_DP", 24),
+                       ("INDICATOR_W_DP", 56), ("INDICATOR_H_DP", 32)):
     found = re.search(name + r'\s*=\s*(\d+)', shell)
     if not found:
         problems.append("Shell does not define %s, so the bar is not built to a spec at all"
@@ -80,6 +80,64 @@ if "Screen.zoomTenths" not in service or "Screen.layout" not in service:
 if re.search(r'Prefs\.EDITOR_ZOOM', service):
     problems.append("WorkspaceService still reads EDITOR_ZOOM directly, bypassing the automatic "
                     "value")
+
+# --- nothing slow on the thread that draws -----------------------------------------------
+#
+# Starting PRoot and running a script inside it takes seconds. On the drawing thread that is an
+# Application Not Responding dialog, and Settings is the one screen an owner opens when
+# something is already going wrong -- freezing it there is the worst possible moment.
+#
+# This shipped once: the Settings screen called Tools.read() straight from build() to fill in
+# whether the browser was installed. The check below finds every call that has to be on a
+# background thread and confirms it is inside one.
+
+SLOW = ("Workspace.start(", "Tools.read(", "Tools.install(", "Tools.smokeTest(",
+        "Workspace.sizeBytes(", "Workspace.install(", "Registry.search(", "Registry.details(")
+
+
+def thread_spans(text):
+    """Character ranges covered by a `new Thread(...)` construction, by brace counting."""
+    spans = []
+    at = 0
+    while True:
+        at = text.find("new Thread(", at)
+        if at < 0:
+            return spans
+        depth, i, started = 0, at, False
+        while i < len(text):
+            if text[i] == "(":
+                depth += 1
+                started = True
+            elif text[i] == ")":
+                depth -= 1
+                if started and depth == 0:
+                    break
+            i += 1
+        spans.append((at, i))
+        at = i + 1
+
+
+import os
+for name in sorted(os.listdir(src)):
+    if not name.endswith(".java"):
+        continue
+    if not (name.endswith("Pane.java") or name.endswith("Activity.java")):
+        continue
+    text = code(name)
+    spans = thread_spans(text)
+    for call in SLOW:
+        at = 0
+        while True:
+            at = text.find(call, at)
+            if at < 0:
+                break
+            inside = any(lo <= at <= hi for lo, hi in spans)
+            if not inside:
+                line = text[:at].count("\n") + 1
+                problems.append(
+                    "%s:%d calls %s outside a background thread. It starts PRoot and waits, "
+                    "which on the drawing thread is an ANR." % (name, line, call.rstrip("(")))
+            at += len(call)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

@@ -23,6 +23,16 @@ final class SettingsPane implements Pane {
 
     private Activity host;
 
+    /**
+     * What the workspace reported last time it was asked, so Settings can draw immediately.
+     *
+     * Static because the answer belongs to the workspace rather than to one instance of this
+     * screen: leaving Settings and coming back should not make the rows say "not installed"
+     * for a second while a fresh check runs.
+     */
+    private static Tools.State lastKnownTools;
+    private static boolean toolsCheckRunning;
+
     @Override public void shown(Activity activity) { host = activity; }
 
     @Override public void hidden(Activity activity) {}
@@ -50,6 +60,7 @@ final class SettingsPane implements Pane {
         content.addView(safety(dark), Ui.wide(host, 18));
         content.addView(permissions(dark), Ui.wide(host, 18));
         content.addView(network(dark), Ui.wide(host, 18));
+        content.addView(computer(dark), Ui.wide(host, 18));
         content.addView(storage(dark), Ui.wide(host, 18));
         content.addView(about(dark), Ui.wide(host, 18));
 
@@ -244,6 +255,166 @@ final class SettingsPane implements Pane {
                         + "bar and hide the desktop chrome — nothing is removed, and Desktop "
                         + "brings all of it back."), Ui.wide(host, 8));
         return group;
+    }
+
+    // ------------------------------------------------------------------ the computer
+
+    /**
+     * What the agents can reach beyond the editor, and what they can never reach.
+     *
+     * None of it ships with set-up. Set-up is already 410 MB and twenty minutes, a browser is
+     * another 120 and the build tools 340 on top, and most people need none of it on the first
+     * day. So each layer says what it costs before it spends anything.
+     *
+     * The last row is the one that matters most and is the easiest to leave out: what cannot be
+     * done here. An owner who discovers the emulator is impossible after an afternoon of trying
+     * has been misled by silence, so it is a row rather than a footnote.
+     */
+    private View computer(boolean dark) {
+        LinearLayout group = group(dark, "The computer");
+        LinearLayout list = list(dark);
+        boolean ready = Workspace.installed(host);
+        // NOT Tools.read(host) here. That starts PRoot and runs a script inside it, which takes
+        // seconds -- on the thread that draws the screen it is an ANR, and Settings is the one
+        // screen an owner opens when something is already going wrong. The rows are built with
+        // what was learned last time and corrected in the background; see refreshTools().
+        Tools.State tools = lastKnownTools == null
+                ? new Tools.State(false, false, false, "") : lastKnownTools;
+        if (ready) refreshTools();
+
+        Ui.Row browser = Ui.row(host, dark, R.drawable.ic_globe, "Browser and screenshots",
+                !ready ? "Available once the workspace is set up"
+                        : tools.browser
+                            ? (tools.chromiumVersion.isEmpty() ? "Installed" : tools.chromiumVersion)
+                            : "Not installed · about "
+                                    + DeviceProbe.formatBytes(Tools.BROWSER_BYTES),
+                v -> offerTools("browser", "Browser and screenshots",
+                        "Installs Chromium inside the workspace so an agent can open what it "
+                                + "has built, screenshot it, and read the page back. There is no "
+                                + "desktop and none is needed — it runs headless.\n\n"
+                                + "It comes from the xtradeb package source rather than Ubuntu's "
+                                + "own, because Ubuntu ships Chromium only as a snap and a snap "
+                                + "cannot run in this kind of container at all.\n\n"
+                                + "It runs without Chromium's own sandbox, which cannot work "
+                                + "here. What contains it is Android: the whole workspace is "
+                                + "this app's private storage, under this app's identity.",
+                        Tools.BROWSER_BYTES, tools.browser));
+        if (tools.browser) browser.setState(Ui.RUNNING);
+        list.addView(browser);
+        list.addView(Ui.divider(host, dark, true));
+
+        Ui.Row automation = Ui.row(host, dark, R.drawable.ic_camera, "Page testing and video",
+                !tools.browser ? "Needs the browser first"
+                        : tools.playwright ? "Installed · Playwright"
+                            : "Not installed · about "
+                                    + DeviceProbe.formatBytes(Tools.PLAYWRIGHT_BYTES),
+                v -> {
+                    if (!tools.browser) {
+                        Dialogs.message(host, "The browser first",
+                                "Page testing drives the browser, so install that first.");
+                        return;
+                    }
+                    offerTools("playwright", "Page testing and video",
+                            "Adds Playwright, so an agent can click through a page, assert what "
+                                    + "it finds, and record a video of a run to show you.\n\n"
+                                    + "The video is recorded with no display server at all — the "
+                                    + "browser streams frames and Playwright's own encoder writes "
+                                    + "them out.",
+                            Tools.PLAYWRIGHT_BYTES, tools.playwright);
+                });
+        if (tools.playwright) automation.setState(Ui.RUNNING);
+        list.addView(automation);
+        list.addView(Ui.divider(host, dark, true));
+
+        Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Android build tools",
+                !ready ? "Available once the workspace is set up"
+                        : tools.android ? "Installed · Java and Kotlin projects"
+                            : "Not installed · about "
+                                    + DeviceProbe.formatBytes(Tools.ANDROID_BYTES),
+                v -> offerTools("android", "Android build tools",
+                        "Installs a JDK so Java and Kotlin Android projects can be built into a "
+                                + "real, installable APK.\n\n"
+                                + "Two limits are permanent and worth knowing before you spend "
+                                + "the download: apps containing C or C++ cannot be built, "
+                                + "because Google publishes no arm64 NDK; and the Android "
+                                + "emulator cannot run on this phone at all. The phone itself is "
+                                + "the test device instead.",
+                        Tools.ANDROID_BYTES, tools.android));
+        if (tools.android) android.setState(Ui.RUNNING);
+        list.addView(android);
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_info, "What can be built here",
+                "Including the two things that cannot, and why",
+                v -> Dialogs.message(host, "What can be built here", Tools.WHAT_CAN_BE_BUILT)));
+
+        group.addView(list, Ui.wide(host, 8));
+        group.addView(note(dark,
+                "Each of these is a download into the workspace, not part of the app. They can "
+                        + "be removed from the editor's own terminal like any other package, and "
+                        + "this screen will notice."), Ui.wide(host, 8));
+        return group;
+    }
+
+    /**
+     * Re-reads what is installed, off the drawing thread, and redraws only if it changed.
+     *
+     * "Only if it changed" matters: this is called from build(), and a redraw that always
+     * followed would call build() again, which would call this again. Comparing first ends it
+     * after one round.
+     */
+    private void refreshTools() {
+        if (toolsCheckRunning) return;
+        toolsCheckRunning = true;
+        final Activity checking = host;
+        new Thread(() -> {
+            final Tools.State found = Tools.read(checking);
+            checking.runOnUiThread(() -> {
+                toolsCheckRunning = false;
+                if (checking.isFinishing()) return;
+                Tools.State before = lastKnownTools;
+                lastKnownTools = found;
+                boolean changed = before == null
+                        || before.browser != found.browser
+                        || before.playwright != found.playwright
+                        || before.android != found.android;
+                if (changed) MainActivity.rebuild(checking);
+            });
+        }, "check-tools").start();
+    }
+
+    /**
+     * Asks first, then installs with its output on screen.
+     *
+     * The size is in the question rather than discovered afterwards, because on a phone the
+     * difference between 60 MB and 340 MB is the difference between yes and not today.
+     */
+    private void offerTools(String layer, String title, String explanation, long bytes,
+                            boolean already) {
+        if (!Workspace.installed(host)) {
+            Dialogs.message(host, title,
+                    "The workspace has to be set up before anything can be installed into it.");
+            return;
+        }
+        if (already) {
+            Dialogs.message(host, title, explanation
+                    + "\n\nThis is already installed. To remove it, use the editor's terminal.");
+            return;
+        }
+        Dialogs.confirm(host, title,
+                explanation + "\n\nAbout " + DeviceProbe.formatBytes(bytes)
+                        + " to download. It can be left running while you use the phone.",
+                "Install", () -> {
+                    Dialogs.Live live = Dialogs.live(host, title, "Installing…");
+                    new Thread(() -> {
+                        boolean ok = Tools.install(host, layer, live::line);
+                        live.done(ok, ok ? "Installed." : "It did not finish. Nothing was left "
+                                + "half-installed that the next attempt cannot repair.");
+                        host.runOnUiThread(() -> {
+                            if (!host.isFinishing()) MainActivity.rebuild(host);
+                        });
+                    }, "install-" + layer).start();
+                });
     }
 
     // ------------------------------------------------------------------ permissions

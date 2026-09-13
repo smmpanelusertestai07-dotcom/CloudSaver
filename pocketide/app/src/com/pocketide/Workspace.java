@@ -52,7 +52,8 @@ final class Workspace {
     static final int EDITOR_PORT = 8391;
 
     /** The scripts copied out of the APK on every start, so an update replaces them. */
-    static final String[] SCRIPTS = {"pocketide-bootstrap.sh", "pocketide-editor.sh"};
+    static final String[] SCRIPTS = {
+            "pocketide-bootstrap.sh", "pocketide-editor.sh", "pocketide-tools.sh"};
 
     interface Progress { void line(String message); }
 

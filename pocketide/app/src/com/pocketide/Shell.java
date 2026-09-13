@@ -26,15 +26,23 @@ import java.util.List;
  * where you are without your having to remember. GitHub, Termius, Working Copy and Replit all
  * do the same thing, and so does every Google app on the phone.
  *
- * The numbers are Material 3's navigation bar, not invented here:
+ * The numbers are Material 3 Expressive's flexible navigation bar, not invented here:
  *
- *   80 dp   bar height
+ *   64 dp   bar height. The earlier 80 dp is Material 3's older navigation bar; Expressive
+ *           tightened it, and a bar 16 dp taller than the spec is 16 dp taken from the content
+ *           on every single screen.
  *   24 dp   icon
- *   64 x 32 the active indicator, fully rounded
+ *   56 x 32 the active indicator, fully rounded
  *   12 sp   label, always shown -- an icon alone is a guessing game for anyone who has not
  *           used the app before, and this app's icons are not universal symbols
- *   3-5     destinations. Five is the ceiling and this app uses all five, so anything sixth
- *           belongs inside one of them rather than beside them.
+ *   3-5     destinations
+ *
+ * The editor is deliberately NOT one of those destinations, and that is the spec rather than a
+ * preference: Material is explicit that navigation bars belong to primary pages and toolbars to
+ * the pages reached from them, and that the two must never share a screen. The editor is a
+ * page reached from one -- full screen, its own toolbar along the bottom, no navigation bar at
+ * all. It is reached from the button on Home and from the action in this bar whenever the
+ * workspace is running, which is one tap from anywhere, the same as a tab would have been.
  *
  * The top bar carries the mark and the name because a person arriving from a notification, a
  * share sheet or a recents card should not have to work out which app they are in. It is the
@@ -45,9 +53,9 @@ final class Shell {
 
     /** Bar heights, as Material 3 specifies them. */
     static final int TOP_BAR_DP = 64;
-    static final int NAV_BAR_DP = 80;
+    static final int NAV_BAR_DP = 64;
     private static final int ICON_DP = 24;
-    private static final int INDICATOR_W_DP = 64;
+    private static final int INDICATOR_W_DP = 56;
     private static final int INDICATOR_H_DP = 32;
 
     /** One destination on the bottom bar. */
@@ -180,7 +188,8 @@ final class Shell {
                              View.OnClickListener onClick) {
         LinearLayout column = Ui.column(context);
         column.setGravity(Gravity.CENTER_HORIZONTAL);
-        column.setPadding(0, Ui.dp(context, 12), 0, Ui.dp(context, 12));
+        // 64 dp total: 8 above, a 32 dp indicator, 4, a 12 sp label, 8 below.
+        column.setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 8));
         column.setClickable(true);
         column.setFocusable(true);
         column.setBackground(Ui.tappable(context, Ui.fill(context, Color.TRANSPARENT, 0), dark));

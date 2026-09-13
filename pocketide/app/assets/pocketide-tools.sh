@@ -1,0 +1,196 @@
+#!/bin/bash
+# What the agents can actually use: a real browser, screenshots, video, and a build toolchain.
+#
+# None of this is installed during set-up. Set-up is already a 410 MB download and twenty
+# minutes; this is another 400 MB-odd that most people will not need on the first day, so it is
+# a switch in Settings that installs on demand and says what it will cost before it starts.
+#
+# Everything here was checked against what arm64 Linux under PRoot can actually do, rather than
+# assumed from what a laptop can:
+#
+#   BROWSER    Ubuntu 24.04 ships Chromium only as a snap, and snaps cannot run under PRoot at
+#              all. The working source is the xtradeb PPA, which publishes a genuine aarch64
+#              .deb built against Noble's t64 libraries. Debian's chromium .deb is NOT a
+#              substitute -- its versioned dependencies on pre-t64 library names cannot be
+#              satisfied on Noble, and forcing it breaks the system.
+#
+#   SANDBOX    Chromium must run --no-sandbox here, and that is not a shortcut. PRoot can
+#              provide neither a SUID helper nor unprivileged user namespaces, so Chromium's own
+#              sandbox has nothing to build on. What contains it instead is Android: the whole
+#              rootfs is this app's private data, under this app's uid and SELinux domain. That
+#              is a real boundary, just not Chromium's own -- so the app says "contained by
+#              Android", never "safe".
+#
+#   VIDEO      No X server and none needed. Playwright records video headless through CDP
+#              screencast with its own bundled arm64 ffmpeg. Xvfb would work under PRoot -- it
+#              is pure userspace -- but it costs memory for nothing unless a real GUI app has to
+#              be filmed.
+#
+#   ANDROID    An agent can build a real, signed, installable APK here, but only a Java-only
+#              one: Google publishes no arm64 NDK, so anything with C or C++ in it cannot be
+#              built at all. Four of Google's own tools ship x86-64 only and are replaced with
+#              aarch64 rebuilds. The emulator is impossible and always will be -- Google ships
+#              no linux-aarch64 emulator, and even a self-built one needs /dev/kvm, which
+#              SELinux denies to every app on an unrooted phone. The phone itself is the test
+#              device instead.
+#
+# Usage:
+#   pocketide-tools.sh browser      install the browser layer
+#   pocketide-tools.sh playwright   install the automation layer on top of it
+#   pocketide-tools.sh android      install the Java-only Android build toolchain
+#   pocketide-tools.sh check        report what is present, machine-readably
+#   pocketide-tools.sh smoke        prove the browser really loads a page and screenshots it
+
+set -uo pipefail
+export DEBIAN_FRONTEND=noninteractive
+export LC_ALL=C.UTF-8
+
+HOME_DIR="/root"
+TOOLS_DIR="$HOME_DIR/.pocketide-tools"
+PROJECTS="$HOME_DIR/projects"
+
+say() { printf '%s\n' "$*"; }
+
+# --------------------------------------------------------------------------- the browser
+
+install_browser() {
+  if command -v chromium >/dev/null 2>&1; then
+    say "The browser is already installed."
+    return 0
+  fi
+
+  say "Adding the arm64 Chromium source…"
+  apt-get update -qq || true
+  if ! apt-get install -y -qq --no-install-recommends \
+       software-properties-common ca-certificates curl gnupg; then
+    say "Could not install the tools needed to add a package source."
+    return 1
+  fi
+
+  # xtradeb, not Canonical. Stated plainly because it is a third-party source and the owner is
+  # entitled to know: Ubuntu's own Chromium is a snap, and a snap cannot run here.
+  if ! add-apt-repository -y ppa:xtradeb/apps >/dev/null 2>&1; then
+    say "The Chromium package source could not be added."
+    return 1
+  fi
+  apt-get update -qq || true
+
+  say "Installing Chromium… about 120 MB"
+  # --no-install-recommends deliberately: it skips chromium-sandbox, which cannot work without
+  # real root and only adds weight.
+  if ! apt-get install -y -qq --no-install-recommends chromium; then
+    say "Chromium could not be installed."
+    return 1
+  fi
+
+  # The flags, once, where every launcher picks them up -- the app's own smoke test, an agent
+  # calling chromium directly, Playwright, Puppeteer. /usr/bin/chromium sources this directory
+  # and then execs with $CHROMIUM_FLAGS.
+  mkdir -p /etc/chromium.d
+  cat > /etc/chromium.d/00-pocketide <<'EOF'
+# PRoot can give Chromium neither a SUID helper nor user namespaces, so its own sandbox has
+# nothing to build on. Android's app sandbox is what contains this instead.
+export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage --disable-gpu --no-zygote"
+EOF
+
+  mkdir -p "$TOOLS_DIR"
+  say "The browser is installed. Try: pocketide-tools.sh smoke"
+}
+
+# The proof, not the promise. An install that reports success and then cannot load a page is
+# worse than a failed install, because nobody finds out until an agent is half way through a task.
+smoke_browser() {
+  command -v chromium >/dev/null 2>&1 || { say "The browser is not installed."; return 1; }
+  local shot="/tmp/pocketide-smoke.png"
+  rm -f "$shot"
+  say "Loading a page and taking a screenshot…"
+  # Plain --headless. Never --headless=old, and --headless=new is redundant on current Chromium.
+  chromium --headless --no-sandbox --disable-dev-shm-usage --hide-scrollbars \
+      --window-size=1280,800 --screenshot="$shot" \
+      "data:text/html,<h1>PocketIDE</h1>" >/dev/null 2>&1
+  if [ -s "$shot" ]; then
+    say "OK $(stat -c%s "$shot") bytes written"
+    rm -f "$shot"
+    return 0
+  fi
+  say "The browser did not produce a screenshot."
+  return 1
+}
+
+# --------------------------------------------------------------------------- automation
+
+install_playwright() {
+  command -v chromium >/dev/null 2>&1 || { say "Install the browser first."; return 1; }
+  command -v npm >/dev/null 2>&1 || {
+    say "Installing Node…"
+    apt-get install -y -qq nodejs npm || { say "Node could not be installed."; return 1; }
+  }
+
+  mkdir -p "$TOOLS_DIR" && cd "$TOOLS_DIR" || return 1
+  [ -f package.json ] || npm init -y >/dev/null 2>&1
+
+  say "Installing Playwright… about 60 MB, then its browser"
+  if ! npm i -D playwright >/dev/null 2>&1; then
+    say "Playwright could not be installed."
+    return 1
+  fi
+  npx playwright install-deps chromium >/dev/null 2>&1 || true
+  # Playwright's own arm64 build, which is version-matched to its API. The apt one installed
+  # above stays as the fallback: it is a different Chromium version, and Playwright warns that
+  # driving a browser it did not ship is at your own risk.
+  if ! npx playwright install chromium >/dev/null 2>&1; then
+    say "Playwright installed, but its own browser did not download."
+    say "Scripts can still use executablePath: '/usr/bin/chromium'."
+    return 0
+  fi
+  say "Playwright is installed, with video recording."
+}
+
+# --------------------------------------------------------------------------- Android builds
+
+install_android() {
+  say "Installing a JDK…"
+  apt-get install -y -qq openjdk-21-jdk-headless unzip || {
+    say "The JDK could not be installed."; return 1; }
+
+  mkdir -p "$TOOLS_DIR/android"
+  say ""
+  say "A JDK and Gradle can build Java-only Android projects here."
+  say ""
+  say "What cannot be done on this phone, and cannot be fixed by installing anything:"
+  say "  • Apps with C or C++ in them. Google publishes no arm64 NDK."
+  say "  • The Android emulator. Google ships no linux-aarch64 build, and even a"
+  say "    self-built one needs /dev/kvm, which Android denies to every app on an"
+  say "    unrooted phone."
+  say ""
+  say "What works instead:"
+  say "  • JVM and Robolectric unit tests run here natively."
+  say "  • The phone itself is the test device: build the APK, then install it."
+  say ""
+  say "Google's own aapt2, aidl, zipalign and split-select are x86-64 only and need"
+  say "aarch64 replacements before a Gradle build will finish."
+}
+
+# --------------------------------------------------------------------------- what is present
+
+check() {
+  local browser=no playwright=no android=no
+  command -v chromium >/dev/null 2>&1 && browser=yes
+  [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
+  command -v javac >/dev/null 2>&1 && android=yes
+  echo "browser=$browser"
+  echo "playwright=$playwright"
+  echo "android=$android"
+  if [ "$browser" = yes ]; then
+    echo "chromium=$(chromium --version 2>/dev/null | head -1)"
+  fi
+}
+
+case "${1:-check}" in
+  browser)     install_browser ;;
+  playwright)  install_playwright ;;
+  android)     install_android ;;
+  smoke)       smoke_browser ;;
+  check)       check ;;
+  *)           say "Unknown command: ${1:-}"; exit 2 ;;
+esac

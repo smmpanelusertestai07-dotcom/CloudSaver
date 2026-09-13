@@ -104,6 +104,103 @@ final class Dialogs {
         show(activity, dialog, dark);
     }
 
+    /**
+     * A dialog that shows work happening, line by line, and cannot be dismissed until it ends.
+     *
+     * Used for installing the browser and the build tools, which take minutes and hundreds of
+     * megabytes. A spinner would say nothing; apt's own output says which package is being
+     * fetched, and that is the difference between waiting and wondering whether it has hung.
+     *
+     * Not cancellable on purpose: interrupting apt half way through leaves dpkg in a state the
+     * next attempt has to repair, and this app already carries a repair path for exactly that
+     * because an earlier version let it happen.
+     */
+    static Live live(Activity activity, String title, String subtitle) {
+        boolean dark = Ui.dark(activity);
+        LinearLayout column = Ui.column(activity);
+        int pad = Ui.dp(activity, 20);
+        column.setPadding(pad, pad, pad, pad);
+        column.addView(Ui.bold(activity, title, 18, Ui.text(dark)));
+        TextView note = Ui.text(activity, subtitle, 14f, Ui.muted(dark));
+        column.addView(note, Ui.wide(activity, 8));
+
+        TextView output = Ui.mono(activity, "", 11.5f, Ui.muted(dark));
+        int blockPad = Ui.dp(activity, 12);
+        output.setPadding(blockPad, blockPad, blockPad, blockPad);
+        output.setBackground(Ui.fill(activity, dark ? Color.rgb(18, 18, 18)
+                : Color.rgb(246, 244, 238), 12));
+        column.addView(output, Ui.wide(activity, 14));
+
+        ScrollView scroll = new ScrollView(activity);
+        scroll.addView(column);
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setView(scroll)
+                .setCancelable(false)
+                .create();
+        show(activity, dialog, dark);
+        return new Live(activity, dialog, note, output, scroll);
+    }
+
+    /** The handle the caller writes lines to, from whatever thread it is working on. */
+    static final class Live {
+        private final Activity activity;
+        private final AlertDialog dialog;
+        private final TextView note;
+        private final TextView output;
+        private final ScrollView scroll;
+        private final StringBuilder lines = new StringBuilder();
+
+        Live(Activity activity, AlertDialog dialog, TextView note, TextView output,
+             ScrollView scroll) {
+            this.activity = activity;
+            this.dialog = dialog;
+            this.note = note;
+            this.output = output;
+            this.scroll = scroll;
+        }
+
+        /** Safe to call from a background thread; the work here is not on one. */
+        void line(String text) {
+            activity.runOnUiThread(() -> {
+                if (activity.isFinishing()) return;
+                if (lines.length() > 0) lines.append('\n');
+                lines.append(text);
+                // The last twenty lines. apt prints hundreds and a dialog that grows without
+                // limit pushes its own buttons off the bottom of the screen.
+                String[] all = lines.toString().split("\n");
+                int from = Math.max(0, all.length - 20);
+                StringBuilder shown = new StringBuilder();
+                for (int i = from; i < all.length; i++) {
+                    if (shown.length() > 0) shown.append('\n');
+                    shown.append(all[i]);
+                }
+                output.setText(shown.toString());
+                scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+            });
+        }
+
+        /** Ends it: the dialog becomes dismissible and says how it went. */
+        void done(boolean ok, String message) {
+            activity.runOnUiThread(() -> {
+                if (activity.isFinishing()) {
+                    dialog.dismiss();
+                    return;
+                }
+                note.setText(message);
+                note.setTextColor(ok ? Ui.RUNNING : Ui.FAILED);
+                dialog.setCancelable(true);
+                dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Done", (d, which) -> d.dismiss());
+                // setButton after show() needs the button re-laid out, which re-showing does.
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                try {
+                    dialog.show();
+                } catch (Throwable alreadyGone) {
+                    // The window went away while work was running. Nothing to show it on.
+                }
+            });
+        }
+    }
+
     /** A long body with a monospace block under it, for raw technical output. */
     static void details(Activity activity, String title, CharSequence explanation, String raw,
                         String copyLabel) {
