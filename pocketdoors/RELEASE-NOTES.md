@@ -1,118 +1,94 @@
-# PocketAgent Doors 15.1.5 — the workspace can resolve a name
+# PocketAgent Doors 15.2.0 — the addresses and the flags, checked against the real thing
 
-Version **15.1.5**, code **515**, application ID `com.pocketagent.doors`.
+Version **15.2.0**, code **520**, application ID `com.pocketagent.doors`.
 
-This installs beside PocketAgent 14.1.5 rather than over it. The one that works today keeps
+This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
 
-## The second bug: no resolver
+## Two failures on a real phone, and one habit behind both
 
-With the sources fixed, the next set-up got further and then died on
-`Temporary failure resolving 'ports.ubuntu.com'` for every index. Android does not give a
-container a working `/etc/resolv.conf`, so glibc inside the workspace had no nameserver at all.
-PocketAgent has always written one; this app's leaner runtime simply left that out.
+Door A opened on `Error: Not Found — The requested URL /remote was not found on this server`.
+Door B ended in a Node stack trace: `MODULE_NOT_FOUND`, empty require stack, then
+`openai.chatgpt could not be installed`.
 
-The phone's own DNS servers are written into the workspace before every command now, and they
-are rewritten whenever the phone moves between mobile data and Wi-Fi, because a set-up runs long
-enough to cross that boundary. Only the phone's own servers are ever used -- a silent fallback to
-a public resolver would route someone's lookups through a third party without telling them, so a
-check fails the build if one is ever hard-coded.
+Neither was a hard problem. Both were things this app asserted without checking.
 
-IPv4 is preferred as well. On mobile data an AAAA answer frequently resolves and then refuses to
-connect, and apt reports that as a name-resolution failure too -- indistinguishable, from the
-screen, from having no DNS at all.
+### Door A: the wrong domain
 
-And the set-up screen now names this failure precisely when it sees it, because "no resolver" and
-"no signal" look identical in an apt log and need completely different answers.
+The dashboard address in 15.1.5 was `https://antigravity.google/remote`. Google's documentation
+lives on `antigravity.google`, so a `/remote` path there looked right. Their dashboard is on
+**`antigravity.google.com`** — a different domain. The guess cost a whole set-up run.
 
-## The first bug: the wrong package host
+The address is now written down once, verified, and a check fails the build if any path on
+`antigravity.google` is ever used as an interface address again.
 
-`E: Package 'ca-certificates' has no installation candidate`, after a screenful of duplicate
-source warnings. Ubuntu 24.04's base image already ships
-`/etc/apt/sources.list.d/ubuntu.sources`, and it points at `archive.ubuntu.com` -- which carries
-amd64 and i386 only. On an arm64 phone every index there is a miss. The bootstrap then added its
-own list alongside, which is where the duplicate warnings came from, and apt ended up with no
-candidate for anything.
+### Door A: a flag that does not exist
 
-The shipped list is now removed rather than added to, and `ports.ubuntu.com` -- the host that
-actually carries arm64 -- is the only source. Three more things changed because this failure was
-harder to read than it should have been: the architecture is checked and named before anything
-is fetched, `apt-get update` no longer runs under `-qq` so its own errors reach the screen, and
-the package index is proven non-empty before the first install, because "no installation
-candidate" is what an empty index looks like from the far end.
+The fallback in 15.1.5 ran `agy remote-control start --foreground` if the service path failed.
+There is no such flag. The published arm64 binary was unpacked and read: `remote-control` takes
+`start`, `status` and `stop`, plus `--name`. `--foreground` would have been rejected as unknown.
 
-## The icon
+The fallback is gone. The daemon is started with the documented command, and then **asked**
+whether it is running rather than assumed to be — exit zero is not proof when the thing that
+usually registers the daemon is a service manager this workspace does not have. If it is not
+running, the daemon's own words go on the screen.
 
-Near-black tile, bone brackets, one violet spark -- the same mark PocketAgent 14.2.0 now carries.
+### Door A: the dashboard opens in a browser now
 
-## What changed, in one sentence
+Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
+window could never be signed in. Their own instruction is to open it in a browser and add it to
+the home screen, which is also how their notifications arrive. So Door A ends with a button that
+hands the address to the phone's real browser. The key bar is hidden there — there is no page in
+this window for it to type into.
 
-PocketAgent no longer draws an agent's interface. It runs the agent and hands you the interface
-its own publisher ships.
+15.1.5 also loaded that address the moment the screen opened, before any work had happened. That
+is why the 404 appeared so early, and why it said nothing about whether the daemon had started.
+Nothing is loaded on the way in any more.
 
-## Why
+### Door A: it follows Google's own updates
 
-Every screen this app drew by hand was a screen that went stale the moment a publisher shipped
-something new, and every one of them had to be designed again. Meanwhile all four publishers
-already ship an interface for exactly this: OpenAI and Anthropic as VS Code extensions with
-linux-arm64 builds on Open VSX, Google as a Remote Control dashboard driven by a headless
-daemon. Using theirs means their features, their updates, and none of our design work.
+The CLI is no longer pinned to one build. Google publish a manifest naming the current version,
+its download and its sha512; this reads the same manifest their installer reads, refuses any
+download that is not on Google's own storage host, and verifies the checksum they publish. The
+build this app verified by hand stays as a floor for when the manifest cannot be reached.
 
-## The three doors
+### Door B: a 220 MB download on a fifteen-minute deadline
 
-| Door | What runs here | What you see |
-| --- | --- | --- |
-| **A · Remote Control** | one daemon | the publisher's own web or phone app |
-| **B · Extension Host** | code-server and the extension | the publisher's own extension, with a real editor and terminal around it |
-| **C · Desktop app** | the whole application on a display | the publisher's own application |
+code-server's launcher runs `lib/node <root>`, and node resolves that through `package.json`'s
+`main`, which is `out/node/entry.js`. `MODULE_NOT_FOUND` with an empty require stack means node
+could not find it — the launcher had arrived and the thing it launches had not.
 
-Door C is not wired up in this build. It is what PocketLinux already does, and it is where
-Cursor will have to come through, because Cursor publishes no headless mode and no extension.
+The archive is 220 MB across 6,631 files, and the download was given fifteen minutes. On mobile
+data that is not always enough.
 
-## What this build actually does
+Now: free space is checked before any of someone's data is spent; the download resumes instead of
+restarting; it has an hour; the unpacked tree is checked for the three files node actually needs,
+by name; and the server is asked for its own version before anything trusts it. The digest is
+only recorded once all of that passes, so a truncated download can never become the copy every
+later check is compared against.
 
-- Downloads Ubuntu 24.04.4 ARM64, verified against its published digest, resuming if the signal
-  drops. About 30 MB, and roughly 1.2 GB once an agent is installed.
-- Installs Node 22, git, curl and python3 — and nothing else. No X server, no window manager,
-  no browser, no viewer.
-- **Antigravity** through Door A: fetches Google's CLI, verified by sha512, and starts
-  `agy remote-control start`. There is no systemd inside PRoot, so it tries Google's own service
-  path first and falls back to running the daemon in the foreground under the app's supervision.
-  Which of the two happened is written down and shown.
-- **Codex** and **Claude Code** through Door B: fetches code-server, installs the publisher's
-  own extension from Open VSX, and serves it on the loopback address only.
-- A keyboard row above the page for the keys a touch screen has no way to reach — Escape, Tab,
-  the arrows, Ctrl combinations, and the slash and at-sign every one of these agents is driven by.
+The first failure is also visible now. 15.1.5 ran `--list-extensions` with its errors hidden, so
+the real reason was thrown away and only the second, more confusing crash reached the screen.
 
-## Sign-in, which the first build got wrong
+## The phone stays awake during set-up
 
-The first cut of this ran `agy remote-control start` and nothing else. Google's own instruction
-is "run `agy`, complete the sign-in flow, then exit", and then "the credentials you used to sign
-into the CLI are used by the daemon" -- so a daemon started before that has nothing to
-authenticate with, and Antigravity would have failed at the very first step.
+Set-up ran on an ordinary thread with no wake lock. Unpacking a base image and configuring a few
+hundred packages takes tens of minutes under PRoot, and `dpkg` frozen halfway has to be repaired
+before anything else can be installed. The screen is held on and a wake lock is taken for the
+length of the install, with a three-hour ceiling, and both are released the moment it ends.
 
-Sign-in is now its own step, and it is a conversation rather than a stream. On a machine with no
-desktop the CLI prints an authorisation link and waits for the code that browser gives back, so
-the app opens the link in the phone's **real browser** -- never in its own window, because Google
-refuse an embedded view for sign-in and are right to -- and gives you one box to paste the code
-into. Once a credential exists the app remembers, skips straight to the daemon, and never asks
-again.
+## What is still not proven
 
-## The honest part
+Everything above is a fix for something that was observed. None of it is a claim that Door A
+works end to end. What Google document is a headless daemon and a headless sign-in; what has
+never been seen is either of them running under PRoot on this phone. The app reports which route
+the daemon took, and says so plainly when it takes neither.
 
-Doors A and B are documented by their publishers and **have never been run on a phone under
-PRoot**. This build does not claim they work. Each agent shows "untried" until someone opens it
-here, and then shows what actually happened — including the daemon's own last words when it
-failed. That record is the point of this release.
+Door C (Cursor) is still not wired up, and Cursor still publish no headless route.
 
-Twice during the research for this, something documented turned out not to exist:
-`cursor serve-web` is in Cursor's CLI with no binary behind it, and `antigravity serve-web` is
-in Antigravity's help with no binary behind it. So nothing here is asserted from documentation
-alone.
+## Checks
 
-## What is known not to work
-
-- **Cursor.** No headless mode — their own answer. No published extension. Door C only.
-- **Codex's own phone interface.** Its worker must be a Mac.
-- **Claude Code on a free plan.** Anthropic publishes none.
-- **Two agents at once.** This phone has under four gigabytes.
+Nineteen now. The five added in this version each fail on the exact mistake that produced one of
+the two failures above: an unverified address, an undocumented flag, a publisher's site framed
+inside the app, a download trusted before it was complete, and a set-up that could be frozen
+halfway.

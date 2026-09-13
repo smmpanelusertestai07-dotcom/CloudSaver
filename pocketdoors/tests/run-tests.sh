@@ -136,6 +136,91 @@ grep -q 'FLAG_ACTIVITY_NEW_TASK' "$SRC/DoorActivity.java" \
   || fail "SignIn: the sign-in hand-off does not open a browser"
 echo "PASS SignIn (passwords are typed in the browser, never in this app's window)"
 
+# ---------------------------------------------------------------- every address was checked
+# This gate exists because of a real 404 on a real phone. An earlier build sent the owner to
+# https://antigravity.google/remote, an address assembled from a plausible guess: the docs live
+# on antigravity.google, so a /remote path there looked right. Google's dashboard is on
+# antigravity.google.com, a different domain, and the guess cost the owner a set-up run.
+# So the address is written once, checked here, and the shape of the old mistake is banned.
+DASH="https://antigravity.google.com"
+grep -q "\"$DASH\"," "$SRC/Doors.java" \
+  || fail "VerifiedUrls: Antigravity's surface is not the dashboard address this app verified"
+grep -q "^DASHBOARD=\"$DASH\"" "$ASSETS/doors-antigravity.sh" \
+  || fail "VerifiedUrls: the script and the catalog disagree about the dashboard address"
+if grep -REn 'antigravity\.google/[a-z]' "$SRC" "$ASSETS" | grep -vi 'docs\|cli/install' | grep -q .; then
+  fail "VerifiedUrls: a path on antigravity.google is being used as an interface address again"
+fi
+# Every READY line hands the app an address to open, so each one has to be an address this
+# repository can name, not one built at run time from whatever the daemon happened to print.
+if grep -n 'say "READY' "$ASSETS/doors-antigravity.sh" | grep -v '\$DASHBOARD' | grep -q .; then
+  fail "VerifiedUrls: a READY line names an address that is not the verified dashboard"
+fi
+echo "PASS VerifiedUrls (one dashboard address, written down and agreed on)"
+
+# ---------------------------------------------------------------- only flags the CLI really has
+# The same failure in a different costume. An earlier build fell back to
+# `agy remote-control start --foreground`, a flag that reads like it should exist and does not:
+# the 1.2.2 arm64 binary carries no such flag, and remote-control takes start, status, stop and
+# --name. It would have been rejected as an unknown flag on the owner's phone.
+if grep -n 'remote-control' "$ASSETS/doors-antigravity.sh" | grep -qE '\-\-foreground|--daemon|--detach'; then
+  fail "AgyFlags: the script passes a remote-control flag the CLI does not have"
+fi
+# Nothing but the three subcommands Google document may follow `remote-control`.
+stray=$(grep -oE 'remote-control [a-z][a-z-]*' "$ASSETS/doors-antigravity.sh" \
+        | sort -u | grep -vE 'remote-control (start|status|stop)$' || true)
+[ -z "$stray" ] || fail "AgyFlags: undocumented subcommand -- $stray"
+grep -q 'remote-control start' "$ASSETS/doors-antigravity.sh" \
+  || fail "AgyFlags: the documented start command is missing"
+grep -q 'remote-control status' "$ASSETS/doors-antigravity.sh" \
+  || fail "AgyFlags: nothing asks the daemon whether it is actually running"
+echo "PASS AgyFlags (start, status and stop -- the three the CLI documents)"
+
+# ---------------------------------------------------------------- a publisher's site is not framed
+# Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
+# window can never be signed in. Their own instruction is to open it in a browser and add it to
+# the home screen. A loopback editor is the other case and stays in the window.
+grep -q 'opensInBrowser' "$SRC/Doors.java" \
+  || fail "BrowserSurface: nothing decides where a publisher's own interface opens"
+grep -q 'opensInBrowser' "$SRC/DoorActivity.java" \
+  || fail "BrowserSurface: the screen ignores where an interface is supposed to open"
+if grep -qE 'load\(agent\.surface\)' "$SRC/DoorActivity.java"; then
+  fail "BrowserSurface: a publisher's own address is loaded into this app's window again"
+fi
+echo "PASS BrowserSurface (the publisher's site opens in a real browser, the editor stays here)"
+
+# ---------------------------------------------------------------- a download is proved, not assumed
+# MODULE_NOT_FOUND with an empty require stack, on a real phone. code-server's launcher runs
+# `lib/node <root>` and node resolves that through package.json's main, out/node/entry.js. The
+# archive is 220 MB over mobile data and the old fifteen-minute deadline cut it short, so the
+# launcher survived and everything node needed did not. Nothing is trusted now until it is there.
+# The list itself, not a mention of it. Written as a plain grep first, this passed while the
+# real check was deleted, because the explanation above it names the same file.
+grep -qE '^NEEDED=.*out/node/entry\.js' "$ASSETS/doors-codeserver.sh" \
+  || fail "ServerTree: the file node actually starts is not in the list that must be present"
+grep -qE '^NEEDED=.*lib/node' "$ASSETS/doors-codeserver.sh" \
+  || fail "ServerTree: the bundled node is not in the list that must be present"
+grep -q 'continue-at' "$ASSETS/doors-codeserver.sh" \
+  || fail "ServerTree: a cut-off download restarts from zero instead of resuming"
+grep -q 'code-server --version\|bin/code-server" --version' "$ASSETS/doors-codeserver.sh" \
+  || fail "ServerTree: the unpacked server is never asked to prove it runs"
+if grep -oE 'max-time [0-9]+' "$ASSETS/doors-codeserver.sh" | awk '{ if ($2 > 60 && $2 < 1800) bad=1 } END { exit !bad }'; then
+  fail "ServerTree: a 220 MB download is given a deadline a phone on mobile data cannot meet"
+fi
+grep -q 'df -Pm' "$ASSETS/doors-codeserver.sh" \
+  || fail "ServerTree: nothing checks there is room before spending an hour of someone's data"
+echo "PASS ServerTree (resumable, complete, and proved to run before it is trusted)"
+
+# ---------------------------------------------------------------- the phone stays awake to finish
+# Unpacking a base image and configuring a few hundred packages takes tens of minutes under
+# PRoot, and dpkg frozen halfway has to be repaired before anything else can be installed.
+grep -q 'FLAG_KEEP_SCREEN_ON' "$SRC/SetupActivity.java" \
+  || fail "StaysAwake: the screen can sleep during set-up"
+grep -q 'PARTIAL_WAKE_LOCK' "$SRC/SetupActivity.java" \
+  || fail "StaysAwake: nothing keeps the install running if the phone tries to doze"
+grep -q 'releaseAwake' "$SRC/SetupActivity.java" \
+  || fail "StaysAwake: the wake lock is never released"
+echo "PASS StaysAwake (the install holds the phone awake, and lets go when it ends)"
+
 # ---------------------------------------------------------------- one agent at a time
 grep -q 'runningAgent' "$SRC/DoorService.java" \
   || fail "OneAtATime: nothing tracks which agent is running"

@@ -46,9 +46,13 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
     private TextView status;
     private LinearLayout signIn;
     private TextView openLink;
+    private TextView openSurface;
+    private LinearLayout openSurfaceHolder;
+    private View keys;
     private EditText answer;
     private Doors.Agent agent;
     private String link;
+    private String surface;
     private boolean loaded;
     private boolean signingIn;
     private BroadcastReceiver events;
@@ -73,6 +77,8 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(buildSignIn(dark), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(buildOpenSurface(dark), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         FrameLayout stage = new FrameLayout(this);
@@ -102,18 +108,19 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
 
         root.addView(Ui.divider(this, dark), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 1))));
-        root.addView(new KeyBar(this, this), new LinearLayout.LayoutParams(
+        keys = new KeyBar(this, this);
+        root.addView(keys, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        if (agent.opensInBrowser()) keys.setVisibility(View.GONE);
 
         // The keyboard should push the page up, not cover it.
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         listen();
-        if (agent.door == Doors.Door.REMOTE_CONTROL && !agent.surface.isEmpty()) {
-            // Google's dashboard is a public page; it can load while the daemon is still
-            // starting, and it will find the machine once it is there.
-            load(agent.surface);
-        }
+        // Nothing is loaded here on the way in. An earlier build opened the publisher's
+        // dashboard immediately, which meant the first thing the owner saw was whatever that
+        // address returned before any of the work had happened -- and the address it used was
+        // wrong, so what they saw was a 404 that said nothing about the daemon at all.
         DoorService.start(this, agent.id);
     }
 
@@ -221,16 +228,63 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
                     }
                     return;
                 }
-                if ("ready".equals(state) && url != null && !url.isEmpty() && !loaded) load(url);
+                if ("ready".equals(state) && url != null && !url.isEmpty() && !loaded) show(url);
                 if ("failed".equals(state)) showFailure(line);
             }
         };
         registerReceiver(events, new IntentFilter(DoorService.EVENT), Context.RECEIVER_NOT_EXPORTED);
     }
 
+    /** Puts the running interface where it belongs: this window, or the phone's browser. */
+    private void show(String url) {
+        loaded = true;
+        if (!agent.opensInBrowser()) {
+            web.loadUrl(url);
+            return;
+        }
+        surface = url;
+        status.setTextColor(Ui.text(Ui.dark(this)));
+        status.setText(agent.name + " is running on this phone. Its dashboard opens in your "
+                + "browser, where you are already signed in to Google.");
+        openSurface.setText("Open the " + agent.name + " dashboard");
+        openSurface.setVisibility(View.VISIBLE);
+        openSurfaceHolder.setVisibility(View.VISIBLE);
+    }
+
     private void load(String url) {
         loaded = true;
         web.loadUrl(url);
+    }
+
+    /**
+     * The way out to a publisher's own dashboard.
+     *
+     * It is a button rather than an automatic jump because leaving the app the instant a daemon
+     * starts would hide the one line that says the daemon started. Google's page can also be
+     * added to the home screen from the browser, which is how their notifications arrive, and
+     * that only works in a real browser.
+     */
+    private LinearLayout buildOpenSurface(boolean dark) {
+        LinearLayout holder = Ui.column(this);
+        int pad = Ui.dp(this, 14);
+        holder.setPadding(pad, 0, pad, Ui.dp(this, 10));
+        holder.setVisibility(View.GONE);
+        openSurface = Ui.button(this, "Open the dashboard", true, dark);
+        openSurface.setId(4);
+        openSurface.setVisibility(View.GONE);
+        openSurface.setOnClickListener(v -> {
+            if (surface == null || surface.isEmpty()) return;
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(surface))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Exception noBrowser) {
+                status.setText("No browser on this phone could open " + surface + ".");
+            }
+        });
+        holder.addView(openSurface, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        openSurfaceHolder = holder;
+        return holder;
     }
 
     private void showFailure(String line) {

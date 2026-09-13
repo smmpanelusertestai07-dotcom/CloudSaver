@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.view.WindowManager;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -24,6 +26,7 @@ public final class SetupActivity extends Activity {
     private TextView action;
     private ScrollView scroll;
     private Thread worker;
+    private PowerManager.WakeLock awake;
     private final StringBuilder transcript = new StringBuilder();
 
     @Override
@@ -43,9 +46,10 @@ public final class SetupActivity extends Activity {
         headline = Ui.bold(this, "Setting up the workspace", 22, Ui.text(dark));
         root.addView(headline);
         root.addView(Ui.text(this,
-                "Ubuntu downloads once and stays inside this app. Leave the screen on and stay "
-                        + "on one connection if you can; if it stops, opening this again continues "
-                        + "from where it got to.", 14, Ui.muted(dark)), Ui.wide(this, 8));
+                "Ubuntu downloads once and stays inside this app. The screen is held on until "
+                        + "this finishes, so leave the phone plugged in and stay on one connection "
+                        + "if you can; if it stops, opening this again continues from where it got "
+                        + "to.", 14, Ui.muted(dark)), Ui.wide(this, 8));
 
         log = Ui.mono(this, "", 12, Ui.muted(dark));
         int pad = Ui.dp(this, 12);
@@ -70,14 +74,47 @@ public final class SetupActivity extends Activity {
             return;
         }
 
+        holdAwake();
         worker = new Thread(this::install, "setup");
         worker.start();
+    }
+
+    /**
+     * Keeps the phone awake for the length of the install.
+     *
+     * Unpacking a base image and configuring a few hundred packages takes tens of minutes under
+     * PRoot, and none of it survives being frozen halfway: dpkg left mid-transaction has to be
+     * repaired before anything else can be installed. Android is entitled to freeze an app whose
+     * screen has gone dark, so the screen is held on and a wake lock is taken -- and both are
+     * released the moment the install ends, successfully or not.
+     */
+    private void holdAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        try {
+            PowerManager power = getSystemService(PowerManager.class);
+            if (power == null) return;
+            awake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocketdoors:setup");
+            // A ceiling, so a set-up that somehow never returns cannot hold the phone awake
+            // for the rest of the day.
+            awake.acquire(3 * 60 * 60 * 1000L);
+        } catch (Exception denied) {
+            // Without it the install still runs; it is simply more fragile if the screen sleeps.
+            awake = null;
+        }
+    }
+
+    private void releaseAwake() {
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (awake == null) return;
+        try { if (awake.isHeld()) awake.release(); } catch (Exception ignored) { }
+        awake = null;
     }
 
     private void install() {
         try {
             Ubuntu.install(this, this::say);
             main.post(() -> {
+                releaseAwake();
                 headline.setText("Workspace ready");
                 action.setVisibility(android.view.View.VISIBLE);
             });
@@ -86,6 +123,7 @@ public final class SetupActivity extends Activity {
                     ? problem.getClass().getSimpleName() : problem.getMessage();
             say(reason);
             main.post(() -> {
+                releaseAwake();
                 headline.setText("Set-up stopped");
                 headline.setTextColor(Ui.FAILED);
                 action.setVisibility(android.view.View.VISIBLE);
@@ -113,6 +151,7 @@ public final class SetupActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        releaseAwake();
         if (worker != null) worker.interrupt();
         super.onDestroy();
     }

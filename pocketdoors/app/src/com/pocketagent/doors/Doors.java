@@ -90,6 +90,22 @@ final class Doors {
         boolean signsInSeparately() {
             return !login.isEmpty();
         }
+
+        /**
+         * True when the interface is the publisher's own site rather than a server on this phone.
+         *
+         * It decides where the interface is opened, and the reason is Google's: they refuse an
+         * OAuth sign-in inside an embedded view, so a dashboard shown in this app's own window
+         * would be permanently signed out. Their documentation says to open it in a browser and
+         * add it to the home screen, so that is what this app does -- it hands the link to the
+         * phone's real browser, where the session is already signed in and the notifications
+         * their web app sends actually arrive. A loopback address is the other case: nothing
+         * outside this phone can reach it and there is no account to sign into, so it is shown
+         * in the window.
+         */
+        boolean opensInBrowser() {
+            return surface.startsWith("https://");
+        }
     }
 
     /** Ordered lightest door first, and within a door, free before paid. */
@@ -97,7 +113,7 @@ final class Doors {
             new Agent("antigravity", "Antigravity", Door.REMOTE_CONTROL,
                     "doors-antigravity.sh start",
                     "doors-antigravity.sh login",
-                    "https://antigravity.google/remote",
+                    "https://antigravity.google.com",
                     "Free tier", true,
                     "Google's dashboard shows conversations, tasks, plans and artifacts. Whether it "
                             + "also gives an editor and a terminal is not documented, and not yet known.",
