@@ -68,6 +68,18 @@ public final class HomeActivity extends Activity {
                 12.5f, Ui.muted(dark)));
         root.addView(header);
 
+        // Whose agents, by name, under the app's own name rather than inside it.
+        //
+        // Putting "Claude", "Codex" or "Antigravity" in the app's name is not allowed -- each of
+        // the three asks that its mark not become part of somebody else's product name -- and it
+        // would read as an official app, which this is not. Naming them here is the opposite
+        // claim: this is what it runs, said plainly, so anyone can see what they are getting
+        // before they spend a gigabyte of mobile data finding out.
+        TextView runs = Ui.mono(this, "CLAUDE CODE  ·  CODEX  ·  ANTIGRAVITY", 11,
+                dark ? Brand.ACCENT_ON_DARK : Brand.TILE_FLAT);
+        runs.setLetterSpacing(0.06f);
+        root.addView(runs, Ui.wide(this, 14));
+
         if (!Ubuntu.installed(this)) {
             root.addView(setupCard(dark), Ui.wide(this, 22));
             return;

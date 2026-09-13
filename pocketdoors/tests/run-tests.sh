@@ -100,6 +100,33 @@ grep -q 'EXT_claude="Anthropic.claude-code"' "$ASSETS/doors-workspace.sh" \
   || fail "ClaudeDoor: the extension installed is not the one Anthropic publish"
 echo "PASS ClaudeDoor (Remote Control on at startup, before the editor, with the version checked)"
 
+# ---------------------------------------------------------------- the name is ours, the agents are theirs
+# Each of the three asks that its mark not become part of somebody else's product name, and an
+# app called after them would read as official, which this is not. So no maker's name may appear
+# in the app's own name -- and the makers are named on the home screen instead, where naming them
+# is the opposite claim: this is what it runs.
+label=$(grep -oE '<string name="app_name">[^<]*</string>' app/res/values/strings.xml | sed 's/.*>\(.*\)<.*/\1/')
+[ -n "$label" ] || fail "TheirNamesNotOurs: the app has no name"
+for mark in Claude Codex Antigravity Anthropic OpenAI Google ChatGPT Gemini; do
+  printf '%s' "$label" | grep -qi "$mark" \
+    && fail "TheirNamesNotOurs: the app calls itself \"$label\", which carries $mark's mark"
+done
+# And the three are named where somebody can read them before spending a gigabyte of mobile data.
+for agent in "CLAUDE CODE" "CODEX" "ANTIGRAVITY"; do
+  grep -q "$agent" "$SRC/HomeActivity.java" \
+    || fail "TheirNamesNotOurs: the home screen does not say it runs $agent"
+done
+# "Doors" named three doors to pick between. There is one workspace, so the word is a description
+# of something that was deleted; it may stay in the application ID, which cannot change without
+# costing whoever installed this their whole workspace, but not in what the owner reads.
+for shown in app/res/values/strings.xml README.md RELEASE-NOTES.md; do
+  head -n 40 "$shown" | grep -q 'PocketAgent Doors' \
+    && fail "TheirNamesNotOurs: $shown still calls the app Doors, a design it no longer has"
+done
+grep -q '^APP_BASENAME="PocketAgent"$' build.sh \
+  || fail "TheirNamesNotOurs: the APK is still filed under a name the app does not use"
+echo "PASS TheirNamesNotOurs (our name is ours, and theirs are named as what it runs)"
+
 # ---------------------------------------------------------------- one way in, per agent
 # The point of this build. Three doors meant a menu, and a menu is a question somebody has to
 # answer before they can start working -- when for each maker exactly one route is the best their

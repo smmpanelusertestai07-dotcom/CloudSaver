@@ -1,4 +1,4 @@
-# PocketAgent Doors
+# PocketAgent
 
 A native Android app that runs coding agents on the phone itself and shows you **their own**
 interface instead of one it drew.

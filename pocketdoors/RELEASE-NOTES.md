@@ -1,9 +1,29 @@
-# PocketAgent Doors 15.6.0 — one workspace, one way into each agent
+# PocketAgent 15.6.5 — one workspace, one way into each agent
 
-Version **15.6.0**, code **560**, application ID `com.pocketagent.doors`.
+Version **15.6.5**, code **565**, application ID `com.pocketagent.doors`.
 
-This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
-working while this one is being proved.
+## 15.6.5: the name says what it runs, and "Doors" is gone
+
+PocketAgent 14.3.0 is removed from the repository. It was kept as a fallback while this app was
+unproven; 15.6.0 covers the same ground with one workspace instead of a bridge per protocol, so
+keeping it was keeping a second answer to a question that has one.
+
+"Doors" goes with it. It named a design that no longer exists — three doors to pick between —
+and it stayed in the APK's filename and the documents after the thing it described was deleted.
+The app is **PocketAgent**, which is what the launcher has always said. The application ID stays
+`com.pocketagent.doors`, so 15.6.0 updates in place and nobody re-downloads a gigabyte of Ubuntu
+to rename an app.
+
+The home screen now names the three, under the app's name rather than inside it:
+
+> CLAUDE CODE · CODEX · ANTIGRAVITY
+
+Putting any of those in the app's own name is not an option — each of the three asks that its
+mark not become part of somebody else's product name, and an app called after them would read as
+official, which this is not. Naming them here is the opposite claim: this is what it runs, said
+plainly, so anyone can see what they are getting before spending a gigabyte of mobile data
+finding out. A check fails if that line disappears, and another fails if a maker's name ever
+turns up in the app's own name.
 
 ## 15.6.0: the menu is gone
 
