@@ -1,6 +1,73 @@
-# PocketAgent 16.3.0 — the bigger download had no counter either
+# PocketAgent 16.3.5 — three bugs in one screenshot
 
-Version **16.3.0**, code **630**, application ID `com.pocketagent.doors`.
+Version **16.3.5**, code **635**, application ID `com.pocketagent.doors`.
+
+One screen from a real phone carried three separate faults. All three are fixed.
+
+## 16.3.5: the counter was reading the wrong thing
+
+```
+Downloaded 865 MB. Unpacking now — that part has no number…
+Downloaded 881 MB. Unpacking now — …
+Downloaded 911 MB. Unpacking now — …
+```
+
+231 MB was expected. 16.3.0 pointed the counter at the extensions folder **and `/tmp`**, and
+`/tmp` is a directory other things write to — apt's leavings were being counted as download
+progress. Past 231 it said "unpacking now" every fifteen seconds for the rest of the install.
+
+A counter can only count something nothing else touches. It now reads `stat` on the single file
+this script is downloading, and the file is checked against the size Open VSX stated before it
+is handed to the editor.
+
+## 16.3.5: "Aborted" — the editor ran out of memory
+
+The real failure, under the meaningless numbers:
+
+```
+2: getPackageJSONURL (node:internal/modules/package_json_reader:284:25)
+3: packageResolve (node:internal/modules/esm/resolve:779:81)
+…
+10: handleMessage (node:internal/modules/esm/worker:199:24)
+Aborted
+```
+
+A stack through Node's **ESM loader worker**, ending in a native abort. On a 3.9 GB phone
+running an Electron editor, that is what running out of memory looks like.
+
+Handing the editor an extension *identifier* makes it do the download **and** the unpacking
+itself, inside that worker. So it is handed a **file** instead: this script fetches the `.vsix`
+with curl — resumable, exact, counted — and then runs `--install-extension` on a local path.
+That removes the editor's whole network path from the heaviest moment of the set-up.
+
+Two more guards on that moment: Node's heap is capped so it reports running out instead of
+dying without a word, and what memory is left is read from `/proc/meminfo` and said out loud
+before it is spent.
+
+## 16.3.5: "Aborted" is now explained, not shown
+
+`Aborted` is Node's word. It is not something the owner of a phone can act on, and it was handed
+over as the entire answer. `Trouble.java` now recognises it:
+
+> **The editor ran out of memory while installing the extension.**
+>
+> This phone has under four gigabytes and the editor is a desktop application, so unpacking a
+> few hundred megabytes is the heaviest moment of the whole set-up. Close every other app, then
+> open this again — the download is kept, so only that last step repeats.
+>
+> `[ Try that step again ]`
+
+## 16.3.5: and a gate that failed on correct code again
+
+`HeaviestStep` checked for `NODE_OPTIONS` on the line the install flag is on. The command is
+split across two lines and the environment sits on the first, so the check read half a command
+and condemned code that was right. It reads the continuation now.
+
+Four breaks on the new gate, four failures, before it was trusted.
+
+---
+
+# Earlier releases
 
 ## 16.3.0: I fixed the counter on the smaller of the two downloads
 

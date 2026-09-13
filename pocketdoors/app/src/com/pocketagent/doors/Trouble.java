@@ -80,6 +80,27 @@ final class Trouble {
                             + "carries on rather than starting over.",
                     "Try again");
         }
+        // Node's own word for a native abort, and on a 3.9 GB phone running an Electron editor
+        // it almost always means the memory ran out. The trace that came with it was a stack
+        // through node:internal/modules/esm/worker -- the loader thread, dying while unpacking
+        // a few hundred megabytes of extension.
+        if (said.contains("aborted") || said.contains("out of memory")
+                || said.contains("javascript heap")) {
+            return new Advice(
+                    "The editor ran out of memory while installing the extension.",
+                    "This phone has under four gigabytes and the editor is a desktop "
+                            + "application, so unpacking a few hundred megabytes is the heaviest "
+                            + "moment of the whole set-up. Close every other app, then open this "
+                            + "again — the download is kept, so only that last step repeats.",
+                    "Try that step again");
+        }
+        if (said.contains("arrived incomplete")) {
+            return new Advice(
+                    "A download stopped part way and what arrived did not match its stated size.",
+                    "It was not installed. What arrived is kept, so opening this again resumes "
+                            + "rather than starting from nothing.",
+                    "Resume");
+        }
         if (said.contains("checksum") || said.contains("did not match")) {
             return new Advice(
                     "Something downloaded did not match what its publisher signed.",

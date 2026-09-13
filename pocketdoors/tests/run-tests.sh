@@ -572,8 +572,20 @@ in_code 'du -scm' "$ASSETS/doors-workspace.sh" \
 # 143 -- and it was the one left with "It is not stuck" and nothing else for a quarter of an hour.
 [ "$(grep -c 'watch_size ' "$ASSETS/doors-workspace.sh" || true)" -ge 2 ] \
   || fail "SizesAreReal: only one of the two long downloads reports progress"
-in_code 'watch_size "\$size" "\$AG_EXTENSIONS"' "$ASSETS/doors-workspace.sh" \
+in_code 'watch_file "\$bytes" "\$vsix"' "$ASSETS/doors-workspace.sh" \
   || fail "SizesAreReal: the extension download, the larger one, reports nothing"
+# Counted from one file this script created, never a directory other things write to. Pointed at
+# the extensions folder and /tmp, the old counter read 865 MB where 231 was expected, and then
+# said "unpacking now" every fifteen seconds for the rest of the install.
+if grep -nE 'watch_size[^|]*/tmp' "$ASSETS/doors-workspace.sh"; then
+  fail "SizesAreReal: a counter is reading a directory other things also write to"
+fi
+in_code 'stat -c%s "\$path"' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: the file counter does not read the file's actual size"
+# And it is checked against the size the registry stated, or a download that stopped short is
+# handed to the editor as though it were whole.
+in_code '\[ "\$got" -eq "\$bytes" \]' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: a part-downloaded extension would be installed as though complete"
 # The minutes matter as much as the megabytes: on a stalled connection the bytes stop moving,
 # and a line that still changes is what separates "slow" from "dead" -- the only question
 # somebody watching a download actually has. The phone showed 0.00 KB/s with no way to tell.
@@ -600,12 +612,12 @@ brackets() {   # brackets <label> <start pattern> <install pattern> <stop patter
     || fail "SizesAreReal: the $1 counter does not run for exactly the length of its install"
 }
 brackets "editor"    'watch_size "\$AG_DOWNLOAD_MB"' 'apt_install "Antigravity"' 'kill "\$watcher"'
-brackets "extension" 'watch_size "\$size"'           'editor --install-extension' 'kill "\$ext_watcher"'
+brackets "extension" 'watch_file "\$bytes"' '\-o "\$vsix"' 'kill "\$fetcher"'
 # Stopped on both paths, not just one. An install has a success branch and a failure branch, and
 # the bracketing check above is satisfied by either -- so deleting the success one left a counter
 # that keeps printing megabytes for a download that finished, which is worse than none because it
 # is confidently wrong.
-for counter in watcher ext_watcher; do
+for counter in watcher fetcher; do
   stops=$(grep -c "kill \"\$$counter\"" "$ASSETS/doors-workspace.sh" || true)
   [ "$stops" -ge 2 ] \
     || fail "SizesAreReal: the $counter counter is stopped on only one of the two paths out of its install"
@@ -643,6 +655,40 @@ if grep -q 'could not be installed from Open VSX. Check the connection' "$ASSETS
   fail "RootFlags: a refusal by the editor is still reported as a connection problem"
 fi
 echo "PASS RootFlags (one wrapper carries what the launcher demands, and nothing bypasses it)"
+
+# ---------------------------------------------------------------- the heaviest step, survived
+# From a real phone, after several hundred megabytes: a stack through
+# node:internal/modules/esm/worker ending in "Aborted", then "openai.chatgpt could not be
+# installed". A native abort, and on a 3.9 GB device running an Electron editor that is what
+# running out of memory looks like. Handing the editor an identifier makes it do the download
+# and the unpacking itself, inside that loader worker; so it is handed a file instead.
+in_code 'curl .*"\$url" -o "\$vsix"|\-o "\$vsix"' "$ASSETS/doors-workspace.sh" \
+  || fail "HeaviestStep: the extension is not fetched here, so the editor downloads it again"
+# -B1, because the command is split across two lines and the environment that shapes it sits on
+# the first: `NODE_OPTIONS=… \` then `editor --install-extension …`. Reading only the line the
+# flag is on misses half the command, which is how this check first failed on correct code.
+install_line=$(grep -B1 'install-extension' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
+[ -n "$install_line" ] || fail "HeaviestStep: nothing installs an extension at all"
+printf '%s' "$install_line" | grep -q '"\$vsix"' \
+  || fail "HeaviestStep: the editor is given an identifier to fetch rather than a file already here"
+if printf '%s' "$install_line" | grep -q -- '--install-extension "\$id"'; then
+  fail "HeaviestStep: the editor is asked to download the extension itself again"
+fi
+# A heap Node can report hitting, instead of a process that dies without a word.
+printf '%s' "$install_line" | grep -q 'NODE_OPTIONS' \
+  || fail "HeaviestStep: Node's heap is uncapped, so it aborts instead of saying it ran out"
+in_code 'max-old-space-size' "$ASSETS/doors-workspace.sh" \
+  || fail "HeaviestStep: no ceiling on the heap at the heaviest moment of the set-up"
+# What is left is said before it is spent.
+in_code 'MemAvailable' "$ASSETS/doors-workspace.sh" \
+  || fail "HeaviestStep: nothing says how much memory is left before the step that needs it"
+# And "Aborted" is explained rather than shown. It is Node's word, not anything an owner can act
+# on, and it was handed over as the whole answer.
+grep -q 'said.contains("aborted")' "$SRC/Trouble.java" \
+  || fail "HeaviestStep: Node's abort is shown raw, with nothing saying what it means"
+grep -q 'ran out of memory while installing' "$SRC/Trouble.java" \
+  || fail "HeaviestStep: the abort is matched but not explained in the owner's words"
+echo "PASS HeaviestStep (fetched here, installed from a file, capped, measured and explained)"
 
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2 || true)

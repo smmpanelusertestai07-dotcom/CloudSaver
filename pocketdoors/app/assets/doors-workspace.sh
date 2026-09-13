@@ -129,6 +129,34 @@ unset ANTHROPIC_BASE_URL
 # which is the one question somebody watching a download actually has.
 #
 #   watch_size <expected MB, or 0 if unknown> <path>…
+# One file, counted exactly.
+#
+# watch_size below reads a directory, which was right for apt -- it fills a cache nobody else
+# touches. It was wrong for the extension: pointed at the extensions folder and /tmp, it read
+# 865 MB where 231 was expected, because other things write there too. It then said "unpacking
+# now" every fifteen seconds for the rest of the install. A file this script created is the
+# only thing it can count without guessing.
+#
+#   watch_file <expected bytes> <path>
+watch_file() {
+  expected="$1"; path="$2"
+  started=$(date +%s)
+  last=-1
+  while :; do
+    sleep 15
+    have=$(stat -c%s "$path" 2>/dev/null || echo 0)
+    mb=$(( have / 1048576 ))
+    want=$(( expected / 1048576 ))
+    mins=$(( ($(date +%s) - started) / 60 ))
+    if [ "$have" = "$last" ] && [ "$mins" -gt 0 ]; then
+      say "Still ${mb} MB after ${mins} min. If this number has not moved for several minutes, the connection has stalled -- switching between mobile data and Wi-Fi restarts it."
+    else
+      say "Downloaded ${mb} MB of ${want} MB, ${mins} min in."
+    fi
+    last="$have"
+  done
+}
+
 watch_size() {
   expected="$1"; shift
   started=$(date +%s)
@@ -219,45 +247,12 @@ install_screen() {
 
 # ---------------------------------------------------------------------- the other two makers
 
-install_extension() {
-  id="$1"
-  if editor --list-extensions 2>&1 | grep -qi "^${id}$"; then
-    return 0
-  fi
-  size=$(extension_size "$id")
-  if [ -n "$size" ]; then
-    say "Installing ${id} — ${size} MB, downloaded once."
-  else
-    say "Installing ${id}… (a few hundred megabytes, downloaded once)"
-    size=0
-  fi
-  # The same counter as the editor's download, on the two places a .vsix passes through: the
-  # editor fetches it into the system temporary directory and unpacks it into its extensions
-  # folder. 231 MB with no number was the larger of the two silences, not the smaller.
-  mkdir -p "$AG_EXTENSIONS"
-  watch_size "$size" "$AG_EXTENSIONS" /tmp &
-  ext_watcher=$!
-  # --force, because without it a second run stops to ask about a version already present, and
-  # nothing here can answer a question asked on a pipe.
-  # Its own words on failure, not a guess. The last version told somebody to check their
-  # connection when the connection was fine and the editor had simply refused the command.
-  if ! editor --install-extension "$id" --force >>"$LOG" 2>&1; then
-    kill "$ext_watcher" 2>/dev/null || true
-    say "The editor refused to install it. Its own last words:"
-    tail -n 12 "$LOG" 2>/dev/null || true
-    fail "${id} could not be installed."
-  fi
-  kill "$ext_watcher" 2>/dev/null || true
-  editor --list-extensions 2>&1 | grep -qi "^${id}$" \
-    || fail "${id} reported success but is not in the editor's extension list."
-}
-
-# Open VSX publishes the size of every build. Asking costs one small request and turns a silent
-# hour into a number someone on mobile data can plan around.
-extension_size() {
+# What Open VSX will hand over for one extension, on this architecture: its address and its
+# size, from the registry's own API, in one request.
+extension_release() {   # extension_release <publisher.name> -> "<url> <bytes>"
   publisher=${1%%.*}
   name=${1#*.}
-  curl --fail --silent --location --proto '=https' --max-time 30 \
+  curl --fail --silent --location --proto '=https' --max-time 40 \
       "https://open-vsx.org/api/${publisher}/${name}/linux-arm64/latest" 2>/dev/null \
     | python3 -c 'import json,sys
 try:
@@ -266,9 +261,78 @@ except Exception:
     pass' 2>/dev/null \
     | while read -r href; do
         [ -n "$href" ] || continue
-        curl -sIL --max-time 30 "$href" 2>/dev/null \
-          | awk 'tolower($1) == "content-length:" { print int($2 / 1048576) }' | tail -n 1
+        bytes=$(curl -sIL --max-time 40 "$href" 2>/dev/null \
+                | awk 'tolower($1) == "content-length:" { print $2 }' | tr -d '\r' | tail -n 1)
+        printf '%s %s\n' "$href" "${bytes:-0}"
       done
+}
+
+# What the phone has left to work with, the way the kernel reports it.
+free_mb() {
+  awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null
+}
+
+install_extension() {
+  id="$1"
+  if editor --list-extensions 2>&1 | grep -qi "^${id}$"; then
+    return 0
+  fi
+
+  # Fetched here rather than by the editor.
+  #
+  # Handing the editor an identifier makes it do the download itself, inside a Node ESM loader
+  # worker, and on this phone that ended in "Aborted" after several hundred megabytes -- a
+  # native abort, which on a 3.9 GB device running Electron is what running out of memory looks
+  # like. Fetching it with curl instead takes that whole path out, and gives something the old
+  # counter never had: an exact byte count, because it is one file this script created rather
+  # than a `du` of a directory other things also write to.
+  release=$(extension_release "$id")
+  url=${release%% *}
+  bytes=${release##* }
+  [ -n "$url" ] && [ "${bytes:-0}" -gt 0 ] \
+    || fail "Open VSX did not offer ${id} for this phone's architecture."
+  total_mb=$(( bytes / 1048576 ))
+
+  vsix="$STATE/${id}.vsix"
+  say "Downloading ${id} — ${total_mb} MB, downloaded once."
+  watch_file "$bytes" "$vsix" &
+  fetcher=$!
+  # Resumable, and with an hour to do it in: what arrived is kept, so a dropped connection costs
+  # the time it was connected and nothing else.
+  if ! curl --fail --show-error --silent --location --proto '=https' --tlsv1.2 \
+      --retry 5 --retry-delay 2 --continue-at - --max-time 3600 "$url" -o "$vsix"; then
+    kill "$fetcher" 2>/dev/null || true
+    fail "${id} could not be downloaded. What arrived is kept, so trying again resumes."
+  fi
+  kill "$fetcher" 2>/dev/null || true
+
+  got=$(stat -c%s "$vsix" 2>/dev/null || echo 0)
+  [ "$got" -eq "$bytes" ] \
+    || fail "${id} arrived incomplete: ${got} bytes of ${bytes}. Trying again resumes."
+  say "Downloaded ${total_mb} MB. Installing it into the editor now."
+
+  # Unpacking a few hundred megabytes through Electron's Node is the memory peak of the whole
+  # set-up, and it is where this aborted. Say what there is before spending it, and cap the heap
+  # so Node gives up with a message instead of the process dying without one.
+  have_mb=$(free_mb)
+  if [ -n "${have_mb:-}" ] && [ "$have_mb" -lt 500 ]; then
+    say "Only ${have_mb} MB of memory is free. Close other apps before this step if you can -- installing an extension is the heaviest moment of the whole set-up."
+  fi
+
+  if ! NODE_OPTIONS="--max-old-space-size=384" \
+       editor --install-extension "$vsix" --force >>"$LOG" 2>&1; then
+    say "The editor could not install it. Its own last words:"
+    tail -n 12 "$LOG" 2>/dev/null || true
+    if tail -n 40 "$LOG" 2>/dev/null | grep -qi 'aborted\|out of memory\|heap'; then
+      say "That ending -- \"Aborted\" -- is what running out of memory looks like here. Close every other app and open this again; the download is kept, so only this step repeats."
+    fi
+    fail "${id} could not be installed."
+  fi
+  editor --list-extensions 2>&1 | grep -qi "^${id}$" \
+    || fail "${id} reported success but is not in the editor's extension list."
+  # Kept only until it is installed. A few hundred megabytes of archive is not worth the room
+  # once the thing it contained is unpacked.
+  rm -f "$vsix"
 }
 
 # ---------------------------------------------------------------------- settings
