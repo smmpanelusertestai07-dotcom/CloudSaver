@@ -48,6 +48,15 @@ final class Prefs {
     static final String PHONE_FILES = "phone_files";
     /** Timestamp of the last exit the owner has already been told about. */
     static final String EXIT_SEEN_AT = "exit_seen_at";
+    /**
+     * Whether notifications have ever been asked for.
+     *
+     * Needed because Android gives no way to tell "never asked" from "asked twice and refused
+     * for good": shouldShowRequestPermissionRationale is false in both. Without this the app
+     * treats a fresh install as a permanent refusal and sends the owner to a Settings page
+     * instead of showing them the prompt.
+     */
+    static final String ASKED_NOTIFICATIONS = "asked_notifications";
 
     private Prefs() {}
 

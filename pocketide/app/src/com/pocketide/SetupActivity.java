@@ -69,7 +69,12 @@ public final class SetupActivity extends Activity {
         if (startedAt <= 0 || !WorkspaceService.busy()) startedAt = System.currentTimeMillis();
         setContentView(build());
         listen();
-        if (!WorkspaceService.busy() && !Workspace.installed(this)) begin();
+        // Asked here rather than at first launch: this is the moment it means something, and
+        // the notification is what carries the progress and the Stop button for the next
+        // twenty to forty minutes.
+        if (!WorkspaceService.busy() && !Workspace.installed(this)) {
+            Permissions.askNotificationsBeforeLongWork(this, this::begin);
+        }
     }
 
     @Override protected void onResume() {
@@ -90,6 +95,13 @@ public final class SetupActivity extends Activity {
             events = null;
         }
         super.onDestroy();
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] granted) {
+        super.onRequestPermissionsResult(code, permissions, granted);
+        // Whether it was allowed or refused, set-up begins: it does not depend on the
+        // permission, only the owner's view of it does.
+        Permissions.onAnswered(code);
     }
 
     // ------------------------------------------------------------------ the screen

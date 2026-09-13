@@ -54,8 +54,20 @@ final class Permissions {
     // ------------------------------------------------------------------ asking
 
     /**
-     * Asks for notifications. The second time Android stops showing the prompt, so a request
-     * that cannot be shown goes to the notification page instead of doing nothing at all.
+     * Asks for notifications, in the one state where asking still works.
+     *
+     * Android gives an app three states and only two ways to read them. After two refusals it
+     * stops showing the prompt at all -- requestPermissions returns instantly, nothing appears,
+     * and the app looks broken -- and the flag that would tell you,
+     * shouldShowRequestPermissionRationale, is false in that state AND false before the first
+     * ask. Reading it alone therefore treats a fresh install as a permanent refusal, which is
+     * what this did: the first tap opened a Settings page instead of the prompt.
+     *
+     * So the app remembers whether it has ever asked. Never asked means ask. Asked, and the
+     * rationale flag is true, means the owner said no once and Android will still show it, so
+     * ask again with the reason first. Asked, and the flag is false, means Android will never
+     * show it again and the only honest move is to open the page where it can be changed by
+     * hand.
      */
     static void askNotifications(Activity activity, boolean fromRow) {
         if (Build.VERSION.SDK_INT < 33) return;
@@ -63,13 +75,66 @@ final class Permissions {
             if (fromRow) openNotificationSettings(activity);
             return;
         }
-        if (fromRow && !activity.shouldShowRequestPermissionRationale(
-                Manifest.permission.POST_NOTIFICATIONS)) {
+        boolean askedBefore = Prefs.of(activity).getBoolean(Prefs.ASKED_NOTIFICATIONS, false);
+        boolean willShow = !askedBefore || activity.shouldShowRequestPermissionRationale(
+                Manifest.permission.POST_NOTIFICATIONS);
+        if (!willShow) {
+            // Android will not show the prompt again, whatever this app does with it.
             openNotificationSettings(activity);
             return;
         }
+        Prefs.of(activity).edit().putBoolean(Prefs.ASKED_NOTIFICATIONS, true).apply();
         activity.requestPermissions(
                 new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+    }
+
+    /**
+     * Explains, then asks, at the moment the permission is about to matter.
+     *
+     * Set-up runs for twenty to forty minutes in a foreground service, and the notification IS
+     * the progress and the Stop button. Starting that without ever offering the permission is
+     * how an owner ends up with a long job running and no way to see it or end it. Asking here,
+     * with the reason, is Android's own guidance and it is also simply the moment the answer
+     * means something.
+     *
+     * Refusing is not a dead end: set-up runs either way, the Home screen carries a row that
+     * explains what is missing, and Settings can turn it on later.
+     */
+    static void askNotificationsBeforeLongWork(Activity activity, Runnable then) {
+        if (Build.VERSION.SDK_INT < 33 || notificationsAllowed(activity)) {
+            then.run();
+            return;
+        }
+        if (Prefs.of(activity).getBoolean(Prefs.ASKED_NOTIFICATIONS, false)) {
+            // Already answered once. Do not ask again on the way into a job; the row on Home
+            // is where it can be reconsidered.
+            then.run();
+            return;
+        }
+        Dialogs.confirm(activity, "Show progress while this runs?",
+                "Setting up takes twenty to forty minutes. A notification is how you see how "
+                        + "far it has got, and how you stop it without hunting through the "
+                        + "phone's settings.\n\nIt makes no sound, and it is the only "
+                        + "notification this app ever posts.",
+                "Allow", () -> {
+                    pendingAfterNotifications = then;
+                    askNotifications(activity, false);
+                });
+        // Refusing the dialog leaves the work unstarted, which is the honest reading of Cancel
+        // on a question asked before anything has begun.
+    }
+
+    /** What to run once the notification answer arrives, whichever way it went. */
+    private static Runnable pendingAfterNotifications;
+
+    /** Activities hand their onRequestPermissionsResult here. */
+    static void onAnswered(int request) {
+        if (request != REQUEST_NOTIFICATIONS) return;
+        Runnable next = pendingAfterNotifications;
+        pendingAfterNotifications = null;
+        // Runs whether it was allowed or refused: the work does not depend on the permission,
+        // only the owner's view of it does.
+        if (next != null) next.run();
     }
 
     static void openNotificationSettings(Activity activity) {
