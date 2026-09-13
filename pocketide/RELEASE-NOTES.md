@@ -1,5 +1,62 @@
 # Release notes
 
+## 1.5.5
+
+Everything here came from one screenshot and one list of complaints from a phone. All of it was
+real, and the audit found that several of the symptoms shared a cause.
+
+### The editor could never load
+
+`ERR_CLEARTEXT_NOT_PERMITTED`, on the one screen the app exists for. The app refused cleartext
+everywhere and the editor is `http://127.0.0.1:8391`. The refusal is right for the internet and
+stays; loopback is now exempt, and only loopback.
+
+### The system bars were sitting on the app
+
+Targeting SDK 35 means Android 15 draws the app edge to edge whether it asks or not, and
+`setStatusBarColor` is a no-op. There was no inset handling anywhere, so the clock was painted
+over the app's title and the gesture bar over the row of destinations — the bottom of every tab
+could not be tapped. Both bars now take the room the system bars need, and a hairline under the
+top bar puts back the boundary that was missing in dark.
+
+### Every dialog had no surface
+
+`Dialogs.show()` built the card and then destroyed it two lines later. The delete dialog showed
+nothing readable because nothing was there.
+
+### Colours nobody could read
+
+One green, one amber and one red used on both a cream card and a near-black one. The failure red
+measured 2.99:1 on dark — and it was the Remove everything button. Two of each now, every one at
+least 4.5:1 on its own ground, recomputed on every build.
+
+### The editor's toolbar was one run of letters
+
+`CommandsKeysTrackpadHome`, jammed left, labels too small. The buttons had no layout parameters
+at all. A quarter of the width each, 24 dp icons, 12 sp labels.
+
+### Opening the app showed two frames at once
+
+The window's background follows the phone's night setting; everything the app draws follows the
+app's own. Set to Dark on a light phone, the window was white for a frame. The splash theme was
+also defined and never applied. Both fixed, and the app's name — which the Android 12+ splash
+has no slot for — is now the first thing the app draws for itself.
+
+### Words
+
+One name for one thing: the Linux is called Linux everywhere, not five different things. The FAQ
+went from 32 entries to 19, losing everything the screen it sits on already answered, and gained
+the guidance that was missing: how to tell a verified publisher from an unverified one, the four
+things to check before installing anything, and that a well-established community extension is a
+reasonable choice where no official one exists. "Elapsed" is "so far".
+
+### Asking for permission
+
+Android's rationale flag is false before the first ask and false after a permanent refusal, so
+reading it alone treated a fresh install as a refusal. And nothing was asked at the moment it
+mattered: set-up began a forty-minute job without offering the notification that carries its
+progress and its Stop button.
+
 ## 1.5.0
 
 The app got a shape. 1.0.0 was a stack of separate screens reached by tapping rows and backing
@@ -93,7 +150,7 @@ coding-agent extensions installed from Open VSX. It runs entirely on the phone.
 
 ### Honesty
 
-- 40 gates, every one of them bidirectional: each was verified to fail when the thing it guards
+- 43 gates, every one of them bidirectional: each was verified to fail when the thing it guards
   is broken, not merely to pass when it is not.
 - The Help screen carries the mission, the FAQ, the terms, the privacy position and the full
   permission list, and the gates check that list against the manifest.
