@@ -23,17 +23,28 @@ Android safe-zone rule easy to satisfy honestly rather than by eye.
 
 ## The colour
 
-One deep teal, `#0E6E78` to `#073F4C`.
+One deep violet, `#7A3CD6` to `#33146F`.
 
-It was chosen against the four agents this app hosts, because the mark sits beside their logos
-on the same screens: Claude is terracotta, Codex and Cursor are monochrome, Antigravity is
-blue-violet. A blue mark -- which is what this app shipped with -- read as a sibling of
-Antigravity's. Teal belongs to none of them.
+It was settled by rendering the mark beside the four agents this app hosts, at launcher size, and
+looking at the row rather than reasoning about it from memory. That test corrected two beliefs.
+Antigravity's logo is a multicolour rainbow arch, not the blue-violet it had been assumed to be,
+so violet collides with nothing. And Codex and Cursor are *both* dark tiles -- which makes black,
+the obvious safe choice for a developer tool, the single colour that would disappear between them
+on a home screen. Claude is terracotta. Violet is the slot nothing else occupies.
 
-It was also chosen against the three colours that mean something inside the app. Green says a
-line was added, amber says something needs you, red says something was removed or failed. A
-brand colour anywhere near those would make a status hard to trust, so the brand sits a long way
-from all three.
+The hue sits at 264 degrees, deliberately off the blue-violet axis at 250 where a mark reads as
+somebody's blue. It is also far from the three colours that mean something inside the app: green
+says a line was added, amber says something needs you, red says something was removed or failed.
+A brand colour near any of those would make a status hard to trust.
+
+## The tile is three layers, not a gradient
+
+A flat fill reads as a swatch. The tile is the ramp, then a light from the top-left at 18%, then
+a shadow into the bottom-right at 16%, and a 12% rim so it still has an edge on a dark wallpaper.
+That is what makes it read as an object with light falling on it, and it survives all the way
+down to 48 px where a gradient alone would not. The stroke is 38 and the spark's control offset
+19 for the same reason: at 48 px a 34 stroke went spindly and a 15 offset collapsed the spark
+into a dot.
 
 ## The three families, and why the interface has no colour of its own
 
@@ -62,9 +73,11 @@ carry meaning, and it is why the test fails if a brand colour turns up in a them
 ## The Linux desktop
 
 The Ubuntu desktop inside the container is part of the same product, so its chrome carries the
-same hue. The test enforces that as a rule rather than a list: no colour in the desktop scripts
-may sit in the azure-to-violet band. The single exception is the terminal's ANSI palette, which
-is a convention every program on the system depends on and is not ours to re-tint.
+same hue. The test states that as a positive requirement rather than a blacklist -- every colour
+must sit within 26 degrees of the brand hue -- because a blacklist goes stale the day the brand
+changes and this does not. Two exceptions are named rather than inferred: reds and ambers, which
+are status there exactly as they are in the app, and the terminal's ANSI palette, which every
+program on the system expects to be the sixteen colours it has always been.
 
 References: [Android adaptive icons](https://developer.android.com/develop/ui/views/launch/icon_design_adaptive),
 [splash screens](https://developer.android.com/develop/ui/views/launch/splash-screen),

@@ -252,7 +252,9 @@ echo "PASS Downloads (resumable, per-URL, no truncating fallback)"
 # rather than being written here, so rebranding the desktop does not silently kill this gate.
 desk="$PROJECT_DIR/app/assets/pocketagent-desktop.sh"
 ground=$(python3 -c "import json;print(json.load(open('$PROJECT_DIR/branding/tokens.json'))['desktop']['ground'])")
-first_root=$(grep -n "xsetroot -solid '$ground'" "$desk" | head -n 1 | cut -d: -f1 || true)
+# Case-insensitive: hex case carries no meaning, and pinning it would fail this gate for a
+# reason that has nothing to do with what it is checking.
+first_root=$(grep -in "xsetroot -solid '$ground'" "$desk" | head -n 1 | cut -d: -f1 || true)
 draw_phase=$(grep -n 'desktop_phase "Drawing the desktop"' "$desk" | head -n 1 | cut -d: -f1 || true)
 [ -n "$first_root" ] && [ -n "$draw_phase" ] && [ "$first_root" -lt "$draw_phase" ] \
   || { echo "FAIL DesktopStart: the root must be painted $ground before the desktop is drawn, not after"; exit 1; }

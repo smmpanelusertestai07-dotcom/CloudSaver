@@ -164,9 +164,19 @@ for path in searched:
         check(dead not in found,
               f"{os.path.relpath(path, ROOT)} still carries {dead} -- {why}")
 
-# The desktop's chrome is the brand's hue now, with the terminal's ANSI palette left alone
-# because every program on the system expects those sixteen colours to be the ones they are.
-low, high = DESKTOP["forbidden_hue_band"]
+# The desktop's chrome must BE the brand's hue, rather than merely not be some retired one: a
+# blacklist goes stale the day the brand changes, a positive rule does not. Near-neutral greys
+# are exempt because they have no hue to be wrong about, and so is the terminal's ANSI palette,
+# which every program on the system expects to be the sixteen colours it has always been.
+# The four colours the desktop is actually built from have to be the ones named here, not
+# whatever a re-tint happened to land on: without this the scripts drift a shade at a time.
+desktop_scripts = read("app", "assets", "pocketagent-desktop.sh") + read("app", "assets", "pocketagent-menu.sh")
+for name in ("ground", "ground_deep", "on_ground", "on_ground_muted"):
+    check(DESKTOP[name].upper() in colours(desktop_scripts),
+          f"the desktop scripts do not use {name} = {DESKTOP[name]} from branding/tokens.json")
+
+brand_hue = DESKTOP["hue_degrees"]
+tolerance = DESKTOP["hue_tolerance"]
 for script in ("pocketagent-desktop.sh", "pocketagent-menu.sh"):
     for number, line in enumerate(read("app", "assets", script).split("\n"), 1):
         if DESKTOP["exempt_lines_containing"] in line:
@@ -174,8 +184,17 @@ for script in ("pocketagent-desktop.sh", "pocketagent-menu.sh"):
         for value in re.findall(r"#[0-9a-fA-F]{6}", line):
             r, g, b = (int(value[i:i + 2], 16) / 255 for i in (1, 3, 5))
             hue, _, saturation = colorsys.rgb_to_hls(r, g, b)
-            check(not (low / 360 <= hue <= high / 360 and saturation > DESKTOP["saturation_floor"]),
-                  f"{script}:{number} still paints blue ({value}); the desktop is the brand's hue")
+            if saturation <= DESKTOP["saturation_floor"]:
+                continue
+            degrees = hue * 360
+            distance = min(abs(degrees - brand_hue), 360 - abs(degrees - brand_hue))
+            # Reds and ambers survive by being named, not by being far away: a distance rule
+            # would let a stray teal through on the same argument.
+            status = any((low <= degrees or degrees <= high) if low > high else (low <= degrees <= high)
+                         for low, high in DESKTOP["status_hue_bands"])
+            check(status or distance <= tolerance,
+                  f"{script}:{number} paints {value} at {degrees:.0f} degrees, "
+                  f"{distance:.0f} off the brand's {brand_hue:.0f}")
 
 
 # ---------------------------------------------------------------- the icon, inside the app

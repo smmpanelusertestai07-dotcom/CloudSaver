@@ -238,7 +238,7 @@ fi
 # display answers, so the owner watched a black rectangle until the file manager painted the
 # wallpaper -- and read it as broken. The same call is made again later, when it is safe to
 # set the cursor too; this one is only about the colour.
-DISPLAY=:1 xsetroot -solid '#062930' >/dev/null 2>&1 || true
+DISPLAY=:1 xsetroot -solid '#1a0e33' >/dev/null 2>&1 || true
 
 # How big a Chromium app may draw itself, worked out once here from the geometry and dpi this
 # desktop was started with, and read by pocketagent-open at every launch. A Chromium app scales
@@ -304,7 +304,7 @@ printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Do
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
-printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #062930\n*foreground: #dfedef\n' \
+printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #1a0e33\n*foreground: #e7e0f4\n' \
   "$DPI" > "$HOME/.Xresources"
 
 # The theme the phone is set to. PocketAgent passes its own Light/Dark/System choice in, already
@@ -338,11 +338,11 @@ write_gtk_defaults() {
     # is a warning on stderr and nothing else, so this can never stop an app from starting.
     printf '%s\n' \
       '/* pocketagent-default */' \
-      '@define-color theme_bg_color #08363f;' \
-      '@define-color theme_base_color #06363b;' \
-      '@define-color theme_fg_color #eaf5f6;' \
-      '@define-color theme_selected_bg_color #128f9c;' \
-      '@define-color borders #0e4a56;' \
+      '@define-color theme_bg_color #1e083f;' \
+      '@define-color theme_base_color #1b063b;' \
+      '@define-color theme_fg_color #efeaf6;' \
+      '@define-color theme_selected_bg_color #49129c;' \
+      '@define-color borders #2b0e56;' \
       'button { border-radius: 10px; min-height: 34px; padding: 4px 12px; }' \
       'entry { border-radius: 10px; min-height: 36px; }' \
       'entry:focus, button:focus { outline-offset: -2px; }' \
@@ -422,7 +422,7 @@ mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.local/share/Trash/info" 2>/dev
 # show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
 # XDG Documents folder, which PocketAgent points at Projects, wearing the theme's grey folder in
 # a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketagent.jpg\nwallpaper_common=1\ndesktop_bg=#062930\ndesktop_fg=#dfedef\ndesktop_shadow=#031719\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketagent.jpg\nwallpaper_common=1\ndesktop_bg=#1a0e33\ndesktop_fg=#e7e0f4\ndesktop_shadow=#0d0720\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
   "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
@@ -436,7 +436,7 @@ printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removabl
 # Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
 # Toasts in the desktop's own colours. timeout belongs to the urgency sections -- dunst does not
 # read it from [global] -- and the panel is at the bottom, so these sit at the top right.
-printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#11555f"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#08363f"\nforeground = "#8fb0b6"\nframe_color = "#0e4a56"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#08363f"\nforeground = "#eaf5f6"\nframe_color = "#11555f"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
+printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#30115f"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#1e083f"\nforeground = "#a99acb"\nframe_color = "#2b0e56"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#1e083f"\nforeground = "#efeaf6"\nframe_color = "#30115f"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
   > "$HOME/.config/dunst/dunstrc"
 
 # Firefox: no sandbox, no separate content processes, software rendering.
@@ -656,7 +656,7 @@ xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
 # The root window is grey until the file manager paints it, and grey again if the file manager is
 # ever killed for memory. This is the same colour as the wallpaper's edge and the desktop's own
 # background, so the seam is invisible either way.
-xsetroot -solid '#062930' >/dev/null 2>&1 || true
+xsetroot -solid '#1a0e33' >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
 # The root preparation mode has already checked the system bus. Do not attempt another
 # daemon here as coder: a second startup can unlink the listener used by running apps.
