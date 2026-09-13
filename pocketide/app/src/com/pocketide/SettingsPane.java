@@ -197,29 +197,35 @@ final class SettingsPane implements Pane {
         list.addView(themeRow);
         list.addView(Ui.divider(host, dark, true));
 
-        String layout = Prefs.of(host).getString(Prefs.EDITOR_LAYOUT, "phone");
+        String layout = Prefs.of(host).getString(Prefs.EDITOR_LAYOUT, "auto");
+        String[] layoutLabels = {"Automatic · recommended", "Phone", "Desktop"};
+        String[] layoutValues = {"auto", "phone", "desktop"};
         layoutRow = Ui.row(host, dark, R.drawable.ic_phone, "Editor layout",
-                "phone".equals(layout)
-                        ? "Phone · agents in a bottom bar, chrome hidden"
-                        : "Desktop · the full Visual Studio Code layout",
-                v -> Dialogs.choose(host, "Editor layout",
-                        new String[]{"Phone · recommended", "Desktop · everything shown"},
-                        new int[]{R.drawable.ic_phone, R.drawable.ic_desktop},
-                        "phone".equals(layout) ? 0 : 1, index -> {
+                "auto".equals(layout)
+                        ? "Automatic · " + (Screen.wideEnoughForDesktop(host)
+                                ? "desktop, this screen is wide enough"
+                                : "phone, agents in a bottom bar")
+                        : "phone".equals(layout)
+                            ? "Phone · agents in a bottom bar, chrome hidden"
+                            : "Desktop · the full Visual Studio Code layout",
+                v -> Dialogs.choose(host, "Editor layout", layoutLabels,
+                        new int[]{R.drawable.ic_auto_mode, R.drawable.ic_phone,
+                                R.drawable.ic_desktop},
+                        Math.max(0, indexOf(layoutValues, layout)), index -> {
                             Prefs.of(host).edit()
-                                    .putString(Prefs.EDITOR_LAYOUT, index == 0 ? "phone" : "desktop")
-                                    .apply();
+                                    .putString(Prefs.EDITOR_LAYOUT, layoutValues[index]).apply();
                             MainActivity.rebuild(host);
                             restartNeeded();
                         }));
         list.addView(layoutRow);
         list.addView(Ui.divider(host, dark, true));
 
-        int zoom = Prefs.of(host).getInt(Prefs.EDITOR_ZOOM, 15);
-        String[] zoomLabels = {"Smaller", "Normal", "Larger · recommended", "Largest"};
-        int[] zoomValues = {10, 12, 15, 18};
+        int zoom = Prefs.of(host).getInt(Prefs.EDITOR_ZOOM, 0);
+        String[] zoomLabels = {"Automatic · recommended", "Smaller", "Normal", "Larger", "Largest"};
+        int[] zoomValues = {0, 10, 12, 15, 18};
         zoomRow = Ui.row(host, dark, R.drawable.ic_fit, "Editor size",
-                zoomLabels[Math.max(0, indexOfInt(zoomValues, zoom))],
+                zoom == 0 ? "Automatic · " + Screen.describeAutomatic(host)
+                        : zoomLabels[Math.max(1, indexOfInt(zoomValues, zoom))],
                 v -> Dialogs.choose(host, "Editor size", zoomLabels, null,
                         Math.max(0, indexOfInt(zoomValues, zoom)), index -> {
                             Prefs.of(host).edit()
@@ -231,8 +237,11 @@ final class SettingsPane implements Pane {
 
         group.addView(list, Ui.wide(host, 8));
         group.addView(note(dark,
-                "Phone layout uses Visual Studio Code's own settings to move the agents into a "
-                        + "bottom bar and hide the desktop chrome. Nothing is removed — Desktop "
+                "Left alone, the editor sizes itself to this screen: it works out the zoom from "
+                        + "the phone's own width and your text-size setting, and chooses the "
+                        + "desktop layout on a screen wide enough for it. Phone layout uses "
+                        + "Visual Studio Code's own settings to move the agents into a bottom "
+                        + "bar and hide the desktop chrome — nothing is removed, and Desktop "
                         + "brings all of it back."), Ui.wide(host, 8));
         return group;
     }

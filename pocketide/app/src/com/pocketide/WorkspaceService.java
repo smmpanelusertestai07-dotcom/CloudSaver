@@ -173,8 +173,10 @@ public final class WorkspaceService extends Service {
     private void runEditor() {
         try {
             Workspace.writeScripts(this);
-            String layout = Prefs.of(this).getString(Prefs.EDITOR_LAYOUT, "phone");
-            int zoomTenths = Prefs.of(this).getInt(Prefs.EDITOR_ZOOM, 15);
+            // Screen decides both when the owner has not: the zoom from this phone's own width
+            // and font scale, the layout from whether the screen is wide enough for it.
+            String layout = Screen.layout(this);
+            int zoomTenths = Screen.zoomTenths(this);
             String command = "PIDE_LAYOUT=" + layout
                     + " PIDE_ZOOM=" + (zoomTenths / 10) + "." + (zoomTenths % 10)
                     + " bash /opt/pocketide/pocketide-editor.sh start";
