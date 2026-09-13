@@ -163,6 +163,52 @@ final class Texts {
                      + "tools, and anything in Go, Rust, Java, C or C++ — write, compile and run. "
                      + "Git works fully."},
 
+            {"Agents",
+             "Does the work happen on my phone, or in the company's cloud?",
+             "On your phone. All three run their agent loop, edit files and run commands on "
+                     + "the machine the editor is on, which here is the Linux inside this app. "
+                     + "Each company also has a cloud mode — Claude Code on the web, Codex "
+                     + "cloud, Antigravity Remote Control — and none of them is used here; they "
+                     + "are separate things you would have to go and start.\n\n"
+                     + "One thing this does NOT mean, and it matters: the model itself still "
+                     + "runs in the company's data centre. Your prompts and the files the agent "
+                     + "reads are sent there to be answered. Local execution is not offline and "
+                     + "not on-device inference, and any app telling you otherwise is wrong. "
+                     + "What stays here is your project: the files, the git history, the build "
+                     + "output, the credentials in your terminal."},
+            {"Agents",
+             "Can it open what it built and look at it?",
+             "Yes, once you add the browser in Settings. An agent can start your site, open it, "
+                     + "screenshot it, read the page back and click through it — and record a "
+                     + "video of the run. There is no desktop involved; the browser runs "
+                     + "headless, which is why this works on a phone at all."},
+            {"Limits",
+             "Can it build an Android app?",
+             "Java and Kotlin projects, yes — into a real, signed, installable APK. Apps with C "
+                     + "or C++ in them, no: Google publishes no arm64 Android NDK, so the "
+                     + "compiler simply does not exist for this machine. That is Google's "
+                     + "decision, not a limit of your phone."},
+            {"Limits",
+             "Can it run the Android emulator to test an app?",
+             "No, and no update will change it. Google ships no emulator built for arm64 Linux, "
+                     + "and even one built by hand needs /dev/kvm, which Android's own security "
+                     + "policy denies to every app on a phone that is not rooted.\n\n"
+                     + "What you get instead is arguably better: your phone IS the test device. "
+                     + "The agent builds the APK and hands it to Android's installer, and the "
+                     + "app runs on real hardware rather than a simulation of it. Unit tests, "
+                     + "including Robolectric, run inside the workspace natively."},
+            {"Limits",
+             "Can it build an iPhone app?",
+             "No. Apple requires its own toolchain on macOS to build and sign them, and that is "
+                     + "not something any Android app can provide."},
+            {"About",
+             "Why is the editor not a tab along the bottom?",
+             "Because Material's own rule says a navigation bar belongs to top-level pages and "
+                     + "a toolbar to the pages you reach from them, and the two must never share "
+                     + "a screen. The editor is full screen with its own toolbar, which is what "
+                     + "gives it every pixel — a bar across the bottom would take 64 of them "
+                     + "from the terminal. It is still one tap away: the button on Home, or the "
+                     + "action in the top bar whenever the workspace is running."},
             {"Safety",
              "Are extensions safe?",
              "Extensions are not sandboxed. Visual Studio Code's own documentation says the "

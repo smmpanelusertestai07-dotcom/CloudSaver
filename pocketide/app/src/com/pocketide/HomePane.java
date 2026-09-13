@@ -273,6 +273,20 @@ final class HomePane implements Pane {
                     blocked, v -> MainActivity.open(host, "settings")));
             any = true;
         }
+        Exits.Exit exit = Exits.last(host);
+        if (exit != null && exit.when > Prefs.of(host).getLong(Prefs.EXIT_SEEN_AT, 0)) {
+            if (any) list.addView(Ui.divider(host, dark, true));
+            final Exits.Exit shown = exit;
+            list.addView(Ui.row(host, dark, R.drawable.ic_memory, shown.headline,
+                    "The workspace stopped while you were away. Tap to see why.",
+                    v -> {
+                        Prefs.of(host).edit().putLong(Prefs.EXIT_SEEN_AT, shown.when).apply();
+                        Dialogs.details(host, shown.headline, shown.explanation, shown.raw,
+                                "Copy the record");
+                        MainActivity.rebuild(host);
+                    }));
+            any = true;
+        }
         if (Crash.exists(host)) {
             if (any) list.addView(Ui.divider(host, dark, true));
             list.addView(Ui.row(host, dark, R.drawable.ic_info, "The app stopped unexpectedly",

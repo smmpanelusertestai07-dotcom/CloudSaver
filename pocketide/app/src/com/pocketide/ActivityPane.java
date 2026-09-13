@@ -203,9 +203,15 @@ final class ActivityPane implements Pane {
         if (summary != null) {
             if (running || busy) {
                 DeviceProbe probe = DeviceProbe.read(host);
+                // The footprint, not the resident size. Android 17's per-app memory limiter
+                // measures RssAnon + VmSwap, so that is the number worth watching -- it is what
+                // decides whether the workspace is about to be stopped.
+                long footprint = Exits.footprintBytes();
                 summary.setText(processes.size() + (processes.size() == 1 ? " process" : " processes")
-                        + " · " + DeviceProbe.formatBytes(resident) + " of "
-                        + DeviceProbe.formatBytes(probe.totalRam) + " memory"
+                        + " · " + DeviceProbe.formatBytes(resident) + " in use"
+                        + (footprint > 0
+                                ? " · " + DeviceProbe.formatBytes(footprint) + " counted against "
+                                        + "Android's limit" : "")
                         + (probe.batteryPercent >= 0 ? " · battery " + probe.batteryPercent + "%" : ""));
             } else {
                 summary.setText("The workspace is not running. Your files are where you left "
