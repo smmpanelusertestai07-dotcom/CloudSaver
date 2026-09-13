@@ -176,7 +176,18 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
      */
     private void connect(String where) {
         if (connector != null) return;
-        final String socketPath = where.startsWith("unix:") ? where.substring(5) : null;
+        // Two namespaces, and the path has to cross between them.
+        //
+        // The script runs inside proot and says what it sees: /var/lib/doors/display.sock. This
+        // app runs outside it, where that path is nothing at all -- the file is really at
+        // <files>/ubuntu/var/lib/doors/display.sock, because that is where the workspace's root
+        // actually sits on the phone. Handing the container's own path to a socket call outside
+        // the container is what produced "The desktop's private display socket is not ready"
+        // while the socket was there and listening the whole time.
+        final String socketPath = where.startsWith("unix:")
+                ? new java.io.File(Ubuntu.root(this),
+                        where.substring(5).replaceFirst("^/+", "")).getAbsolutePath()
+                : null;
         final String host;
         final int port;
         if (socketPath == null && where.startsWith("tcp:")) {

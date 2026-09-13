@@ -712,6 +712,23 @@ if grep -qE '^\s*sleep 4$' "$ASSETS/doors-workspace.sh"; then
 fi
 echo "PASS HoldsTheEditor (the session holds the editor, and waits long enough for it to start)"
 
+# ---------------------------------------------------------------- the path crosses the boundary
+# The script runs inside proot and reports what it sees: /var/lib/doors/display.sock. This app
+# runs outside proot, where that path is nothing -- the file is at
+# <files>/ubuntu/var/lib/doors/display.sock. Handing the container's own path to a socket call
+# outside the container gave "The desktop's private display socket is not ready" while the
+# socket was there and listening the whole time.
+in_code 'new java.io.File\(Ubuntu.root\(this\)' "$SRC/DoorActivity.java" \
+  || fail "PathCrosses: the display socket is opened at the path the container sees, not the phone's"
+# The leading slash has to go, or File(root, "/var/...") resolves to /var/... and lands outside
+# the workspace again -- the same bug wearing the fix's clothes.
+in_code 'replaceFirst\("\^/\+", ""\)' "$SRC/DoorActivity.java" \
+  || fail "PathCrosses: an absolute container path would resolve outside the workspace anyway"
+# And the script must still be the one saying which kind of display it made.
+grep -q 'say "READY unix:' "$ASSETS/doors-workspace.sh" \
+  || fail "PathCrosses: the app is never told the display is on a socket"
+echo "PASS PathCrosses (the container's path is translated to the phone's before it is opened)"
+
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2 || true)
 build_code=$(grep -oE 'VERSION_CODE="[0-9]+"' build.sh | cut -d'"' -f2 || true)

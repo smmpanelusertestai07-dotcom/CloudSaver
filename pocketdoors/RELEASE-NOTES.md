@@ -1,17 +1,50 @@
-# PocketAgent 16.4.0 — the session was holding a launcher, not the editor
+# PocketAgent 16.4.5 — the path was right, in the wrong world
 
-Version **16.4.0**, code **640**, application ID `com.pocketagent.doors`.
+Version **16.4.5**, code **645**, application ID `com.pocketagent.doors`.
 
-The extension installed. X started. openbox started. Then:
+Everything came up:
 
 ```
-Warning: 'disable-setuid-sandbox' is not in the list of known options, but still passed…
-Warning: 'zygote' is not in the list of known options, but still passed…
-ERROR: The editor did not stay running.
+Starting Antigravity…
+The editor is starting… 5s. The first start is the slow one.
+The editor is starting… 10s. …
+The editor is starting… 15s. …
+READY unix:/var/lib/doors/display.sock
 ```
 
-Those warnings are noise — Electron says them about flags it forwards to Chromium anyway. There
-was no crash in the log, because there was no crash.
+And then: **"The desktop's private display socket is not ready."** The socket was there, and
+listening, the whole time.
+
+## 16.4.5: two namespaces, one path
+
+The script runs **inside** PRoot and reports what it sees: `/var/lib/doors/display.sock`.
+
+The app runs **outside** PRoot, where that path is nothing at all. The workspace's root sits at
+`<files>/ubuntu`, so the file is really at:
+
+```
+<files>/ubuntu/var/lib/doors/display.sock
+```
+
+Handing the container's own path to a socket call outside the container is the whole bug. It is
+translated now, against the same rootfs the workspace was unpacked into.
+
+The leading slash matters and is stripped: `File(root, "/var/…")` resolves to `/var/…` and lands
+outside the workspace again — the same bug wearing the fix's clothes. `PathCrosses` checks both.
+
+## 16.4.5: where this design stands
+
+Everything before the picture is now proven on a real phone, in order: Ubuntu, Node, Google's
+signed repository, Antigravity itself, the display server, the window manager, OpenAI's
+extension from Open VSX, and the editor staying up. Each of those was a separate failure, found
+on the phone and fixed at its cause.
+
+What has never been seen is the last step — the editor drawn on the screen. That is what this
+build is for.
+
+---
+
+# Earlier releases
 
 ## 16.4.0: what `bin/antigravity` actually is
 
