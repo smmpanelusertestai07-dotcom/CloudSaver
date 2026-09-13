@@ -47,7 +47,18 @@ AG_DOWNLOAD_MB=143
 AG_INSTALLED_MB=702
 AG_KEYRING=/etc/apt/keyrings/antigravity.gpg
 AG_LIST=/etc/apt/sources.list.d/antigravity.list
+# Two programs, and the difference is the whole of one bug.
+#
+# bin/antigravity is the command line. Its last line is
+#   ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$CLI" "$@"
+# -- it runs cli.js under Node, which spawns the editor detached and exits, which is exactly why
+# `code .` gives you your prompt back. Launching through it and then watching that PID reported
+# "the editor did not stay running" four seconds later, every time, while the editor was in fact
+# starting perfectly as a different process.
+#
+# So: the command line for command-line work, and the editor itself for the editor.
 AG_BIN=/usr/share/antigravity/bin/antigravity
+AG_ELECTRON=/usr/share/antigravity/antigravity
 # Where the editor keeps its settings and extensions. Not a preference: the launcher Google ship
 # is Microsoft's, and it refuses to run at all as root unless --user-data-dir is on the command
 # line. Everything in this workspace is root, so every single call needs it.
@@ -226,7 +237,8 @@ install_ide() {
          tail -n 20 "$LOG" 2>/dev/null || true; fail "Antigravity could not be installed."; }
   kill "$watcher" 2>/dev/null || true
 
-  [ -x "$AG_BIN" ] || fail "Antigravity installed but its program is not where the package puts it."
+  [ -x "$AG_BIN" ] || fail "Antigravity installed but its command line is not where the package puts it."
+  [ -x "$AG_ELECTRON" ] || fail "Antigravity installed but the editor itself is not where the package puts it."
   say "Antigravity installed."
 }
 
@@ -429,22 +441,34 @@ start_workspace() {
   # the one that fails under proot; --in-process-gpu and --disable-gpu because there is no
   # graphics chip and the separate process only adds one more thing to crash; --disable-3d-apis
   # because WebGL here is software and a fault in it is a fault in the whole editor.
-  editor \
+  # The editor itself, not the command line that launches it and leaves. This process is the
+  # one the session is held open for.
+  "$AG_ELECTRON" \
+    --no-sandbox --user-data-dir="$AG_DATA" --extensions-dir="$AG_EXTENSIONS" \
     --disable-setuid-sandbox --disable-gpu-sandbox \
     --no-zygote --in-process-gpu --disable-dev-shm-usage \
     --disable-gpu --disable-gpu-compositing --disable-3d-apis \
     "$WORK" >>"$LOG" 2>&1 &
   EDITOR_PID=$!
 
-  # Proof it is still there, not just that it was started. An Electron application that dies on
-  # its first frame exits within a second or two, and announcing READY before that check is how
-  # a crash becomes "connected to a screen with nothing on it".
-  sleep 4
-  kill -0 "$EDITOR_PID" 2>/dev/null || {
-    say "Antigravity stopped as it started. Its own words:"
-    tail -n 20 "$LOG" 2>/dev/null || true
-    fail "The editor did not stay running."
-  }
+  # Proof it is still there, not just that it was started, and long enough to mean it.
+  #
+  # Four seconds was never enough: an Electron editor on a phone under proot takes the better
+  # part of a minute to draw its first frame, and the old check could only ever have passed by
+  # luck. A minute of waiting is watched rather than slept through, so a start that is merely
+  # slow says so and a start that has died says that instead.
+  alive=false
+  for waited in 5 10 15 20 30 40 50 60; do
+    sleep 5
+    if ! kill -0 "$EDITOR_PID" 2>/dev/null; then
+      say "The editor stopped while starting. Its own last words:"
+      tail -n 20 "$LOG" 2>/dev/null || true
+      fail "The editor did not stay running."
+    fi
+    [ "$waited" -ge 20 ] && { alive=true; break; }
+    say "The editor is starting… ${waited}s. The first start is the slow one."
+  done
+  [ "$alive" = true ] || fail "The editor did not finish starting."
 
   if [ "$ON_SOCKET" = true ]; then
     say "READY unix:${SOCK}"

@@ -370,12 +370,8 @@ echo "PASS PrivateScreen (a private socket no other app on this phone can open)"
 # --user-data-dir live in the wrapper, because every call needs them; the crash flags live on the
 # launch, because only the long-running editor needs them. Checking one half alone fails on
 # perfectly correct code, which is exactly what this did when the wrapper was introduced.
-wrapper=$(grep -A2 '^editor() {' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
-launch=$(sed -n '/^  editor \\$/,/^    "\$WORK"/p' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
+launch=$(sed -n '/^  "\$AG_ELECTRON" \\$/,/^    "\$WORK"/p' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
 [ -n "$launch" ] || fail "ElectronFlags: the editor's launch command could not be found to check"
-[ -n "$wrapper" ] || fail "ElectronFlags: the wrapper that carries the shared flags is gone"
-launch="$wrapper
-$launch"
 for flag in --no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage --disable-3d-apis; do
   printf '%s' "$launch" | grep -q -- "$flag" \
     || fail "ElectronFlags: $flag is not on the launch command, and it was added for a real crash"
@@ -689,6 +685,32 @@ grep -q 'said.contains("aborted")' "$SRC/Trouble.java" \
 grep -q 'ran out of memory while installing' "$SRC/Trouble.java" \
   || fail "HeaviestStep: the abort is matched but not explained in the owner's words"
 echo "PASS HeaviestStep (fetched here, installed from a file, capped, measured and explained)"
+
+# ---------------------------------------------------------------- the editor, not its launcher
+# bin/antigravity is a command line. Its last line is
+#   ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$CLI" "$@"
+# -- cli.js under Node, which spawns the editor detached and exits, which is why `code .` gives
+# you your prompt back. Launching through it and watching that PID reported "the editor did not
+# stay running" four seconds later every time, while the editor was starting perfectly as a
+# different process. The session has to be held on the editor, so the editor is what is started.
+in_code '"\$AG_ELECTRON"' "$ASSETS/doors-workspace.sh" \
+  || fail "HoldsTheEditor: the editor binary is never named, so the session holds a launcher"
+grep -q 'AG_ELECTRON=/usr/share/antigravity/antigravity' "$ASSETS/doors-workspace.sh" \
+  || fail "HoldsTheEditor: the editor binary is not the one the package installs"
+held=$(grep -n 'EDITOR_PID=\$!' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
+[ -n "$held" ] || fail "HoldsTheEditor: nothing records what the session is holding"
+# The line that starts what is held must be the editor, never the command line.
+startline=$(sed -n "1,${held}p" "$ASSETS/doors-workspace.sh" | grep -nE '^[[:space:]]*("\$AG_ELECTRON"|editor|"\$AG_BIN")' | tail -n1 || true)
+printf '%s' "$startline" | grep -q 'AG_ELECTRON' \
+  || fail "HoldsTheEditor: the session is held on the launcher, which exits by design -- $startline"
+# And it must be given long enough to start. Four seconds could only ever have passed by luck:
+# an Electron editor under proot takes the better part of a minute to draw its first frame.
+in_code 'for waited in' "$ASSETS/doors-workspace.sh" \
+  || fail "HoldsTheEditor: the editor is given no time to start before it is declared dead"
+if grep -qE '^\s*sleep 4$' "$ASSETS/doors-workspace.sh"; then
+  fail "HoldsTheEditor: the four-second check is back, and it decides before the editor can draw"
+fi
+echo "PASS HoldsTheEditor (the session holds the editor, and waits long enough for it to start)"
 
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2 || true)

@@ -1,8 +1,60 @@
-# PocketAgent 16.3.5 — three bugs in one screenshot
+# PocketAgent 16.4.0 — the session was holding a launcher, not the editor
 
-Version **16.3.5**, code **635**, application ID `com.pocketagent.doors`.
+Version **16.4.0**, code **640**, application ID `com.pocketagent.doors`.
 
-One screen from a real phone carried three separate faults. All three are fixed.
+The extension installed. X started. openbox started. Then:
+
+```
+Warning: 'disable-setuid-sandbox' is not in the list of known options, but still passed…
+Warning: 'zygote' is not in the list of known options, but still passed…
+ERROR: The editor did not stay running.
+```
+
+Those warnings are noise — Electron says them about flags it forwards to Chromium anyway. There
+was no crash in the log, because there was no crash.
+
+## 16.4.0: what `bin/antigravity` actually is
+
+Read out of the package rather than guessed at. The last line of the launcher Google ship:
+
+```sh
+ELECTRON="$VSCODE_PATH/antigravity"
+CLI="$VSCODE_PATH/resources/app/out/cli.js"
+ELECTRON_RUN_AS_NODE=1 "$ELECTRON" "$CLI" "$@"
+exit $?
+```
+
+It runs `cli.js` under Node, and **cli.js spawns the editor detached and exits**. That is exactly
+why `code .` hands your prompt straight back.
+
+So the PID this app was holding, and checking four seconds later, was the launcher's — a process
+designed to be gone by then. The editor was starting perfectly, as a different process, and
+being declared dead every single time.
+
+Two programs, and the difference was the whole bug. The command line does command-line work
+(`--list-extensions`, `--install-extension`). The editor itself — `/usr/share/antigravity/antigravity`,
+which the package installs and which the launcher points at — is what gets started and held.
+
+## 16.4.0: four seconds was never enough anyway
+
+An Electron editor on this phone, under PRoot, with software rendering, takes the better part of
+a minute to draw its first frame. The old check could only ever have passed by luck.
+
+It waits up to a minute now, and watches instead of sleeping: if the process dies, its own last
+words are shown immediately; if it is merely slow, the screen says so with the seconds counted.
+
+```
+The editor is starting… 5s. The first start is the slow one.
+The editor is starting… 10s. The first start is the slow one.
+The editor is starting… 15s. The first start is the slow one.
+```
+
+`HoldsTheEditor` fails the build if the session is ever held on the launcher again, if the
+editor binary is not the one the package installs, or if the four-second check comes back.
+
+---
+
+# Earlier releases
 
 ## 16.3.5: the counter was reading the wrong thing
 
