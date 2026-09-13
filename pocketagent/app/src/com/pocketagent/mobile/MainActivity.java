@@ -51,7 +51,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "14.2.5";
+    static final String VERSION = "14.3.0";
     static final String EXTRA_ROUTE = "com.pocketagent.mobile.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;

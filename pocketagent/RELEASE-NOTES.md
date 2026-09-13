@@ -1,19 +1,25 @@
-# PocketAgent 14.2.5 — the violet tile, kept
+# PocketAgent 14.3.0 — the last copy of a claim that was not true
 
-Version **14.2.5**, code **455**.
+Version **14.3.0**, code **460**.
 
-14.2.0 moved the colour off the tile and into the mark: a near-black ground with a violet spark.
-Seen on a phone, the violet tile was the better icon, and this puts it back — `#7A3CD6` to
-`#33146F`, with the whole mark in warm bone.
+14.0.5 corrected three sentences that told the owner Google had refused PocketAgent permission to
+drive Antigravity. Google publish no such restriction; their own headless documentation shows a
+script driving `agy` turn by turn and names no limit on who may do it. What is actually missing
+is on this side — an adapter for the newline-delimited event stream `agy` speaks instead of the
+protocol this build understands.
 
-The reason it was right the first time still holds. Rendered beside the four agents this app
-hosts, at launcher size: Codex and Cursor are dark tiles, Claude is terracotta, Antigravity's
-arch is a multicolour rainbow. Violet is the one slot nothing else occupies — and a dark tile,
-which is what 14.2.0 tried, is the single colour that disappears between Codex and Cursor on the
-same home screen.
+One copy was missed: the Python installer, which is the one an owner actually reaches when they
+tap Install. It still said "permission for this third-party client has not been established". It
+now says the same true thing the rest of the app says.
 
-The generator keeps the ability to draw the brackets and the spark in two colours; the two are
-simply set to the same bone on purpose. Saying that in the tokens is clearer than removing the
-capability and having to add it back.
+The difference is not cosmetic. Told that permission was refused, an owner waits for Google.
+Told the truth, they know the work is ours — and it is the one agent whose free tier would cost
+them nothing.
+
+## What this build does and does not run
+
+Three of the four connect: **Codex**, **Cursor** and **Claude Code**. **Antigravity has never
+connected in any version of this app**, and the catalog has always listed it with a reason rather
+than a route. PocketLinux is where all four run, as their own desktop applications.
 
 44 gates, exit 0.

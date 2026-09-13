@@ -347,7 +347,10 @@ def verify_protocol(command, provider):
 
 def install(provider):
     if provider == "antigravity":
-        raise RuntimeError("Antigravity is unavailable: permission for this third-party client has not been established. See https://antigravity.google/terms")
+        raise RuntimeError(
+            "Antigravity is not connected yet. Its CLI streams its own newline-delimited event "
+            "format rather than the protocol this build speaks, and the adapter for it is not "
+            "written. This is PocketAgent's missing work, not a refusal by Google.")
     if provider not in CONFIG:
         raise RuntimeError("Unknown provider.")
     config = CONFIG[provider]
