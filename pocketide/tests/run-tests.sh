@@ -172,7 +172,19 @@ check "NoAffiliationClaimed" $? "the terms do not disclaim affiliation with the 
 # ---------------------------------------------------------------- the interface
 
 echo
+echo "Safety"
+# The app lock and the phone's files are promises rather than features: "locked" and "off by
+# default" are things an owner believes because the app says so, and a lock covering four
+# screens out of five looks exactly like one covering five.
+python3 "$HERE/safety.py" "$APP" && pass "LockAndFiles" \
+  || fail "LockAndFiles" "the app lock or the phone-files switch does not hold what it claims"
+
+echo
 echo "Interface"
+# The bar claims to follow a published specification, and the editor claims to size itself to
+# the phone. The release before this one gave every phone the constant zoom 1.5.
+python3 "$HERE/navigation.py" "$APP" && pass "NavigationAndFit" \
+  || fail "NavigationAndFit" "the bottom bar or the editor's own sizing is off spec"
 in_code 'TOUCH_TARGET_DP = 48' "$SRC/Ui.java"
 check "TouchTargets" $? "the minimum touch target is not 48dp"
 

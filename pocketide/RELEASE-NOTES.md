@@ -40,7 +40,7 @@ coding-agent extensions installed from Open VSX. It runs entirely on the phone.
 
 ### Honesty
 
-- 36 gates, every one of them bidirectional: each was verified to fail when the thing it guards
+- 38 gates, every one of them bidirectional: each was verified to fail when the thing it guards
   is broken, not merely to pass when it is not.
 - The Help screen carries the mission, the FAQ, the terms, the privacy position and the full
   permission list, and the gates check that list against the manifest.
