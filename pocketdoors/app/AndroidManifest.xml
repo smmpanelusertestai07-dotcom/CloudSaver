@@ -42,6 +42,12 @@
         </activity>
 
         <activity
+            android:name=".ReasonsActivity"
+            android:exported="false"
+            android:label="Why these three"
+            android:parentActivityName=".HomeActivity" />
+
+        <activity
             android:name=".SetupActivity"
             android:exported="false"
             android:parentActivityName=".HomeActivity"

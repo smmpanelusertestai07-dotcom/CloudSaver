@@ -1,9 +1,46 @@
-# PocketAgent Doors 15.4.0 — what Codex costs, in its publisher's own words
+# PocketAgent Doors 15.5.0 — three makers, and the reason on a screen
 
-Version **15.4.0**, code **540**, application ID `com.pocketagent.doors`.
+Version **15.5.0**, code **550**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.5.0: scoped to three, and it says why
+
+Cursor, xAI's Grok Build and Meta's Muse Code are out. Google, OpenAI and Anthropic are in. That
+is not a ranking of models — it is the list of makers who publish all three things this app needs:
+an agent built for linux-arm64, an interface of their own that a phone can reach, and an update
+path they control.
+
+Deleting the others quietly would have been the easy version. Instead there is a **Why these
+three** screen, reachable from the home screen, that names each maker's compute and reach, states
+the bar, and says exactly what is missing for each one left out — Cursor has no Open VSX extension
+and its remote runs on Cursor's own machines; Grok Build has no official interface on any platform;
+Muse Code is terminal only, with no free tier. Every figure on that screen names its source, and
+the screen ends by saying plainly that none of it judges anyone's models.
+
+A check enforces that: an agent may not be removed from the catalog unless the reason for removing
+it is written down. The check it replaced only said "Cursor must not claim a headless route", which
+passed by having nothing left to look at once Cursor was gone — the weakest kind of green.
+
+## 15.5.0: Claude Code through Anthropic's own app
+
+Claude Code moves from the editor extension to Anthropic's Remote Control. The session runs in this
+workspace, inside the phone, and the screen is Anthropic's own mobile app — an interface they built
+for a phone, which is further than any editor layout will ever get.
+
+Two things made it possible, and both were checked rather than assumed. Remote Control is confirmed
+working on a headless Linux host, which is what this workspace is. And it refuses a bare pipe — it
+needs a real terminal, which this app already knows how to give it, because Antigravity's sign-in
+needed the same thing.
+
+The door asks the CLI whether it is signed in rather than guessing, refuses to start on a build
+older than the one that introduced Remote Control, and holds the session open for as long as it
+runs, because nothing here can detach.
+
+Two of the three agents now show the publisher's own phone app. OpenAI is the exception: their
+Remote Control needs a Mac to host the session — Windows is listed as coming, Linux is not listed —
+so Codex stays on their own VS Code extension.
 
 ## 15.4.0: this app said Codex was free, and it is not
 
@@ -214,7 +251,7 @@ Door C (Cursor) is still not wired up, and Cursor still publish no headless rout
 
 ## Checks
 
-Twenty-eight now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
+Thirty-one now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
 produced one of the failures above: an unverified address, an undocumented flag, a publisher's
 site framed inside the app, a download trusted before it was complete, a set-up that could be
 frozen halfway, an archive unpacked the wrong shape, a long download that said nothing, a guess

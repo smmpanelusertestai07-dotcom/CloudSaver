@@ -89,6 +89,11 @@ public final class HomeActivity extends Activity {
         root.addView(Ui.text(this,
                 "One agent at a time. This phone has less memory than a second one would need.",
                 12.5f, Ui.muted(dark)), Ui.wide(this, 18));
+
+        // Three agents looks like an unfinished app until the reason is somewhere to be read.
+        android.widget.TextView why = Ui.button(this, "Why these three", false, dark);
+        why.setOnClickListener(v -> startActivity(new Intent(this, ReasonsActivity.class)));
+        root.addView(why, Ui.wide(this, 14));
     }
 
     private View setupCard(boolean dark) {

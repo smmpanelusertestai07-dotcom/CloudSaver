@@ -42,12 +42,58 @@ if grep -oE '\btrue\),$' "$SRC/Doors.java" | grep -q .; then
 fi
 echo "PASS DoorHonesty (no agent claims to be proven)"
 
-# Cursor has no headless mode and no published extension. If a future edit gives it a start
-# line, that is a claim about Cursor that is not true, and it should fail here first.
-if grep -A6 '"cursor", "Cursor"' "$SRC/Doors.java" | grep -q '"doors-'; then
-  fail "DoorHonesty: Cursor has a start line, but Cursor publishes no headless mode"
-fi
-echo "PASS CursorClaim (no headless route is claimed for Cursor)"
+# Three agents, and the reason for three is on a screen. This replaced a check that only said
+# "Cursor must not claim a headless route" -- once Cursor was removed outright that check passed
+# by having nothing to look at, which is the weakest kind of green. What matters now is that a
+# maker who was left out is left out in writing, where the owner can read the reason and judge it.
+count=$(grep -c 'new Agent(' "$SRC/Doors.java" || true)
+[ "$count" = "3" ] || fail "ThreeLabs: the catalog holds $count agents; this build is scoped to three"
+for id in antigravity claude codex; do
+  grep -q "new Agent(\"$id\"" "$SRC/Doors.java" \
+    || fail "ThreeLabs: $id is missing from the catalog"
+done
+# The entry itself, not a mention of the name. Written as a plain grep first, this stayed green
+# when an entry was deleted, because the same name still appeared in another entry's prose --
+# the third time in this project a check has passed on a comment instead of the thing it meant.
+for gone in Cursor "xAI" "Meta"; do
+  grep -q "new Missing(\"$gone" "$SRC/Reasons.java" \
+    || fail "ThreeLabs: $gone was dropped from the catalog without a reason written down"
+done
+echo "PASS ThreeLabs (three agents, and every exclusion is explained in writing)"
+
+# The reason has to be reachable, not just present in a source file nobody opens.
+grep -q 'ReasonsActivity' "$SRC/HomeActivity.java" \
+  || fail "ReasonGiven: nothing on the home screen leads to the reason"
+grep -q 'ReasonsActivity' app/AndroidManifest.xml \
+  || fail "ReasonGiven: the screen is not registered, so opening it would crash"
+grep -q 'linux-arm64' "$SRC/Reasons.java" \
+  || fail "ReasonGiven: the bar for a fourth maker does not mention the architecture it must build for"
+grep -q 'NOT_A_VERDICT' "$SRC/ReasonsActivity.java" \
+  || fail "ReasonGiven: the screen omits the line saying this is not a ranking of models"
+grep -q 'JetBrains' "$SRC/Reasons.java" \
+  || fail "ReasonGiven: a figure is quoted with no source named"
+echo "PASS ReasonGiven (the reason is on screen, with its sources and its limits)"
+
+# ---------------------------------------------------------------- Claude's own app as the screen
+# Anthropic's Remote Control is confirmed working on a headless Linux host and refuses a bare
+# pipe, so it gets the same pty this app already gives Antigravity's sign-in. And it cannot
+# detach: proot's --kill-on-exit would take the session with it.
+grep -q 'remote-control' "$ASSETS/doors-claude.sh" \
+  || fail "ClaudeDoor: the session is started without Remote Control, so no app would ever see it"
+# The Remote Control line itself, not any line in the file. The first form of this check looked
+# for a pty anywhere in the script, which stayed green when the session was moved to a bare pipe,
+# because sign-in still used one. Both paths need a terminal; this asks about the one that runs.
+grep -E '^[^#]*script --quiet --return --command' "$ASSETS/doors-claude.sh" \
+  | grep -q -- '--remote-control' \
+  || fail "ClaudeDoor: Remote Control needs a real terminal and is being given a pipe"
+grep -E '^[^#]*script --quiet --return --command' "$ASSETS/doors-claude.sh" \
+  | grep -q 'auth login' \
+  || fail "ClaudeDoor: sign-in needs a real terminal and is being given a pipe"
+grep -q 'auth status' "$ASSETS/doors-claude.sh" \
+  || fail "ClaudeDoor: sign-in is assumed rather than asked of the CLI"
+grep -q 'MIN_VERSION' "$ASSETS/doors-claude.sh" \
+  || fail "ClaudeDoor: no floor on the version, and Remote Control did not exist in older builds"
+echo "PASS ClaudeDoor (Anthropic's own app, on a pty, with sign-in and version checked)"
 
 # ---------------------------------------------------------------- what it costs, in their words
 # This app told people Codex was included in "Every ChatGPT plan, Free included". OpenAI's own

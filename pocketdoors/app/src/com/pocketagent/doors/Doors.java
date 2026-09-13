@@ -109,14 +109,35 @@ final class Doors {
     }
 
     /** Ordered lightest door first, and within a door, free before paid. */
+    /**
+     * Three, and only three.
+     *
+     * Not a shortlist of favourites -- a list of everyone who publishes what this app needs. An
+     * agent can only appear here if its maker ships three things: a coding agent built for
+     * linux-arm64, an interface of their own that a phone can reach, and an update path they
+     * control. Miss any one and there is nothing honest to put on the screen.
+     *
+     * Who that leaves out, and why, is written down in Reasons.java and shown in the app.
+     */
     static final Agent[] ALL = {
             new Agent("antigravity", "Antigravity", Door.REMOTE_CONTROL,
                     "doors-antigravity.sh start",
                     "doors-antigravity.sh login",
                     "https://antigravity.google.com",
                     "Free tier", true,
-                    "Google's dashboard shows conversations, tasks, plans and artifacts. Whether it "
-                            + "also gives an editor and a terminal is not documented, and not yet known.",
+                    "Google's own words for where a session runs: \"your desktop or server\". This "
+                            + "phone is the server. Their dashboard shows conversations, tasks, plans "
+                            + "and artifacts, and approves terminal commands and file writes.",
+                    false),
+
+            new Agent("claude", "Claude Code", Door.REMOTE_CONTROL,
+                    "doors-claude.sh start",
+                    "doors-claude.sh login",
+                    "https://claude.ai/code",
+                    "Claude Pro or Max, from $20 a month", false,
+                    "Anthropic's own mobile app is the screen. Remote Control is confirmed working "
+                            + "on a headless Linux host, which is what this workspace is. It needs a "
+                            + "real terminal, and this app gives it one.",
                     false),
 
             new Agent("codex", "Codex", Door.EXTENSION_HOST,
@@ -124,31 +145,10 @@ final class Doors {
                     "",
                     "http://127.0.0.1:8391/",
                     "ChatGPT Plus, Pro, Business, Edu or Enterprise", false,
-                    "OpenAI list the plans that include this on the extension itself: Plus, Pro, "
-                            + "Business, Edu and Enterprise. Free is not among them. This is their "
-                            + "own VS Code extension, the same one their desktop editor runs, and "
-                            + "it drives the same Codex engine underneath -- but it is not the "
-                            + "separate Codex application for macOS, and does not claim to be.",
-                    false),
-
-            new Agent("claude", "Claude Code", Door.EXTENSION_HOST,
-                    "doors-codeserver.sh start claude",
-                    "",
-                    "http://127.0.0.1:8391/",
-                    "Claude Pro or Max, from $20 a month", false,
-                    "Anthropic publishes no free tier for Claude Code. Remote Control into the "
-                            + "Claude Android app is the other route, and needs a terminal session to hold it.",
-                    false),
-
-            new Agent("cursor", "Cursor", Door.DESKTOP_APP,
-                    "",
-                    "",
-                    "",
-                    "Hobby plan is free", true,
-                    "Cursor has no headless mode -- their own answer -- no published extension, and "
-                            + "the serve-web command in their CLI has no binary behind it. Its whole "
-                            + "application is the only way in, which is the heaviest door and is not "
-                            + "wired up in this build yet.",
+                    "OpenAI's Remote Control needs a Mac to host the session -- Windows is listed as "
+                            + "coming, Linux is not listed at all. So this is their VS Code extension "
+                            + "instead, the same one their desktop editor runs, driving the same Codex "
+                            + "engine. It is not the separate Codex application for macOS.",
                     false),
     };
 
@@ -158,7 +158,8 @@ final class Doors {
     }
 
     /** The script every door's start line lives in, copied into Ubuntu at setup. */
-    static final String[] SCRIPTS = {"doors-bootstrap.sh", "doors-antigravity.sh", "doors-codeserver.sh"};
+    static final String[] SCRIPTS = {"doors-bootstrap.sh", "doors-antigravity.sh",
+            "doors-claude.sh", "doors-codeserver.sh"};
 
     private Doors() {}
 }
