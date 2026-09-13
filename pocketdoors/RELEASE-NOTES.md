@@ -1,6 +1,58 @@
-# PocketAgent 16.2.5 — the editor refuses root without being told twice
+# PocketAgent 16.3.0 — the bigger download had no counter either
 
-Version **16.2.5**, code **625**, application ID `com.pocketagent.doors`.
+Version **16.3.0**, code **630**, application ID `com.pocketagent.doors`.
+
+## 16.3.0: I fixed the counter on the smaller of the two downloads
+
+16.2.0 added a megabyte counter for the editor — 143 MB — and left the extension with the very
+line the counter was meant to replace:
+
+> Installing openai.chatgpt — 231 MB, downloaded once.
+> **There is no progress line for this; Open VSX does not give one. It is not stuck.**
+
+231 MB against 143. I gave the number to the shorter wait and the reassurance to the longer one.
+Both downloads are counted now, by one `watch_size` used twice, and the sentence is deleted from
+the script so it cannot come back.
+
+## 16.3.0: minutes as well as megabytes
+
+The screen that prompted this showed **0.00 KB/s**. Nothing on it could answer the only question
+that matters at that moment: is this slow, or is it dead?
+
+So the counter says both, and names a stall when the bytes stop moving:
+
+```
+Downloaded 46 MB of about 231 MB, 3 min in.
+Downloaded 91 MB of about 231 MB, 7 min in.
+Still 91 MB after 12 min. If this number has not moved for several
+minutes, the connection has stalled — switching between mobile data
+and Wi-Fi restarts it.
+```
+
+A line that keeps changing even when the bytes do not is the difference between waiting and
+giving up — and giving up mid-install is what breaks dpkg.
+
+The extension's folder is named explicitly (`--extensions-dir`) rather than left to the default,
+so there is a folder to point a counter at; the counter watches it and the temporary directory
+the `.vsix` passes through on the way.
+
+## 16.3.0: two gates that passed on a broken build
+
+Both new checks were written, both passed, and both were then shown to miss the thing they were
+for:
+
+- **"Is the counter stopped?"** — an install has a success branch and a failure branch. The
+  bracketing check was satisfied by either, so deleting the success one left a counter still
+  printing megabytes for a finished download. It now requires a stop on **both** paths.
+- **"Are the minutes counted?"** — written as "does the file use `date`", it stayed green with
+  the arithmetic replaced by a constant zero, because the start time was still being taken one
+  line above. It now matches the subtraction itself.
+
+Seven breaks, seven failures, before any of it was trusted.
+
+---
+
+# Earlier releases
 
 ## 16.2.5: the extension install was refused, and the app blamed the network
 

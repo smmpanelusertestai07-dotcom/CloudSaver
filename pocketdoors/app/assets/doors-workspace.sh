@@ -52,6 +52,9 @@ AG_BIN=/usr/share/antigravity/bin/antigravity
 # is Microsoft's, and it refuses to run at all as root unless --user-data-dir is on the command
 # line. Everything in this workspace is root, so every single call needs it.
 AG_DATA=/root/.config/Antigravity
+# Named rather than left to the default, so the folder that fills up during an install is one
+# this script can point a counter at.
+AG_EXTENSIONS=/root/.antigravity/extensions
 
 # Every call to the editor, with the two arguments its own launcher demands of a root user.
 #
@@ -62,7 +65,7 @@ AG_DATA=/root/.config/Antigravity
 # was --install-extension and --list-extensions that were refused, because the flags were on the
 # launch line and nowhere else. One wrapper now, so there is no second place to forget them.
 editor() {
-  "$AG_BIN" --no-sandbox --user-data-dir="$AG_DATA" "$@"
+  "$AG_BIN" --no-sandbox --user-data-dir="$AG_DATA" --extensions-dir="$AG_EXTENSIONS" "$@"
 }
 
 # Their own identifiers on Open VSX, spelled the way each maker owns them. Google's agent is
@@ -114,23 +117,37 @@ apt_install() {
 unset DISABLE_TELEMETRY DO_NOT_TRACK CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_GROWTHBOOK
 unset ANTHROPIC_BASE_URL
 
-# A number, because apt gives none.
+# A number, because neither apt nor Open VSX gives one.
 #
-# apt prints nothing per file, and a quarter of an hour of one unchanging line is what makes
-# somebody close the app -- which is the thing that leaves dpkg half-applied. It does write what
-# it fetches into its own cache, though, so the size of that cache is real progress, and reading
-# it costs one `du` every fifteen seconds.
-watch_download() {
+# Neither prints anything per file, and a quarter of an hour of one unchanging line is what makes
+# somebody close the app -- which is the thing that leaves dpkg half-applied. Both do write what
+# they fetch somewhere on disk, though, so the size of that somewhere is real progress, and
+# reading it costs one `du` every fifteen seconds.
+#
+# The minutes are said as well as the megabytes. On a connection that has stalled the bytes stop
+# moving, and a line that still changes is the difference between "it is slow" and "it is dead" --
+# which is the one question somebody watching a download actually has.
+#
+#   watch_size <expected MB, or 0 if unknown> <path>…
+watch_size() {
+  expected="$1"; shift
+  started=$(date +%s)
+  last=-1
   while :; do
     sleep 15
-    have=$(du -sm /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+    have=$(du -scm "$@" 2>/dev/null | tail -n1 | awk '{print $1}')
     [ -n "${have:-}" ] || continue
-    [ "$have" -gt 0 ] || continue
-    if [ "$have" -ge "$AG_DOWNLOAD_MB" ]; then
+    mins=$(( ($(date +%s) - started) / 60 ))
+    if [ "$have" = "$last" ] && [ "$mins" -gt 0 ]; then
+      say "Still ${have} MB after ${mins} min. If this number has not moved for several minutes, the connection has stalled -- switching between mobile data and Wi-Fi restarts it."
+    elif [ "$expected" -gt 0 ] && [ "$have" -ge "$expected" ]; then
       say "Downloaded ${have} MB. Unpacking now -- that part has no number and takes a few minutes."
+    elif [ "$expected" -gt 0 ]; then
+      say "Downloaded ${have} MB of about ${expected} MB, ${mins} min in."
     else
-      say "Downloaded ${have} MB of about ${AG_DOWNLOAD_MB} MB."
+      say "Downloaded ${have} MB, ${mins} min in."
     fi
+    last="$have"
   done
 }
 
@@ -174,7 +191,7 @@ install_ide() {
 
   say "Downloading Antigravity… about ${AG_DOWNLOAD_MB} MB to fetch, ${AG_INSTALLED_MB} MB once unpacked. Once only."
   # Counted in the background for as long as the install runs, and stopped either way after it.
-  watch_download &
+  watch_size "$AG_DOWNLOAD_MB" /var/cache/apt/archives &
   watcher=$!
   apt_install "Antigravity" antigravity \
     || { kill "$watcher" 2>/dev/null || true
@@ -210,19 +227,27 @@ install_extension() {
   size=$(extension_size "$id")
   if [ -n "$size" ]; then
     say "Installing ${id} — ${size} MB, downloaded once."
-    say "There is no progress line for this; Open VSX does not give one. It is not stuck."
   else
     say "Installing ${id}… (a few hundred megabytes, downloaded once)"
+    size=0
   fi
+  # The same counter as the editor's download, on the two places a .vsix passes through: the
+  # editor fetches it into the system temporary directory and unpacks it into its extensions
+  # folder. 231 MB with no number was the larger of the two silences, not the smaller.
+  mkdir -p "$AG_EXTENSIONS"
+  watch_size "$size" "$AG_EXTENSIONS" /tmp &
+  ext_watcher=$!
   # --force, because without it a second run stops to ask about a version already present, and
   # nothing here can answer a question asked on a pipe.
   # Its own words on failure, not a guess. The last version told somebody to check their
   # connection when the connection was fine and the editor had simply refused the command.
   if ! editor --install-extension "$id" --force >>"$LOG" 2>&1; then
+    kill "$ext_watcher" 2>/dev/null || true
     say "The editor refused to install it. Its own last words:"
     tail -n 12 "$LOG" 2>/dev/null || true
     fail "${id} could not be installed."
   fi
+  kill "$ext_watcher" 2>/dev/null || true
   editor --list-extensions 2>&1 | grep -qi "^${id}$" \
     || fail "${id} reported success but is not in the editor's extension list."
 }

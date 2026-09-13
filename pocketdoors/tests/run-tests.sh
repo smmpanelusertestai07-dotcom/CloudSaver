@@ -564,17 +564,52 @@ if printf '%s' "$fetches" | grep -q 'AG_INSTALLED_MB'; then
 fi
 # And a long install must report real progress rather than one line that never changes, because
 # that line is what makes somebody close the app -- which is what breaks dpkg.
-in_code 'watch_download' "$ASSETS/doors-workspace.sh" \
+in_code 'watch_size' "$ASSETS/doors-workspace.sh" \
   || fail "SizesAreReal: a quarter-hour download reports no progress at all"
-in_code 'du -sm /var/cache/apt/archives' "$ASSETS/doors-workspace.sh" \
+in_code 'du -scm' "$ASSETS/doors-workspace.sh" \
   || fail "SizesAreReal: progress is claimed but not counted from what actually arrived"
-# Started before the install and stopped after it, or it outlives the thing it is reporting on.
-watch_at=$(grep -n 'watch_download &' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
-inst_at=$(grep -n 'apt_install "Antigravity"' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
-stop_at=$(grep -n 'kill "\$watcher"' "$ASSETS/doors-workspace.sh" | tail -n1 | cut -d: -f1 || true)
-[ -n "$watch_at" ] && [ -n "$inst_at" ] && [ -n "$stop_at" ] \
-  && [ "$watch_at" -lt "$inst_at" ] && [ "$inst_at" -lt "$stop_at" ] \
-  || fail "SizesAreReal: the counter does not run for exactly the length of the install"
+# Both downloads, not just the first. The extension is the larger of the two -- 231 MB against
+# 143 -- and it was the one left with "It is not stuck" and nothing else for a quarter of an hour.
+[ "$(grep -c 'watch_size ' "$ASSETS/doors-workspace.sh" || true)" -ge 2 ] \
+  || fail "SizesAreReal: only one of the two long downloads reports progress"
+in_code 'watch_size "\$size" "\$AG_EXTENSIONS"' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: the extension download, the larger one, reports nothing"
+# The minutes matter as much as the megabytes: on a stalled connection the bytes stop moving,
+# and a line that still changes is what separates "slow" from "dead" -- the only question
+# somebody watching a download actually has. The phone showed 0.00 KB/s with no way to tell.
+# The elapsed minutes have to be computed, not merely started. Written as "does the file use
+# date", this stayed green with the arithmetic replaced by a constant zero, because the start
+# time was still being taken one line above.
+in_code 'mins=\$\(\( \(\$\(date \+%s\) - started\) / 60 \)\)' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: the minutes are not counted from when it started, so a stall looks like progress"
+grep -q 'the connection has stalled' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: a number that stops moving is never called what it is"
+# And the line that replaced nothing must itself be gone.
+if grep -q 'It is not stuck' "$ASSETS/doors-workspace.sh"; then
+  fail "SizesAreReal: the unchanging reassurance is back, in place of a number"
+fi
+# Each counter starts before its own install and is stopped after it, or it outlives the thing
+# it reports on -- a counter still printing megabytes for a download that finished is worse than
+# none, because it is confidently wrong.
+brackets() {   # brackets <label> <start pattern> <install pattern> <stop pattern>
+  b_start=$(grep -n "$2" "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
+  b_inst=$(grep -n "$3" "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
+  b_stop=$(grep -n "$4" "$ASSETS/doors-workspace.sh" | tail -n1 | cut -d: -f1 || true)
+  [ -n "$b_start" ] && [ -n "$b_inst" ] && [ -n "$b_stop" ] \
+    && [ "$b_start" -lt "$b_inst" ] && [ "$b_inst" -lt "$b_stop" ] \
+    || fail "SizesAreReal: the $1 counter does not run for exactly the length of its install"
+}
+brackets "editor"    'watch_size "\$AG_DOWNLOAD_MB"' 'apt_install "Antigravity"' 'kill "\$watcher"'
+brackets "extension" 'watch_size "\$size"'           'editor --install-extension' 'kill "\$ext_watcher"'
+# Stopped on both paths, not just one. An install has a success branch and a failure branch, and
+# the bracketing check above is satisfied by either -- so deleting the success one left a counter
+# that keeps printing megabytes for a download that finished, which is worse than none because it
+# is confidently wrong.
+for counter in watcher ext_watcher; do
+  stops=$(grep -c "kill \"\$$counter\"" "$ASSETS/doors-workspace.sh" || true)
+  [ "$stops" -ge 2 ] \
+    || fail "SizesAreReal: the $counter counter is stopped on only one of the two paths out of its install"
+done
 echo "PASS SizesAreReal (the megabytes named are the megabytes spent, and they are counted)"
 
 # ---------------------------------------------------------------- root needs saying every time
