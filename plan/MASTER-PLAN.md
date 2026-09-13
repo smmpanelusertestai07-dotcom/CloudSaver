@@ -1,7 +1,7 @@
-# Master plan — the phone development rig
+# PocketIDE — master plan
 
-**Status:** planning only. No code is written from this document until the owner confirms the
-name and the icon. Last researched: 13 September 2026.
+**Status:** planning. Name and icon are settled; application code starts on the owner's word.
+Last researched: 13 September 2026.
 
 **Standing rules this plan inherits (do not break):**
 
@@ -17,68 +17,99 @@ name and the icon. Last researched: 13 September 2026.
 
 ## 1. Identity
 
-### 1.1 Name — shortlist with availability
+### 1.0 Settled
 
-Checked against Google Play, the App Store, GitHub and general web search on 13 Sep 2026.
+**Name: `PocketIDE`.** Chosen by the owner on 13 Sep 2026 over PocketRig and PocketADE.
 
-| Candidate | Availability | Notes |
-|---|---|---|
-| **PocketRig** | ✅ **clean — no product found** | "Rig" is developer slang for a workstation ("my dev rig"). Short, spellable, family-consistent with PocketLinux. |
-| Handforge | ✅ clean | Evocative, but does not say "development". |
-| Palmforge | ✅ clean | Palmtop + forge. Slightly retro. |
-| PocketStudio | ❌ taken | Several Play Store apps (photo editing, wardrobe, thermal printer). |
-| PocketForge | ❌ taken | App Store developer account, GitHub projects, Patreon project. |
-| PocketIDE / Pocket IDE | ❌ taken | Live on Play Store **and** App Store. |
-| PocketDev | ❌ taken | **PocketDev AI** on Play Store — a direct competitor in this space. |
-| PocketBench | ❌ taken | GitHub repo, Hytale mod. |
-| PocketCode | ❌ taken | Android IDE, active. |
-| Devbox | ❌ taken | Jetify. |
+The deciding argument was fit, with trademark and domains set aside: the app *is* an IDE — it
+runs Visual Studio Code — and "IDE" is a term every developer has known for forty years.
+"PocketADE" was rejected on evidence: ADE is a real 2026 term (coined by Warp in June 2025) but
+it names a **different category** — its own definitions say the unit of work is "a delegated
+task, not an open file", built around multi-agent orchestration, boards and one-click PRs, and
+explicitly distinguish ADEs from *agentic IDEs*. This app is an agentic IDE. A name should not
+claim a category the app does not implement. "-ADE" also reads as a drink suffix.
 
-**Recommendation: `PocketRig`.**
-Reasons: it is the only clean name that is also *descriptive in the industry's own words*. A
-developer reads "rig" as "the machine I build on". It continues the PocketLinux naming family
-the owner already owns, and it is not tied to three vendors — which matters now that the app
-opens to any extension.
+Known and accepted cost: "Pocket IDE" already exists on Google Play (`com.idelangage.app`,
+live since Jan 2026) and on the App Store, and "IDE" is descriptive, so the name is weak as a
+protectable mark. `pocketide.com`, `pocketide.in`, `.app`, `.dev` and `.io` are all free.
 
-Package id: `com.pocketrig`
-APK name: `PocketRig-v<version>-release.apk`
+- Package id: `com.pocketide`
+- APK name: `PocketIDE-v<version>-release.apk`
+- Tagline: **"A real development environment that runs on your phone."**
+- Sub-line: *Ubuntu 24.04 LTS · Visual Studio Code · any coding agent · no computer required*
+
+### 1.1 Name — the shortlist, kept for the record
+
+Checked against Google Play, the App Store, GitHub, RDAP (whois) and trademark search on
+13 Sep 2026.
+
+| Candidate | Play / App Store | Domains | Verdict |
+|---|---|---|---|
+| **PocketIDE** ← chosen | ❌ both taken | ✅ `.com` `.in` `.app` `.dev` `.io` all free | Weakest as a mark, **strongest as a description**. The app is an IDE. |
+| PocketRig | ✅ both free | `.com` taken 2015; `.in` `.app` `.dev` `.io` free | Cleanest legally. Rejected: "rig" is slang only developers read. |
+| PocketADE | — | — | Rejected on evidence — see 1.0. ADE is a different category, and "-ADE" reads as a drink. |
+| Handforge / Palmforge | ✅ free | `.com` taken | Evocative, but say nothing about development. |
+| PocketStudio | ❌ several Play apps | — | Taken. |
+| PocketForge | ❌ App Store + GitHub | — | Taken. |
+| PocketDev | ❌ **PocketDev AI** on Play — a direct competitor | — | Taken. |
+| PocketBench / PocketCode / Devbox | ❌ taken | — | Taken. |
+
+Trademark note: no registration was found for "PocketIDE" or "Pocket IDE". A close mark,
+**"POCKET ID"** (SIX Telekurs AG, computer software), does exist. This is not a clearance —
+a real one needs IP India (ipindiaservices.gov.in) and USPTO (tmsearch.uspto.gov), and matters
+only if the app is ever listed on Google Play.
 
 ### 1.2 Tagline
 
-House style from PocketLinux is a plain factual line, not a slogan. Candidates:
+House style from PocketLinux is a plain factual line, not a slogan — its own working line is
+"A Linux computer that runs locally on your phone".
 
-1. **"A real development rig that runs on your phone."** ← recommended
-2. "Linux, VS Code and your coding agent — all on the phone."
-3. "Build anything, from your pocket."
+**"A real development environment that runs on your phone."**
 
-Recommended (1) because it mirrors PocketLinux's own working line
-("A Linux computer that runs locally on your phone") and is literally true.
+Sub-line for the hero card:
+*Ubuntu 24.04 LTS · Visual Studio Code · any coding agent · no computer required*
 
-**Sub-line for the hero card:**
-"Ubuntu 24.04 LTS · Visual Studio Code · any coding agent · no computer required"
+### 1.3 Icon — drawn, and why it looks like this
 
-### 1.3 Icon direction
+**Mark: `[>]`** — a prompt chevron held between two square brackets, in warm bone on a deep
+violet tile. Generated by `plan/make_icon.py`; 32 files, every one derived from a single
+geometry definition so the launcher, the Play listing, the themed icon, the notification and
+the splash cannot drift apart.
 
-PocketAgent's mark was brackets `[ ]` with a spark, on a deep violet tile. That reasoning is
-recorded in `pocketdoors/app/src/com/pocketagent/doors/Brand.java` and is worth keeping:
-violet was chosen because it is the slot no agent vendor occupies on a home screen.
+**Why this shape.** Brackets are what code looks like at a glance; a chevron is what every
+terminal and every run button uses for "go". Together they also say the name — a pocket holding
+the thing you work with.
 
-For PocketRig the mark should read as *a workbench / rig*, not as an editor:
+**Why not the first draft.** The first attempt put an upright text caret between the brackets:
+`[ | ]`. Rendered at launcher size it collapsed into three identical vertical bars — it read as
+a barcode, not as brackets. The chevron's angle breaks that rhythm so the eye separates three
+elements instead of counting stripes. The arms were also shortened (112 → 74) and the gaps
+widened (86 → 118) for the same reason: at 24 px in the status bar each gap is a single pixel,
+and a gap that closes is a blob.
 
-- A simple isometric or flat **bench/rail** form, or a **bracket pair holding a bar**.
-- Same deep-violet tile family, because it still sits beside Claude (terracotta), Codex (dark),
-  Antigravity (rainbow arch) and VS Code (blue) on the same home screen.
-- Bone/warm-white mark, never pure white.
-- Generated from `branding/tokens.json` by a script, with a gate test that fails the build if
-  the code's colours and the token file ever disagree. (This pattern already exists and works.)
+**Why violet.** Inherited from PocketAgent's reasoning, which still holds. Rendered beside the
+agents this app hosts, the home-screen row is Codex (dark), Claude (terracotta), Antigravity
+(multicolour arch) and VS Code (blue). Violet is the slot none of them occupy. Black — the
+obvious choice for a developer tool — is the one colour that would vanish between Codex and
+Cursor.
 
-**Both name and icon are pending the owner's confirmation. Nothing is built until then.**
+| Asset | Spec followed |
+|---|---|
+| `play-store-icon-512.png` | 512×512, **full square, no transparency, no pre-rounded corners** — Play applies its own mask, and a transparent asset shows Play's own background through it |
+| `ic_launcher_background` / `_foreground` | **108 dp** layers at all five densities; the mark stays inside the **66 dp** circle that no OEM mask ever clips |
+| `ic_launcher_monochrome` | the same mark, solid white — Android 13+ themed icons |
+| `ic_launcher` (legacy) | 48 / 72 / 96 / 144 / 192, with its own rounded corners, for launchers that ignore adaptive icons |
+| `ic_notification` | **white silhouette on transparent**, 24 / 36 / 48 / 72 / 96 — the system tints it, so colour here would be discarded |
+| `ic_splash` | flat `#56289F`; a window background takes a colour, not a gradient |
+
+The colours live in `branding/tokens.json` and in `Brand.java`, and a gate test fails the build
+if the two ever disagree.
 
 ---
 
 ## 2. What the app is, in one paragraph
 
-PocketRig puts a real Ubuntu 24.04 LTS ARM64 system inside an Android app, runs the official
+PocketIDE puts a real Ubuntu 24.04 LTS ARM64 system inside an Android app, runs the official
 open-source build of Visual Studio Code on it, and lets the owner install any coding-agent
 extension from the Open VSX registry — with Google's Antigravity, Anthropic's Claude Code and
 OpenAI's Codex set up in one tap. Everything runs on the phone. No computer is needed at any
@@ -92,7 +123,7 @@ point, including for setup.
 ┌──────────────────────────────────────────────────────────────┐
 │ 1. Phone            Android 13+ · arm64-v8a · ~4 GB RAM      │
 ├──────────────────────────────────────────────────────────────┤
-│ 2. PocketRig APK    plain Java, no framework   (~600 KB)     │
+│ 2. PocketIDE APK    plain Java, no framework   (~600 KB)     │
 │    └─ WebView (the only surface the owner sees)              │
 ├──────────────────────────────────────────────────────────────┤
 │ 3. Ubuntu 24.04.4 LTS arm64, under PRoot (no root)           │
@@ -316,7 +347,7 @@ write app on phone (Flutter / React Native / Expo / Capacitor)
    → .ipa downloadable from the workflow artifacts
 ```
 
-PocketRig ships a **"Create iOS build workflow"** action that writes a ready
+PocketIDE ships a **"Create iOS build workflow"** action that writes a ready
 `.github/workflows/ios.yml` into the project, so the owner never hand-writes YAML.
 
 **Not possible, and the app will say so:** compiling a native Xcode Swift/SwiftUI project on
@@ -334,8 +365,8 @@ route.
 | ⚠️ Limitation | **C# is not available in the Android editor** — GDScript only |
 
 Two routes, both offered:
-- **Visual editing** → Godot's own Android app, alongside PocketRig.
-- **Code + export inside PocketRig** → the agent writes GDScript, then
+- **Visual editing** → Godot's own Android app, alongside PocketIDE.
+- **Code + export inside PocketIDE** → the agent writes GDScript, then
   `godot --headless --export-release` produces the APK. Headless needs no display.
 
 ---
@@ -477,7 +508,7 @@ and all three companies support all four:
 Two supporting modes also exist: a **mobile remote companion** (the work still runs on a
 connected computer or in the cloud) and **headless automation via SDK/API/CI**.
 
-**PocketRig's position:** it makes the second row — IDE integration, ranked second overall for
+**PocketIDE's position:** it makes the second row — IDE integration, ranked second overall for
 features and control — run on the phone itself, with no connected computer. That is the whole
 point of the app.
 
@@ -485,7 +516,7 @@ point of the app.
 
 **Can I build an Android APK?**
 Yes, after installing the Android toolchain from the Toolchains screen. One caveat stated
-honestly: Google ships `aapt2` for x86_64 Linux only, so PocketRig uses a community-built arm64
+honestly: Google ships `aapt2` for x86_64 Linux only, so PocketIDE uses a community-built arm64
 binary (or Box64 translation) for that one tool.
 
 **Can I build an iOS app without a Mac?**
@@ -498,7 +529,7 @@ and `codesign` only run on macOS.
 
 **Can I make games?**
 Yes. Godot's official Android editor (4.7.2, arm64, MIT) creates, develops and exports 2D and
-3D projects, to Android and iOS. Inside PocketRig the agent can write GDScript and export
+3D projects, to Android and iOS. Inside PocketIDE the agent can write GDScript and export
 headlessly. Godot's Android editor does not support C#. Unity has no arm64 Linux editor —
 scripts can be written here and built in CI.
 
@@ -514,7 +545,7 @@ temperature threshold to protect the battery.
 
 **Are extensions safe?**
 Extensions are not sandboxed — VS Code's own docs say they have the same permissions as the
-editor. Counterfeit extensions have appeared on both registries in 2026. PocketRig defaults to
+editor. Counterfeit extensions have appeared on both registries in 2026. PocketIDE defaults to
 verified publishers only, pins and verifies SHA-256 for the three recommended ones, and warns
 before unverified installs are enabled.
 
@@ -526,19 +557,19 @@ left anywhere else, because nothing was ever anywhere else.
 
 ## 9. Terms of Use — to ship inside the app (short form)
 
-1. **What this app is.** PocketRig is a host. It installs and runs software published by other
+1. **What this app is.** PocketIDE is a host. It installs and runs software published by other
    people — Canonical's Ubuntu, Coder's code-server, Microsoft's Code-OSS, and extensions from
    the Open VSX registry. It is not affiliated with, endorsed by or sponsored by Microsoft,
    Google, Anthropic, OpenAI, Canonical, Coder or the Eclipse Foundation.
 
 2. **Third-party terms apply.** Using an agent means agreeing to that company's own terms and
-   paying for their own plan. PocketRig does not resell, proxy or subsidise any of them.
+   paying for their own plan. PocketIDE does not resell, proxy or subsidise any of them.
 
 3. **Accounts and payment.** You sign in to each agent with your own account, inside that
-   publisher's own extension. PocketRig never asks for, sees or stores those credentials.
+   publisher's own extension. PocketIDE never asks for, sees or stores those credentials.
 
 4. **Extensions are third-party software.** Extensions run with the same permissions as the
-   editor. Installing an unverified extension is your decision and your risk. PocketRig shows
+   editor. Installing an unverified extension is your decision and your risk. PocketIDE shows
    the publisher, the verification state and the checksum before anything is installed.
 
 5. **No warranty.** The app is provided as-is. Building, publishing and distributing anything
@@ -552,7 +583,7 @@ left anywhere else, because nothing was ever anywhere else.
 7. **Changes.** The terms shown in the app are the current ones. Material changes are noted in
    the release notes.
 
-8. **Licence.** PocketRig's own code is Apache-2.0. Every bundled component keeps its own
+8. **Licence.** PocketIDE's own code is Apache-2.0. Every bundled component keeps its own
    licence; see Open-source notices.
 
 ---
@@ -563,13 +594,13 @@ left anywhere else, because nothing was ever anywhere else.
 
 | Question | Answer |
 |---|---|
-| Does PocketRig collect analytics or telemetry? | **No.** None, ever. |
-| Does it have an account or a server? | **No.** There is no PocketRig account and no PocketRig server. |
+| Does PocketIDE collect analytics or telemetry? | **No.** None, ever. |
+| Does it have an account or a server? | **No.** There is no PocketIDE account and no PocketIDE server. |
 | Where do my files live? | This app's private storage. Other apps cannot read it. |
 | Is anything backed up or synced? | **No.** |
 | When does the app use the network? | Three times only: downloading Ubuntu packages, downloading extensions from Open VSX, and each agent talking to its own company. |
 | What does an agent send? | The context it needs to answer, to its own company, under that company's privacy policy. Your files stay here; edits happen here. |
-| Where are my sign-ins stored? | Inside the Linux system, in the publisher's own extension storage — never in PocketRig's own code and never in the APK. |
+| Where are my sign-ins stored? | Inside the Linux system, in the publisher's own extension storage — never in PocketIDE's own code and never in the APK. |
 | Does the app ask for camera, microphone, location, contacts, SMS or storage? | **No.** |
 | What happens on uninstall? | Everything is deleted with the app. |
 
@@ -650,7 +681,7 @@ CloudSaver/
 ├── pocketlinux/     ← untouched, never modified
 ├── pocketdoors/     ← previous PocketAgent build, left as history
 ├── plan/            ← this document
-└── pocketrig/       ← the new app (name pending confirmation)
+└── pocketide/       ← the new app
     ├── app/
     ├── tests/
     ├── branding/
@@ -660,15 +691,18 @@ CloudSaver/
 
 ---
 
-## 14. Open questions for the owner
+## 14. Settled, and what is left
 
-1. **Name** — `PocketRig` recommended. `Handforge` and `Palmforge` are the clean alternatives.
-2. **Icon** — bench/rail mark on the violet tile, or keep the bracket-and-spark mark.
-3. **Tagline** — "A real development rig that runs on your phone."
-
-Nothing is built until 1 and 2 are settled.
-
----
+| | State |
+|---|---|
+| Name | ✅ **PocketIDE** — `com.pocketide` |
+| Tagline | ✅ "A real development environment that runs on your phone." |
+| Icon | ✅ `[>]` in bone on a violet tile — 32 assets generated by `plan/make_icon.py` |
+| Architecture | ✅ settled and verified |
+| Framework | ✅ plain Java, no Gradle, no AndroidX |
+| Design system | ✅ Material 3 Expressive + glass accents |
+| FAQ / Terms / Privacy | ✅ drafted here, to be typeset into the app |
+| **Application code** | ⏸ **not started — begins on the owner's word** |
 
 ## 15. Sources checked (13 Sep 2026)
 
