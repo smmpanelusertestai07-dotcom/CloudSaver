@@ -36,8 +36,13 @@ fail() { echo "FAIL $1"; exit 1; }
 # this session, as "a stale state". The output is captured first instead.
 in_code() {   # in_code <pattern> <file...>
   pattern="$1"; shift
-  code=$(sed 's/[[:space:]]#[^"'"'"']*$//; s/^[[:space:]]*#.*$//' "$@")
-  printf '%s\n' "$code" | grep -qE "$pattern"
+  code=$(sed 's/[[:space:]]#[^"'"'"']*$//; s/^[[:space:]]*#.*$//' "$@" || true)
+  # -- before the pattern, so a pattern that begins with a dash is a pattern and not a flag.
+  # Without it, checking for something like --user-data-dir either fails as an unknown option or
+  # has to be called as `in_code -- '--...'`, which this helper reads as the pattern itself and
+  # the real pattern as a filename -- a silent stop, which is the one failure shape this suite
+  # has already been bitten by twice.
+  printf '%s\n' "$code" | grep -qE -- "$pattern"
 }
 
 # ---------------------------------------------------------------- shell, before it reaches a phone
@@ -103,7 +108,7 @@ echo "PASS ReasonGiven (the reason is on screen, with its sources and its limits
 # app called after them would read as official, which this is not. So no maker's name may appear
 # in the app's own name -- and the makers are named on the home screen instead, where naming them
 # is the opposite claim: this is what it runs.
-label=$(grep -oE '<string name="app_name">[^<]*</string>' app/res/values/strings.xml | sed 's/.*>\(.*\)<.*/\1/')
+label=$(grep -oE '<string name="app_name">[^<]*</string>' app/res/values/strings.xml | sed 's/.*>\(.*\)<.*/\1/' || true)
 [ -n "$label" ] || fail "TheirNamesNotOurs: the app has no name"
 for mark in Claude Codex Antigravity Anthropic OpenAI Google ChatGPT Gemini; do
   printf '%s' "$label" | grep -qi "$mark" \
@@ -130,7 +135,7 @@ echo "PASS TheirNamesNotOurs (our name is ours, and theirs are named as what it 
 # answer before they can start working -- when for each maker exactly one route is the best their
 # own publishing supports. So: one script, one start line each, one address, and nothing shipped
 # that could become a second route later.
-starts=$(grep -oE '"doors-[a-z]+\.sh start [a-z]+"' "$SRC/Doors.java" | sort -u)
+starts=$(grep -oE '"doors-[a-z]+\.sh start [a-z]+"' "$SRC/Doors.java" | sort -u || true)
 [ "$(printf '%s\n' "$starts" | wc -l | tr -d ' ')" = "3" ] \
   || fail "OneWayIn: there are not exactly three start lines; a route was added or lost"
 for id in claude codex antigravity; do
@@ -144,7 +149,7 @@ done
 extra=$(ls "$ASSETS"/*.sh | grep -v 'doors-bootstrap.sh\|doors-workspace.sh' || true)
 [ -z "$extra" ] || fail "OneWayIn: a second startable script is shipped -- $extra"
 # -o, not -c: both names sit on one line in SCRIPTS, so counting lines counts one.
-shipped=$(grep -oE '"doors-[a-z]+\.sh"' "$SRC/Doors.java" | sort -u | wc -l | tr -d ' ')
+shipped=$(grep -oE '"doors-[a-z]+\.sh"' "$SRC/Doors.java" | sort -u | wc -l | tr -d ' ' || true)
 [ "$shipped" = "2" ] \
   || fail "OneWayIn: the catalog ships $shipped scripts; this build has two"
 echo "PASS OneWayIn (one script, one start line each, one address, nothing else to choose)"
@@ -205,8 +210,8 @@ echo "PASS Resolver (the phone's own DNS, written before every start and followe
 # to run before the marker checks, so it claimed that line, showed a sign-in strip for a server
 # that needs no sign-in, and skipped the READY that opens the door -- the server was running and
 # the app reported that it had failed. A marker is protocol; a guess about a line is not.
-ready_at=$(grep -n 'startsWith("READY ")' "$SRC/DoorService.java" | head -n1 | cut -d: -f1)
-link_at=$(grep -n 'firstLink(clean)' "$SRC/DoorService.java" | head -n1 | cut -d: -f1)
+ready_at=$(grep -n 'startsWith("READY ")' "$SRC/DoorService.java" | head -n1 | cut -d: -f1 || true)
+link_at=$(grep -n 'firstLink(clean)' "$SRC/DoorService.java" | head -n1 | cut -d: -f1 || true)
 [ -n "$ready_at" ] && [ -n "$link_at" ] \
   || fail "MarkerOrder: the READY marker or the link scan is missing"
 [ "$ready_at" -lt "$link_at" ] \
@@ -361,8 +366,16 @@ echo "PASS PrivateScreen (a private socket no other app on this phone can open)"
 # The command, not the paragraph explaining it. Written as a plain grep first, this stayed green
 # with --no-zygote deleted from the launch, because the comment above it names the flag and says
 # why it is there. Sixth time a check in this project has matched the words around the thing.
-launch=$(sed -n '/^  "\$AG_BIN" \\$/,/^    "\$WORK"/p' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#')
+# The command as it actually runs: the wrapper's flags plus the launch line's. --no-sandbox and
+# --user-data-dir live in the wrapper, because every call needs them; the crash flags live on the
+# launch, because only the long-running editor needs them. Checking one half alone fails on
+# perfectly correct code, which is exactly what this did when the wrapper was introduced.
+wrapper=$(grep -A2 '^editor() {' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
+launch=$(sed -n '/^  editor \\$/,/^    "\$WORK"/p' "$ASSETS/doors-workspace.sh" | grep -v '^\s*#' || true)
 [ -n "$launch" ] || fail "ElectronFlags: the editor's launch command could not be found to check"
+[ -n "$wrapper" ] || fail "ElectronFlags: the wrapper that carries the shared flags is gone"
+launch="$wrapper
+$launch"
 for flag in --no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage --disable-3d-apis; do
   printf '%s' "$launch" | grep -q -- "$flag" \
     || fail "ElectronFlags: $flag is not on the launch command, and it was added for a real crash"
@@ -564,9 +577,41 @@ stop_at=$(grep -n 'kill "\$watcher"' "$ASSETS/doors-workspace.sh" | tail -n1 | c
   || fail "SizesAreReal: the counter does not run for exactly the length of the install"
 echo "PASS SizesAreReal (the megabytes named are the megabytes spent, and they are counted)"
 
+# ---------------------------------------------------------------- root needs saying every time
+# From a real phone, after the editor had installed perfectly: "You are trying to start
+# Antigravity as a super user which isn't recommended. If this was intended, please add the
+# argument `--no-sandbox` and specify an alternate user data directory using the
+# `--user-data-dir` argument." -- printed twice, then "openai.chatgpt could not be installed".
+#
+# The launcher Google ship is Microsoft's, and it refuses outright as root without
+# --user-data-dir. Everything in this workspace is root. The flags were on the launch line and
+# nowhere else, so --list-extensions and --install-extension were both refused, and the script
+# blamed the connection. There is one wrapper now, and this checks nothing bypasses it.
+in_code 'editor\(\) \{' "$ASSETS/doors-workspace.sh" \
+  || fail "RootFlags: there is no single place the editor's required flags are added"
+in_code '\-\-user-data-dir="\$AG_DATA"' "$ASSETS/doors-workspace.sh" \
+  || fail "RootFlags: the wrapper does not pass the data directory the launcher demands of root"
+# Every call must go through it. A bare "$AG_BIN" with arguments is one that gets refused.
+# An invocation is the name followed by a flag. Two narrower forms were tried first and both
+# were wrong in different directions: "the name with anything after it" also caught
+# `[ -x "$AG_BIN" ]`, `pkill -f "$AG_BIN"` and `pgrep -f "$AG_BIN"`, none of which run it; then
+# "the name at the start of a line" missed `if "$AG_BIN" --list-extensions` and
+# `if ! "$AG_BIN" --install-extension` -- which is the exact pair that failed on the phone.
+# The name followed by a dash matches every call and none of the three non-calls: the test ends
+# in `]`, and the two process lookups take the name as their last word.
+bare=$(grep -nE '"\$AG_BIN"[[:space:]]+-' "$ASSETS/doors-workspace.sh" \
+       | grep -v 'user-data-dir' || true)
+[ -z "$bare" ] || fail "RootFlags: the editor is called without the wrapper -- $bare"
+# And a refusal must be reported in the editor's own words rather than blamed on the network,
+# which is what sent somebody to check a connection that was working.
+if grep -q 'could not be installed from Open VSX. Check the connection' "$ASSETS/doors-workspace.sh"; then
+  fail "RootFlags: a refusal by the editor is still reported as a connection problem"
+fi
+echo "PASS RootFlags (one wrapper carries what the launcher demands, and nothing bypasses it)"
+
 # ---------------------------------------------------------------- versions agree
-build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2)
-build_code=$(grep -oE 'VERSION_CODE="[0-9]+"' build.sh | cut -d'"' -f2)
+build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2 || true)
+build_code=$(grep -oE 'VERSION_CODE="[0-9]+"' build.sh | cut -d'"' -f2 || true)
 grep -qi "version \*\*$build_name\*\*" RELEASE-NOTES.md \
   || fail "VersionAgreement: RELEASE-NOTES does not name version $build_name"
 [ -n "$build_code" ] || fail "VersionAgreement: no version code"

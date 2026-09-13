@@ -1,6 +1,62 @@
-# PocketAgent 16.2.0 — the megabytes named are the megabytes spent
+# PocketAgent 16.2.5 — the editor refuses root without being told twice
 
-Version **16.2.0**, code **620**, application ID `com.pocketagent.doors`.
+Version **16.2.5**, code **625**, application ID `com.pocketagent.doors`.
+
+## 16.2.5: the extension install was refused, and the app blamed the network
+
+From a real phone, after Antigravity and openbox had both installed perfectly:
+
+```
+You are trying to start Antigravity as a super user which isn't recommended.
+If this was intended, please add the argument `--no-sandbox` and specify an
+alternate user data directory using the `--user-data-dir` argument.
+You are trying to start Antigravity as a super user which isn't recommended.
+...
+ERROR: openai.chatgpt could not be installed from Open VSX. Check the connection and try again.
+```
+
+The launcher Google ship is Microsoft's, and it **refuses to run at all as root** unless
+`--user-data-dir` is on the command line. Everything in this workspace is root. I had read that
+exact code when unpacking the `.deb` — and then put the flags on the launch line and nowhere
+else, so `--list-extensions` and `--install-extension` were both refused. Printed twice, once
+for each.
+
+There is one wrapper now, `editor()`, and every call goes through it. And the failure is
+reported in the editor's own words instead of "check the connection" — the connection was fine.
+
+## 16.2.5: three gates that were wrong before one was right
+
+`RootFlags` had to be written three times, and the middle two are worth recording.
+
+**Too broad.** "The name with arguments after it" also caught `[ -x "$AG_BIN" ]`,
+`pkill -f "$AG_BIN"` and `pgrep -f "$AG_BIN"` — three lines that test for the program or kill it
+and never execute it.
+
+**Too narrow.** "The name at the start of a line" then missed `if "$AG_BIN" --list-extensions`
+and `if ! "$AG_BIN" --install-extension` — **the exact pair that failed on the phone**. The gate
+passed while the bug it was written for sat in the file.
+
+**Right.** An invocation is the name followed by a flag. That matches every call and none of the
+three non-calls: the test ends in `]`, and the two process lookups take the name as their last
+word.
+
+The wrapper also had to be renamed. I first called it `agy` — which is the name of Google's
+separate agent CLI, the very thing 16.0.0 removed. `OfficialGui` caught it immediately, which is
+the gate working exactly as intended on its author.
+
+## 16.2.5: two more silent stops
+
+`in_code` could not be given a pattern beginning with a dash: `grep -qE "$pattern"` read it as a
+flag, and calling it as `in_code -- '--…'` made the helper treat `--` as the pattern and the
+real pattern as a filename. It passes `--` internally now.
+
+And eight assignments of the form `x=$(grep …)` still ended the run when they found nothing,
+before the line that would have said what was missing. That is the third time this shape has
+bitten in one session; all eight are guarded.
+
+---
+
+# Earlier releases
 
 ## 16.2.0: the app overstated a download by five times
 

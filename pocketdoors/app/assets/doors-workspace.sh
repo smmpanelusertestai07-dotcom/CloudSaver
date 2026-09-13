@@ -48,6 +48,22 @@ AG_INSTALLED_MB=702
 AG_KEYRING=/etc/apt/keyrings/antigravity.gpg
 AG_LIST=/etc/apt/sources.list.d/antigravity.list
 AG_BIN=/usr/share/antigravity/bin/antigravity
+# Where the editor keeps its settings and extensions. Not a preference: the launcher Google ship
+# is Microsoft's, and it refuses to run at all as root unless --user-data-dir is on the command
+# line. Everything in this workspace is root, so every single call needs it.
+AG_DATA=/root/.config/Antigravity
+
+# Every call to the editor, with the two arguments its own launcher demands of a root user.
+#
+# From a real phone: "You are trying to start Antigravity as a super user which isn't
+# recommended. If this was intended, please add the argument `--no-sandbox` and specify an
+# alternate user data directory using the `--user-data-dir` argument." -- printed twice, then
+# "openai.chatgpt could not be installed from Open VSX". The editor had installed perfectly; it
+# was --install-extension and --list-extensions that were refused, because the flags were on the
+# launch line and nowhere else. One wrapper now, so there is no second place to forget them.
+editor() {
+  "$AG_BIN" --no-sandbox --user-data-dir="$AG_DATA" "$@"
+}
 
 # Their own identifiers on Open VSX, spelled the way each maker owns them. Google's agent is
 # not here because it is not an extension: it is the editor.
@@ -188,7 +204,7 @@ install_screen() {
 
 install_extension() {
   id="$1"
-  if "$AG_BIN" --list-extensions 2>&1 | grep -qi "^${id}$"; then
+  if editor --list-extensions 2>&1 | grep -qi "^${id}$"; then
     return 0
   fi
   size=$(extension_size "$id")
@@ -200,10 +216,14 @@ install_extension() {
   fi
   # --force, because without it a second run stops to ask about a version already present, and
   # nothing here can answer a question asked on a pipe.
-  "$AG_BIN" --install-extension "$id" --force >>"$LOG" 2>&1 \
-    || { tail -n 12 "$LOG" 2>/dev/null || true
-         fail "${id} could not be installed from Open VSX. Check the connection and try again."; }
-  "$AG_BIN" --list-extensions 2>&1 | grep -qi "^${id}$" \
+  # Its own words on failure, not a guess. The last version told somebody to check their
+  # connection when the connection was fine and the editor had simply refused the command.
+  if ! editor --install-extension "$id" --force >>"$LOG" 2>&1; then
+    say "The editor refused to install it. Its own last words:"
+    tail -n 12 "$LOG" 2>/dev/null || true
+    fail "${id} could not be installed."
+  fi
+  editor --list-extensions 2>&1 | grep -qi "^${id}$" \
     || fail "${id} reported success but is not in the editor's extension list."
 }
 
@@ -237,7 +257,7 @@ except Exception:
 # manual because the package updates through apt, and an editor that also updates itself ends
 # up fighting its own package manager.
 phone_defaults() {
-  user_dir=/root/.config/Antigravity/User
+  user_dir="$AG_DATA/User"
   mkdir -p "$user_dir"
   [ -f "$user_dir/settings.json" ] && return 0
   cat > "$user_dir/settings.json" <<'JSON'
@@ -320,11 +340,10 @@ start_workspace() {
   # the one that fails under proot; --in-process-gpu and --disable-gpu because there is no
   # graphics chip and the separate process only adds one more thing to crash; --disable-3d-apis
   # because WebGL here is software and a fault in it is a fault in the whole editor.
-  "$AG_BIN" \
-    --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
+  editor \
+    --disable-setuid-sandbox --disable-gpu-sandbox \
     --no-zygote --in-process-gpu --disable-dev-shm-usage \
     --disable-gpu --disable-gpu-compositing --disable-3d-apis \
-    --user-data-dir=/root/.config/Antigravity \
     "$WORK" >>"$LOG" 2>&1 &
   EDITOR_PID=$!
 
