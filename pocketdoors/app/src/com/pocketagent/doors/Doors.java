@@ -123,9 +123,12 @@ final class Doors {
                     "doors-codeserver.sh start codex",
                     "",
                     "http://127.0.0.1:8391/",
-                    "Every ChatGPT plan, Free included", true,
-                    "OpenAI's own phone interface needs a Mac to supervise. This is their VS Code "
-                            + "extension instead, which is the same interface their desktop uses.",
+                    "ChatGPT Plus, Pro, Business, Edu or Enterprise", false,
+                    "OpenAI list the plans that include this on the extension itself: Plus, Pro, "
+                            + "Business, Edu and Enterprise. Free is not among them. This is their "
+                            + "own VS Code extension, the same one their desktop editor runs, and "
+                            + "it drives the same Codex engine underneath -- but it is not the "
+                            + "separate Codex application for macOS, and does not claim to be.",
                     false),
 
             new Agent("claude", "Claude Code", Door.EXTENSION_HOST,

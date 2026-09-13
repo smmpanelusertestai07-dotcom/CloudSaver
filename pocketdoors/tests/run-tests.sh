@@ -49,6 +49,23 @@ if grep -A6 '"cursor", "Cursor"' "$SRC/Doors.java" | grep -q '"doors-'; then
 fi
 echo "PASS CursorClaim (no headless route is claimed for Cursor)"
 
+# ---------------------------------------------------------------- what it costs, in their words
+# This app told people Codex was included in "Every ChatGPT plan, Free included". OpenAI's own
+# extension says: "included in ChatGPT Plus, Pro, Business, Edu, and Enterprise plans" -- Free is
+# not on that list. Someone on a free account would have spent 450 MB of mobile data to find out.
+# The publisher's list is the only thing allowed to answer this question.
+if grep -qi 'Free included\|free tier.*ChatGPT\|ChatGPT.*Free plan' "$SRC/Doors.java"; then
+  fail "PlansAreTheirs: Codex is described as free; its publisher lists paid plans only"
+fi
+grep -q 'ChatGPT Plus, Pro, Business, Edu or Enterprise' "$SRC/Doors.java" \
+  || fail "PlansAreTheirs: the plans named for Codex are not the ones its publisher names"
+# And it must not be sold as the macOS application, which is a different product.
+# One unsplit phrase, because a Java string broken across two lines defeats any pattern that
+# tries to span the break -- which is how this check first failed on text that was already there.
+grep -q 'Codex application for macOS' "$SRC/Doors.java" \
+  || fail "PlansAreTheirs: nothing says this is the VS Code extension rather than the Mac app"
+echo "PASS PlansAreTheirs (what an agent costs is quoted from its publisher, not guessed)"
+
 # ---------------------------------------------------------------- integrity of what is downloaded
 grep -q 'sha512sum --check' "$ASSETS/doors-antigravity.sh" \
   || fail "Integrity: the Antigravity download is not checksum-verified"

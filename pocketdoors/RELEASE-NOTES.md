@@ -1,9 +1,27 @@
-# PocketAgent Doors 15.3.5 — the editor opened, and then could not be signed into
+# PocketAgent Doors 15.4.0 — what Codex costs, in its publisher's own words
 
-Version **15.3.5**, code **535**, application ID `com.pocketagent.doors`.
+Version **15.4.0**, code **540**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.4.0: this app said Codex was free, and it is not
+
+Door B's card read **"Every ChatGPT plan, Free included"**. That was this app's claim, not
+OpenAI's. Theirs is printed on the extension itself:
+
+> Codex is a coding agent that works with you everywhere you code — included in ChatGPT Plus,
+> Pro, Business, Edu, and Enterprise plans.
+
+**Free is not on that list.** Someone on a free account would have spent about 450 MB of mobile
+data installing a door they could not open, on the strength of a sentence nobody at OpenAI wrote.
+
+The card now names the plans its publisher names, and a check fails the build if this app ever
+describes Codex as free again, or names a different set of plans.
+
+The same card also now says what this is: OpenAI's own VS Code extension — the same one their
+desktop editor runs, driving the same Codex engine underneath — and **not** the separate Codex
+application for macOS, which is a different product.
 
 ## 15.3.5: Codex opened
 
@@ -196,10 +214,11 @@ Door C (Cursor) is still not wired up, and Cursor still publish no headless rout
 
 ## Checks
 
-Twenty-seven now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
+Twenty-eight now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
 produced one of the failures above: an unverified address, an undocumented flag, a publisher's
 site framed inside the app, a download trusted before it was complete, a set-up that could be
 frozen halfway, an archive unpacked the wrong shape, a long download that said nothing, a guess
 about a line beating a marker, a door that returned while its server was meant to be running, a
 sign-in run on a pipe, a question that scrolled away as it arrived, a sign-in window refused
-before anyone could see it, and a desktop editor left at desktop size on a phone.
+before anyone could see it, a desktop editor left at desktop size on a phone, and a price this
+app invented for somebody else's product.
