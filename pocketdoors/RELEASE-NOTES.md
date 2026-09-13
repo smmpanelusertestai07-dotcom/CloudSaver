@@ -1,9 +1,63 @@
-# PocketAgent Doors 15.2.5 — unpack what the archive actually is
+# PocketAgent Doors 15.3.0 — the editor was running and the app said it had failed
 
-Version **15.2.5**, code **525**, application ID `com.pocketagent.doors`.
+Version **15.3.0**, code **530**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.3.0: four bugs between a working door and a screen that said otherwise
+
+The editor door reached the end. Its own log: extension `openai.chatgpt` v26.908.40401 installed,
+`Starting code-server on 127.0.0.1:8391`, `READY http://127.0.0.1:8391/`. The screen said
+**Codex could not start here**, offered a sign-in strip for a server that needs no sign-in, and
+the browser got `ERR_CONNECTION_REFUSED`. Four separate faults, none of them the door's.
+
+### A guess about a line beat the app's own protocol
+
+Lines from a door are scanned for a link, because a sign-in prints one. That scan ran *before*
+the marker checks — and the editor announces itself with `READY http://127.0.0.1:8391/`, which
+contains a link. The scan claimed the line, raised the sign-in strip, and skipped the `READY`
+that opens the door. The run was then recorded as a failure.
+
+Markers are read first now. A marker is this app's own protocol; a guess about a line never wins
+over one.
+
+### Nothing can detach, so nothing may try
+
+proot runs with `--kill-on-exit`: when the process it was given finishes, every process inside
+the workspace is killed with it. The editor door started its server in the background and
+returned — which ended the script, which ended the session, which killed the server. The app
+announced a working editor and by the time anyone looked there was nothing listening.
+
+Both doors now stay for as long as the thing they started is running: the editor waits on its
+server, Antigravity watches its daemon and reports the moment it stops. The app's own line about
+"running in the background" is gone, because nothing here runs in the background.
+
+### One screen, three starts, one service
+
+`read interrupted by close() on another thread`, over a sign-in that was working.
+
+A normal Antigravity sign-in starts this service three times: on opening, to sign in, and again
+when the sign-in finishes. Each start replaced the running process and thread without ending the
+one before, and the older run then reached its own clean-up and stopped the service — destroying
+the process the *newer* run was reading. Java reported that read being interrupted, and the app
+showed it as the door's failure.
+
+Every run now carries the number it was given and touches nothing once a newer one exists.
+Starting a door ends the previous one first, deliberately, instead of leaving it to collide.
+
+Stopping a door no longer boots a second workspace to run a "stop" command. `--kill-on-exit` had
+already ended everything; the second session was pure cost, and it ran on the main thread.
+
+### Sign-in needs a terminal
+
+Read out of the published binary, in the CLI's own words: *"Launch the CLI without arguments to
+sign in"*, and an auth step called *"Selecting sign-in method"*. That is an interactive screen,
+and an interactive program handed a pipe either refuses to draw or draws nothing.
+
+Sign-in now runs under `script`, which allocates a real pty, so the CLI behaves the way it does
+over SSH. And what it says stays on screen: a conversation was being shown one line at a time in
+a status line, so every line replaced the one before — including the question being asked.
 
 ## 15.2.5: the Antigravity archive was never unpacked
 
@@ -113,7 +167,9 @@ Door C (Cursor) is still not wired up, and Cursor still publish no headless rout
 
 ## Checks
 
-Twenty-one now. The seven added across 15.2.0 and 15.2.5 each fail on the exact mistake that
+Twenty-five now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
 produced one of the failures above: an unverified address, an undocumented flag, a publisher's
 site framed inside the app, a download trusted before it was complete, a set-up that could be
-frozen halfway, an archive unpacked the wrong shape, and a long download that said nothing.
+frozen halfway, an archive unpacked the wrong shape, a long download that said nothing, a guess
+about a line beating a marker, a door that returned while its server was meant to be running, a
+sign-in run on a pipe, and a question that scrolled away as it arrived.

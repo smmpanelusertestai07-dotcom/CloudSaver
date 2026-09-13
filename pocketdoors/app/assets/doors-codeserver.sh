@@ -170,11 +170,9 @@ start_server() {
   install_server
   install_extension "$agent"
 
-  if running; then
-    say "code-server is already running on ${PORT}."
-    say "READY http://127.0.0.1:${PORT}/"
-    return 0
-  fi
+  # A pid file left by an earlier session is always stale: proot runs with --kill-on-exit, so
+  # nothing inside this workspace outlives the session that started it.
+  rm -f "$PIDFILE"
 
   mkdir -p /root/work
   # Bound to the loopback address on purpose: the only thing that should ever reach this
@@ -190,26 +188,46 @@ start_server() {
     --app-name "PocketAgent" \
     --welcome-text "Your workspace is on this phone." \
     /root/work >>"$LOG" 2>&1 &
-  printf '%s\n' "$!" > "$PIDFILE"
+  server=$!
+  printf '%s\n' "$server" > "$PIDFILE"
 
   # Wait for it to answer before telling the phone to load the page; a WebView that arrives
   # first shows a connection error and the owner has to guess whether to retry.
+  answered=false
   for _ in $(seq 1 90); do
     if curl --fail --silent --max-time 2 "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 \
        || curl --fail --silent --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/"; then
-      say "READY http://127.0.0.1:${PORT}/"
-      return 0
+      answered=true
+      break
     fi
-    if ! running; then
+    if ! kill -0 "$server" 2>/dev/null; then
       say "code-server stopped while starting. Its own words:"
       tail -n 20 "$LOG" 2>/dev/null || true
       fail "code-server did not stay running."
     fi
     sleep 1
   done
-  say "code-server did not answer in time. Its own words:"
-  tail -n 20 "$LOG" 2>/dev/null || true
-  fail "code-server did not answer on ${PORT}."
+
+  if [ "$answered" != true ]; then
+    say "code-server did not answer in time. Its own words:"
+    tail -n 20 "$LOG" 2>/dev/null || true
+    fail "code-server did not answer on ${PORT}."
+  fi
+
+  say "READY http://127.0.0.1:${PORT}/"
+
+  # And then stay here, for as long as the server runs.
+  #
+  # This is not a style choice. proot is started with --kill-on-exit, so when the process it
+  # was given finishes, every process inside the workspace is killed with it. An earlier build
+  # backgrounded the server and returned, which ended this script, which ended the session,
+  # which killed the server -- the app announced a working editor and the browser then got
+  # ERR_CONNECTION_REFUSED, because by the time anyone looked there was nothing listening.
+  # Waiting here keeps the session open, and the app's foreground notification is what keeps
+  # the phone from reclaiming it.
+  wait "$server" 2>/dev/null || true
+  rm -f "$PIDFILE"
+  say "code-server has stopped."
 }
 
 stop_server() {

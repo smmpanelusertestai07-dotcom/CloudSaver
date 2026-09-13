@@ -159,10 +159,23 @@ do_login() {
     return 0
   fi
 
-  # TERM=dumb keeps the CLI from redrawing a full-screen interface the app cannot show, and
-  # nudges it toward the plain prompt-and-paste flow it uses over SSH.
-  say "ASK Sign in to Google. A link will appear; open it, then paste the code back here."
-  TERM=dumb "$agy" 2>&1 || true
+  # Bare `agy`, with no subcommand. That is the CLI's own instruction, in its own words:
+  # "Launch the CLI without arguments to sign in."
+  #
+  # And it must be given a terminal. Sign-in is interactive -- the binary carries an auth step
+  # called "Selecting sign-in method" -- and an interactive program handed a pipe either refuses
+  # or draws nothing. `script` allocates a real pty and is part of Ubuntu's base system, so the
+  # CLI behaves the way it does over SSH: it prints, it waits, and what the owner types in the
+  # box below goes back to it.
+  say "ASK Sign in to Google. Follow what appears below; type your answers in the box."
+  if command -v script >/dev/null 2>&1; then
+    TERM=xterm script --quiet --return --command "$agy" /dev/null 2>&1 || true
+  else
+    # No pty to be had. Say so rather than pretend, because a menu that never draws looks
+    # exactly like a CLI that has hung.
+    say "This workspace has no pty, so the sign-in screen may not draw. Its output follows."
+    TERM=dumb "$agy" 2>&1 || true
+  fi
   # The CLI exits once the owner leaves it. If a credential landed, remember that.
   if signed_in; then
     say "Signed in."
@@ -179,6 +192,20 @@ daemon_up() {
   "$1" remote-control status 2>&1 | grep -qiE 'running|active|connected|online'
 }
 
+# Stays here for as long as the daemon runs, and notices the moment it does not.
+#
+# proot is started with --kill-on-exit: when the process it was given finishes, everything
+# inside the workspace is killed with it. A script that started a daemon and returned would
+# therefore kill the daemon on its way out, and the app would announce a working agent that
+# stopped existing a second later. Waiting also means a daemon that dies on its own is reported
+# rather than left as a dashboard that never finds the machine.
+hold_open() {
+  while daemon_up "$1"; do
+    sleep 15
+  done
+  say "The Antigravity daemon has stopped."
+}
+
 start_daemon() {
   install_cli
   agy=$(agy_path) || fail "The Antigravity CLI is not installed."
@@ -193,6 +220,7 @@ start_daemon() {
   if daemon_up "$agy"; then
     say "The Antigravity daemon is already running."
     say "READY $DASHBOARD"
+    hold_open "$agy"
     return 0
   fi
 
@@ -206,6 +234,7 @@ start_daemon() {
     if daemon_up "$agy"; then
       say "SERVICE the daemon is registered and running"
       say "READY $DASHBOARD"
+      hold_open "$agy"
       return 0
     fi
     say "The CLI accepted the command but the daemon is not reporting itself as running."

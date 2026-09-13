@@ -53,6 +53,8 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
     private Doors.Agent agent;
     private String link;
     private String surface;
+    /** Everything a door has said while it is still talking, for the screen to show. */
+    private final StringBuilder conversation = new StringBuilder();
     private boolean loaded;
     private boolean signingIn;
     private BroadcastReceiver events;
@@ -206,9 +208,16 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
                 String state = intent.getStringExtra(DoorService.EXTRA_STATE);
                 String url = intent.getStringExtra(DoorService.EXTRA_URL);
                 String found = intent.getStringExtra(DoorService.EXTRA_LINK);
-                if (line != null) status.setText(line);
+                if (line != null) {
+                    status.setText(line);
+                    note(line);
+                }
                 if ("needlogin".equals(state)) { askToSignIn(); return; }
                 if ("asking".equals(state)) {
+                    // An interactive sign-in is a conversation with more than one line in it.
+                    // A single status line showed the owner the last one and threw the rest
+                    // away, including the question they were being asked.
+                    render();
                     signIn.setVisibility(View.VISIBLE);
                     if (found != null) {
                         link = found;
@@ -285,6 +294,26 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         openSurfaceHolder = holder;
         return holder;
+    }
+
+    /** Keeps the last part of what a door has said, which is all a phone screen can hold. */
+    private void note(String line) {
+        conversation.append(line).append('\n');
+        if (conversation.length() > 8000) conversation.delete(0, conversation.length() - 8000);
+    }
+
+    /** Draws the conversation so far, so a question is visible while it is still being asked. */
+    private void render() {
+        if (conversation.length() == 0 || agent.opensInBrowser() && loaded) return;
+        boolean dark = Ui.dark(this);
+        web.loadDataWithBaseURL(null,
+                "<meta name=viewport content='width=device-width,initial-scale=1'>"
+                        + "<body style=\"margin:16px;background:" + hex(Ui.bg(dark)) + ";"
+                        + "color:" + hex(Ui.text(dark)) + "\">"
+                        + "<pre id=t style=\"white-space:pre-wrap;word-break:break-word;"
+                        + "font:12px/1.5 monospace\">" + escape(conversation.toString().trim())
+                        + "</pre><script>scrollTo(0,document.body.scrollHeight)</script>"
+                        + "</body>", "text/html", "utf-8", null);
     }
 
     private void showFailure(String line) {

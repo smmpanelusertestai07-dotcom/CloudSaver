@@ -206,6 +206,57 @@ grep -q 'It is not stuck' "$ASSETS/doors-codeserver.sh" \
   || fail "BigDownloads: a silent hour is never explained as normal"
 echo "PASS BigDownloads (the size is said out loud before the data is spent)"
 
+# ---------------------------------------------------------------- this app's own words come first
+# The editor announces itself with "READY http://127.0.0.1:8391/". A generic scan for a link used
+# to run before the marker checks, so it claimed that line, showed a sign-in strip for a server
+# that needs no sign-in, and skipped the READY that opens the door -- the server was running and
+# the app reported that it had failed. A marker is protocol; a guess about a line is not.
+ready_at=$(grep -n 'startsWith("READY ")' "$SRC/DoorService.java" | head -n1 | cut -d: -f1)
+link_at=$(grep -n 'firstLink(clean)' "$SRC/DoorService.java" | head -n1 | cut -d: -f1)
+[ -n "$ready_at" ] && [ -n "$link_at" ] \
+  || fail "MarkerOrder: the READY marker or the link scan is missing"
+[ "$ready_at" -lt "$link_at" ] \
+  || fail "MarkerOrder: a line is scanned for links before READY is read, which swallows READY"
+echo "PASS MarkerOrder (a marker is read before any line is guessed at)"
+
+# ---------------------------------------------------------------- nothing is left to detach
+# proot runs with --kill-on-exit, so when the script it was given finishes, every process inside
+# the workspace is killed with it. A door that started something and returned would kill what it
+# had just started, and the app would announce a working agent that no longer existed.
+grep -q 'kill-on-exit' "$SRC/Ubuntu.java" \
+  || fail "StaysInSession: the assumption this gate is built on is gone; re-check what proot does now"
+grep -q 'wait "\$server"' "$ASSETS/doors-codeserver.sh" \
+  || fail "StaysInSession: the editor door returns while its server is supposed to be running"
+grep -q 'hold_open' "$ASSETS/doors-antigravity.sh" \
+  || fail "StaysInSession: the Antigravity door returns while its daemon is supposed to be running"
+if grep -q 'Running in the background' "$SRC/DoorService.java"; then
+  fail "StaysInSession: the app still claims a door keeps running after its session has ended"
+fi
+echo "PASS StaysInSession (a door holds its session open for as long as it is running)"
+
+# ---------------------------------------------------------------- sign-in gets a real terminal
+# The CLI's own words, read out of the published binary: "Launch the CLI without arguments to
+# sign in", and an auth step called "Selecting sign-in method". That is an interactive screen,
+# and an interactive program handed a pipe either refuses to draw or draws nothing at all.
+# `script` allocates a pty and is part of Ubuntu's base system.
+grep -q 'script --quiet --return --command' "$ASSETS/doors-antigravity.sh" \
+  || fail "SignInTerminal: the sign-in is run on a pipe, where an interactive screen cannot draw"
+if grep -nE '^[^#]*(agy|\$agy)' "$ASSETS/doors-antigravity.sh" | grep -qE 'agy" (auth|login) '; then
+  fail "SignInTerminal: a sign-in subcommand is used; this CLI signs in with no arguments at all"
+fi
+grep -q 'ACTION_INPUT' "$SRC/DoorService.java" \
+  || fail "SignInTerminal: nothing can answer the questions the sign-in asks"
+echo "PASS SignInTerminal (sign-in runs on a pty, with a way to answer it)"
+
+# ---------------------------------------------------------------- a question stays readable
+# A sign-in is a conversation. The status line holds one line, so showing the conversation there
+# meant every line replaced the one before -- including the question being asked.
+grep -q 'conversation' "$SRC/DoorActivity.java" \
+  || fail "Conversation: what a door says is not kept, so a question scrolls away as it arrives"
+grep -q 'render()' "$SRC/DoorActivity.java" \
+  || fail "Conversation: the conversation is never drawn"
+echo "PASS Conversation (what a door asks stays on screen while it is asking)"
+
 # ---------------------------------------------------------------- a publisher's site is not framed
 # Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
 # window can never be signed in. Their own instruction is to open it in a browser and add it to
