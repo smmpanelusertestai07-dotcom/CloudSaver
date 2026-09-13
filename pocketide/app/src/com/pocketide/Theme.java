@@ -60,6 +60,13 @@ final class Theme {
         Window window = activity.getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
 
+        // The window background comes from the phone's night setting; everything the app draws
+        // comes from the app's OWN theme setting. Set this app to Dark on a phone in Light mode
+        // and the window was white for one frame before a dark interface was painted over it.
+        // That flash is what an owner described as garbled text on opening: it is the previous
+        // frame and the next one visible at once.
+        window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Ui.bg(dark)));
+
         // Honoured up to Android 14 and ignored from 15, where the app paints the strip behind
         // each bar itself. Kept for the versions that still listen: the nav bar takes the CARD
         // colour rather than the page, because the app's own bottom bar is card, and a system

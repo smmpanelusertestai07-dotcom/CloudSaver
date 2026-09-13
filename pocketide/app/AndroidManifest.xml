@@ -74,6 +74,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:theme="@style/Theme.PocketIDE.Splash"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -102,7 +102,7 @@ public final class SetupActivity extends Activity {
 
         LinearLayout content = Ui.column(this);
         content.addView(machineCard(dark));
-        content.addView(progressCard(dark), Ui.wide(this, 14));
+        content.addView(progressWithEdge(dark), Ui.wide(this, 14));
         content.addView(stepsCard(dark), Ui.wide(this, 14));
         content.addView(transcriptCard(dark), Ui.wide(this, 14));
 
@@ -168,6 +168,26 @@ public final class SetupActivity extends Activity {
         card.addView(editorRow, Ui.wide(this, 12));
         return card;
     }
+
+    /**
+     * The progress card, with a highlight travelling round its edge while work is happening.
+     *
+     * A percentage bar is here too and it is honest about the stages it can count, but the long
+     * middle of a set-up is apt fetching packages and apt does not say how long that will take.
+     * The edge does not claim to know: it only says something is still moving, which is the one
+     * thing an owner watching a twenty-minute install actually needs to see.
+     */
+    private View progressWithEdge(boolean dark) {
+        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        wrap.addView(progressCard(dark));
+        edge = new BrandFrame.MovingEdge(this, dark, 20);
+        wrap.addView(edge, new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        edge.start();
+        return wrap;
+    }
+
+    private BrandFrame.MovingEdge edge;
 
     private View progressCard(boolean dark) {
         LinearLayout card = Ui.card(this, dark);
@@ -303,6 +323,8 @@ public final class SetupActivity extends Activity {
     }
 
     private void onReady() {
+        if (edge != null) edge.stop();
+
         for (Stage stage : Stage.values()) markDone(stage);
         bar.setProgress(100);
         percentText.setText("100%");

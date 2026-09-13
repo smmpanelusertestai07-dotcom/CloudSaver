@@ -200,6 +200,11 @@ python3 "$HERE/contrast.py" "$APP" >/dev/null && pass "Contrast" \
 # loads, and a corner is sliced off. ic_pulse shipped reaching y=27.2 in a 24-high box.
 python3 "$HERE/vector_icons.py" "$APP" >/dev/null && pass "IconsFitTheirBox" \
   || fail "IconsFitTheirBox" "a vector icon draws outside the viewport it declares"
+
+# XML forbids "--" inside a comment and aapt2 reports it with no line number at all. It has
+# cost this project three builds, every time an em dash typed as two hyphens.
+python3 "$HERE/xml_comments.py" "$APP" >/dev/null && pass "XmlComments" \
+  || fail "XmlComments" "an XML comment contains a double hyphen, which aapt2 will not parse"
 # The bar claims to follow a published specification, and the editor claims to size itself to
 # the phone. The release before this one gave every phone the constant zoom 1.5.
 python3 "$HERE/navigation.py" "$APP" && pass "NavigationAndFit" \

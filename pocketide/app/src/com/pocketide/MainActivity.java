@@ -155,6 +155,8 @@ public final class MainActivity extends Activity {
         setContentView(lockRoot);
         showing = pane;
         pane.shown(this);
+        // Before the lock, so a locked app does not show its contents behind the brand frame.
+        BrandFrame.openOver(this, lockRoot);
         raiseLockIfNeeded();
     }
 
