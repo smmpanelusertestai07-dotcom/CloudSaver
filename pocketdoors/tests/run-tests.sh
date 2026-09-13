@@ -63,12 +63,27 @@ if grep -REn "curl[^|]*[\"' ]http://" "$ASSETS" | grep -vE '127\.0\.0\.1|localho
   fail "Integrity: a download that leaves the phone uses plain HTTP"
 fi
 # Ubuntu's base image ships no certificate store, so the very first apt fetch cannot be HTTPS.
-# What matters is that it installs ca-certificates and switches immediately, in that order.
-plain=$(grep -n 'deb http://ports.ubuntu.com' "$ASSETS/doors-bootstrap.sh" | head -n1 | cut -d: -f1)
-switch=$(grep -n "sed -i 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g'" "$ASSETS/doors-bootstrap.sh" | head -n1 | cut -d: -f1)
-certs=$(grep -n 'apt-get install -y -qq ca-certificates' "$ASSETS/doors-bootstrap.sh" | head -n1 | cut -d: -f1)
-[ -n "$plain" ] && [ -n "$certs" ] && [ -n "$switch" ] && [ "$plain" -lt "$certs" ] && [ "$certs" -lt "$switch" ] \
-  || fail "Integrity: the bootstrap does not install certificates and switch apt to HTTPS straight after"
+# What matters is the order, not the flags: the shipped source list is removed (it points at a
+# host that serves no arm64, which is what made the first set-up fail), certificates are
+# installed, and apt switches to HTTPS -- in that order. Pinning the exact apt flags here is
+# what broke this gate once already, so the checks below look for the step, not its spelling.
+line_of() { grep -nE "$1" "$ASSETS/doors-bootstrap.sh" 2>/dev/null | head -n1 | cut -d: -f1; }
+drop=$(line_of 'rm -f /etc/apt/sources\.list\.d/')
+plain=$(line_of 'deb http://ports\.ubuntu\.com')
+certs=$(line_of 'apt-get install .*ca-certificates')
+switch=$(line_of 'https://ports\.ubuntu\.com.*sources\.list|sed .*ports\.ubuntu\.com')
+for step in drop plain certs switch; do
+  eval "value=\$$step"
+  [ -n "$value" ] || fail "Integrity: the bootstrap has no '$step' step"
+done
+[ "$drop" -lt "$plain" ] && [ "$plain" -lt "$certs" ] && [ "$certs" -lt "$switch" ] \
+  || fail "Integrity: the bootstrap's apt steps are out of order (drop $drop, plain $plain, certs $certs, switch $switch)"
+# The architecture is named before anything is fetched, and an empty index is caught before an
+# install can fail with "no installation candidate" -- the error that stopped the first attempt.
+grep -q 'dpkg --print-architecture' "$ASSETS/doors-bootstrap.sh" \
+  || fail "Integrity: the bootstrap does not check the architecture before fetching"
+grep -q 'apt-cache policy' "$ASSETS/doors-bootstrap.sh" \
+  || fail "Integrity: nothing proves the package index arrived before the first install"
 echo "PASS Integrity (checksums; HTTPS off the phone, and apt on HTTPS from its second fetch)"
 
 # ---------------------------------------------------------------- the loopback stays loopback

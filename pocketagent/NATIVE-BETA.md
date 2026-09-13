@@ -1,4 +1,4 @@
-# PocketAgent 14.1.5
+# PocketAgent 14.2.0
 
 PocketAgent is a native Android interface for official coding agents running in an Ubuntu
 userspace on the phone. Beta.12 updates the name, package and icon to PocketAgent. Beta.11 added shared-project agent switching and artifact downloads. Beta.10 added inline dictation, composer usage, response actions and public tool-activity cards. Mode, model and reasoning effort stay in the composer; the partial-width side
@@ -275,7 +275,7 @@ protections. Loopback is local to the device, not exclusive to PocketAgent.
 
 This project uses plain Java and the Android SDK without a Gradle dependency download during
 compilation. Set `ANDROID_SDK_ROOT` to an SDK containing `platforms/android-35` and
-`build-tools/35.0.0`, then run `bash build.sh` here. Version **14.1.5**, code **445**,
+`build-tools/35.0.0`, then run `bash build.sh` here. Version **14.2.0**, code **450**,
 target API 35, minimum API 29, ARM64. Native library ZIP placement is aligned for 16 KB pages.
 Keep the signing key private and stable for updates. Shared source archives must exclude
 `.signing/`, accounts and runtime workspace data. Fresh source builds generate a local key

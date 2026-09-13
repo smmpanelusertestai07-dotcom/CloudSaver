@@ -1,9 +1,29 @@
-# PocketAgent Doors 15.0.5 — the app stops drawing agents
+# PocketAgent Doors 15.1.0 — the workspace actually builds now
 
-Version **15.0.5**, code **505**, application ID `com.pocketagent.doors`.
+Version **15.1.0**, code **510**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.1.5 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## The bug that stopped the first set-up
+
+`E: Package 'ca-certificates' has no installation candidate`, after a screenful of duplicate
+source warnings. Ubuntu 24.04's base image already ships
+`/etc/apt/sources.list.d/ubuntu.sources`, and it points at `archive.ubuntu.com` -- which carries
+amd64 and i386 only. On an arm64 phone every index there is a miss. The bootstrap then added its
+own list alongside, which is where the duplicate warnings came from, and apt ended up with no
+candidate for anything.
+
+The shipped list is now removed rather than added to, and `ports.ubuntu.com` -- the host that
+actually carries arm64 -- is the only source. Three more things changed because this failure was
+harder to read than it should have been: the architecture is checked and named before anything
+is fetched, `apt-get update` no longer runs under `-qq` so its own errors reach the screen, and
+the package index is proven non-empty before the first install, because "no installation
+candidate" is what an empty index looks like from the far end.
+
+## The icon
+
+Near-black tile, bone brackets, one violet spark -- the same mark PocketAgent 14.2.0 now carries.
 
 ## What changed, in one sentence
 

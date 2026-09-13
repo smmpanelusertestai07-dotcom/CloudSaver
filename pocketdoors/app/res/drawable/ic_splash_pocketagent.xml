@@ -7,6 +7,6 @@
         android:translateX="25.8462" android:translateY="25.8462">
         <path android:pathData="M196 186 L130 256 L196 326" android:strokeWidth="38" android:strokeColor="#F7F3EB" android:strokeLineCap="round" android:strokeLineJoin="round"/>
         <path android:pathData="M316 186 L382 256 L316 326" android:strokeWidth="38" android:strokeColor="#F7F3EB" android:strokeLineCap="round" android:strokeLineJoin="round"/>
-        <path android:pathData="M256 198 Q275 237 314 256 Q275 275 256 314 Q237 275 198 256 Q237 237 256 198 Z" android:fillColor="#F7F3EB"/>
+        <path android:pathData="M256 198 Q275 237 314 256 Q275 275 256 314 Q237 275 198 256 Q237 237 256 198 Z" android:fillColor="#8B7BFF"/>
     </group>
 </vector>

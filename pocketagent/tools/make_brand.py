@@ -32,6 +32,7 @@ T = json.load(open(os.path.join(BRANDING, "tokens.json")))
 B, G = T["brand"], T["geometry"]
 ART = G["artboard"]
 MARK, TOP, BOTTOM = B["mark"], B["tile_top"], B["tile_bottom"]
+SPARK = B["spark"]
 LIFT, VIGNETTE, RIM = G["tile_lift"], G["tile_vignette"], G["tile_rim"]
 
 
@@ -64,8 +65,8 @@ def place(canvas, width):
     return scale, (canvas - ART * scale) / 2
 
 
-def svg_mark(colour, scale=1.0, dx=0.0, dy=0.0):
-    """Brackets plus spark as SVG elements, in the colour given."""
+def svg_mark(colour, scale=1.0, dx=0.0, dy=0.0, spark=None):
+    """Brackets plus spark. The spark takes its own colour where the surface allows one."""
     def move(path):
         out, numbers = [], path.replace(",", " ").split()
         for token in numbers:
@@ -79,13 +80,13 @@ def svg_mark(colour, scale=1.0, dx=0.0, dy=0.0):
     return (f'<g fill="none" stroke="{colour}" stroke-width="{width:g}" stroke-linecap="round" '
             f'stroke-linejoin="round">'
             f'<path d="{move(G["bracket_left"])}"/><path d="{move(G["bracket_right"])}"/></g>'
-            f'<path d="{spark_path(scale, dx, dy)}" fill="{colour}"/>')
+            f'<path d="{spark_path(scale, dx, dy)}" fill="{spark or colour}"/>')
 
 
-def svg_tile_mark(colour, width_fraction):
+def svg_tile_mark(colour, width_fraction, spark=None):
     """The mark centred on the 512 artboard at a share of its width."""
     scale, offset = place(ART, ART * width_fraction)
-    return svg_mark(colour, scale=scale, dx=offset, dy=offset)
+    return svg_mark(colour, scale=scale, dx=offset, dy=offset, spark=spark)
 
 
 def svg_document(size, body, background=None):
@@ -120,7 +121,7 @@ def svg_document(size, body, background=None):
 
 
 # ---------------------------------------------------------------- Android vector drawables
-def vector(size_dp, colour, width_dp):
+def vector(size_dp, colour, width_dp, spark=None):
     """A VectorDrawable of the mark alone, `width_dp` across and centred on a `size_dp` canvas.
 
     Every width here is chosen against what its surface shows: 54 dp inside an adaptive icon,
@@ -134,7 +135,8 @@ def vector(size_dp, colour, width_dp):
         paths.append(f'        <path android:pathData="{G[key]}" android:strokeWidth="{stroke:g}" '
                      f'android:strokeColor="{colour}" android:strokeLineCap="round" '
                      f'android:strokeLineJoin="round"/>')
-    paths.append(f'        <path android:pathData="{spark_path()}" android:fillColor="{colour}"/>')
+    paths.append(f'        <path android:pathData="{spark_path()}" '
+                 f'android:fillColor="{spark or colour}"/>')
     body = "\n".join(paths)
     return (f'<?xml version="1.0" encoding="utf-8"?>\n'
             f'<!-- {GENERATED} -->\n'
@@ -162,7 +164,7 @@ def icon_vector():
                      f'android:strokeColor="{MARK}" android:strokeLineCap="round" '
                      f'android:strokeLineJoin="round"/>')
     paths.append(f'        <path android:pathData="{spark_path(scale, offset, offset)}" '
-                 f'android:fillColor="{MARK}"/>')
+                 f'android:fillColor="{SPARK}"/>')
     r = G["tile_corner"]
     tile = (f'M{r},0 L{ART - r},0 A{r},{r} 0 0 1 {ART},{r} L{ART},{ART - r} '
             f'A{r},{r} 0 0 1 {ART - r},{ART} L{r},{ART} A{r},{r} 0 0 1 0,{ART - r} '
@@ -231,8 +233,8 @@ def tag_srgb(data):
 
 def main():
     # 0.586 of the tile: enough to read at 48 px, short of the corner radius at every size.
-    full_rounded = svg_document(ART, svg_tile_mark(MARK, 0.586), background="rounded")
-    full_square = svg_document(ART, svg_tile_mark(MARK, 0.586), background="square")
+    full_rounded = svg_document(ART, svg_tile_mark(MARK, 0.586, SPARK), background="rounded")
+    full_square = svg_document(ART, svg_tile_mark(MARK, 0.586, SPARK), background="square")
 
     # Branding folder: the sources a designer would open.
     write(os.path.join(BRANDING, "pocketagent-mark.svg"), full_rounded)
@@ -245,9 +247,9 @@ def main():
     png(full_square, 512, os.path.join(BRANDING, "play-store-icon.png"))
 
     # Android vectors.
-    write(os.path.join(RES, "drawable", "ic_launcher_foreground.xml"), vector(108, MARK, 54))
+    write(os.path.join(RES, "drawable", "ic_launcher_foreground.xml"), vector(108, MARK, 54, SPARK))
     write(os.path.join(RES, "drawable", "ic_launcher_monochrome.xml"), vector(108, "#FFFFFFFF", 54))
-    write(os.path.join(RES, "drawable", "ic_splash_pocketagent.xml"), vector(288, MARK, 132))
+    write(os.path.join(RES, "drawable", "ic_splash_pocketagent.xml"), vector(288, MARK, 132, SPARK))
     write(os.path.join(RES, "drawable", "ic_stat_pocketagent.xml"), vector(24, "#FFFFFFFF", 22))
     write(os.path.join(RES, "drawable", "pocketagent_icon.xml"), icon_vector())
 
@@ -297,7 +299,7 @@ def main():
         f'<stop offset="1" stop-color="{deep}" stop-opacity="0"/></radialGradient></defs>\n'
         f'  <rect width="1600" height="1600" fill="{ground}"/>\n'
         f'  <circle cx="800" cy="700" r="820" fill="url(#glow)"/>\n'
-        f'  <g transform="translate(544 384)">{svg_mark(MARK, scale=scale, dx=offset, dy=offset)}</g>\n'
+        f'  <g transform="translate(544 384)">{svg_mark(MARK, scale=scale, dx=offset, dy=offset, spark=SPARK)}</g>\n'
         f'  <text x="800" y="900" text-anchor="middle" font-family="DejaVu Sans,sans-serif" '
         f'font-weight="bold" font-size="76" fill="{T["desktop"]["on_ground"]}">PocketAgent</text>\n'
         f'  <text x="800" y="972" text-anchor="middle" font-family="DejaVu Sans,sans-serif" '

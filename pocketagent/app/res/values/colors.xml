@@ -3,13 +3,14 @@
      ever disagree, so a colour changed in one place cannot quietly survive in the others. -->
 <resources>
     <!-- Brand: the launcher tile, the splash and the first-run screen. Nothing else. -->
-    <color name="brand_tile_top">#7A3CD6</color>
-    <color name="brand_tile_bottom">#33146F</color>
-    <color name="brand_tile_flat">#56289F</color>
-    <color name="brand_accent">#8B55E8</color>
+    <color name="brand_tile_top">#23232C</color>
+    <color name="brand_tile_bottom">#121217</color>
+    <color name="brand_tile_flat">#1A1A21</color>
+    <color name="brand_accent">#8B7BFF</color>
     <color name="brand_accent_on_dark">#B79BF5</color>
     <color name="brand_mark">#F7F3EB</color>
-    <color name="brand_on_brand_muted">#C3B2E8</color>
+    <color name="brand_spark">#8B7BFF</color>
+    <color name="brand_on_brand_muted">#A9A4C4</color>
 
     <!-- Neutral surfaces. Warm, not grey; the interface carries no colour of its own. -->
     <color name="window_light">#FAF9F6</color>
