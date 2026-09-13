@@ -85,7 +85,42 @@ if "postUrl" not in code or "/login" not in code:
     problems.append("there is no fallback sign-in for a refused cookie, so a cleared WebView "
                     "data directory strands the owner on a page they cannot answer")
 
-# --- 6. the two derivations of the digest agree ------------------------------------------
+# --- 6. the WebView is actually allowed to reach the editor -------------------------------
+# This one shipped. The editor is http://127.0.0.1:8391, and the app declared
+# cleartextTrafficPermitted="false" with no exemption -- so every owner got
+# ERR_CLEARTEXT_NOT_PERMITTED on the one screen the app exists for, and nothing else in the
+# app could tell them why. The exemption has to be scoped to loopback and nowhere else:
+# permitting cleartext globally would let a hijacked DNS answer downgrade a download that is
+# about to be unpacked and executed.
+config = open(app + "/app/res/xml/network_security_config.xml").read()
+manifest = open(app + "/app/AndroidManifest.xml").read()
+
+loopback = re.search(r'<domain-config[^>]*cleartextTrafficPermitted="true".*?</domain-config>',
+                     config, re.S)
+if not loopback:
+    problems.append("the network security config permits cleartext nowhere, so the WebView "
+                    "cannot reach the editor on 127.0.0.1 and shows "
+                    "ERR_CLEARTEXT_NOT_PERMITTED instead")
+else:
+    block = loopback.group(0)
+    if "127.0.0.1" not in block:
+        problems.append("cleartext is permitted somewhere, but not for 127.0.0.1, which is "
+                        "where the editor listens")
+    for host in re.findall(r'<domain[^>]*>([^<]+)</domain>', block):
+        if host.strip() not in ("127.0.0.1", "localhost"):
+            problems.append('cleartext is permitted for "%s". Only loopback belongs here: a '
+                            'real host over plain HTTP is a download that can be tampered with '
+                            'before it is executed' % host.strip())
+
+if not re.search(r'<base-config[^>]*cleartextTrafficPermitted="false"', config):
+    problems.append("the base config does not refuse cleartext, so every host is reachable "
+                    "over plain HTTP and not just loopback")
+
+if 'android:networkSecurityConfig="@xml/network_security_config"' not in manifest:
+    problems.append("the manifest does not point at the network security config, so none of "
+                    "it applies")
+
+# --- 7. the two derivations of the digest agree ------------------------------------------
 # The script derives it too, when the app does not pass one. Both must be plain SHA-256 of the
 # same string, so a sample is checked against the shell's own sha256sum spelling.
 if "sha256sum" not in script:

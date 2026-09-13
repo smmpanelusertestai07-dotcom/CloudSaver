@@ -65,7 +65,7 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.PocketIDE"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
 
         <!-- One host for the four destinations on the bottom bar. singleTop so a notification
              tapped while it is already open reaches onNewIntent and switches destination,
