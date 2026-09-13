@@ -513,9 +513,24 @@ echo "PASS NoSecrets (no credential files in the packaged assets)"
 # signing key with it. An APK signed by a key that is not in the repository cannot be replaced
 # by the next build, which would cost whoever installed it their whole workspace.
 if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
-  git ls-files --error-unmatch .signing/pocketagent-local.jks >/dev/null 2>&1 \
-    || fail "SigningKey: the signing key is not tracked; every build would install as a new app"
-  echo "PASS SigningKey (the key that signs this app is in the repository)"
+  if git ls-files --error-unmatch .signing/pocketagent-local.jks >/dev/null 2>&1; then
+    # Tracked, which keeps every build replacing the last one in place instead of installing as
+    # a new app -- and which, in a public repository, hands anybody the ability to sign an update
+    # Android will accept. That is a real cost and it is the owner's to carry knowingly, so while
+    # the key is here the app and the README must both say so. The day the key leaves, these
+    # checks can go with it.
+    grep -q 'signed with a key that is published' "$SRC/SetupActivity.java" \
+      || fail "SigningKey: the key is public and the app does not say so before somebody signs in"
+    grep -q 'This repository publishes the key its APKs are signed with' README.md \
+      || fail "SigningKey: the key is public and the README does not say so"
+    echo "PASS SigningKey (the key is tracked, and both the app and the README say what that costs)"
+  else
+    # Gone from the repository: the warning is now false and must not be left standing.
+    if grep -q 'signed with a key that is published' "$SRC/SetupActivity.java"; then
+      fail "SigningKey: the key is no longer published but the app still warns that it is"
+    fi
+    echo "PASS SigningKey (the key is kept out of the repository)"
+  fi
 else
   echo "SKIP SigningKey (not a git checkout)"
 fi

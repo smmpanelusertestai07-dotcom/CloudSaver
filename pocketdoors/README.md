@@ -1,5 +1,17 @@
 # PocketAgent
 
+> ## Signing key
+>
+> **This repository publishes the key its APKs are signed with**, at
+> `.signing/pocketagent-local.jks`, with the password in `build.sh`. That is deliberate for a
+> build nobody distributes yet — every build replaces the last one in place — and it has a cost
+> worth stating plainly: anyone can sign an APK that Android will accept as an **update** to this
+> app, and an update inherits the workspace and every account signed in inside it.
+>
+> Install only from a copy you trust. If this app is ever handed to people who are not the
+> author, the key must be rotated out of the repository into a secret first.
+
+
 A native Android app that runs coding agents on the phone itself and shows you **their own**
 interface instead of one it drew.
 

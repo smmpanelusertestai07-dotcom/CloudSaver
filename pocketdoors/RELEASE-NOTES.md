@@ -1,6 +1,55 @@
-# PocketAgent 16.0.5 — the set-up that stopped, and the screen that could not say why
+# PocketAgent 16.1.0 — what is safe, said out loud
 
-Version **16.0.5**, code **605**, application ID `com.pocketagent.doors`.
+Version **16.1.0**, code **610**, application ID `com.pocketagent.doors`.
+
+## 16.1.0: the signing key is published, and the app now says so
+
+An audit of this app's own security found one thing genuinely wrong, and it was mine: the key
+that signs these APKs is committed to a **public** repository, with its password in `build.sh`.
+
+Anyone can take both, sign a modified APK, and Android will accept it as an **update** to this
+app — and an update inherits the workspace and every account signed in inside it.
+
+The key stays for now, deliberately: rotating it invalidates the installed app, and that is the
+owner's call to make when they are ready. What changes is that it is no longer silent. The
+set-up screen says it before anybody signs in to anything, and the README says it at the top.
+
+`SigningKey` used to check only that the key was tracked, so that every build replaces the last
+one in place. It now enforces the honesty as well, in both directions: while the key is in the
+repository, the app and the README must both say what that costs — and the day the key leaves,
+the warning must go with it, because a warning that is no longer true is its own kind of lie.
+
+## 16.1.0: what the audit found, in full
+
+**Safe, and checked:**
+
+| | |
+|---|---|
+| Your logins | The app's own code handles no credentials at all. They live inside Ubuntu, in each maker's own software |
+| Your code and files | `getFilesDir()` — app-private, unreadable by other apps, gone on uninstall |
+| Cloud backup | `allowBackup="false"`, so the workspace is never copied off the phone by Android |
+| The editor's screen | A unix socket in app-private storage. No other app on the phone can open it |
+| Everything downloaded | HTTPS only; cleartext is permitted for loopback alone |
+| DNS | The phone's own resolvers, never a third party's |
+| Permissions | Eight, all load-bearing. No camera, microphone, location, contacts or storage |
+| Google's repository | Pinned with `signed-by`, so its key vouches for it and nothing else |
+| The APK | No key, token or credential file ships inside it |
+
+**Traded away on purpose, and why:**
+
+| | |
+|---|---|
+| `--no-sandbox` | PRoot cannot create the namespaces Chromium's sandbox needs. The renderer boundary a desktop has is not there |
+| `PROOT_NO_SECCOMP` | Same reason: syscall filtering is off |
+| `-SecurityTypes None -ac` | The display has no password. It is safe **only** because it is a socket in private storage — the day it falls back to a port, it is not |
+
+And the thing worth knowing before choosing a permission mode: **anything running inside the
+editor is root inside the container**, with your files. That is what an agent is for. It is also
+why all three makers ship permission modes, and why the safest one is the right place to start.
+
+---
+
+# Earlier releases
 
 ## 16.0.5: "dpkg was interrupted" — fixed at the cause, not the symptom
 

@@ -68,6 +68,20 @@ public final class SetupActivity extends Activity {
         status.addView(explain, Ui.wide(this, 8));
         root.addView(status, Ui.wide(this, 0));
 
+        // Said here because this is the screen somebody reads before deciding to trust the app
+        // with an account. It is short, it is factual, and it goes away the day the key does.
+        LinearLayout notice = Ui.card(this, dark);
+        notice.addView(Ui.sectionLabel(this, "Before you sign in", dark));
+        notice.addView(Ui.text(this,
+                "This build is signed with a key that is published in its own public source "
+                        + "repository. That means somebody else could build an app Android would "
+                        + "accept as an update to this one, and an update inherits the workspace "
+                        + "and the accounts signed in inside it. Install it from a copy you got "
+                        + "from someone you trust, and treat that as true until this says "
+                        + "otherwise.",
+                13.5f, Ui.muted(dark)), Ui.wide(this, 6));
+        root.addView(notice, Ui.wide(this, 18));
+
         // The raw output, labelled as what it is and put below the plain words rather than
         // handed over as the whole explanation.
         root.addView(Ui.sectionLabel(this, "Details", dark), Ui.wide(this, 22));
