@@ -67,6 +67,27 @@ chmod 700 "$STATE" 2>/dev/null || true
 say() { printf '%s\n' "$1"; }
 fail() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
 
+export DEBIAN_FRONTEND=noninteractive
+
+# The same repair the bootstrap does, for the same reason and with more at stake: the editor is
+# a 700 MB package, so it spends the longest of anything here in the state where an interruption
+# leaves dpkg half-applied and every later install refusing to start. Costs nothing when nothing
+# is broken.
+repair_packages() {
+  dpkg --configure -a >/dev/null 2>&1 || true
+  apt-get -y -f install >/dev/null 2>&1 || true
+}
+
+# Install, and if it fails, repair and try once more. A second failure is a real one.
+apt_install() {
+  what="$1"; shift
+  repair_packages
+  if apt-get install -y -qq "$@" >>"$LOG" 2>&1; then return 0; fi
+  say "Putting the package system back in order and trying $what once more…"
+  repair_packages
+  apt-get install -y -qq "$@" >>"$LOG" 2>&1
+}
+
 # Four variables, each of which switches Anthropic's Remote Control off without saying so, and a
 # fifth that gets it refused. Nothing here sets them, but a workspace is a real Ubuntu.
 unset DISABLE_TELEMETRY DO_NOT_TRACK CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_GROWTHBOOK
@@ -112,7 +133,7 @@ install_ide() {
 
   say "Installing Antigravity… (about 700 MB, downloaded once)"
   say "There is no progress line for this; apt does not give one per file. It is not stuck."
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq antigravity >>"$LOG" 2>&1 \
+  apt_install "Antigravity" antigravity \
     || { tail -n 20 "$LOG" 2>/dev/null || true; fail "Antigravity could not be installed."; }
 
   [ -x "$AG_BIN" ] || fail "Antigravity installed but its program is not where the package puts it."
@@ -130,7 +151,7 @@ install_screen() {
   fc-list >/dev/null 2>&1              || need="$need fonts-dejavu-core"
   [ -z "$need" ] && return 0
   say "Installing the screen the editor draws on…"
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $need >>"$LOG" 2>&1 \
+  apt_install "the screen" $need \
     || { tail -n 12 "$LOG" 2>/dev/null || true; fail "The display server could not be installed."; }
 }
 

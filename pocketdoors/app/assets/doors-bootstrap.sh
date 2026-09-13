@@ -21,6 +21,42 @@ die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
 # hang the set-up screen forever.
 export DEBIAN_FRONTEND=noninteractive
 
+# man-db builds a search index in its post-install script. Under proot every syscall is traced,
+# and that index takes minutes -- during which set-up shows one unchanging line and looks hung,
+# which is exactly when somebody closes the app. proot runs with --kill-on-exit, so closing the
+# app kills dpkg in the middle of configuring a package, and every install after that refuses to
+# start. That is the whole chain behind "dpkg was interrupted". `man <page>` works without the
+# index; only `apropos` and `man -k` need it, and `mandb` builds it whenever it is wanted.
+echo 'man-db man-db/auto-update boolean false' | debconf-set-selections 2>/dev/null || true
+
+# Put a half-applied dpkg right, before anything tries to install on top of it.
+#
+# A package interrupted between unpacking and configuring leaves dpkg in a state where it
+# refuses every later install with "dpkg was interrupted, you must manually run
+# 'dpkg --configure -a'" -- which is not something the owner of a phone can do, and which no
+# amount of trying again fixes on its own. It runs on every start, costs nothing when nothing is
+# broken, and is the difference between Try again working and Try again failing identically.
+repair_packages() {
+  dpkg --configure -a >/dev/null 2>&1 || true
+  apt-get -y -f install >/dev/null 2>&1 || true
+}
+
+# Install, and if it fails, repair and try once more before giving up.
+#
+# The first failure is usually the half-applied state above rather than anything wrong with the
+# package. Repairing and retrying turns a set-up that is permanently stuck into one that
+# finishes, and a second failure is then a real one worth reporting.
+install_packages() {
+  what="$1"; shift
+  repair_packages
+  if apt-get install -y -qq "$@"; then return 0; fi
+  step "Putting the package system back in order and trying $what once more…"
+  repair_packages
+  apt-get install -y -qq "$@"
+}
+
+repair_packages
+
 arch=$(dpkg --print-architecture 2>/dev/null || echo unknown)
 [ "$arch" = "arm64" ] || die "This workspace is $arch; the agents are built for arm64."
 
@@ -58,7 +94,7 @@ if ! done_with apt-ready; then
   apt-cache policy ca-certificates 2>/dev/null | grep -q 'Candidate: [0-9]' \
     || die "Ubuntu's package list came back empty for this architecture. Try again on a different connection."
 
-  apt-get install -y ca-certificates \
+  install_packages "certificates" ca-certificates \
     || die "Certificates could not be installed, so nothing after this could be fetched securely."
 
   sed -i 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' /etc/apt/sources.list
@@ -73,7 +109,7 @@ if ! done_with basics; then
   # gnupg because Google's repository is verified by a key that has to be dearmoured before
   # apt will trust it, and a key that cannot be dearmoured is a repository that cannot be
   # added. It is small and it is needed before anything else is fetched from a publisher.
-  apt-get install -y -qq curl git python3 python3-venv tzdata xz-utils procps gnupg \
+  install_packages "the basics" curl git python3 python3-venv tzdata xz-utils procps gnupg \
     || die "The basic tools could not be installed."
   mark basics
 fi
@@ -93,7 +129,7 @@ if ! done_with node; then
     || die "Node's installer could not be downloaded."
   bash /tmp/nodesource.sh >/dev/null 2>&1 || die "Node's package source could not be added."
   rm -f /tmp/nodesource.sh
-  apt-get install -y -qq nodejs || die "Node could not be installed."
+  install_packages "Node" nodejs || die "Node could not be installed."
   node --version
   mark node
 fi

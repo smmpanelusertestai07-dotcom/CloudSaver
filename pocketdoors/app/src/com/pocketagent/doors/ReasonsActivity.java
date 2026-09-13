@@ -65,10 +65,7 @@ public final class ReasonsActivity extends Activity {
     }
 
     private LinearLayout labCard(Reasons.Lab lab, boolean dark) {
-        LinearLayout card = Ui.column(this);
-        int pad = Ui.dp(this, 16);
-        card.setPadding(pad, pad, pad, pad);
-        card.setBackground(Ui.fill(this, Ui.card(dark), 12));
+        LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.bold(this, lab.name, 18, Ui.text(dark)));
         card.addView(row("Compute", lab.compute, dark), Ui.wide(this, 10));
         card.addView(row("Reach", lab.reach, dark), Ui.wide(this, 10));
@@ -77,10 +74,9 @@ public final class ReasonsActivity extends Activity {
     }
 
     private LinearLayout missingCard(Reasons.Missing missing, boolean dark) {
-        LinearLayout card = Ui.column(this);
-        int pad = Ui.dp(this, 14);
-        card.setPadding(pad, pad, pad, pad);
-        card.setBackground(Ui.outlined(this, Ui.bg(dark), Ui.line(dark), 12));
+        // The same panel as a lab's, deliberately: a maker who is not here is described the
+        // same way as one who is, so the list reads as one comparison rather than two lists.
+        LinearLayout card = Ui.card(this, dark);
         card.addView(Ui.bold(this, missing.name, 16, Ui.text(dark)));
         card.addView(row("Has", missing.has, dark), Ui.wide(this, 9));
         card.addView(row("Missing", missing.lacks, dark), Ui.wide(this, 9));
@@ -90,10 +86,7 @@ public final class ReasonsActivity extends Activity {
     /** A small label above a line of prose; the label is what makes three cards comparable. */
     private LinearLayout row(String label, String words, boolean dark) {
         LinearLayout holder = Ui.column(this);
-        android.widget.TextView tag = Ui.mono(this, label.toUpperCase(java.util.Locale.US),
-                11, Ui.muted(dark));
-        tag.setLetterSpacing(0.09f);
-        holder.addView(tag);
+        holder.addView(Ui.sectionLabel(this, label, dark));
         holder.addView(Ui.text(this, words, 14.5f, Ui.text(dark)), Ui.wide(this, 3));
         return holder;
     }

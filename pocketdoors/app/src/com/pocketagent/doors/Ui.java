@@ -84,6 +84,68 @@ final class Ui {
         return view;
     }
 
+    /**
+     * The least a finger may be asked to hit. Android's own accessibility guidance, and the
+     * reason nothing here is smaller than this however tight the layout gets.
+     */
+    static final int TOUCH_TARGET_DP = 48;
+
+    /**
+     * The surface everything sits on: a shallow top-to-bottom gradient inside a hairline border.
+     *
+     * Android has no backdrop blur for a View -- RenderEffect blurs a view's own content, not
+     * what is painted behind it -- so real frosted glass is not available here, and pretending
+     * otherwise costs a frame and gets a grey box. What actually reads as glass is what glass
+     * does to light: a lit top edge, a slightly darker bottom, and a border thin enough to be a
+     * highlight rather than a box. That is this, and it is one cached drawable.
+     */
+    static GradientDrawable glass(Context context, boolean dark, float radiusDp) {
+        int top = dark ? Color.rgb(46, 46, 45) : Color.rgb(255, 255, 254);
+        int bottom = dark ? Color.rgb(30, 30, 29) : Color.rgb(240, 238, 232);
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM, new int[]{top, bottom});
+        drawable.setCornerRadius(dp(context, radiusDp));
+        drawable.setStroke(Math.max(1, dp(context, 1)),
+                dark ? Color.rgb(72, 72, 69) : LIGHT_LINE);
+        return drawable;
+    }
+
+    /**
+     * Brushed metal: a diagonal sweep across the brand, for the one surface that leads a screen.
+     *
+     * Three stops rather than two, because two reads as a flat tint at this size. The sweep runs
+     * corner to corner so the highlight crosses the card instead of banding across it.
+     */
+    static GradientDrawable metal(Context context, float radiusDp) {
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{Brand.TILE_TOP, Brand.TILE_FLAT, Brand.TILE_BOTTOM});
+        drawable.setCornerRadius(dp(context, radiusDp));
+        return drawable;
+    }
+
+    /** A glass panel with the padding and spacing every card on every screen shares. */
+    static LinearLayout card(Context context, boolean dark) {
+        LinearLayout card = column(context);
+        int pad = dp(context, 16);
+        card.setPadding(pad, pad, pad, pad);
+        card.setBackground(glass(context, dark, 20));
+        // Elevation in light only. On a dark ground a shadow is invisible and the overdraw is
+        // paid for anyway, which on this phone is a frame that could have gone to the editor.
+        card.setElevation(dark ? 0 : dp(context, 1));
+        return card;
+    }
+
+    /**
+     * A small capitalised label above a group, with the letter-spacing that makes it read as a
+     * label rather than shouting. The standard way to name a section without a heavy heading.
+     */
+    static TextView sectionLabel(Context context, String label, boolean dark) {
+        TextView view = mono(context, label.toUpperCase(java.util.Locale.US), 11, muted(dark));
+        view.setLetterSpacing(0.09f);
+        return view;
+    }
+
     static GradientDrawable fill(Context context, int colour, float radiusDp) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(colour);
@@ -109,7 +171,9 @@ final class Ui {
         int padY = dp(context, 14);
         int padX = dp(context, 20);
         view.setPadding(padX, padY, padX, padY);
-        view.setMinHeight(dp(context, 48));
+        // A finger, not a cursor. 48dp is Android's own guidance, named here so the
+        // number and the reason for it cannot drift apart.
+        view.setMinHeight(dp(context, TOUCH_TARGET_DP));
         view.setBackground(tappable(context,
                 primary ? fill(context, text(dark), 12)
                         : outlined(context, card(dark), line(dark), 12), dark));

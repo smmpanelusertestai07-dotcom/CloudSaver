@@ -1,6 +1,86 @@
-# PocketAgent 16.0.0 — Google's editor, with the other two inside it
+# PocketAgent 16.0.5 — the set-up that stopped, and the screen that could not say why
 
-Version **16.0.0**, code **600**, application ID `com.pocketagent.doors`.
+Version **16.0.5**, code **605**, application ID `com.pocketagent.doors`.
+
+## 16.0.5: "dpkg was interrupted" — fixed at the cause, not the symptom
+
+From a real set-up on a real phone:
+
+```
+Installing Node…
+E: dpkg was interrupted, you must manually run 'dpkg --configure -a' to correct the problem.
+ERROR: Node could not be installed.
+Workspace setup stopped with code 1.
+```
+
+**Try again** failed identically, because trying again does not repair that state — and running
+dpkg by hand is not something the owner of a phone can do. There is no prompt on that screen to
+type it at.
+
+The chain behind it, end to end:
+
+1. `man-db` builds a search index in its post-install script.
+2. Under PRoot every syscall is traced, so that index takes **minutes**.
+3. Set-up shows one unchanging line and looks hung.
+4. Somebody closes the app — which is exactly the reasonable thing to do.
+5. PRoot runs with `--kill-on-exit`, so closing the app kills dpkg **mid-configure**.
+6. Every install after that refuses to start, permanently.
+
+Both ends are fixed. `man-db`'s index is switched off before anything installs, so the wait that
+invites closing the app is gone. And every install now goes through a helper that repairs a
+half-applied dpkg first (`dpkg --configure -a`, `apt-get -f install`), installs, and on failure
+repairs and retries once. It costs nothing when nothing is broken. `DpkgRepairs` fails the build
+if any install bypasses it.
+
+## 16.0.5: a failure is explained before it is dumped
+
+The screen handed over `E: dpkg was interrupted, you must manually run 'dpkg --configure -a'` as
+the whole explanation. That is a good sentence written for somebody at a keyboard on a computer
+they administer.
+
+Now the raw output stays — it is the truth, and it is what makes a report useful — but above it
+goes what happened and what to do, in the owner's words, and the button says what it will
+actually do:
+
+> **An install was cut off part way through, and the package system needs putting back in order
+> before anything else can be installed.**
+>
+> This version repairs that by itself at the start of every run, so opening this again should
+> get past it. It happens when the app is closed or the phone stops it while packages are being
+> configured — keeping the screen on and the phone plugged in avoids it.
+>
+> `[ Repair and continue ]`
+
+`Trouble.java` covers the six failures this project has actually seen. Nothing in it invents a
+cause; anything unrecognised says so plainly rather than guessing.
+
+## 16.0.5: one design, on every screen
+
+PocketLinux's design system came across with its viewer. Panels are **glass** — a lit top edge, a
+slightly darker bottom, and a border thin enough to read as a highlight rather than a box. Not a
+blur: Android has no backdrop blur for a View (`RenderEffect` blurs a view's own content, not
+what is behind it), so pretending costs a frame and gets a grey box. What reads as glass is what
+glass does to light, and that is a gradient.
+
+Every panel on every screen is now that one treatment, every button meets Android's own **48dp**
+touch target from one place, and groups are named with the same small spaced label. `OneDesign`
+fails the build if a screen hand-builds a panel again — it stayed green the first time with one
+panel converted and the rest by hand, so it now checks that **none** is hand-built rather than
+that one is shared.
+
+## 16.0.5: the seventh gate that passed on the wrong thing
+
+`DpkgRepairs` was a plain grep for `dpkg --configure -a`. Deleting the repair left it green,
+because the comment above the repair **quotes the error it prevents**.
+
+This has now happened seven times, and always the same way: comments in this project explain
+failures, so they quote the very strings a gate looks for. That makes a bare grep across a whole
+file the wrong tool by default, not by accident. There is an `in_code` helper now that strips
+comments before matching, and the checks most likely to land on prose use it.
+
+---
+
+# Earlier releases
 
 ## 16.0.0: one editor, and it is Google's
 

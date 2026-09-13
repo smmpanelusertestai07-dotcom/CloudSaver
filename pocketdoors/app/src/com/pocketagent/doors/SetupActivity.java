@@ -28,6 +28,15 @@ public final class SetupActivity extends Activity {
     private Thread worker;
     private PowerManager.WakeLock awake;
     private final StringBuilder transcript = new StringBuilder();
+    /**
+     * The one-word state above the headline: WORKING, READY or STOPPED.
+     *
+     * Named stateLabel rather than state because onCreate's own parameter is called state, and
+     * a field shadowed by a Bundle is a compile error that reads like a type mystery.
+     */
+    private TextView stateLabel;
+    /** The sentence under the headline, which changes with the state. */
+    private TextView explain;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -43,19 +52,30 @@ public final class SetupActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         setContentView(scroll);
 
-        headline = Ui.bold(this, "Setting up the workspace", 22, Ui.text(dark));
-        root.addView(headline);
-        root.addView(Ui.text(this,
+        // A status card, not a bare heading. The state reads first, the name of the step
+        // second, and what it means third -- which is the order somebody actually reads a
+        // screen they are waiting on.
+        LinearLayout status = Ui.card(this, dark);
+        stateLabel = Ui.sectionLabel(this, "Working", dark);
+        status.addView(stateLabel);
+        headline = Ui.bold(this, "Setting up the workspace", 21, Ui.text(dark));
+        status.addView(headline, Ui.wide(this, 4));
+        explain = Ui.text(this,
                 "Ubuntu downloads once and stays inside this app. The screen is held on until "
                         + "this finishes, so leave the phone plugged in and stay on one connection "
                         + "if you can; if it stops, opening this again continues from where it got "
-                        + "to.", 14, Ui.muted(dark)), Ui.wide(this, 8));
+                        + "to.", 14, Ui.muted(dark));
+        status.addView(explain, Ui.wide(this, 8));
+        root.addView(status, Ui.wide(this, 0));
 
+        // The raw output, labelled as what it is and put below the plain words rather than
+        // handed over as the whole explanation.
+        root.addView(Ui.sectionLabel(this, "Details", dark), Ui.wide(this, 22));
         log = Ui.mono(this, "", 12, Ui.muted(dark));
-        int pad = Ui.dp(this, 12);
+        int pad = Ui.dp(this, 14);
         log.setPadding(pad, pad, pad, pad);
-        log.setBackground(Ui.fill(this, Ui.card(dark), 10));
-        root.addView(log, Ui.wide(this, 18));
+        log.setBackground(Ui.glass(this, dark, 14));
+        root.addView(log, Ui.wide(this, 8));
 
         action = Ui.button(this, "Close", false, dark);
         action.setVisibility(android.view.View.GONE);
@@ -66,6 +86,8 @@ public final class SetupActivity extends Activity {
         long needed = Ubuntu.IMAGE_BYTES + Ubuntu.WORKSPACE_BYTES;
         if (free < needed) {
             // Better to say it now than after thirty megabytes of someone's data.
+            stateLabel.setText("STOPPED");
+            stateLabel.setTextColor(Ui.FAILED);
             headline.setText("Not enough room");
             say("This needs about " + megabytes(needed) + " free and the phone has "
                     + megabytes(free) + ".");
@@ -115,7 +137,11 @@ public final class SetupActivity extends Activity {
             Ubuntu.install(this, this::say);
             main.post(() -> {
                 releaseAwake();
+                stateLabel.setText("READY");
+                stateLabel.setTextColor(Ui.RUNNING);
                 headline.setText("Workspace ready");
+                explain.setText("Ubuntu is installed and stays inside this app. Choose an agent "
+                        + "on the previous screen to open the editor.");
                 action.setVisibility(android.view.View.VISIBLE);
             });
         } catch (Throwable problem) {
@@ -124,10 +150,17 @@ public final class SetupActivity extends Activity {
             say(reason);
             main.post(() -> {
                 releaseAwake();
-                headline.setText("Set-up stopped");
-                headline.setTextColor(Ui.FAILED);
+                // What happened and what to do, in words, above the raw output rather than
+                // instead of it. An owner handed "run 'dpkg --configure -a'" has been given a
+                // dead end: there is no prompt on this screen to type it at.
+                Trouble.Advice advice = Trouble.read(transcript.toString());
+                stateLabel.setText("STOPPED");
+                stateLabel.setTextColor(Ui.FAILED);
+                headline.setText(advice.what);
+                headline.setTextSize(18);
+                explain.setText(advice.next);
                 action.setVisibility(android.view.View.VISIBLE);
-                ((TextView) action).setText("Try again");
+                ((TextView) action).setText(advice.action);
                 action.setOnClickListener(v -> recreate());
             });
         }

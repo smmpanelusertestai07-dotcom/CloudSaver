@@ -90,6 +90,7 @@ public final class HomeActivity extends Activity {
                         + "maker supports best. No options to weigh up first.",
                 14, Ui.muted(dark)), Ui.wide(this, 20));
 
+        root.addView(Ui.sectionLabel(this, "Agents", dark), Ui.wide(this, 22));
         String running = DoorService.runningAgent();
         for (Doors.Agent agent : Doors.ALL) {
             root.addView(agentCard(agent, dark, agent.id.equals(running)), Ui.wide(this, 14));
@@ -112,11 +113,9 @@ public final class HomeActivity extends Activity {
     }
 
     private View setupCard(boolean dark) {
-        LinearLayout card = Ui.column(this);
-        int pad = Ui.dp(this, 18);
-        card.setPadding(pad, pad, pad, pad);
-        card.setBackground(Ui.outlined(this, Ui.card(dark), Ui.line(dark), 14));
-        card.addView(Ui.bold(this, "Set up the workspace", 18, Ui.text(dark)));
+        LinearLayout card = Ui.card(this, dark);
+        card.addView(Ui.sectionLabel(this, "First run", dark));
+        card.addView(Ui.bold(this, "Set up the workspace", 18, Ui.text(dark)), Ui.wide(this, 4));
         card.addView(Ui.text(this,
                 "Ubuntu " + Ubuntu.IMAGE_LABEL.replace("Ubuntu ", "") + ", about 30 MB to download "
                         + "and roughly 1.2 GB once the agents are installed. It lives inside this "
@@ -128,10 +127,7 @@ public final class HomeActivity extends Activity {
     }
 
     private View agentCard(Doors.Agent agent, boolean dark, boolean running) {
-        LinearLayout card = Ui.column(this);
-        int pad = Ui.dp(this, 16);
-        card.setPadding(pad, pad, pad, pad);
-        card.setBackground(Ui.outlined(this, Ui.card(dark), Ui.line(dark), 14));
+        LinearLayout card = Ui.card(this, dark);
 
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -157,7 +153,7 @@ public final class HomeActivity extends Activity {
             TextView words = Ui.mono(this, failure.trim(), 11.5f, Ui.muted(dark));
             int inner = Ui.dp(this, 10);
             words.setPadding(inner, inner, inner, inner);
-            words.setBackground(Ui.fill(this, Ui.bg(dark), 8));
+            words.setBackground(Ui.glass(this, dark, 10));
             card.addView(words, Ui.wide(this, 10));
         }
 

@@ -16,6 +16,22 @@ ASSETS="app/assets"
 
 fail() { echo "FAIL $1"; exit 1; }
 
+# Search a shell script's code, never its comments.
+#
+# Seven times in this project a check has been written as a plain grep and passed on the
+# paragraph explaining the thing instead of the thing: a tree check that matched its own
+# comment, a --strip-components check that matched the note saying why the flag is wrong, a
+# pty check, an extension-id check, a flags check, a window-manager check, and a dpkg-repair
+# check that matched the sentence quoting the error it was meant to prevent.
+#
+# Comments in this project explain failures, so they quote the very strings a gate looks for.
+# That makes a bare grep across a whole file the wrong tool by default, not by accident. This
+# strips full-line comments and everything after an unquoted # before matching.
+in_code() {   # in_code <pattern> <file...>
+  pattern="$1"; shift
+  sed 's/[[:space:]]#[^"'"'"']*$//; s/^[[:space:]]*#.*$//' "$@" | grep -qE "$pattern"
+}
+
 # ---------------------------------------------------------------- shell, before it reaches a phone
 for script in "$ASSETS"/*.sh; do
   bash -n "$script" || fail "AssetScriptSyntax: $script does not parse"
@@ -412,6 +428,70 @@ wm_at=$(grep -nE '^[^#]*\bopenbox\b[^|]*&\s*$' "$ASSETS/doors-workspace.sh" | he
 [ "$wm_at" -lt "$editor_at" ] \
   || fail "WindowManager: the window manager starts after the editor it is supposed to manage"
 echo "PASS WindowManager (windows have frames and dialogs come to the front)"
+
+# ---------------------------------------------------------------- a half-applied dpkg is repaired
+# From a real set-up on a real phone: "E: dpkg was interrupted, you must manually run
+# 'dpkg --configure -a' to correct the problem." followed by "Node could not be installed."
+# Try again failed identically, because trying again does not repair that state -- and running
+# dpkg by hand is not something the owner of a phone can do.
+#
+# The chain behind it: man-db builds a search index in its post-install script, every syscall
+# under proot is traced so that takes minutes, set-up shows one unchanging line and looks hung,
+# somebody closes the app, proot's --kill-on-exit kills dpkg mid-configure. So both ends are
+# checked here -- the index that causes the wait, and the repair that recovers from it.
+for script in doors-bootstrap.sh doors-workspace.sh; do
+  # in_code, not grep: the comment above the repair quotes the exact error it prevents, so a
+  # bare grep stayed green with the repair itself deleted.
+  in_code 'dpkg --configure -a' "$ASSETS/$script" \
+    || fail "DpkgRepairs: $script never repairs a half-applied dpkg, so one bad install is permanent"
+  in_code 'apt-get -y -f install' "$ASSETS/$script" \
+    || fail "DpkgRepairs: $script does not finish a part-installed package's dependencies"
+done
+# Every install must go through the helper that repairs first and retries once. A bare
+# apt-get install is one that fails permanently the first time dpkg is left half-applied.
+bare=$(grep -nE '^[^#]*apt-get install' "$ASSETS"/*.sh \
+       | grep -vE 'install_packages\(\)|apt_install\(\)|repair_packages\(\)|-y -f install' \
+       | grep -vE 'apt-get install -y -qq "\$@"' || true)
+[ -z "$bare" ] || fail "DpkgRepairs: an install bypasses the repair-and-retry helper -- $bare"
+# And the index that causes the wait in the first place is turned off before anything installs.
+grep -q "man-db/auto-update boolean false" "$ASSETS/doors-bootstrap.sh" \
+  || fail "DpkgRepairs: man-db still builds its index under proot, which is the wait people kill"
+off_at=$(grep -n 'man-db/auto-update' "$ASSETS/doors-bootstrap.sh" | head -n1 | cut -d: -f1 || true)
+first_at=$(grep -nE '^[^#]*install_packages "' "$ASSETS/doors-bootstrap.sh" | head -n1 | cut -d: -f1 || true)
+[ -n "$off_at" ] && [ -n "$first_at" ] && [ "$off_at" -lt "$first_at" ] \
+  || fail "DpkgRepairs: man-db is switched off after the first install, which is too late"
+echo "PASS DpkgRepairs (a half-applied dpkg is repaired, and the wait that caused it is gone)"
+
+# ---------------------------------------------------------------- one design, on every screen
+# Four screens drawn four different ways is what an app looks like when each one was written on
+# a different day. Every panel is the same glass, every button meets the same touch target, and
+# every group is named the same way -- from one place, so changing it changes all of them.
+# Not "uses it at least once" -- that stayed green with one panel converted and the rest hand
+# built. What matters is that none is hand built: a panel is Ui.card or Ui.glass, never a fill
+# or an outline assembled on the spot with its own padding and radius.
+handmade=$(grep -n 'setBackground(Ui.outlined(\|setBackground(Ui.fill(' "$SRC"/*Activity.java || true)
+[ -z "$handmade" ] || fail "OneDesign: a screen builds its own panel -- $handmade"
+for screen in HomeActivity SetupActivity ReasonsActivity; do
+  grep -q 'Ui.card(this, dark)' "$SRC/$screen.java" \
+    || fail "OneDesign: $screen never uses the shared panel"
+done
+grep -q 'TOUCH_TARGET_DP = 48' "$SRC/Ui.java" \
+  || fail "OneDesign: the touch target is not Android's own 48dp"
+in_code 'setMinHeight\(dp\(context, TOUCH_TARGET_DP\)\)' "$SRC/Ui.java" \
+  || fail "OneDesign: buttons no longer meet the touch target every screen relies on"
+# Glass is a gradient and a hairline, not a flat fill: a single colour reads as a grey box and
+# is what this looked like before.
+in_code 'GradientDrawable.Orientation.TOP_BOTTOM' "$SRC/Ui.java" \
+  || fail "OneDesign: the panel treatment is flat again"
+# A failure has to be explained in words before the raw output, or the owner is handed a shell
+# instruction they have no shell to type it into -- which is exactly what a real set-up did.
+grep -q 'Trouble.read' "$SRC/SetupActivity.java" \
+  || fail "OneDesign: a failed set-up shows raw output with nothing saying what to do"
+grep -q 'dpkg was interrupted' "$SRC/Trouble.java" \
+  || fail "OneDesign: the failure a real phone hit has no plain-words explanation"
+grep -q '"Details"' "$SRC/SetupActivity.java" \
+  || fail "OneDesign: the raw output is not labelled as detail, so it reads as the explanation"
+echo "PASS OneDesign (one panel, one touch target, and failures explained before they are dumped)"
 
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2)
