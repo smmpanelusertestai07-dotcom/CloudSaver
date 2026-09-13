@@ -2,18 +2,18 @@
 """Reads the agent catalog as data, so a gate can ask about a named field.
 
 This exists because a gate written as a grep passed on the wrong thing, for the fourth time in
-this project: it looked for an empty string inside the Codex entry to prove Codex claims no
-phone surface, and the entry has two empty strings in a row -- the surface and the sentence
-describing it. Filling in the surface left the other one there, and the check stayed green while
-the app claimed OpenAI publish something they do not.
+this project: it looked for an empty string inside one entry to prove that entry claimed nothing,
+and the entry had two empty strings in a row. Filling one in left the other there, and the check
+stayed green while the app claimed a maker published something they do not.
 
-So the fields are read by position, the way the constructor reads them.
+So the fields are read by position, the way the constructor reads them. The count is checked
+too: an Agent that grows a field and a gate that does not know about it should stop the build,
+not quietly start answering about the wrong one.
 """
 import re
 import sys
 
-FIELDS = ["id", "name", "start", "login", "surface", "phone", "phoneIs",
-          "cost", "free", "limit", "proven"]
+FIELDS = ["id", "name", "start", "extension", "cost", "free", "limit", "proven"]
 
 
 def split_args(text):

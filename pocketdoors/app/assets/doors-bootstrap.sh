@@ -70,7 +70,10 @@ if ! done_with basics; then
   step "Installing the basics…"
   # curl and git because every agent fetches and commits; python3 because two of the
   # publishers' installers are Python; tzdata so commit times are the owner's own time.
-  apt-get install -y -qq curl git python3 python3-venv tzdata xz-utils procps \
+  # gnupg because Google's repository is verified by a key that has to be dearmoured before
+  # apt will trust it, and a key that cannot be dearmoured is a repository that cannot be
+  # added. It is small and it is needed before anything else is fetched from a publisher.
+  apt-get install -y -qq curl git python3 python3-venv tzdata xz-utils procps gnupg \
     || die "The basic tools could not be installed."
   mark basics
 fi

@@ -1,6 +1,80 @@
-# PocketAgent 15.6.5 — one workspace, one way into each agent
+# PocketAgent 16.0.0 — Google's editor, with the other two inside it
 
-Version **15.6.5**, code **565**, application ID `com.pocketagent.doors`.
+Version **16.0.0**, code **600**, application ID `com.pocketagent.doors`.
+
+## 16.0.0: one editor, and it is Google's
+
+Every design before this one had a different shape per maker: an extension for two of them and a
+command line for the third, and a second place to see the same session for two of them and
+nothing for the other. Three shapes wearing one name — and for Google the shape was a terminal,
+which is not the interface they build. They build an editor.
+
+The whole thing turns on one line, read out of the `product.json` of the arm64 package Google
+themselves publish:
+
+```json
+"extensionsGallery": { "serviceUrl": "https://open-vsx.org/vscode/gallery" }
+```
+
+Antigravity's own marketplace is Open VSX, which is exactly where Anthropic and OpenAI publish
+their own extensions for linux-arm64. So the other two makers' interfaces install into Google's
+interface:
+
+| Maker | What runs | Where it comes from |
+|---|---|---|
+| Google | **Antigravity IDE** — the editor itself | their own signed apt repository |
+| Anthropic | `Anthropic.claude-code` | Open VSX, Antigravity's own marketplace |
+| OpenAI | `openai.chatgpt` | Open VSX, Antigravity's own marketplace |
+
+One window. Three agents. Every one of them reached through the interface its own maker built,
+and not one command line used as an interface.
+
+**What is deliberately gone:** the Claude phone app and Google's web dashboard. Both showed the
+same session from somewhere else, and "somewhere else" is one more thing to learn, decide about
+and be disappointed by. `NowhereElse` fails the build if either comes back, or if any screen can
+hand the owner off to a browser at all.
+
+## 16.0.0: why an apt repository
+
+`apt upgrade` is then the update path, and it is Google's own. Verified live against the
+repository's own index before a line of this was written: suite `antigravity-debian`, component
+`main`, `Architectures: all amd64 arm64`, package `antigravity` published for arm64 with many
+versions in the pool. The key is pinned with `signed-by`, so it vouches for that repository and
+nothing else, and an arm64 candidate is checked for before the 700 MB download starts rather
+than after.
+
+## 16.0.0: a real program needs a real screen
+
+Antigravity is a desktop application, so the web view is gone and a display server draws it.
+2,134 lines of viewer came across from PocketLinux in this same repository — proven on this exact
+phone rather than written again — along with the fixes it had already paid for: `--no-zygote`,
+`--in-process-gpu`, `--no-sandbox`, and WebGL off, because Antigravity's terminal draws with
+WebGL, WebGL here is software on the processor, and a fault in that path takes the whole editor
+down with SIGSEGV.
+
+It also brought a security fix this app needed and did not have. PocketLinux puts its display on
+a **unix socket in the app's own private storage**, not a port on loopback, and its reason is
+exact: Android does not keep loopback apart between applications, so a display on `127.0.0.1`
+with no password is one any other app on the phone could open and watch. Every earlier build here
+served the editor on `127.0.0.1:8391` with `--auth none`. `PrivateScreen` now fails the build if
+the socket leaves private storage, or if the fallback port is ever offered off this phone.
+
+## 16.0.0: the sixth gate that passed on the wrong thing
+
+`ElectronFlags` was written as a plain grep for each flag. Deleting `--no-zygote` from the launch
+command left it green, because the comment above the command names the flag and explains why it
+is there. `WindowManager` had the same shape.
+
+Both now read the launch command itself with the comments stripped. And a worse one was found
+while proving it: under `set -e`, `x=$(grep …)` that finds nothing ends the whole run *before*
+the line that would have said what was missing — a suite that stops printing reads exactly like
+one that passed. Six of those assignments are now guarded.
+
+Every new check in this release was broken on purpose and confirmed to fail before being trusted.
+
+---
+
+# Earlier releases
 
 ## 15.6.5: the name says what it runs, and "Doors" is gone
 

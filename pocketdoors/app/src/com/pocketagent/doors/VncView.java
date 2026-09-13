@@ -1,0 +1,1432 @@
+package com.pocketagent.doors;
+
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.VelocityTracker;
+import android.view.View;
+
+import java.util.ArrayList;
+import java.util.List;
+
+
+final class VncView extends View implements VncClient.Listener {
+    /**
+     * How a finger reaches the Linux desktop.
+     *
+     * TOUCHPAD ("Mouse") moves an arrow the way a laptop's touchpad does. DIRECT ("Finger") puts
+     * the pointer where the finger lands and turns a swipe into scrolling, which is what a page
+     * wants. TOUCH ("Screen") holds the button down for the whole gesture, so a swipe is a real
+     * drag: a map moves, a canvas draws, a game's control answers.
+     *
+     * None of the three is multi-touch, and none can be: an RFB pointer event carries one x, one
+     * y and a button mask, so two genuine touch points cannot cross the connection at all. What
+     * TOUCH does is make the one point behave the way a phone's does.
+     */
+    enum PointerMode { TOUCHPAD, DIRECT, TOUCH }
+    interface StateListener { void state(String text, boolean connected); }
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private volatile boolean released;
+    private volatile String fatalError;
+    String getFatalError() { return fatalError; }
+
+    void release() {
+        releaseInput();
+        released = true;
+        main.removeCallbacksAndMessages(null);
+        stopFling();
+        synchronized (backLock) {
+            synchronized (pixelLock) { recycleFramebuffers(); }
+        }
+        if (cursorBitmap != null) { cursorBitmap.recycle(); cursorBitmap = null; }
+        client = null;
+    }
+    /**
+     * When the desktop was last touched or typed on. Smart auto-stop reads it: a session being
+     * worked in should never be closed by a clock, and one nobody is using should not run on.
+     */
+    static volatile long lastInteractionAt;
+
+    /** Guards the front bitmap between the blit at the end of an update and the drawing pass. */
+    private final Object pixelLock = new Object();
+    /** Guards the back bitmap, which only the network thread writes, against a resize. */
+    private final Object backLock = new Object();
+    /**
+     * Two copies of the desktop. The network thread writes each strip of an update into the
+     * back one; when the whole update has arrived it is copied, in one go, to the front one
+     * that onDraw paints. Painting used to happen while strips were still landing, so a frame
+     * on screen was half old and half new -- the tearing seen whenever something scrolled.
+     */
+    private Bitmap back;
+    /**
+     * The pixel format both framebuffers use: RGB_565 on a small phone, full colour elsewhere.
+     * Decided once, because it must not change between the pair.
+     */
+    private Bitmap.Config framebufferConfig;
+    /** Scratch for CopyRect, grown once and reused: a scroll sends many small rectangles. */
+    private int[] copyBuffer;
+    private Canvas frontCanvas;
+    private final android.graphics.Rect dirty = new android.graphics.Rect();
+    private boolean anyDirty;
+    /** The pointer's own shape, as the desktop reports it; null until it sends one. */
+    private Bitmap cursorBitmap;
+    private int cursorHotX;
+    private int cursorHotY;
+    private android.graphics.drawable.Drawable handGlyph;
+    private final android.graphics.Rect cursorSource = new android.graphics.Rect();
+    private final RectF cursorTarget = new RectF();
+    // Finger mode: a fast swipe keeps scrolling after the finger lifts, as every phone page
+    // does, by sending wheel notches while a decaying velocity runs down.
+    private VelocityTracker velocity;
+    private float flingVelocity;
+    private float flingTravel;
+    private final RectF spinnerBounds = new RectF();
+    private float ringX, ringY;
+    private long ringAt = -10_000L;
+    private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final Paint overlayPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF destination = new RectF();
+    private final android.graphics.Path pointerPath = new android.graphics.Path();
+    private volatile Bitmap bitmap;
+    private volatile VncClient client;
+    private StateListener stateListener;
+    private PointerMode pointerMode = PointerMode.TOUCHPAD;
+    private int pointerX = 640;
+    private int pointerY = 360;
+    private float lastX;
+    private float lastY;
+    private float downX;
+    private float downY;
+    private long downAt;
+    private boolean moved;
+    private float twoFingerY;
+    private float twoFingerX;
+    private String status = "Waiting for the Linux computer…";
+
+    /** 1.0 means "the whole desktop fits the screen"; above that the user has zoomed in. */
+    private float zoom = 1f;
+    private float panX;
+    private float panY;
+    private boolean centreOnNextLayout = true;
+    private ScaleGestureDetector zoomDetector;
+    private ZoomListener zoomListener;
+
+    // Mouse mode dragging: a tap followed at once by a press-and-move holds the left button,
+    // the way every laptop touchpad does it. Windows can be moved and text selected on purpose.
+    private long lastTapAt = -10_000L;
+    /** Which way this Finger-mode swipe is scrolling: 0 undecided, 1 up and down, 2 sideways. */
+    private int scrollAxis;
+    private boolean dragArmed;
+    private boolean dragging;
+    private int physicalButtons;
+    private Runnable inputStateListener;
+    private final HeldInput heldInput = new HeldInput(new HeldInput.Output() {
+        @Override public void key(int keysym, boolean down) {
+            VncClient active = client;
+            if (active != null) active.sendKey(keysym, down);
+        }
+        @Override public void pointer(int x, int y, int mask) {
+            pointerX = x;
+            pointerY = y;
+            VncClient active = client;
+            if (active != null) active.sendPointer(x, y, mask);
+        }
+    });
+
+    void setInputStateListener(Runnable listener) { inputStateListener = listener; }
+    private void inputChanged() {
+        if (inputStateListener != null) inputStateListener.run();
+        invalidate();
+    }
+    boolean isDragHeld() { return heldInput.isDragging(); }
+    boolean isModifierHeld(int keysym) { return heldInput.hasModifier(keysym); }
+    void toggleHeldModifier(int keysym) {
+        if (!live || client == null) return;
+        lastInteractionAt = System.currentTimeMillis();
+        heldInput.toggleModifier(keysym);
+        inputChanged();
+    }
+    void releaseModifiers() {
+        heldInput.releaseModifiers();
+        inputChanged();
+    }
+    boolean isHeldDragging() { return heldInput.isDragging(); }
+
+    boolean toggleDrag() { return toggleDrag(1, 0); }
+
+    /**
+     * @param mask      the mouse button to hold down for the drag
+     * @param withKeysym a key held for as long as the drag lasts, or 0. Alt with the right button
+     *                   is Openbox's own "resize this window from anywhere inside it", which is
+     *                   the only resize a finger can aim at on a phone-sized screen.
+     */
+    boolean toggleDrag(int mask, int withKeysym) {
+        if (!live || client == null) return false;
+        lastInteractionAt = System.currentTimeMillis();
+        stopFling();
+        dragging = dragArmed = false;
+        lastTapAt = -10_000L;
+        if (heldInput.isDragging()) {
+            heldInput.releasePointer();
+            heldInput.releaseModifiers();
+        } else {
+            // toggleModifier is a toggle: with Alt already latched from the key row it would
+            // send Alt UP, and the resize would then be a plain right-drag into whatever is under
+            // the pointer -- a context menu, or a selection -- with nothing resized.
+            if (withKeysym != 0 && !heldInput.hasModifier(withKeysym)) {
+                heldInput.toggleModifier(withKeysym);
+            }
+            heldInput.startDrag(pointerX, pointerY, mask);
+        }
+        inputChanged();
+        return heldInput.isDragging();
+    }
+    /** Background, disconnect and mode changes must never leave Linux with a held key/button. */
+    void releaseInput() {
+        stopFling();
+        if ((dragging || physicalButtons != 0) && client != null) client.sendPointer(pointerX, pointerY, 0);
+        physicalButtons = 0;
+        heldInput.releaseAll();
+        dragging = dragArmed = false;
+        moved = true;
+        lastTapAt = -10_000L;
+        inputChanged();
+    }
+
+    interface ZoomListener { void zoomChanged(int percent); }
+
+    VncView(Context context) {
+        super(context);
+        // Not focusable by touch: the phone keyboard types into a hidden field, and a view that
+        // took focus on every tap restarted the keyboard against a bare fallback connection --
+        // letters were dropped and the keyboard went full-screen in landscape.
+        setFocusable(false);
+        setFocusableInTouchMode(false);
+        setContentDescription("Linux computer");
+        // A deep, calm backdrop, so at 100 % the framed desktop sits on colour, not black.
+        setBackgroundColor(Color.rgb(9, 14, 26));
+        overlayPaint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
+        overlayPaint.setTextAlign(Paint.Align.CENTER);
+        zoomDetector = new ScaleGestureDetector(context, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override public boolean onScale(ScaleGestureDetector detector) {
+                float previous = zoom;
+                zoom = clampZoom(zoom * detector.getScaleFactor());
+                // Keep the point under the fingers still while the picture grows around it.
+                float focusX = detector.getFocusX();
+                float focusY = detector.getFocusY();
+                float ratio = zoom / previous;
+                panX = focusX - (focusX - panX) * ratio;
+                panY = focusY - (focusY - panY) * ratio;
+                notifyZoom();
+                invalidate();
+                return true;
+            }
+        });
+    }
+
+    void setZoomListener(ZoomListener listener) {
+        zoomListener = listener;
+        notifyZoom();
+    }
+
+    /** Zooms around the middle of the screen. Returns false when already at the limit. */
+    boolean zoomBy(float factor) {
+        float previous = zoom;
+        zoom = clampZoom(zoom * factor);
+        if (zoom == previous) return false;
+        float ratio = zoom / previous;
+        panX = getWidth() / 2f - (getWidth() / 2f - panX) * ratio;
+        panY = getHeight() / 2f - (getHeight() / 2f - panY) * ratio;
+        notifyZoom();
+        invalidate();
+        return true;
+    }
+
+    int zoomPercent() { return Math.round(zoom * 100); }
+
+    /** The view size the Linux desktop was last matched to, so a bar is not a new screen. */
+    private int matchedWidth;
+    private int matchedHeight;
+    private boolean wideWorkspace;
+
+    /** How much bigger everything on the Linux desktop is drawn: 100 is one Linux pixel per phone pixel. */
+    private int magnification = 100;
+
+    int getMagnification() { return magnification; }
+
+    /**
+     * Makes everything on the desktop bigger by making the desktop itself smaller and letting
+     * this view scale it back up to fill the screen. Live: nothing restarts, nothing is cropped.
+     */
+    void setMagnification(int percent) {
+        if (percent == magnification) return;
+        magnification = percent;
+        resetView();
+        matchDesktopToScreen();
+    }
+
+    boolean isWideWorkspace() { return wideWorkspace; }
+
+    /** True when the view is already at least as wide as the wide workspace, as in landscape. */
+    boolean isAlreadyWide() { return getWidth() - 2 * frame() >= ViewerSize.WIDE_WIDTH; }
+
+    /** The largest Bigger-interface step this screen allows without a window overflowing it. */
+    int maxMagnification() {
+        int width = (matchedWidth > 0 ? matchedWidth : getWidth()) - 2 * frame();
+        return ViewerSize.maxMagnification(width, wideWorkspace);
+    }
+    void setWideWorkspace(boolean wide) {
+        if (wide == wideWorkspace) return;
+        releaseInput();
+        wideWorkspace = wide;
+        resetView();
+        matchDesktopToScreen();
+    }
+
+    @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight);
+        // Showing the key row or hiding the bars changes this view's height by 56 dp, and that
+        // used to resize the whole Linux desktop and throw away the owner's zoom mid-task. Only
+        // a genuine change of screen shape does that; a bar is just less of the same screen.
+        boolean firstLayout = matchedWidth == 0 || matchedHeight == 0;
+        // A rotation changes the WIDTH (and swaps which side is longer). A bar or the key row
+        // only ever changes the height, by 56 dp each. Comparing the longer and shorter sides
+        // was blind to a rotation, because 720x1600 and 1600x720 have the same pair.
+        int barsHeight = Ui.dp(getContext(), 48 + 48 + 8);
+        boolean shapeChanged = firstLayout
+                || width != matchedWidth
+                || Math.abs(height - matchedHeight) > barsHeight;
+        if (!shapeChanged) {
+            centreOnNextLayout = zoom <= 1f;
+            invalidate();               // same desktop, less room: just redraw where it fits
+            return;
+        }
+        matchedWidth = width;
+        matchedHeight = height;
+        zoom = 1f;
+        centreOnNextLayout = true;
+        notifyZoom();
+        matchDesktopToScreen();
+    }
+
+    /** Height of the on-screen keyboard covering the bottom of this view, 0 when hidden. */
+    private int keyboardInset;
+
+    /**
+     * The keyboard must never resize the Linux desktop. When it opened, the window shrank, the
+     * desktop was resized to the sliver above it, every app relaid out, and a tap on a text
+     * field landed somewhere else -- then it all happened again in reverse when it closed.
+     *
+     * The Linux desktop keeps its size. What changes is only how it is DRAWN: it scales down to
+     * fit the room above the keys, exactly as a phone app's layout moves up, and comes back to
+     * full size when they close. Taps stay accurate because mapX/mapY read the same rectangle.
+     */
+    void setKeyboardInset(int pixels) {
+        if (pixels == keyboardInset) return;
+        keyboardInset = Math.max(0, pixels);
+        // Nothing is sent to the server, so no Linux app relayouts: the whole desktop simply
+        // draws smaller, in the room left above the keys, and springs back when they close.
+        centreOnNextLayout = true;
+        invalidate();
+    }
+
+    boolean isKeyboardShowing() { return keyboardInset > 0; }
+
+    /**
+     * Asks the Linux desktop to become exactly the size of this view.
+     *
+     * With the two matched there is nothing to letterbox or crop: portrait gives a portrait
+     * desktop and landscape a landscape one, both filling the screen pixel for pixel. Debounced,
+     * because a rotation delivers several size changes in a row.
+     */
+    private void matchDesktopToScreen() {
+        main.removeCallbacks(desktopResize);
+        resizeAttempts = 0;
+        main.postDelayed(desktopResize, 450L);
+    }
+
+    /** Ask the Linux desktop to become this shape again -- e.g. after the rotation setting changed. */
+    void requestDesktopMatch() { matchDesktopToScreen(); }
+
+    /** How many times the resize has been put off because the server had not offered it yet. */
+    private int resizeAttempts;
+
+    private final Runnable desktopResize = new Runnable() {
+        @Override public void run() {
+            VncClient active = client;
+            if (active == null) return;
+            if (!active.isResizable()) {
+                // The server says it can be resized in its first framebuffer update, and on a
+                // slow phone that arrives after this debounce. Asking again is what makes
+                // Portrait reach the computer; giving up left it the shape it was born.
+                if (++resizeAttempts <= 20) main.postDelayed(this, 500L);
+                return;
+            }
+            resizeAttempts = 0;
+            // A key row can open during the resize debounce. Use the size recorded for the
+            // actual screen change, so a temporary toolbar cannot shrink the Linux root.
+            // The frame kept around the desktop comes off BEFORE the size is chosen. It was not,
+            // so the desktop was always about 4 % larger than the rectangle it was drawn into,
+            // every frame was resampled on its way to the screen, and no text was ever sharp.
+            int inset = 2 * frame();
+            int viewWidth = (matchedWidth > 0 ? matchedWidth : getWidth()) - inset;
+            int viewHeight = (matchedHeight > 0 ? matchedHeight : getHeight()) - inset;
+            if (viewWidth < 320 || viewHeight < 320) return;
+            int[] size = ViewerSize.choose(viewWidth, viewHeight, wideWorkspace, magnification);
+            viewWidth = size[0];
+            viewHeight = size[1];
+            if (viewWidth == active.getWidth() && viewHeight == active.getHeight()) return;
+            active.requestDesktopSize(viewWidth, viewHeight);
+        }
+    };
+
+    /** Back to 100 %: the whole desktop on screen, centred. */
+    void resetView() {
+        zoom = 1f;
+        centreOnNextLayout = true;
+        notifyZoom();
+        invalidate();
+    }
+
+    private void notifyZoom() {
+        if (zoomListener != null) zoomListener.zoomChanged(Math.round(zoom * 100));
+    }
+
+    /**
+     * Never below 1: at 100 % the whole desktop is already on screen (the desktop is kept the
+     * size of the screen, and when it cannot be, it is letterboxed rather than cropped), so
+     * there is nothing smaller to show. Fill-and-crop was removed: it hid the right-hand edge
+     * of every window, close button included, in portrait.
+     */
+    private float clampZoom(float value) {
+        return Math.max(1f, Math.min(value, 6f));
+    }
+
+    /** The gap kept around the desktop at 100 %, so it reads as a screen on a desk, not a crop. */
+    private int frame() { return Ui.dp(getContext(), 7); }
+
+    /** Recomputes where the framebuffer lands on screen for the current zoom and pan. */
+    private void layoutDestination(Bitmap current) {
+        int m = frame();
+        // The keyboard covers the bottom of this view, so the room the desktop has to fit into
+        // is what is left above it. Fitting to the whole view instead put the lower third of
+        // every window behind the keys, and a form was typed into blind.
+        float visibleHeight = Math.max(1f, getHeight() - keyboardInset);
+        float availW = Math.max(1f, getWidth() - 2f * m);
+        float availH = Math.max(1f, visibleHeight - 2f * m);
+        float fit = Math.min(availW / current.getWidth(), availH / current.getHeight());
+        float scale = fit * zoom;
+        float shownWidth = current.getWidth() * scale;
+        float shownHeight = current.getHeight() * scale;
+
+        if (centreOnNextLayout) {
+            // Open on the middle of the desktop rather than its top-left corner.
+            panX = (getWidth() - shownWidth) / 2f;
+            panY = (visibleHeight - shownHeight) / 2f;
+            centreOnNextLayout = false;
+        }
+
+        // Centre whatever is smaller than the screen; otherwise keep the edges flush with it.
+        // While the keyboard is up the view may also sit higher by up to the keyboard's height,
+        // so the field being typed into can be brought out from under it.
+        panX = shownWidth <= getWidth()
+                ? (getWidth() - shownWidth) / 2f
+                : Math.max(getWidth() - shownWidth, Math.min(panX, 0f));
+        if (shownHeight <= visibleHeight) {
+            panY = (visibleHeight - shownHeight) / 2f;
+        } else {
+            panY = Math.max(visibleHeight - shownHeight, Math.min(panY, 0f));
+        }
+        destination.set(panX, panY, panX + shownWidth, panY + shownHeight);
+    }
+
+    void setClient(VncClient client) { this.client = client; }
+    VncClient getClient() { return client; }
+    void setStateListener(StateListener listener) { this.stateListener = listener; }
+    boolean isLive() { return live; }
+    void setPointerMode(PointerMode mode) { releaseInput(); pointerMode = mode; invalidate(); }
+    PointerMode getPointerMode() { return pointerMode; }
+
+    @Override protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        Bitmap current = bitmap;
+        if (current == null) {
+            drawWaiting(canvas);
+            return;
+        }
+        layoutDestination(current);
+        // Connected, but to a desktop that has not been painted yet: the display answers a
+        // minute before the file manager draws the wallpaper, and that minute was a black
+        // rectangle with a cursor in it. The starting card stays up, with what the desktop is
+        // doing, until the desktop's own services have been launched.
+        if (live && (Workspace.isDesktopRunning() || Workspace.isDesktopStarting())
+                && !Workspace.desktopDrawn()) {
+            drawStarting(canvas);
+            return;
+        }
+        synchronized (pixelLock) {
+            if (current.isRecycled()) return;
+            // Smoothing is only worth paying for when the picture is actually being scaled. At
+            // 100 % the desktop is now exactly the size of the rectangle it is drawn into, and a
+            // filtered 1:1 blit is a blur of perfectly good pixels as well as a slower one.
+            paint.setFilterBitmap(Math.abs(destination.width() - current.getWidth()) > 1f
+                    || Math.abs(destination.height() - current.getHeight()) > 1f);
+            canvas.drawBitmap(current, null, destination, paint);
+        }
+        // A session that has ended keeps its last frame on screen, which looked exactly like a
+        // working desktop that had stopped answering. Dim it and say so.
+        if (!live && everConnected) {
+            overlayPaint.setStyle(Paint.Style.FILL);
+            overlayPaint.setColor(Color.argb(175, 6, 9, 20));
+            canvas.drawRect(destination, overlayPaint);
+            overlayPaint.setColor(Color.rgb(226, 232, 248));
+            overlayPaint.setTextSize(Ui.dp(getContext(), 15));
+            overlayPaint.setTextAlign(Paint.Align.CENTER);
+            float centreX = destination.centerX();
+            float centreY = destination.centerY();
+            boolean running = Workspace.isDesktopRunning();
+            canvas.drawText(running ? "Connection to the editor interrupted" : "The editor stopped",
+                    centreX, centreY - Ui.dp(getContext(), 6), overlayPaint);
+            overlayPaint.setTextSize(Ui.dp(getContext(), 12.5f));
+            overlayPaint.setColor(Color.rgb(150, 166, 205));
+            canvas.drawText(running ? (status.startsWith("Reconnecting") ? "Reconnecting to your desktop…"
+                            : "Tap the status below to reconnect")
+                            : "Tap Home to see the stop reason and reopen",
+                    centreX, centreY + Ui.dp(getContext(), 16), overlayPaint);
+            overlayPaint.setTextAlign(Paint.Align.LEFT);
+        }
+        // A thin rounded border around the desktop, in both orientations, so the framed edge
+        // is deliberate rather than a picture that ran off the screen.
+        float r = Ui.dp(getContext(), 6);
+        float bw = Ui.dp(getContext(), 1.5f);
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(bw);
+        overlayPaint.setColor(Color.argb(150, 122, 155, 255));
+        canvas.drawRoundRect(destination.left - bw, destination.top - bw,
+                destination.right + bw, destination.bottom + bw, r, r, overlayPaint);
+        overlayPaint.setStyle(Paint.Style.FILL);
+
+        float scale = destination.width() / current.getWidth();
+        float px = destination.left + pointerX * scale;
+        float py = destination.top + pointerY * scale;
+        if (pointerMode == PointerMode.TOUCHPAD || heldInput.isDragging()) {
+            // Mouse mode shows the pointer the desktop itself is showing -- an I-beam over text,
+            // a hand over a link, a resize arrow at an edge -- and an arrow until it says.
+            Bitmap shape = cursorBitmap;
+            if (shape != null && !shape.isRecycled()) {
+                float grow = Math.max(scale, 1f);
+                cursorSource.set(0, 0, shape.getWidth(), shape.getHeight());
+                cursorTarget.set(px - cursorHotX * grow, py - cursorHotY * grow,
+                        px + (shape.getWidth() - cursorHotX) * grow, py + (shape.getHeight() - cursorHotY) * grow);
+                canvas.drawBitmap(shape, cursorSource, cursorTarget, paint);
+            } else {
+                drawPointer(canvas, px, py);
+            }
+        } else {
+            // Finger mode: a hand where the pointer is, so what the desktop thinks is "under
+            // the pointer" is visible; and a ring where the tap landed, fading over a third
+            // of a second, so a tap on a small control visibly went where it was meant to.
+            drawHand(canvas, px, py);
+            long age = SystemClock.elapsedRealtime() - ringAt;
+            if (age < 320) {
+                float t = age / 320f;
+                overlayPaint.setStyle(Paint.Style.STROKE);
+                overlayPaint.setStrokeWidth(Ui.dp(getContext(), 2));
+                overlayPaint.setColor(Color.argb((int) (200 * (1 - t)), 122, 155, 255));
+                canvas.drawCircle(ringX, ringY, Ui.dp(getContext(), 14 + 22 * t), overlayPaint);
+                overlayPaint.setStyle(Paint.Style.FILL);
+                postInvalidateOnAnimation();
+            }
+        }
+    }
+
+    /** The hand from the toolbar's Finger button, its fingertip on the pointer, dark-edged. */
+    private void drawHand(Canvas canvas, float x, float y) {
+        if (handGlyph == null) {
+            android.graphics.drawable.Drawable glyph = getContext().getDrawable(R.drawable.ic_touch);
+            if (glyph == null) return;
+            handGlyph = glyph.mutate();
+        }
+        int size = Ui.dp(getContext(), 28);
+        int edge = Math.max(1, Ui.dp(getContext(), 1.5f));
+        int left = Math.round(x - size * 0.48f);
+        int top = Math.round(y - size * 0.1f);
+        handGlyph.setTint(Color.argb(170, 0, 0, 0));
+        handGlyph.setBounds(left - edge, top - edge, left + size + edge, top + size + edge);
+        handGlyph.draw(canvas);
+        handGlyph.setTint(Color.WHITE);
+        handGlyph.setBounds(left, top, left + size, top + size);
+        handGlyph.draw(canvas);
+    }
+
+    /** A real arrow, outlined in dark so it stays visible against any wallpaper. */
+    private void drawPointer(Canvas canvas, float x, float y) {
+        float unit = Ui.dp(getContext(), 1);
+        pointerPath.reset();
+        pointerPath.moveTo(x, y);
+        pointerPath.lineTo(x, y + 17 * unit);
+        pointerPath.lineTo(x + 4.4f * unit, y + 13.2f * unit);
+        pointerPath.lineTo(x + 7.2f * unit, y + 19.4f * unit);
+        pointerPath.lineTo(x + 10.2f * unit, y + 18f * unit);
+        pointerPath.lineTo(x + 7.4f * unit, y + 12f * unit);
+        pointerPath.lineTo(x + 12.6f * unit, y + 11.8f * unit);
+        pointerPath.close();
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(2.4f * unit);
+        overlayPaint.setColor(Color.argb(220, 0, 0, 0));
+        canvas.drawPath(pointerPath, overlayPaint);
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(dragging || heldInput.isDragging() ? Color.rgb(160, 190, 255) : Color.WHITE);
+        canvas.drawPath(pointerPath, overlayPaint);
+    }
+
+    @Override public boolean onTouchEvent(MotionEvent event) {
+        lastInteractionAt = System.currentTimeMillis();
+        if (isMouse(event)) return handleMouse(event);
+        VncClient active = client;
+        if (active == null || bitmap == null || !live) return true;
+        // Explicit Drag holds the pointer already positioned on a divider. Both control modes
+        // become a relative touchpad until Release, so lifting a thumb cannot jump the divider.
+        if (heldInput.isDragging()) return heldDragTouch(event, active);
+        zoomDetector.onTouchEvent(event);
+        int action = event.getActionMasked();
+        if (pointerMode == PointerMode.TOUCH) return mobileTouch(event, action, active);
+
+        if (event.getPointerCount() >= 2) {
+            // A second finger ends any one-finger gesture: nothing is held or dragged.
+            if (dragging) {
+                dragging = false;
+                active.sendPointer(pointerX, pointerY, 0);
+            }
+            dragArmed = false;
+            moved = true;
+            twoFingerScroll(event, action, active, pointerMode == PointerMode.DIRECT && zoomedIn());
+            return true;
+        }
+        if (pointerMode == PointerMode.DIRECT) return directTouch(event, action, active);
+
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                downX = lastX = event.getX();
+                downY = lastY = event.getY();
+                downAt = System.currentTimeMillis();
+                moved = false;
+                dragging = false;
+                dragArmed = downAt - lastTapAt < 300L;
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                float dx = event.getX() - lastX;
+                float dy = event.getY() - lastY;
+                if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY) > Ui.dp(getContext(), 8)) moved = true;
+                if (moved && dragArmed && !dragging) {
+                    dragging = true;
+                    active.sendPointer(pointerX, pointerY, 1);
+                }
+                pointerX = clamp(pointerX + Math.round(dx * 1.35f), 0, active.getWidth() - 1);
+                pointerY = clamp(pointerY + Math.round(dy * 1.35f), 0, active.getHeight() - 1);
+                active.sendPointer(pointerX, pointerY, dragging ? 1 : 0);
+                lastX = event.getX();
+                lastY = event.getY();
+                followPointer();
+                invalidate();
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: {
+                long duration = System.currentTimeMillis() - downAt;
+                if (dragging) {
+                    dragging = false;
+                    active.sendPointer(pointerX, pointerY, 0);
+                    invalidate();
+                } else if (!moved && action == MotionEvent.ACTION_UP) {
+                    int button = duration >= 550 ? 4 : 1;
+                    active.sendPointer(pointerX, pointerY, button);
+                    active.sendPointer(pointerX, pointerY, 0);
+                    lastTapAt = button == 1 ? System.currentTimeMillis() : -10_000L;
+                    performClick();
+                }
+                dragArmed = false;
+                return true;
+            }
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Two fingers: scroll what is under them, or pan the picture when it is zoomed in.
+     *
+     * Shared by all three modes. Screen mode reached this only after it had already returned,
+     * so two fingers there zoomed the viewer and scrolled nothing -- which is not what a phone
+     * does, and not what the app said it did.
+     */
+    private void twoFingerScroll(MotionEvent event, int action, VncClient active, boolean pan) {
+        if (action == MotionEvent.ACTION_POINTER_DOWN || action == MotionEvent.ACTION_DOWN) {
+            twoFingerX = averageX(event);
+            twoFingerY = averageY(event);
+            // Scroll the window under the fingers, as a phone does: X sends the wheel to
+            // whatever is under the pointer, so the pointer goes there first.
+            pointerX = mapX(twoFingerX, active.getWidth());
+            pointerY = mapY(twoFingerY, active.getHeight());
+            active.sendPointer(pointerX, pointerY, 0);
+        } else if (action == MotionEvent.ACTION_POINTER_UP) {
+            // The finger that stays down becomes the origin. Without this the next single-finger
+            // move was measured from where the FIRST finger landed: the arrow leapt across the
+            // screen in Mouse mode, and Finger mode fired a burst of wheel notches.
+            int index = event.getActionIndex() == 0 ? 1 : 0;
+            if (index < event.getPointerCount()) {
+                downX = lastX = event.getX(index);
+                downY = lastY = event.getY(index);
+            }
+        } else if (action == MotionEvent.ACTION_MOVE && !zoomDetector.isInProgress()) {
+            float x = averageX(event);
+            float y = averageY(event);
+            // Two fingers always scroll in Mouse mode -- the arrow is what moves the view
+            // when zoomed in. In Finger and Screen mode one finger already moves things, so
+            // two fingers pan a zoomed-in picture instead.
+            if (pan) {
+                panX += x - twoFingerX;
+                panY += y - twoFingerY;
+                twoFingerX = x;
+                twoFingerY = y;
+                invalidate();
+            } else {
+                // Fingers up, content up: wheel down. Several notches for a fast swipe.
+                int notch = Ui.dp(getContext(), 16);
+                float dy = y - twoFingerY;
+                float dx = x - twoFingerX;
+                if (Math.abs(dy) >= Math.abs(dx)) {
+                    while (dy <= -notch) { wheel(active, 16); twoFingerY -= notch; dy += notch; }
+                    while (dy >= notch) { wheel(active, 8); twoFingerY += notch; dy -= notch; }
+                    if (Math.abs(dy) < notch) twoFingerX = x;
+                } else {
+                    while (dx <= -notch) { wheel(active, 64); twoFingerX -= notch; dx += notch; }
+                    while (dx >= notch) { wheel(active, 32); twoFingerX += notch; dx -= notch; }
+                    twoFingerY = y;
+                }
+            }
+        }
+    }
+
+    /**
+     * Screen mode: the finger IS the pointer, and the button is down while it is on the glass.
+     *
+     * That one difference is what makes a map drag, a slider move, a canvas draw and a game's
+     * on-screen control answer -- none of which Finger mode can do, because it turns every swipe
+     * into scroll wheel notches, and none of which Mouse mode does naturally, because there the
+     * button has to be armed with a tap first.
+     *
+     * Two fingers still zoom the viewer, as they do everywhere else in this app, and lifting the
+     * second one does not leave the button stuck down.
+     */
+    private boolean mobileTouch(MotionEvent event, int action, VncClient active) {
+        if (event.getPointerCount() >= 2) {
+            main.removeCallbacks(pressAfterSlop);
+            if (dragging) {
+                dragging = false;
+                active.sendPointer(pointerX, pointerY, 0);
+                invalidate();
+            }
+            moved = true;
+            twoFingerScroll(event, action, active, zoomedIn());
+            return true;
+        }
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                downX = lastX = event.getX();
+                downY = lastY = event.getY();
+                downAt = System.currentTimeMillis();
+                moved = false;
+                pointerX = mapX(downX, active.getWidth());
+                pointerY = mapY(downY, active.getHeight());
+                // The button waits: a pinch starts with one finger landing, and pressing at
+                // once delivered a full click to whatever was under it -- a link, a toggle --
+                // every time the owner zoomed. 80 ms is under the time a second finger takes.
+                dragging = false;
+                main.removeCallbacks(pressAfterSlop);
+                main.postDelayed(pressAfterSlop, 80L);
+                ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
+                postInvalidateOnAnimation();
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
+                        > Ui.dp(getContext(), 6)) {
+                    moved = true;
+                    pressNow();
+                }
+                pointerX = mapX(event.getX(), active.getWidth());
+                pointerY = mapY(event.getY(), active.getHeight());
+                active.sendPointer(pointerX, pointerY, dragging ? 1 : 0);
+                invalidate();
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                main.removeCallbacks(pressAfterSlop);
+                if (dragging) {
+                    dragging = false;
+                    active.sendPointer(pointerX, pointerY, 0);
+                } else if (action == MotionEvent.ACTION_UP) {
+                    // Lifted before the press went out: a tap, sent as one press and release.
+                    active.sendPointer(pointerX, pointerY, 1);
+                    active.sendPointer(pointerX, pointerY, 0);
+                }
+                if (!moved && action == MotionEvent.ACTION_UP) performClick();
+                invalidate();
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** Screen mode's held press, once the finger has proved it is not half of a pinch. */
+    private final Runnable pressAfterSlop = this::pressNow;
+
+    private void pressNow() {
+        if (dragging) return;
+        VncClient active = client;
+        if (active == null || !live) return;
+        main.removeCallbacks(pressAfterSlop);
+        dragging = true;
+        active.sendPointer(pointerX, pointerY, 1);
+    }
+
+    private boolean heldDragTouch(MotionEvent event, VncClient active) {
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_CANCEL) {
+            releaseInput();
+            return true;
+        }
+        if (event.getPointerCount() > 1) {
+            // Extra fingers pause a drag; they cannot zoom, scroll or move its anchor by accident.
+            heldInput.endStroke();
+            return true;
+        }
+        if (action == MotionEvent.ACTION_DOWN) heldInput.beginStroke(event.getX(), event.getY());
+        else if (action == MotionEvent.ACTION_MOVE) {
+            heldInput.moveStroke(event.getX(), event.getY(), active.getWidth(), active.getHeight(), 1f);
+            followPointer();
+            invalidate();
+        } else if (action == MotionEvent.ACTION_UP) heldInput.endStroke();
+        return true;
+    }
+
+    /** One wheel click, in the direction the mask names (8 up, 16 down, 32 left, 64 right). */
+    private void wheel(VncClient active, int mask) {
+        active.sendPointer(pointerX, pointerY, mask);
+        active.sendPointer(pointerX, pointerY, 0);
+    }
+
+    /**
+     * Mouse mode, zoomed in: the picture slides so the arrow never leaves the screen. Without
+     * this the arrow ran off the visible part and there was no way to scroll after it.
+     */
+    private void followPointer() {
+        Bitmap current = bitmap;
+        if (current == null || !zoomedIn()) return;
+        float scale = destination.width() / current.getWidth();
+        float x = destination.left + pointerX * scale;
+        float y = destination.top + pointerY * scale;
+        float margin = Ui.dp(getContext(), 40);
+        if (x < margin) panX += margin - x;
+        else if (x > getWidth() - margin) panX -= x - (getWidth() - margin);
+        float bottom = getHeight() - keyboardInset;
+        if (y < margin) panY += margin - y;
+        else if (y > bottom - margin) panY -= y - (bottom - margin);
+    }
+
+    @Override public boolean onGenericMotionEvent(MotionEvent event) {
+        if (isMouse(event)) return handleMouse(event);
+        return super.onGenericMotionEvent(event);
+    }
+
+    private boolean handleMouse(MotionEvent event) {
+        // A paired mouse is the owner too: moving, clicking and scrolling all arrive here.
+        lastInteractionAt = System.currentTimeMillis();
+        VncClient active = client;
+        Bitmap current = bitmap;
+        if (active == null || current == null || !live) return true;
+        // A real mouse supplies its own physical buttons. End the on-screen hold first.
+        if (heldInput.isDragging()) { heldInput.releasePointer(); inputChanged(); }
+
+        float relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X);
+        float relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y);
+        if (event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE)
+                && (relativeX != 0 || relativeY != 0)) {
+            pointerX = clamp(pointerX + Math.round(relativeX), 0, active.getWidth() - 1);
+            pointerY = clamp(pointerY + Math.round(relativeY), 0, active.getHeight() - 1);
+        } else {
+            pointerX = mapX(event.getX(), active.getWidth());
+            pointerY = mapY(event.getY(), active.getHeight());
+        }
+
+        int buttons = mouseButtons(event.getButtonState());
+        int changedButton = mouseButtons(event.getActionButton());
+        if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_PRESS) buttons |= changedButton;
+        else if (event.getActionMasked() == MotionEvent.ACTION_BUTTON_RELEASE) buttons &= ~changedButton;
+        if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) buttons = 0;
+        physicalButtons = buttons;
+        if (event.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+            sendWheel(active, buttons, event.getAxisValue(MotionEvent.AXIS_VSCROLL), 8, 16);
+            sendWheel(active, buttons, event.getAxisValue(MotionEvent.AXIS_HSCROLL), 64, 32);
+        } else {
+            active.sendPointer(pointerX, pointerY, buttons);
+        }
+        followPointer();
+        invalidate();
+        return true;
+    }
+
+    private void sendWheel(VncClient active, int buttons, float amount, int positiveMask, int negativeMask) {
+        if (amount == 0) return;
+        int steps = Math.max(1, Math.min(6, Math.round(Math.abs(amount))));
+        int wheel = amount > 0 ? positiveMask : negativeMask;
+        for (int i = 0; i < steps; i++) {
+            active.sendPointer(pointerX, pointerY, buttons | wheel);
+            active.sendPointer(pointerX, pointerY, buttons);
+        }
+    }
+
+    private static int mouseButtons(int state) {
+        int result = 0;
+        if ((state & MotionEvent.BUTTON_PRIMARY) != 0) result |= 1;
+        if ((state & MotionEvent.BUTTON_TERTIARY) != 0) result |= 2;
+        if ((state & MotionEvent.BUTTON_SECONDARY) != 0) result |= 4;
+        return result;
+    }
+
+    private static boolean isMouse(MotionEvent event) {
+        return event.isFromSource(InputDevice.SOURCE_MOUSE)
+                || event.isFromSource(InputDevice.SOURCE_MOUSE_RELATIVE);
+    }
+
+    /**
+     * Finger mode, behaving the way a phone behaves.
+     *
+     * The old version pressed the left button the instant a finger landed, so the slightest
+     * wobble became a drag -- icons moved, text selected, windows tore around -- and scrolling
+     * did not exist. Now a tap is a click where the finger first landed, holding still for half
+     * a second is a right-click, and a swipe turns the scroll wheel like every phone screen.
+     * Precise dragging is what Mouse mode is for.
+     */
+    private boolean directTouch(MotionEvent event, int action, VncClient active) {
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+                stopFling();
+                if (velocity == null) velocity = VelocityTracker.obtain();
+                velocity.clear();
+                velocity.addMovement(event);
+                downX = lastX = event.getX();
+                downY = lastY = event.getY();
+                downAt = System.currentTimeMillis();
+                moved = false;
+                scrollAxis = 0;
+                pointerX = mapX(downX, active.getWidth());
+                pointerY = mapY(downY, active.getHeight());
+                active.sendPointer(pointerX, pointerY, 0);
+                invalidate();
+                return true;
+            case MotionEvent.ACTION_MOVE: {
+                if (velocity != null) velocity.addMovement(event);
+                if (Math.abs(event.getX() - downX) + Math.abs(event.getY() - downY)
+                        > Ui.dp(getContext(), 10)) {
+                    moved = true;
+                }
+                if (!moved) return true;
+                // A swipe is a scroll, in the direction the content moves on any phone screen.
+                // The axis is decided once, on the first movement, and held for the whole
+                // gesture: without that a swipe down a page that is also wide enough to scroll
+                // sideways jitters between the two and neither goes anywhere.
+                float downwards = event.getY() - lastY;
+                float sideways = event.getX() - lastX;
+                if (scrollAxis == 0) {
+                    scrollAxis = Math.abs(event.getY() - downY) >= Math.abs(event.getX() - downX)
+                            ? 1 : 2;
+                }
+                int notch = Ui.dp(getContext(), 16);
+                if (scrollAxis == 1) {
+                    while (downwards <= -notch) {
+                        wheel(active, 16);
+                        lastY -= notch;
+                        downwards += notch;
+                    }
+                    while (downwards >= notch) {
+                        wheel(active, 8);
+                        lastY += notch;
+                        downwards -= notch;
+                    }
+                    lastX = event.getX();
+                } else {
+                    // Buttons 6 and 7: the horizontal wheel every X11 program already understands,
+                    // and the same pair two fingers have always sent here.
+                    while (sideways <= -notch) {
+                        wheel(active, 64);
+                        lastX -= notch;
+                        sideways += notch;
+                    }
+                    while (sideways >= notch) {
+                        wheel(active, 32);
+                        lastX += notch;
+                        sideways -= notch;
+                    }
+                    lastY = event.getY();
+                }
+                return true;
+            }
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (!moved && action == MotionEvent.ACTION_UP) {
+                    // Click where the finger first landed: the touch point, not the lift wobble.
+                    int button = System.currentTimeMillis() - downAt >= 500 ? 4 : 1;
+                    active.sendPointer(pointerX, pointerY, button);
+                    active.sendPointer(pointerX, pointerY, 0);
+                    ringX = downX; ringY = downY; ringAt = SystemClock.elapsedRealtime();
+                    postInvalidateOnAnimation();
+                    performClick();
+                } else if (moved && scrollAxis != 2 && action == MotionEvent.ACTION_UP
+                        && velocity != null) {
+                    velocity.addMovement(event);
+                    velocity.computeCurrentVelocity(1000);
+                    float speed = velocity.getYVelocity();
+                    if (Math.abs(speed) > Ui.dp(getContext(), 600)) startFling(speed);
+                }
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** Keeps a fast swipe scrolling after the finger lifts, slowing down as a phone page does. */
+    private void startFling(float pixelsPerSecond) {
+        flingVelocity = pixelsPerSecond;
+        flingTravel = 0f;
+        main.removeCallbacks(flingStep);
+        main.postDelayed(flingStep, 16L);
+    }
+
+    private void stopFling() {
+        flingVelocity = 0f;
+        flingTravel = 0f;
+        main.removeCallbacks(flingStep);
+    }
+
+    private final Runnable flingStep = new Runnable() {
+        @Override public void run() {
+            VncClient active = client;
+            if (active == null || pointerMode != PointerMode.DIRECT) { stopFling(); return; }
+            flingTravel += flingVelocity * 0.016f;
+            flingVelocity *= 0.94f;
+            int notch = Ui.dp(getContext(), 16);
+            // Finger moving down carried the content down: wheel up. And the reverse.
+            while (flingTravel >= notch) { wheel(active, 8); flingTravel -= notch; }
+            while (flingTravel <= -notch) { wheel(active, 16); flingTravel += notch; }
+            if (Math.abs(flingVelocity) < Ui.dp(getContext(), 40)) { stopFling(); return; }
+            main.postDelayed(this, 16L);
+        }
+    };
+
+    @Override public boolean performClick() {
+        heldInput.releaseModifiers();
+        inputChanged();
+        super.performClick();
+        return true;
+    }
+
+    @Override public void onConnected(int width, int height, String name) {
+        // The next rectangle can follow immediately on this network thread. Install both
+        // buffers before returning, rather than clearing freshly decoded pixels in a UI post.
+        if (!replaceBitmap(width, height)) return;
+        main.post(() -> {
+            if (released) return;
+            releaseInput();
+            live = true;
+            everConnected = true;
+            pointerX = width / 2;
+            pointerY = height / 2;
+            // Tell Linux where the pointer is, or its own cursor stays wherever the last session
+            // (or the last screen size) left it -- which is the second arrow at the screen edge.
+            VncClient active = client;
+            if (active != null) active.sendPointer(pointerX, pointerY, 0);
+            centreOnNextLayout = true;
+            status = "Connected";
+            matchDesktopToScreen();
+            if (stateListener != null) stateListener.state("Linux computer", true);
+            invalidate();
+        });
+    }
+
+    @Override public void onResize(int width, int height) {
+        if (!replaceBitmap(width, height)) return;
+        main.post(() -> {
+            if (released) return;
+            releaseInput();
+            live = true;
+            centreOnNextLayout = true;
+            pointerX = Math.min(pointerX, width - 1);
+            pointerY = Math.min(pointerY, height - 1);
+            VncClient active = client;
+            if (active != null) active.sendPointer(pointerX, pointerY, 0);
+            if (stateListener != null) stateListener.state("Linux computer", true);
+            invalidate();
+        });
+    }
+
+    private Bitmap.Config framebufferConfig() {
+        if (framebufferConfig == null) {
+            framebufferConfig = DeviceCheck.isSmallPhone(getContext())
+                    ? Bitmap.Config.RGB_565 : Bitmap.Config.ARGB_8888;
+        }
+        return framebufferConfig;
+    }
+
+    /** The desktop's current size in pixels, for the details the status label opens. */
+    String desktopSize() {
+        Bitmap current = bitmap;
+        return current == null ? "not connected yet" : current.getWidth() + " × " + current.getHeight();
+    }
+
+    @Override public void onRectangle(int x, int y, int width, int height, int[] pixels) {
+        // Written straight from the network thread into the back copy; nothing is shown until
+        // onUpdateComplete says the whole update has landed.
+        synchronized (backLock) {
+            Bitmap target = back;
+            if (target == null || target.isRecycled()) return;
+            int safeWidth = Math.min(width, target.getWidth() - x);
+            int safeHeight = Math.min(height, target.getHeight() - y);
+            if (x < 0 || y < 0 || safeWidth <= 0 || safeHeight <= 0) return;
+            long needed = (long) (safeHeight - 1) * width + safeWidth;
+            if (needed > pixels.length) return;
+            target.setPixels(pixels, 0, width, x, y, safeWidth, safeHeight);
+            if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
+            else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
+        }
+    }
+
+    /**
+     * A block of the desktop that is already here, moved somewhere else on it.
+     *
+     * This is what a scroll actually is, and what a window being dragged and a tab being switched
+     * mostly are. The server sends six bytes instead of the pixels, and the copy happens in the
+     * back buffer, on the network thread, under the same lock every other write uses.
+     *
+     * The scratch copy is not optional: a bitmap blitted onto itself with overlapping source and
+     * destination is undefined -- rows can be read after they have been overwritten -- which is
+     * exactly the case a scroll produces every time.
+     */
+    @Override public void onCopyRect(int sourceX, int sourceY, int x, int y, int width, int height) {
+        synchronized (backLock) {
+            Bitmap target = back;
+            if (target == null || target.isRecycled()) return;
+            int safeWidth = Math.min(width, Math.min(target.getWidth() - x, target.getWidth() - sourceX));
+            int safeHeight = Math.min(height, Math.min(target.getHeight() - y, target.getHeight() - sourceY));
+            if (x < 0 || y < 0 || sourceX < 0 || sourceY < 0 || safeWidth <= 0 || safeHeight <= 0) return;
+            try {
+                // Read the block out, then write it back at the new place. The read is not
+                // optional and it is not a copy for tidiness: a bitmap blitted onto itself with
+                // overlapping source and destination is undefined, and a scroll overlaps every
+                // time. One reused array rather than a scratch Bitmap per rectangle, because a
+                // page scrolling sends a great many of these.
+                int needed = safeWidth * safeHeight;
+                if (copyBuffer == null || copyBuffer.length < needed) copyBuffer = new int[needed];
+                target.getPixels(copyBuffer, 0, safeWidth, sourceX, sourceY, safeWidth, safeHeight);
+                target.setPixels(copyBuffer, 0, safeWidth, x, y, safeWidth, safeHeight);
+            } catch (RuntimeException | OutOfMemoryError refused) {
+                // A copy that cannot be made is not a reason to drop the connection -- but the
+                // server believes those pixels moved and will not send them again until they
+                // change, so the whole screen is asked for once the update is in.
+                needFullRefresh = true;
+            }
+            if (anyDirty) dirty.union(x, y, x + safeWidth, y + safeHeight);
+            else { dirty.set(x, y, x + safeWidth, y + safeHeight); anyDirty = true; }
+        }
+    }
+
+    /** Set when a CopyRect failed, so the frame is asked for whole rather than left wrong. */
+    private volatile boolean needFullRefresh;
+
+    @Override public void onUpdateComplete() {
+        if (needFullRefresh) {
+            needFullRefresh = false;
+            VncClient active = client;
+            if (active != null) {
+                try {
+                    active.requestUpdate(false);
+                } catch (java.io.IOException gone) {
+                    // The connection is ending; the reconnect draws the screen from scratch.
+                }
+            }
+        }
+        synchronized (backLock) {
+            if (!anyDirty) return;
+            anyDirty = false;
+            Bitmap source = back;
+            synchronized (pixelLock) {
+                Bitmap front = bitmap;
+                if (front == null || source == null || front.isRecycled() || source.isRecycled()) return;
+                if (frontCanvas == null) frontCanvas = new Canvas(front);
+                // One blit of the changed area: the front copy is never half an update.
+                frontCanvas.drawBitmap(source, dirty, dirty, null);
+            }
+        }
+        postInvalidate();
+    }
+
+    @Override public void onCursor(int hotX, int hotY, int width, int height, int[] argb) {
+        if (released) return;
+        final Bitmap shape = width > 0 && height > 0 && argb != null
+                ? Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888) : null;
+        main.post(() -> {
+            if (released) { if (shape != null) shape.recycle(); return; }
+            Bitmap old = cursorBitmap;
+            cursorBitmap = shape;
+            cursorHotX = hotX;
+            cursorHotY = hotY;
+            if (old != null) old.recycle();
+            invalidate();
+        });
+    }
+
+    /**
+     * Text the Linux side copied. Only a real copy arrives here now (the display server no
+     * longer forwards every highlighted word), so the phone's "Copied" bubble appears when
+     * something was actually copied and not whenever text was selected.
+     */
+    private volatile boolean viewerInFront = true;
+
+    /** The screen in front may take the phone's clipboard; a background session may not. */
+    void setViewerInFront(boolean inFront) { viewerInFront = inFront; }
+
+    @Override public void onClipboard(String text) {
+        if (text == null || text.isEmpty() || !viewerInFront) return;
+        main.post(() -> {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                    getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard == null) return;
+            try {
+                // Compared against what the phone holds NOW, not against the last text seen:
+                // copying the same thing again after the phone's clipboard changed used to be
+                // dropped, and the phone kept the other text.
+                android.content.ClipData current = clipboard.getPrimaryClip();
+                if (current != null && current.getItemCount() > 0) {
+                    CharSequence held = current.getItemAt(0).getText();
+                    if (held != null && text.contentEquals(held)) return;
+                }
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Linux computer", text));
+            } catch (RuntimeException refused) {
+                // A copy too large for the binder transaction, or a clipboard service that said
+                // no: the session carries on rather than the screen ending.
+            }
+        });
+    }
+
+    @Override public void onDisconnected(String reason) {
+        main.post(() -> {
+            if (released) return;
+            releaseInput();
+            status = fatalError != null ? fatalError : reason == null ? "Disconnected" : reason;
+            live = false;
+            if (stateListener != null) stateListener.state(status, false);
+            invalidate();
+        });
+    }
+
+    /** True while frames are still arriving. A dead session must not look like a live one. */
+    private volatile boolean live;
+    /** Set once a session has really connected: before that, "stopped" would be wrong. */
+    private boolean everConnected;
+
+    /**
+     * The screen shown while the desktop is still coming up.
+     *
+     * A single centred line of text ran off both edges of a phone screen, so a sentence that
+     * said how long the wait had been read as a fragment. This wraps, and turns while it waits,
+     * so the wait looks like a wait rather than a hang.
+     */
+    private void drawWaiting(Canvas canvas) {
+        Context context = getContext();
+        canvas.drawColor(Color.rgb(9, 13, 26));
+
+        float cardWidth = Math.min(getWidth() - Ui.dp(context, 48), Ui.dp(context, 340));
+        float centreX = getWidth() / 2f;
+        float centreY = getHeight() / 2f;
+
+        overlayPaint.setTextSize(Ui.dp(context, 15));
+        overlayPaint.setTextAlign(Paint.Align.CENTER);
+        // Wrapped once per sentence, not once per frame: this card redraws while it waits, and
+        // splitting the text and measuring every word sixty times a second on a phone that is
+        // busy starting a Linux computer is work taken from the thing being waited for.
+        float wrapWidth = cardWidth - Ui.dp(context, 32);
+        if (wrappedLines == null || !status.equals(wrappedFor) || wrapWidth != wrappedWidth) {
+            wrappedLines = wrap(status, wrapWidth);
+            wrappedFor = status;
+            wrappedWidth = wrapWidth;
+        }
+        List<String> lines = wrappedLines;
+        float lineHeight = overlayPaint.getFontSpacing();
+        float spinner = Ui.dp(context, 18);
+        float cardHeight = spinner * 2 + Ui.dp(context, 34) + lines.size() * lineHeight
+                + Ui.dp(context, 32);
+
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(Color.rgb(17, 24, 44));
+        canvas.drawRoundRect(centreX - cardWidth / 2f, centreY - cardHeight / 2f,
+                centreX + cardWidth / 2f, centreY + cardHeight / 2f,
+                Ui.dp(context, 18), Ui.dp(context, 18), overlayPaint);
+
+        float spinnerY = centreY - cardHeight / 2f + Ui.dp(context, 26) + spinner;
+        spinnerBounds.set(centreX - spinner, spinnerY - spinner, centreX + spinner, spinnerY + spinner);
+        overlayPaint.setStyle(Paint.Style.STROKE);
+        overlayPaint.setStrokeWidth(Ui.dp(context, 3));
+        overlayPaint.setStrokeCap(Paint.Cap.ROUND);
+        overlayPaint.setColor(Color.rgb(31, 43, 78));
+        canvas.drawArc(spinnerBounds, 0, 360, false, overlayPaint);
+        overlayPaint.setColor(Color.rgb(122, 155, 255));
+        float sweepStart = (SystemClock.elapsedRealtime() / 3L) % 360L;
+        canvas.drawArc(spinnerBounds, sweepStart, 90, false, overlayPaint);
+
+        overlayPaint.setStyle(Paint.Style.FILL);
+        overlayPaint.setColor(Color.rgb(214, 222, 245));
+        float textY = spinnerY + spinner + Ui.dp(context, 26);
+        for (String line : lines) {
+            canvas.drawText(line, centreX, textY, overlayPaint);
+            textY += lineHeight;
+        }
+        // 30 frames a second: the spinner turns 120 degrees a second, so nothing is visibly
+        // lost, and the phone spends half as long drawing a card that is only there to wait.
+        postInvalidateDelayed(33L);
+    }
+
+    private List<String> wrappedLines;
+    private String wrappedFor;
+    private float wrappedWidth;
+    private String startingPhase;
+    private String startingText;
+
+    /** The same card as the wait for the display, over the frame, naming the phase the desktop is in. */
+    private void drawStarting(Canvas canvas) {
+        String phase = Workspace.startupPhase();
+        if (startingText == null || !java.util.Objects.equals(phase, startingPhase)) {
+            startingPhase = phase;
+            startingText = "Starting the editor\u2026 "
+                    + (phase == null || phase.isEmpty() ? "" : phase + ".")
+                    + " Usually under a minute.";
+        }
+        String saved = status;
+        status = startingText;
+        drawWaiting(canvas);
+        status = saved;
+    }
+
+    /** Greedy word wrap, so a long sentence stays inside the card instead of past the screen. */
+    private List<String> wrap(String text, float maxWidth) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder line = new StringBuilder();
+        for (String word : text.split(" ")) {
+            String candidate = line.length() == 0 ? word : line + " " + word;
+            if (overlayPaint.measureText(candidate) <= maxWidth || line.length() == 0) {
+                line.setLength(0);
+                line.append(candidate);
+            } else {
+                lines.add(line.toString());
+                line.setLength(0);
+                line.append(word);
+            }
+        }
+        if (line.length() > 0) lines.add(line.toString());
+        return lines;
+    }
+
+    /** Called with both bitmap locks held, or on the UI thread after network use has stopped. */
+    private void recycleFramebuffers() {
+        if (bitmap != null) bitmap.recycle();
+        if (back != null) back.recycle();
+        bitmap = null;
+        back = null;
+        frontCanvas = null;
+        anyDirty = false;
+    }
+
+    private boolean replaceBitmap(int width, int height) {
+        synchronized (backLock) {
+            synchronized (pixelLock) {
+                if (released) return false;
+                // Reconnect at the same size needs no extra allocation. On resize release the
+                // old pair first: allocating four full screens at once caused avoidable peaks.
+                if (bitmap != null && back != null && !bitmap.isRecycled() && !back.isRecycled()
+                        && bitmap.getWidth() == width && bitmap.getHeight() == height) {
+                    bitmap.eraseColor(Color.BLACK);
+                    back.eraseColor(Color.BLACK);
+                    anyDirty = false;
+                    return true;
+                }
+                recycleFramebuffers();
+                try {
+                    // Two full screens are allocated here, and on a small phone they are the
+                    // largest thing this app owns. RGB_565 halves both of them AND halves what
+                    // is pushed to the GPU on every frame; setPixels and drawBitmap convert on
+                    // the way in and out, so nothing else changes. The cost is faint banding in
+                    // a gradient, which is the right trade on a phone that would otherwise be
+                    // swapping. A phone with room keeps the full-colour pair.
+                    Bitmap.Config config = framebufferConfig();
+                    bitmap = Bitmap.createBitmap(width, height, config);
+                    back = Bitmap.createBitmap(width, height, config);
+                    return true;
+                } catch (OutOfMemoryError | IllegalArgumentException error) {
+                    recycleFramebuffers();
+                    fatalError = "Not enough viewer memory for this screen. Close other apps and reopen the desktop.";
+                    live = false;
+                    VncClient active = client;
+                    if (active != null) active.close();
+                    // Recorded where the owner can read it, on the agent's own card,
+                    // rather than in a log nobody on a phone has a way to open.
+                    Probe.record(getContext(), DoorService.runningAgent(), Probe.FAILED,
+                            String.valueOf(error), "screen");
+                    onDisconnected(fatalError);
+                    return false;
+                }
+            }
+        }
+    }
+
+    private int mapX(float viewX, int remoteWidth) {
+        if (destination.width() <= 0) return 0;
+        return clamp(Math.round((viewX - destination.left) * remoteWidth / destination.width()), 0, remoteWidth - 1);
+    }
+
+    private int mapY(float viewY, int remoteHeight) {
+        if (destination.height() <= 0) return 0;
+        return clamp(Math.round((viewY - destination.top) * remoteHeight / destination.height()), 0, remoteHeight - 1);
+    }
+
+    /** Clearly zoomed in, not merely a few pixels over: only then is there anywhere to pan. */
+    private boolean zoomedIn() {
+        return destination.width() > getWidth() * 1.15f || destination.height() > getHeight() * 1.15f;
+    }
+
+    private static float averageX(MotionEvent event) {
+        float total = 0;
+        for (int i = 0; i < event.getPointerCount(); i++) total += event.getX(i);
+        return total / event.getPointerCount();
+    }
+
+    private static float averageY(MotionEvent event) {
+        float total = 0;
+        for (int i = 0; i < event.getPointerCount(); i++) total += event.getY(i);
+        return total / event.getPointerCount();
+    }
+
+    private static int clamp(int value, int minimum, int maximum) {
+        if (maximum < minimum) return minimum;
+        return Math.max(minimum, Math.min(value, maximum));
+    }
+}

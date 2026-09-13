@@ -169,16 +169,15 @@ public final class HomeActivity extends Activity {
     }
 
     /**
-     * How this agent is reached, in one line.
+     * How this agent arrives, in one line.
      *
-     * There used to be a "door" named here, chosen from three. There is one route now, so this
-     * says what it is rather than which of several was picked.
+     * Two of the three are their maker's own extension; the third is the editor those extensions
+     * install into. Saying which is not a detail -- it is the whole reason there is one window.
      */
     private String routeOf(Doors.Agent agent) {
-        String where = agent.hasPhoneSurface()
-                ? ", and on " + (agent.phone.contains("claude.ai") ? "Anthropic's app" : "Google's dashboard")
-                : "";
-        return "In the workspace on this phone" + where;
+        return agent.isExtension()
+                ? "Their own extension, in the editor on this phone"
+                : "The editor on this phone, from Google's own repository";
     }
 
     private TextView statePill(Doors.Agent agent, boolean running) {

@@ -37,7 +37,6 @@ public final class DoorService extends Service {
     static final String EXTRA_MODE = "mode";
     static final String EXTRA_TEXT = "text";
     static final String MODE_START = "start";
-    static final String MODE_LOGIN = "login";
 
     /** Broadcast so the screens can follow along without polling. */
     static final String EVENT = "com.pocketagent.doors.EVENT";
@@ -68,6 +67,15 @@ public final class DoorService extends Service {
     static String runningAgent() {
         return runningAgent;
     }
+
+    /** True once the workspace has said READY, which is when there is a screen to draw. */
+    private static volatile boolean ready;
+    /** The last thing the workspace said, so a long wait can say what it is waiting on. */
+    private static volatile String lastLine = "";
+
+    static boolean isReady() { return ready; }
+
+    static String lastLine() { return lastLine; }
 
     static void start(Context context, String agentId) {
         start(context, agentId, MODE_START);
@@ -109,18 +117,15 @@ public final class DoorService extends Service {
             shutdown();
             return START_NOT_STICKY;
         }
-        // Only Google signs in separately. Asking for a sign-in run on an agent that has no
-        // sign-in command used to start `bash /opt/doors/` with nothing after it -- a shell
-        // error, shown to the owner as if their agent had failed.
-        boolean signingIn = MODE_LOGIN.equals(mode) && agent.signsInSeparately();
-        startInForeground(agent, signingIn ? MODE_LOGIN : MODE_START);
+        // There is no separate sign-in any more, for any of the three. Each maker signs you in
+        // inside its own panel in the editor, which is the interface they built for it.
+        startInForeground(agent, MODE_START);
         return START_NOT_STICKY;
     }
 
     private void startInForeground(Doors.Agent agent, String mode) {
         ensureChannel(this);
-        boolean signingIn = MODE_LOGIN.equals(mode);
-        startForeground(7, notification(agent.name, signingIn ? "Signing in…" : "Starting…"));
+        startForeground(7, notification(agent.name, "Starting…"));
         long mine;
         synchronized (this) {
             // Everything already running is stale from this line onwards, and is ended here
@@ -129,6 +134,8 @@ public final class DoorService extends Service {
             endProcess();
         }
         runningAgent = agent.id;
+        ready = false;
+        lastLine = "";
         Thread started = new Thread(() -> run(agent, mode, mine), "door-" + agent.id);
         worker = started;
         started.start();
@@ -163,11 +170,13 @@ public final class DoorService extends Service {
     }
 
     private void run(Doors.Agent agent, String mode, long mine) {
-        boolean signingIn = MODE_LOGIN.equals(mode);
-        String command = signingIn ? agent.login : agent.start;
+        boolean signingIn = false;
+        String command = agent.start;
         List<String> transcript = new ArrayList<>();
         String route = "";
-        String url = agent.surface;
+        // Where the editor's screen is, once the script says. Empty until then: there is no
+        // address to guess at, because the display is a socket this session creates.
+        String url = "";
         boolean ready = false;
         try {
             // Scripts are rewritten on every start so an app update's fixes take effect
@@ -193,6 +202,7 @@ public final class DoorService extends Service {
                     if (clean.isEmpty()) continue;
                     transcript.add(clean);
                     if (transcript.size() > 200) transcript.remove(0);
+                    if (current(mine)) lastLine = clean;
 
                     // The scripts speak a few words the app acts on; everything else is just
                     // news for the screen.
@@ -210,6 +220,7 @@ public final class DoorService extends Service {
                     }
                     if (clean.startsWith("READY ")) {
                         ready = true;
+                        DoorService.ready = true;
                         url = clean.substring(6).trim();
                         notify(agent.name, "Running");
                         broadcast(clean, "ready", url);

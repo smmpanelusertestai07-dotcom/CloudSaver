@@ -39,23 +39,24 @@ final class Reasons {
                             + "of infrastructure spending planned for 2026.",
                     "Search, Android, Chrome and YouTube. Distribution on a scale nobody else in "
                             + "this field has.",
-                    "Antigravity. Its Remote Control runs the session on, in Google's own words, "
-                            + "\"your desktop or server\" — and this phone is the server."),
+                    "Antigravity, their own editor, built for linux-arm64 and published in their "
+                            + "own signed package repository. It is the window the other two open "
+                            + "inside, because its marketplace is Open VSX."),
 
             new Lab("OpenAI", "OpenAI",
                     "No chips of its own; it rents. But it creates enough demand that the companies "
                             + "building the data centres cite it when they justify their own spending.",
                     "ChatGPT. For most people, it is what the words \"AI app\" mean.",
-                    "Codex, through OpenAI's own VS Code extension. Their Remote Control needs a Mac "
-                            + "to host the session — Windows is listed as coming, Linux is not listed."),
+                    "Codex, through OpenAI's own extension for VS Code and the editors built on "
+                            + "it — the same one their desktop editor loads."),
 
             new Lab("Anthropic", "Anthropic",
                     "No chips of its own either, but it is the named tenant behind three of the five "
                             + "flagship data centre projects now being built.",
                     "Smaller than ChatGPT with the public. Larger than anyone with developers: "
                             + "Claude Code is the most used coding agent at work, at 39%.",
-                    "Claude Code, through Anthropic's own phone app. Remote Control is confirmed "
-                            + "working on a headless Linux host, which is what this workspace is."),
+                    "Claude Code, through Anthropic's own extension for VS Code and the editors "
+                            + "built on it — the same one their desktop editor loads."),
     };
 
     /**
@@ -63,8 +64,8 @@ final class Reasons {
      */
     static final String[] BAR = {
             "A coding agent built for linux-arm64, because that is what a phone is.",
-            "An interface of their own that a phone can reach — their app, their web dashboard, "
-                    + "or an extension on Open VSX.",
+            "An interface of their own this editor can show — an extension on Open VSX, or an "
+                    + "editor of their own that a phone can run.",
             "An update path they control, so the agent keeps improving without this app being "
                     + "rewritten.",
     };
@@ -85,8 +86,9 @@ final class Reasons {
     static final Missing[] NOT_HERE = {
             new Missing("Cursor",
                     "Its agent runs on linux-arm64 and speaks an open protocol.",
-                    "No extension on Open VSX, and its remote sessions run on Cursor's own cloud "
-                            + "machines rather than this phone. Neither route ends here."),
+                    "No extension on Open VSX, which is the marketplace this editor reads. Its "
+                            + "remote sessions run on Cursor's own machines rather than this "
+                            + "phone. Neither route ends here."),
 
             new Missing("xAI · Grok Build",
                     "Its agent runs on linux-arm64 and has a full headless mode.",
