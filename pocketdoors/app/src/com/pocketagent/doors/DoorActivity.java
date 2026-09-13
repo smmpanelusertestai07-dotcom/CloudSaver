@@ -120,11 +120,12 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         card.addView(stateLabel);
         card.addView(Ui.bold(this, agent.name, 20, Ui.text(dark)), Ui.wide(this, 4));
         card.addView(Ui.text(this,
-                "The first run downloads Google's editor and this agent's own extension -- about "
-                        + "a gigabyte over this connection, once. apt gives no progress line per "
-                        + "file, so the list below is what is actually happening. Leave the phone "
-                        + "plugged in; closing the app part way through is the thing that has to "
-                        + "be repaired afterwards.", 13.5f, Ui.muted(dark)), Ui.wide(this, 8));
+                "The first run downloads Google's editor and this agent's own extension, once. "
+                        + "The editor is about 143 MB to fetch and 702 MB once unpacked; the "
+                        + "extension is a few hundred more. apt prints nothing per file, so the "
+                        + "megabytes below are counted from what has actually arrived. Leave the "
+                        + "phone plugged in: closing the app part way through is the thing that "
+                        + "has to be repaired afterwards.", 13.5f, Ui.muted(dark)), Ui.wide(this, 8));
         inner.addView(card);
 
         inner.addView(Ui.sectionLabel(this, "Progress", dark), Ui.wide(this, 20));

@@ -530,6 +530,40 @@ if grep -n 'Linux computer' "$SRC"/*.java; then
 fi
 echo "PASS ShowsItsWork (a long install shows what it is doing, in this app's own words)"
 
+# ---------------------------------------------------------------- the number said is the number spent
+# This app told somebody on mobile data that the editor was "about 700 MB, downloaded once".
+# 700 MB is what it occupies once unpacked; the download is 143 MB. Five times the truth, to the
+# one person in this project who pays for every megabyte by the megabyte.
+grep -q 'AG_DOWNLOAD_MB=143' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: the download size is not the one the repository's index gives"
+grep -q 'AG_INSTALLED_MB=702' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: the unpacked size is not the one the repository's index gives"
+# The two must never be confused again. Written first as "does a Download… line mention the
+# unpacked number anywhere", this failed on the correct line, which names both on purpose --
+# "143 MB to fetch, 702 MB once unpacked" -- because the pattern between them spanned the comma.
+# What is actually wrong is only ever the number attached to the word fetch, so that is what is
+# checked: the megabytes in front of "to fetch" must be the download figure.
+fetches=$(grep -oE '\$\{AG_[A-Z_]+\} MB to fetch' "$ASSETS/doors-workspace.sh" || true)
+[ -n "$fetches" ] \
+  || fail "SizesAreReal: nothing says how much there is to fetch"
+if printf '%s' "$fetches" | grep -q 'AG_INSTALLED_MB'; then
+  fail "SizesAreReal: the size to fetch is given as the unpacked size"
+fi
+# And a long install must report real progress rather than one line that never changes, because
+# that line is what makes somebody close the app -- which is what breaks dpkg.
+in_code 'watch_download' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: a quarter-hour download reports no progress at all"
+in_code 'du -sm /var/cache/apt/archives' "$ASSETS/doors-workspace.sh" \
+  || fail "SizesAreReal: progress is claimed but not counted from what actually arrived"
+# Started before the install and stopped after it, or it outlives the thing it is reporting on.
+watch_at=$(grep -n 'watch_download &' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
+inst_at=$(grep -n 'apt_install "Antigravity"' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1 || true)
+stop_at=$(grep -n 'kill "\$watcher"' "$ASSETS/doors-workspace.sh" | tail -n1 | cut -d: -f1 || true)
+[ -n "$watch_at" ] && [ -n "$inst_at" ] && [ -n "$stop_at" ] \
+  && [ "$watch_at" -lt "$inst_at" ] && [ "$inst_at" -lt "$stop_at" ] \
+  || fail "SizesAreReal: the counter does not run for exactly the length of the install"
+echo "PASS SizesAreReal (the megabytes named are the megabytes spent, and they are counted)"
+
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2)
 build_code=$(grep -oE 'VERSION_CODE="[0-9]+"' build.sh | cut -d'"' -f2)

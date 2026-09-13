@@ -1,6 +1,54 @@
-# PocketAgent 16.1.5 — a long wait that shows its work
+# PocketAgent 16.2.0 — the megabytes named are the megabytes spent
 
-Version **16.1.5**, code **615**, application ID `com.pocketagent.doors`.
+Version **16.2.0**, code **620**, application ID `com.pocketagent.doors`.
+
+## 16.2.0: the app overstated a download by five times
+
+On screen, mid-install, to somebody paying for every megabyte by the megabyte:
+
+> Installing Antigravity… (about **700 MB**, downloaded once)
+
+702 MB is what the editor occupies **once unpacked**. The download is **143 MB**. Both numbers
+were in the repository index I read before writing that line, and I used the wrong one.
+
+Both are now named, separately, and never confused again:
+
+> Downloading Antigravity… about **143 MB** to fetch, **702 MB** once unpacked. Once only.
+
+## 16.2.0: a real number instead of "it is not stuck"
+
+The old line was the same sentence for a quarter of an hour: *"There is no progress line for
+this; apt does not give one per file. It is not stuck."* True, and useless — and one unchanging
+line for that long is exactly what makes somebody close the app, which is what leaves dpkg
+half-applied.
+
+apt gives no progress, but it does write what it fetches into its own cache, so that cache's
+size **is** progress. One `du` every fifteen seconds:
+
+```
+Downloaded 38 MB of about 143 MB.
+Downloaded 71 MB of about 143 MB.
+Downloaded 143 MB. Unpacking now — that part has no number and takes a few minutes.
+```
+
+The counter starts before the install and is stopped after it either way, so it never outlives
+the thing it reports on. `SizesAreReal` checks the figures against the index, that the number
+attached to "to fetch" is the download one, and that the counter brackets the install exactly.
+
+## 16.2.0: a gate that was wrong about correct code
+
+The first `SizesAreReal` asked "does a Downloading… line mention the unpacked number anywhere?"
+— and failed on the **correct** line, which names both on purpose ("143 MB to fetch, 702 MB once
+unpacked"), because the pattern between them spanned the comma.
+
+Worth writing down because it is the opposite of this project's usual failure: seven gates have
+passed on prose instead of code, and this one condemned code that was right. The fix is the same
+discipline either way — check the exact construct that can be wrong, which here is only ever the
+number attached to the word *fetch*.
+
+---
+
+# Earlier releases
 
 ## 16.1.5: half an hour of black screen
 

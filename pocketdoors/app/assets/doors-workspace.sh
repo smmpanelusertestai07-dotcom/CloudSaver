@@ -40,6 +40,11 @@ LOG="$STATE/workspace.log"
 AG_KEY_URL="https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg"
 AG_REPO="https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev"
 AG_SUITE="antigravity-debian"
+# What the editor costs, read from the repository's own index rather than guessed: 143 MB to
+# fetch, 702 MB once unpacked. Saying the second number as if it were the first -- which this
+# did -- tells somebody on mobile data to budget five times what they need.
+AG_DOWNLOAD_MB=143
+AG_INSTALLED_MB=702
 AG_KEYRING=/etc/apt/keyrings/antigravity.gpg
 AG_LIST=/etc/apt/sources.list.d/antigravity.list
 AG_BIN=/usr/share/antigravity/bin/antigravity
@@ -70,7 +75,7 @@ fail() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
 # The same repair the bootstrap does, for the same reason and with more at stake: the editor is
-# a 700 MB package, so it spends the longest of anything here in the state where an interruption
+# a 702 MB package once unpacked, so it spends the longest of anything here in the state where
 # leaves dpkg half-applied and every later install refusing to start. Costs nothing when nothing
 # is broken.
 repair_packages() {
@@ -92,6 +97,26 @@ apt_install() {
 # fifth that gets it refused. Nothing here sets them, but a workspace is a real Ubuntu.
 unset DISABLE_TELEMETRY DO_NOT_TRACK CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_GROWTHBOOK
 unset ANTHROPIC_BASE_URL
+
+# A number, because apt gives none.
+#
+# apt prints nothing per file, and a quarter of an hour of one unchanging line is what makes
+# somebody close the app -- which is the thing that leaves dpkg half-applied. It does write what
+# it fetches into its own cache, though, so the size of that cache is real progress, and reading
+# it costs one `du` every fifteen seconds.
+watch_download() {
+  while :; do
+    sleep 15
+    have=$(du -sm /var/cache/apt/archives 2>/dev/null | awk '{print $1}')
+    [ -n "${have:-}" ] || continue
+    [ "$have" -gt 0 ] || continue
+    if [ "$have" -ge "$AG_DOWNLOAD_MB" ]; then
+      say "Downloaded ${have} MB. Unpacking now -- that part has no number and takes a few minutes."
+    else
+      say "Downloaded ${have} MB of about ${AG_DOWNLOAD_MB} MB."
+    fi
+  done
+}
 
 # ---------------------------------------------------------------------- install the editor
 
@@ -131,10 +156,14 @@ install_ide() {
   apt-cache policy antigravity 2>/dev/null | grep -q 'Candidate: [0-9]' \
     || fail "Google's repository is reachable but offers no Antigravity build for this phone."
 
-  say "Installing Antigravity… (about 700 MB, downloaded once)"
-  say "There is no progress line for this; apt does not give one per file. It is not stuck."
+  say "Downloading Antigravity… about ${AG_DOWNLOAD_MB} MB to fetch, ${AG_INSTALLED_MB} MB once unpacked. Once only."
+  # Counted in the background for as long as the install runs, and stopped either way after it.
+  watch_download &
+  watcher=$!
   apt_install "Antigravity" antigravity \
-    || { tail -n 20 "$LOG" 2>/dev/null || true; fail "Antigravity could not be installed."; }
+    || { kill "$watcher" 2>/dev/null || true
+         tail -n 20 "$LOG" 2>/dev/null || true; fail "Antigravity could not be installed."; }
+  kill "$watcher" 2>/dev/null || true
 
   [ -x "$AG_BIN" ] || fail "Antigravity installed but its program is not where the package puts it."
   say "Antigravity installed."
