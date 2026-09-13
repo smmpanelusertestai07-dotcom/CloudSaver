@@ -86,6 +86,24 @@ grep -q 'apt-cache policy' "$ASSETS/doors-bootstrap.sh" \
   || fail "Integrity: nothing proves the package index arrived before the first install"
 echo "PASS Integrity (checksums; HTTPS off the phone, and apt on HTTPS from its second fetch)"
 
+# ---------------------------------------------------------------- the workspace can resolve a name
+# Android gives a container no resolver, and without one every fetch fails with "Temporary
+# failure resolving" -- which is how the second set-up on a real phone died. The resolver has to
+# be written before every start, and it has to follow the phone between mobile data and Wi-Fi,
+# because a set-up runs for long enough to cross that boundary.
+grep -q 'Dns.refresh(context)' "$SRC/Ubuntu.java" \
+  || fail "Resolver: nothing writes the phone's DNS into the workspace before a command runs"
+grep -q 'dns.start()' "$SRC/App.java" \
+  || fail "Resolver: the resolver does not follow the phone between networks"
+grep -q 'preferIPv4' "$SRC/Ubuntu.java" \
+  || fail "Resolver: IPv4 is not preferred, so a mobile AAAA answer can stall every fetch"
+# Only the phone's own servers, ever. A silent public fallback would route someone's lookups
+# through a third party without telling them.
+if grep -qE '8\.8\.8\.8|1\.1\.1\.1|9\.9\.9\.9' "$SRC/ResolverConfig.java" "$SRC/Dns.java" "$ASSETS"/*.sh; then
+  fail "Resolver: a public DNS server is hard-coded; only the phone's own servers may be used"
+fi
+echo "PASS Resolver (the phone's own DNS, written before every start and followed across networks)"
+
 # ---------------------------------------------------------------- the loopback stays loopback
 grep -q 'bind-addr "127.0.0.1' "$ASSETS/doors-codeserver.sh" \
   || fail "Loopback: code-server is not bound to the loopback address"

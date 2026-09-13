@@ -1,11 +1,31 @@
-# PocketAgent Doors 15.1.0 — the workspace actually builds now
+# PocketAgent Doors 15.1.5 — the workspace can resolve a name
 
-Version **15.1.0**, code **510**, application ID `com.pocketagent.doors`.
+Version **15.1.5**, code **515**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.1.5 rather than over it. The one that works today keeps
 working while this one is being proved.
 
-## The bug that stopped the first set-up
+## The second bug: no resolver
+
+With the sources fixed, the next set-up got further and then died on
+`Temporary failure resolving 'ports.ubuntu.com'` for every index. Android does not give a
+container a working `/etc/resolv.conf`, so glibc inside the workspace had no nameserver at all.
+PocketAgent has always written one; this app's leaner runtime simply left that out.
+
+The phone's own DNS servers are written into the workspace before every command now, and they
+are rewritten whenever the phone moves between mobile data and Wi-Fi, because a set-up runs long
+enough to cross that boundary. Only the phone's own servers are ever used -- a silent fallback to
+a public resolver would route someone's lookups through a third party without telling them, so a
+check fails the build if one is ever hard-coded.
+
+IPv4 is preferred as well. On mobile data an AAAA answer frequently resolves and then refuses to
+connect, and apt reports that as a name-resolution failure too -- indistinguishable, from the
+screen, from having no DNS at all.
+
+And the set-up screen now names this failure precisely when it sees it, because "no resolver" and
+"no signal" look identical in an apt log and need completely different answers.
+
+## The first bug: the wrong package host
 
 `E: Package 'ca-certificates' has no installation candidate`, after a screenful of duplicate
 source warnings. Ubuntu 24.04's base image already ships

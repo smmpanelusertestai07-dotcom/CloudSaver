@@ -34,17 +34,17 @@ final class Brand {
 
     // Brand -- the launcher icon's tile, top-left to bottom-right, and the flat tone between
     // them that a window background has to be (a splash background takes a colour, not a ramp).
-    static final int TILE_TOP = Color.parseColor("#23232C");
-    static final int TILE_BOTTOM = Color.parseColor("#121217");
-    static final int TILE_FLAT = Color.parseColor("#1A1A21");
-    static final int ACCENT = Color.parseColor("#8B7BFF");
+    static final int TILE_TOP = Color.parseColor("#7A3CD6");
+    static final int TILE_BOTTOM = Color.parseColor("#33146F");
+    static final int TILE_FLAT = Color.parseColor("#56289F");
+    static final int ACCENT = Color.parseColor("#8B55E8");
     static final int ACCENT_ON_DARK = Color.parseColor("#B79BF5");
     /** The brackets: warm bone, never pure white, so they sit with the neutrals. */
     static final int MARK = Color.parseColor("#F7F3EB");
     /** The spark between them, and the only coloured thing in the mark. */
-    static final int SPARK = Color.parseColor("#8B7BFF");
+    static final int SPARK = Color.parseColor("#F7F3EB");
 
     /** Readable body text on the brand tile, and the quieter line under it. */
     static final int ON_BRAND = MARK;
-    static final int ON_BRAND_MUTED = Color.parseColor("#A9A4C4");
+    static final int ON_BRAND_MUTED = Color.parseColor("#C3B2E8");
 }

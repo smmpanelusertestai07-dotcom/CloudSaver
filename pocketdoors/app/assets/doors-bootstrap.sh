@@ -46,7 +46,12 @@ if ! done_with apt-ready; then
 
   # Not -qq. A failed update here is the difference between a working workspace and an error
   # nobody can read, and hiding it is what made the first attempt confusing.
-  apt-get update || die "Could not reach Ubuntu's package servers. Check the connection and try again."
+  # A name that will not resolve is the one failure worth naming precisely: it means the
+  # workspace has no DNS, not that the phone is offline, and the two need different answers.
+  if ! apt-get update 2>&1 | tee /tmp/apt-update.log; then :; fi
+  if grep -q 'Temporary failure resolving' /tmp/apt-update.log; then
+    die "The workspace could not look up any address. Its resolver is empty -- close the app completely and open it again, and if that does not help, switch between mobile data and Wi-Fi once."
+  fi
 
   # Prove the index actually arrived before trusting it. "No installation candidate" is what an
   # empty index looks like from the other end, and saying so here is far clearer.

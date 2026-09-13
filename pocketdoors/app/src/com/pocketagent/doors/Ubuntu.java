@@ -110,6 +110,27 @@ final class Ubuntu {
         say(progress, "Workspace ready.");
     }
 
+    /**
+     * Ask glibc to try IPv4 first.
+     *
+     * On mobile data an AAAA record frequently resolves and then will not connect, and apt
+     * reports that as a name-resolution failure -- indistinguishable, from the screen, from
+     * having no DNS at all. One line in gai.conf turns a long stall into a normal fetch.
+     */
+    private static void preferIPv4(File root) {
+        File etc = new File(root, "etc");
+        if (!etc.isDirectory()) return;
+        File gai = new File(etc, "gai.conf");
+        if (gai.isFile()) return;
+        try (FileOutputStream output = new FileOutputStream(gai)) {
+            output.write(("# PocketAgent: prefer IPv4, because a mobile network often answers "
+                    + "AAAA and then refuses the connection.\nprecedence ::ffff:0:0/96  100\n")
+                    .getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        } catch (IOException unwritable) {
+            // A rootfs still extracting is not a reason to refuse to start.
+        }
+    }
+
     /** Copies the door scripts out of the APK, every time, so an update replaces them. */
     static void writeScripts(Context context) throws IOException {
         File directory = new File(root(context), "opt/doors");
@@ -186,6 +207,10 @@ final class Ubuntu {
     /** Starts a command inside Ubuntu. The caller owns the process and must stop it. */
     static Process start(Context context, String command) throws IOException {
         File root = root(context);
+        // Android gives a container no working resolver. Without this every fetch fails with
+        // "Temporary failure resolving", which is how the first set-up on a real phone died.
+        Dns.refresh(context);
+        preferIPv4(root);
         File natives = new File(context.getApplicationInfo().nativeLibraryDir);
         File temporary = new File(context.getFilesDir(), "proot-tmp");
         if (!temporary.isDirectory()) temporary.mkdirs();

@@ -5,7 +5,7 @@ interface instead of one it drew.
 
 - **Application ID** `com.pocketagent.doors` — installs beside PocketAgent 14.1.5, does not
   replace it.
-- **Version** 15.1.0, code 500. Targets API 35, needs API 29, ARM64 only.
+- **Version** 15.1.5, code 500. Targets API 35, needs API 29, ARM64 only.
 - **Build** `ANDROID_SDK_ROOT=… bash build.sh` — aapt2, javac, d8, apksigner. No Gradle.
 - **Test** `bash tests/run-tests.sh`
 
