@@ -157,11 +157,21 @@ final class Permissions {
         openAppInfo(activity);
     }
 
+    /**
+     * The one place this app hands the owner to a page of Android's own.
+     *
+     * Every open* method above goes through here, which is what makes the AppLock line below
+     * safe to write once. Without it, an owner with the app lock on taps "Battery", grants what
+     * was asked, comes back -- and is met by a fingerprint prompt for an errand the app sent
+     * them on. A lock that interrupts the owner's own action is a lock they turn off.
+     */
     static boolean launch(Activity activity, Intent intent) {
         try {
+            AppLock.expectReturn();
             activity.startActivity(intent);
             return true;
         } catch (Throwable noSuchPage) {
+            AppLock.returned();
             return false;
         }
     }

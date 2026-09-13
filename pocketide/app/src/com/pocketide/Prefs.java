@@ -44,6 +44,8 @@ final class Prefs {
     static final String APP_LOCK = "app_lock";
     /** Set when the lock turned itself off because the phone's own screen lock was removed. */
     static final String LOCK_NOTICE = "app_lock_notice";
+    /** Whether the owner asked for the phone's storage inside the workspace. Off by default. */
+    static final String PHONE_FILES = "phone_files";
 
     private Prefs() {}
 

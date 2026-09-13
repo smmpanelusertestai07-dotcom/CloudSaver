@@ -327,6 +327,20 @@ final class Texts {
                             + "check is the phone's own; no fingerprint or PIN ever reaches "
                             + "this app, and nothing is stored. Granted at install because it "
                             + "is a normal permission, and unused while the lock is off."},
+            {"android.permission.MANAGE_EXTERNAL_STORAGE",
+                    "The phone's files, if you turn them on",
+                    "Off unless you switch it on in Settings, and Android grants it on a page "
+                            + "of its own. On, the phone's storage appears inside the workspace "
+                            + "as ~/phone so you can open a file from Downloads or save a build "
+                            + "somewhere that outlives the app. Nothing is read or copied "
+                            + "without you doing it."},
+            {"android.permission.READ_EXTERNAL_STORAGE",
+                    "The phone's files on Android 10",
+                    "The same thing, on the one Android version that predates the page above. "
+                            + "Declared with maxSdkVersion 29, so newer phones never see it."},
+            {"android.permission.WRITE_EXTERNAL_STORAGE",
+                    "Writing to the phone's files on Android 10",
+                    "As above, and equally limited to Android 10."},
             {"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
              "Battery", "A one-tap prompt so long work is not stopped. Always optional."},
     };

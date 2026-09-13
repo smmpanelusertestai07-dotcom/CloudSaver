@@ -106,7 +106,10 @@ install_editor() {
 # --------------------------------------------------------------------------- configure
 
 configure() {
-  mkdir -p "$(dirname "$CONFIG")" "$USER_DATA/User" "$EXT_DIR" "$PROJECTS"
+  # ~/phone is created whether or not the phone's storage is switched on, because PRoot binds
+  # onto a path that already exists and the switch can be flipped between one start and the
+  # next. An empty folder costs nothing; a bind with nowhere to land fails the whole start.
+  mkdir -p "$(dirname "$CONFIG")" "$USER_DATA/User" "$EXT_DIR" "$PROJECTS" "$HOME_DIR/phone"
 
   if [ -z "$HASHED_PASSWORD" ] && [ -n "$PASSWORD" ]; then
     HASHED_PASSWORD=$(printf '%s' "$PASSWORD" | sha256sum | cut -d' ' -f1)

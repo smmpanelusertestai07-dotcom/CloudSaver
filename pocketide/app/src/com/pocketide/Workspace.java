@@ -344,6 +344,13 @@ final class Workspace {
             args.add("-b");
             args.add(fake.getValue() + ":" + fake.getKey());
         }
+        // The phone's own storage, only when the owner turned it on and Android granted it.
+        // Binding it unconditionally would put every photo on the phone inside a workspace an
+        // agent runs commands in, which is exactly the thing the switch exists to decide.
+        if (PhoneFiles.enabled(context)) {
+            args.add("-b");
+            args.add(PhoneFiles.root().getAbsolutePath() + ":" + PhoneFiles.GUEST_PATH);
+        }
         args.add("-w");
         args.add("/root");
         args.add("/usr/bin/env");

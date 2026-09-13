@@ -89,6 +89,14 @@ final class SettingsPane implements Pane {
         lock.setAlpha(canLock ? 1f : 0.55f);
         list.addView(lock);
 
+        list.addView(Ui.divider(host, dark, true));
+
+        boolean files = PhoneFiles.enabled(host);
+        Ui.Row phone = Ui.row(host, dark, R.drawable.ic_phone, "The phone's files",
+                PhoneFiles.state(host), v -> togglePhoneFiles(files));
+        if (files) phone.setState(Ui.RUNNING);
+        list.addView(phone);
+
         group.addView(list, Ui.wide(host, 8));
 
         // Shown once, after the lock turned itself off because the phone's own screen lock was
@@ -135,6 +143,43 @@ final class SettingsPane implements Pane {
             AppLock.applyWindowSecurity(host);
             MainActivity.rebuild(host);
         });
+    }
+
+    /**
+     * The phone's storage, in or out of the workspace.
+     *
+     * Turning it OFF is immediate and needs nothing from Android -- the bind simply stops being
+     * added the next time the workspace starts. Turning it ON records the intent here and then
+     * sends the owner to Android's own page, because that grant is Android's to give and this
+     * app cannot fake having it. PhoneFiles.state() reports the in-between state honestly.
+     */
+    private void togglePhoneFiles(boolean on) {
+        if (on) {
+            Dialogs.confirm(host, "Stop the workspace seeing the phone's files?",
+                    "~/phone disappears from inside the workspace the next time it starts. "
+                            + "Nothing on the phone is deleted, and nothing already copied into "
+                            + "the workspace is affected.\n\nAndroid's own permission stays "
+                            + "granted until you remove it in the phone's Settings.",
+                    "Turn off", () -> {
+                        Prefs.of(host).edit().putBoolean(Prefs.PHONE_FILES, false).apply();
+                        MainActivity.rebuild(host);
+                        restartNeeded();
+                    });
+            return;
+        }
+        Dialogs.confirm(host, "Let the workspace see the phone's files?",
+                "The phone's storage -- Download, DCIM, Documents and the rest -- appears "
+                        + "inside the workspace as ~/phone. An agent working in the editor can "
+                        + "then read a file you put in Downloads, and write a finished build "
+                        + "somewhere that survives this app being uninstalled.\n\nIt can also "
+                        + "read everything else on that storage. Leave it off unless you want "
+                        + "that.\n\nAndroid asks for this on a page of its own; you will be "
+                        + "sent there next.",
+                "Continue", () -> {
+                    Prefs.of(host).edit().putBoolean(Prefs.PHONE_FILES, true).apply();
+                    if (!PhoneFiles.allowed(host)) PhoneFiles.request(host);
+                    MainActivity.rebuild(host);
+                });
     }
 
     // ------------------------------------------------------------------ appearance
