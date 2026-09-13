@@ -1,33 +1,62 @@
-# PocketAgent 14.0.5 — a key that survives, and three sentences that were not true
+# PocketAgent 14.1.0 — one palette, one mark, and something that refuses the drift
 
-Version **14.0.5**, code **435**.
+Version **14.1.0**, code **440**.
 
-**The signing key is now in the repository, on purpose.** The build minted a fresh key whenever
-`.signing/` was absent, and `.gitignore` kept that folder out of the repository — so every clone
-signed with a key of its own, and no two builds could install over each other. For an app that
-is delivered as an APK and installed by hand, that is not a signing policy: it is a promise that
-each update costs its owner every project, chat and connected account they had. The key is
-committed and deliberately public. It is **not a secret** — anyone can sign an APK with it, so it
-proves nothing about who built a file — and it exists for one reason: the next build installs
-over this one. A Play Store release still uses a private key through `POCKETAGENT_KEYSTORE`.
-The `-devkey` suffix goes with it, so the delivered APK no longer labels itself unable to
-replace anything.
+## A new mark, and a colour chosen rather than inherited
 
-**Antigravity's unavailability was explained wrongly, three times.** The app said Google's
-published terms restrict third-party access and that permission for PocketAgent had not been
-established. That is not what Google publishes. Their own headless documentation shows a script
-holding `agy`'s stdin open and driving it turn by turn, and names no restriction on who may do
-it. The catalog also described an "Official Antigravity ACP engine"; `agy` has no native ACP
-mode at all — adding one is still an open request on Google's own CLI repository, and every ACP
-route to it today is a community adapter. So the code would not have worked even unblocked.
+The icon was two brackets and a spark in a five-stop cobalt gradient on a grey square. The
+gradient was doing the work a shape should do, and the colour was the wrong one twice over.
 
-All three lines now say the true thing: Antigravity is not connected because PocketAgent has no
-adapter for `agy`'s own newline-delimited event stream, and that work is ours, not Google's. An
-owner told "permission was refused" waits for Google; an owner told the truth knows what is
-actually missing.
+It was wrong against the agents this app hosts. PocketAgent's mark sits on the same screens as
+Claude's terracotta, Codex's and Cursor's monochrome, and Antigravity's blue-violet — and a blue
+mark among them read as one of Antigravity's, which is exactly the thing an app that hosts four
+agents equally must not do. It was wrong against the app's own interior too: a cobalt icon opened
+onto a warm cream-and-ink interface that shared none of it.
 
-**The tagline was still PocketLinux's.** Two screens read "A Linux computer that runs locally on
-your phone". This app is not a Linux computer — the Ubuntu userspace is where the agents run,
-not the thing being offered. Both now read "AI agents that build real software on your phone".
+The mark is now two brackets around a four-point spark — the software, and the agent inside it —
+in warm bone on a deep teal, `#0E6E78` to `#073F4C`. Teal belongs to none of the four. It is also
+a long way from the only three colours this app allows to mean anything: green for a line added,
+amber for something that needs you, red for something removed or failed.
 
-Earlier release notes are in the [historical archive](history/PRE-REBRAND-RELEASE-NOTES.md).
+## The interface stays colourless, and that is the design
+
+A button here is ink on cream, or bone on ink. Nothing decorative is coloured. That restraint is
+what lets green, amber and red be trusted — if the brand owned a colour in the interface, a
+status would be one more decoration. The test now fails if a brand colour turns up in a theme.
+
+## Everything is drawn from one file
+
+`branding/tokens.json` holds the colours and the mark's geometry. `tools/make_brand.py` draws the
+launcher icon, the themed icon, the Android 12+ splash, the notification silhouette, the five
+legacy densities in both shapes, the Play listing image, the Linux desktop icon and the desktop
+wallpaper — all from that one artboard, so none of them can drift apart by being edited alone.
+
+The Linux desktop inside the container came with a navy palette inherited from the app this one
+grew out of. Its whole chrome is the brand's hue now. The terminal's sixteen ANSI colours are
+deliberately left alone: every program on that system expects them to be what they are.
+
+## The app icon, inside the app
+
+First run, the home header, App lock and the recovery screen all show the launcher icon itself
+rather than a flat silhouette. The first-run screen was navy; it is now the same ramp the icon is
+drawn on, in the same direction, so tapping the icon continues it instead of cutting to a colour
+the phone has not seen.
+
+## A test that refuses the drift
+
+`tests/brand-assets-test.py` replaces a check that needed an npm package, was never wired into
+the suite, and had therefore never run. The new one needs nothing but Python, runs on every push,
+and holds: the same colours in `tokens.json`, `Brand.java` and `colors.xml`; the mark inside the
+adaptive icon's 66 dp keyline, the splash's 192 dp circle and the notification's 24 dp canvas —
+and large enough to read in each; ten launcher bitmaps at their exact densities; a Play image that
+is 512 px, 32-bit, sRGB-tagged and under a megabyte; a notification icon that is white alpha only,
+because Android recolours it anyway; no survivor of the retired palette across 229 files; no blue
+left in the desktop scripts; and the icon actually present on the four screens that should show it.
+
+## The build that never ran
+
+Every PocketAgent run of the workflow had failed, all four of them, on `./build.sh: Permission
+denied`. The file was committed without its executable bit while PocketLinux's has it. The bit is
+set, and the workflow now calls the script through `bash` so losing it again cannot fail the job.
+
+44 gates, exit 0.

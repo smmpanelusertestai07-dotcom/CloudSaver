@@ -76,7 +76,9 @@ jobs:
         run: |
           set -eu
           export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          cd pocketagent && ./build.sh
+          # Through bash rather than ./: the file's executable bit is one more thing that can
+          # be lost in a checkout or a patch, and losing it fails the whole job with exit 126.
+          cd pocketagent && bash build.sh
       - name: Run regression suites
         run: bash pocketagent/tests/run-tests.sh
       - name: Checksum

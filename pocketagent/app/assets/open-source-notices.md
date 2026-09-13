@@ -49,10 +49,12 @@ acknowledged, which the app's Settings tab does. Tux is not a PocketAgent mark.
 
 ## Wallpaper
 
-`app/assets/wallpaper.jpg` is PocketAgent's own composition: a 1600x1600 square, a dark-blue
-radial glow on `#0b1320` with Tux and the words "PocketAgent" and "Ubuntu 24.04 LTS · Linux".
-Built by `tools/make_wallpaper.py` in this repository, from Tux (Larry Ewing and The GIMP,
-acknowledged above) and the DejaVu fonts. No Canonical artwork is used.
+`app/assets/wallpaper.jpg` is PocketAgent's own composition: a 1600x1600 square, a teal radial
+glow on the desktop's own ground colour, carrying PocketAgent's mark and the words "PocketAgent"
+and "Ubuntu 24.04 LTS · Linux". Built by `tools/make_brand.py` in this repository from
+`branding/tokens.json` and the DejaVu fonts. It contains no Tux and no Canonical artwork; the
+edge colour is the same one the desktop paints behind it, so a "fit" wallpaper meets the root
+window without a seam.
 
 ## PocketAgent's own desktop tools
 

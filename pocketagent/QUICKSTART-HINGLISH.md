@@ -51,7 +51,7 @@
   bada karna ho to app ke andar **Ctrl aur +**.
 - **Desktop icon ke naam beech me nahi tootenge** — pcmanfm ka label hamesha 100 px chauda hota
   hai, isliye desktop ka font ab fixed 18 px hai ("Antigravity" bhi ek line me), icon 128 px tak.
-- **Kaala start screen gaya** — pehle second me navy, aur viewer "Starting…" card dikhata hai jab
+- **Kaala start screen gaya** — pehle second me brand ka teal, aur viewer "Starting…" card dikhata hai jab
   tak desktop bana nahi.
 - **Volume panel** ab glass, **× button**, bahar tap karo to band. **Phone ▾** naya menu: volume,
   mic, photo, file add, paste, touch lock — Screen menu ab sirf picture ke liye.

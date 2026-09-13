@@ -104,7 +104,7 @@ final class AppLock {
         activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
 
         ImageView logo = new ImageView(context);
-        logo.setImageResource(R.drawable.pocketagent_mark);
+        logo.setImageResource(R.drawable.pocketagent_icon);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         screen.addView(logo, new LinearLayout.LayoutParams(Ui.dp(context, 72), Ui.dp(context, 72)));
         TextView title = Ui.bold(context, "PocketAgent is locked", 22, Ui.DARK_TEXT);

@@ -234,11 +234,11 @@ fi
 
 
 # The very first thing painted, before any of the minute of preparation that follows: the
-# desktop's own navy. A new X server's root is black, and the viewer connects the moment the
+# desktop's own ground colour. A new X server's root is black, and the viewer connects the moment the
 # display answers, so the owner watched a black rectangle until the file manager painted the
 # wallpaper -- and read it as broken. The same call is made again later, when it is safe to
 # set the cursor too; this one is only about the colour.
-DISPLAY=:1 xsetroot -solid '#0b1320' >/dev/null 2>&1 || true
+DISPLAY=:1 xsetroot -solid '#062930' >/dev/null 2>&1 || true
 
 # How big a Chromium app may draw itself, worked out once here from the geometry and dpi this
 # desktop was started with, and read by pocketagent-open at every launch. A Chromium app scales
@@ -304,7 +304,7 @@ printf 'file://%s Download destination\nfile:///home/coder/Downloads Computer Do
 
 # A real DPI is what makes text large without blurring it: the desktop renders at the phone's
 # own pixel count and only the type and controls grow.
-printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #0b1320\n*foreground: #e6ecf7\n' \
+printf 'Xft.dpi: %s\nXft.antialias: true\nXft.hinting: true\nXft.hintstyle: hintslight\nXft.rgba: none\nXft.lcdfilter: none\nXcursor.theme: Adwaita\nXcursor.size: 32\n*background: #062930\n*foreground: #dfedef\n' \
   "$DPI" > "$HOME/.Xresources"
 
 # The theme the phone is set to. PocketAgent passes its own Light/Dark/System choice in, already
@@ -338,11 +338,11 @@ write_gtk_defaults() {
     # is a warning on stderr and nothing else, so this can never stop an app from starting.
     printf '%s\n' \
       '/* pocketagent-default */' \
-      '@define-color theme_bg_color #101a2e;' \
-      '@define-color theme_base_color #0d1526;' \
-      '@define-color theme_fg_color #f1f5fb;' \
-      '@define-color theme_selected_bg_color #1746c4;' \
-      '@define-color borders #23304a;' \
+      '@define-color theme_bg_color #08363f;' \
+      '@define-color theme_base_color #06363b;' \
+      '@define-color theme_fg_color #eaf5f6;' \
+      '@define-color theme_selected_bg_color #128f9c;' \
+      '@define-color borders #0e4a56;' \
       'button { border-radius: 10px; min-height: 34px; padding: 4px 12px; }' \
       'entry { border-radius: 10px; min-height: 36px; }' \
       'entry:focus, button:focus { outline-offset: -2px; }' \
@@ -370,7 +370,7 @@ printf '[Icon Theme]\nName=Default\nComment=Default cursor\nInherits=Adwaita\n' 
 # lxterminal applies a palette only when color_preset and all sixteen colours are present; one
 # missing line and it silently loads its own preset instead. A blinking cursor is two full
 # redraws a second for ever, and under PRoot every one is a traced round trip and a VNC frame.
-printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#0d1526\nfgcolor=#f1f5fb\ncolor_preset=PocketAgent\npalette_color_0=#0d1526\npalette_color_1=#ff6b6b\npalette_color_2=#4ade80\npalette_color_3=#fbbf24\npalette_color_4=#7a9bff\npalette_color_5=#c792ea\npalette_color_6=#56d4dd\npalette_color_7=#c2cae6\npalette_color_8=#55607d\npalette_color_9=#ff8a8a\npalette_color_10=#86efac\npalette_color_11=#fcd34d\npalette_color_12=#a5bcff\npalette_color_13=#ddb0ff\npalette_color_14=#8beaf2\npalette_color_15=#f1f5fb\ngeometry_columns=100\ngeometry_rows=30\nhidescrollbar=false\ndisallowbold=false\nboldbright=true\ncursorblinks=false\ncursorunderline=false\naudiblebell=false\nvisualbell=false\n' \
+printf '[general]\nfontname=Monospace 12\nscrollback=5000\nbgcolor=#07303a\nfgcolor=#eaf5f6\ncolor_preset=PocketAgent\npalette_color_0=#07303a\npalette_color_1=#ff6b6b\npalette_color_2=#4ade80\npalette_color_3=#fbbf24\npalette_color_4=#7a9bff\npalette_color_5=#c792ea\npalette_color_6=#56d4dd\npalette_color_7=#bdd5d9\npalette_color_8=#4b6b72\npalette_color_9=#ff8a8a\npalette_color_10=#86efac\npalette_color_11=#fcd34d\npalette_color_12=#a5bcff\npalette_color_13=#ddb0ff\npalette_color_14=#8beaf2\npalette_color_15=#eaf5f6\ngeometry_columns=100\ngeometry_rows=30\nhidescrollbar=false\ndisallowbold=false\nboldbright=true\ncursorblinks=false\ncursorunderline=false\naudiblebell=false\nvisualbell=false\n' \
   > "$HOME/.config/lxterminal/lxterminal.conf"
 
 # Without this, opening a desktop icon raises PCManFM's "this seems to be an executable
@@ -422,7 +422,7 @@ mkdir -p "$HOME/.local/share/Trash/files" "$HOME/.local/share/Trash/info" 2>/dev
 # show_documents used to be 1, which is how Projects reached the desktop: pcmanfm adds the
 # XDG Documents folder, which PocketAgent points at Projects, wearing the theme's grey folder in
 # a place pcmanfm chose. Projects has a launcher of its own now, so this would be a second copy.
-printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketagent.jpg\nwallpaper_common=1\ndesktop_bg=#0b1320\ndesktop_fg=#e6ecf7\ndesktop_shadow=#04070f\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
+printf '[*]\nwallpaper_mode=fit\nwallpaper=/usr/share/backgrounds/pocketagent.jpg\nwallpaper_common=1\ndesktop_bg=#062930\ndesktop_fg=#dfedef\ndesktop_shadow=#031719\nshow_documents=0\nshow_trash=0\nshow_mounts=0\nshow_wm_menu=1\ndesktop_font=Noto Sans %s\n' \
   "$DESKTOP_FONT_PT" > "$HOME/.config/pcmanfm/LXDE/desktop-items-0.conf"
 printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removable=0\n[ui]\nalways_show_tabs=1\nmax_tab_chars=32\n' \
   > "$HOME/.config/pcmanfm/LXDE/pcmanfm.conf"
@@ -436,7 +436,7 @@ printf '[config]\nbm_open_method=0\n[volume]\nmount_on_startup=0\nmount_removabl
 # Toasts in the desktop's own colours, so "Opening ChatGPT" reads like part of the system.
 # Toasts in the desktop's own colours. timeout belongs to the urgency sections -- dunst does not
 # read it from [global] -- and the panel is at the bottom, so these sit at the top right.
-printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#2b3563"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#101a2e"\nforeground = "#9aa7bd"\nframe_color = "#23304a"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#101a2e"\nforeground = "#f1f5fb"\nframe_color = "#2b3563"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
+printf '[global]\nfont = Sans 10\nwidth = 320\norigin = top-right\noffset = 12x12\ngap_size = 6\nnotification_limit = 3\nframe_width = 1\nframe_color = "#11555f"\nseparator_color = frame\ncorner_radius = 12\npadding = 10\nhorizontal_padding = 12\nword_wrap = yes\nicon_theme = Adwaita\nmin_icon_size = 24\nmax_icon_size = 40\nmouse_left_click = close_current\nmouse_right_click = close_all\n\n[urgency_low]\nbackground = "#08363f"\nforeground = "#8fb0b6"\nframe_color = "#0e4a56"\ntimeout = 5\n\n[urgency_normal]\nbackground = "#08363f"\nforeground = "#eaf5f6"\nframe_color = "#11555f"\ntimeout = 6\n\n[urgency_critical]\nbackground = "#3b1220"\nforeground = "#ffe4e6"\nframe_color = "#c7362b"\ntimeout = 0\n' \
   > "$HOME/.config/dunst/dunstrc"
 
 # Firefox: no sandbox, no separate content processes, software rendering.
@@ -654,9 +654,9 @@ fi
 desktop_phase "Drawing the desktop"
 xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
 # The root window is grey until the file manager paints it, and grey again if the file manager is
-# ever killed for memory. This is the same navy as the wallpaper's edge and the desktop's own
+# ever killed for memory. This is the same colour as the wallpaper's edge and the desktop's own
 # background, so the seam is invisible either way.
-xsetroot -solid '#0b1320' >/dev/null 2>&1 || true
+xsetroot -solid '#062930' >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
 # The root preparation mode has already checked the system bus. Do not attempt another
 # daemon here as coder: a second startup can unlink the listener used by running apps.

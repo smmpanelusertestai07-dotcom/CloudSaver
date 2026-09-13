@@ -14,6 +14,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -50,7 +51,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "14.0.5";
+    static final String VERSION = "14.1.0";
     static final String EXTRA_ROUTE = "com.pocketagent.mobile.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -209,20 +210,24 @@ public final class MainActivity extends Activity {
         }
         introShowing = true;
         final FrameLayout intro = new FrameLayout(this);
-        intro.setBackgroundColor(Color.rgb(13, 27, 62));
+        // The same ramp the launcher icon is drawn on, in the same direction: tapping the icon
+        // continues it rather than cutting to a colour the phone has not seen before.
+        GradientDrawable ground = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR, new int[] {Brand.TILE_TOP, Brand.TILE_BOTTOM});
+        intro.setBackground(ground);
         intro.setClickable(true);
         intro.setElevation(Ui.dp(this, 20));
 
         final LinearLayout first = introColumn();
         ImageView mark = new ImageView(this);
-        mark.setImageResource(R.drawable.pocketagent_mark);
+        mark.setImageResource(R.drawable.pocketagent_icon);
         mark.setScaleType(ImageView.ScaleType.FIT_CENTER);
         first.addView(mark, new LinearLayout.LayoutParams(Ui.dp(this, 104), Ui.dp(this, 104)));
-        TextView name = Ui.bold(this, "PocketAgent", 30, Color.WHITE);
+        TextView name = Ui.bold(this, "PocketAgent", 30, Brand.ON_BRAND);
         name.setGravity(Gravity.CENTER);
         name.setLetterSpacing(-0.02f);
         first.addView(name, Ui.matchWrap(this, 18));
-        TextView line = Ui.text(this, "AI agents that build real software on your phone", 14.5f, Color.rgb(190, 204, 240));
+        TextView line = Ui.text(this, "AI agents that build real software on your phone", 14.5f, Brand.ON_BRAND_MUTED);
         line.setGravity(Gravity.CENTER);
         first.addView(line, Ui.matchWrap(this, 6));
 
@@ -232,12 +237,12 @@ public final class MainActivity extends Activity {
         tux.setScaleType(ImageView.ScaleType.FIT_CENTER);
         tux.setContentDescription("Tux, the Linux mascot");
         second.addView(tux, new LinearLayout.LayoutParams(Ui.dp(this, 132), Ui.dp(this, 156)));
-        TextView powered = Ui.bold(this, "Powered by Linux", 24, Color.WHITE);
+        TextView powered = Ui.bold(this, "Powered by Linux", 24, Brand.ON_BRAND);
         powered.setGravity(Gravity.CENTER);
         second.addView(powered, Ui.matchWrap(this, 18));
         TextView system = Ui.text(this, "Ubuntu 24.04 LTS · native ARM64 Linux apps · "
                 + "the whole computer is on this phone",
-                14f, Color.rgb(190, 204, 240));
+                14f, Brand.ON_BRAND_MUTED);
         system.setGravity(Gravity.CENTER);
         system.setPadding(Ui.dp(this, 32), 0, Ui.dp(this, 32), 0);
         second.addView(system, Ui.matchWrap(this, 6));
@@ -493,7 +498,7 @@ public final class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
 
         ImageView logo = new ImageView(this);
-        logo.setImageResource(R.drawable.pocketagent_mark);
+        logo.setImageResource(R.drawable.pocketagent_icon);
         logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         logo.setContentDescription("PocketAgent");
         header.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 56), Ui.dp(this, 56)));
@@ -3057,7 +3062,7 @@ public final class MainActivity extends Activity {
             scroll.addView(root);
 
             ImageView logo = new ImageView(this);
-            logo.setImageResource(R.drawable.pocketagent_mark);
+            logo.setImageResource(R.drawable.pocketagent_icon);
             logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
             root.addView(logo, new LinearLayout.LayoutParams(Ui.dp(this, 68), Ui.dp(this, 68)));
             root.addView(Ui.bold(this, "PocketAgent", 26, Ui.LIGHT_TEXT), Ui.matchWrap(this, 16));

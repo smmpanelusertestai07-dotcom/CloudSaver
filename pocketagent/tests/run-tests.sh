@@ -83,6 +83,9 @@ python3 "$PROJECT_DIR/tests/proot-process-test.py"
 python3 "$PROJECT_DIR/tests/desktop-wake-test.py"
 python3 "$PROJECT_DIR/tests/keyboard-input-test.py"
 python3 "$PROJECT_DIR/tests/microphone-test.py"
+# One palette, one mark, one place they are written down. Standard library only, so it runs
+# here and on every push; the generator that draws the artwork needs more and runs elsewhere.
+python3 "$PROJECT_DIR/tests/brand-assets-test.py"
 
 # The Android version the app says it supports must be the one the APK is built for.
 build_min=$(grep -o -- '--min-sdk-version [0-9]*' "$PROJECT_DIR/build.sh" | head -n 1 | awk '{print $2}')
@@ -241,16 +244,18 @@ grep -q "curl --fail --location --retry 3 '" "$apps" \
   && { echo "FAIL Downloads: a direct non-resuming download is back"; exit 1; }
 echo "PASS Downloads (resumable, per-URL, no truncating fallback)"
 
-# What the screenshots of 12.0.0 showed, kept fixed. The desktop is painted navy the moment the
-# display answers (it was black for the minute the desktop took to draw); a desktop icon's
-# label is a fixed 100 pixels in pcmanfm whatever the dpi, so the desktop font is a fixed 18
-# pixels -- the largest size at which "Antigravity" is never broken in the middle -- and the
-# Bin exists without a daemon.
+# What the screenshots of 12.0.0 showed, kept fixed. The root window is painted the desktop's
+# own ground colour the moment the display answers (it was black for the minute the desktop took
+# to draw); a desktop icon's label is a fixed 100 pixels in pcmanfm whatever the dpi, so the
+# desktop font is a fixed 18 pixels -- the largest size at which "Antigravity" is never broken in
+# the middle -- and the Bin exists without a daemon. The colour comes from branding/tokens.json
+# rather than being written here, so rebranding the desktop does not silently kill this gate.
 desk="$PROJECT_DIR/app/assets/pocketagent-desktop.sh"
-first_root=$(grep -n "xsetroot -solid '#0b1320'" "$desk" | head -n 1 | cut -d: -f1)
-draw_phase=$(grep -n 'desktop_phase "Drawing the desktop"' "$desk" | head -n 1 | cut -d: -f1)
+ground=$(python3 -c "import json;print(json.load(open('$PROJECT_DIR/branding/tokens.json'))['desktop']['ground'])")
+first_root=$(grep -n "xsetroot -solid '$ground'" "$desk" | head -n 1 | cut -d: -f1 || true)
+draw_phase=$(grep -n 'desktop_phase "Drawing the desktop"' "$desk" | head -n 1 | cut -d: -f1 || true)
 [ -n "$first_root" ] && [ -n "$draw_phase" ] && [ "$first_root" -lt "$draw_phase" ] \
-  || { echo "FAIL DesktopStart: the root must be painted navy before the desktop is drawn, not after"; exit 1; }
+  || { echo "FAIL DesktopStart: the root must be painted $ground before the desktop is drawn, not after"; exit 1; }
 grep -q '^DESKTOP_FONT_PX=18$' "$desk" && grep -q 'DESKTOP_FONT_PT=' "$desk" && grep -q 'desktop_font=Noto Sans %s' "$desk" \
   || { echo "FAIL DesktopStart: the desktop font must be a fixed 18 pixels, sized in points from the dpi"; exit 1; }
 # The arithmetic itself, at the reference phone's 179 dpi and at the two ends of the scale list.
@@ -265,7 +270,7 @@ grep -q 'Name=Bin' "$PROJECT_DIR/app/assets/pocketagent-menu.sh" \
   || { echo "FAIL DesktopStart: the Bin has no launcher"; exit 1; }
 grep -q 'desktopDrawn()' "$PROJECT_DIR/app/src/com/pocketagent/mobile/VncView.java" \
   || { echo "FAIL DesktopStart: the viewer no longer keeps its starting card up until the desktop is drawn"; exit 1; }
-echo "PASS DesktopStart (navy first, 18-pixel labels that never break a word, a Bin, a starting card)"
+echo "PASS DesktopStart (the ground painted first, 18-pixel labels that never break a word, a Bin, a starting card)"
 
 # The crash this release exists for. Android 12+ SIGKILLs every forked process of an app once
 # there are more than 32; under PRoot every Linux process is one, so the ceiling is the whole

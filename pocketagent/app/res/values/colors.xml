@@ -1,16 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors branding/tokens.json and Brand.java. tests/brand-assets-test.py fails if the three
+     ever disagree, so a colour changed in one place cannot quietly survive in the others. -->
 <resources>
+    <!-- Brand: the launcher tile, the splash and the first-run screen. Nothing else. -->
+    <color name="brand_tile_top">#0E6E78</color>
+    <color name="brand_tile_bottom">#073F4C</color>
+    <color name="brand_tile_flat">#0B5560</color>
+    <color name="brand_accent">#128F9C</color>
+    <color name="brand_accent_on_dark">#5BC6D2</color>
+    <color name="brand_mark">#F7F3EB</color>
+
+    <!-- Neutral surfaces. Warm, not grey; the interface carries no colour of its own. -->
+    <color name="window_light">#FAF9F6</color>
+    <color name="window_dark">#171717</color>
+    <color name="card_light">#F0EEE8</color>
+    <color name="card_dark">#232323</color>
+    <color name="text_light">#262624</color>
+    <color name="text_dark">#F0EEE9</color>
+    <color name="muted_light">#686660</color>
+    <color name="muted_dark">#B0AEA8</color>
+    <color name="line_light">#DBD8D0</color>
+    <color name="line_dark">#3C3C39</color>
+
+    <!-- Kept because existing styles name them; the interface accent is ink or bone, by design. -->
     <color name="brand">#262624</color>
     <color name="brand_dark">#262624</color>
     <color name="ink">#262624</color>
-    <color name="window_light">#FAF9F6</color>
-    <color name="window_dark">#171717</color>
     <color name="white">#FFFFFF</color>
     <color name="brand_on_dark">#F0EEE9</color>
-    <color name="card_dark">#232323</color>
-    <color name="text_dark">#F0EEE9</color>
-    <color name="muted_dark">#B0AEA8</color>
-    <color name="text_light">#262624</color>
-    <color name="muted_light">#686660</color>
     <color name="transparent">#00000000</color>
+
+    <!-- Semantic. One meaning each: added, needs you, removed or failed. -->
+    <color name="status_success">#129150</color>
+    <color name="status_warning">#B87400</color>
+    <color name="status_danger">#C7362B</color>
 </resources>

@@ -119,10 +119,6 @@ final class DeskStyle {
         return flat(context, FIELD, 12, 0);
     }
 
-    static Drawable logo(Context context) {
-        return context.getDrawable(R.drawable.pocketagent_mark).mutate();
-    }
-
     static Drawable icon(Context context, String name, int color) {
         return new LineIcon(name, color, Ui.dp(context, 24));
     }

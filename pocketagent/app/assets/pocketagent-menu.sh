@@ -445,7 +445,7 @@ MARK=/usr/share/pixmaps/pocketagent-mark.png
   # "rounded" above them and therefore edit background 0 itself) keep it the panel's own colour:
   # anything whose id is wrong still looks right instead of going see-through.
   echo 'border_width = 0'
-  echo 'background_color = #0f1327 100'
+  echo 'background_color = #063438 100'
   # Every real background starts with "rounded" -- that is the line tint2 uses to begin a new
   # definition -- and all five come BEFORE the first *_background_id below, because tint2
   # resolves an id the moment it reads it and an id it has not met yet silently becomes 0.
@@ -455,38 +455,38 @@ MARK=/usr/share/pixmaps/pocketagent-mark.png
   # does not need to be: a dark-to-darker gradient under a lit top edge is what the eye reads
   # as glass on a dark wallpaper, and it costs one cached surface.
   echo 'gradient = vertical'  # 1 the bar
-  echo 'start_color = #1a2143 100'
-  echo 'end_color = #0b0f22 100'
+  echo 'start_color = #08474e 100'
+  echo 'end_color = #0a2023 100'
   echo 'gradient = vertical'  # 2 the app in front
-  echo 'start_color = #334290 100'
-  echo 'end_color = #212c62 100'
+  echo 'start_color = #318992 100'
+  echo 'end_color = #1f5d64 100'
   echo 'rounded = 0'          # 1 the bar itself
   echo 'border_width = 1'
   echo 'border_sides = T'
-  echo 'background_color = #0f1327 100'
-  echo 'border_color = #3a4a80 100'
+  echo 'background_color = #063438 100'
+  echo 'border_color = #387b82 100'
   echo 'gradient_id = 1'
   echo 'rounded = 10'         # 2 an app that is open, behind
   echo 'border_width = 1'
-  echo 'background_color = #161d40 100'
-  echo 'background_color_hover = #1e2752 100'
-  echo 'background_color_pressed = #101736 100'
-  echo 'border_color = #2b3563 100'
+  echo 'background_color = #153d41 100'
+  echo 'background_color_hover = #1d4e53 100'
+  echo 'background_color_pressed = #0f3337 100'
+  echo 'border_color = #11555f 100'
   echo 'rounded = 10'         # 3 the app in front
   echo 'border_width = 1'
-  echo 'background_color = #26326e 100'
-  echo 'background_color_hover = #2d3b80 100'
-  echo 'background_color_pressed = #1c2657 100'
-  echo 'border_color = #5878d8 100'
+  echo 'background_color = #246970 100'
+  echo 'background_color_hover = #2b7a82 100'
+  echo 'background_color_pressed = #1b5358 100'
+  echo 'border_color = #55cfdb 100'
   echo 'gradient_id = 2'
   echo 'rounded = 10'         # 4 an app that is minimised
   echo 'border_width = 1'
-  echo 'background_color = #10163a 100'
-  echo 'border_color = #202a52 100'
+  echo 'background_color = #0f373b 100'
+  echo 'border_color = #1f4e53 100'
   echo 'rounded = 10'         # 5 tooltips
   echo 'border_width = 1'
-  echo 'background_color = #101a2e 100'
-  echo 'border_color = #2b3563 100'
+  echo 'background_color = #08363f 100'
+  echo 'border_color = #11555f 100'
   # L launchers (Tux Apps in the corner, then browser, Files, Terminal, Phone files), T the open
   # windows, S tray, E the phone's own numbers, C clock, P the PocketAgent mark in the far corner.
   echo 'panel_items = LTSECP'
@@ -541,7 +541,7 @@ MARK=/usr/share/pixmaps/pocketagent-mark.png
   echo 'time2_format = %a %d %b'
   echo "time1_font = Sans Bold $(pt 11)"
   echo "time2_font = Sans $(pt 8)"
-  echo 'clock_font_color = #e6ecf7 100'
+  echo 'clock_font_color = #dfedef 100'
   echo "clock_padding = $(px 8) $(px 2)"
   echo 'clock_background_id = 0'
   echo 'clock_tooltip = %A %d %B %Y, %I:%M %P'
@@ -563,7 +563,7 @@ MARK=/usr/share/pixmaps/pocketagent-mark.png
   echo 'tooltip_hide_timeout = 0.2'
   echo 'tooltip_background_id = 5'
   echo "tooltip_font = Sans $(pt 10)"
-  echo 'tooltip_font_color = #e6ecf7 100'
+  echo 'tooltip_font_color = #dfedef 100'
   # The phone's own numbers, two short lines, refreshed every 30 seconds. There is no
   # execp_tooltip line on purpose: without one tint2 shows the command's standard error as the
   # tooltip, and pocketagent-status writes the full sentence there. A tap opens Storage.
@@ -574,7 +574,7 @@ MARK=/usr/share/pixmaps/pocketagent-mark.png
   echo 'execp_continuous = 0'
   echo 'execp_markup = 0'
   echo "execp_font = Sans $(pt 9)"
-  echo 'execp_font_color = #c2cae6 100'
+  echo 'execp_font_color = #bdd5d9 100'
   echo "execp_padding = $(px 6) 0 0"
   echo 'execp_centered = 1'
   echo 'execp_background_id = 0'
@@ -689,79 +689,79 @@ menu.separator.padding.height: 4
 osd.border.width: 1
 
 window.active.title.bg: flat vertical gradient
-window.active.title.bg.color: #1c2b55
-window.active.title.bg.colorTo: #121c38
+window.active.title.bg.color: #1b5156
+window.active.title.bg.colorTo: #113539
 window.active.label.bg: parentrelative
-window.active.label.text.color: #f1f5fb
-window.active.title.separator.color: #1746c4
-window.active.border.color: #1746c4
-window.active.client.color: #16213f
+window.active.label.text.color: #eaf5f6
+window.active.title.separator.color: #128f9c
+window.active.border.color: #128f9c
+window.active.client.color: #0a3e49
 window.active.handle.bg: flat solid
-window.active.handle.bg.color: #16213f
+window.active.handle.bg.color: #0a3e49
 window.active.grip.bg: flat solid
-window.active.grip.bg.color: #16213f
+window.active.grip.bg.color: #0a3e49
 window.active.button.unpressed.bg: parentrelative
-window.active.button.unpressed.image.color: #c2cae6
+window.active.button.unpressed.image.color: #bdd5d9
 window.active.button.hover.bg: flat solid
-window.active.button.hover.bg.color: #1746c4
+window.active.button.hover.bg.color: #128f9c
 window.active.button.hover.image.color: #ffffff
 window.active.button.pressed.bg: flat solid
-window.active.button.pressed.bg.color: #7a9bff
-window.active.button.pressed.image.color: #0b1320
+window.active.button.pressed.bg.color: #86e9f3
+window.active.button.pressed.image.color: #062930
 window.active.button.disabled.bg: parentrelative
-window.active.button.disabled.image.color: #55607d
+window.active.button.disabled.image.color: #4b6b72
 window.active.button.close.unpressed.image.color: #ff9aa5
 window.active.button.close.hover.bg: flat solid
 window.active.button.close.hover.bg.color: #7a2436
 window.active.button.close.hover.image.color: #ffffff
 
 window.inactive.title.bg: flat vertical gradient
-window.inactive.title.bg.color: #121b30
-window.inactive.title.bg.colorTo: #0c1322
+window.inactive.title.bg.color: #112e31
+window.inactive.title.bg.colorTo: #0b2023
 window.inactive.label.bg: parentrelative
-window.inactive.label.text.color: #9aa7bd
-window.inactive.title.separator.color: #23304a
-window.inactive.border.color: #23304a
-window.inactive.client.color: #0d1526
+window.inactive.label.text.color: #8fb0b6
+window.inactive.title.separator.color: #0e4a56
+window.inactive.border.color: #0e4a56
+window.inactive.client.color: #06363b
 window.inactive.handle.bg: flat solid
-window.inactive.handle.bg.color: #0d1526
+window.inactive.handle.bg.color: #06363b
 window.inactive.grip.bg: flat solid
-window.inactive.grip.bg.color: #0d1526
+window.inactive.grip.bg.color: #06363b
 window.inactive.button.unpressed.bg: parentrelative
-window.inactive.button.unpressed.image.color: #6b7690
+window.inactive.button.unpressed.image.color: #5e7f86
 window.inactive.button.hover.bg: flat solid
-window.inactive.button.hover.bg.color: #23304a
-window.inactive.button.hover.image.color: #e6ecf7
+window.inactive.button.hover.bg.color: #0e4a56
+window.inactive.button.hover.image.color: #dfedef
 window.inactive.button.pressed.bg: flat solid
-window.inactive.button.pressed.bg.color: #7a9bff
-window.inactive.button.pressed.image.color: #0b1320
+window.inactive.button.pressed.bg.color: #86e9f3
+window.inactive.button.pressed.image.color: #062930
 window.inactive.button.disabled.bg: parentrelative
-window.inactive.button.disabled.image.color: #3f4863
+window.inactive.button.disabled.image.color: #3e6064
 
-menu.border.color: #23304a
+menu.border.color: #0e4a56
 menu.title.bg: flat vertical gradient
-menu.title.bg.color: #1a2143
-menu.title.bg.colorTo: #0d1124
-menu.title.text.color: #7a9bff
+menu.title.bg.color: #08474e
+menu.title.bg.colorTo: #0c2225
+menu.title.text.color: #86e9f3
 menu.title.text.justify: left
 menu.items.bg: flat solid
-menu.items.bg.color: #101a2e
-menu.items.text.color: #e6ecf7
-menu.items.disabled.text.color: #6b7690
+menu.items.bg.color: #08363f
+menu.items.text.color: #dfedef
+menu.items.disabled.text.color: #5e7f86
 menu.items.active.bg: flat solid
-menu.items.active.bg.color: #1746c4
+menu.items.active.bg.color: #128f9c
 menu.items.active.text.color: #ffffff
-menu.separator.color: #23304a
+menu.separator.color: #0e4a56
 
 osd.bg: flat solid
-osd.bg.color: #101a2e
-osd.border.color: #23304a
+osd.bg.color: #08363f
+osd.border.color: #0e4a56
 osd.label.bg: parentrelative
-osd.label.text.color: #e6ecf7
+osd.label.text.color: #dfedef
 osd.hilight.bg: flat solid
-osd.hilight.bg.color: #1746c4
+osd.hilight.bg.color: #128f9c
 osd.unhilight.bg: flat solid
-osd.unhilight.bg.color: #23304a
+osd.unhilight.bg.color: #0e4a56
 THEMERC
 
 # ---- Window manager: Openbox's defaults, adjusted for a phone-sized screen ------------

@@ -443,7 +443,8 @@ final class ContainerRuntime {
         copyAsset(context, "pocketagent-adb.sh", "usr/local/bin/pocketagent-adb");
         copyAsset(context, "pocketagent-shot.sh", "usr/local/bin/pocketagent-shot");
         copyAsset(context, "pocketagent-settings.sh", "usr/local/bin/pocketagent-settings");
-        // A blue Linux wallpaper with Tux (see OPEN_SOURCE_NOTICES.md).
+        // PocketAgent's own wallpaper: the mark on the desktop's ground colour, drawn by
+        // tools/make_brand.py from branding/tokens.json (see OPEN_SOURCE_NOTICES.md).
         copyAsset(context, "wallpaper.jpg", "usr/share/backgrounds/pocketagent.jpg");
         // Antigravity ships as a tarball with no packaged icon, so it borrows Google's own.
         copyAsset(context, "antigravity.png", "usr/share/pixmaps/antigravity.png");

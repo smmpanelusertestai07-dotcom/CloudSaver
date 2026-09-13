@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='pocketagent-source-package-test-') as t
     keep = ['app/AndroidManifest.xml', 'build.sh', 'app/src/com/pocketagent/mobile/DeskActivity.java',
             'app/lib/arm64-v8a/libproot.so', 'OPEN_SOURCE_NOTICES.md', 'app/assets/setup.sh',
             'app/res/values/strings.xml', 'tests/sample-test.py', 'docs/setup.md', 'package-source.py',
-            'tools/make_brand_icons.py', 'branding/mark.svg', 'history/releases.md']
+            'tools/make_brand.py', 'branding/mark.svg', 'history/releases.md']
     blocked = ['.signing/private.jks', 'app/assets/.env', 'app/assets/id_ed25519',
                'app/assets/credentials.json', 'app/assets/__pycache__/helper.pyc',
                'app/assets/toolchains/secret.txt', 'build/cache.java', 'tests/.env.production']
