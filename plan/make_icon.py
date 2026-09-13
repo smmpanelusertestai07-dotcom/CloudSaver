@@ -224,7 +224,7 @@ def main():
     for density, px in notif.items():
         n_img = supersampled(px, lambda d, n: draw_mark(
             d, n / 2, n / 2, (255, 255, 255, 255), fill_scale(n, "notify")))
-        made.append(write(n_img, f"drawable-{density}", "ic_notification.png"))
+        made.append(write(n_img, f"drawable-{density}", "ic_stat_pocketide.png"))
 
     # ---- 5. Splash: a flat colour, because a window background cannot take a ramp.
     for density, px in {"mdpi": 192, "hdpi": 288, "xhdpi": 384, "xxhdpi": 576,

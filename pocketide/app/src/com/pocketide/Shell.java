@@ -88,8 +88,21 @@ final class Shell {
         LinearLayout root = Ui.column(host);
         root.setBackgroundColor(Ui.bg(dark));
 
-        root.addView(topBar(host, dark, action), new LinearLayout.LayoutParams(
+        // The top bar lives inside a container that also paints the strip behind the status
+        // bar, because on Android 15 the app IS that strip -- setStatusBarColor does nothing
+        // and the window starts at y=0. The container takes the inset as padding, and the
+        // hairline under it is what puts a boundary back between the phone and the app: in dark
+        // the status bar, the bar and the page were one flat field with no edge anywhere.
+        LinearLayout top = Ui.column(host);
+        top.setBackgroundColor(Ui.bg(dark));
+        top.addView(topBar(host, dark, action), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(host, TOP_BAR_DP)));
+        View seam = new View(host);
+        seam.setBackgroundColor(Ui.line(dark));
+        top.addView(seam, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(host, 0.5f))));
+        root.addView(top, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         FrameLayout body = new FrameLayout(host);
         body.addView(content, new FrameLayout.LayoutParams(
@@ -97,9 +110,14 @@ final class Shell {
         root.addView(body, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        root.addView(navBar(host, dark, tabs, selected, onTab),
-                new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(host, NAV_BAR_DP)));
+        // WRAP_CONTENT, not a fixed height: the bar has to be able to grow by the height of the
+        // gesture bar. Fixed, the last few pixels of every destination sat under it and could
+        // not be tapped.
+        View bottom = navBar(host, dark, tabs, selected, onTab);
+        root.addView(bottom, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Theme.fitBars(root, top, bottom);
         return root;
     }
 
@@ -172,7 +190,7 @@ final class Shell {
         wrapper.addView(topLine, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(host, 0.5f))));
         wrapper.addView(bar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(host, NAV_BAR_DP)));
         wrapper.setBackgroundColor(Ui.card(dark));
 
         for (int i = 0; i < tabs.size(); i++) {

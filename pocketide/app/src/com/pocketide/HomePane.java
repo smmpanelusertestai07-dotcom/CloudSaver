@@ -225,7 +225,7 @@ final class HomePane implements Pane {
                     here ? R.drawable.ic_check : R.drawable.ic_install,
                     agent.name + " · " + agent.publisher, value,
                     v -> MainActivity.open(host, "agents"));
-            if (here) row.setState(Ui.RUNNING);
+            if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
             agentList.addView(row);
         }
@@ -253,7 +253,7 @@ final class HomePane implements Pane {
         boolean any = false;
 
         if (!Permissions.notificationsAllowed(host)) {
-            list.addView(Ui.row(host, dark, R.drawable.ic_notification, "Notifications are off",
+            list.addView(Ui.row(host, dark, R.drawable.ic_bell, "Notifications are off",
                     "Set-up progress and the Stop button cannot be shown. Tap to allow.",
                     v -> Permissions.askNotifications(host, true)));
             any = true;
@@ -320,7 +320,7 @@ final class HomePane implements Pane {
         Ui.Row space = Ui.row(host, dark, R.drawable.ic_storage, "Free space",
                 DeviceProbe.formatBytes(probe.freeStorage), null);
         if (probe.freeStorage < DeviceCheck.NEEDED_BYTES && !Workspace.installed(host)) {
-            space.setState(Ui.NEEDS_YOU);
+            space.setState(Ui.needsYou(dark));
             space.setValue(DeviceProbe.formatBytes(probe.freeStorage) + " · about "
                     + DeviceProbe.formatBytes(DeviceCheck.NEEDED_BYTES) + " needed");
         }
@@ -330,7 +330,7 @@ final class HomePane implements Pane {
         Ui.Row network = Ui.row(host, dark,
                 DeviceProbe.isWifi(host) ? R.drawable.ic_wifi : R.drawable.ic_network,
                 "Network", probe.network + dataSuffix(), null);
-        if ("Offline".equals(probe.network)) network.setState(Ui.NEEDS_YOU);
+        if ("Offline".equals(probe.network)) network.setState(Ui.needsYou(dark));
         healthList.addView(network);
         healthList.addView(Ui.divider(host, dark, true));
 
@@ -340,7 +340,7 @@ final class HomePane implements Pane {
                                 ? " · " + Math.round(probe.batteryTempC) + " °C" : "")
                         + " · " + DeviceProbe.thermalName(probe.thermalStatus), null);
         if (probe.thermalStatus >= android.os.PowerManager.THERMAL_STATUS_SEVERE) {
-            heat.setState(Ui.NEEDS_YOU);
+            heat.setState(Ui.needsYou(dark));
         }
         healthList.addView(heat);
 

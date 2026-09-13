@@ -190,6 +190,16 @@ python3 "$HERE/safety.py" "$APP" && pass "LockAndFiles" \
 
 echo
 echo "Interface"
+# A colour that cannot be read is not a status, it is decoration. The app shipped one green,
+# one amber and one red used on both a cream card and a near-black one, and each failed
+# somewhere -- the failure red at 2.99:1, on the Remove-everything button.
+python3 "$HERE/contrast.py" "$APP" >/dev/null && pass "Contrast" \
+  || fail "Contrast" "a colour the app puts text in cannot be read on its own background"
+
+# An icon that draws outside its viewport is silently clipped: the build succeeds, the resource
+# loads, and a corner is sliced off. ic_pulse shipped reaching y=27.2 in a 24-high box.
+python3 "$HERE/vector_icons.py" "$APP" >/dev/null && pass "IconsFitTheirBox" \
+  || fail "IconsFitTheirBox" "a vector icon draws outside the viewport it declares"
 # The bar claims to follow a published specification, and the editor claims to size itself to
 # the phone. The release before this one gave every phone the constant zoom 1.5.
 python3 "$HERE/navigation.py" "$APP" && pass "NavigationAndFit" \

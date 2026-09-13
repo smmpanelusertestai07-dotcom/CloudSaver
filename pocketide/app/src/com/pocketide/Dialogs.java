@@ -54,7 +54,7 @@ final class Dialogs {
                 .create();
         show(activity, dialog, dark);
         TextView positive = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
-        if (positive != null && destructive) positive.setTextColor(Ui.FAILED);
+        if (positive != null && destructive) positive.setTextColor(Ui.failed(dark));
     }
 
     /**
@@ -187,7 +187,8 @@ final class Dialogs {
                     return;
                 }
                 note.setText(message);
-                note.setTextColor(ok ? Ui.RUNNING : Ui.FAILED);
+                boolean nowDark = Ui.dark(activity);
+                note.setTextColor(ok ? Ui.running(nowDark) : Ui.failed(nowDark));
                 dialog.setCancelable(true);
                 dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Done", (d, which) -> d.dismiss());
                 // setButton after show() needs the button re-laid out, which re-showing does.
@@ -262,7 +263,6 @@ final class Dialogs {
     private static void show(Activity activity, AlertDialog dialog, boolean dark) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         dialog.show();
-        View decor = dialog.getWindow() == null ? null : dialog.getWindow().getDecorView();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(Ui.fill(activity, Ui.card(dark), 24));
             dialog.getWindow().setDimAmount(0.5f);
@@ -278,6 +278,10 @@ final class Dialogs {
                 view.setMinHeight(Ui.dp(activity, Ui.TOUCH_TARGET_DP));
             }
         }
-        if (decor != null) decor.setBackgroundColor(Color.TRANSPARENT);
+        // Nothing else here. There used to be decor.setBackgroundColor(Color.TRANSPARENT) on
+        // this line, and the decor view IS the window's root -- so it wiped the card the call
+        // above had just set and left every dialog in the app with no surface at all. Its text
+        // landed straight on the dimmed screen behind it, which is why the Remove-everything
+        // dialog looked empty in dark.
     }
 }

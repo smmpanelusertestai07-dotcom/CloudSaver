@@ -147,7 +147,7 @@ final class AppLock {
         note.setGravity(Gravity.CENTER);
         screen.addView(note, Ui.wide(activity, 8));
 
-        TextView outcome = Ui.text(activity, "", 13f, Ui.NEEDS_YOU);
+        TextView outcome = Ui.text(activity, "", 13f, Ui.needsYou(dark));
         outcome.setGravity(Gravity.CENTER);
         screen.addView(outcome, Ui.wide(activity, 12));
 

@@ -94,8 +94,8 @@ final class SettingsPane implements Pane {
                             ? "On · asked every time PocketIDE comes back to the front"
                             : "Off · anyone holding this phone can open the editor",
                 v -> toggleLock(canLock, on));
-        if (on) lock.setState(Ui.RUNNING);
-        else if (canLock) lock.setState(Ui.NEEDS_YOU);
+        if (on) lock.setState(Ui.running(dark));
+        else if (canLock) lock.setState(Ui.needsYou(dark));
         lock.setEnabled(canLock);
         lock.setAlpha(canLock ? 1f : 0.55f);
         list.addView(lock);
@@ -105,7 +105,7 @@ final class SettingsPane implements Pane {
         boolean files = PhoneFiles.enabled(host);
         Ui.Row phone = Ui.row(host, dark, R.drawable.ic_phone, "The phone's files",
                 PhoneFiles.state(host), v -> togglePhoneFiles(files));
-        if (files) phone.setState(Ui.RUNNING);
+        if (files) phone.setState(Ui.running(dark));
         list.addView(phone);
 
         group.addView(list, Ui.wide(host, 8));
@@ -299,7 +299,7 @@ final class SettingsPane implements Pane {
                                 + "here. What contains it is Android: the whole workspace is "
                                 + "this app's private storage, under this app's identity.",
                         Tools.BROWSER_BYTES, tools.browser));
-        if (tools.browser) browser.setState(Ui.RUNNING);
+        if (tools.browser) browser.setState(Ui.running(dark));
         list.addView(browser);
         list.addView(Ui.divider(host, dark, true));
 
@@ -322,7 +322,7 @@ final class SettingsPane implements Pane {
                                     + "them out.",
                             Tools.PLAYWRIGHT_BYTES, tools.playwright);
                 });
-        if (tools.playwright) automation.setState(Ui.RUNNING);
+        if (tools.playwright) automation.setState(Ui.running(dark));
         list.addView(automation);
         list.addView(Ui.divider(host, dark, true));
 
@@ -340,7 +340,7 @@ final class SettingsPane implements Pane {
                                 + "emulator cannot run on this phone at all. The phone itself is "
                                 + "the test device instead.",
                         Tools.ANDROID_BYTES, tools.android));
-        if (tools.android) android.setState(Ui.RUNNING);
+        if (tools.android) android.setState(Ui.running(dark));
         list.addView(android);
         list.addView(Ui.divider(host, dark, true));
 
@@ -424,10 +424,10 @@ final class SettingsPane implements Pane {
         LinearLayout list = list(dark);
 
         boolean notifications = Permissions.notificationsAllowed(host);
-        Ui.Row notifyRow = Ui.row(host, dark, R.drawable.ic_notification, "Notifications",
+        Ui.Row notifyRow = Ui.row(host, dark, R.drawable.ic_bell, "Notifications",
                 notifications ? "Allowed" : "Off — progress and the Stop button cannot be shown",
                 v -> Permissions.askNotifications(host, true));
-        notifyRow.setState(notifications ? Ui.RUNNING : Ui.NEEDS_YOU);
+        notifyRow.setState(notifications ? Ui.running(dark) : Ui.needsYou(dark));
         list.addView(notifyRow);
         list.addView(Ui.divider(host, dark, true));
 
@@ -436,7 +436,7 @@ final class SettingsPane implements Pane {
                 battery ? "Unrestricted — long work will not be cut off"
                         : "Restricted — Android may stop a long set-up",
                 v -> Permissions.openBatterySettings(host));
-        batteryRow.setState(battery ? Ui.RUNNING : Ui.NEEDS_YOU);
+        batteryRow.setState(battery ? Ui.running(dark) : Ui.needsYou(dark));
         list.addView(batteryRow);
         list.addView(Ui.divider(host, dark, true));
 
@@ -591,7 +591,7 @@ final class SettingsPane implements Pane {
                     v -> Dialogs.details(host, "What was recorded",
                             "The app itself stopped. Nothing in the workspace was lost.",
                             Crash.read(host), "Copy details"));
-            crash.setState(Ui.NEEDS_YOU);
+            crash.setState(Ui.needsYou(dark));
             list.addView(crash);
         }
         group.addView(list, Ui.wide(host, 8));

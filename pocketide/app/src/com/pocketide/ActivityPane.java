@@ -181,10 +181,10 @@ final class ActivityPane implements Pane {
         if (statePill != null) {
             if (running) {
                 statePill.setText("RUNNING");
-                statePill.setTextColor(Ui.RUNNING);
+                statePill.setTextColor(Ui.running(dark));
             } else if (busy) {
                 statePill.setText("WORKING");
-                statePill.setTextColor(Ui.NEEDS_YOU);
+                statePill.setTextColor(Ui.needsYou(dark));
             } else {
                 statePill.setText("STOPPED");
                 statePill.setTextColor(Ui.muted(dark));
@@ -249,7 +249,7 @@ final class ActivityPane implements Pane {
                                     + DeviceProbe.formatBytes(process.residentBytes)
                                     + "\nProcess id: " + process.pid,
                             process.detail, "Copy the command"));
-            if (process.working()) row.setState(Ui.RUNNING);
+            if (process.working()) row.setState(Ui.running(dark));
             processList.addView(row);
         }
     }

@@ -297,7 +297,7 @@ public final class SetupActivity extends Activity {
         Long previous = finishedAt.get(stage);
         finishedAt.put(stage, took);
         row.icon.setImageResource(R.drawable.ic_check);
-        row.setState(Ui.RUNNING);
+        row.setState(Ui.running(Ui.dark(this)));
         row.title.setTextColor(Ui.text(Ui.dark(this)));
         row.setValue("Done · " + Stage.clock(previous == null ? took : previous));
     }
@@ -319,11 +319,11 @@ public final class SetupActivity extends Activity {
         failed = true;
         boolean dark = Ui.dark(this);
         headline.setText("Set-up stopped");
-        headline.setTextColor(Ui.FAILED);
+        headline.setTextColor(Ui.failed(dark));
         Ui.Row row = rows.get(current);
         if (row != null) {
             row.icon.setImageResource(R.drawable.ic_close);
-            row.setState(Ui.FAILED);
+            row.setState(Ui.failed(dark));
             row.setValue(raw);
         }
         String advice = Trouble.advice(raw);

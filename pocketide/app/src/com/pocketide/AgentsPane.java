@@ -156,7 +156,7 @@ final class AgentsPane implements Pane {
         Ui.Row row = Ui.row(host, dark, R.drawable.ic_shield, "Unverified publishers",
                 allowed ? "Shown in search · your risk" : "Hidden — recommended",
                 v -> toggleUnverified(!allowed));
-        if (allowed) row.setState(Ui.NEEDS_YOU);
+        if (allowed) row.setState(Ui.needsYou(dark));
         list.addView(row);
         column.addView(list, Ui.wide(host, 8));
         return column;
@@ -200,7 +200,7 @@ final class AgentsPane implements Pane {
             Ui.Row row = Ui.row(host, dark,
                     here ? R.drawable.ic_check : R.drawable.ic_install,
                     agent.name, value, v -> onAgentTapped(agent, here));
-            if (here) row.setState(Ui.RUNNING);
+            if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
             recommendedList.addView(row);
         }
@@ -289,8 +289,8 @@ final class AgentsPane implements Pane {
             Ui.Row row = Ui.row(host, dark,
                     here ? R.drawable.ic_check : R.drawable.ic_install,
                     listing.name, value.toString(), v -> onListingTapped(listing, here));
-            if (here) row.setState(Ui.RUNNING);
-            else if (!listing.verified) row.setState(Ui.NEEDS_YOU);
+            if (here) row.setState(Ui.running(dark));
+            else if (!listing.verified) row.setState(Ui.needsYou(dark));
             list.addView(row);
         }
         searchResults.addView(list);

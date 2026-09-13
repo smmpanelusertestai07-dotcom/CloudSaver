@@ -57,9 +57,28 @@ final class Ui {
     static final int DARK_LINE = Color.rgb(60, 60, 57);
 
     /** The only three colours that carry meaning. Everything else is neutral on purpose. */
-    static final int RUNNING = Color.rgb(18, 145, 80);
-    static final int NEEDS_YOU = Color.rgb(184, 116, 0);
-    static final int FAILED = Color.rgb(199, 54, 43);
+    /**
+     * Green, amber, red -- one value per ground rather than one value for both.
+     *
+     * A single value cannot work: a green dark enough to read on cream is too dark to read on
+     * near-black, and a red light enough for near-black is too light for cream. The app shipped
+     * one of each and every one of them failed somewhere -- the failure red measured 2.99:1 on
+     * the dark card, which is under the floor even for large text, and it was the colour on the
+     * "Remove everything" button.
+     *
+     * Each pair below is at least 4.5:1 on its own card and its own page, computed rather than
+     * eyeballed, and tests/contrast.py recomputes them on every build.
+     */
+    private static final int RUNNING_LIGHT = Color.parseColor("#0F7038");
+    private static final int RUNNING_DARK = Color.parseColor("#4ADE80");
+    private static final int NEEDS_YOU_LIGHT = Color.parseColor("#8A5200");
+    private static final int NEEDS_YOU_DARK = Color.parseColor("#F5B93D");
+    private static final int FAILED_LIGHT = Color.parseColor("#B3261E");
+    private static final int FAILED_DARK = Color.parseColor("#FF7A6E");
+
+    static int running(boolean dark) { return dark ? RUNNING_DARK : RUNNING_LIGHT; }
+    static int needsYou(boolean dark) { return dark ? NEEDS_YOU_DARK : NEEDS_YOU_LIGHT; }
+    static int failed(boolean dark) { return dark ? FAILED_DARK : FAILED_LIGHT; }
 
     /**
      * The least a finger may be asked to hit, from Android's own accessibility guidance. It is
