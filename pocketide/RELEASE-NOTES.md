@@ -1,5 +1,58 @@
 # Release notes
 
+## 1.5.0
+
+The app got a shape. 1.0.0 was a stack of separate screens reached by tapping rows and backing
+out again; this one has destinations along the bottom, a screen that shows what the phone is
+actually doing, a lock over all of it, and an editor that sizes itself to the screen it is on.
+
+### The interface
+
+- **A navigation bar**, built to Material 3 Expressive's numbers rather than its older ones:
+  64 dp tall, 24 dp icons, a 56×32 indicator, labels always shown. Four destinations — Home,
+  Activity, Agents, Settings.
+- **The editor is not one of them**, and that is the specification rather than a preference.
+  Material is explicit that navigation bars belong to primary pages and toolbars to the pages
+  reached from them, and that the two must never share a screen. It opens full screen with its
+  own toolbar, one tap from Home's button or from the action in the top bar.
+- **The mark and the name in the top bar**, so arriving from a notification or a recents card
+  tells you which app you are in.
+- **The editor sizes itself.** Every phone used to get the constant `window.zoomLevel` 1.5. Now
+  it is worked out: `z = log(widthDp / 300) / log(1.2)`, which lands every phone within three
+  pixels of the 300 effective pixels Visual Studio Code needs to stay usable. Android's font
+  scale is honoured on top, and the comment says what that costs.
+
+### What the computer can do
+
+- **A browser, screenshots and video**, installable from Settings. An agent can open what it
+  built, screenshot it, read the page back, click through it and record the run. Headless, with
+  no display server anywhere.
+- **Android build tools**, for Java and Kotlin projects.
+- **Two permanent noes, on the screen rather than in a footnote.** The Android emulator cannot
+  run on a phone — Google ships none for arm64 Linux, and even a self-built one needs `/dev/kvm`,
+  which Android denies every app on an unrooted device. Apps containing C or C++ cannot be built,
+  because there is no arm64 Android NDK. The phone itself is the test device instead.
+
+### Safety
+
+- **An app lock** over every screen, using the phone's own fingerprint or PIN, with the app kept
+  out of the recent-apps preview while it is on.
+- **The phone's files** can be mounted into the workspace as `~/phone` — off by default, and the
+  switch is the whole safety property.
+- **Why the workspace stopped** while you were away, read from Android's own exit records:
+  Android 17's memory limiter, the Task Manager's Stop button, the low-memory killer, or a real
+  crash — each with what to do about it, because each needs something different.
+
+### Correctness
+
+- **16 KB memory pages.** `zipalign -p 4` aligns native libraries to 4 KB; Android 15 introduced
+  devices with 16 KB pages, where a library at the wrong offset cannot be mapped and the app dies
+  at startup. Now `-P 16`, and the build re-reads the finished APK and refuses to sign one that
+  does not verify. A second condition — where `GNU_RELRO` ends — is checked separately, because
+  Google's own script does not.
+- **The launcher mark** was outside the safe zone every OEM mask guarantees, and read as
+  oversized beside Gmail and Drive. Rebuilt to a per-asset fill model.
+
 ## 1.0.0 — first release
 
 The first version of PocketIDE, and a different architecture from everything this project tried
@@ -40,7 +93,7 @@ coding-agent extensions installed from Open VSX. It runs entirely on the phone.
 
 ### Honesty
 
-- 38 gates, every one of them bidirectional: each was verified to fail when the thing it guards
+- 40 gates, every one of them bidirectional: each was verified to fail when the thing it guards
   is broken, not merely to pass when it is not.
 - The Help screen carries the mission, the FAQ, the terms, the privacy position and the full
   permission list, and the gates check that list against the manifest.

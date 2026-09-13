@@ -13,6 +13,22 @@ the only thing anyone receives.
 `app/res/drawable-*/ic_splash.png` are PocketIDE's own mark, drawn by `plan/make_icon.py` in
 this repository, under the Apache License 2.0 with the rest of this app's code.
 
+## Chromium, and Playwright
+
+Neither ships in the APK. Both are downloaded into the workspace only if the owner asks for them
+in Settings, and each keeps its own licence.
+
+Chromium is **BSD-3-Clause** with a large set of third-party components under their own terms;
+its source and the full notice are at https://chromium.googlesource.com/chromium/src. The build
+installed here is the `chromium` package from the `ppa:xtradeb/apps` archive, which is the
+aarch64 Ubuntu Noble build. Ubuntu's own Chromium is published only as a snap, and a snap cannot
+run inside this kind of container at all, which is why a third-party archive is used and why the
+app says so on the screen that installs it.
+
+Playwright is **Apache-2.0**, from https://github.com/microsoft/playwright, and brings its own
+arm64 browser build and its own `ffmpeg` (**LGPL-2.1-or-later**, https://ffmpeg.org) for
+recording.
+
 ## PRoot
 
 `app/lib/arm64-v8a/libproot.so`, `libproot-loader.so`, `libandroid-shmem.so` and

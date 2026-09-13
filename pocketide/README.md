@@ -62,7 +62,7 @@ clouds, as they do everywhere; your files stay on the phone and edits happen on 
 
 ```
 ./build.sh          # aapt2 + javac + d8 + apksigner. No Gradle, no network.
-./tests/run-tests.sh   # 38 gates
+./tests/run-tests.sh   # 40 gates
 ```
 
 Requires Android SDK platform 35 and build-tools 35.0.0. Every gate exists because of a specific
