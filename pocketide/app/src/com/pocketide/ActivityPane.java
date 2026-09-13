@@ -119,7 +119,7 @@ final class ActivityPane implements Pane {
         summary = Ui.text(host, "", 14f, Ui.text(dark));
         card.addView(summary, Ui.wide(host, 12));
 
-        stop = Ui.button(host, "Stop the workspace", false, dark);
+        stop = Ui.button(host, "Stop Linux", false, dark);
         stop.setOnClickListener(v -> confirmStop());
         card.addView(stop, Ui.wide(host, 16));
         return card;
@@ -152,7 +152,7 @@ final class ActivityPane implements Pane {
 
         TextView copy = Ui.button(host, "Copy everything", false, dark);
         copy.setOnClickListener(v -> Dialogs.details(host, "Recent output",
-                "Everything the workspace has printed since it started. Useful to paste into a "
+                "Everything Linux has printed since it started. Useful to paste into a "
                         + "bug report; it contains file paths from this phone and nothing else.",
                 joined(), "Copy"));
         box.addView(copy, Ui.wide(host, 12));
@@ -214,7 +214,7 @@ final class ActivityPane implements Pane {
                                         + "Android's limit" : "")
                         + (probe.batteryPercent >= 0 ? " · battery " + probe.batteryPercent + "%" : ""));
             } else {
-                summary.setText("The workspace is not running. Your files are where you left "
+                summary.setText("Linux is not running. Your files are where you left "
                         + "them; starting the editor again picks up where you stopped.");
             }
         }
@@ -283,7 +283,7 @@ final class ActivityPane implements Pane {
         String been = since > 0
                 ? " It has been running for " + Stage.clock(System.currentTimeMillis() - since)
                         + "." : "";
-        Dialogs.confirm(host, "Stop the workspace?",
+        Dialogs.confirm(host, "Stop Linux?",
                 "The editor and everything it is running will stop, including anything an agent "
                         + "is part way through." + been
                         + "\n\nNothing is deleted. Your files stay exactly as they are and the "

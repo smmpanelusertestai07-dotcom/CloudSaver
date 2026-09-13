@@ -24,7 +24,7 @@ final class Trouble {
                     + "time; closing it mid-step is what leaves this behind.";
         }
         if (text.contains("temporary failure resolving") || text.contains("could not resolve")) {
-            return "The workspace could not look up the download servers. Check the phone is "
+            return "Linux could not look up the download servers. Check the phone is "
                     + "online, then tap Try again. Switching between Wi-Fi and mobile data "
                     + "mid-download causes this most often.";
         }
@@ -54,7 +54,7 @@ final class Trouble {
         }
         if (text.contains("connection refused") || text.contains("econnrefused")) {
             return "The editor was not answering yet. Tap Try again; if it keeps happening, "
-                    + "Stop the workspace from the notification and open it once more.";
+                    + "Stop Linux from the notification and open it once more.";
         }
         if (text.contains("not 64-bit") || text.contains("arm64")) {
             return "Nothing can be done about this one on this phone — the software simply is "

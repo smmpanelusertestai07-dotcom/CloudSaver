@@ -350,7 +350,7 @@ public final class SetupActivity extends Activity {
     private void updateClock() {
         if (clockText == null) return;
         clockText.setText(Stage.clock(System.currentTimeMillis() - startedAt)
-                + (failed ? "" : " elapsed"));
+                + (failed ? "" : " so far"));
     }
 
     private void onPrimary() {

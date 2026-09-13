@@ -17,7 +17,7 @@ import android.os.Bundle;
  * costs nothing and removes the race entirely.
  */
 public final class App extends Application {
-    static final String CHANNEL_WORKSPACE = "workspace";
+    static final String CHANNEL_WORKSPACE = "Linux";
 
     /**
      * How many of this app's screens are in front.
@@ -37,7 +37,7 @@ public final class App extends Application {
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 NotificationChannel channel = new NotificationChannel(
-                        CHANNEL_WORKSPACE, "Workspace", NotificationManager.IMPORTANCE_LOW);
+                        CHANNEL_WORKSPACE, "Linux", NotificationManager.IMPORTANCE_LOW);
                 channel.setDescription(
                         "Shows while the development environment is running, with a Stop button. "
                                 + "Low importance: it never makes a sound.");

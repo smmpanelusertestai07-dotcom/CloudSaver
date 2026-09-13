@@ -127,7 +127,7 @@ final class Running {
         if (program.isEmpty()) return cmdline;
         // What a person would call it, rather than what it calls itself.
         if (cmdline.contains("code-server") && program.startsWith("node")) return "Visual Studio Code";
-        if (program.startsWith("proot")) return "The workspace";
+        if (program.startsWith("proot")) return "Linux";
         if (cmdline.contains("extensionHost") || cmdline.contains("extension-host")) {
             return "Extension host";
         }

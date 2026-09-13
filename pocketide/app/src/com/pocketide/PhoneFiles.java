@@ -96,8 +96,8 @@ final class PhoneFiles {
      */
     static String state(Context context) {
         boolean asked = Prefs.of(context).getBoolean(Prefs.PHONE_FILES, false);
-        if (!asked) return "Off · the workspace cannot see the phone's files";
+        if (!asked) return "Off · Linux cannot see the phone's files";
         if (!allowed(context)) return "Waiting for Android to grant it · tap to finish";
-        return "On · the phone's storage is ~/phone inside the workspace";
+        return "On · the phone's storage is ~/phone inside Linux";
     }
 }

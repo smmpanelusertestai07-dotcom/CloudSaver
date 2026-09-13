@@ -175,7 +175,7 @@ final class AgentsPane implements Pane {
                         + "packages in April, 77 impersonating AMD, Azure, Salesforce and a US "
                         + "government agency over the summer.\n\n"
                         + "Extensions are not sandboxed. One can read every file in your "
-                        + "workspace, reach the network and run programs.\n\n"
+                        + "Linux, reach the network and run programs.\n\n"
                         + "Turn this on only if you know the publisher.",
                 "Show them", true, () -> {
                     Prefs.of(host).edit().putBoolean(Prefs.ALLOW_UNVERIFIED, true).apply();

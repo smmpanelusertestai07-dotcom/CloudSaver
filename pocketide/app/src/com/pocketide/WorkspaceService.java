@@ -114,7 +114,7 @@ public final class WorkspaceService extends Service {
             Intent failure = new Intent(EVENT)
                     .setPackage(context.getPackageName())
                     .putExtra(EXTRA_STATE, "failed")
-                    .putExtra(EXTRA_LINE, "Android refused to start the workspace in the "
+                    .putExtra(EXTRA_LINE, "Android refused to start Linux in the "
                             + "background. Open the app and try again, or allow background "
                             + "activity from Settings.");
             context.sendBroadcast(failure);
@@ -126,7 +126,7 @@ public final class WorkspaceService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
-            stopEverything("stopped", "Workspace stopped.");
+            stopEverything("stopped", "Linux stopped.");
             return START_NOT_STICKY;
         }
         // The notification must be posted in this call or Android kills the service. It is
@@ -138,7 +138,7 @@ public final class WorkspaceService extends Service {
         startedAt = System.currentTimeMillis();
         hold();
         boolean setup = ACTION_SETUP.equals(action);
-        worker = new Thread(setup ? this::runSetup : this::runEditor, "workspace");
+        worker = new Thread(setup ? this::runSetup : this::runEditor, "Linux");
         worker.start();
         // Not sticky: if Android kills this, restarting it without the owner asking would
         // silently spend their battery and their data.
@@ -276,7 +276,7 @@ public final class WorkspaceService extends Service {
         try {
             PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
             if (power == null) return;
-            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocketide:workspace");
+            wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocketide:Linux");
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(4L * 60 * 60 * 1000);
         } catch (Throwable refused) {

@@ -14,7 +14,7 @@ final class Prefs {
     static final String FILE = "pocketide";
 
     // Set-up
-    static final String INSTALLED = "workspace_installed";
+    static final String INSTALLED = "Linux_installed";
     static final String STAGE = "setup_stage";
     static final String SETUP_STARTED_AT = "setup_started_at";
     static final String SETUP_ELAPSED_MS = "setup_elapsed_ms";

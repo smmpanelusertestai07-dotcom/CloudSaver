@@ -76,7 +76,7 @@ final class Tools {
     /** Installs one layer, reporting each line as it arrives. Call from a background thread. */
     static boolean install(Context context, String layer, Workspace.Progress progress) {
         if (!Workspace.installed(context)) {
-            progress.line("The workspace is not set up yet.");
+            progress.line("Linux is not set up yet.");
             return false;
         }
         try {

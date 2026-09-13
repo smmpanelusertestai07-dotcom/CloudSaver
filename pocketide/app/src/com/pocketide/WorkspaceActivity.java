@@ -429,7 +429,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                     String advice = Trouble.advice(line);
                     Dialogs.details(WorkspaceActivity.this, "The editor did not start",
                             advice != null ? advice
-                                    : "Nothing in the workspace was lost. Go back and open it "
+                                    : "Nothing in Linux was lost. Go back and open it "
                                             + "again.",
                             line, "Copy details");
                     return;

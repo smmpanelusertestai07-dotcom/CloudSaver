@@ -99,7 +99,7 @@ final class Exits {
         // Checked before the reason, because Android reports it as REASON_OTHER and the
         // description is the only thing that distinguishes it.
         if (description.contains("MemoryLimiter")) {
-            return new Exit(when, "Android ran the workspace out of memory",
+            return new Exit(when, "Android ran Linux out of memory",
                     "Android 17 gives every app a memory ceiling worked out from the phone's "
                             + "total RAM, and stops the app when it is reached. It applies to "
                             + "every app on the phone and there is no setting that turns it "
@@ -116,7 +116,7 @@ final class Exits {
                 return new Exit(when, "The app was stopped from the phone's Task Manager",
                         "Android's Task Manager has a Stop button beside apps that are running "
                                 + "in the background. It stops the whole app at once, without "
-                                + "telling it first, so the workspace had no chance to shut "
+                                + "telling it first, so Linux had no chance to shut "
                                 + "down tidily.\n\n"
                                 + "Nothing was lost: files are written as they go. Anything the "
                                 + "agent was part way through will need starting again.",
@@ -134,14 +134,14 @@ final class Exits {
             case ApplicationExitInfo.REASON_CRASH:
             case ApplicationExitInfo.REASON_CRASH_NATIVE:
                 return new Exit(when, "The app stopped unexpectedly",
-                        "This one is this app's fault rather than the phone's. The workspace and "
+                        "This one is this app's fault rather than the phone's. Linux and "
                                 + "its files are untouched — they live in their own storage.",
                         true, raw);
 
             case ApplicationExitInfo.REASON_ANR:
                 return new Exit(when, "The app stopped responding",
                         "Something took too long on the screen's own thread and Android ended "
-                                + "it. The workspace and its files are untouched.",
+                                + "it. Linux and its files are untouched.",
                         true, raw);
 
             default:

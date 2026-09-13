@@ -60,200 +60,141 @@ final class Texts {
 
     // ------------------------------------------------------------------ FAQ
 
-    /** Question, answer, icon. Read top to bottom; the order is the order people ask them. */
+    /**
+     * Question, answer, group. Grouped contiguously, because the Help screen prints a heading
+     * whenever the group changes -- so an array that returns to a group it already used prints
+     * that heading twice, which is what this one did.
+     *
+     * Nineteen entries, down from thirty-two. What went was everything the screen it sits on
+     * already answers: the list of agents, which Home and Agents both show by name; the
+     * permission list, which is rendered directly beneath it; "do I need a computer", which the
+     * first line of the app answers. A FAQ that restates the app is a FAQ nobody finishes.
+     */
     static final String[][] FAQ = {
             {"About",
-             "What is this, exactly?",
+             "What is this?",
              "A real Ubuntu Linux system and a real Visual Studio Code, running inside an "
-                     + "Android app, with coding agents installed as their publishers' own "
-                     + "extensions. Everything runs on the phone."},
+                     + "Android app, with coding agents added as their publishers' own "
+                     + "extensions. It all runs on the phone \u2014 nothing is streamed from a "
+                     + "server, which is why a phone several years old can run it."},
             {"About",
-             "Do I need a computer?",
-             "No. Not for set-up, not for building, not at any point."},
-            {"About",
-             "Is this a virtual machine or an emulator?",
-             "Neither. Ubuntu runs directly on the phone's own kernel through PRoot, with no "
-                     + "root and no VM. That is why a phone that is several years old can run "
-                     + "it at all."},
-            {"About",
-             "Where does my code live?",
-             "In this app's private storage on the phone. No cloud sync, no backup, no upload. "
-                     + "Uninstalling the app deletes all of it."},
+             "What happens if I uninstall it?",
+             "Everything goes: Linux, the editor, the extensions and your projects. They live "
+                     + "in the app's own storage, so Android removes them with the app. Push "
+                     + "anything you want to keep to git, or save it to the phone's own files "
+                     + "first."},
 
             {"Editor",
-             "Is this the real VS Code?",
-             "It is Code-OSS — the MIT-licensed source of Visual Studio Code — packaged by "
-                     + "Coder as code-server. Editor, terminal, debugger, git, search, "
-                     + "extensions and settings all work."},
+             "Is this the real Visual Studio Code?",
+             "It is Code-OSS, the open-source project Microsoft builds Visual Studio Code from, "
+                     + "packaged by Coder as code-server. Same editor, same settings, same "
+                     + "keyboard shortcuts, same extension format."},
             {"Editor",
-             "Do I need a Microsoft licence or account?",
-             "No. VS Code's source is MIT licensed and code-server is MIT licensed. No licence, "
-                     + "no account, no activation, no payment."},
-            {"Editor",
-             "What is missing compared to Microsoft's own build?",
-             "Only Microsoft's own proprietary parts: their marketplace, the C# debugger, the "
-                     + "Windows C++ debugger, Remote-SSH, Dev Containers, WSL and Live Share. "
-                     + "None of them apply to a phone that is itself the machine. Open-source "
-                     + "alternatives exist for C and C++ (LLVM's clangd) and for C#."},
+             "Do I need a Microsoft account or licence?",
+             "No. Code-OSS is MIT licensed and so is code-server. Nothing here asks Microsoft "
+                     + "for anything."},
             {"Editor",
              "What is Open VSX?",
-             "The extension registry Code-OSS builds use, run by the Eclipse Foundation. "
-                     + "Microsoft's marketplace is limited by its own terms to Microsoft's "
-                     + "products, so every non-Microsoft build uses this one — VSCodium, "
-                     + "code-server, Cursor, Windsurf, and Google's own Antigravity IDE."},
-            {"Editor",
-             "Is Open VSX behind Microsoft's marketplace?",
-             "Not for these extensions. In September 2026 all three agent extensions carried the "
-                     + "same version, published the same day, on both registries. Microsoft's is "
-                     + "larger overall, which matters only if you need something that is not on "
-                     + "Open VSX."},
+             "The extension registry this app installs from, run by the Eclipse Foundation. "
+                     + "Microsoft's own marketplace is licensed for Microsoft's own products "
+                     + "only, so every editor that is not Visual Studio Code itself uses Open "
+                     + "VSX \u2014 including the desktop editors these agents ship in."},
 
-            {"Agents",
-             "Which agents are set up?",
-             "Google's Antigravity, Anthropic's Claude Code and OpenAI's Codex — each the "
-                     + "publisher's own extension, from the publisher's own verified namespace."},
-            {"Agents",
-             "Can I add others?",
-             "Yes. Any extension on Open VSX. Verified publishers are browsable by default; "
-                     + "unverified ones need a setting turned on, with a warning."},
             {"Agents",
              "Why these three?",
-             Agents.WHY_THESE_THREE},
+             "Each of the three companies builds its own frontier AI model, ships its own "
+                     + "coding agent for editors, and publishes it under its own verified name "
+                     + "on Open VSX. They are set up for you, not fenced in: any extension on "
+                     + "Open VSX can be installed from the Agents screen."},
             {"Agents",
              "Which of them are free?",
-             "Only Antigravity has a real free tier — Google's Individual plan is $0 and "
-                     + "includes several Gemini models, Claude Sonnet and Opus, and gpt-oss, "
-                     + "with weekly rate limits. Claude Code needs Pro, Max, Team or Enterprise, "
-                     + "or pay-as-you-go. Codex is included in ChatGPT Plus, Pro, Business, Edu "
-                     + "and Enterprise."},
+             "Antigravity has a free tier. Claude Code needs a Claude subscription or "
+                     + "pay-as-you-go; Codex is included with ChatGPT Plus and above. The "
+                     + "Agents screen shows each one's terms in the publisher's own words."},
             {"Agents",
-             "Does my code get uploaded?",
-             "The model always runs in the publisher's cloud — that is true of every coding "
-                     + "agent anywhere, on any device. The extension sends the context it needs "
-                     + "to answer. Your files stay on the phone and edits happen on the phone. "
-                     + "What each company does with what it receives is covered by their own "
-                     + "privacy policy, not this one."},
+             "Does my code go to the cloud?",
+             "Your project stays here \u2014 the files, the git history, the build output, "
+                     + "whatever is in your terminal. The agent does its work on this phone.\n\n"
+                     + "The AI model does not. It runs in the company's data centre, so your "
+                     + "questions and the files the agent needs to read are sent there to be "
+                     + "answered, exactly as they would be from a laptop. Running on your phone "
+                     + "is not the same as working offline, and no app can make it so."},
+            {"Agents",
+             "Can it see what it built?",
+             "Yes, once you add the browser in Settings. An agent can start your site, open it, "
+                     + "take a screenshot, read the page back, click through it, and record a "
+                     + "video of the run."},
 
             {"Building",
-             "Can I build an Android APK?",
-             "Yes, once the Android toolchain is installed from Settings. One thing stated "
-                     + "plainly: Google ships aapt2 for 64-bit Intel Linux only, so a "
-                     + "community-built ARM64 version of that one tool is used. It is labelled "
-                     + "as community-built before it is installed."},
+             "What can I build today, with nothing extra installed?",
+             "Websites and web apps, and programs in Python, Node, Go, Rust, C and C++. Git, a "
+                     + "terminal and a compiler are all here from the first start."},
             {"Building",
-             "Can I build an iOS app without a Mac?",
-             "Yes, for cross-platform projects. Write the app here with Flutter, React Native, "
-                     + "Expo or Capacitor, push to GitHub, and GitHub's macOS runners build and "
-                     + "sign the .ipa. For public repositories those runners are free with no "
-                     + "minute limit; for private ones macOS minutes are billed at ten times the "
-                     + "rate, so the free quota goes about ten times faster.\n\n"
-                     + "What is not possible: compiling a native Xcode Swift or SwiftUI project "
-                     + "on the phone. Xcode and codesign only run on macOS, and no trick changes "
-                     + "that."},
+             "Can it build an Android app?",
+             "Java and Kotlin projects, yes \u2014 into a real, installable APK, once you add "
+                     + "the build tools in Settings. Apps containing C or C++ cannot be built: "
+                     + "Google publishes no Android compiler for this kind of processor, which "
+                     + "is Google's decision rather than a limit of your phone."},
+            {"Building",
+             "Can I test an Android app here?",
+             "Yes, but not with the emulator \u2014 that cannot run on a phone. Google ships no "
+                     + "emulator for this processor, and even one built by hand needs a "
+                     + "virtualisation device Android does not give apps unless the phone is "
+                     + "rooted.\n\nWhat you get instead is better: your phone is the test "
+                     + "device. Build the APK, install it, and it runs on real hardware. Unit "
+                     + "tests run here directly."},
+            {"Building",
+             "Can I build an iPhone app?",
+             "No. Apple requires its own tools on a Mac to build and sign them, and no Android "
+                     + "app can provide that."},
             {"Building",
              "Can I make games?",
-             "Yes. Godot's official Android editor creates, develops and exports 2D and 3D "
-                     + "projects, to Android and iOS, and is MIT licensed. Inside PocketIDE an "
-                     + "agent can write GDScript and export headlessly. Godot's Android editor "
-                     + "does not support C#. Unity has no ARM64 Linux editor, so Unity scripts "
-                     + "can be written here and built elsewhere."},
-            {"Building",
-             "What can I build right now, with no extra set-up?",
-             "Websites and web apps, Node and Python backends, APIs, scripts, bots, command-line "
-                     + "tools, and anything in Go, Rust, Java, C or C++ — write, compile and run. "
-                     + "Git works fully."},
+             "2D and web games, yes \u2014 any engine that runs on Linux and does not need a "
+                     + "graphics card. Large 3D engines expect a desktop GPU and will not be "
+                     + "happy here."},
 
-            {"Agents",
-             "Does the work happen on my phone, or in the company's cloud?",
-             "On your phone. All three run their agent loop, edit files and run commands on "
-                     + "the machine the editor is on, which here is the Linux inside this app. "
-                     + "Each company also has a cloud mode — Claude Code on the web, Codex "
-                     + "cloud, Antigravity Remote Control — and none of them is used here; they "
-                     + "are separate things you would have to go and start.\n\n"
-                     + "One thing this does NOT mean, and it matters: the model itself still "
-                     + "runs in the company's data centre. Your prompts and the files the agent "
-                     + "reads are sent there to be answered. Local execution is not offline and "
-                     + "not on-device inference, and any app telling you otherwise is wrong. "
-                     + "What stays here is your project: the files, the git history, the build "
-                     + "output, the credentials in your terminal."},
-            {"Agents",
-             "Can it open what it built and look at it?",
-             "Yes, once you add the browser in Settings. An agent can start your site, open it, "
-                     + "screenshot it, read the page back and click through it — and record a "
-                     + "video of the run. There is no desktop involved; the browser runs "
-                     + "headless, which is why this works on a phone at all."},
-            {"Limits",
-             "Can it build an Android app?",
-             "Java and Kotlin projects, yes — into a real, signed, installable APK. Apps with C "
-                     + "or C++ in them, no: Google publishes no arm64 Android NDK, so the "
-                     + "compiler simply does not exist for this machine. That is Google's "
-                     + "decision, not a limit of your phone."},
-            {"Limits",
-             "Can it run the Android emulator to test an app?",
-             "No, and no update will change it. Google ships no emulator built for arm64 Linux, "
-                     + "and even one built by hand needs /dev/kvm, which Android's own security "
-                     + "policy denies to every app on a phone that is not rooted.\n\n"
-                     + "What you get instead is arguably better: your phone IS the test device. "
-                     + "The agent builds the APK and hands it to Android's installer, and the "
-                     + "app runs on real hardware rather than a simulation of it. Unit tests, "
-                     + "including Robolectric, run inside the workspace natively."},
-            {"Limits",
-             "Can it build an iPhone app?",
-             "No. Apple requires its own toolchain on macOS to build and sign them, and that is "
-                     + "not something any Android app can provide."},
-            {"About",
-             "Why is the editor not a tab along the bottom?",
-             "Because Material's own rule says a navigation bar belongs to top-level pages and "
-                     + "a toolbar to the pages you reach from them, and the two must never share "
-                     + "a screen. The editor is full screen with its own toolbar, which is what "
-                     + "gives it every pixel — a bar across the bottom would take 64 of them "
-                     + "from the terminal. It is still one tap away: the button on Home, or the "
-                     + "action in the top bar whenever the workspace is running."},
             {"Safety",
-             "Are extensions safe?",
-             "Extensions are not sandboxed. Visual Studio Code's own documentation says the "
-                     + "extension host has the same permissions as the editor itself, which "
-                     + "means an extension can read your files, reach the network and run "
-                     + "programs. Counterfeit extensions appeared on both registries through "
-                     + "2026, and every one of them came from an unverified publisher.\n\n"
-                     + "So: verified publishers only by default, the three recommended ones are "
-                     + "pinned to a checksum this app verifies before installing, and turning "
-                     + "off the filter takes a deliberate act with a warning in front of it."},
+             "How do I know an extension is safe?",
+             "Start with the publisher. Open VSX marks a publisher verified when it has proved "
+                     + "it controls the name it publishes under, so a verified Google, Anthropic "
+                     + "or OpenAI really is that company. This app shows only verified "
+                     + "publishers by default, and every counterfeit extension found on either "
+                     + "major registry through 2026 came from an unverified account imitating a "
+                     + "name it did not own.\n\nBefore installing anything, check four things: "
+                     + "the publisher is verified; the downloads and reviews look like real use "
+                     + "rather than a week-old listing; the name is spelled exactly right, since "
+                     + "imitations rely on one swapped letter; and the description says what the "
+                     + "extension does, not only what it is for.\n\nWhere a company publishes "
+                     + "no official extension, a well-established community one is a reasonable "
+                     + "choice \u2014 prefer a long history, an open repository and recent "
+                     + "updates. Turning off the verified-only filter is yours to decide, and "
+                     + "the app asks you to confirm it once."},
             {"Safety",
-             "What does the app ask my phone for?",
-             "Internet, network state, a wake lock, notifications, a foreground service, "
-                     + "vibration, and permission to keep working when the battery saver would "
-                     + "stop it. Nothing else. No camera, no microphone, no location, no "
-                     + "contacts, no SMS, no storage."},
-            {"Safety",
-             "Why does it need a wake lock and battery permission?",
-             "Set-up downloads for twenty minutes or more. Without them Android sleeps the "
-                     + "processor when the screen goes off and the download stops with no "
-                     + "explanation. You are asked, never forced, and the app works without "
-                     + "them — just less reliably."},
+             "What can an extension actually do?",
+             "Everything you can do in the editor: read and change any file in Linux, run "
+                     + "commands, and use the network. That is true of extensions in every "
+                     + "editor, desktops included \u2014 it is not a weakness of this app. What "
+                     + "limits it here is Android: all of it happens inside this app's own "
+                     + "storage, and nothing an extension does can reach your photos, your "
+                     + "messages or your other apps."},
             {"Safety",
              "Can another app on my phone reach the editor?",
-             "No. The editor listens on 127.0.0.1 only, and it is behind a password this phone "
-                     + "generated for itself. Android does not keep loopback private between "
-                     + "apps, which is exactly why that password exists."},
+             "Not from the internet \u2014 the editor cannot be reached from outside this phone "
+                     + "at all. Another app on the same phone could in principle connect to it, "
+                     + "which is why it sits behind a password the phone generates for itself "
+                     + "and never shows you. Turn on the app lock in Settings and a fingerprint "
+                     + "is needed to open the editor at all."},
 
             {"Phone",
-             "Which phones work?",
-             "Android 10 or newer, 64-bit ARM (arm64-v8a), and enough free space for what you "
-                     + "install — about 1.4 GB for the base and the editor, plus each agent."},
+             "Which phones can run it?",
+             "A 64-bit ARM phone on Android 10 or newer, with about 4 GB of free space and "
+                     + "ideally 6 GB of memory. It runs on 4 GB with fewer things open at once. "
+                     + "Home tells you where your phone stands before you start."},
             {"Phone",
              "Will my phone get hot?",
-             "It gets warm while an agent works, which is normal. The Home screen shows the "
-                     + "phone's own thermal state so you can see it rather than guess."},
-            {"Phone",
-             "What happens if I uninstall?",
-             "Everything goes: Ubuntu, the editor, the extensions, your projects and your "
-                     + "sign-ins. Nothing is left anywhere else, because nothing was ever "
-                     + "anywhere else."},
-            {"Phone",
-             "Can I stop it?",
-             "Yes, from the notification, at any time. Stopping ends the editor and everything "
-                     + "running inside Linux. Your files are untouched."},
+             "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
+                     + "Afterwards it is an editor: warm while a build runs, cool while you read "
+                     + "code. Activity shows what is running and lets you stop it."},
     };
 
     // ------------------------------------------------------------------ terms
@@ -297,7 +238,7 @@ final class Texts {
                     + "live.\n\n"
 
                     + "7. What you are responsible for.\n"
-                    + "Anything an agent does in your workspace happens because you asked for "
+                    + "Anything an agent does in your Linux happens because you asked for "
                     + "it. Read what it proposes before you accept it, exactly as you would a "
                     + "change from anyone else.\n\n"
 
@@ -336,7 +277,7 @@ final class Texts {
                     + "privacy policy\n\n"
 
                     + "Where your sign-ins are kept.\n"
-                    + "Inside the Linux workspace, in each publisher's own extension storage. "
+                    + "Inside Linux, in each publisher's own extension storage. "
                     + "Never in this app's code and never in the installed package.\n\n"
 
                     + "The editor's password.\n"
@@ -362,7 +303,7 @@ final class Texts {
             {"android.permission.POST_NOTIFICATIONS",
              "Notifications", "The running notice, its progress, and its Stop button."},
             {"android.permission.FOREGROUND_SERVICE",
-             "Foreground service", "So Android does not kill the workspace while you are using it."},
+             "Foreground service", "So Android does not kill Linux while you are using it."},
             {"android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
              "Foreground service type", "Declares what that service is for, as Android requires."},
             {"android.permission.VIBRATE",
@@ -376,7 +317,7 @@ final class Texts {
             {"android.permission.MANAGE_EXTERNAL_STORAGE",
                     "The phone's files, if you turn them on",
                     "Off unless you switch it on in Settings, and Android grants it on a page "
-                            + "of its own. On, the phone's storage appears inside the workspace "
+                            + "of its own. On, the phone's storage appears inside Linux "
                             + "as ~/phone so you can open a file from Downloads or save a build "
                             + "somewhere that outlives the app. Nothing is read or copied "
                             + "without you doing it."},
@@ -405,13 +346,13 @@ final class Texts {
     static final String SURFACES =
             "The industry calls these development interfaces, or product surfaces. There are "
                     + "four, and all three companies support all four:\n\n"
-                    + "• Agent-first desktop workspace — hand over a project and supervise. "
+                    + "• Agent-first desktop Linux — hand over a project and supervise. "
                     + "Desktop only; a phone can watch it through a remote companion.\n\n"
                     + "• IDE integration — the agent inside the editor, with code, terminal and "
                     + "debugger. Normally desktop only.\n\n"
                     + "• Terminal agent (CLI) — the agent in the project folder's terminal. "
                     + "Normally desktop; a phone can reach it remotely.\n\n"
-                    + "• Browser workspace — build and preview on a website. Works on a phone, "
+                    + "• Browser Linux — build and preview on a website. Works on a phone, "
                     + "but what it can do varies.\n\n"
                     + "Two supporting modes exist as well: a mobile remote companion, where the "
                     + "work still runs on a connected computer or in the cloud, and headless "

@@ -166,10 +166,10 @@ final class SettingsPane implements Pane {
      */
     private void togglePhoneFiles(boolean on) {
         if (on) {
-            Dialogs.confirm(host, "Stop the workspace seeing the phone's files?",
-                    "~/phone disappears from inside the workspace the next time it starts. "
+            Dialogs.confirm(host, "Stop Linux seeing the phone's files?",
+                    "~/phone disappears from inside Linux the next time it starts. "
                             + "Nothing on the phone is deleted, and nothing already copied into "
-                            + "the workspace is affected.\n\nAndroid's own permission stays "
+                            + "Linux is affected.\n\nAndroid's own permission stays "
                             + "granted until you remove it in the phone's Settings.",
                     "Turn off", () -> {
                         Prefs.of(host).edit().putBoolean(Prefs.PHONE_FILES, false).apply();
@@ -178,9 +178,9 @@ final class SettingsPane implements Pane {
                     });
             return;
         }
-        Dialogs.confirm(host, "Let the workspace see the phone's files?",
+        Dialogs.confirm(host, "Let Linux see the phone's files?",
                 "The phone's storage -- Download, DCIM, Documents and the rest -- appears "
-                        + "inside the workspace as ~/phone. An agent working in the editor can "
+                        + "inside Linux as ~/phone. An agent working in the editor can "
                         + "then read a file you put in Downloads, and write a finished build "
                         + "somewhere that survives this app being uninstalled.\n\nIt can also "
                         + "read everything else on that storage. Leave it off unless you want "
@@ -283,20 +283,20 @@ final class SettingsPane implements Pane {
         if (ready) refreshTools();
 
         Ui.Row browser = Ui.row(host, dark, R.drawable.ic_globe, "Browser and screenshots",
-                !ready ? "Available once the workspace is set up"
+                !ready ? "Available once Linux is set up"
                         : tools.browser
                             ? (tools.chromiumVersion.isEmpty() ? "Installed" : tools.chromiumVersion)
                             : "Not installed · about "
                                     + DeviceProbe.formatBytes(Tools.BROWSER_BYTES),
                 v -> offerTools("browser", "Browser and screenshots",
-                        "Installs Chromium inside the workspace so an agent can open what it "
+                        "Installs Chromium inside Linux so an agent can open what it "
                                 + "has built, screenshot it, and read the page back. There is no "
                                 + "desktop and none is needed — it runs headless.\n\n"
                                 + "It comes from the xtradeb package source rather than Ubuntu's "
                                 + "own, because Ubuntu ships Chromium only as a snap and a snap "
                                 + "cannot run in this kind of container at all.\n\n"
                                 + "It runs without Chromium's own sandbox, which cannot work "
-                                + "here. What contains it is Android: the whole workspace is "
+                                + "here. What contains it is Android: the whole Linux is "
                                 + "this app's private storage, under this app's identity.",
                         Tools.BROWSER_BYTES, tools.browser));
         if (tools.browser) browser.setState(Ui.running(dark));
@@ -327,7 +327,7 @@ final class SettingsPane implements Pane {
         list.addView(Ui.divider(host, dark, true));
 
         Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Android build tools",
-                !ready ? "Available once the workspace is set up"
+                !ready ? "Available once Linux is set up"
                         : tools.android ? "Installed · Java and Kotlin projects"
                             : "Not installed · about "
                                     + DeviceProbe.formatBytes(Tools.ANDROID_BYTES),
@@ -350,7 +350,7 @@ final class SettingsPane implements Pane {
 
         group.addView(list, Ui.wide(host, 8));
         group.addView(note(dark,
-                "Each of these is a download into the workspace, not part of the app. They can "
+                "Each of these is a download into Linux, not part of the app. They can "
                         + "be removed from the editor's own terminal like any other package, and "
                         + "this screen will notice."), Ui.wide(host, 8));
         return group;
@@ -393,7 +393,7 @@ final class SettingsPane implements Pane {
                             boolean already) {
         if (!Workspace.installed(host)) {
             Dialogs.message(host, title,
-                    "The workspace has to be set up before anything can be installed into it.");
+                    "Linux has to be set up before anything can be installed into it.");
             return;
         }
         if (already) {
@@ -516,7 +516,7 @@ final class SettingsPane implements Pane {
         group.addView(note(dark,
                 "Wi-Fi is never counted against the limit. The figure comes from Android's own "
                         + "per-app counter and covers everything this app downloads, including "
-                        + "what the workspace fetches."), Ui.wide(host, 8));
+                        + "what Linux fetches."), Ui.wide(host, 8));
         return group;
     }
 
@@ -526,7 +526,7 @@ final class SettingsPane implements Pane {
         LinearLayout group = group(dark, "Storage");
         LinearLayout list = list(dark);
 
-        sizeRow = Ui.row(host, dark, R.drawable.ic_storage, "Workspace size",
+        sizeRow = Ui.row(host, dark, R.drawable.ic_storage, "Linux size",
                 Workspace.installed(host) ? "Measuring…" : "Not set up yet", null);
         list.addView(sizeRow);
         if (Workspace.installed(host)) {
@@ -557,16 +557,16 @@ final class SettingsPane implements Pane {
     private void confirmRemoveEverything() {
         if (WorkspaceService.busy()) {
             Dialogs.message(host, "Still running",
-                    "Stop the workspace from the notification first.");
+                    "Stop Linux from the notification first.");
             return;
         }
         Dialogs.confirm(host, "Remove everything?",
                 "This deletes Ubuntu, the editor, every extension and every project in the "
-                        + "workspace. It cannot be undone, and setting up again downloads "
+                        + "Linux. It cannot be undone, and setting up again downloads "
                         + "everything from the start.",
                 "Remove everything", true, () -> {
                     Workspace.removeEverything(host);
-                    Dialogs.message(host, "Removed", "The workspace is gone. The app is back to "
+                    Dialogs.message(host, "Removed", "Linux is gone. The app is back to "
                             + "how it was when it was installed.");
                     MainActivity.rebuild(host);
                 });
@@ -589,7 +589,7 @@ final class SettingsPane implements Pane {
             Ui.Row crash = Ui.row(host, dark, R.drawable.ic_info, "Last unexpected stop",
                     "Tap to read or copy the record",
                     v -> Dialogs.details(host, "What was recorded",
-                            "The app itself stopped. Nothing in the workspace was lost.",
+                            "The app itself stopped. Nothing in Linux was lost.",
                             Crash.read(host), "Copy details"));
             crash.setState(Ui.needsYou(dark));
             list.addView(crash);

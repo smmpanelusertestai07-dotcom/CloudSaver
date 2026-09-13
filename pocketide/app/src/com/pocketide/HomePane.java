@@ -278,7 +278,7 @@ final class HomePane implements Pane {
             if (any) list.addView(Ui.divider(host, dark, true));
             final Exits.Exit shown = exit;
             list.addView(Ui.row(host, dark, R.drawable.ic_memory, shown.headline,
-                    "The workspace stopped while you were away. Tap to see why.",
+                    "Linux stopped while you were away. Tap to see why.",
                     v -> {
                         Prefs.of(host).edit().putLong(Prefs.EXIT_SEEN_AT, shown.when).apply();
                         Dialogs.details(host, shown.headline, shown.explanation, shown.raw,
@@ -290,9 +290,9 @@ final class HomePane implements Pane {
         if (Crash.exists(host)) {
             if (any) list.addView(Ui.divider(host, dark, true));
             list.addView(Ui.row(host, dark, R.drawable.ic_info, "The app stopped unexpectedly",
-                    "Nothing in the workspace was lost. Tap to see the record.",
+                    "Nothing in Linux was lost. Tap to see the record.",
                     v -> Dialogs.details(host, "What was recorded",
-                            "The app itself stopped. The workspace and its files live in their "
+                            "The app itself stopped. Linux and its files live in their "
                                     + "own storage, so nothing in them was lost.",
                             Crash.read(host), "Copy details")));
             any = true;
@@ -346,7 +346,7 @@ final class HomePane implements Pane {
 
         if (Workspace.installed(host)) {
             healthList.addView(Ui.divider(host, dark, true));
-            Ui.Row size = Ui.row(host, dark, R.drawable.ic_memory, "Workspace size",
+            Ui.Row size = Ui.row(host, dark, R.drawable.ic_memory, "Linux size",
                     "Measuring…", null);
             healthList.addView(size);
             final Activity measuring = host;
@@ -357,7 +357,7 @@ final class HomePane implements Pane {
                 measuring.runOnUiThread(() -> {
                     if (!measuring.isFinishing()) size.setValue(DeviceProbe.formatBytes(bytes));
                 });
-            }, "measure-workspace").start();
+            }, "measure-Linux").start();
         }
     }
 

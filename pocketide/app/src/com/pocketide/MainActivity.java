@@ -45,9 +45,9 @@ public final class MainActivity extends Activity {
     private List<Shell.Tab> tabs() {
         return Arrays.asList(
                 new Shell.Tab("Home", R.drawable.ic_home,
-                        "Home. Whether the workspace is ready, and the phone it runs on."),
+                        "Home. Whether Linux is ready, and the phone it runs on."),
                 new Shell.Tab("Activity", R.drawable.ic_pulse,
-                        "Activity. What the workspace and the agents are doing right now."),
+                        "Activity. What Linux and the agents are doing right now."),
                 new Shell.Tab("Agents", R.drawable.ic_extension,
                         "Agents. The installed coding agents and the whole Open VSX registry."),
                 new Shell.Tab("Settings", R.drawable.ic_settings,

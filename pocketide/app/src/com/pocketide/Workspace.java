@@ -198,7 +198,7 @@ final class Workspace {
             }
             progress.stage(Stage.UBUNTU_UNPACK, "Unpacking Ubuntu…", 0);
             if (!root.isDirectory() && !root.mkdirs()) {
-                throw new IOException("Cannot create the workspace folder.");
+                throw new IOException("Cannot create Linux folder.");
             }
             try (InputStream input = new FileInputStream(archive)) {
                 TarGzExtractor.extract(input, root, (files, name) -> {
@@ -321,7 +321,7 @@ final class Workspace {
         File natives = new File(context.getApplicationInfo().nativeLibraryDir);
         File temporary = new File(context.getFilesDir(), "proot-tmp");
         if (!temporary.isDirectory() && !temporary.mkdirs()) {
-            throw new IOException("Cannot create the workspace's temporary folder.");
+            throw new IOException("Cannot create Linux's temporary folder.");
         }
 
         List<String> args = new ArrayList<>();

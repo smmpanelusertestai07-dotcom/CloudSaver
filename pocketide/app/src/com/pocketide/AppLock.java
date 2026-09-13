@@ -142,7 +142,7 @@ final class AppLock {
         screen.addView(title, Ui.wide(activity, 18));
 
         TextView note = Ui.text(activity,
-                "Unlock with your fingerprint or the phone's PIN. The workspace and everything "
+                "Unlock with your fingerprint or the phone's PIN. Linux and everything "
                         + "signed in on it stay exactly as they were.", 14f, Ui.muted(dark));
         note.setGravity(Gravity.CENTER);
         screen.addView(note, Ui.wide(activity, 8));
