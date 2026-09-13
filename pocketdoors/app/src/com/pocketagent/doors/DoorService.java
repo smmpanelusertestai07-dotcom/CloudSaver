@@ -105,11 +105,15 @@ public final class DoorService extends Service {
         String agentId = intent.getStringExtra(EXTRA_AGENT);
         String mode = intent.getStringExtra(EXTRA_MODE);
         Doors.Agent agent = Doors.byId(agentId);
-        if (agent == null || !agent.implemented()) {
+        if (agent == null || agent.start.isEmpty()) {
             shutdown();
             return START_NOT_STICKY;
         }
-        startInForeground(agent, MODE_LOGIN.equals(mode) ? MODE_LOGIN : MODE_START);
+        // Only Google signs in separately. Asking for a sign-in run on an agent that has no
+        // sign-in command used to start `bash /opt/doors/` with nothing after it -- a shell
+        // error, shown to the owner as if their agent had failed.
+        boolean signingIn = MODE_LOGIN.equals(mode) && agent.signsInSeparately();
+        startInForeground(agent, signingIn ? MODE_LOGIN : MODE_START);
         return START_NOT_STICKY;
     }
 

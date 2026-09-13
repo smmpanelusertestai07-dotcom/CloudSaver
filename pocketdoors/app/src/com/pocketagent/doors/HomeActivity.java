@@ -14,10 +14,12 @@ import android.widget.TextView;
 /**
  * The list of agents, and the one honest sentence about each.
  *
- * This is the only screen PocketAgent draws for itself. It says which door an agent came
- * through, what its publisher charges, what is known to be missing, and -- once anyone has
- * actually opened it on this phone -- whether it worked. Nothing is claimed that has not
- * happened; a door that has never been opened says so.
+ * This is the only screen PocketAgent draws for itself. It says how an agent is reached, what
+ * its maker charges, what is known to be missing, and -- once anyone has actually opened it on
+ * this phone -- whether it worked. Nothing is claimed that has not happened; an agent nobody
+ * has started here says so.
+ *
+ * There is one route per agent and no choice to make, so a card is a name and a button.
  */
 public final class HomeActivity extends Activity {
 
@@ -72,8 +74,9 @@ public final class HomeActivity extends Activity {
         }
 
         root.addView(Ui.text(this,
-                "Each agent opens the interface its own publisher ships. PocketAgent runs it "
-                        + "here and stays out of the way.", 14, Ui.muted(dark)), Ui.wide(this, 20));
+                "One workspace on this phone, and one way into each agent -- the way its own "
+                        + "maker supports best. No options to weigh up first.",
+                14, Ui.muted(dark)), Ui.wide(this, 20));
 
         String running = DoorService.runningAgent();
         for (Doors.Agent agent : Doors.ALL) {
@@ -127,8 +130,8 @@ public final class HomeActivity extends Activity {
         top.addView(statePill(agent, running));
         card.addView(top);
 
-        card.addView(Ui.text(this, agent.door.title + " · " + agent.door.summary,
-                12.5f, Ui.muted(dark)), Ui.wide(this, 4));
+        // One line about how this agent is reached, not a menu of ways to reach it.
+        card.addView(Ui.text(this, routeOf(agent), 12.5f, Ui.muted(dark)), Ui.wide(this, 4));
         card.addView(Ui.text(this, agent.cost, 13, agent.free ? Ui.RUNNING : Ui.muted(dark)),
                 Ui.wide(this, 6));
 
@@ -146,21 +149,28 @@ public final class HomeActivity extends Activity {
             card.addView(words, Ui.wide(this, 10));
         }
 
-        if (agent.implemented()) {
-            TextView open = Ui.button(this, running ? "Open" : "Start " + agent.name, !running, dark);
-            open.setOnClickListener(v -> startActivity(
-                    new Intent(this, DoorActivity.class).putExtra(DoorActivity.EXTRA_AGENT, agent.id)));
-            card.addView(open, Ui.wide(this, 14));
-        } else {
-            card.addView(Ui.text(this, "Not wired up in this build.", 13, Ui.muted(dark)),
-                    Ui.wide(this, 12));
-        }
+        TextView open = Ui.button(this, running ? "Open" : "Start " + agent.name, !running, dark);
+        open.setOnClickListener(v -> startActivity(
+                new Intent(this, DoorActivity.class).putExtra(DoorActivity.EXTRA_AGENT, agent.id)));
+        card.addView(open, Ui.wide(this, 14));
         return card;
+    }
+
+    /**
+     * How this agent is reached, in one line.
+     *
+     * There used to be a "door" named here, chosen from three. There is one route now, so this
+     * says what it is rather than which of several was picked.
+     */
+    private String routeOf(Doors.Agent agent) {
+        String where = agent.hasPhoneSurface()
+                ? ", and on " + (agent.phone.contains("claude.ai") ? "Anthropic's app" : "Google's dashboard")
+                : "";
+        return "In the workspace on this phone" + where;
     }
 
     private TextView statePill(Doors.Agent agent, boolean running) {
         if (running) return Ui.pill(this, "running", Ui.RUNNING);
-        if (!agent.implemented()) return Ui.pill(this, "not yet", Ui.muted(Ui.dark(this)));
         String state = Probe.state(this, agent.id);
         if (Probe.WORKS.equals(state)) return Ui.pill(this, "works here", Ui.RUNNING);
         if (Probe.FAILED.equals(state)) return Ui.pill(this, "failed here", Ui.FAILED);

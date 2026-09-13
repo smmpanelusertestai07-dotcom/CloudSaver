@@ -74,26 +74,107 @@ grep -q 'JetBrains' "$SRC/Reasons.java" \
   || fail "ReasonGiven: a figure is quoted with no source named"
 echo "PASS ReasonGiven (the reason is on screen, with its sources and its limits)"
 
-# ---------------------------------------------------------------- Claude's own app as the screen
-# Anthropic's Remote Control is confirmed working on a headless Linux host and refuses a bare
-# pipe, so it gets the same pty this app already gives Antigravity's sign-in. And it cannot
-# detach: proot's --kill-on-exit would take the session with it.
-grep -q 'remote-control' "$ASSETS/doors-claude.sh" \
-  || fail "ClaudeDoor: the session is started without Remote Control, so no app would ever see it"
-# The Remote Control line itself, not any line in the file. The first form of this check looked
-# for a pty anywhere in the script, which stayed green when the session was moved to a bare pipe,
-# because sign-in still used one. Both paths need a terminal; this asks about the one that runs.
-grep -E '^[^#]*script --quiet --return --command' "$ASSETS/doors-claude.sh" \
-  | grep -q -- '--remote-control' \
-  || fail "ClaudeDoor: Remote Control needs a real terminal and is being given a pipe"
-grep -E '^[^#]*script --quiet --return --command' "$ASSETS/doors-claude.sh" \
-  | grep -q 'auth login' \
-  || fail "ClaudeDoor: sign-in needs a real terminal and is being given a pipe"
-grep -q 'auth status' "$ASSETS/doors-claude.sh" \
+# ---------------------------------------------------------------- Anthropic, without being asked
+# This is the whole reason Claude needs no second option. Anthropic document one key --
+# remoteControlAtStartup in ~/.claude/settings.json -- which turns Remote Control on for every
+# session, so their phone app shows this session with nobody opening a menu or typing a command.
+# Take that key away and "one method" quietly becomes "one method plus an instruction", which is
+# exactly the menu this build removed.
+grep -q 'remoteControlAtStartup' "$ASSETS/doors-workspace.sh" \
+  || fail "ClaudeDoor: Remote Control is not switched on at startup, so the phone app sees nothing"
+# Written into the file, not merely named in a comment. This is the third gate in this project
+# to be written as a plain grep and pass on the prose explaining the thing it was meant to check.
+grep -qE '^\s*data\["remoteControlAtStartup"\] = True' "$ASSETS/doors-workspace.sh" \
+  || fail "ClaudeDoor: the startup key is talked about but never written to the settings file"
+# And before the editor opens, not after: the first session is the one that has to appear.
+prep_at=$(grep -n 'claude_remote_at_startup$' "$ASSETS/doors-workspace.sh" | tail -n1 | cut -d: -f1)
+serve_at=$(grep -n 'bin/code-server" \\' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+[ -n "$prep_at" ] && [ -n "$serve_at" ] && [ "$prep_at" -lt "$serve_at" ] \
+  || fail "ClaudeDoor: Remote Control is switched on after the editor starts, so the first session misses it"
+grep -q 'auth status' "$ASSETS/doors-workspace.sh" \
   || fail "ClaudeDoor: sign-in is assumed rather than asked of the CLI"
-grep -q 'MIN_VERSION' "$ASSETS/doors-claude.sh" \
+grep -q 'CLAUDE_MIN' "$ASSETS/doors-workspace.sh" \
   || fail "ClaudeDoor: no floor on the version, and Remote Control did not exist in older builds"
-echo "PASS ClaudeDoor (Anthropic's own app, on a pty, with sign-in and version checked)"
+# The extension is Anthropic's own identifier on Open VSX, spelled the way they own it.
+grep -q 'EXT_claude="Anthropic.claude-code"' "$ASSETS/doors-workspace.sh" \
+  || fail "ClaudeDoor: the extension installed is not the one Anthropic publish"
+echo "PASS ClaudeDoor (Remote Control on at startup, before the editor, with the version checked)"
+
+# ---------------------------------------------------------------- one way in, per agent
+# The point of this build. Three doors meant a menu, and a menu is a question somebody has to
+# answer before they can start working -- when for each maker exactly one route is the best their
+# own publishing supports. So: one script, one start line each, one address, and nothing shipped
+# that could become a second route later.
+starts=$(grep -oE '"doors-[a-z]+\.sh start [a-z]+"' "$SRC/Doors.java" | sort -u)
+[ "$(printf '%s\n' "$starts" | wc -l | tr -d ' ')" = "3" ] \
+  || fail "OneWayIn: there are not exactly three start lines; a route was added or lost"
+for id in claude codex antigravity; do
+  printf '%s\n' "$starts" | grep -q "\"doors-workspace.sh start $id\"" \
+    || fail "OneWayIn: $id does not start through the one workspace script"
+done
+# Every agent opens the same address, and it is written once. Three identical strings would pass
+# any grep while still being three things somebody could edit apart, so this asks for the shared
+# name rather than the value it happens to hold today.
+for id in claude codex antigravity; do
+  [ "$(python3 tests/agents.py "$SRC/Doors.java" "$id" surface)" = "WORKSPACE" ] \
+    || fail "OneWayIn: $id has a surface of its own instead of the one workspace"
+done
+grep -q 'WORKSPACE = "http://127.0.0.1:8391/"' "$SRC/Doors.java" \
+  || fail "OneWayIn: the one workspace address is not the loopback address the server binds"
+# And there is nothing else to start. A second start script in assets is how a menu comes back.
+extra=$(ls "$ASSETS"/*.sh | grep -v 'doors-bootstrap.sh\|doors-workspace.sh' || true)
+[ -z "$extra" ] || fail "OneWayIn: a second startable script is shipped -- $extra"
+# -o, not -c: both names sit on one line in SCRIPTS, so counting lines counts one.
+shipped=$(grep -oE '"doors-[a-z]+\.sh"' "$SRC/Doors.java" | sort -u | wc -l | tr -d ' ')
+[ "$shipped" = "2" ] \
+  || fail "OneWayIn: the catalog ships $shipped scripts; this build has two"
+echo "PASS OneWayIn (one script, one start line each, one address, nothing else to choose)"
+
+# ---------------------------------------------------------------- a phone surface only where one exists
+# An agent may only claim a second place to see the same session if its maker actually publishes
+# one. OpenAI's Remote Control hosts on macOS -- Windows is listed as coming, Linux is not listed
+# at all -- so there is nothing to offer for Codex, and offering something would be inventing it.
+# Read by field, not by grep. The first cut of this looked for an empty string inside the Codex
+# entry -- and the entry has two empty strings in a row, the surface and the sentence describing
+# it. Filling the surface in left the other one there, so the check stayed green while the app
+# claimed OpenAI publish something they do not. Fourth time in this project. tests/agents.py
+# reads the constructor by position instead.
+field() { python3 tests/agents.py "$SRC/Doors.java" "$1" "$2"; }
+[ -z "$(field codex phone)" ] \
+  || fail "PhoneSurface: Codex claims a phone surface; OpenAI host Remote Control on macOS only"
+[ -z "$(field codex phoneIs)" ] \
+  || fail "PhoneSurface: Codex describes a phone surface it does not have"
+[ "$(field claude phone)" = "https://claude.ai/code" ] \
+  || fail "PhoneSurface: Claude is not pointed at the address Anthropic publish"
+[ "$(field antigravity phone)" = "https://antigravity.google.com" ] \
+  || fail "PhoneSurface: Antigravity is not pointed at the dashboard Google publish"
+# A surface that is described but cannot be opened, or opened but never described, is worse than
+# none: the owner is either sent somewhere unannounced or told about somewhere they cannot reach.
+for id in claude codex antigravity; do
+  if [ -n "$(field $id phone)" ] && [ -z "$(field $id phoneIs)" ]; then
+    fail "PhoneSurface: $id opens a link with nothing saying what it is"
+  fi
+done
+echo "PASS PhoneSurface (a second surface only where its maker publishes one, and it is described)"
+
+# ---------------------------------------------------------------- nothing silently switches it off
+# Anthropic's own requirements page names four variables, each of which disables the feature-flag
+# evaluation Remote Control depends on. Set any of them and the session starts, works, and simply
+# never appears on the phone -- the exact failure this app has no way to explain. A fifth,
+# ANTHROPIC_BASE_URL, points the API somewhere else and is refused outright.
+for killer in DISABLE_TELEMETRY DO_NOT_TRACK CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC DISABLE_GROWTHBOOK; do
+  if grep -REn "^[^#]*(export +)?$killer=" "$ASSETS" "$SRC"; then
+    fail "RemoteControlSurvives: $killer is set, which switches Remote Control off without saying so"
+  fi
+  grep -q "unset .*$killer" "$ASSETS/doors-workspace.sh" \
+    || fail "RemoteControlSurvives: $killer is never cleared, so anything could leave it set"
+done
+grep -q 'unset ANTHROPIC_BASE_URL' "$ASSETS/doors-workspace.sh" \
+  || fail "RemoteControlSurvives: the API host is not cleared; a custom one is refused outright"
+# The version floor is the one the mechanism needs, not the one the feature first shipped in.
+grep -q 'CLAUDE_MIN="2.1.203"' "$ASSETS/doors-workspace.sh" \
+  || fail "RemoteControlSurvives: the floor is not the version that honours remoteControlAtStartup"
+echo "PASS RemoteControlSurvives (nothing in this build switches Remote Control off behind the owner)"
 
 # ---------------------------------------------------------------- what it costs, in their words
 # This app told people Codex was included in "Every ChatGPT plan, Free included". OpenAI's own
@@ -113,9 +194,9 @@ grep -q 'Codex application for macOS' "$SRC/Doors.java" \
 echo "PASS PlansAreTheirs (what an agent costs is quoted from its publisher, not guessed)"
 
 # ---------------------------------------------------------------- integrity of what is downloaded
-grep -q 'sha512sum --check' "$ASSETS/doors-antigravity.sh" \
+grep -q 'sha512sum --check' "$ASSETS/doors-workspace.sh" \
   || fail "Integrity: the Antigravity download is not checksum-verified"
-grep -q 'sha256sum' "$ASSETS/doors-codeserver.sh" \
+grep -q 'sha256sum' "$ASSETS/doors-workspace.sh" \
   || fail "Integrity: the code-server download records no digest"
 grep -q "IMAGE_SHA256" "$SRC/Ubuntu.java" \
   || fail "Integrity: the Ubuntu image is not checksum-verified"
@@ -168,11 +249,15 @@ fi
 echo "PASS Resolver (the phone's own DNS, written before every start and followed across networks)"
 
 # ---------------------------------------------------------------- the loopback stays loopback
-grep -q 'bind-addr "127.0.0.1' "$ASSETS/doors-codeserver.sh" \
+grep -q 'bind-addr "127.0.0.1' "$ASSETS/doors-workspace.sh" \
   || fail "Loopback: code-server is not bound to the loopback address"
-if grep -q 'bind-addr "0.0.0.0' "$ASSETS/doors-codeserver.sh"; then
+if grep -q 'bind-addr "0.0.0.0' "$ASSETS/doors-workspace.sh"; then
   fail "Loopback: code-server would listen on the network"
 fi
+# And the address the app opens has to be that same loopback address, not a host name that
+# could resolve anywhere. The catalog writes it once; this is that one place.
+grep -q 'WORKSPACE = "http://127.0.0.1:8391/"' "$SRC/Doors.java" \
+  || fail "Loopback: the address the app opens is not the loopback address the server binds"
 grep -q '<domain includeSubdomains="false">127.0.0.1</domain>' app/res/xml/network_security_config.xml \
   || fail "Loopback: cleartext is not restricted to the loopback address"
 grep -q 'cleartextTrafficPermitted="false"' app/res/xml/network_security_config.xml \
@@ -182,15 +267,26 @@ echo "PASS Loopback (the editor answers only this phone, and only there is clear
 # ---------------------------------------------------------------- sign-in happens, and first
 # Google's own words: run agy, complete the sign-in flow, then exit, and only then start the
 # daemon. The first cut of this app skipped that entirely and would have failed at step one.
-grep -q 'doors-antigravity.sh login' "$SRC/Doors.java" \
+grep -q 'doors-workspace.sh login antigravity' "$SRC/Doors.java" \
   || fail "Login: Antigravity has no sign-in step, so its daemon would start with no credentials"
-grep -q 'NEEDLOGIN' "$ASSETS/doors-antigravity.sh" \
+grep -q 'NEEDLOGIN' "$ASSETS/doors-workspace.sh" \
   || fail "Login: the script does not tell the app when sign-in is missing"
 grep -q 'NEEDLOGIN' "$SRC/DoorService.java" \
   || fail "Login: the app does not act on a missing sign-in"
 grep -q 'ACTION_INPUT' "$SRC/DoorService.java" \
   || fail "Login: nothing can type the code back, so a sign-in could never finish"
-echo "PASS Login (sign-in runs first, and the code can be typed back)"
+# Only the maker that has a sign-in command may ever send that word. NEEDLOGIN makes the app run
+# the agent's login line, and for an agent with an empty one that was `bash /opt/doors/` -- a
+# shell error, shown to the owner as though their agent had failed. Anthropic and OpenAI sign in
+# inside their own panel in the editor, so for them the script says so in plain words instead.
+if grep -n 'NEEDLOGIN' "$ASSETS/doors-workspace.sh" | grep -qiE 'claude|chatgpt|codex|editor'; then
+  fail "Login: NEEDLOGIN is sent for an agent whose sign-in happens inside the editor"
+fi
+grep -q 'agent.signsInSeparately()' "$SRC/DoorService.java" \
+  || fail "Login: the service would run a sign-in command for an agent that has none"
+grep -q 'signsInSeparately()' "$SRC/DoorActivity.java" \
+  || fail "Login: the screen asks for a separate sign-in without checking there is one"
+echo "PASS Login (sign-in runs first where a maker needs it, and nowhere else)"
 
 # ---------------------------------------------------------------- sign-in leaves the app
 grep -q 'accounts.google.com' "$SRC/DoorActivity.java" \
@@ -207,34 +303,36 @@ echo "PASS SignIn (passwords are typed in the browser, never in this app's windo
 # So the address is written once, checked here, and the shape of the old mistake is banned.
 DASH="https://antigravity.google.com"
 grep -q "\"$DASH\"," "$SRC/Doors.java" \
-  || fail "VerifiedUrls: Antigravity's surface is not the dashboard address this app verified"
-grep -q "^DASHBOARD=\"$DASH\"" "$ASSETS/doors-antigravity.sh" \
-  || fail "VerifiedUrls: the script and the catalog disagree about the dashboard address"
+  || fail "VerifiedUrls: Antigravity's phone surface is not the dashboard address this app verified"
+grep -q '"https://claude.ai/code"' "$SRC/Doors.java" \
+  || fail "VerifiedUrls: Anthropic's phone surface is not the address this app verified"
 if grep -REn 'antigravity\.google/[a-z]' "$SRC" "$ASSETS" | grep -vi 'docs\|cli/install' | grep -q .; then
   fail "VerifiedUrls: a path on antigravity.google is being used as an interface address again"
 fi
 # Every READY line hands the app an address to open, so each one has to be an address this
 # repository can name, not one built at run time from whatever the daemon happened to print.
-if grep -n 'say "READY' "$ASSETS/doors-antigravity.sh" | grep -v '\$DASHBOARD' | grep -q .; then
-  fail "VerifiedUrls: a READY line names an address that is not the verified dashboard"
+# There is one thing to open now -- the workspace on this phone -- so a READY naming anything
+# else is an address assembled at run time, which is how a 404 reached the owner's screen once.
+if grep -n 'say "READY' "$ASSETS"/*.sh | grep -v '127\.0\.0\.1:\${PORT}' | grep -q .; then
+  fail "VerifiedUrls: a READY line names an address that is not the workspace on this phone"
 fi
-echo "PASS VerifiedUrls (one dashboard address, written down and agreed on)"
+echo "PASS VerifiedUrls (every address this app opens is one that was checked)"
 
 # ---------------------------------------------------------------- only flags the CLI really has
 # The same failure in a different costume. An earlier build fell back to
 # `agy remote-control start --foreground`, a flag that reads like it should exist and does not:
 # the 1.2.2 arm64 binary carries no such flag, and remote-control takes start, status, stop and
 # --name. It would have been rejected as an unknown flag on the owner's phone.
-if grep -n 'remote-control' "$ASSETS/doors-antigravity.sh" | grep -qE '\-\-foreground|--daemon|--detach'; then
+if grep -n 'remote-control' "$ASSETS/doors-workspace.sh" | grep -qE '\-\-foreground|--daemon|--detach'; then
   fail "AgyFlags: the script passes a remote-control flag the CLI does not have"
 fi
 # Nothing but the three subcommands Google document may follow `remote-control`.
-stray=$(grep -oE 'remote-control [a-z][a-z-]*' "$ASSETS/doors-antigravity.sh" \
+stray=$(grep -oE 'remote-control [a-z][a-z-]*' "$ASSETS/doors-workspace.sh" \
         | sort -u | grep -vE 'remote-control (start|status|stop)$' || true)
 [ -z "$stray" ] || fail "AgyFlags: undocumented subcommand -- $stray"
-grep -q 'remote-control start' "$ASSETS/doors-antigravity.sh" \
+grep -q 'remote-control start' "$ASSETS/doors-workspace.sh" \
   || fail "AgyFlags: the documented start command is missing"
-grep -q 'remote-control status' "$ASSETS/doors-antigravity.sh" \
+grep -q 'remote-control status' "$ASSETS/doors-workspace.sh" \
   || fail "AgyFlags: nothing asks the daemon whether it is actually running"
 echo "PASS AgyFlags (start, status and stop -- the three the CLI documents)"
 
@@ -246,16 +344,22 @@ echo "PASS AgyFlags (start, status and stop -- the three the CLI documents)"
 # The tar command itself, not a line that mentions the flag. Written as a plain grep first, this
 # failed on the comment above the fix that explains why the flag is wrong -- the same shape of
 # mistake as a gate that passes because a comment names the file it was meant to check for.
-if grep -E '^[^#]*\btar\b' "$ASSETS/doors-antigravity.sh" | grep -q 'strip-components'; then
+# Both archives live in one script now, which is exactly when they are most likely to be
+# "tidied" into each other. So each tar line is found by the archive it opens, not by being
+# the only tar in its file.
+agy_tar=$(grep -E '^[^#]*\btar\b' "$ASSETS/doors-workspace.sh" | grep 'cli.tar.gz' || true)
+srv_tar=$(grep -E '^[^#]*\btar\b' "$ASSETS/doors-workspace.sh" | grep '\$ARCHIVE' || true)
+[ -n "$agy_tar" ] || fail "Unpacks: nothing unpacks the Antigravity archive"
+[ -n "$srv_tar" ] || fail "Unpacks: nothing unpacks the code-server archive"
+if printf '%s' "$agy_tar" | grep -q 'strip-components'; then
   fail "Unpacks: the Antigravity archive is a single root file; stripping a component extracts nothing"
 fi
-grep -qE "name agy -o -name antigravity" "$ASSETS/doors-antigravity.sh" \
+grep -qE "name agy -o -name antigravity" "$ASSETS/doors-workspace.sh" \
   || fail "Unpacks: the binary is assumed to be at a path instead of found by name"
-grep -q 'cannot be run' "$ASSETS/doors-antigravity.sh" \
+grep -q 'cannot be run' "$ASSETS/doors-workspace.sh" \
   || fail "Unpacks: nothing checks the unpacked binary is executable"
-# Door B's archive does have a top-level directory, so there the flag is right. Saying so keeps
-# the two cases from being 'fixed' into each other later.
-grep -E '^[^#]*\btar\b' "$ASSETS/doors-codeserver.sh" | grep -q 'strip-components=1' \
+# code-server's archive does have a top-level directory, so there the flag is right.
+printf '%s' "$srv_tar" | grep -q 'strip-components=1' \
   || fail "Unpacks: code-server's archive does have a wrapping directory and needs it stripped"
 echo "PASS Unpacks (each archive is unpacked the way that archive is actually shaped)"
 
@@ -263,9 +367,9 @@ echo "PASS Unpacks (each archive is unpacked the way that archive is actually sh
 # 231 MB for the ChatGPT extension, 99 MB for Claude Code, and Open VSX sends no progress. One
 # unchanging line for an hour is indistinguishable from a hang, and someone on mobile data has a
 # right to know the number while they can still decide to wait for Wi-Fi.
-grep -q 'extension_size' "$ASSETS/doors-codeserver.sh" \
+grep -q 'extension_size' "$ASSETS/doors-workspace.sh" \
   || fail "BigDownloads: the extension download never says how big it is"
-grep -q 'It is not stuck' "$ASSETS/doors-codeserver.sh" \
+grep -q 'It is not stuck' "$ASSETS/doors-workspace.sh" \
   || fail "BigDownloads: a silent hour is never explained as normal"
 echo "PASS BigDownloads (the size is said out loud before the data is spent)"
 
@@ -288,10 +392,19 @@ echo "PASS MarkerOrder (a marker is read before any line is guessed at)"
 # had just started, and the app would announce a working agent that no longer existed.
 grep -q 'kill-on-exit' "$SRC/Ubuntu.java" \
   || fail "StaysInSession: the assumption this gate is built on is gone; re-check what proot does now"
-grep -q 'wait "\$server"' "$ASSETS/doors-codeserver.sh" \
-  || fail "StaysInSession: the editor door returns while its server is supposed to be running"
-grep -q 'hold_open' "$ASSETS/doors-antigravity.sh" \
-  || fail "StaysInSession: the Antigravity door returns while its daemon is supposed to be running"
+grep -q 'wait "\$server"' "$ASSETS/doors-workspace.sh" \
+  || fail "StaysInSession: the workspace returns while its server is supposed to be running"
+# Anthropic say it plainly: "Remote Control runs as a local process. If you close the terminal,
+# quit VS Code, or otherwise stop the claude process, the session goes offline." The workspace is
+# that process's home, so everything has to start inside the session this script holds open --
+# announced ready first, held last.
+hold_at=$(grep -n 'wait "\$server"' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+ready_at=$(grep -n 'say "READY' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+agy_at=$(grep -n 'remote-control start' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+[ -n "$hold_at" ] && [ -n "$ready_at" ] && [ "$ready_at" -lt "$hold_at" ] \
+  || fail "StaysInSession: the workspace is announced ready after the session holding it has ended"
+[ -n "$agy_at" ] && [ "$agy_at" -lt "$hold_at" ] \
+  || fail "StaysInSession: Google's daemon starts outside the session the workspace holds open"
 if grep -q 'Running in the background' "$SRC/DoorService.java"; then
   fail "StaysInSession: the app still claims a door keeps running after its session has ended"
 fi
@@ -302,9 +415,11 @@ echo "PASS StaysInSession (a door holds its session open for as long as it is ru
 # sign in", and an auth step called "Selecting sign-in method". That is an interactive screen,
 # and an interactive program handed a pipe either refuses to draw or draws nothing at all.
 # `script` allocates a pty and is part of Ubuntu's base system.
-grep -q 'script --quiet --return --command' "$ASSETS/doors-antigravity.sh" \
+grep -q 'script --quiet --return --command' "$ASSETS/doors-workspace.sh" \
   || fail "SignInTerminal: the sign-in is run on a pipe, where an interactive screen cannot draw"
-if grep -nE '^[^#]*(agy|\$agy)' "$ASSETS/doors-antigravity.sh" | grep -qE 'agy" (auth|login) '; then
+grep -q 'on_a_terminal "\$agy"' "$ASSETS/doors-workspace.sh" \
+  || fail "SignInTerminal: Google's sign-in is not the thing being given the terminal"
+if grep -nE '^[^#]*(agy|\$agy)' "$ASSETS/doors-workspace.sh" | grep -qE 'agy" (auth|login) '; then
   fail "SignInTerminal: a sign-in subcommand is used; this CLI signs in with no arguments at all"
 fi
 grep -q 'ACTION_INPUT' "$SRC/DoorService.java" \
@@ -336,17 +451,17 @@ echo "PASS AccountReachable (a sign-in window reaches the browser that can compl
 # A desktop editor at its own default size shows about a third of itself on 720 pixels, with the
 # rest off the right-hand edge. Zooming the page out blurs the text; asking the editor to draw
 # smaller does not.
-grep -q 'phone_defaults' "$ASSETS/doors-codeserver.sh" \
+grep -q 'phone_defaults' "$ASSETS/doors-workspace.sh" \
   || fail "FitsTheScreen: the editor is started at its desktop size on a phone"
-grep -q '"window.zoomLevel"' "$ASSETS/doors-codeserver.sh" \
+grep -q '"window.zoomLevel"' "$ASSETS/doors-workspace.sh" \
   || fail "FitsTheScreen: nothing reduces the editor's own drawing size"
-grep -q '"editor.wordWrap": "on"' "$ASSETS/doors-codeserver.sh" \
+grep -q '"editor.wordWrap": "on"' "$ASSETS/doors-workspace.sh" \
   || fail "FitsTheScreen: code runs off the side of a screen that cannot scroll sideways"
 # Written once, so settings the owner changed are never overwritten by an update.
-grep -q 'settings.json" \] && return 0' "$ASSETS/doors-codeserver.sh" \
+grep -q 'settings.json" \] && return 0' "$ASSETS/doors-workspace.sh" \
   || fail "FitsTheScreen: these defaults would overwrite settings the owner changed"
 # And they must be valid JSON, or the editor silently ignores the whole file.
-python3 -c 'import json,re,sys; b=re.search(r"<<.JSON.\n(.*?)\nJSON", open(sys.argv[1]).read(), re.S); sys.exit(0 if b and isinstance(json.loads(b.group(1)), dict) else 1)' "$ASSETS/doors-codeserver.sh" \
+python3 -c 'import json,re,sys; b=re.search(r"<<.JSON.\n(.*?)\nJSON", open(sys.argv[1]).read(), re.S); sys.exit(0 if b and isinstance(json.loads(b.group(1)), dict) else 1)' "$ASSETS/doors-workspace.sh" \
   || fail "FitsTheScreen: the settings written for the editor are not valid JSON"
 echo "PASS FitsTheScreen (the editor is sized for this phone, once, and left alone after)"
 
@@ -354,14 +469,15 @@ echo "PASS FitsTheScreen (the editor is sized for this phone, once, and left alo
 # Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
 # window can never be signed in. Their own instruction is to open it in a browser and add it to
 # the home screen. A loopback editor is the other case and stays in the window.
-grep -q 'opensInBrowser' "$SRC/Doors.java" \
-  || fail "BrowserSurface: nothing decides where a publisher's own interface opens"
-grep -q 'opensInBrowser' "$SRC/DoorActivity.java" \
-  || fail "BrowserSurface: the screen ignores where an interface is supposed to open"
-if grep -qE 'load\(agent\.surface\)' "$SRC/DoorActivity.java"; then
-  fail "BrowserSurface: a publisher's own address is loaded into this app's window again"
+grep -q 'phoneOpensOutside' "$SRC/Doors.java" \
+  || fail "BrowserSurface: nothing decides where a maker's own phone surface opens"
+grep -q 'openOutside(Uri.parse(surface))' "$SRC/DoorActivity.java" \
+  || fail "BrowserSurface: a maker's own site is not handed to the phone's real browser"
+# The editor is a server on this phone and belongs in this window; a maker's own site never does.
+if grep -qE 'web\.loadUrl\(agent\.phone\)' "$SRC/DoorActivity.java"; then
+  fail "BrowserSurface: a maker's own address is loaded into this app's window again"
 fi
-echo "PASS BrowserSurface (the publisher's site opens in a real browser, the editor stays here)"
+echo "PASS BrowserSurface (the maker's site opens in a real browser, the editor stays here)"
 
 # ---------------------------------------------------------------- a download is proved, not assumed
 # MODULE_NOT_FOUND with an empty require stack, on a real phone. code-server's launcher runs
@@ -370,18 +486,24 @@ echo "PASS BrowserSurface (the publisher's site opens in a real browser, the edi
 # launcher survived and everything node needed did not. Nothing is trusted now until it is there.
 # The list itself, not a mention of it. Written as a plain grep first, this passed while the
 # real check was deleted, because the explanation above it names the same file.
-grep -qE '^NEEDED=.*out/node/entry\.js' "$ASSETS/doors-codeserver.sh" \
+grep -qE '^NEEDED=.*out/node/entry\.js' "$ASSETS/doors-workspace.sh" \
   || fail "ServerTree: the file node actually starts is not in the list that must be present"
-grep -qE '^NEEDED=.*lib/node' "$ASSETS/doors-codeserver.sh" \
+grep -qE '^NEEDED=.*lib/node' "$ASSETS/doors-workspace.sh" \
   || fail "ServerTree: the bundled node is not in the list that must be present"
-grep -q 'continue-at' "$ASSETS/doors-codeserver.sh" \
+grep -q 'continue-at' "$ASSETS/doors-workspace.sh" \
   || fail "ServerTree: a cut-off download restarts from zero instead of resuming"
-grep -q 'code-server --version\|bin/code-server" --version' "$ASSETS/doors-codeserver.sh" \
+grep -q 'bin/code-server" --version' "$ASSETS/doors-workspace.sh" \
   || fail "ServerTree: the unpacked server is never asked to prove it runs"
-if grep -oE 'max-time [0-9]+' "$ASSETS/doors-codeserver.sh" | awk '{ if ($2 > 60 && $2 < 1800) bad=1 } END { exit !bad }'; then
+# The digest is recorded only after the tree has proved itself. The other order makes a
+# truncated download the trusted baseline and refuses every complete one after it.
+proof_at=$(grep -n 'bin/code-server" --version' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+pin_at=$(grep -n '> "\$pinned"' "$ASSETS/doors-workspace.sh" | head -n1 | cut -d: -f1)
+[ -n "$proof_at" ] && [ -n "$pin_at" ] && [ "$proof_at" -lt "$pin_at" ] \
+  || fail "ServerTree: the download becomes the trusted baseline before it is proved to run"
+if grep -oE 'max-time [0-9]+' "$ASSETS/doors-workspace.sh" | awk '{ if ($2 > 60 && $2 < 1800) bad=1 } END { exit !bad }'; then
   fail "ServerTree: a 220 MB download is given a deadline a phone on mobile data cannot meet"
 fi
-grep -q 'df -Pm' "$ASSETS/doors-codeserver.sh" \
+grep -q 'df -Pm' "$ASSETS/doors-workspace.sh" \
   || fail "ServerTree: nothing checks there is room before spending an hour of someone's data"
 echo "PASS ServerTree (resumable, complete, and proved to run before it is trusted)"
 

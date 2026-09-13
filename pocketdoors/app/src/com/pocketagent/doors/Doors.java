@@ -1,67 +1,64 @@
 package com.pocketagent.doors;
 
 /**
- * The four agents, and the door each one actually opened.
+ * Three agents, one way in.
  *
- * This class is the whole design in one file. PocketAgent does not draw an agent's interface --
- * it runs the agent and hands you the interface its own publisher ships. What differs between
- * the four is only how that interface is reached, and each of them decided that for themselves:
+ * An earlier design offered three "doors" -- a remote-control daemon, an extension host, a
+ * desktop application -- and let the owner pick. That was a menu, and a menu is a question
+ * somebody has to answer before they can start working. Worse, the answer was never really
+ * theirs: for each maker exactly one route is the best one their own publishing supports, so
+ * offering the others was offering worse choices politely.
  *
- *   Door A, REMOTE_CONTROL  A headless daemon here, and the publisher's own web or phone app as
- *                           the screen. Google and Anthropic both call this "Remote Control".
- *                           Nothing but one process runs on the phone.
+ * So there is one workspace now. code-server runs on the phone and is the screen for all three.
+ * Inside it, each agent is reached the single way its own maker supports best:
  *
- *   Door B, EXTENSION_HOST  A VS Code server here, with the publisher's own extension inside it.
- *                           The interface is their extension's, the editor and terminal around
- *                           it are real. No X server, no Electron.
+ *   Anthropic   their VS Code extension, with Remote Control switched on at startup, so their
+ *               phone app shows the same session without anyone touching a setting.
+ *   OpenAI      their VS Code extension. Their Remote Control hosts only on macOS, so there is
+ *               no second surface to offer and none is pretended.
+ *   Google      their CLI in the workspace's own terminal, with Remote Control started beside
+ *               it, so their dashboard shows the same session.
  *
- *   Door C, DESKTOP_APP     The publisher's whole desktop application, drawn on an X display and
- *                           watched through the viewer. The heaviest door, and the only one some
- *                           publishers have opened.
- *
- * Where a field says a thing is unverified, it is unverified: it is documented by the publisher
- * and has not been run on a phone under PRoot. Probe records what actually happened, and the
- * home screen shows that instead of this guess once there is one.
+ * The workspace gives every agent a file tree, a terminal, a diff view and git, which two of
+ * the three would otherwise have no way to show on a phone at all.
  */
 final class Doors {
 
-    enum Door {
-        REMOTE_CONTROL("Remote Control", "Publisher's own app, daemon here", 1),
-        EXTENSION_HOST("Extension Host", "Publisher's own extension, editor here", 2),
-        DESKTOP_APP("Desktop app", "Publisher's whole application, on a display here", 4);
-
-        final String title;
-        final String summary;
-        /** How much of the phone it asks for, 1 to 4. Used to order and to warn. */
-        final int weight;
-
-        Door(String title, String summary, int weight) {
-            this.title = title;
-            this.summary = summary;
-            this.weight = weight;
-        }
-    }
+    /**
+     * The one address the workspace answers on.
+     *
+     * It is a constant rather than three identical strings on purpose: there is one workspace,
+     * and writing it once is what stops a later change from quietly giving one agent a different
+     * way in. The port is loopback only -- it is refused from anywhere but this phone.
+     */
+    static final String WORKSPACE = "http://127.0.0.1:8391/";
 
     static final class Agent {
         final String id;
         final String name;
-        final Door door;
-        /** What starts inside Ubuntu. Empty for a door that is not implemented yet. */
+        /** What starts inside Ubuntu. One script, one argument: there is only one way in. */
         final String start;
         /**
-         * What signs in, when the publisher needs that done first and separately.
+         * What signs in, when the maker needs that done first and separately.
          *
          * Google's own instruction for a headless host is "run agy, complete the sign-in flow,
-         * then exit", and only then start the daemon -- the daemon has no credentials of its
-         * own. On a machine with no desktop the CLI prints an authorisation link and waits for
-         * the code the browser gives back, so this command is run with its input still
-         * connected and the app relays both halves. Empty where the publisher's own extension
-         * handles sign-in inside its interface, which is the case for Door B.
+         * then exit", and only then start the daemon. Empty where the maker's own extension
+         * handles sign-in inside its own interface, which is both of the others.
          */
         final String login;
-        /** Where the interface appears once it is running. */
+        /** The workspace, where the editor appears. The same address for all three. */
         final String surface;
-        /** What the publisher charges. Said plainly, because it decides whether you can use it. */
+        /**
+         * The maker's own phone surface, when they publish one, and empty when they do not.
+         *
+         * This is not a second option to choose between -- it is the same session seen from a
+         * phone, and it is switched on automatically. Empty for OpenAI, whose Remote Control
+         * hosts only on macOS; nothing is offered there because nothing exists.
+         */
+        final String phone;
+        /** What the phone surface is, in the owner's words, so a link is never a surprise. */
+        final String phoneIs;
+        /** What the maker charges. Said plainly, because it decides whether you can use it. */
         final String cost;
         final boolean free;
         /** What is known to be missing, in the owner's words. Empty when nothing is. */
@@ -69,46 +66,50 @@ final class Doors {
         /** True when this has been run on a phone; false while it is only documented. */
         final boolean proven;
 
-        Agent(String id, String name, Door door, String start, String login, String surface,
-              String cost, boolean free, String limit, boolean proven) {
+        Agent(String id, String name, String start, String login, String surface,
+              String phone, String phoneIs, String cost, boolean free, String limit,
+              boolean proven) {
             this.id = id;
             this.name = name;
-            this.door = door;
             this.start = start;
             this.login = login;
             this.surface = surface;
+            this.phone = phone;
+            this.phoneIs = phoneIs;
             this.cost = cost;
             this.free = free;
             this.limit = limit;
             this.proven = proven;
         }
 
-        boolean implemented() {
-            return !start.isEmpty();
-        }
-
+        /**
+         * True when this maker needs a sign-in run before anything starts.
+         *
+         * Only Google. The other two sign in inside their own panel in the editor, so asking the
+         * app to run a sign-in command for them would be asking it to run nothing.
+         */
         boolean signsInSeparately() {
             return !login.isEmpty();
         }
 
+        /** True when this agent also appears on a surface the maker built for a phone. */
+        boolean hasPhoneSurface() {
+            return !phone.isEmpty();
+        }
+
         /**
-         * True when the interface is the publisher's own site rather than a server on this phone.
+         * True when the maker's phone surface is a site rather than this phone's own server.
          *
-         * It decides where the interface is opened, and the reason is Google's: they refuse an
-         * OAuth sign-in inside an embedded view, so a dashboard shown in this app's own window
-         * would be permanently signed out. Their documentation says to open it in a browser and
-         * add it to the home screen, so that is what this app does -- it hands the link to the
-         * phone's real browser, where the session is already signed in and the notifications
-         * their web app sends actually arrive. A loopback address is the other case: nothing
-         * outside this phone can reach it and there is no account to sign into, so it is shown
-         * in the window.
+         * It decides where that surface opens, and the reason is the makers': neither Google nor
+         * Anthropic will complete a sign-in inside an embedded view, so a dashboard shown in
+         * this app's own window would be permanently signed out. Their own instruction is to use
+         * a browser, or their app.
          */
-        boolean opensInBrowser() {
-            return surface.startsWith("https://");
+        boolean phoneOpensOutside() {
+            return phone.startsWith("https://");
         }
     }
 
-    /** Ordered lightest door first, and within a door, free before paid. */
     /**
      * Three, and only three.
      *
@@ -120,35 +121,47 @@ final class Doors {
      * Who that leaves out, and why, is written down in Reasons.java and shown in the app.
      */
     static final Agent[] ALL = {
-            new Agent("antigravity", "Antigravity", Door.REMOTE_CONTROL,
-                    "doors-antigravity.sh start",
-                    "doors-antigravity.sh login",
+            new Agent("claude", "Claude Code",
+                    "doors-workspace.sh start claude",
+                    "",
+                    WORKSPACE,
+                    "https://claude.ai/code",
+                    "Anthropic's own app. Open Claude on this phone, tap Code, and this session "
+                            + "is in the list.",
+                    "Claude Pro, Max, Team or Enterprise, from $20 a month", false,
+                    "Remote Control is switched on for every session, so the same work is in the "
+                            + "editor here and in Anthropic's app at the same time. An API key "
+                            + "cannot do this -- Anthropic support it on subscriptions only. Two "
+                            + "commands stay local only: /plugin and /resume.",
+                    false),
+
+            new Agent("codex", "Codex",
+                    "doors-workspace.sh start codex",
+                    "",
+                    WORKSPACE,
+                    "",
+                    "",
+                    "ChatGPT Plus, Pro, Business, Edu or Enterprise", false,
+                    "OpenAI's Remote Control hosts the session on a Mac -- Windows is listed as "
+                            + "coming and Linux is not listed at all -- so there is no phone "
+                            + "surface to offer here, and none is pretended. What runs is their "
+                            + "own VS Code extension, the same one their desktop editor loads, "
+                            + "and not the Codex application for macOS.",
+                    false),
+
+            new Agent("antigravity", "Antigravity",
+                    "doors-workspace.sh start antigravity",
+                    "doors-workspace.sh login antigravity",
+                    WORKSPACE,
                     "https://antigravity.google.com",
+                    "Google's dashboard in your browser. Add it to the home screen and it sends "
+                            + "notifications like an app; Google publish no separate app.",
                     "Free tier", true,
                     "Google's own words for where a session runs: \"your desktop or server\". This "
-                            + "phone is the server. Their dashboard shows conversations, tasks, plans "
-                            + "and artifacts, and approves terminal commands and file writes.",
-                    false),
-
-            new Agent("claude", "Claude Code", Door.REMOTE_CONTROL,
-                    "doors-claude.sh start",
-                    "doors-claude.sh login",
-                    "https://claude.ai/code",
-                    "Claude Pro or Max, from $20 a month", false,
-                    "Anthropic's own mobile app is the screen. Remote Control is confirmed working "
-                            + "on a headless Linux host, which is what this workspace is. It needs a "
-                            + "real terminal, and this app gives it one.",
-                    false),
-
-            new Agent("codex", "Codex", Door.EXTENSION_HOST,
-                    "doors-codeserver.sh start codex",
-                    "",
-                    "http://127.0.0.1:8391/",
-                    "ChatGPT Plus, Pro, Business, Edu or Enterprise", false,
-                    "OpenAI's Remote Control needs a Mac to host the session -- Windows is listed as "
-                            + "coming, Linux is not listed at all. So this is their VS Code extension "
-                            + "instead, the same one their desktop editor runs, driving the same Codex "
-                            + "engine. It is not the separate Codex application for macOS.",
+                            + "phone is the server. Their dashboard approves terminal commands and "
+                            + "file writes, and the editor here gives the terminal and diff it has "
+                            + "no other way to show. Their CLI keeps its sign-in in the system "
+                            + "keyring, and a workspace has none, so Google may ask again.",
                     false),
     };
 
@@ -157,9 +170,8 @@ final class Doors {
         return null;
     }
 
-    /** The script every door's start line lives in, copied into Ubuntu at setup. */
-    static final String[] SCRIPTS = {"doors-bootstrap.sh", "doors-antigravity.sh",
-            "doors-claude.sh", "doors-codeserver.sh"};
+    /** Every script that is copied into Ubuntu at set-up. */
+    static final String[] SCRIPTS = {"doors-bootstrap.sh", "doors-workspace.sh"};
 
     private Doors() {}
 }

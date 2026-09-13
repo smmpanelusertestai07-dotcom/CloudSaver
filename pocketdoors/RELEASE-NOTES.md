@@ -1,9 +1,83 @@
-# PocketAgent Doors 15.5.0 — three makers, and the reason on a screen
+# PocketAgent Doors 15.6.0 — one workspace, one way into each agent
 
-Version **15.5.0**, code **550**, application ID `com.pocketagent.doors`.
+Version **15.6.0**, code **560**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.6.0: the menu is gone
+
+15.5.0 offered three doors — a remote-control daemon, an extension host, a desktop application —
+and let you pick. That was a menu, and a menu is a question you have to answer before you can
+start working. Worse, the answer was never really yours: for each maker exactly one route is the
+best one their own publishing supports, so offering the others was offering worse choices
+politely.
+
+There is one workspace now. code-server runs on the phone and is the screen for all three. Inside
+it, each agent is reached the single way its own maker supports best:
+
+| Maker | How it is reached here | Where else the same session shows up |
+|---|---|---|
+| Anthropic | their VS Code extension, Remote Control on at startup | the Claude app on this phone |
+| OpenAI | their VS Code extension | nowhere — their Remote Control hosts on macOS only |
+| Google | their CLI in the workspace's terminal, Remote Control beside it | antigravity.google.com in the browser |
+
+The second column is not a choice to make. It is the same session seen from somewhere else, and
+it is switched on without anybody touching a setting. Where a maker publishes nothing for a
+phone, nothing is offered and none is pretended.
+
+Three scripts became one: `doors-codeserver.sh`, `doors-claude.sh` and `doors-antigravity.sh` are
+deleted, and `doors-workspace.sh` does the work. Every fix they earned the hard way came with
+them — the resumable download with an hour to finish in, the free-space check, the tree verified
+by name before the server is trusted, the digest recorded only after the unpacked copy proves it
+runs, `--strip-components=1` for code-server and never for Google's single-file archive, the pty
+for sign-in, and the settings that size a desktop editor for a 720-pixel screen.
+
+Two checks now hold the shape: **OneWayIn** fails if any agent gets a second route, a surface of
+its own, or if a second startable script appears in assets. **PhoneSurface** fails if an agent
+claims somewhere its maker does not publish.
+
+## 15.6.0: three corrections, from the makers' own pages
+
+Re-reading the primary sources before shipping found three things wrong in 15.5.0.
+
+**The version floor was too low.** Remote Control arrived in Claude Code 2.1.52, which is what
+this app checked for. But the one thing this whole design rests on — `remoteControlAtStartup`
+honoured so the phone app sees the session without anybody opening a menu — is documented as
+needing **2.1.203 or later**. An older build would have read the settings file, ignored the key,
+and left the owner told their session was on their phone when it was not. The floor is 2.1.203.
+
+**Four variables switch Remote Control off silently.** Anthropic's own requirements page names
+`DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` and
+`DISABLE_GROWTHBOOK`: each disables the feature-flag evaluation Remote Control depends on, so the
+session starts, works, and simply never appears. A fifth, `ANTHROPIC_BASE_URL`, gets it refused
+outright. Nothing in this app sets any of them, but a workspace is a real Ubuntu and anything
+could, so they are cleared before the workspace starts and a check fails if that ever stops
+happening.
+
+**Google's CLI wants a keyring this workspace does not have.** Their own install guide says the
+CLI reaches for the operating system's secure store — on Linux, the Secret Service over dbus. A
+workspace with no desktop session has neither, so a sign-in may not survive. That is now said on
+the Antigravity card and again in the script, before it happens, because being asked to sign in
+again with no explanation is worse than being warned.
+
+The plan line for Claude is also corrected to Anthropic's exact list: **Pro, Max, Team or
+Enterprise**, and API keys are not supported.
+
+## 15.6.0: the fourth gate that passed on the wrong thing
+
+A check meant to prove Codex claims no phone surface looked for an empty string inside the Codex
+entry. The entry has two empty strings in a row — the surface, and the sentence describing it —
+so filling the surface in left the other one there and the check stayed green while the app
+claimed OpenAI publish something they do not.
+
+The fix is `tests/agents.py`, which reads the catalog by field position the way the constructor
+does, so a gate can ask about a named field instead of hoping a pattern lands on it. Every new
+check in this release was then broken on purpose and confirmed to fail before being trusted.
+
+---
+
+# Earlier releases
 
 ## 15.5.0: scoped to three, and it says why
 
