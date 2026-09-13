@@ -175,6 +175,37 @@ grep -q 'remote-control status' "$ASSETS/doors-antigravity.sh" \
   || fail "AgyFlags: nothing asks the daemon whether it is actually running"
 echo "PASS AgyFlags (start, status and stop -- the three the CLI documents)"
 
+# ---------------------------------------------------------------- unpacking is not assumed
+# The Antigravity archive holds exactly one entry: a file called "antigravity" at the root.
+# --strip-components=1 strips its only path component, so tar extracts nothing AND exits zero,
+# and the check after it reports an archive that "did not contain the binary" when it was never
+# unpacked at all. That shipped in 15.2.0 and cost the owner a run.
+# The tar command itself, not a line that mentions the flag. Written as a plain grep first, this
+# failed on the comment above the fix that explains why the flag is wrong -- the same shape of
+# mistake as a gate that passes because a comment names the file it was meant to check for.
+if grep -E '^[^#]*\btar\b' "$ASSETS/doors-antigravity.sh" | grep -q 'strip-components'; then
+  fail "Unpacks: the Antigravity archive is a single root file; stripping a component extracts nothing"
+fi
+grep -qE "name agy -o -name antigravity" "$ASSETS/doors-antigravity.sh" \
+  || fail "Unpacks: the binary is assumed to be at a path instead of found by name"
+grep -q 'cannot be run' "$ASSETS/doors-antigravity.sh" \
+  || fail "Unpacks: nothing checks the unpacked binary is executable"
+# Door B's archive does have a top-level directory, so there the flag is right. Saying so keeps
+# the two cases from being 'fixed' into each other later.
+grep -E '^[^#]*\btar\b' "$ASSETS/doors-codeserver.sh" | grep -q 'strip-components=1' \
+  || fail "Unpacks: code-server's archive does have a wrapping directory and needs it stripped"
+echo "PASS Unpacks (each archive is unpacked the way that archive is actually shaped)"
+
+# ---------------------------------------------------------------- a long download says how long
+# 231 MB for the ChatGPT extension, 99 MB for Claude Code, and Open VSX sends no progress. One
+# unchanging line for an hour is indistinguishable from a hang, and someone on mobile data has a
+# right to know the number while they can still decide to wait for Wi-Fi.
+grep -q 'extension_size' "$ASSETS/doors-codeserver.sh" \
+  || fail "BigDownloads: the extension download never says how big it is"
+grep -q 'It is not stuck' "$ASSETS/doors-codeserver.sh" \
+  || fail "BigDownloads: a silent hour is never explained as normal"
+echo "PASS BigDownloads (the size is said out loud before the data is spent)"
+
 # ---------------------------------------------------------------- a publisher's site is not framed
 # Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
 # window can never be signed in. Their own instruction is to open it in a browser and add it to

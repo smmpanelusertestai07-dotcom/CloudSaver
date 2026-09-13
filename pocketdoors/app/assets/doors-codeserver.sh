@@ -114,6 +114,25 @@ install_server() {
   rm -f "$tmp/$ARCHIVE"
 }
 
+# Open VSX publishes the size of every build. Asking costs one small request and turns a
+# silent hour into a number someone can plan around.
+extension_size() {
+  publisher=${1%%.*}
+  name=${1#*.}
+  curl --fail --silent --location --proto '=https' --max-time 30 \
+      "https://open-vsx.org/api/${publisher}/${name}/linux-arm64/latest" 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin)["files"]["download"])
+except Exception:
+    pass' 2>/dev/null \
+    | while read -r href; do
+        [ -n "$href" ] || continue
+        curl -sIL --max-time 30 "$href" 2>/dev/null \
+          | awk 'tolower($1) == "content-length:" { print int($2 / 1048576) }' | tail -n 1
+      done
+}
+
 install_extension() {
   agent="$1"
   eval "id=\${EXT_${agent}:-}"
@@ -124,7 +143,16 @@ install_extension() {
     say "${id} is already installed."
     return 0
   fi
-  say "Installing ${id} from Open VSX…"
+  # How big it is, before it is downloaded rather than after. These extensions are large --
+  # the ChatGPT one is around 240 MB -- and someone on mobile data deserves to know that while
+  # they can still stop and wait for Wi-Fi, instead of watching one unchanging line for an hour.
+  size=$(extension_size "$id")
+  if [ -n "$size" ]; then
+    say "Installing ${id} from Open VSX — ${size} MB, and it downloads once."
+    say "There is no progress line for this; Open VSX does not give one. It is not stuck."
+  else
+    say "Installing ${id} from Open VSX… (a few hundred megabytes, downloaded once)"
+  fi
   # code-server resolves this against Open VSX, which is the registry its licence allows and
   # the one both publishers put their official builds on.
   "$BASE/bin/code-server" --install-extension "$id" \

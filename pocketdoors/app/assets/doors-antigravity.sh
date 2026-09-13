@@ -110,16 +110,28 @@ install_cli() {
 
   say "Unpacking…"
   mkdir -p "$BASE"
-  tar -xzf "$tmp/cli.tar.gz" -C "$BASE" --strip-components=1 2>/dev/null \
-    || tar -xzf "$tmp/cli.tar.gz" -C "$BASE"
+  # Never --strip-components here. This archive holds exactly one entry, a file called
+  # "antigravity" at the root, so stripping one component strips its whole name: tar extracts
+  # nothing at all and still exits zero, and the next line reports an archive that "did not
+  # contain the binary" when it was never unpacked. That is a real failure this shipped once.
+  tar -xzf "$tmp/cli.tar.gz" -C "$BASE" \
+    || { rm -rf "$tmp"; fail "The Antigravity archive would not unpack."; }
   rm -rf "$tmp"
-  # The archive's layout has changed between builds; find the binary rather than assume it.
-  if [ ! -x "$BASE/agy" ]; then
-    found=$(find "$BASE" -maxdepth 3 -type f \( -name agy -o -name antigravity \) -print -quit 2>/dev/null || true)
-    [ -n "$found" ] || fail "The archive did not contain the Antigravity binary."
-    mv "$found" "$BASE/agy"
+
+  # The layout has changed between builds and may change again, so the binary is found by name
+  # rather than assumed to be at a path. Google's own installer takes the file called
+  # "antigravity" out of this archive and installs it as "agy"; both names are accepted.
+  if [ ! -f "$BASE/agy" ]; then
+    found=$(find "$BASE" -maxdepth 4 -type f \( -name agy -o -name antigravity \) -print -quit 2>/dev/null || true)
+    if [ -z "$found" ]; then
+      say "What the archive did contain:"
+      find "$BASE" -maxdepth 2 -mindepth 1 -printf '%P\n' 2>/dev/null | head -n 20 || true
+      fail "The archive did not contain the Antigravity binary."
+    fi
+    [ "$found" = "$BASE/agy" ] || mv "$found" "$BASE/agy"
   fi
   chmod +x "$BASE/agy"
+  [ -x "$BASE/agy" ] || fail "The Antigravity binary unpacked but cannot be run."
   say "Antigravity CLI installed."
 }
 

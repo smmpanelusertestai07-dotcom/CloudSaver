@@ -1,9 +1,34 @@
-# PocketAgent Doors 15.2.0 — the addresses and the flags, checked against the real thing
+# PocketAgent Doors 15.2.5 — unpack what the archive actually is
 
-Version **15.2.0**, code **520**, application ID `com.pocketagent.doors`.
+Version **15.2.5**, code **525**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.2.5: the Antigravity archive was never unpacked
+
+15.2.0 reached `ERROR: The archive did not contain the Antigravity binary`, and the archive was
+fine. It holds exactly one entry — a file called `antigravity` at the root — and the unpack ran
+`tar --strip-components=1`, which strips that file's only path component. tar extracted nothing
+and exited zero, so the fallback never ran and the check that followed blamed the archive.
+
+Reproduced against the published archive, then fixed: no component is stripped, the binary is
+found by name at any depth (Google's own installer takes `antigravity` out of this archive and
+installs it as `agy`, so both names are accepted), and it is confirmed executable before anything
+claims it is installed. If it is genuinely not there, what the archive *did* contain is printed.
+
+code-server's archive does wrap its files in a directory and still needs that component stripped,
+so a check now states both cases, to stop one being "fixed" into the other later.
+
+## 15.2.5: a quarter-gigabyte download that said nothing
+
+Door B got all the way to `Installing extension 'openai.chatgpt'...` and sat there. It was not
+stuck — that extension is **231 MB**, Claude Code's is **99 MB**, and Open VSX sends no progress
+at all. On top of code-server's own 220 MB, Door B costs roughly **450 MB** of data the first
+time, which on a phone plan is a real cost and is nobody's business to hide.
+
+The size is now read from Open VSX and said before the download starts, along with a line saying
+there will be no progress and it is not stuck.
 
 ## Two failures on a real phone, and one habit behind both
 
@@ -88,7 +113,7 @@ Door C (Cursor) is still not wired up, and Cursor still publish no headless rout
 
 ## Checks
 
-Nineteen now. The five added in this version each fail on the exact mistake that produced one of
-the two failures above: an unverified address, an undocumented flag, a publisher's site framed
-inside the app, a download trusted before it was complete, and a set-up that could be frozen
-halfway.
+Twenty-one now. The seven added across 15.2.0 and 15.2.5 each fail on the exact mistake that
+produced one of the failures above: an unverified address, an undocumented flag, a publisher's
+site framed inside the app, a download trusted before it was complete, a set-up that could be
+frozen halfway, an archive unpacked the wrong shape, and a long download that said nothing.
