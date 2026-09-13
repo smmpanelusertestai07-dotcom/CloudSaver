@@ -1,7 +1,7 @@
 name: pocketdoors
 
 # PocketAgent Doors lives under pocketdoors/ and has its own Gradle-free build, separate from
-# both pocketlinux/ and pocketagent/. Nothing here touches either of them.
+# pocketlinux/. Nothing here touches it.
 on:
   push:
     branches:
