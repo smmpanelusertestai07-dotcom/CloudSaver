@@ -94,6 +94,20 @@ final class Trouble {
                             + "again — the download is kept, so only that last step repeats.",
                     "Try that step again");
         }
+        // Electron's own dialog, which appears inside the editor rather than in this transcript,
+        // but its wording reaches the log: the renderer process died. On this phone that is
+        // memory or the software renderer, and both are helped by the same thing.
+        if (said.contains("'crashed'") || said.contains("render process gone")
+                || said.contains("window terminated")) {
+            return new Advice(
+                    "The editor's window crashed and it offered to start again.",
+                    "This phone draws the editor in software, with no graphics chip to help, and "
+                            + "has under four gigabytes to do it in. Closing other apps makes it "
+                            + "much less likely. If it keeps happening, the workspace is still "
+                            + "there — reopening starts a fresh window rather than installing "
+                            + "anything again.",
+                    "Open it again");
+        }
         if (said.contains("arrived incomplete")) {
             return new Advice(
                     "A download stopped part way and what arrived did not match its stated size.",

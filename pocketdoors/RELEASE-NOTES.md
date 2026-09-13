@@ -1,19 +1,56 @@
-# PocketAgent 16.4.5 — the path was right, in the wrong world
+# PocketAgent 16.5.0 — the editor is on the screen, and now it fits it
 
-Version **16.4.5**, code **645**, application ID `com.pocketagent.doors`.
+Version **16.5.0**, code **650**, application ID `com.pocketagent.doors`.
 
-Everything came up:
+**Antigravity drew on the phone.** Its window, its title bar, its icon, through the display
+server and the viewer, end to end. That was the last unproven step in the whole design.
 
-```
-Starting Antigravity…
-The editor is starting… 5s. The first start is the slow one.
-The editor is starting… 10s. …
-The editor is starting… 15s. …
-READY unix:/var/lib/doors/display.sock
-```
+Two things were wrong with the picture, and both had the same cause.
 
-And then: **"The desktop's private display socket is not ready."** The socket was there, and
-listening, the whole time.
+## 16.5.0: the desktop was the wrong shape
+
+The display server was started at **1280x720** — a landscape desktop — on a phone that is
+**720x1600 portrait**. `DOORS_GEOMETRY` existed as a variable and *nothing ever set it*.
+
+So the editor was drawing for a screen that does not exist here. Its window ran off the
+right-hand edge, and its own crash dialog opened half outside the screen with its buttons
+unreachable.
+
+The phone's own screen is measured now and handed to the workspace — short side first, always,
+so a portrait phone can never be given a landscape desktop again. The fallback is portrait too,
+for the same reason.
+
+Along with it goes one number: how much larger than its desktop default the editor should draw,
+so a menu written for a mouse can be hit with a finger. Short side ÷ 560, which is 1.28 on this
+phone — the same arithmetic the other app in this repository settled on.
+
+## 16.5.0: windows that fill the screen, dialogs that stay on it
+
+Openbox's defaults are a desktop's: a title bar, a border, and a window wherever the program
+asked to be. Two rules replace them:
+
+| Window | Rule | Why |
+|---|---|---|
+| Normal | no decoration, maximised | The editor is the only thing here, so it gets all of it. A title bar is a strip of nothing on 720 pixels |
+| Dialog | decorated, centred | A dialog asks a question, and a question whose buttons are off the screen cannot be answered |
+
+Rules rather than a resize, because a program can move itself back. The XML is parsed by the
+test suite before it ships: a malformed `rc.xml` is not an error openbox reports — it ignores
+the file and gives every window a desktop's frame again, which is the bug.
+
+## 16.5.0: the renderer crash
+
+The window also reported `'crashed', code: '5'`. This phone draws the editor in software with no
+graphics chip to help, in under four gigabytes. Two things changed: the renderer's JavaScript
+heap is capped so it reports running out instead of dying, and `Trouble.java` now recognises the
+wording and says what actually helps — close other apps, and reopening starts a fresh window
+rather than reinstalling anything.
+
+Seven breaks on the new `FitsTheScreen`, seven failures, before any of it was trusted.
+
+---
+
+# Earlier releases
 
 ## 16.4.5: two namespaces, one path
 

@@ -94,8 +94,14 @@ EXT_codex="openai.chatgpt"
 # of Xtigervnc without -rfbunixpath, and the app is told which of the two it got.
 SOCK="$STATE/display.sock"
 PORT=5901
-GEOMETRY="${DOORS_GEOMETRY:-1280x720}"
+# The phone's own screen, handed in by the app. The fallback is portrait on purpose: a landscape
+# default on a portrait phone is what drew windows wider than the screen, with the editor's own
+# dialogs half off the right-hand edge.
+GEOMETRY="${DOORS_GEOMETRY:-720x1440}"
 DPI="${DOORS_DPI:-160}"
+# How much larger than its desktop default the editor draws, so a menu written for a mouse can
+# be hit with a finger. Worked out from the screen's short side by the app.
+SCALE="${DOORS_SCALE:-1.25}"
 
 mkdir -p "$STATE" "$WORK"
 chmod 700 "$STATE" 2>/dev/null || true
@@ -365,7 +371,9 @@ phone_defaults() {
 {
   "terminal.integrated.gpuAcceleration": "off",
   "window.titleBarStyle": "native",
-  "window.zoomLevel": -1,
+  "window.zoomLevel": 0,
+  "window.newWindowDimensions": "maximized",
+  "window.restoreWindows": "none",
   "workbench.activityBar.location": "top",
   "workbench.startupEditor": "none",
   "workbench.tips.enabled": false,
@@ -380,6 +388,41 @@ phone_defaults() {
 }
 JSON
   say "Editor sized for this screen. Change anything in its own Settings; it will be kept."
+}
+
+# Windows that fit the screen they are on.
+#
+# Openbox's defaults are a desktop's: a title bar, a border, and a window wherever the program
+# asked to be put. On a phone that produced exactly what a real screenshot showed -- the editor
+# wider than the display with its right-hand side off the edge, and its own crash dialog opened
+# half outside the screen with its buttons unreachable.
+#
+# So two rules, and they are rules rather than a resize because a program can move itself back:
+#   normal windows  no decoration, maximised -- the editor is the only thing here, so it gets
+#                   all of it, and the title bar is a strip of nothing on a 720-pixel screen.
+#   dialogs         centred, decorated, left at their own size -- a dialog asks a question, and
+#                   a question whose buttons are off the screen cannot be answered.
+window_rules() {
+  rc=/root/.config/openbox/rc.xml
+  mkdir -p "$(dirname "$rc")"
+  [ -f "$rc" ] && return 0
+  cat > "$rc" <<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <applications>
+    <application class="*" type="normal">
+      <decor>no</decor>
+      <maximized>yes</maximized>
+      <position force="yes"><x>0</x><y>0</y></position>
+    </application>
+    <application class="*" type="dialog">
+      <decor>yes</decor>
+      <position force="yes"><x>center</x><y>center</y></position>
+    </application>
+  </applications>
+</openbox_config>
+XML
+  say "Windows set to fill this screen. Change them in the editor if you prefer."
 }
 
 # ---------------------------------------------------------------------- the screen, running
@@ -432,6 +475,7 @@ start_workspace() {
   start_display
   export DISPLAY=:1
 
+  window_rules
   openbox >>"$LOG" 2>&1 &
   sleep 1
 
@@ -448,6 +492,8 @@ start_workspace() {
     --disable-setuid-sandbox --disable-gpu-sandbox \
     --no-zygote --in-process-gpu --disable-dev-shm-usage \
     --disable-gpu --disable-gpu-compositing --disable-3d-apis \
+    --force-device-scale-factor="$SCALE" \
+    --js-flags=--max-old-space-size=384 \
     "$WORK" >>"$LOG" 2>&1 &
   EDITOR_PID=$!
 

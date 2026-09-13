@@ -249,6 +249,12 @@ final class Ubuntu {
         args.add("LANG=C.UTF-8");
         args.add("TMPDIR=/tmp");
         args.add("DOORS_TZ=" + java.util.TimeZone.getDefault().getID());
+        // The phone's own screen, handed to the workspace rather than assumed. Without these the
+        // display server came up 1280x720 -- a landscape desktop on a portrait phone -- and the
+        // editor drew windows wider than anything that could be shown.
+        args.add("DOORS_GEOMETRY=" + Screen.geometry(context));
+        args.add("DOORS_DPI=" + Screen.dpi(context));
+        args.add("DOORS_SCALE=" + Screen.scale(context));
         args.add("/bin/bash");
         args.add("-lc");
         args.add(command);

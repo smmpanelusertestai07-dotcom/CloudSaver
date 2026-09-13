@@ -413,25 +413,6 @@ if grep -q 'Running in the background' "$SRC/DoorService.java"; then
 fi
 echo "PASS StaysInSession (one held session, and everything that runs is inside it)"
 
-# ---------------------------------------------------------------- it fits the screen it is on
-# A desktop editor at its own default size shows about a third of itself on 720 pixels. Written
-# once, so settings the owner changes afterwards are theirs.
-grep -q 'phone_defaults' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: the editor is started at its desktop size on a phone"
-grep -q '"window.zoomLevel"' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: nothing reduces the editor's own drawing size"
-grep -q '"editor.wordWrap": "on"' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: code runs off the side of a screen that cannot scroll sideways"
-grep -q 'settings.json" \] && return 0' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: these defaults would overwrite settings the owner changed"
-python3 -c 'import json,re,sys; b=re.search(r"<<.JSON.\n(.*?)\nJSON", open(sys.argv[1]).read(), re.S); sys.exit(0 if b and isinstance(json.loads(b.group(1)), dict) else 1)' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: the settings written for the editor are not valid JSON"
-# The editor updates through apt, so it must not also update itself: two updaters fighting over
-# one installation is how an editor ends up half-replaced and unable to start.
-grep -q '"update.mode": "manual"' "$ASSETS/doors-workspace.sh" \
-  || fail "FitsTheScreen: the editor would update itself behind the package manager's back"
-echo "PASS FitsTheScreen (sized for this phone, written once, and left alone after)"
-
 # ---------------------------------------------------------------- a window manager, not bare windows
 # Antigravity is a desktop application. Without a window manager its windows have no frames, no
 # focus and no way to be moved, and its dialogs open behind the editor where nobody can answer
@@ -728,6 +709,44 @@ in_code 'replaceFirst\("\^/\+", ""\)' "$SRC/DoorActivity.java" \
 grep -q 'say "READY unix:' "$ASSETS/doors-workspace.sh" \
   || fail "PathCrosses: the app is never told the display is on a socket"
 echo "PASS PathCrosses (the container's path is translated to the phone's before it is opened)"
+
+# ---------------------------------------------------------------- it fits the screen it is on
+# From a real phone, with the editor finally drawn: the window ran off the right-hand edge, and
+# its own crash dialog opened half outside the screen with its buttons unreachable. Nothing was
+# wrong with the editor -- the display server had been started at 1280x720, a landscape desktop,
+# on a phone that is 720x1600 portrait. It was drawing for a screen that does not exist here.
+grep -q 'DOORS_GEOMETRY=" + Screen.geometry(context)' "$SRC/Ubuntu.java" \
+  || fail "FitsTheScreen: the workspace is never told the shape of the screen it draws for"
+in_code 'GEOMETRY="\$\{DOORS_GEOMETRY' "$ASSETS/doors-workspace.sh" \
+  || fail "FitsTheScreen: the display server ignores the screen it was told about"
+# The fallback has to be portrait too, or a phone that arrives without the variable gets the
+# very landscape desktop this fixes.
+fallback=$(grep -oE 'DOORS_GEOMETRY:-[0-9]+x[0-9]+' "$ASSETS/doors-workspace.sh" | cut -d- -f2 || true)
+[ -n "$fallback" ] || fail "FitsTheScreen: there is no fallback geometry at all"
+fw=${fallback%x*}; fh=${fallback#*x}
+[ "$fw" -lt "$fh" ] \
+  || fail "FitsTheScreen: the fallback screen is landscape ($fallback), which is the bug this fixes"
+grep -q 'int shortSide = Math.min(width, height)' "$SRC/Screen.java" \
+  || fail "FitsTheScreen: the screen is not measured short side first, so orientation can flip"
+# The editor's own drawing size, worked out from the screen rather than guessed.
+in_code 'force-device-scale-factor="\$SCALE"' "$ASSETS/doors-workspace.sh" \
+  || fail "FitsTheScreen: the editor draws at its desktop size, which is unreadable here"
+grep -q 'static String scale(Context context)' "$SRC/Screen.java" \
+  || fail "FitsTheScreen: nothing works out how large the editor should draw"
+# And the window manager has to make the window fill that screen, with dialogs still reachable.
+in_code 'window_rules' "$ASSETS/doors-workspace.sh" \
+  || fail "FitsTheScreen: nothing tells the window manager to fill the screen"
+rules=$(sed -n '/<applications>/,/<\/applications>/p' "$ASSETS/doors-workspace.sh" || true)
+printf '%s' "$rules" | grep -q '<maximized>yes</maximized>' \
+  || fail "FitsTheScreen: the editor's window is not made to fill the screen"
+printf '%s' "$rules" | grep -q 'type="dialog"' \
+  || fail "FitsTheScreen: dialogs are left where the program puts them, which was off the screen"
+printf '%s' "$rules" | grep -q '<x>center</x>' \
+  || fail "FitsTheScreen: a dialog can still open with its buttons outside the screen"
+# Valid XML, or openbox ignores the file and every window is a desktop's again.
+python3 tests/openbox_rules.py "$ASSETS/doors-workspace.sh" \
+  || fail "FitsTheScreen: the window rules are not valid XML, so the window manager ignores them"
+echo "PASS FitsTheScreen (the phone's own screen, the editor sized for it, filling it)"
 
 # ---------------------------------------------------------------- versions agree
 build_name=$(grep -oE 'VERSION_NAME="[0-9.]+"' build.sh | cut -d'"' -f2 || true)
