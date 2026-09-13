@@ -1,9 +1,38 @@
-# PocketAgent Doors 15.3.0 — the editor was running and the app said it had failed
+# PocketAgent Doors 15.3.5 — the editor opened, and then could not be signed into
 
-Version **15.3.0**, code **530**, application ID `com.pocketagent.doors`.
+Version **15.3.5**, code **535**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.3.0 rather than over it. The one that works today keeps
 working while this one is being proved.
+
+## 15.3.5: Codex opened
+
+Door B works. code-server is running on the phone with OpenAI's own extension inside it, and what
+fills the window — "Build with Agent", the composer, the Codex sidebar — is their interface, not
+one this app drew.
+
+Two things were wrong with it, and neither was the door's.
+
+### The Sign in button did nothing
+
+The extension opens its account page in a **new window**. A WebView that is not told it may open
+windows discards that request silently: no error, no page, nothing. The button was dead, and an
+agent nobody can sign into is an agent nobody can use.
+
+The window is answered now and handed to the phone's real browser, which is where a sign-in can
+actually be completed and remembered. Read out of the published extension: it has no sign-in
+command of its own and its whole interface is a webview driving the Codex CLI
+(`chatgpt.cliExecutable`), so the account page is the only way in and it has to reach a browser.
+
+### A desktop editor at desktop size
+
+At its own default size the editor showed about a third of itself, with the rest off the
+right-hand edge. Zooming the page out would have blurred every glyph; asking the editor to draw
+smaller does not. It now starts with a zoom level, word wrap, no minimap and the activity bar
+along the top — a vertical strip of icons costs width a 720-pixel screen cannot spare.
+
+Written once. Anything changed afterwards in the editor's own Settings is the owner's and is
+never overwritten by an update.
 
 ## 15.3.0: four bugs between a working door and a screen that said otherwise
 
@@ -167,9 +196,10 @@ Door C (Cursor) is still not wired up, and Cursor still publish no headless rout
 
 ## Checks
 
-Twenty-five now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
+Twenty-seven now. Each one added across 15.2.0, 15.2.5 and 15.3.0 fails on the exact mistake that
 produced one of the failures above: an unverified address, an undocumented flag, a publisher's
 site framed inside the app, a download trusted before it was complete, a set-up that could be
 frozen halfway, an archive unpacked the wrong shape, a long download that said nothing, a guess
 about a line beating a marker, a door that returned while its server was meant to be running, a
-sign-in run on a pipe, and a question that scrolled away as it arrived.
+sign-in run on a pipe, a question that scrolled away as it arrived, a sign-in window refused
+before anyone could see it, and a desktop editor left at desktop size on a phone.

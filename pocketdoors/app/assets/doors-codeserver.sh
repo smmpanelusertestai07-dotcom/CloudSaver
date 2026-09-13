@@ -165,6 +165,37 @@ running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
 
+# Settings that make a desktop editor usable on a 720-pixel screen.
+#
+# The editor is built for a wide window with a mouse, and at its own default size a phone shows
+# roughly a third of it with the rest off the right-hand edge. Zooming the whole page out blurs
+# the text; asking the editor itself to draw smaller does not. The activity bar moves to the top
+# because on a narrow screen a vertical strip of icons costs width the editor needs, and word
+# wrap goes on because no phone can scroll sideways through a line of code comfortably.
+#
+# Written once. Anything the owner changes afterwards is theirs and is never overwritten.
+phone_defaults() {
+  user_dir=/root/.local/share/code-server/User
+  mkdir -p "$user_dir"
+  [ -f "$user_dir/settings.json" ] && return 0
+  cat > "$user_dir/settings.json" <<'JSON'
+{
+  "window.zoomLevel": -1,
+  "workbench.activityBar.location": "top",
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false,
+  "editor.wordWrap": "on",
+  "editor.minimap.enabled": false,
+  "editor.fontSize": 12,
+  "editor.lineNumbers": "on",
+  "terminal.integrated.fontSize": 12,
+  "explorer.compactFolders": false,
+  "chatgpt.openOnStartup": true
+}
+JSON
+  say "Editor set up for this screen. Change anything in its own Settings; it will be kept."
+}
+
 start_server() {
   agent="$1"
   install_server
@@ -175,6 +206,7 @@ start_server() {
   rm -f "$PIDFILE"
 
   mkdir -p /root/work
+  phone_defaults
   # Bound to the loopback address on purpose: the only thing that should ever reach this
   # server is the app on the same phone. No password, because no one else can connect, and a
   # password prompt on every start would be a lock with no door.

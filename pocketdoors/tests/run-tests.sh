@@ -257,6 +257,36 @@ grep -q 'render()' "$SRC/DoorActivity.java" \
   || fail "Conversation: the conversation is never drawn"
 echo "PASS Conversation (what a door asks stays on screen while it is asking)"
 
+# ---------------------------------------------------------------- the account button works
+# The editor's extension opens its account page in a new window, and a WebView given no answer
+# to that request discards it silently. The "Sign in" button looked dead and there was no way to
+# reach an account at all -- the door was running and unusable.
+grep -q 'setSupportMultipleWindows(true)' "$SRC/DoorActivity.java" \
+  || fail "AccountReachable: the window a sign-in opens is refused before anything can see it"
+grep -q 'onCreateWindow' "$SRC/DoorActivity.java" \
+  || fail "AccountReachable: nothing answers the request to open a sign-in window"
+grep -q 'openOutside' "$SRC/DoorActivity.java" \
+  || fail "AccountReachable: a sign-in window is not handed to the phone's browser"
+echo "PASS AccountReachable (a sign-in window reaches the browser that can complete it)"
+
+# ---------------------------------------------------------------- it fits the screen it is on
+# A desktop editor at its own default size shows about a third of itself on 720 pixels, with the
+# rest off the right-hand edge. Zooming the page out blurs the text; asking the editor to draw
+# smaller does not.
+grep -q 'phone_defaults' "$ASSETS/doors-codeserver.sh" \
+  || fail "FitsTheScreen: the editor is started at its desktop size on a phone"
+grep -q '"window.zoomLevel"' "$ASSETS/doors-codeserver.sh" \
+  || fail "FitsTheScreen: nothing reduces the editor's own drawing size"
+grep -q '"editor.wordWrap": "on"' "$ASSETS/doors-codeserver.sh" \
+  || fail "FitsTheScreen: code runs off the side of a screen that cannot scroll sideways"
+# Written once, so settings the owner changed are never overwritten by an update.
+grep -q 'settings.json" \] && return 0' "$ASSETS/doors-codeserver.sh" \
+  || fail "FitsTheScreen: these defaults would overwrite settings the owner changed"
+# And they must be valid JSON, or the editor silently ignores the whole file.
+python3 -c 'import json,re,sys; b=re.search(r"<<.JSON.\n(.*?)\nJSON", open(sys.argv[1]).read(), re.S); sys.exit(0 if b and isinstance(json.loads(b.group(1)), dict) else 1)' "$ASSETS/doors-codeserver.sh" \
+  || fail "FitsTheScreen: the settings written for the editor are not valid JSON"
+echo "PASS FitsTheScreen (the editor is sized for this phone, once, and left alone after)"
+
 # ---------------------------------------------------------------- a publisher's site is not framed
 # Google refuse an OAuth sign-in inside an embedded view, so a dashboard shown in this app's own
 # window can never be signed in. Their own instruction is to open it in a browser and add it to

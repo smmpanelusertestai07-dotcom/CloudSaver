@@ -8,6 +8,7 @@ import android.content.IntentFilter;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Message;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -101,6 +102,11 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         settings.setDisplayZoomControls(false);
         settings.setSupportZoom(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        // The editor opens sign-in in a new window. Without these two the extension's own
+        // "Sign in" button did nothing at all -- the request to open a window was dropped on
+        // the floor, with no error anywhere, and there was no way to reach an account.
+        settings.setSupportMultipleWindows(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         web.setWebViewClient(new Client());
@@ -417,6 +423,42 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
             // Nothing in these interfaces needs the camera or the microphone yet. Refusing by
             // default is the honest position for a window showing somebody else's page.
             request.deny();
+        }
+
+        /**
+         * Sends a window the page wants to open to the phone's real browser.
+         *
+         * This is how signing in works. The editor's extension opens its account page in a new
+         * window, and a WebView with no answer to that request simply discards it -- the button
+         * looked dead and there was no way to reach an account at all. The address is not on the
+         * request, so a throwaway view is handed over purely to be told where it was going, and
+         * the phone's browser takes it from there. That is also the right place for it: the
+         * session belongs in the browser, where a sign-in can be completed and remembered.
+         */
+        @Override
+        public boolean onCreateWindow(WebView view, boolean dialog, boolean gesture, Message transport) {
+            WebView probe = new WebView(DoorActivity.this);
+            probe.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView unused, WebResourceRequest request) {
+                    openOutside(request.getUrl());
+                    probe.destroy();
+                    return true;
+                }
+            });
+            ((WebView.WebViewTransport) transport.obj).setWebView(probe);
+            transport.sendToTarget();
+            return true;
+        }
+    }
+
+    /** Hands one address to the phone's browser, and says so if there is not one. */
+    private void openOutside(Uri uri) {
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            status.setText("Opened in your browser. Come back when it is done.");
+        } catch (Exception noBrowser) {
+            status.setText("No browser on this phone could open that.");
         }
     }
 
