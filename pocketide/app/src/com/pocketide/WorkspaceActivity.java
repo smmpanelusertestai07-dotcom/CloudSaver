@@ -168,40 +168,80 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         return column;
     }
 
+    /**
+     * The editor's own toolbar.
+     *
+     * Material's rule is that a full-screen page reached from a primary one carries a toolbar
+     * rather than a navigation bar, and this is that toolbar -- so it is built to the same
+     * measurements as the navigation bar it replaces, and the two are never on screen together.
+     *
+     * Every button was previously added with no layout parameters at all, which meant each one
+     * wrapped its own content and they all bunched against the left edge with no space between
+     * them. On a phone that rendered as a single run of letters: CommandsKeysTrackpadHome. The
+     * weight below is the fix, and it is the whole fix.
+     */
     private View bottomBar(boolean dark) {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
-        bar.setBackground(Ui.glass(this, dark, 0));
-        bar.addView(barButton(dark, R.drawable.ic_terminal, "Commands", v -> commandPalette()));
-        bar.addView(barButton(dark, R.drawable.ic_keyboard, "Keys", v -> keys.toggleKeys()));
-        bar.addView(barButton(dark, R.drawable.ic_touch, "Trackpad", v -> keys.toggleTrackpad()));
-        bar.addView(barButton(dark, R.drawable.ic_home, "Home", v -> finish()));
-        return bar;
+        bar.setBackgroundColor(Ui.card(dark));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+
+        LinearLayout wrapper = Ui.column(this);
+        View edge = new View(this);
+        edge.setBackgroundColor(Ui.line(dark));
+        wrapper.addView(edge, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 0.5f))));
+        wrapper.addView(bar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, Shell.NAV_BAR_DP)));
+
+        addBarButton(bar, dark, R.drawable.ic_terminal, "Commands",
+                "Open the command palette", v -> commandPalette());
+        addBarButton(bar, dark, R.drawable.ic_keyboard, "Keys",
+                "Show or hide the key row", v -> keys.toggleKeys());
+        addBarButton(bar, dark, R.drawable.ic_touch, "Cursor",
+                "Show or hide the cursor pad", v -> keys.toggleTrackpad());
+        addBarButton(bar, dark, R.drawable.ic_home, "Back",
+                "Leave the editor", v -> finish());
+        return wrapper;
     }
 
-    private View barButton(boolean dark, int iconRes, String label, View.OnClickListener click) {
+    /**
+     * One button, given an equal quarter of the bar.
+     *
+     * The numbers match the navigation bar on the other screens: a 24 dp icon and a 12 sp label,
+     * because a label small enough to need a squint is a label nobody reads, and because a
+     * toolbar that looks like a different app from the one behind it is worse than no toolbar.
+     */
+    private void addBarButton(LinearLayout bar, boolean dark, int iconRes, String label,
+                              String description, View.OnClickListener click) {
         LinearLayout button = Ui.column(this);
         button.setGravity(Gravity.CENTER);
-        int padY = Ui.dp(this, 8);
-        button.setPadding(0, padY, 0, padY);
-        button.setMinimumHeight(Ui.dp(this, Ui.TOUCH_TARGET_DP + 8));
+
         ImageView icon = new ImageView(this);
         icon.setImageResource(iconRes);
         icon.setImageTintList(ColorStateList.valueOf(Ui.text(dark)));
-        int size = Ui.dp(this, 22);
+        int size = Ui.dp(this, 24);
         button.addView(icon, new LinearLayout.LayoutParams(size, size));
-        TextView words = Ui.text(this, label, 10.5f, Ui.muted(dark));
+
+        TextView words = Ui.text(this, label, 12f, Ui.muted(dark));
+        words.setGravity(Gravity.CENTER);
+        words.setSingleLine(true);
         LinearLayout.LayoutParams wordParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        wordParams.topMargin = Ui.dp(this, 3);
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        wordParams.topMargin = Ui.dp(this, 4);
         button.addView(words, wordParams);
+
         button.setBackground(Ui.tappable(this,
                 Ui.fill(this, android.graphics.Color.TRANSPARENT, 0), dark));
         button.setClickable(true);
         button.setFocusable(true);
-        button.setContentDescription(label);
+        button.setContentDescription(description);
         button.setOnClickListener(click);
-        return button;
+
+        // A quarter each. Without this every button wrapped its own width and the four of them
+        // ran together against the left edge.
+        bar.addView(button, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
     }
 
     // ------------------------------------------------------------------ the editor
