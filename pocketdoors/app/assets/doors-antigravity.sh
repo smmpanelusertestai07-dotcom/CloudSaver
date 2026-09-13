@@ -6,24 +6,34 @@
 # enough on its own -- one Go process here, and Google's own dashboard as the screen.
 #
 #   doors-antigravity.sh install
+#   doors-antigravity.sh login     <- must happen once, before start
 #   doors-antigravity.sh start
 #   doors-antigravity.sh stop
 #
-# Two things about this door are not yet proven, and the script says which happened rather
+# Sign-in comes first, and it is not optional. Google's own words: "run agy, complete the
+# sign-in flow, then exit", and then "the credentials you used to sign into the CLI are used by
+# the daemon for auth". A daemon started before that has nothing to authenticate with.
+#
+# On a machine with no desktop the CLI notices, prints an authorisation URL, and waits for the
+# code that browser gives back. So `login` here runs the CLI with its input still connected and
+# the app relays both halves: it opens the URL in the phone's real browser, and types the code
+# back. That is also why sign-in never happens inside the app's own window -- Google refuse
+# OAuth in an embedded view, and they are right to.
+#
+# Two things about this door are still unproven, and the script reports which happened rather
 # than pretending either way:
 #
-#   1. Google installs the daemon as a systemd service. There is no systemd inside PRoot, so
-#      the fallback here runs it in the foreground and supervises it from the app. If the CLI
-#      refuses to run without systemd, that is reported as exactly that.
-#   2. The pinned download below is the last build this app could verify a digest for. If
-#      Google has moved on, the CLI will say so on first run and update itself; the pin is a
-#      floor, not a ceiling.
+#   1. Google install the daemon as a systemd service. There is no systemd inside PRoot, so the
+#      fallback runs it in the foreground and the app supervises it.
+#   2. The pinned download below is the last build this app could verify a digest for. If Google
+#      have moved on, the CLI updates itself; the pin is a floor, not a ceiling.
 set -eu
 
 BASE=/opt/doors/antigravity
 STATE=/var/lib/doors
 PIDFILE="$STATE/antigravity.pid"
 LOG="$STATE/antigravity.log"
+SIGNED_IN="$STATE/antigravity.signed-in"
 
 # Verified against Google's own public storage host. sha512, as they publish it.
 URL="https://storage.googleapis.com/antigravity-public/antigravity-cli/1.2.2-6061403484848128/linux-arm/cli_linux_arm64.tar.gz"
@@ -68,6 +78,45 @@ install_cli() {
   say "Antigravity CLI installed."
 }
 
+# --------------------------------------------------------------------------- sign in
+
+signed_in() {
+  [ -f "$SIGNED_IN" ] && return 0
+  # A credential written by an earlier install counts too, so an update does not ask again.
+  for path in /root/.antigravity /root/.config/antigravity /root/.config/Antigravity; do
+    if [ -d "$path" ] && find "$path" -type f -name '*.json' -print -quit 2>/dev/null | grep -q .; then
+      : > "$SIGNED_IN"
+      return 0
+    fi
+  done
+  return 1
+}
+
+do_login() {
+  install_cli
+  agy=$(agy_path) || fail "The Antigravity CLI is not installed."
+
+  if signed_in; then
+    say "Already signed in."
+    say "SIGNEDIN"
+    return 0
+  fi
+
+  # TERM=dumb keeps the CLI from redrawing a full-screen interface the app cannot show, and
+  # nudges it toward the plain prompt-and-paste flow it uses over SSH.
+  say "ASK Sign in to Google. A link will appear; open it, then paste the code back here."
+  TERM=dumb "$agy" 2>&1 || true
+  # The CLI exits once the owner leaves it. If a credential landed, remember that.
+  if signed_in; then
+    say "Signed in."
+    say "SIGNEDIN"
+  else
+    fail "Sign-in did not finish. Open Antigravity again and complete it."
+  fi
+}
+
+# --------------------------------------------------------------------------- run
+
 running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
@@ -76,15 +125,22 @@ start_daemon() {
   install_cli
   agy=$(agy_path) || fail "The Antigravity CLI is not installed."
 
+  if ! signed_in; then
+    # Saying this plainly beats a daemon that dies with an authentication error the owner
+    # has no way to read.
+    say "NEEDLOGIN Sign in to Google first."
+    fail "Not signed in yet."
+  fi
+
   if running; then
     say "The Antigravity daemon is already running."
     say "READY https://antigravity.google/remote"
     return 0
   fi
 
-  # First, the documented way. Google installs it as an OS service; inside PRoot there is no
-  # service manager, so this is expected to fail here -- it is tried anyway because if it ever
-  # starts working, that is the better path and the app should use it.
+  # First, the documented way. Google install it as an OS service; inside PRoot there is no
+  # service manager, so this is expected to fail here -- it is tried anyway, because if it ever
+  # starts working that is the better path and the app should use it.
   say "Starting Remote Control…"
   if "$agy" remote-control start >>"$LOG" 2>&1; then
     say "SERVICE the daemon started through the CLI's own service path"
@@ -97,9 +153,9 @@ start_daemon() {
   pid=$!
   printf '%s\n' "$pid" > "$PIDFILE"
 
-  # Give it a moment, then say plainly whether it is alive. A daemon that exits immediately
-  # is the likeliest outcome of the PRoot question, and guessing would waste the owner's time.
-  sleep 4
+  # Give it a moment, then say plainly whether it is alive. A daemon that exits immediately is
+  # the likeliest outcome of the PRoot question, and guessing would waste the owner's time.
+  sleep 5
   if kill -0 "$pid" 2>/dev/null; then
     say "FOREGROUND the daemon is running under the app's supervision"
     say "READY https://antigravity.google/remote"
@@ -126,8 +182,9 @@ stop_daemon() {
 
 case "${1:-}" in
   install) install_cli ;;
+  login)   do_login ;;
   start)   start_daemon ;;
   stop)    stop_daemon ;;
   status)  running && say "running" || say "stopped" ;;
-  *)       fail "Usage: doors-antigravity.sh install|start|stop|status" ;;
+  *)       fail "Usage: doors-antigravity.sh install|login|start|stop|status" ;;
 esac

@@ -20,6 +20,7 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -43,9 +44,13 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
 
     private WebView web;
     private TextView status;
+    private LinearLayout signIn;
+    private TextView openLink;
+    private EditText answer;
     private Doors.Agent agent;
-    private String pendingUrl;
+    private String link;
     private boolean loaded;
+    private boolean signingIn;
     private BroadcastReceiver events;
 
     @Override
@@ -65,6 +70,9 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         int pad = Ui.dp(this, 14);
         status.setPadding(pad, Ui.dp(this, 10), pad, Ui.dp(this, 10));
         root.addView(status, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        root.addView(buildSignIn(dark), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         FrameLayout stage = new FrameLayout(this);
@@ -109,13 +117,110 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
         DoorService.start(this, agent.id);
     }
 
+    /**
+     * The sign-in strip. Hidden until a door asks for something.
+     *
+     * Google's CLI on a machine with no desktop prints a link and waits for the code the
+     * browser gives back. So this is exactly two controls: one that opens that link in the
+     * phone's real browser, and one box to paste the code into. The link never opens in this
+     * window -- Google refuse an embedded view for sign-in, and a window that asked for a
+     * password would deserve the refusal.
+     */
+    private LinearLayout buildSignIn(boolean dark) {
+        signIn = Ui.column(this);
+        int pad = Ui.dp(this, 14);
+        signIn.setPadding(pad, Ui.dp(this, 4), pad, pad);
+        signIn.setBackgroundColor(Ui.card(dark));
+        signIn.setVisibility(View.GONE);
+
+        openLink = Ui.button(this, "Open the sign-in link", true, dark);
+        openLink.setId(1);
+        openLink.setVisibility(View.GONE);
+        openLink.setOnClickListener(v -> {
+            if (link == null) return;
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                status.setText("Sign in, then come back and paste the code below.");
+            } catch (Exception noBrowser) {
+                status.setText("No browser could open that link.");
+            }
+        });
+        signIn.addView(openLink, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        answer = new EditText(this);
+        answer.setId(2);
+        answer.setHint("Paste the code here");
+        answer.setSingleLine(true);
+        answer.setTextSize(15);
+        answer.setTextColor(Ui.text(dark));
+        answer.setHintTextColor(Ui.muted(dark));
+        answer.setBackground(Ui.outlined(this, Ui.bg(dark), Ui.line(dark), 10));
+        int inner = Ui.dp(this, 12);
+        answer.setPadding(inner, inner, inner, inner);
+        row.addView(answer, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        TextView send = Ui.button(this, "Send", false, dark);
+        send.setId(3);
+        LinearLayout.LayoutParams sendLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sendLp.setMarginStart(Ui.dp(this, 8));
+        send.setOnClickListener(v -> {
+            String typed = answer.getText().toString().trim();
+            if (typed.isEmpty()) return;
+            DoorService.send(this, typed);
+            answer.setText("");
+            status.setText("Sent. Waiting for the door…");
+        });
+        row.addView(send, sendLp);
+        signIn.addView(row, Ui.wide(this, 10));
+        return signIn;
+    }
+
+    private void askToSignIn() {
+        signingIn = true;
+        signIn.setVisibility(View.VISIBLE);
+        openLink.setVisibility(View.GONE);
+        status.setTextColor(Ui.NEEDS_YOU);
+        status.setText("Sign in to Google first. Starting the sign-in…");
+        DoorService.start(this, agent.id, DoorService.MODE_LOGIN);
+    }
+
     private void listen() {
         events = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) {
                 String line = intent.getStringExtra(DoorService.EXTRA_LINE);
                 String state = intent.getStringExtra(DoorService.EXTRA_STATE);
                 String url = intent.getStringExtra(DoorService.EXTRA_URL);
+                String found = intent.getStringExtra(DoorService.EXTRA_LINK);
                 if (line != null) status.setText(line);
+                if ("needlogin".equals(state)) { askToSignIn(); return; }
+                if ("asking".equals(state)) {
+                    signIn.setVisibility(View.VISIBLE);
+                    if (found != null) {
+                        link = found;
+                        openLink.setVisibility(View.VISIBLE);
+                    }
+                    return;
+                }
+                if ("signedin".equals(state)) {
+                    signIn.setVisibility(View.GONE);
+                    status.setTextColor(Ui.muted(Ui.dark(DoorActivity.this)));
+                    if (signingIn) {
+                        // Sign-in finished; the daemon can be started now, which is the step
+                        // the owner actually asked for.
+                        signingIn = false;
+                        status.setText("Signed in. Starting " + agent.name + "…");
+                        DoorService.start(DoorActivity.this, agent.id);
+                    }
+                    return;
+                }
                 if ("ready".equals(state) && url != null && !url.isEmpty() && !loaded) load(url);
                 if ("failed".equals(state)) showFailure(line);
             }
@@ -125,7 +230,6 @@ public final class DoorActivity extends android.app.Activity implements KeyBar.S
 
     private void load(String url) {
         loaded = true;
-        pendingUrl = url;
         web.loadUrl(url);
     }
 

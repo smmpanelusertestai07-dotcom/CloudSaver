@@ -48,6 +48,17 @@ final class Doors {
         final Door door;
         /** What starts inside Ubuntu. Empty for a door that is not implemented yet. */
         final String start;
+        /**
+         * What signs in, when the publisher needs that done first and separately.
+         *
+         * Google's own instruction for a headless host is "run agy, complete the sign-in flow,
+         * then exit", and only then start the daemon -- the daemon has no credentials of its
+         * own. On a machine with no desktop the CLI prints an authorisation link and waits for
+         * the code the browser gives back, so this command is run with its input still
+         * connected and the app relays both halves. Empty where the publisher's own extension
+         * handles sign-in inside its interface, which is the case for Door B.
+         */
+        final String login;
         /** Where the interface appears once it is running. */
         final String surface;
         /** What the publisher charges. Said plainly, because it decides whether you can use it. */
@@ -58,12 +69,13 @@ final class Doors {
         /** True when this has been run on a phone; false while it is only documented. */
         final boolean proven;
 
-        Agent(String id, String name, Door door, String start, String surface,
+        Agent(String id, String name, Door door, String start, String login, String surface,
               String cost, boolean free, String limit, boolean proven) {
             this.id = id;
             this.name = name;
             this.door = door;
             this.start = start;
+            this.login = login;
             this.surface = surface;
             this.cost = cost;
             this.free = free;
@@ -74,12 +86,17 @@ final class Doors {
         boolean implemented() {
             return !start.isEmpty();
         }
+
+        boolean signsInSeparately() {
+            return !login.isEmpty();
+        }
     }
 
     /** Ordered lightest door first, and within a door, free before paid. */
     static final Agent[] ALL = {
             new Agent("antigravity", "Antigravity", Door.REMOTE_CONTROL,
                     "doors-antigravity.sh start",
+                    "doors-antigravity.sh login",
                     "https://antigravity.google/remote",
                     "Free tier", true,
                     "Google's dashboard shows conversations, tasks, plans and artifacts. Whether it "
@@ -88,6 +105,7 @@ final class Doors {
 
             new Agent("codex", "Codex", Door.EXTENSION_HOST,
                     "doors-codeserver.sh start codex",
+                    "",
                     "http://127.0.0.1:8391/",
                     "Every ChatGPT plan, Free included", true,
                     "OpenAI's own phone interface needs a Mac to supervise. This is their VS Code "
@@ -96,6 +114,7 @@ final class Doors {
 
             new Agent("claude", "Claude Code", Door.EXTENSION_HOST,
                     "doors-codeserver.sh start claude",
+                    "",
                     "http://127.0.0.1:8391/",
                     "Claude Pro or Max, from $20 a month", false,
                     "Anthropic publishes no free tier for Claude Code. Remote Control into the "
@@ -103,6 +122,7 @@ final class Doors {
                     false),
 
             new Agent("cursor", "Cursor", Door.DESKTOP_APP,
+                    "",
                     "",
                     "",
                     "Hobby plan is free", true,

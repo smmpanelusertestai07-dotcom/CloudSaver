@@ -31,27 +31,48 @@ public final class DoorService extends Service {
     static final String CHANNEL = "doors";
     static final String ACTION_START = "com.pocketagent.doors.START";
     static final String ACTION_STOP = "com.pocketagent.doors.STOP";
+    /** A line typed by the owner, on its way to whatever the door is asking. */
+    static final String ACTION_INPUT = "com.pocketagent.doors.INPUT";
     static final String EXTRA_AGENT = "agent";
+    static final String EXTRA_MODE = "mode";
+    static final String EXTRA_TEXT = "text";
+    static final String MODE_START = "start";
+    static final String MODE_LOGIN = "login";
 
     /** Broadcast so the screens can follow along without polling. */
     static final String EVENT = "com.pocketagent.doors.EVENT";
     static final String EXTRA_LINE = "line";
     static final String EXTRA_STATE = "state";
     static final String EXTRA_URL = "url";
+    /** A link the owner has to open in a real browser, when the door asks for one. */
+    static final String EXTRA_LINK = "link";
 
     private static volatile String runningAgent;
     private Thread worker;
     private Process process;
+    /** The door's own input. Sign-in is a conversation, not a one-way stream. */
+    private java.io.Writer input;
 
     static String runningAgent() {
         return runningAgent;
     }
 
     static void start(Context context, String agentId) {
+        start(context, agentId, MODE_START);
+    }
+
+    static void start(Context context, String agentId, String mode) {
         Intent intent = new Intent(context, DoorService.class)
                 .setAction(ACTION_START)
-                .putExtra(EXTRA_AGENT, agentId);
+                .putExtra(EXTRA_AGENT, agentId)
+                .putExtra(EXTRA_MODE, mode);
         context.startForegroundService(intent);
+    }
+
+    /** Sends one typed line to the door, for the code a sign-in asks to have pasted back. */
+    static void send(Context context, String text) {
+        context.startService(new Intent(context, DoorService.class)
+                .setAction(ACTION_INPUT).putExtra(EXTRA_TEXT, text));
     }
 
     static void stop(Context context) {
@@ -65,25 +86,45 @@ public final class DoorService extends Service {
             shutdown();
             return START_NOT_STICKY;
         }
+        if (ACTION_INPUT.equals(action)) {
+            write(intent.getStringExtra(EXTRA_TEXT));
+            return START_NOT_STICKY;
+        }
         String agentId = intent.getStringExtra(EXTRA_AGENT);
+        String mode = intent.getStringExtra(EXTRA_MODE);
         Doors.Agent agent = Doors.byId(agentId);
         if (agent == null || !agent.implemented()) {
             shutdown();
             return START_NOT_STICKY;
         }
-        startInForeground(agent);
+        startInForeground(agent, MODE_LOGIN.equals(mode) ? MODE_LOGIN : MODE_START);
         return START_NOT_STICKY;
     }
 
-    private void startInForeground(Doors.Agent agent) {
+    private void startInForeground(Doors.Agent agent, String mode) {
         ensureChannel(this);
-        startForeground(7, notification(agent.name, "Starting…"));
+        boolean signingIn = MODE_LOGIN.equals(mode);
+        startForeground(7, notification(agent.name, signingIn ? "Signing in…" : "Starting…"));
         runningAgent = agent.id;
-        worker = new Thread(() -> run(agent), "door-" + agent.id);
+        worker = new Thread(() -> run(agent, mode), "door-" + agent.id);
         worker.start();
     }
 
-    private void run(Doors.Agent agent) {
+    /** Writes one line into the door, with the newline it is waiting for. */
+    private synchronized void write(String text) {
+        if (input == null || text == null) return;
+        try {
+            input.write(text);
+            input.write("\n");
+            input.flush();
+        } catch (java.io.IOException closed) {
+            broadcast("That answer could not be delivered; the door has closed.", "failed", "");
+        }
+    }
+
+    private void run(Doors.Agent agent, String mode) {
+        boolean signingIn = MODE_LOGIN.equals(mode);
+        String command = signingIn ? agent.login : agent.start;
         List<String> transcript = new ArrayList<>();
         String route = "";
         String url = agent.surface;
@@ -92,7 +133,13 @@ public final class DoorService extends Service {
             // Scripts are rewritten on every start so an app update's fixes take effect
             // without the owner reinstalling anything.
             Ubuntu.writeScripts(this);
-            process = Ubuntu.start(this, "bash /opt/doors/" + agent.start);
+            process = Ubuntu.start(this, "bash /opt/doors/" + command);
+            // Sign-in is a conversation: the door prints a link, the owner opens it in a real
+            // browser, and the code that comes back is typed here. So its input stays open.
+            synchronized (this) {
+                input = new java.io.OutputStreamWriter(
+                        process.getOutputStream(), StandardCharsets.UTF_8);
+            }
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -102,8 +149,31 @@ public final class DoorService extends Service {
                     transcript.add(clean);
                     if (transcript.size() > 200) transcript.remove(0);
 
-                    // The scripts speak two words the app acts on, and everything else is
-                    // just news for the screen.
+                    // The scripts speak a few words the app acts on; everything else is just
+                    // news for the screen.
+                    if (clean.startsWith("SIGNEDIN")) {
+                        broadcast("Signed in.", "signedin", url);
+                        continue;
+                    }
+                    if (clean.startsWith("NEEDLOGIN ")) {
+                        broadcast(clean.substring(10).trim(), "needlogin", url);
+                        continue;
+                    }
+                    if (clean.startsWith("ASK ")) {
+                        broadcast(clean.substring(4).trim(), "asking", url);
+                        continue;
+                    }
+                    // Any link the door prints is one the owner has to open in a real browser,
+                    // because Google refuse an embedded view for sign-in.
+                    String link = firstLink(clean);
+                    if (link != null) {
+                        sendBroadcast(new Intent(EVENT).setPackage(getPackageName())
+                                .putExtra(EXTRA_LINE, clean)
+                                .putExtra(EXTRA_STATE, "asking")
+                                .putExtra(EXTRA_LINK, link)
+                                .putExtra(EXTRA_URL, url));
+                        continue;
+                    }
                     if (clean.startsWith("READY ")) {
                         ready = true;
                         url = clean.substring(6).trim();
@@ -117,6 +187,13 @@ public final class DoorService extends Service {
                 }
             }
             int code = process.waitFor();
+            if (signingIn) {
+                // Sign-in has no daemon to leave behind; it either recorded a credential or
+                // it did not, and the script says which with its exit code.
+                broadcast(code == 0 ? "Signed in." : "Sign-in did not finish.",
+                        code == 0 ? "signedin" : "failed", url);
+                return;
+            }
             if (ready && code == 0) {
                 // A door that reported READY and then finished cleanly is a daemon that
                 // detached; it is still working even though this pipe closed.
@@ -138,9 +215,27 @@ public final class DoorService extends Service {
             Probe.record(this, agent.id, Probe.FAILED, join(transcript), route);
             broadcast(reason, "failed", url);
         } finally {
+            synchronized (this) {
+                if (input != null) {
+                    try { input.close(); } catch (java.io.IOException ignored) { }
+                    input = null;
+                }
+            }
             runningAgent = null;
             stopSelf();
         }
+    }
+
+    /** The first http(s) link on a line, with trailing punctuation left off. */
+    static String firstLink(String line) {
+        int at = line.indexOf("https://");
+        if (at < 0) at = line.indexOf("http://");
+        if (at < 0) return null;
+        int end = at;
+        while (end < line.length() && " \t\"'<>".indexOf(line.charAt(end)) < 0) end++;
+        while (end > at && ".,);:]".indexOf(line.charAt(end - 1)) >= 0) end--;
+        String link = line.substring(at, end);
+        return link.length() > 12 ? link : null;
     }
 
     private void shutdown() {

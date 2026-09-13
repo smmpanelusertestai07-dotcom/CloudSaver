@@ -83,6 +83,19 @@ grep -q 'cleartextTrafficPermitted="false"' app/res/xml/network_security_config.
   || fail "Loopback: cleartext is not refused by default"
 echo "PASS Loopback (the editor answers only this phone, and only there is cleartext allowed)"
 
+# ---------------------------------------------------------------- sign-in happens, and first
+# Google's own words: run agy, complete the sign-in flow, then exit, and only then start the
+# daemon. The first cut of this app skipped that entirely and would have failed at step one.
+grep -q 'doors-antigravity.sh login' "$SRC/Doors.java" \
+  || fail "Login: Antigravity has no sign-in step, so its daemon would start with no credentials"
+grep -q 'NEEDLOGIN' "$ASSETS/doors-antigravity.sh" \
+  || fail "Login: the script does not tell the app when sign-in is missing"
+grep -q 'NEEDLOGIN' "$SRC/DoorService.java" \
+  || fail "Login: the app does not act on a missing sign-in"
+grep -q 'ACTION_INPUT' "$SRC/DoorService.java" \
+  || fail "Login: nothing can type the code back, so a sign-in could never finish"
+echo "PASS Login (sign-in runs first, and the code can be typed back)"
+
 # ---------------------------------------------------------------- sign-in leaves the app
 grep -q 'accounts.google.com' "$SRC/DoorActivity.java" \
   || fail "SignIn: Google sign-in is not handed to the real browser"

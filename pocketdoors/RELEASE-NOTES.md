@@ -1,6 +1,6 @@
-# PocketAgent Doors 15.0.0 — the app stops drawing agents
+# PocketAgent Doors 15.0.5 — the app stops drawing agents
 
-Version **15.0.0**, code **500**, application ID `com.pocketagent.doors`.
+Version **15.0.5**, code **505**, application ID `com.pocketagent.doors`.
 
 This installs beside PocketAgent 14.1.5 rather than over it. The one that works today keeps
 working while this one is being proved.
@@ -43,6 +43,20 @@ Cursor will have to come through, because Cursor publishes no headless mode and 
   own extension from Open VSX, and serves it on the loopback address only.
 - A keyboard row above the page for the keys a touch screen has no way to reach — Escape, Tab,
   the arrows, Ctrl combinations, and the slash and at-sign every one of these agents is driven by.
+
+## Sign-in, which the first build got wrong
+
+The first cut of this ran `agy remote-control start` and nothing else. Google's own instruction
+is "run `agy`, complete the sign-in flow, then exit", and then "the credentials you used to sign
+into the CLI are used by the daemon" -- so a daemon started before that has nothing to
+authenticate with, and Antigravity would have failed at the very first step.
+
+Sign-in is now its own step, and it is a conversation rather than a stream. On a machine with no
+desktop the CLI prints an authorisation link and waits for the code that browser gives back, so
+the app opens the link in the phone's **real browser** -- never in its own window, because Google
+refuse an embedded view for sign-in and are right to -- and gives you one box to paste the code
+into. Once a credential exists the app remembers, skips straight to the daemon, and never asks
+again.
 
 ## The honest part
 
