@@ -81,19 +81,36 @@ zip -q -j "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/dex/classes.dex"
 # only way out of that is uninstalling -- which on this app means deleting the whole workspace.
 # So the key has to be stable across releases.
 #
-# Preference order: a keystore supplied through the environment (GitHub secrets in CI), then the
-# repository's own. The repository key is a real risk and is not pretended otherwise: anyone who
-# can read this repository can sign an APK that Android will install over this one. It is here
-# because the alternative -- a key that exists only on one machine -- means nobody else can ever
-# ship an update, and because this app is sideloaded rather than distributed through a store.
-# To rotate it, set the secrets below in CI and the repository key stops being used.
+# There is exactly one stable key, and it is the one supplied through the environment. No key is
+# committed to this repository, and none should be: this repository is public, and a signing key
+# anyone can read is a signing key anyone can use to build an "update" that installs straight
+# over the owner's app.
+#
+# So the key has to be held as a GitHub secret. Create it once, keep it, and set the four
+# secrets named below; every build after that -- in CI or on a laptop -- signs identically and
+# every APK installs over the last one.
+#
+#   keytool -genkeypair -v -keystore pocketide.jks -storetype JKS \
+#     -alias pocketide -keyalg RSA -keysize 4096 -validity 10950 \
+#     -dname "CN=PocketIDE, OU=PocketIDE, O=PocketIDE, C=IN"
+#   base64 -w0 pocketide.jks        # -> POCKETIDE_KEYSTORE_B64
+#
+# Without those secrets this script generates a throwaway key so a first build works at all.
+# That APK installs fine on a phone with nothing installed, and will not install over an APK
+# signed by any other throwaway. The warning below says so at build time rather than leaving it
+# to be discovered as "App not installed" on a phone.
 KEYSTORE="${POCKETIDE_KEYSTORE:-$PROJECT_DIR/.signing/pocketide.jks}"
 STORE_PASS="${POCKETIDE_STORE_PASS:-pocketide-local}"
 KEY_PASS="${POCKETIDE_KEY_PASS:-$STORE_PASS}"
 KEY_ALIAS="${POCKETIDE_KEY_ALIAS:-pocketide}"
 
+THROWAWAY_KEY=0
 if [[ ! -f "$KEYSTORE" ]]; then
-  echo "Creating a signing key…"
+  THROWAWAY_KEY=1
+  echo "No signing key was supplied; generating a throwaway one."
+  echo "  This APK will NOT install over an APK signed by a different key."
+  echo "  Set POCKETIDE_KEYSTORE_B64, POCKETIDE_STORE_PASS, POCKETIDE_KEY_PASS and"
+  echo "  POCKETIDE_KEY_ALIAS as repository secrets to sign every build the same way."
   mkdir -p "$(dirname "$KEYSTORE")"
   keytool -genkeypair -v \
     -keystore "$KEYSTORE" -storetype JKS \
@@ -120,3 +137,10 @@ APK="$BUILD_DIR/$APP_BASENAME-v$VERSION_NAME-release.apk"
 echo
 echo "Built: $APK"
 echo "Size:  $(du -h "$APK" | cut -f1)"
+
+if [[ "$THROWAWAY_KEY" == "1" ]]; then
+  echo
+  echo "Signed with a throwaway key. Installs on a phone that has no PocketIDE yet;"
+  echo "will not install over a PocketIDE signed by a different key. See the note above"
+  echo "the signing block in this file for the four secrets that fix this for good."
+fi

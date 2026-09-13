@@ -70,18 +70,38 @@ mistake that reached a phone; each one names the failure it guards against.
 
 ### Signing
 
-The build prefers a keystore supplied through the environment and falls back to the repository's
-own:
+Android refuses an update signed with a different key than the one already installed, and the
+only way past that is uninstalling — which for this app means deleting the whole workspace. So
+the key has to be the same one every time, and it has to live somewhere other than here: this
+repository is public, and a signing key anyone can read is a signing key anyone can use to build
+an "update" that installs straight over yours.
+
+Create the key once and keep it:
 
 ```
-POCKETIDE_KEYSTORE   POCKETIDE_STORE_PASS   POCKETIDE_KEY_PASS   POCKETIDE_KEY_ALIAS
+keytool -genkeypair -v -keystore pocketide.jks -storetype JKS \
+  -alias pocketide -keyalg RSA -keysize 4096 -validity 10950 \
+  -dname "CN=PocketIDE, OU=PocketIDE, O=PocketIDE, C=IN"
+
+base64 -w0 pocketide.jks
 ```
 
-The repository key is a real risk and is not pretended otherwise: anyone who can read this
-repository can sign an APK that Android will install over this one. It is here because a key
-that exists on one machine only means nobody else can ever ship an update, and because this app
-is sideloaded rather than distributed through a store. Setting the secrets above in CI stops the
-repository key being used.
+Then set four repository secrets — Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+| --- | --- |
+| `POCKETIDE_KEYSTORE_B64` | the base64 output above |
+| `POCKETIDE_STORE_PASS` | the keystore password you chose |
+| `POCKETIDE_KEY_PASS` | the key password you chose |
+| `POCKETIDE_KEY_ALIAS` | `pocketide` |
+
+Every build after that — in CI or on a laptop, where the same values go in `POCKETIDE_KEYSTORE`,
+`POCKETIDE_STORE_PASS`, `POCKETIDE_KEY_PASS` and `POCKETIDE_KEY_ALIAS` — signs identically, and
+each APK installs over the last.
+
+Without them `build.sh` generates a throwaway key so that a first build works at all, and says
+so twice while it does. That APK installs on a phone with no PocketIDE on it, and will not
+install over an APK signed by any other throwaway.
 
 ## Licence
 
