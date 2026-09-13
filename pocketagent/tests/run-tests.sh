@@ -192,9 +192,14 @@ if ls "$PROJECT_DIR"/app/res/*/*ubuntu* >/dev/null 2>&1; then
 fi
 grep -q 'trademark of Canonical' "$PROJECT_DIR/app/src/com/pocketagent/mobile/MainActivity.java" \
   || { echo "FAIL Terminology: the Canonical trademark line is missing from the credits"; exit 1; }
-tagline=$(grep -c 'A Linux computer that runs locally on your phone' "$PROJECT_DIR/app/src/com/pocketagent/mobile/MainActivity.java")
+# The tagline the app actually makes: agents, not a Linux computer. The Ubuntu userspace is
+# where they run, not the thing being offered, and the old line was PocketLinux's.
+tagline=$(grep -c 'AI agents that build real software on your phone' "$PROJECT_DIR/app/src/com/pocketagent/mobile/MainActivity.java")
 [ "$tagline" -ge 2 ] \
   || { echo "FAIL Terminology: the one tagline must appear on the opening screen and the home header, found $tagline"; exit 1; }
+if grep -q "A Linux computer that runs locally on your phone" "$PROJECT_DIR/app/src/com/pocketagent/mobile/MainActivity.java"; then
+  echo "FAIL Terminology: PocketLinux's tagline is back; this app is an agent surface, not a Linux computer"; exit 1
+fi
 echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh

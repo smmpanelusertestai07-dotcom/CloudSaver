@@ -1,4 +1,4 @@
-# PocketAgent 14.0.0-beta.12 — Native mobile IDE
+# PocketAgent 14.0.5 — Native mobile IDE
 
 PocketAgent is a native Android interface for official coding agents running inside an
 app-private Ubuntu userspace on the phone. A project can switch between supported agents;
@@ -29,9 +29,9 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 bash build.sh
 ```
 
-The build has version code **432**, targets API 35, requires API 29 and packages ARM64 native
-libraries with 16 KB ZIP alignment. Output is `build/PocketAgent-v14.0.0-beta.12-release.apk`,
-or `build/PocketAgent-v14.0.0-beta.12-devkey-release.apk` for a generated development key.
+The build has version code **435**, targets API 35, requires API 29 and packages ARM64 native
+libraries with 16 KB ZIP alignment. Output is `build/PocketAgent-v14.0.5-release.apk`,
+or `build/PocketAgent-v14.0.5-devkey-release.apk` for a generated development key.
 
 The signing key is in the repository on purpose, at `.signing/pocketagent-local.jks`.
 Android refuses an update signed with a different key, and taking one means uninstalling --

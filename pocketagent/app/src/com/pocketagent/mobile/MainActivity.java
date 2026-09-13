@@ -50,7 +50,7 @@ import java.util.Locale;
  * next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "14.0.0-beta.12";
+    static final String VERSION = "14.0.5";
     static final String EXTRA_ROUTE = "com.pocketagent.mobile.route";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
@@ -222,7 +222,7 @@ public final class MainActivity extends Activity {
         name.setGravity(Gravity.CENTER);
         name.setLetterSpacing(-0.02f);
         first.addView(name, Ui.matchWrap(this, 18));
-        TextView line = Ui.text(this, "A Linux computer that runs locally on your phone", 14.5f, Color.rgb(190, 204, 240));
+        TextView line = Ui.text(this, "AI agents that build real software on your phone", 14.5f, Color.rgb(190, 204, 240));
         line.setGravity(Gravity.CENTER);
         first.addView(line, Ui.matchWrap(this, 6));
 
@@ -507,7 +507,7 @@ public final class MainActivity extends Activity {
         TextView name = Ui.bold(this, "PocketAgent", 22, text);
         name.setLetterSpacing(-0.015f);
         heading.addView(name);
-        heading.addView(Ui.text(this, "A Linux computer that runs locally on your phone", 12.5f, muted));
+        heading.addView(Ui.text(this, "AI agents that build real software on your phone", 12.5f, muted));
 
         ImageView themeButton = Ui.icon(this, dark ? R.drawable.ic_light_mode : R.drawable.ic_dark_mode,
                 Ui.accent(dark), 22);

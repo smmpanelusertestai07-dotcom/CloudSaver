@@ -45,7 +45,7 @@ final class ProviderAccountLinks {
         return false;
     }
     static String note(String provider) {
-        if ("antigravity".equals(provider)) return "Google account management only. Antigravity agent connection is unavailable in this build.";
+        if ("antigravity".equals(provider)) return "Google account management only. PocketAgent's adapter for Antigravity's event stream is not written yet.";
         return "These open the provider's website. PocketAgent does not read or change its privacy choices.";
     }
 }

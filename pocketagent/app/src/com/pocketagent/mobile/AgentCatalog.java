@@ -30,6 +30,6 @@ final class AgentCatalog {
         if ("codex".equals(id)) return "ChatGPT sign-in · models and account limits from Codex";
         if ("cursor".equals(id)) return "Official Cursor agent · your eligible Cursor allowance";
         if ("claude".equals(id)) return "Official Claude Code CLI · eligible Claude subscription required";
-        return "Official Antigravity ACP engine · Google account eligibility applies";
+        return "Official Antigravity CLI · free Google tier includes Gemini and Claude models";
     }
 }

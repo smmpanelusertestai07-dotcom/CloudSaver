@@ -40,11 +40,22 @@ final class AgentInstaller {
         }
     }
 
-    /** An advertised adapter does not by itself grant permission for subscription reuse. */
+    /**
+     * Why an engine cannot be connected yet -- the real reason, not a guess.
+     *
+     * Antigravity is not blocked by permission. Google's own headless documentation shows a
+     * script holding agy's stdin open and driving it turn by turn, and names no restriction on
+     * who may do that. What is missing is on this side: agy speaks its own newline-delimited
+     * event stream (init, step_update, result), not ACP -- a native ACP mode is still an open
+     * request on Google's CLI repository -- and PocketAgent has no adapter for that stream yet.
+     * Saying so plainly matters: an owner told "permission was refused" would wait for Google,
+     * when the work is ours.
+     */
     static String unavailableReason(String provider) {
         if ("antigravity".equals(provider)) {
-            return "Antigravity connection is unavailable in this build. Google's published terms "
-                    + "restrict third-party access; permission for PocketAgent has not been established.";
+            return "Antigravity is not connected yet. Its CLI streams its own event format rather "
+                    + "than the protocol this build speaks, and PocketAgent's adapter for it is "
+                    + "not written. This is PocketAgent's missing work, not a refusal by Google.";
         }
         if (version(provider).isEmpty()) return "Unknown agent provider.";
         return "";
