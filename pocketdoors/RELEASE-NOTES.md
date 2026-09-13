@@ -1,11 +1,45 @@
-# PocketAgent 16.5.0 — the editor is on the screen, and now it fits it
+# PocketAgent 16.5.5 — Chromium outgrew the phone's process budget
 
-Version **16.5.0**, code **650**, application ID `com.pocketagent.doors`.
+Version **16.5.5**, code **655**, application ID `com.pocketagent.doors`.
 
-**Antigravity drew on the phone.** Its window, its title bar, its icon, through the display
-server and the viewer, end to end. That was the last unproven step in the whole design.
+The fit is right: the display is portrait, the editor fills the screen, and the crash dialog
+opens centred with both its buttons reachable. What remained was the crash itself —
+`reason: 'crashed', code: '5'`, over and over.
 
-Two things were wrong with the picture, and both had the same cause.
+## 16.5.5: thirty-two processes, and Chromium wanted more
+
+Android gives an app a budget of child processes — on this device about **thirty-two**. It is
+the same ceiling the other app in this repository hit and fixed, as an `exit 137`.
+
+Chromium's defaults spend that budget freely: a renderer per site, a **spare renderer kept
+warm**, a separate network service, a separate GPU process. When the budget runs out the kernel
+kills whatever it likes, and what the editor notices is a renderer that vanished — which it
+reports as `'crashed'`.
+
+I had copied five flags from that app and left nine behind. The nine that matter are all about
+this:
+
+| Flag | What it saves |
+|---|---|
+| `--renderer-process-limit=1` | One renderer, not one per anything |
+| `--process-per-site` | Pages of a site share a process |
+| `--disable-features=SpareRendererForSitePerProcess,IsolateOrigins,site-per-process` | No warm spare, no isolation fan-out |
+| `--enable-features=NetworkServiceInProcess2` | Networking on the browser's own IO thread |
+| `--enable-low-end-device-mode` | Chromium's own switch for machines like this |
+| `--ozone-platform=x11` | The display backend named, not guessed |
+| `--disable-smooth-scrolling`, `--disable-background-networking`, `--no-first-run`, `--disable-crash-reporter` | Work this phone does not need to do |
+
+Site isolation is a real security boundary and giving it up is a real cost. It is worth stating
+plainly: `--no-sandbox` above is already a larger one, forced by PRoot, and this is the
+difference between an editor that opens and an editor that does not.
+
+**One flag from that app is deliberately not copied: `--disable-extensions`.** Extensions are
+the whole point here — two of the three agents arrive as one. `ElectronFlags` fails the build if
+it ever appears.
+
+---
+
+# Earlier releases
 
 ## 16.5.0: the desktop was the wrong shape
 

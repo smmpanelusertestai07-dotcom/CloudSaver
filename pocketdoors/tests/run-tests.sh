@@ -376,6 +376,23 @@ for flag in --no-sandbox --no-zygote --in-process-gpu --disable-dev-shm-usage --
   printf '%s' "$launch" | grep -q -- "$flag" \
     || fail "ElectronFlags: $flag is not on the launch command, and it was added for a real crash"
 done
+# The process budget. Android gives an app about thirty-two children; Chromium's defaults spend
+# them on a renderer per site, a spare renderer kept warm, and separate network and GPU
+# services. When the budget runs out the kernel kills what it likes, and the editor reports a
+# renderer that "crashed" -- reason 'crashed', code 5, which is the dialog a real phone showed.
+for frugal in --renderer-process-limit=1 --process-per-site --enable-low-end-device-mode \
+              NetworkServiceInProcess2 SpareRendererForSitePerProcess site-per-process; do
+  printf '%s' "$launch" | grep -q -- "$frugal" \
+    || fail "ElectronFlags: $frugal is missing, and without it Chromium outgrows this phone's process budget"
+done
+# X11 named rather than guessed at: an Electron that picks its own display backend can pick one
+# that is not there.
+printf '%s' "$launch" | grep -q -- '--ozone-platform=x11' \
+  || fail "ElectronFlags: the display backend is left to be guessed at"
+# And the one flag from that app deliberately not copied: extensions are the whole point here.
+if printf '%s' "$launch" | grep -q -- '--disable-extensions'; then
+  fail "ElectronFlags: extensions are disabled, and two of the three agents arrive as one"
+fi
 grep -q '"terminal.integrated.gpuAcceleration": "off"' "$ASSETS/doors-workspace.sh" \
   || fail "ElectronFlags: the editor's own setting for this is not written, so an update undoes the flag"
 grep -q 'PROOT_NO_SECCOMP' "$SRC/Ubuntu.java" \

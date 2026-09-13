@@ -487,6 +487,24 @@ start_workspace() {
   # because WebGL here is software and a fault in it is a fault in the whole editor.
   # The editor itself, not the command line that launches it and leaves. This process is the
   # one the session is held open for.
+  #
+  # The flags below are not preferences. Every one was paid for on this phone, in the other app
+  # in this repository, and the group that matters most is about how many processes Chromium is
+  # allowed to start.
+  #
+  # Android gives an app a budget of child processes -- on this device about thirty-two -- and
+  # Chromium with its defaults blows straight through it: a renderer per site, a spare renderer
+  # kept warm, a separate network service, a separate GPU process. When the budget runs out the
+  # kernel kills what it likes, and what the editor reports is a renderer that "crashed", which
+  # is exactly the dialog a real phone showed: reason 'crashed', code 5.
+  #
+  # So: one renderer, one process per site, no spare, no site isolation, networking on the
+  # browser's own IO thread, and the GPU work in-process. Site isolation is a real boundary and
+  # giving it up is a real cost -- but --no-sandbox above is already a larger one, and this is
+  # the difference between an editor that opens and an editor that does not.
+  #
+  # Deliberately NOT copied from that app: --disable-extensions. Extensions are the whole point
+  # here; two of the three agents arrive as one.
   "$AG_ELECTRON" \
     --no-sandbox --user-data-dir="$AG_DATA" --extensions-dir="$AG_EXTENSIONS" \
     --disable-setuid-sandbox --disable-gpu-sandbox \
@@ -494,6 +512,16 @@ start_workspace() {
     --disable-gpu --disable-gpu-compositing --disable-3d-apis \
     --force-device-scale-factor="$SCALE" \
     --js-flags=--max-old-space-size=384 \
+    --ozone-platform=x11 \
+    --enable-features=NetworkServiceInProcess2 \
+    --disable-features=SpareRendererForSitePerProcess,IsolateOrigins,site-per-process \
+    --renderer-process-limit=1 \
+    --process-per-site \
+    --enable-low-end-device-mode \
+    --disable-smooth-scrolling \
+    --disable-background-networking \
+    --no-first-run \
+    --disable-crash-reporter \
     "$WORK" >>"$LOG" 2>&1 &
   EDITOR_PID=$!
 
