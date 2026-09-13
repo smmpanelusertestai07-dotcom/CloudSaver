@@ -1,0 +1,75 @@
+name: pocketide
+
+# PocketIDE lives under pocketide/ and has its own Gradle-free build, separate from pocketlinux/
+# and pocketdoors/. Nothing here touches either of them.
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+    paths:
+      - "pocketide/**"
+      - ".github/workflows/pocketide.yml"
+  pull_request:
+    paths:
+      - "pocketide/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and gate the APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+      - name: Android platform 35 and build-tools 35.0.0
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          # Set these as repository secrets to sign with a key that is not in the repository.
+          # Absent, build.sh falls back to the repository's own, which is what keeps a
+          # sideloaded update installable over the previous one.
+          POCKETIDE_KEYSTORE_B64: ${{ secrets.POCKETIDE_KEYSTORE_B64 }}
+          POCKETIDE_STORE_PASS: ${{ secrets.POCKETIDE_STORE_PASS }}
+          POCKETIDE_KEY_PASS: ${{ secrets.POCKETIDE_KEY_PASS }}
+          POCKETIDE_KEY_ALIAS: ${{ secrets.POCKETIDE_KEY_ALIAS }}
+        run: |
+          set -eu
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -n "${POCKETIDE_KEYSTORE_B64:-}" ]; then
+            printf '%s' "$POCKETIDE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/pocketide.jks"
+            export POCKETIDE_KEYSTORE="$RUNNER_TEMP/pocketide.jks"
+          fi
+          # Through bash rather than ./: an executable bit is one more thing a checkout can
+          # lose, and losing it fails the whole job with exit 126 and no useful message.
+          cd pocketide && bash build.sh
+
+      - name: Gates
+        run: |
+          set -eu
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          bash pocketide/tests/run-tests.sh
+
+      - name: Checksum
+        run: sha256sum pocketide/build/PocketIDE-v*-release.apk
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: PocketIDE-apk
+          path: pocketide/build/PocketIDE-v*-release.apk
+          if-no-files-found: error

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketIDE</string>
+    <string name="tagline">A real development environment that runs on your phone.</string>
+    <string name="title_setup">Set up</string>
+    <string name="title_workspace">Workspace</string>
+    <string name="title_extensions">Extensions</string>
+    <string name="title_settings">Settings</string>
+    <string name="title_help">Help</string>
+</resources>

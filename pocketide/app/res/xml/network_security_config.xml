@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Every byte this app fetches for itself is HTTPS: Canonical's mirror, Coder's releases and
+    the Open VSX registry. Cleartext is refused outright rather than merely discouraged, so a
+    hijacked DNS answer cannot quietly downgrade a download that is about to be executed.
+
+    This governs the app's own traffic. Software running inside the Linux workspace (apt, an
+    extension, a build) uses the workspace's own network stack and its own certificate store.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

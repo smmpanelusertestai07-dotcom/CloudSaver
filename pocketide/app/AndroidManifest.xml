@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.pocketide">
+
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Set-up downloads for twenty minutes or more, and an agent works for minutes at a
+         stretch. Without this Android sleeps the CPU mid-download and the owner sees a
+         set-up that stopped for no visible reason. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- A one-tap prompt, never forced: Android's battery saver otherwise ends a long
+         set-up or a long agent run. Settings shows whether it was granted and can ask again. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!--
+        Deliberately not requested, and the Help screen says so: camera, microphone, location,
+        contacts, SMS, calendar, storage. Nothing in this app needs them, and an app that asks
+        for what it does not need is an app nobody should trust with a code repository.
+    -->
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:extractNativeLibs="true"
+        android:fullBackupContent="false"
+        android:hardwareAccelerated="true"
+        android:largeHeap="true"
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PocketIDE"
+        android:usesCleartextTraffic="false">
+
+        <!-- singleTop, so a notification tapped while Home is already open reaches
+             onNewIntent rather than stacking a second copy of the screen. -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SetupActivity"
+            android:exported="false"
+            android:label="@string/title_setup"
+            android:parentActivityName=".HomeActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
+        <!-- The editor keeps its own state across a rotation rather than reloading somebody
+             else's page from the top, so configChanges covers everything that can change. -->
+        <activity
+            android:name=".WorkspaceActivity"
+            android:exported="false"
+            android:label="@string/title_workspace"
+            android:parentActivityName=".HomeActivity"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize" />
+
+        <activity
+            android:name=".ExtensionsActivity"
+            android:exported="false"
+            android:label="@string/title_extensions"
+            android:parentActivityName=".HomeActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/title_settings"
+            android:parentActivityName=".HomeActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
+        <activity
+            android:name=".HelpActivity"
+            android:exported="false"
+            android:label="@string/title_help"
+            android:parentActivityName=".HomeActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
+        <service
+            android:name=".WorkspaceService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-started local development environment: a Linux workspace and code editor the owner opened, kept alive with a visible stop control while it runs" />
+        </service>
+    </application>
+</manifest>
