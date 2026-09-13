@@ -72,8 +72,26 @@ echo "Dexing…"
 mapfile -t CLASS_FILES < <(find "$BUILD_DIR/classes" -name '*.class' -type f | sort)
 "$BUILD_TOOLS/d8" --lib "$ANDROID_JAR" --min-api 29 --output "$BUILD_DIR/dex" "${CLASS_FILES[@]}"
 zip -q -j "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/dex/classes.dex"
-"$BUILD_TOOLS/zipalign" -f -p 4 \
+# -P 16, not -p. They are different flags and the difference is a crash on a modern phone:
+# lowercase -p aligns uncompressed .so files to 4 KB, which is all Android needed until 15.
+# Android 15 introduced devices with 16 KB memory pages, and on those the loader maps a
+# library straight out of the APK -- so a library sitting at an offset that is not a multiple
+# of 16384 cannot be mapped and the app dies at startup with no useful message.
+#
+# The four libraries here are already built with 16 KB ELF segment alignment (readelf shows
+# LOAD align 0x4000 on each), and with -p 4 their offsets happened to land on 16 KB boundaries
+# anyway. Happened to. Add a fifth library, or change the order of anything before them, and
+# that luck ends. -P 16 makes it a property of the build instead.
+"$BUILD_TOOLS/zipalign" -f -P 16 4 \
   "$BUILD_DIR/$APP_BASENAME-unsigned.apk" "$BUILD_DIR/$APP_BASENAME-aligned.apk"
+
+# Proved, not assumed: the same tool re-reads the file and is asked whether every uncompressed
+# library actually sits on a 16 KB boundary. A build that cannot answer yes does not ship.
+if ! "$BUILD_TOOLS/zipalign" -c -P 16 4 "$BUILD_DIR/$APP_BASENAME-aligned.apk" >/dev/null; then
+  echo "Native libraries are not 16 KB aligned; this APK would not start on an Android 15" >&2
+  echo "device with 16 KB pages. Refusing to sign it." >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------- signing
 #

@@ -40,6 +40,11 @@ final class Prefs {
     static final String LAST_FAILURE_AT = "last_failure_at";
     static final String SEEN_PERMISSION_INTRO = "seen_permission_intro";
 
+    // ---------------------------------------------------------------- the app lock
+    static final String APP_LOCK = "app_lock";
+    /** Set when the lock turned itself off because the phone's own screen lock was removed. */
+    static final String LOCK_NOTICE = "app_lock_notice";
+
     private Prefs() {}
 
     static SharedPreferences of(Context context) {

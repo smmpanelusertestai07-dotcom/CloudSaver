@@ -68,7 +68,7 @@ check "VerifiedNamespaces" $? \
 in_code 'ALLOW_UNVERIFIED' "$SRC/Registry.java"
 check "UnverifiedIsOptIn" $? "unverified publishers are not gated behind a setting"
 
-in_code 'publishedChecksum|sha256' "$SRC/ExtensionsActivity.java"
+in_code 'publishedChecksum|sha256' "$SRC/AgentsPane.java"
 check "PinnedChecksums" $? \
   "an extension is installed without comparing it against the registry's published checksum"
 

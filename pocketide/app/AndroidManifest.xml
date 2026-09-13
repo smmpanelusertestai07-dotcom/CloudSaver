@@ -18,6 +18,18 @@
          set-up or a long agent run. Settings shows whether it was granted and can ask again. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- The app lock. Declared rather than assumed: some Android builds throw out of
+         BiometricPrompt.authenticate() without it, even on the way to the PIN fallback, and
+         AppLock checks the grant before it will call that at all. Normal protection level, so
+         it is granted at install and never prompts. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- A fingerprint reader is a nice-to-have, not a requirement: without one the lock uses
+         the phone's PIN screen, which every secured phone has. Saying so keeps the app
+         installable on phones that have no sensor. -->
+    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
+    <uses-feature android:name="android.hardware.biometrics" android:required="false" />
+
     <!--
         Deliberately not requested, and the Help screen says so: camera, microphone, location,
         contacts, SMS, calendar, storage. Nothing in this app needs them, and an app that asks
@@ -40,10 +52,11 @@
         android:theme="@style/Theme.PocketIDE"
         android:usesCleartextTraffic="false">
 
-        <!-- singleTop, so a notification tapped while Home is already open reaches
-             onNewIntent rather than stacking a second copy of the screen. -->
+        <!-- One host for the four destinations on the bottom bar. singleTop so a notification
+             tapped while it is already open reaches onNewIntent and switches destination,
+             rather than stacking a second copy of the whole app on top of itself. -->
         <activity
-            android:name=".HomeActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize">
@@ -57,7 +70,7 @@
             android:name=".SetupActivity"
             android:exported="false"
             android:label="@string/title_setup"
-            android:parentActivityName=".HomeActivity"
+            android:parentActivityName=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
 
         <!-- The editor keeps its own state across a rotation rather than reloading somebody
@@ -66,29 +79,16 @@
             android:name=".WorkspaceActivity"
             android:exported="false"
             android:label="@string/title_workspace"
-            android:parentActivityName=".HomeActivity"
+            android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize" />
 
-        <activity
-            android:name=".ExtensionsActivity"
-            android:exported="false"
-            android:label="@string/title_extensions"
-            android:parentActivityName=".HomeActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
-
-        <activity
-            android:name=".SettingsActivity"
-            android:exported="false"
-            android:label="@string/title_settings"
-            android:parentActivityName=".HomeActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
 
         <activity
             android:name=".HelpActivity"
             android:exported="false"
             android:label="@string/title_help"
-            android:parentActivityName=".HomeActivity"
+            android:parentActivityName=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
 
         <service

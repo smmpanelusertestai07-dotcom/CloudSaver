@@ -39,6 +39,23 @@ final class Crash {
         });
     }
 
+    /**
+     * Records a failure the app caught and recovered from, rather than one that killed it.
+     *
+     * Worth keeping because the interesting ones never reach the uncaught handler: a biometric
+     * prompt that threw on one manufacturer's build, a file the phone refused for a reason the
+     * API does not name. Without this they are invisible -- the app quietly takes its fallback
+     * path and nobody ever learns which phones needed it.
+     */
+    static void save(Context context, Throwable error) {
+        try {
+            record(context, Thread.currentThread(), error);
+        } catch (Throwable writingFailed) {
+            // Same reasoning as in arm(): a failure to write the record must never become the
+            // failure the owner sees.
+        }
+    }
+
     private static void record(Context context, Thread thread, Throwable error) throws IOException {
         StringWriter buffer = new StringWriter();
         PrintWriter writer = new PrintWriter(buffer);

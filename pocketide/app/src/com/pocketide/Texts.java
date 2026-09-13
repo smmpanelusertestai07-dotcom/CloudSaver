@@ -321,6 +321,12 @@ final class Texts {
              "Foreground service type", "Declares what that service is for, as Android requires."},
             {"android.permission.VIBRATE",
              "Vibration", "Feedback on the key row."},
+            {"android.permission.USE_BIOMETRIC",
+                    "App lock",
+                    "Only to ask the phone to confirm it is you when the app lock is on. The "
+                            + "check is the phone's own; no fingerprint or PIN ever reaches "
+                            + "this app, and nothing is stored. Granted at install because it "
+                            + "is a normal permission, and unused while the lock is off."},
             {"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
              "Battery", "A one-tap prompt so long work is not stopped. Always optional."},
     };

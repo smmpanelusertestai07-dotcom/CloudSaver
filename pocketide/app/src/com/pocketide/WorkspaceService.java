@@ -46,6 +46,22 @@ public final class WorkspaceService extends Service {
     private static volatile boolean busy;
     private static volatile boolean editorRunning;
     private static volatile String editorUrl = "";
+    private static volatile long runningSince;
+
+    /**
+     * The last few hundred lines the workspace printed, kept so the Activity screen can show
+     * what happened rather than only what is happening.
+     *
+     * A ring buffer rather than a file: these lines are diagnostic, not a record, and a
+     * development server that has been running all afternoon would otherwise write a log
+     * nobody asked for onto a phone that is short of space. LOG_LINES is what fits a screen
+     * scrolled back a few times.
+     *
+     * Guarded by its own lock because the service writes from its worker thread and the screen
+     * reads from the thread that draws.
+     */
+    private static final int LOG_LINES = 400;
+    private static final java.util.ArrayDeque<String> LOG = new java.util.ArrayDeque<>();
 
     private Thread worker;
     private volatile Process editor;
@@ -55,6 +71,32 @@ public final class WorkspaceService extends Service {
     static boolean busy() { return busy; }
     static boolean editorRunning() { return editorRunning; }
     static String editorUrl() { return editorUrl; }
+
+    /** When the editor started answering, or 0 if it is not running. */
+    static long runningSince() { return editorRunning ? runningSince : 0L; }
+
+    /** A copy of the recent output, oldest first. A copy, so the caller cannot see it change. */
+    static java.util.List<String> recentLog() {
+        synchronized (LOG) {
+            return new java.util.ArrayList<>(LOG);
+        }
+    }
+
+    static void clearLog() {
+        synchronized (LOG) {
+            LOG.clear();
+        }
+    }
+
+    private static void record(String line) {
+        if (line == null) return;
+        String trimmed = line.trim();
+        if (trimmed.isEmpty()) return;
+        synchronized (LOG) {
+            LOG.addLast(trimmed);
+            while (LOG.size() > LOG_LINES) LOG.removeFirst();
+        }
+    }
 
     static void setUp(Context context) { send(context, ACTION_SETUP); }
     static void startEditor(Context context) { send(context, ACTION_START); }
@@ -147,6 +189,7 @@ public final class WorkspaceService extends Service {
                         editorUrl = clean.substring("PIDE-READY ".length()).trim();
                         editorRunning = true;
                         note("Editor running");
+                        runningSince = System.currentTimeMillis();
                         Intent ready = new Intent(EVENT).setPackage(getPackageName())
                                 .putExtra(EXTRA_STATE, "ready")
                                 .putExtra(EXTRA_URL, editorUrl)
@@ -177,6 +220,7 @@ public final class WorkspaceService extends Service {
                 .putString(Prefs.LAST_FAILURE, raw)
                 .putLong(Prefs.LAST_FAILURE_AT, System.currentTimeMillis())
                 .apply();
+        record("Failed: " + raw);
         Intent event = new Intent(EVENT).setPackage(getPackageName())
                 .putExtra(EXTRA_STATE, "failed")
                 .putExtra(EXTRA_LINE, raw);
@@ -186,6 +230,7 @@ public final class WorkspaceService extends Service {
 
     private void announce(String stage, String message, String state, int percent) {
         if (message == null || message.trim().isEmpty()) return;
+        record(message);
         Intent event = new Intent(EVENT).setPackage(getPackageName())
                 .putExtra(EXTRA_LINE, message)
                 .putExtra(EXTRA_STATE, state)
@@ -201,6 +246,7 @@ public final class WorkspaceService extends Service {
         busy = false;
         editorRunning = false;
         editorUrl = "";
+        runningSince = 0L;
         Process running = editor;
         editor = null;
         if (running != null) running.destroy();
@@ -255,7 +301,7 @@ public final class WorkspaceService extends Service {
     }
 
     private Notification notification(String text) {
-        Intent open = new Intent(this, HomeActivity.class)
+        Intent open = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent openIntent = PendingIntent.getActivity(this, 0, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

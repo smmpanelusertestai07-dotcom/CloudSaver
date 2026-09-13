@@ -56,6 +56,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     private LinearLayout waiting;
     private TextView waitingLine;
     private BroadcastReceiver events;
+    private android.widget.FrameLayout lockRoot;
     private boolean shown;
     /** One typed sign-in, at most, if the cookie is ever refused. See signInWithForm(). */
     private boolean formSignInTried;
@@ -64,10 +65,26 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         super.onCreate(state);
         Theme.apply(this);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        setContentView(build());
+        // The lock matters most here. This is the screen with the editor on it, the terminal,
+        // the agents' own panels and whatever source is open -- everything an app lock exists
+        // to keep behind a fingerprint.
+        AppLock.applyWindowSecurity(this);
+        lockRoot = new android.widget.FrameLayout(this);
+        lockRoot.addView(build());
+        setContentView(lockRoot);
         listen();
         if (WorkspaceService.editorRunning()) open(WorkspaceService.editorUrl());
         else WorkspaceService.startEditor(this);
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        AppLock.handleResult(this, lockRoot, request, result, null);
     }
 
     @Override protected void onDestroy() {
