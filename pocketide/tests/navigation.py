@@ -520,6 +520,26 @@ for name in ("AgentsPane.java", "HomePane.java"):
             problems.append("%s compares extension identifiers with contains(), which is "
                             "case-sensitive and therefore always false for Google's" % name)
 
+
+# --- the long-press shortcut -----------------------------------------------------------------
+shortcuts = app + "/app/res/xml/shortcuts.xml"
+if not os.path.exists(shortcuts):
+    problems.append("there is no launcher shortcut to the editor")
+else:
+    if "com.pocketide.MainActivity" not in open(shortcuts).read():
+        problems.append("the shortcut targets the editor directly, skipping the app lock and "
+                        "the Set up screen that Home would have raised first")
+    if "android.app.shortcuts" not in open(app + "/app/AndroidManifest.xml").read():
+        problems.append("shortcuts.xml exists but the manifest never points at it, so the "
+                        "launcher never shows it")
+    # Both call sites, not the method's existence: a cold start arrives through onCreate and
+    # a tap while the app is already open arrives through onNewIntent, and a handler that is
+    # defined but reached from only one of them opens Home and stops there half the time.
+    if ("continueToEditorIfAsked(getIntent())" not in main
+            or "continueToEditorIfAsked(intent)" not in main):
+        problems.append("MainActivity does not act on the shortcut's extra from both onCreate "
+                        "and onNewIntent, so the shortcut opens Home and stops there")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

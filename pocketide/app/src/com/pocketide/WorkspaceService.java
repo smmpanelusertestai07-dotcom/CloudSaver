@@ -70,6 +70,12 @@ public final class WorkspaceService extends Service {
     /** What the notification last said, so a repeated START does not talk over it. */
     private volatile String lastNote;
 
+    /** True while every process in the workspace is stopped because the phone is too hot. */
+    private static volatile boolean pausedForHeat;
+    private PowerManager.OnThermalStatusChangedListener thermal;
+
+    static boolean pausedForHeat() { return pausedForHeat; }
+
     static boolean busy() { return busy; }
     static boolean editorRunning() { return editorRunning; }
     static String editorUrl() { return editorUrl; }
@@ -167,6 +173,7 @@ public final class WorkspaceService extends Service {
         // whether Linux was running at the time. See Exits.
         Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, true).apply();
         hold();
+        watchHeat();
         boolean setup = ACTION_SETUP.equals(action);
         worker = new Thread(setup ? this::runSetup : this::runEditor, "Linux");
         worker.start();
@@ -284,6 +291,7 @@ public final class WorkspaceService extends Service {
         runningSince = 0L;
         final Process running = editor;
         editor = null;
+        unwatchHeat();
         if (running != null) stopTidily(running);
         if (worker != null) worker.interrupt();
         release();
@@ -296,6 +304,72 @@ public final class WorkspaceService extends Service {
         }
         stopForeground(true);
         stopSelf();
+    }
+
+    /**
+     * Freezes the workspace when the phone is too hot, and thaws it as the phone cools.
+     *
+     * The alternative is what every phone does on its own: throttle, then kill the most
+     * expensive thing running, which is a set-up half way through apt or an agent half way
+     * through a build. Killing a set-up mid-apt is what leaves dpkg half-configured and a
+     * 400 MB download to do again. Stopping the processes instead costs nothing and loses
+     * nothing: SIGSTOP holds every process in the container at its next system call, the
+     * phone stops working and cools, and SIGCONT picks up exactly where it left off.
+     *
+     * Paused at CRITICAL and resumed only at MODERATE or below, not the moment it drops one
+     * notch, so it does not flap on and off at the boundary. The editor's page shows its own
+     * reconnecting overlay while the server is held; that is honest, and better than the
+     * phone shutting itself down.
+     */
+    private void watchHeat() {
+        if (thermal != null) return;
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        if (power == null) return;
+        thermal = this::onHeat;
+        try {
+            power.addThermalStatusListener(getMainExecutor(), thermal);
+        } catch (Throwable refused) {
+            // A build without thermal reporting. The phone's own throttling still applies.
+            thermal = null;
+        }
+    }
+
+    private void unwatchHeat() {
+        PowerManager.OnThermalStatusChangedListener listening = thermal;
+        thermal = null;
+        if (listening != null) {
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            try {
+                if (power != null) power.removeThermalStatusListener(listening);
+            } catch (Throwable alreadyGone) {
+                // Nothing to undo.
+            }
+        }
+        if (pausedForHeat) {
+            pausedForHeat = false;
+            sweep(18);
+        }
+    }
+
+    private void onHeat(int status) {
+        if (!busy) return;
+        if (status >= PowerManager.THERMAL_STATUS_CRITICAL && !pausedForHeat) {
+            pausedForHeat = true;
+            sweep(19);                                   // SIGSTOP
+            record("Paused: the phone is too hot. It resumes by itself as the phone cools.");
+            note("Paused — the phone is too hot. Resumes as it cools.");
+            sendBroadcast(new Intent(EVENT).setPackage(getPackageName())
+                    .putExtra(EXTRA_STATE, "paused")
+                    .putExtra(EXTRA_LINE, "Paused: the phone is too hot."));
+        } else if (status <= PowerManager.THERMAL_STATUS_MODERATE && pausedForHeat) {
+            pausedForHeat = false;
+            sweep(18);                                   // SIGCONT
+            record("Resumed: the phone has cooled.");
+            note(editorRunning ? "Editor running" : "Working…");
+            sendBroadcast(new Intent(EVENT).setPackage(getPackageName())
+                    .putExtra(EXTRA_STATE, "resumed")
+                    .putExtra(EXTRA_LINE, "Resumed: the phone has cooled."));
+        }
     }
 
     /**

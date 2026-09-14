@@ -215,6 +215,30 @@ for signal, why in ((" 3)", "SIGQUIT, which is what PRoot answers by killing its
     if "sweep(%s" % signal.strip().rstrip(")") not in service_text:
         problems.append("the stop path never sends %s" % why)
 
+
+# --- 13. heat pauses the workspace instead of letting the phone kill it --------------------------
+#
+# Held with SIGSTOP at critical, released with SIGCONT at moderate or below -- not one notch
+# down, which would flap. And never while nothing is running: a listener that stops processes
+# that are not the workspace's is a listener that stops the wrong thing.
+if "addThermalStatusListener" not in service_text:
+    problems.append("WorkspaceService never listens for the phone's thermal status, so a hot "
+                    "phone kills the set-up or the build instead of pausing it")
+else:
+    heat = re.search(r'private void onHeat\(int status\) \{(.*?)\n    \}', service_text, re.S)
+    if not heat:
+        problems.append("WorkspaceService has no onHeat() to act on the thermal status")
+    else:
+        body = heat.group(1)
+        if "sweep(19)" not in body or "THERMAL_STATUS_CRITICAL" not in body:
+            problems.append("the workspace is not held with SIGSTOP at critical heat")
+        if "sweep(18)" not in body or "THERMAL_STATUS_MODERATE" not in body:
+            problems.append("the workspace is not released with SIGCONT once the phone has "
+                            "cooled to moderate; releasing one notch below critical flaps")
+        if not body.lstrip().startswith("if (!busy) return;"):
+            problems.append("onHeat() acts when nothing is running, so it can stop processes "
+                            "that are not the workspace's")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

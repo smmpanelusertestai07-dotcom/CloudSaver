@@ -241,7 +241,9 @@ final class ActivityPane implements Pane {
         boolean busy = WorkspaceService.busy();
 
         if (statePill != null) {
-            if (running) Ui.recolour(statePill, "RUNNING", Ui.running(dark));
+            if (WorkspaceService.pausedForHeat()) {
+                Ui.recolour(statePill, "PAUSED · TOO HOT", Ui.needsYou(dark));
+            } else if (running) Ui.recolour(statePill, "RUNNING", Ui.running(dark));
             else if (busy) Ui.recolour(statePill, "WORKING", Ui.needsYou(dark));
             else Ui.recolour(statePill, "STOPPED", Ui.muted(dark));
         }

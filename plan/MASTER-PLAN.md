@@ -1,6 +1,6 @@
 # PocketIDE — master plan
 
-**Status:** shipped. PocketIDE 1.9.0 is the current build under `pocketide/`; this document is
+**Status:** shipped. PocketIDE 2.0.0 is the current build under `pocketide/`; this document is
 the record of what was decided before the first line of code and why. Where the app and this
 plan differ, the app and `pocketide/RELEASE-NOTES.md` are current.
 Last researched: 13 September 2026.
@@ -704,7 +704,7 @@ CloudSaver/
 | Framework | ✅ plain Java, no Gradle, no AndroidX |
 | Design system | ✅ Material 3 Expressive + glass accents |
 | FAQ / Terms / Privacy | ✅ drafted here, to be typeset into the app |
-| **Application code** | ✅ shipped — 1.0.0 on 13 Sep 2026, 1.9.0 on 14 Sep 2026 |
+| **Application code** | ✅ shipped — 1.0.0 on 13 Sep 2026, 2.0.0 on 14 Sep 2026 |
 
 ## 15. Sources checked (13 Sep 2026)
 

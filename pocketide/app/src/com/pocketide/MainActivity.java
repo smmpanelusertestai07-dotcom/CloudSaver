@@ -30,6 +30,8 @@ import java.util.List;
 public final class MainActivity extends Activity {
 
     static final String EXTRA_TAB = "com.pocketide.tab";
+    /** Set by the launcher shortcut: go on into the editor once Home is up, if there is one. */
+    static final String EXTRA_EDITOR = "com.pocketide.editor";
 
     private static final int HOME = 0;
     private static final int ACTIVITY = 1;
@@ -110,6 +112,22 @@ public final class MainActivity extends Activity {
 
         AppLock.applyWindowSecurity(this);
         render();
+        continueToEditorIfAsked(getIntent());
+    }
+
+    /**
+     * The launcher shortcut's request, honoured only when there is an editor to open.
+     *
+     * Home is drawn first either way: a locked app raises its lock there before the editor
+     * can appear behind it, and a phone with nothing set up is left looking at the Set up
+     * button rather than at an editor that cannot start.
+     */
+    private void continueToEditorIfAsked(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra(EXTRA_EDITOR, false)) return;
+        intent.removeExtra(EXTRA_EDITOR);
+        if (WorkspaceService.editorRunning() || Workspace.installed(this)) {
+            startActivity(new Intent(this, WorkspaceActivity.class));
+        }
     }
 
     @Override protected void onStart() {
@@ -142,6 +160,7 @@ public final class MainActivity extends Activity {
             returning = false;
             render();
         }
+        continueToEditorIfAsked(intent);
     }
 
     @Override protected void onSaveInstanceState(Bundle out) {

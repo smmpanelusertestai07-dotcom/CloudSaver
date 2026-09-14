@@ -246,9 +246,17 @@ final class Texts {
                      + "it: cores, memory, free space, and the build heap worked out from them."},
             {"Phone",
              "Which phones can run it?",
-             "A 64-bit ARM phone on Android 10 or newer, with about 4 GB of free space and "
-                     + "ideally 6 GB of memory. It runs on 4 GB with fewer things open at once. "
-                     + "Home tells you where your phone stands before you start."},
+             "A 64-bit ARM phone on Android 10 or newer \u2014 any version from 10 up to the "
+                     + "current one \u2014 with about 4 GB of free space and ideally 6 GB of "
+                     + "memory. It runs on 4 GB with fewer things open at once: the phone this "
+                     + "app is sized for is a 4 GB realme C25s on Android 12, and every memory "
+                     + "figure inside it \u2014 the editor\u2019s heap, the build workers, the "
+                     + "text size \u2014 is worked out from what the phone actually has rather "
+                     + "than assumed. Home tells you where your phone stands before you start, "
+                     + "and refuses to begin a set-up that could not finish.\n\nIt is an "
+                     + "Android app and only an Android app. There is no iPhone version, "
+                     + "because iOS does not let an app run another operating system inside "
+                     + "itself the way Android does."},
             {"Phone",
              "Set-up or a build stopped when the screen went off. Why?",
              "The phone\u2019s battery manager ended it. Android\u2019s own switch is "
@@ -332,7 +340,75 @@ final class Texts {
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
                      + "Afterwards it is an editor: warm while a build runs, cool while you read "
-                     + "code. Activity shows what is running and lets you stop it."},
+                     + "code. Activity shows what is running and lets you stop it.\n\nIf the "
+                     + "phone reaches the level Android calls critical, the app pauses "
+                     + "everything in Linux \u2014 every process is held where it stands, "
+                     + "nothing is killed and nothing is lost \u2014 and resumes it by itself "
+                     + "once the phone has cooled. Activity says PAUSED while that lasts. That "
+                     + "is instead of what a phone otherwise does on its own, which is to kill "
+                     + "the most expensive thing running, mid-download or mid-build."},
+            {"Updates",
+             "What updates itself, and what waits for me?",
+             "By itself, with nothing to press: Ubuntu\u2019s security fixes, once a day on "
+                     + "Wi-Fi; the editor, once a day on Wi-Fi while it is closed, through a "
+                     + "staged and checked swap that can be rolled back; every extension, by "
+                     + "the editor itself while it is open; and a daily look at whether a newer "
+                     + "PocketIDE has been published.\n\nWaiting for you, and only these: "
+                     + "installing a new PocketIDE, because Android does not let an app replace "
+                     + "itself without your tap; installing the optional tool layers, because "
+                     + "each is hundreds of megabytes you should decide to spend; and the "
+                     + "rows in Settings \u2192 Staying current that run any of the above now "
+                     + "instead of tonight. Each switch there can also turn its automatic part "
+                     + "off, and says what happens if you do."},
+            {"About",
+             "How does this compare with the Linux terminal on Pixel phones?",
+             "Android 15 gave recent Pixel phones a Linux Terminal: Debian running in a "
+                     + "virtual machine, as a developer option. It is a good sign for this "
+                     + "whole idea, and it is a different thing.\n\nIt needs a phone with "
+                     + "hardware virtualisation, which is why it is Pixel-first; it is a "
+                     + "terminal, not an editor; and it comes with no coding agents. This app "
+                     + "runs Ubuntu without a virtual machine, which is why it runs on a 4 GB "
+                     + "phone from 2021 on Android 10, and it puts a real Visual Studio Code and "
+                     + "first-party agents on top. The honest trade: a virtual machine runs "
+                     + "closer to native speed than the translation layer used here. What you "
+                     + "get in return is that it works on the phone you have."},
+            {"About",
+             "Why Linux, and not Windows or macOS?",
+             "Because Linux is what the tools are built for. The servers your code will run "
+                     + "on, the systems that test it, the containers it ships in, and the "
+                     + "command-line tools behind every coding agent are all built and tested "
+                     + "on Linux first; the agents\u2019 own CLIs ship for Linux and macOS, and "
+                     + "reach Windows through a Linux layer of Microsoft\u2019s own. A "
+                     + "developer\u2019s desktop is macOS or Linux for that reason, and on a "
+                     + "phone only one of the two is possible.\n\nSo the Linux here is not a "
+                     + "curiosity bolted on \u2014 it is the part that makes the editor and "
+                     + "the agents able to do real work: build, run, test, commit, push."},
+            {"Editor",
+             "Does copying in the editor reach the phone\u2019s clipboard?",
+             "Yes. The editor is drawn by the phone\u2019s own browser engine, which shares "
+                     + "the phone\u2019s clipboard: long-press to select, Copy, and it is in "
+                     + "Gboard or any other app. Paste works the other way round the same way. "
+                     + "The terminal is the one place to be careful \u2014 in a shell, Ctrl+V "
+                     + "is not paste; long-press and choose Paste instead."},
+            {"Safety",
+             "Does the app put anything in my phone\u2019s files?",
+             "No. Linux, the editor, the extensions and your projects all live in the "
+                     + "app\u2019s own private storage, which no other app can read and which "
+                     + "Android removes entirely when the app is uninstalled. Nothing is "
+                     + "written to Downloads, to Documents or anywhere else you would see in "
+                     + "a file manager \u2014 unless you turn on The phone\u2019s files in "
+                     + "Settings, and even then the app only reads and writes what you or an "
+                     + "agent ask it to, inside ~/phone."},
+            {"Safety",
+             "Can someone read the app\u2019s own code?",
+             "Yes, and that is on purpose: the source is published, and the build that "
+                     + "reaches your phone is made from it in public by the repository\u2019s "
+                     + "own workflow. There is nothing in the app worth hiding \u2014 no key, "
+                     + "no account, no server \u2014 because the editor\u2019s password is "
+                     + "generated on your phone and never leaves it, and the app has no "
+                     + "account of its own. Security here does not depend on the code being "
+                     + "secret. It depends on the code being right, which is what the "
+                     + "forty-six checks that run on every build are for."},
     };
 
     // ------------------------------------------------------------------ terms

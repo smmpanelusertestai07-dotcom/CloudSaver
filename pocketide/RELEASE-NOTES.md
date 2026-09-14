@@ -1,5 +1,39 @@
 # Release notes
 
+## 2.0.0
+
+The closing release of this update series, and what was still open from a long list an owner
+wrote for the app before this one.
+
+### The phone's own health
+
+If the phone reaches the level Android calls critical, the workspace is paused rather than left
+to be killed: every process in Linux is held where it stands with SIGSTOP, the notification and
+the Activity screen say so, and SIGCONT picks up exactly where it left off once the phone has
+cooled to moderate. Nothing is killed and nothing is lost — which is the whole difference from
+what a phone does on its own, where the most expensive thing running is the first thing ended,
+mid-download or mid-build. Held at critical and released only at moderate, so it does not flap
+at the boundary.
+
+### A shortcut to the editor
+
+Long-press the app's icon and there is one shortcut: Open the editor. It goes through Home so
+the app lock is raised first exactly as on any other opening, and a phone with nothing set up
+lands on Set up rather than on an editor that cannot start.
+
+### Help, for the questions that kept being asked
+
+What updates itself and what waits for you, as one plain list. How this compares with the Linux
+Terminal on Pixel phones, honestly in both directions. Why Linux and not Windows or macOS.
+Whether copying in the editor reaches the phone's clipboard. Whether the app puts anything in
+the phone's files (it does not). Whether someone can read the app's code (yes, and why that is
+the right answer). Which phones can run it now names the version range and the 4 GB phone the
+app is sized for, and says plainly that it is Android-only and why.
+
+### Gates
+
+46, with four new checks inside them, each broken on purpose and confirmed to fail.
+
 ## 1.9.5
 
 Two faults found by re-reading 1.9.0's own diff before shipping it.
