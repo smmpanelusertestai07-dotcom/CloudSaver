@@ -1,3 +1,242 @@
+# PocketLinux 13.0.0, build 420 -- the last audit
+
+Everything below this entry was written before the code was read one more time, cluster by
+cluster. This is what that reading changed. It ships in the same release, under the same version
+number, and it is the last set of changes this app will get.
+
+**This release is signed by a new key, so it cannot install over an older PocketLinux.** The old
+signing key was committed in this repository, in the open, with its password three lines above it
+in `build.sh`. Android accepts an update only from the same signer, so that key was the one thing
+standing between this app and an APK built by anyone at all that installs straight over it,
+inheriting the Ubuntu container, every app inside it, those apps' saved sign-ins, and the phone
+folders the computer can reach. The reasoning behind committing it was real: uninstalling
+PocketLinux deletes the whole container, so a build signed with a different key costs the owner
+everything in it. The conclusion was still wrong, because a key everyone can read is not a key.
+It is out of the tree, `.signing` is ignored, and any key that signed a build before this must be
+treated as compromised. The release key now comes from `POCKETLINUX_KEYSTORE`, which CI fills from
+a secret and writes outside the checkout, so no build step can package it and no artifact can
+carry it. A build with no key still produces something installable, because there has to be a way
+to try a change on a phone, but it mints one for that build alone, carries `-devkey` in the APK's
+name, and the publish job refuses outright to release it. The cost lands on this release only, and
+it is real: Android will not install this APK as an update, and uninstalling the old one takes the
+Ubuntu container with it. Copy anything worth keeping into the phone's own folders first.
+
+**The APK is aligned for 16 KiB pages**, not 4. `-p` is the old rule; `-P 16` is the one Android 16
+wants, and this APK ships PRoot and its loader as native libraries, which is exactly the case that
+rule exists for. Android 16 does not refuse a misaligned app, it runs it in a compatibility mode
+with a dialog at launch, so the wrong answer would have shipped looking fine. The workflow
+re-checks the alignment on the signed file, because signing rewrites the archive. And PocketLinux
+had no published release at all: CI built an APK and left it as a workflow artifact, which needs a
+GitHub login to download and expires. There is a publish job now, from main only, and the notes
+carry the APK's SHA-256, so a second upload over the same tag would hand over a different file
+under a hash that no longer matches. The tag carries a `pocketlinux-` prefix, because CloudSaver
+shares this repository and owns the plain `v*` tags.
+
+**The desktop stopped listening on a port anything on the phone could reach.** Xtigervnc was
+started on a private socket, and if that socket did not come up within forty seconds the script
+fell back to `-rfbport 5901 -localhost yes`. The display was always started with
+`-SecurityTypes None`, and Android shares loopback between every app on the phone, so that
+fallback put a desktop with no password on 127.0.0.1:5901: any app holding the internet permission
+could open it, watch the screen and type into it. The same command also passed `-ac`, which turns
+the X server's own access control off for every transport it has. The fallback is gone. The socket
+start now gets the whole hundred and thirty second budget that used to be split between socket and
+port, and when it fails the script says why and exits rather than opening a cheaper door.
+`-rfbport -1` means the server never binds a TCP port at all, so this is not a matter of the
+viewer preferring the socket. `-ac` went with it: programs inside the container reach the display
+over its local socket, which is allowed without it.
+
+**The panel had no room for the windows it is supposed to list.** Six launchers plus the clock,
+the status block and the corner button asked for about 838 pixels of a 720 pixel panel, so on a
+phone held upright the taskbar got nothing and no open window had a button, while the FAQ promised
+four of them fit. Room for three window buttons is set aside before anything else now, and
+launchers are added only while there is room left over: the Apps button first and always, then the
+file manager and the terminal, then the browser, Phone files and Settings if the panel is wide
+enough to hold them. Whatever does not fit keeps its icon on the desktop and its place in the Apps
+menu. The four AI apps are not on that list at all: once an app is open, its own window button is
+what you need, and those buttons are what the bar was leaving no room for.
+
+**The control bar fits the screen.** Ten controls at fixed widths, about 1064 dp of them, sat in a
+horizontal scroller with its scrollbar switched off on a phone about 360 dp wide: two thirds of
+the controls were off screen and nothing said they were there. Window and Phone, the only way to
+Close, Force close and Paste, were two screens off the right hand edge. The bar cannot go --
+Home, the phone keyboard, the pointer-mode switch and the connection status have no equivalent
+inside Linux -- so it is now the shape every shipping Android remote-desktop client uses: Home,
+the status chip, the keyboard, the pointer mode, and More. Everything else moved into More, in
+four groups, and is still two taps away. Two adjacent buttons were both labelled "Screen"; one of
+them is the view and the other is a pointer mode, and they no longer share a word.
+
+**Rotation means what the phone means.** "Auto" mapped to `SCREEN_ORIENTATION_SENSOR`, whose
+documented purpose is to go on following the sensor when the phone's own rotation lock is on.
+Everyone who never opened the rotation setting therefore had a desktop that spun with the phone
+even with rotation locked, and every unwanted turn resizes the whole Linux desktop and relays out
+every app in it. A setting that was never written hands rotation back to the phone now; a setting
+the owner did choose still wins, Auto-rotate included.
+
+**The picture compresses.** Every frame crossed the socket uncompressed: the client offered Raw
+and CopyRect and nothing else, while the server has served compressing encodings all along. It
+asks for ZRLE first now and keeps Raw behind it for the rectangles compression would not pay for,
+asks for 16-bit pixels when the view is storing 16-bit pixels rather than sending 32 and throwing
+half away, and paces frames to the display instead of repainting on every update.
+
+**The trash guard was written for a user that does not exist.** A plain file named `.Trash-0` was
+planted in each of the six phone folders so that GLib could not make a real bin there and the file
+manager had to ask before a permanent delete. The name carries a user id, and the desktop does not
+run as uid 0: it ends `exec su - coder`, and coder is whatever `useradd` handed out. So GLib
+looked for `.Trash-1000`, found nothing blocking it, made a real hidden bin inside the owner's
+DCIM and Download, and a delete that the folder's own note called permanent quietly moved a
+photograph somewhere nothing in this product lists or empties. The number is read out of the
+container's own `/etc/passwd` now rather than assumed, `.Trash-0` stays blocked beside it because
+a terminal inside the computer can still become root, and `~/Shared` -- which is also real phone
+storage, on another filesystem, and is the folder the help calls the way out -- had no guard at
+all and now has one. A hidden bin GLib already made is replaced only when it is empty: one with
+the owner's deleted files in it is left exactly where it is. The guards come out when Phone files
+is switched off and when the computer is deleted, which are the last two moments the app can still
+reach those folders.
+
+**Two rows that read nothing became a permission manager.** Settings had a Permissions group with
+two rows, Background activity and Auto-launch, each carrying a hard-coded "CHECK" chip. They read
+nothing, and they could not: no app on any Android skin can read the maker's own auto-launch or
+background switches. A row that always says the same word teaches people to ignore the app. And
+the one row that could be read was routed wrongly: tapping Battery usage fired Android's
+ignore-optimisations dialog, which Android closes silently when the app is already exempt, which
+is the state the reference phone was in, so the button really did nothing. Battery optimisation is
+read from the platform now and the row says what Android says, because that state is real. The
+maker's switches say "Android cannot report this one" and then print the path in the phone's own
+menu words: on a realme that is Settings, Battery, App battery management, PocketLinux, where all
+three switches live. Each row opens its exact page. The newer oplus components are tried before
+the older coloros ones, which is the right order for realme UI 3 and later. A phone that has no
+such switches is told that, rather than being sent to look for a page it does not have, and an
+already-exempt tap opens the maker's page instead of a dialog that closes itself.
+
+**Notifications, the app lock, and the log surfaces.** The notification prompt used to fire from
+every service start, so a bare Android dialog appeared with nothing on screen to explain it; it is
+asked once now, from the button where the owner has just agreed to a long download. The first tap
+on the Notifications row went to App info instead of the prompt, because the rationale flag reads
+false before the first request as well as after a permanent refusal, so the app remembers whether
+it has ever asked; on Android 11 that row could also say On while notifications were switched off
+in settings. One notification category carried both the setup progress and the always-on session
+line, so silencing the permanent one cost the progress too. There are two. The app lock applied
+its screen-hiding flag at the next open rather than when it was switched on, so the first recents
+snapshot after enabling it still showed the home screen, and its `isLocked()` predicate wrote a
+preference as a side effect, from a screen that could not show the result. Settings no longer
+carries a raw stack trace and a nine-item log picker in the owner's normal path, and the desktop's
+right-click menu no longer opens a folder of logs. Every log still exists on disk, inside the
+computer at `/home/coder/.pocketlinux/logs`: this app has no crash reporter and no internet
+permission, so a local file the owner can open and share is the only evidence that will ever
+exist. The surfaces are what a finished product should not have; the evidence is what it must
+keep.
+
+**Privacy has a home.** There was a Terms row and nothing called Privacy, with the substance
+scattered over six places, one of which listed the permissions incompletely. One statement now
+says what leaves the phone, what is kept and where, what the app can reach, what it never asks
+for, and the two exceptions with their off-by-default state. It builds the never-asked list from
+the privacy monitor rather than repeating it, so the two cannot drift apart.
+
+**PRoot is not a sandbox, and three places said it was.** The note in the Phone folder, the comment
+that justified it and the consent dialog all said that nothing else on the phone could be reached
+from the computer. PRoot rewrites syscall paths under ptrace and enforces nothing; a program that
+goes looking gets whatever the Android app's own identity can reach, and this app holds All-files
+access. What is true is better than what was written, and all three say it now: the six folders
+are joined, the rest of the phone is out of sight and out of every Open box, and the wall that
+actually holds is Android's own, because the computer runs inside one ordinary app.
+
+**A cloud file cannot silently fill the phone, and a dotfile keeps its name.** Choosing a file
+from Google Drive or the phone's storage streamed it into the computer in a 64 KB loop with no
+free-space check, no cap, no progress and no way to stop it, behind one short toast that had
+already gone: a 4 GB video quietly consumed whatever storage was left. The size is checked against
+the free space before anything is copied, a copy that will not fit is refused in a sentence, and a
+long one shows what it is doing and can be cancelled. Every leading dot was stripped from an
+incoming filename, so `.env` arrived as `env` and `.gitconfig` as `gitconfig`, and the dialog then
+printed the stripped name back as though that were the file that had arrived; on a computer meant
+for development a dotfile is exactly what someone brings in from a cloud drive. The name survives,
+and the dialog names the file that was actually written. Tapping Phone files could crash the app
+outright: the innermost of three attempts to open a settings page sat outside any try, inside a
+catch block, so on a ROM with no all-files-access page that intent resolved to nothing and threw
+on the main thread. It is guarded, and when there is genuinely nowhere to send the owner the app
+says so instead of dying.
+
+**Downloads, guards and updates.** A 15 to 45 minute download was kept in the cache directory,
+which is the first thing Android deletes when storage runs low, which is exactly the state the
+phone is in while unpacking a Ubuntu base image. It has moved. An app install could kill the
+desktop the owner was working in, because the heat and data-cap guards signalled both processes,
+so a download in the background took the session with it; and the probe behind those guards ran
+one to two times a second for the whole of setup, registering a sticky battery receiver each time,
+and is cached now. Update on ChatGPT asked apt for a newer version of a package apt has never
+heard of, so it always said yes and never did anything. Update on Cursor re-downloaded about
+700 MB whether or not the installed build was already current, on a phone with a 1.5 GB daily cap.
+The installer's safety checks -- the ones that stop a package whose install would remove the
+desktop itself -- could be switched off by an environment variable in the shipped script. And the
+app answers Android's memory-pressure callbacks now instead of ignoring them.
+
+**The computer's own Settings.** It showed one list, ran the chosen thing and exited, so changing
+the theme and then moving the bar meant opening it twice and waiting for the desktop each time. It
+loops until it is closed, and it does not pop back on top of a window it has just started. The
+rows are grouped the way a settings app groups them rather than sitting in one flat list. Theme
+has a third choice, Follow the phone: it had two, Light and Dark, and choosing either wrote a file
+the desktop read before the phone's own answer and that nothing ever removed, so the first touch
+of that toggle killed the phone's Light/Dark/System setting for good. There was no way to set a
+wallpaper at all; there is a row for it, and it keeps the chosen image where the desktop start can
+find it rather than putting ours back on the next open. Five things the desktop destroyed on every
+start survive it now: the position of every icon the owner dragged, their wallpaper, their GTK
+file dialog bookmarks, and that same Light/Dark/System choice. Choosing Light also used to leave a
+dark stylesheet behind it; there is a light palette.
+
+**The computer's notifications** were the one part still written for a 96 dpi screen: a 320 pixel
+column of tiny text on a 720 pixel phone. Every measurement in the dunst configuration goes
+through the same arithmetic the panel uses, and the column is clamped so it cannot hang off the
+edge. A missed message can be brought back, PocketLinux's own messages carry its icon, and the
+panel's numbers open a dialog that says what they mean, because a tooltip needs a pointer that
+rests and Finger mode taps and lifts. The panel no longer reprints the battery percentage Android
+shows a finger's width above it, twice a minute, through a traced process: what it shows is what
+Android does not, which is the computer's own memory and disk, and the temperature that predicts
+the heat guard pausing the work. Two smaller ones: the status tooltip began with a terminal escape
+sequence that Pango drew as gibberish, and the menu refresh chmodded and chowned files the owner
+had put on their own desktop.
+
+**The keyboard, and a use-after-recycle.** Opening the phone keyboard shrank the whole desktop to
+about 43 per cent instead of shifting it up, so the text was smallest exactly while it was being
+typed. It shifts now, as a mobile app does, and keeps its scale. `onDraw` recorded a bitmap into a
+display list while holding the pixel lock, but the manifest turns hardware acceleration on, so the
+RenderThread consumed that list later, outside the lock, against a bitmap the UI thread may
+already have recycled.
+
+**Icons.** The Software icon was a saturated orange box with a heavy white arrow: the alert
+palette, and the same picture as the installer beside it, which is why the owner asked whether it
+was a warning. It is a shop in the set's blue now. The Bin was the last launcher still asking the
+icon theme for a name, the exact lookup that shipped Software blank once before; it has a drawn
+icon like the rest, and that icon is copied into the container in both the first-setup and the
+refresh pass. The software centre no longer ships a `--selftest` mode for the tests to call: the
+tests assert its four real actions instead, and assert that no test mode is reachable at all.
+
+**Six statements the code did not keep.** What the desktop bar holds. How many window buttons fit.
+What auto-launch buys after a restart. Two Ubuntu support dates that contradicted each other eight
+lines apart. And the claim that Screen mode is phone-like multi-touch, which an RFB pointer event
+-- one x, one y and a button mask -- can never be. No pointer mode here is multi-touch and none
+can be, because two genuine touch points cannot cross the connection at all. What Screen mode does
+is hold the button down for the whole gesture, so a swipe is a real drag: a map moves, a canvas
+draws, a game's on-screen control answers.
+
+**The name.** The app was renamed a while ago and the name stayed behind in the parts nobody reads
+out loud: the folder this project lives in, every one of its forty shipped scripts and icons, the
+workflow file, the environment variables, the desktop-entry key, the configuration folders inside
+the container, and the prose of four documents. The folder is `pocketlinux/` and the workflow is
+`pocketlinux.yml`, so the two places a stranger looks first say what the app is called. Nothing
+about behaviour changed. The configuration folders inside the container moved with the name, so a
+container built before this release would keep its files and start from the defaults once, which
+costs nothing here: the signing key changed in the same release, and that already means a fresh
+install.
+
+**Two corrections to the entries below.** Ubuntu 24.04 LTS is stated as having security updates
+from Ubuntu until April 2029, and nothing beyond that: the longer figures printed in the 13.0.0
+entry were not right and disagreed with the app's own text. And the 13.0.0 entry described the
+trash guard as a `.Trash-0` file in the six phone folders, which is what shipped and what this
+release fixed; that paragraph now describes the guard as it actually is, with the desktop user's
+own id and with `~/Shared` covered. Nothing else in the older entries has been touched. They
+describe what was true when they were written.
+
+**Version.** 13.0.0, build 420, as `build.sh` sets it. That is the same number as the entry below,
+because this work landed after that entry was written and ships in the same release.
+
 # PocketLinux 13.0.0 — the final update
 
 The last release, made the way the last one should be: every requirement of the brief was audited
@@ -23,10 +262,12 @@ panel a key nudged up no longer outlives the screen it was on.
 **Phone files.** With Phone files off, the six empty mount points and the note calling them the
 phone's folders are cleared instead of sitting beside a note saying they are off; a file saved
 into one of them meanwhile is moved aside where it can be seen, not hidden under the mount. A
-plain `.Trash-0` file in each of the six phone folders stops GLib from tucking a deleted phone file
-into a hidden trash folder on the phone (the Bin lives on the computer's own storage, and a trash
-must be on the file's own filesystem) — the file manager asks before deleting for good, as the
-note in that folder promises. A file copied in from the phone or a cloud drive lands under a
+plain file named for the bin GLib would otherwise make -- `.Trash-` and the desktop user's own id,
+read out of the container's `/etc/passwd`, with `.Trash-0` beside it -- sits in each of the six
+phone folders and in `~/Shared`, and stops GLib from tucking a deleted phone file into a hidden
+trash folder on the phone (the Bin lives on the computer's own storage, and a trash must be on the
+file's own filesystem). The file manager asks before deleting for good, as the note in that folder
+promises. A file copied in from the phone or a cloud drive lands under a
 temporary name and takes its real one only when it is whole, so an AI app can never attach a
 truncated or empty copy. The safety answer now says what pairing Wireless debugging (Tools →
 Phone app testing) gives programs in the computer, and when to turn it off.
@@ -433,9 +674,8 @@ ends the argument: there is nothing to gain and a great deal to lose.
 
 ## Why Linux is the one that lasts
 
-Ubuntu 24.04 LTS has security updates to **April 2029**, to **April 2036** with Ubuntu Pro (free
-for personal use), and to **April 2039** with the Legacy add-on — fifteen years, on a base that
-never forces an upgrade. Each Windows release gets about twenty-four months before the next one is
+Ubuntu 24.04 LTS has security updates from Ubuntu until **April 2029**, on a base that never
+forces an upgrade. Each Windows release gets about twenty-four months before the next one is
 required. For an app meant to be set up once and left alone, that is not a close comparison.
 
 ## What removing the layer bought
