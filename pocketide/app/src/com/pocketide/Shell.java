@@ -294,8 +294,10 @@ final class Shell {
 
         ImageView icon = new ImageView(context);
         icon.setImageResource(tab.icon);
+        // The active icon is the ON-container tone, not the accent. The accent on its own
+        // indicator measures 3.28:1 in the light theme -- see Ui.onAccentContainer.
         icon.setImageTintList(ColorStateList.valueOf(
-                active ? Ui.accent(dark) : Ui.muted(dark)));
+                active ? Ui.onAccentContainer(dark) : Ui.muted(dark)));
         int iconSize = Ui.dp(context, ICON_DP);
         FrameLayout.LayoutParams iconParams =
                 new FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER);
@@ -304,8 +306,12 @@ final class Shell {
         column.addView(indicator, new LinearLayout.LayoutParams(
                 Ui.dp(context, INDICATOR_W_DP), Ui.dp(context, INDICATOR_H_DP)));
 
+        // Material 3 gives the active label the plain text colour rather than the accent, and
+        // the measurement agrees: the accent on the lower half of the light capsule is 3.97:1,
+        // under the floor for the one word that says which screen you are on. Weight is what
+        // marks it as selected, which is what the spec uses too.
         TextView label = active
-                ? Ui.medium(context, tab.label, 12f, Ui.accent(dark))
+                ? Ui.medium(context, tab.label, 12f, Ui.text(dark))
                 : Ui.text(context, tab.label, 12f, Ui.muted(dark));
         label.setGravity(Gravity.CENTER);
         label.setSingleLine(true);

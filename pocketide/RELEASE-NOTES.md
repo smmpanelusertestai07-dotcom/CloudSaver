@@ -1,5 +1,69 @@
 # Release notes
 
+## 1.6.5
+
+An audit of what 1.6.0 shipped, and eight things it was wrong about. All eight were confirmed by
+reading the code rather than taken on trust, and every one now has a check that fails against
+the code as it shipped.
+
+### The bar I had just rebuilt could not be read
+
+The active destination's label measured **3.97:1** on the lower half of the light capsule, and
+its icon measured **3.28:1** on its own indicator. Under the floor, on the one control in the
+app whose entire job is to say which screen you are looking at.
+
+Nothing caught it, because the existing contrast gate compares a colour against a flat card or
+page — and the bar is neither. It is a gradient with a translucent pill on it, and the icon sits
+on the pill. Measured against the card colour, both passed.
+
+The fix is Material 3's own model rather than a nudged hex value: the indicator is a light tone
+of the hue and what sits on it is a *dark* tone of the same hue, and the active label takes the
+plain text colour with weight marking it as selected. 6.8:1 to 15:1 now, both themes, both ends
+of the gradient. The gate composites the pill over the gradient and measures against the result,
+and it reads the alpha out of `Shell.java` so changing the indicator is caught here.
+
+### A failed update check was recorded as "everything is up to date"
+
+The worst shape a bug can have: wrong, and sticky. The script already printed `apt_list=0` when
+it could not reach Ubuntu's servers, precisely so the app could tell a real answer from no
+answer — and nothing read it. A check made offline reported zero security updates, which on the
+screen is the same sentence as "everything is up to date", and then stamped the clock and did
+not look again for a day.
+
+It is read now, and a check that got no answer writes nothing. The throttle keeps two clocks: a
+successful check is good for a day, a failed one is tried again in an hour.
+
+### "Everything, now" contradicted its own dialog
+
+Its text said "the editor has to be closed for its own update, and this will not start one while
+it is open". Nothing enforced it. The guard existed only on the editor row, so the one row most
+likely to be tapped could pull the tree out from under a running editor. Both ends check now —
+the app before the dialog and again after it, because the two are seconds apart, and the script
+with `pgrep`, because that is the end that cannot be raced.
+
+### A kill during the swap cost a 224 MB re-download
+
+The swap is two renames with a gap between them where `/opt/code-server` does not exist. Renames
+are milliseconds, but milliseconds is not never. Landing in that gap left the working editor
+beside the hole under `.previous` — and the app, seeing no editor, would offer to download the
+editor already on the disk. Every entry point now looks and renames it back, including starting
+the editor, which is the route an owner actually takes.
+
+### Three more
+
+The free-space check ran before the stale staging tree was cleared, so one interrupted unpack
+refused every later attempt for want of room it was itself holding. `doRun` and `collect` never
+destroyed the PRoot process, so a broken pipe left apt holding the package lock — pointing at a
+process the owner can neither find nor stop. And `maybeRunInBackground` claimed its slot before
+`Thread.start()`, so a phone that refused to create a thread would report "already checking" for
+the life of the process.
+
+### Gates
+
+46, with eight new checks inside them — and one of them was itself rewritten during the work: it
+matched the swap recovery by function name, and a rename passed it. It matches the condition now,
+and counts the call sites.
+
 ## 1.6.0
 
 The bars, and the thing nobody had built yet: a workspace that can keep itself current.

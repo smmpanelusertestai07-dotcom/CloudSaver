@@ -89,6 +89,91 @@ for theme, names in foregrounds.items():
                 "cannot be read is not a status, it is decoration."
                 % (name, worst, theme, "page" if on_bg < on_card else "card", FLOOR))
 
+# ------------------------------------------------------------------------------------------
+# The navigation bar, over what is actually behind it.
+#
+# Everything above compares a colour against a flat card or page. The bottom bar is neither: it
+# is a gradient with a translucent pill on it, and the active icon sits on the pill. Checking
+# that icon against the card colour would have passed it -- and it was failing. The accent on
+# its own indicator measures 3.28:1 in the light theme, on the one control in the app whose job
+# is to say which screen you are looking at, and the active LABEL was 3.97:1 for the same
+# reason. Both shipped in 1.6.0 and neither was visible to any check that existed.
+#
+# So this composites: the pill is the accent at its real alpha over the glass gradient, and the
+# icon and label are measured against the result. Both gradient stops are checked, because a
+# gradient has two ends and the label sits nearer one of them.
+
+brand = open(app + "/app/src/com/pocketide/Brand.java").read()
+shell = open(app + "/app/src/com/pocketide/Shell.java").read()
+
+
+def brand_colour(name):
+    found = re.search(name + r'\s*=\s*Color\.parseColor\("(#[0-9A-Fa-f]{6})"\)', brand)
+    return parse(found.group(1)) if found else None
+
+
+def glass_stops(theme):
+    """The gradient stops Ui.glass paints, read out of the method rather than assumed."""
+    body = re.search(r'static GradientDrawable glass\(.*?\n    \}', ui, re.S)
+    if not body:
+        return []
+    pairs = re.findall(
+        r'dark \? Color\.rgb\((\d+), (\d+), (\d+)\) : Color\.rgb\((\d+), (\d+), (\d+)\)',
+        body.group(0))
+    stops = []
+    for group in pairs:
+        values = [int(v) for v in group]
+        stops.append(tuple(values[0:3]) if theme == "dark" else tuple(values[3:6]))
+    return stops
+
+
+def composite(front, alpha, back):
+    k = alpha / 255
+    return tuple(round(k * front[i] + (1 - k) * back[i]) for i in range(3))
+
+
+def indicator_alpha(theme):
+    """Read from Shell.java, so changing the indicator there is caught here."""
+    found = re.search(r'Ui\.alpha\(Ui\.accent\(dark\), dark \? (\d+) : (\d+)\)', shell)
+    if not found:
+        return None
+    return int(found.group(1) if theme == "dark" else found.group(2))
+
+
+ACCENT = {"light": brand_colour("ACCENT"), "dark": brand_colour("ACCENT_ON_DARK")}
+# Ui.onAccentContainer(dark) -- kept in step with the Java rather than repeated as a literal.
+ON_CONTAINER = {"light": brand_colour("TILE_FLAT"), "dark": brand_colour("MARK")}
+LABEL = {"light": constant("LIGHT_TEXT"), "dark": constant("DARK_TEXT")}
+INACTIVE = {"light": constant("LIGHT_MUTED"), "dark": constant("DARK_MUTED")}
+
+if "Ui.onAccentContainer(dark)" not in shell:
+    problems.append("the navigation bar no longer uses the on-container tone for its active "
+                    "icon. The accent measures 3.28:1 on its own indicator in the light theme.")
+if re.search(r'Ui\.medium\(context, tab\.label, 12f, Ui\.accent\(dark\)\)', shell):
+    problems.append("the active destination's label is the accent again, which measures "
+                    "3.97:1 on the lower half of the light capsule")
+
+for theme in ("light", "dark"):
+    stops = glass_stops(theme)
+    alpha = indicator_alpha(theme)
+    if not stops or alpha is None or not ACCENT[theme] or not ON_CONTAINER[theme]:
+        missing.append("the %s navigation bar's own colours cannot be read" % theme)
+        continue
+    for stop in stops:
+        pill = composite(ACCENT[theme], alpha, stop)
+        # An icon is non-text, whose floor in WCAG 2.2 is 3:1; a label is text and takes 4.5.
+        for what, colour, ground, floor in (
+                ("active icon, on its indicator", ON_CONTAINER[theme], pill, 3.0),
+                ("active label", LABEL[theme], stop, FLOOR),
+                ("inactive label", INACTIVE[theme], stop, FLOOR)):
+            measured = ratio(colour, ground)
+            rows.append("    bar %-14s %-6s %5.2f:1  %s"
+                        % (what.split(",")[0], theme, measured,
+                           "ok" if measured >= floor else "FAILS"))
+            if measured < floor:
+                problems.append("the bar's %s measures %.2f:1 in the %s theme, under the "
+                                "%.1f:1 floor" % (what, measured, theme, floor))
+
 for row in rows:
     print(row)
 for problem in missing + problems:

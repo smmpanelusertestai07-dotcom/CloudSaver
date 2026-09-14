@@ -109,6 +109,25 @@ final class Ui {
     static int line(boolean dark) { return dark ? DARK_LINE : LIGHT_LINE; }
     static int accent(boolean dark) { return Brand.accent(dark); }
 
+    /**
+     * What is drawn ON a surface tinted with the accent -- the icon inside the navigation bar's
+     * active indicator, and anything else that sits on an accent-coloured container.
+     *
+     * It is a separate colour from the accent because it has to be, and the arithmetic says so:
+     * the indicator is the accent at low opacity over the bar's glass, and the accent ON that
+     * measures 3.28:1 on the light theme. Under the floor, on the one control in the app that
+     * says which screen you are looking at.
+     *
+     * Material 3 models this properly and this follows it: the container is a light tone of the
+     * hue and what sits on it is a DARK tone of the same hue -- TILE_FLAT, the deep violet the
+     * launcher tile is built from. On the dark theme the relationship inverts, so the light
+     * tone goes on top and MARK, the brand's off-white, is that tone. Both measure between
+     * 6.8:1 and 10:1 on their own indicator, and tests/contrast.py recomputes them over the
+     * composited pill rather than over a flat colour, because a flat colour is not what is
+     * there.
+     */
+    static int onAccentContainer(boolean dark) { return dark ? Brand.MARK : Brand.TILE_FLAT; }
+
     static int dp(Context context, float value) {
         return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
