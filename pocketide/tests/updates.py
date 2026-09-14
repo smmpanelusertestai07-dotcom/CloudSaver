@@ -102,6 +102,72 @@ if "Updates.maybeRunInBackground" not in main:
     problems.append("nothing ever calls Updates.maybeRunInBackground, so automatic updates "
                     "never happen however the switch is set")
 
+# --- a failed check must not pass for an answer ------------------------------------------------
+#
+# The script runs apt-get update and prints apt_list=0 when it did not work, precisely so the
+# app can tell "nothing is waiting" from "nobody answered". Nothing read it once, and the
+# consequence was the worst shape a bug can have: a check made while Ubuntu's servers were
+# unreachable reported zero security updates, which on the screen is the same sentence as
+# "everything is up to date" -- and then stamped the clock and did not look again for a day.
+if "apt_list" not in script:
+    problems.append("the script no longer reports whether apt actually answered")
+if "apt_list" not in updates:
+    problems.append("Updates.java never reads apt_list, so a check that could not reach "
+                    "Ubuntu's servers is recorded as 'everything is up to date' and blocks the "
+                    "next check for a day")
+if "UPDATE_TRIED_AT" not in updates:
+    problems.append("a failed check is not distinguished from a successful one in the throttle, "
+                    "so it is either retried on every return to the app or not for a day")
+
+# --- nothing replaces the editor underneath a running one --------------------------------------
+#
+# Both ends, because they are seconds apart and the owner can open the editor in between. The
+# "Everything, now" row used to walk straight past the Java guard while its own dialog text
+# promised it would not.
+if "editor_is_running" not in script:
+    problems.append("the script will replace the editor tree while a code-server is reading "
+                    "from it, which breaks the session and loses whatever was unsaved")
+guard = re.search(r'private void updateNow\([^)]*\)\s*\{(.*?)\n    \}', settings, re.S)
+if not guard:
+    problems.append("SettingsPane.updateNow cannot be read")
+elif "editorInTheWay" not in guard.group(1):
+    problems.append("updateNow starts an update without checking whether the editor is open, so "
+                    "'Everything, now' can pull the tree out from under a running editor -- "
+                    "which its own dialog text promises it will not do")
+
+# --- a half-finished swap heals itself ---------------------------------------------------------
+#
+# The swap is two renames with a gap between them where /opt/code-server does not exist. A kill
+# landing in that gap leaves the working editor beside the hole under .previous, and without
+# this the app sees no editor and offers to download 224 MB again.
+# Matched on the CONDITION rather than the function name, because a name is the one thing a
+# refactor changes for free -- an earlier version of this check passed against a function
+# renamed to no_recover_editor, which is exactly the regression it exists to catch.
+RESTORE = '[ ! -x "$BIN" ] && [ -x "/opt/code-server.previous/bin/code-server" ]'
+if RESTORE not in script:
+    problems.append("nothing puts a half-swapped editor back, so an app kill during the swap "
+                    "costs a 224 MB re-download of an editor that is already on the disk")
+elif script.count("recover_editor") < 3:
+    problems.append("the recovery exists but is not called from the paths that need it: the "
+                    "check, the editor update, and the extension update all reach a workspace "
+                    "that may be mid-swap")
+if RESTORE not in editor_script:
+    problems.append("starting the editor does not recover a half-swapped tree, so the one route "
+                    "an owner actually takes back into the app cannot heal it")
+
+# --- the PRoot process is always reaped --------------------------------------------------------
+#
+# Workspace.run() destroys it in a finally. Without the same here, a broken pipe out of readLine
+# leaves apt or dpkg running under PRoot holding the package lock, and every later install fails
+# pointing at a process the owner cannot find or stop.
+for method in ("doRun", "collect"):
+    body = re.search(r'private static \w+ ' + method + r'\(.*?\n    \}', updates, re.S)
+    if not body:
+        problems.append("Updates.%s cannot be read" % method)
+    elif "process.destroy()" not in body.group(0):
+        problems.append("Updates.%s never destroys the PRoot process, so an aborted read "
+                        "orphans apt holding the package lock" % method)
+
 # --- the switch is real ----------------------------------------------------------------------
 if "Prefs.AUTO_UPDATE" not in updates:
     problems.append("there is no stored setting behind the automatic-updates switch")

@@ -74,6 +74,30 @@ editor_version() {
   "$BIN" --version 2>/dev/null | head -1 | awk '{print $1}'
 }
 
+# True while a code-server is actually running, so nothing replaces the tree underneath it.
+editor_is_running() {
+  pgrep -f "$INSTALL_DIR/(bin|out)/" >/dev/null 2>&1
+}
+
+# --------------------------------------------------------------------------- recovery
+#
+# The editor swap is two renames with a gap between them, and for that gap there is no
+# /opt/code-server at all. Renames are metadata and take milliseconds, but "milliseconds" is not
+# "never": this runs on an ordinary thread in an app Android can kill at any moment, and a kill
+# landing in the gap would leave the workspace with no editor and a 450 MB tree named
+# .previous sitting beside the hole.
+#
+# The app would then see editorInstalled() as false and offer to download 224 MB again, which
+# is the worst possible answer when the working editor is already on the disk under another
+# name. So every entry point starts by looking, and a rename puts it back.
+recover_editor() {
+  if [ ! -x "$BIN" ] && [ -x "/opt/code-server.previous/bin/code-server" ]; then
+    say "A previous update did not finish. Putting the last working editor back…"
+    rm -rf "$INSTALL_DIR"
+    mv "/opt/code-server.previous" "$INSTALL_DIR" && say "The editor was restored."
+  fi
+}
+
 # --------------------------------------------------------------------------- check
 
 # The newest published release, straight from GitHub's own API over TLS.
@@ -118,8 +142,12 @@ security_list() {
 }
 
 check() {
+  recover_editor
   local updated=0
   if apt_try update >/dev/null 2>&1; then updated=1; fi
+  # Read by the app. Without it a check that could not reach Ubuntu's servers reports zero
+  # security updates -- which is indistinguishable, on the screen, from "everything is up to
+  # date", and it would stamp the clock and not look again for a day.
   say "apt_list=$updated"
 
   local security all
@@ -209,8 +237,16 @@ update_ubuntu() {
 # what is actually on the phone rather than what it believes should be.
 
 update_editor() {
+  recover_editor
   if [ ! -x "$BIN" ]; then
     say "The editor is not installed yet."
+    return 1
+  fi
+  # The app checks this too, and it is checked again here because the app's check and the swap
+  # are seconds apart: the owner can open the editor in between. Replacing the tree a running
+  # code-server is reading from breaks it mid-session and loses whatever was unsaved.
+  if editor_is_running; then
+    say "The editor is running. Close it from the Activity screen and try again."
     return 1
   fi
 
@@ -223,6 +259,11 @@ update_editor() {
     say "The editor is already at $current, which is the newest."
     return 0
   fi
+
+  # Cleared BEFORE the space is measured, not after. An unpack interrupted part way leaves a
+  # partial tree here, and measuring first counts that tree as space that is gone -- so one
+  # interrupted attempt would refuse every later one for want of room it is itself holding.
+  rm -rf "$STAGE_DIR"
 
   local free
   free=$(df -Pk /opt 2>/dev/null | awk 'NR==2 {print $4}')
@@ -256,7 +297,6 @@ update_editor() {
   # Check 3: unpack into a staging tree beside the live one. Nothing installed is touched until
   # the new tree has proved itself.
   say "Checking the update…"
-  rm -rf "$STAGE_DIR"
   mkdir -p "$STAGE_DIR"
   if ! tar -xzf "$archive" -C "$STAGE_DIR" --strip-components=1; then
     say "The update could not be unpacked."
@@ -356,7 +396,7 @@ case "${1:-check}" in
   ubuntu)      update_ubuntu security ;;
   ubuntu-all)  update_ubuntu all ;;
   editor)      update_editor ;;
-  extensions)  update_extensions ;;
+  extensions)  recover_editor; update_extensions ;;
   all)
     failed=0
     update_ubuntu security || failed=1

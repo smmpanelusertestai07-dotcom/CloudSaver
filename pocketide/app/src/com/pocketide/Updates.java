@@ -89,6 +89,9 @@ final class Updates {
     /** How long an answer is treated as current. A phone is not a server; daily is plenty. */
     static final long CHECK_EVERY_MS = 24L * 60 * 60 * 1000;
 
+    /** How long to leave a check that did not get an answer before trying it again. */
+    static final long RETRY_AFTER_MS = 60L * 60 * 1000;
+
     private static volatile boolean running;
 
     private Updates() {}
@@ -170,14 +173,22 @@ final class Updates {
      */
     static void maybeRunInBackground(final Context context) {
         if (!whyNotNow(context).isEmpty()) return;
-        long since = System.currentTimeMillis()
-                - Prefs.of(context).getLong(Prefs.UPDATE_CHECKED_AT, 0);
-        if (since < CHECK_EVERY_MS) return;
+        long now = System.currentTimeMillis();
+        if (now - Prefs.of(context).getLong(Prefs.UPDATE_CHECKED_AT, 0) < CHECK_EVERY_MS) return;
+        // And not again for an hour if the last attempt did not get an answer. Two clocks
+        // rather than one: a successful check is good for a day, a failed one should be tried
+        // again sooner than that but not on every single return to the app.
+        if (now - Prefs.of(context).getLong(Prefs.UPDATE_TRIED_AT, 0) < RETRY_AFTER_MS) return;
 
         // The application context, never the Activity. This thread outlives a rotation, and a
         // thread holding an Activity across one is a leaked screen.
         final Context app = context.getApplicationContext();
         if (!claim()) return;
+        // Started inside a try, because claim() has already been taken. A phone under memory
+        // pressure can refuse to create a thread, and an exception escaping here would leave
+        // the slot held for the life of the process -- after which every check, every manual
+        // update and the switch in Settings would report "already checking" for ever.
+        try {
         new Thread(() -> {
             try {
                 Status status = doCheck(app, line -> {});
@@ -194,6 +205,9 @@ final class Updates {
                 release();
             }
         }, "updates").start();
+        } catch (Throwable couldNotStart) {
+            release();
+        }
     }
 
     // ------------------------------------------------------------------ doing it
@@ -214,8 +228,21 @@ final class Updates {
     /** The work itself, for a caller that already holds the slot. */
     private static Status doCheck(Context context, Workspace.Progress progress) {
         Map<String, String> values = new HashMap<>();
-        if (!collect(context, "check", values, progress)) return null;
         long now = System.currentTimeMillis();
+        // Recorded whether it worked or not, and separately from the answer. It is what keeps a
+        // failing check from being retried on every single return to the app, without letting a
+        // failure pass for an answer.
+        Prefs.of(context).edit().putLong(Prefs.UPDATE_TRIED_AT, now).apply();
+        if (!collect(context, "check", values, progress)) return null;
+
+        // The script says whether apt actually answered. Without reading it, a check made while
+        // Ubuntu's servers were unreachable reports zero security updates -- which on the screen
+        // is the same sentence as "everything is up to date" -- and then stamps the clock and
+        // does not look again for a day. That is the worst of both: wrong, and sticky.
+        if (!"1".equals(text(values.get("apt_list")))) {
+            progress.line("Ubuntu's package list could not be fetched.");
+            return null;
+        }
         Prefs.of(context).edit()
                 .putInt(Prefs.UPDATE_UBUNTU_SECURITY, number(values.get("ubuntu_security")))
                 .putInt(Prefs.UPDATE_UBUNTU_ALL, number(values.get("ubuntu_all")))
@@ -251,8 +278,9 @@ final class Updates {
     }
 
     private static boolean doRun(Context context, String what, Workspace.Progress progress) {
+        Process process = null;
         try {
-            Process process = Workspace.start(context,
+            process = Workspace.start(context,
                     "bash /opt/pocketide/pocketide-update.sh " + what);
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -263,17 +291,25 @@ final class Updates {
             }
             return process.waitFor() == 0;
         } catch (Throwable failed) {
+            if (failed instanceof InterruptedException) Thread.currentThread().interrupt();
             progress.line(failed.getMessage() == null
                     ? failed.getClass().getSimpleName() : failed.getMessage());
             return false;
+        } finally {
+            // The same finally Workspace.run() has, for the same reason. Without it a broken
+            // pipe out of readLine leaves apt or dpkg running under PRoot holding the package
+            // lock, and every later install fails with "another process is using it" pointing
+            // at nothing an owner can find or stop.
+            if (process != null) process.destroy();
         }
     }
 
     private static boolean collect(Context context, String command, Map<String, String> into,
                                    Workspace.Progress progress) {
         if (!Workspace.installed(context)) return false;
+        Process process = null;
         try {
-            Process process = Workspace.start(context,
+            process = Workspace.start(context,
                     "bash /opt/pocketide/pocketide-update.sh " + command);
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
@@ -291,9 +327,12 @@ final class Updates {
             process.waitFor();
             return !into.isEmpty();
         } catch (Throwable unreadable) {
+            if (unreadable instanceof InterruptedException) Thread.currentThread().interrupt();
             progress.line(unreadable.getMessage() == null
                     ? unreadable.getClass().getSimpleName() : unreadable.getMessage());
             return false;
+        } finally {
+            if (process != null) process.destroy();
         }
     }
 

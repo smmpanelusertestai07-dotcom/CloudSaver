@@ -45,6 +45,8 @@ final class Prefs {
      */
     static final String AUTO_UPDATE = "auto_update";
     static final String UPDATE_CHECKED_AT = "update_checked_at";
+    /** When a check was last ATTEMPTED, which is not the same as when one succeeded. */
+    static final String UPDATE_TRIED_AT = "update_tried_at";
     static final String UPDATE_UBUNTU_SECURITY = "update_ubuntu_security";
     static final String UPDATE_UBUNTU_ALL = "update_ubuntu_all";
     static final String UPDATE_EDITOR_CURRENT = "update_editor_current";

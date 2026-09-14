@@ -251,6 +251,15 @@ list_extensions() {
 # --------------------------------------------------------------------------- run
 
 start_editor() {
+  # An update that was interrupted mid-swap leaves the working editor beside the hole it was
+  # meant to fill, under .previous. Renaming it back costs nothing and is the difference
+  # between opening the editor and being asked to download 224 MB again. See
+  # pocketide-update.sh, which owns the swap and does the same on every entry point.
+  if [ ! -x "$BIN" ] && [ -x "/opt/code-server.previous/bin/code-server" ]; then
+    say "A previous update did not finish. Putting the last working editor back…"
+    rm -rf "$INSTALL_DIR"
+    mv "/opt/code-server.previous" "$INSTALL_DIR" || true
+  fi
   if [ ! -x "$BIN" ]; then say "The editor is not installed."; return 1; fi
   configure
 

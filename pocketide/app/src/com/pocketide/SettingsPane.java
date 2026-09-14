@@ -703,12 +703,7 @@ final class SettingsPane implements Pane {
     }
 
     private void offerEditorUpdate(Updates.Status status) {
-        if (WorkspaceService.editorRunning()) {
-            Dialogs.message(host, "Close the editor first",
-                    "The editor cannot replace itself while it is running. Stop it from the "
-                            + "Activity screen, then come back here.");
-            return;
-        }
+        if (editorInTheWay()) return;
         if (!status.editorOutOfDate()) {
             Dialogs.message(host, "The editor",
                     (status.editorCurrent.isEmpty()
@@ -728,8 +723,27 @@ final class SettingsPane implements Pane {
                         + "home folder and are not part of the replacement.");
     }
 
+    /**
+     * Refuses, out loud, anything that would replace the editor while it is running.
+     *
+     * "Everything, now" used to walk straight past this. Its own dialog said "the editor has to
+     * be closed for its own update, and this will not start one while it is open" -- and
+     * nothing enforced it, in the Java or in the script, so the one row most likely to be
+     * tapped was the one that could pull the tree out from under a running editor and lose
+     * whatever was unsaved in it. Both ends check now; this is the one that can explain itself.
+     */
+    private boolean editorInTheWay() {
+        if (!WorkspaceService.editorRunning()) return false;
+        Dialogs.message(host, "Close the editor first",
+                "The editor cannot replace itself while it is running. Stop it from the "
+                        + "Activity screen, then come back here.");
+        return true;
+    }
+
     private void updateNow(String what, String title, String explanation) {
+        if (("editor".equals(what) || "all".equals(what)) && editorInTheWay()) return;
         Dialogs.confirm(host, title, explanation, "Update", () -> {
+            if (("editor".equals(what) || "all".equals(what)) && editorInTheWay()) return;
             Dialogs.Live live = Dialogs.live(host, title, "Starting…");
             new Thread(() -> {
                 boolean ok = Updates.run(host, what, live::line);
