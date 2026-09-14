@@ -168,10 +168,9 @@ final class Capacity {
                         + "limit of this hardware.\n\n")
 
                 .append("Those are the MEMORY limits. Before any of them applies, an Android "
-                        + "build needs two things this app does not install: the Android SDK, "
-                        + "and aarch64 builds of Google's aapt2, aidl, zipalign and "
-                        + "split-select, which ship as x86-64 only. Settings → The computer → "
-                        + "Java toolchain says so before you spend the download.\n\n")
+                        + "build needs the toolchain from Settings → The computer → Android "
+                        + "build tools: a JDK, Google's SDK, and aarch64 builds of the four "
+                        + "tools Google ships as x86-64 only. About 520 MB, once.\n\n")
 
                 .append("Websites, servers, command-line programs and anything else that "
                         + "compiles for arm64 Linux have no such ceiling. Node, Deno, Python, "

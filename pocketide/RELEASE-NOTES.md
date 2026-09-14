@@ -1,5 +1,44 @@
 # Release notes
 
+## 2.1.0
+
+An Android build finishes on the phone, and the phone installs it.
+
+### The four files
+
+Google's SDK installs on arm64 without trouble: sdkmanager, d8, r8 and apksigner are Java. Four
+of the build tools are not — aapt2, aidl, zipalign and split-select ship as x86-64 binaries
+only — and a Gradle build stopped on the first of them with an Exec format error, which is what
+the app used to say plainly and leave the owner to solve. The Android layer finishes the job
+now. It installs a JDK, Google's command-line tools (checked against the digest Google publishes
+beside them), platform 35 and build-tools 35.0.1 through sdkmanager, and then replaces those four
+binaries with the Commit451 android-arm-build-tools project's aarch64 builds of the same AOSP
+source, MIT-licensed, each checked against a SHA-256 taken by downloading that exact file and
+hashing it — the same standard the editor's tarball is held to. Then the one line without which
+none of it is used: the Android Gradle Plugin fetches its own x86-64 aapt2 from Maven unless
+`android.aapt2FromMavenOverride` names a path, so that line is written where AGP reads it.
+`aapt2 version` is run at the end, because "installed" and "runs on this phone" are different
+claims.
+
+### Install an app built here
+
+The phone is the test device, and there was no way to hand it the APK. Settings → The computer
+→ Install an app built here lists the APKs under ~/projects, newest first, and hands the chosen
+one to Android's own installer through a content provider that is not exported, serves only
+`.apk` files, only from under ~/projects, only read-only, and only by a URI this app hands out
+with a one-time read grant. Android still asks on its own screen every time. One new permission,
+listed in Help with what it is for.
+
+### Help
+
+The build and test answers say what is true now: a Java or Kotlin project builds with its own
+./gradlew after one 520 MB install; JVM and Robolectric tests are the free local testing an
+agent uses; the emulator and C/C++ remain impossible, and why.
+
+### Gates
+
+46, with the new checks inside them, each broken on purpose and confirmed to fail.
+
 ## 2.0.0
 
 The closing release of this update series, and what was still open from a long list an owner

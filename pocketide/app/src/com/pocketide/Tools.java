@@ -25,7 +25,9 @@ import java.util.Map;
  *   instead -- build the APK, install it, run it.
  *
  *   Apps with C or C++ in them cannot be built here, because Google publishes no arm64 NDK.
- *   Java-only Android projects can be, after four of Google's own x86-64 tools are replaced.
+ *   Java and Kotlin projects can be, and the Android layer now finishes the job: Google's
+ *   SDK through sdkmanager, and the four tools Google ships as x86-64 only replaced by
+ *   checksum-pinned aarch64 builds. See pocketide-tools.sh for the pins.
  *
  * Saying both of those on the screen is the point. An owner who discovers them half way through
  * a task has been misled by silence.
@@ -37,12 +39,20 @@ final class Tools {
         final boolean browser;
         final boolean playwright;
         final boolean android;
+        /** The SDK is there AND its aapt2 runs on this phone, which is the part that counts. */
+        final boolean sdk;
         final String chromiumVersion;
 
         State(boolean browser, boolean playwright, boolean android, String chromiumVersion) {
+            this(browser, playwright, android, false, chromiumVersion);
+        }
+
+        State(boolean browser, boolean playwright, boolean android, boolean sdk,
+              String chromiumVersion) {
             this.browser = browser;
             this.playwright = playwright;
             this.android = android;
+            this.sdk = sdk;
             this.chromiumVersion = chromiumVersion;
         }
 
@@ -52,7 +62,8 @@ final class Tools {
     /** What each layer costs, so the screen can say it before the download starts. */
     static final long BROWSER_BYTES = 120L * 1000 * 1000;
     static final long PLAYWRIGHT_BYTES = 60L * 1000 * 1000;
-    static final long ANDROID_BYTES = 340L * 1000 * 1000;
+    /** JDK 200, Google's command-line tools 182, platform and build-tools about 120, the four aarch64 tools 9. */
+    static final long ANDROID_BYTES = 520L * 1000 * 1000;
 
     private Tools() {}
 
@@ -70,6 +81,7 @@ final class Tools {
                 "yes".equals(values.get("browser")),
                 "yes".equals(values.get("playwright")),
                 "yes".equals(values.get("android")),
+                "yes".equals(values.get("android_sdk")),
                 values.getOrDefault("chromium", ""));
     }
 
@@ -145,14 +157,13 @@ final class Tools {
                     + "Fully. Anything that compiles for arm64 Linux compiles here, including "
                     + "C and C++ for this machine itself.\n\n"
 
-                    + "Android apps, with work still to do.\n"
-                    + "Java and Kotlin projects can be built into a real, signed, installable "
-                    + "APK — but not out of the box. This app installs a JDK and tunes Gradle; "
-                    + "the Android SDK is not installed, and Google's aapt2, aidl, zipalign and "
-                    + "split-select ship as x86-64 only, so a Gradle build stops on the first "
-                    + "of them with an Exec format error until aarch64 builds replace them. "
-                    + "Both are steps you take yourself, and neither is a limit of this "
-                    + "phone.\n"
+                    + "Android apps.\n"
+                    + "Java and Kotlin projects build into a real, signed, installable APK "
+                    + "once the Android build tools are installed from Settings. That layer "
+                    + "installs a JDK, Google's own SDK through sdkmanager, and replaces the "
+                    + "four tools Google ships as x86-64 only with checksum-pinned aarch64 "
+                    + "builds, then points Gradle at them. A project builds with its own "
+                    + "./gradlew after that.\n"
                     + "Apps containing C or C++ cannot be built at all, and that one IS "
                     + "permanent: there is no arm64 Android NDK, which is Google's decision "
                     + "rather than anything this app can change.\n\n"
@@ -163,9 +174,10 @@ final class Tools {
                     + "security policy denies to every app on a phone that is not rooted. "
                     + "Nothing installable changes that.\n"
                     + "What works instead is better on a phone anyway: the phone IS the test "
-                    + "device. An agent builds the APK, hands it to Android's own installer, "
-                    + "and the app runs on real hardware rather than a simulation of it. JVM "
-                    + "and Robolectric unit tests run here natively as well.\n\n"
+                    + "device. An agent builds the APK; Settings → The computer → Install an "
+                    + "app built here hands it to Android's own installer, and the app runs "
+                    + "on real hardware rather than a simulation of it. JVM and Robolectric "
+                    + "unit tests run here natively as well.\n\n"
 
                     + "iOS apps.\n"
                     + "No, and not for a reason this app could fix: Apple requires its own "

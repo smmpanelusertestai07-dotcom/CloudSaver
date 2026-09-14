@@ -155,18 +155,26 @@ final class Texts {
                      + "terminal and a compiler are all here from the first start."},
             {"Building",
              "Can it build an Android app?",
-             "Java and Kotlin projects, yes \u2014 into a real, installable APK, once you add "
-                     + "the build tools in Settings. Apps containing C or C++ cannot be built: "
-                     + "Google publishes no Android compiler for this kind of processor, which "
-                     + "is Google's decision rather than a limit of your phone."},
+             "Java and Kotlin projects, yes \u2014 into a real, signed, installable APK, with "
+                     + "the project\u2019s own ./gradlew, once Settings \u2192 The computer "
+                     + "\u2192 Android build tools has been installed (about 520 MB, once). "
+                     + "That installs a JDK, Google\u2019s own SDK, and aarch64 builds of the "
+                     + "four build tools Google only ships for x86-64 \u2014 each checked "
+                     + "against a checksum before it is used.\n\nApps containing C or C++ "
+                     + "cannot be built: Google publishes no Android compiler for this kind "
+                     + "of processor, which is Google\u2019s decision rather than a limit of "
+                     + "your phone."},
             {"Building",
              "Can I test an Android app here?",
              "Yes, but not with the emulator \u2014 that cannot run on a phone. Google ships no "
                      + "emulator for this processor, and even one built by hand needs a "
                      + "virtualisation device Android does not give apps unless the phone is "
                      + "rooted.\n\nWhat you get instead is better: your phone is the test "
-                     + "device. Build the APK, install it, and it runs on real hardware. Unit "
-                     + "tests run here directly."},
+                     + "device. Build the APK, then Settings \u2192 The computer \u2192 "
+                     + "Install an app built here hands it to Android\u2019s own installer, "
+                     + "and it runs on real hardware. JVM unit tests and Robolectric tests, "
+                     + "which run Android code on the JVM without an emulator, run here "
+                     + "directly \u2014 that is the free local testing an agent uses."},
             {"Building",
              "Can I build an iPhone app?",
              "No. Apple requires its own tools on a Mac to build and sign them, and no Android "
@@ -546,6 +554,14 @@ final class Texts {
             {"android.permission.WRITE_EXTERNAL_STORAGE",
                     "Writing to the phone's files on Android 10",
                     "As above, and equally limited to Android 10."},
+            {"android.permission.REQUEST_INSTALL_PACKAGES",
+                    "Install an app you built",
+                    "Only to hand an APK built inside Linux to Android\u2019s own installer "
+                            + "when you tap Install an app built here in Settings. Android "
+                            + "still asks you on its own screen every time, and refuses until "
+                            + "you allow installs from this app there. The app cannot install "
+                            + "anything by itself, and nothing outside ~/projects can be "
+                            + "offered."},
             {"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
              "Battery", "A one-tap prompt so long work is not stopped. Always optional."},
     };

@@ -24,6 +24,12 @@
          it is granted at install and never prompts. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Only so that an APK built inside Linux can be handed to Android's own installer from
+         the row in Settings. The installer still asks the owner on its own screen every time,
+         and refuses until "install unknown apps" is allowed for this app. Nothing installs by
+         itself. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- The phone's own storage inside the workspace, as ~/phone. OFF by default and never
          requested at set-up: it is a switch in Settings, and Android only grants it on a page
          of its own that the owner has to visit deliberately.
@@ -112,6 +118,14 @@
             android:label="@string/title_help"
             android:parentActivityName=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
+        <!-- Shows one APK from ~/projects to the installer, read-only, by a URI this app hands
+             out with a grant. Not exported: nothing can ask it for a file. See Built. -->
+        <provider
+            android:name=".Built"
+            android:authorities="com.pocketide.built"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <service
             android:name=".WorkspaceService"

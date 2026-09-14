@@ -239,6 +239,65 @@ else:
             problems.append("onHeat() acts when nothing is running, so it can stop processes "
                             "that are not the workspace's")
 
+
+# --- 14. every executable the Android layer installs is pinned, and the provider is narrow -----
+#
+# The tools script downloads five executables into the workspace: Google's command-line tools
+# and four aarch64 rebuilds of the tools Google ships as x86-64 only. Each has a SHA-256 in the
+# script and is refused when it does not match -- the same rule the editor's tarball lives by.
+tools_script = open(app + "/app/assets/pocketide-tools.sh").read()
+for name in ("CMDLINE_SHA256", "ARM_SHA256_aapt2", "ARM_SHA256_aidl", "ARM_SHA256_zipalign",
+             "ARM_SHA256_split_select"):
+    if not re.search(name + r'="[0-9a-f]{64}"', tools_script):
+        problems.append("pocketide-tools.sh has no 64-hex SHA-256 pin named %s, so that "
+                        "executable would be installed unverified" % name)
+fetch = re.search(r'fetch_pinned\(\) \{(.*?)\n\}', tools_script, re.S)
+if not fetch:
+    problems.append("pocketide-tools.sh has no fetch_pinned(); downloads are not checked")
+else:
+    body = fetch.group(1)
+    # The rm that matters is the one AFTER the digest comparison; the retry branch has its own.
+    if "sha256sum" not in body or not re.search(
+            r'!= "\$expected" \]; then\s*\n\s*rm -f "\$target"', body):
+        problems.append("fetch_pinned() does not delete a download whose digest does not match, "
+                        "so the next attempt trusts a file this one refused")
+android_fn = re.search(r'install_android\(\) \{(.*?)\n\}', tools_script, re.S)
+if not android_fn:
+    problems.append("pocketide-tools.sh has no install_android()")
+else:
+    body = android_fn.group(1)
+    if body.find("fetch_pinned") < 0 or body.find("chmod +x") < body.find("fetch_pinned"):
+        problems.append("install_android() makes a tool executable before it has been "
+                        "checked against its pin")
+    if "aapt2FromMavenOverride" not in body:
+        problems.append("install_android() never writes android.aapt2FromMavenOverride, so "
+                        "Gradle fetches its own x86-64 aapt2 and the build still stops")
+    if 'aapt2" version' not in body:
+        problems.append("install_android() never proves the replaced aapt2 runs on this phone")
+# The provider that hands an APK to the installer: not exported, .apk only, under ~/projects
+# only, read-only, through canonical paths.
+provider = re.search(r'<provider(.*?)/>', manifest, re.S)
+if not provider or 'android:exported="false"' not in provider.group(1):
+    problems.append("the Built provider is exported, so any app could ask it for a file")
+elif 'android:grantUriPermissions="true"' not in provider.group(1):
+    problems.append("the Built provider cannot grant a URI, so the installer is refused the file")
+built = code(read("Built.java"))
+resolve = re.search(r'private File resolve\(Uri uri\)(.*?)\n    \}', built, re.S)
+if not resolve:
+    problems.append("Built has no resolve() to restrict what it serves")
+else:
+    body = resolve.group(1)
+    if body.count("getCanonicalPath()") < 2:
+        problems.append("Built.resolve(): both the root and the candidate must be canonicalised, "
+                        "or a ../ in the URI, or a symlink under ~/projects, walks out of it")
+    for must, why in (("getCanonicalPath", "paths are not canonicalised, so ../ walks out of ~/projects"),
+                      ('endsWith(".apk")', "files other than an APK can be served"),
+                      ("Workspace.projects", "the provider is not rooted at ~/projects")):
+        if must not in body:
+            problems.append("Built.resolve(): " + why)
+if 'if (!"r".equals(mode))' not in built:
+    problems.append("Built.openFile() accepts a write mode")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

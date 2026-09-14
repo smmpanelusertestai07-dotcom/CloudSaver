@@ -26,25 +26,39 @@
 #              is pure userspace -- but it costs memory for nothing unless a real GUI app has to
 #              be filmed.
 #
-#   ANDROID    This layer installs a JDK and tunes Gradle. It does NOT install the Android
-#              SDK, and it does not supply aarch64 rebuilds of Google's aapt2, aidl, zipalign
-#              and split-select, which ship as x86-64 only and which a Gradle Android build
-#              stops at. Those are steps the owner still has to take, and the screen says so
-#              rather than implying the layer finishes the job -- an earlier version of this
-#              header asserted that those four tools were already swapped for aarch64 builds,
-#              while the function's own closing lines correctly said they were not. A claim
-#              that contradicts itself inside one file is a claim nobody ever checked.
+#   ANDROID    A complete Android build toolchain, and the reason it can be complete now is
+#              four files. Google's own SDK installs on arm64 without trouble -- sdkmanager,
+#              d8, r8 and apksigner are Java -- but four of the build tools (aapt2, aidl,
+#              zipalign, split-select) ship as x86-64 binaries only, and a Gradle build stops
+#              on the first of them with an Exec format error. The Commit451
+#              android-arm-build-tools project rebuilds exactly those four from AOSP for
+#              aarch64 against glibc, under the MIT licence. This layer installs the JDK,
+#              Google's command-line tools, platform 35 and build-tools 35.0.1 through
+#              sdkmanager, then replaces the four binaries with those builds.
+#
+#              Every executable that arrives here is checked against a SHA-256 written into
+#              this file, exactly as the editor's tarball is: Google's zip against the digest
+#              Google publishes beside it, and the four rebuilt tools against digests taken by
+#              downloading those exact files and hashing them. A hash that does not match is
+#              deleted, not installed.
+#
+#              Then the one line that makes Gradle use them: the Android Gradle Plugin does
+#              not take aapt2 from the SDK at all -- it downloads its own x86-64 copy from
+#              Maven -- unless android.aapt2FromMavenOverride names a path. It is written into
+#              ~/.gradle/gradle.properties, which is where AGP reads it from (local.properties
+#              is ignored for this).
 #
 #              Two limits are permanent whatever is installed: apps containing C or C++ cannot
 #              be built, because Google publishes no arm64 NDK; and the emulator cannot run,
 #              because Google ships no linux-aarch64 build and even a self-built one needs
 #              /dev/kvm, which SELinux denies to every app on an unrooted phone. The phone
-#              itself is the test device instead.
+#              itself is the test device instead -- and Settings has a row that hands an APK
+#              built here to Android's own installer.
 #
 # Usage:
 #   pocketide-tools.sh browser      install the browser layer
 #   pocketide-tools.sh playwright   install the automation layer on top of it
-#   pocketide-tools.sh android      install the Java-only Android build toolchain
+#   pocketide-tools.sh android      install the complete Android build toolchain
 #   pocketide-tools.sh tune         write Gradle settings sized to this phone
 #   pocketide-tools.sh check        report what is present, machine-readably
 #   pocketide-tools.sh smoke        prove the browser really loads a page and screenshots it
@@ -56,6 +70,24 @@ export LC_ALL=C.UTF-8
 HOME_DIR="/root"
 TOOLS_DIR="$HOME_DIR/.pocketide-tools"
 PROJECTS="$HOME_DIR/projects"
+
+# The Android SDK, and the pins for every executable that goes into it.
+SDK_DIR="$TOOLS_DIR/android/sdk"
+BUILD_TOOLS="35.0.1"
+PLATFORM="android-35"
+# Google's command-line tools for Linux, as published on developer.android.com with this
+# digest beside it. sdkmanager inside is Java and runs on arm64 as it is.
+CMDLINE_URL="https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip"
+CMDLINE_SHA256="4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583"
+CMDLINE_BYTES=181833628
+# The four build tools Google ships as x86-64 only, rebuilt for aarch64 from AOSP by the
+# Commit451 android-arm-build-tools project (MIT). Digests taken by downloading these exact
+# files and hashing them; they change only when BUILD_TOOLS does.
+ARM_TOOLS_BASE="https://github.com/Commit451/android-arm-build-tools/releases/download/platform-tools-${BUILD_TOOLS}"
+ARM_SHA256_aapt2="c57d02d2986d7d68147d74525ad8a5fbb105f12723b33f1ce9eab12acd238cf0"
+ARM_SHA256_aidl="9ae2dfac8ff49f34d493c2fd3d96f6153563f2ec0f07d18f6f661d0e8403d6a2"
+ARM_SHA256_zipalign="d0688e26a0960b010c9702c4a4f6e53308d239a618b1dd0e5d0f4c5ad1c84fe6"
+ARM_SHA256_split_select="172ecf6c4e93cc6f80a544f48b9a8fe770dd67f83b2f277504291cb4d1b82e3e"
 
 say() { printf '%s\n' "$*"; }
 
@@ -156,37 +188,130 @@ install_playwright() {
 
 # --------------------------------------------------------------------------- Android builds
 
+# Downloads to a file and refuses anything whose digest is not the one written above.
+# Refused means deleted: leaving the file would make the next attempt trust a download this
+# one already decided not to.
+fetch_pinned() {
+  local url="$1" target="$2" expected="$3" label="$4"
+  say "Downloading $label…"
+  if ! curl -fL --retry 4 --retry-delay 3 --retry-connrefused --continue-at - \
+       -o "$target" "$url"; then
+    rm -f "$target"
+    if ! curl -fL --retry 4 --retry-delay 3 -o "$target" "$url"; then
+      say "$label could not be downloaded."
+      return 1
+    fi
+  fi
+  local actual
+  actual=$(sha256sum "$target" 2>/dev/null | cut -d' ' -f1) || true
+  if [ "$actual" != "$expected" ]; then
+    rm -f "$target"
+    say "$label did not match its checksum and was discarded."
+    return 1
+  fi
+  return 0
+}
+
 install_android() {
   say "Installing a JDK…"
-  apt-get install -y -qq openjdk-21-jdk-headless unzip || {
+  apt-get install -y -qq openjdk-21-jdk-headless unzip libstdc++6 zlib1g || {
     say "The JDK could not be installed."; return 1; }
 
-  mkdir -p "$TOOLS_DIR/android"
+  mkdir -p "$SDK_DIR"
+  local manager="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+
+  if [ ! -x "$manager" ]; then
+    local archive="/tmp/commandlinetools-linux.zip"
+    local have=0
+    [ -f "$archive" ] && have=$(stat -c%s "$archive" 2>/dev/null || echo 0)
+    if [ "$have" != "$CMDLINE_BYTES" ] || \
+       [ "$(sha256sum "$archive" 2>/dev/null | cut -d' ' -f1)" != "$CMDLINE_SHA256" ]; then
+      fetch_pinned "$CMDLINE_URL" "$archive" "$CMDLINE_SHA256" \
+        "Google's Android command-line tools (182 MB)" || return 1
+    fi
+    say "Unpacking the command-line tools…"
+    rm -rf "$SDK_DIR/cmdline-tools"
+    mkdir -p "$SDK_DIR/cmdline-tools"
+    if ! unzip -q -o "$archive" -d "$SDK_DIR/cmdline-tools.unpack"; then
+      say "The command-line tools could not be unpacked."; return 1
+    fi
+    # The zip carries one folder called cmdline-tools; sdkmanager insists on finding itself
+    # at <sdk>/cmdline-tools/latest, so that folder is what becomes "latest".
+    mv "$SDK_DIR/cmdline-tools.unpack/cmdline-tools" "$SDK_DIR/cmdline-tools/latest"
+    rm -rf "$SDK_DIR/cmdline-tools.unpack"
+    rm -f "$archive"
+  fi
+  [ -x "$manager" ] || { say "sdkmanager is missing after unpacking."; return 1; }
+
+  say "Accepting the SDK licences…"
+  yes | "$manager" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
+  say "Installing platform $PLATFORM and build-tools $BUILD_TOOLS from Google… (about 120 MB)"
+  # Its exit status is read directly, not through a pipe: under pipefail a grep that filters
+  # every progress line away exits 1 and would have reported a finished install as a failure.
+  local log="/tmp/sdkmanager.log"
+  "$manager" --sdk_root="$SDK_DIR" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
+    >"$log" 2>&1
+  local status=$?
+  grep -v '^\[=' "$log" 2>/dev/null || true
+  if [ "$status" -ne 0 ]; then
+    say "sdkmanager did not finish. Nothing installed so far is lost; run this again."
+    return 1
+  fi
+  local bt="$SDK_DIR/build-tools/$BUILD_TOOLS"
+  [ -d "$bt" ] || { say "build-tools $BUILD_TOOLS did not install."; return 1; }
+
+  say "Replacing the four x86-64 tools with aarch64 builds…"
+  local tool hashvar expected
+  for tool in aapt2 aidl zipalign split-select; do
+    hashvar="ARM_SHA256_${tool//-/_}"
+    expected="${!hashvar}"
+    if [ -f "$bt/$tool" ] && \
+       [ "$(sha256sum "$bt/$tool" 2>/dev/null | cut -d' ' -f1)" = "$expected" ]; then
+      continue
+    fi
+    fetch_pinned "$ARM_TOOLS_BASE/$tool" "$bt/$tool.aarch64" "$expected" "$tool (aarch64)" \
+      || return 1
+    [ -f "$bt/$tool" ] && mv -f "$bt/$tool" "$bt/$tool.x86_64"
+    chmod +x "$bt/$tool.aarch64"
+    mv -f "$bt/$tool.aarch64" "$bt/$tool"
+  done
+
+  # Proved, not assumed: the one command that fails with Exec format error when the
+  # replacement did not take.
+  if ! "$bt/aapt2" version >/dev/null 2>&1; then
+    say "aapt2 is installed but will not run on this phone. The build tools are not usable."
+    return 1
+  fi
+
+  # Where the SDK is, for every shell the editor opens and every Gradle it runs.
+  cat > /etc/profile.d/pocketide-android.sh <<EOF
+export ANDROID_HOME="$SDK_DIR"
+export ANDROID_SDK_ROOT="$SDK_DIR"
+export PATH="\$PATH:$SDK_DIR/cmdline-tools/latest/bin:$bt"
+EOF
+  grep -q 'pocketide-android.sh' "$HOME_DIR/.bashrc" 2>/dev/null || \
+    printf '\n[ -f /etc/profile.d/pocketide-android.sh ] && . /etc/profile.d/pocketide-android.sh\n' \
+      >> "$HOME_DIR/.bashrc"
+
   tune_gradle
+  # The line Gradle needs whether or not tune_gradle wrote the file: AGP fetches its own
+  # x86-64 aapt2 from Maven and ignores the SDK's unless told otherwise, and it reads this
+  # from gradle.properties only.
+  local properties="$HOME_DIR/.gradle/gradle.properties"
+  mkdir -p "$(dirname "$properties")"
+  if ! grep -q '^android.aapt2FromMavenOverride=' "$properties" 2>/dev/null; then
+    printf 'android.aapt2FromMavenOverride=%s/aapt2\n' "$bt" >> "$properties"
+  fi
+
   say ""
-  say "A JDK is installed, and Gradle comes from each project's own gradlew wrapper,"
-  say "which is how an Android project is meant to be built — nothing to install."
+  say "The Android toolchain is installed: JDK 21, platform $PLATFORM, build-tools $BUILD_TOOLS,"
+  say "with aapt2, aidl, zipalign and split-select as aarch64 builds. ANDROID_HOME is set"
+  say "for every new terminal, and Gradle is pointed at this aapt2."
   say ""
-  say "This is NOT a finished Android build setup, and the two missing pieces are"
-  say "not small:"
-  say "  • The Android SDK itself. Install Google's command-line tools and use"
-  say "    sdkmanager for a platform and build-tools, then point ANDROID_HOME at it."
-  say "  • aarch64 builds of aapt2, aidl, zipalign and split-select. Google ships"
-  say "    those four as x86-64 only, so a Gradle build stops on the first one with"
-  say "    an Exec format error until they are replaced."
-  say ""
-  say "What cannot be done on this phone, and cannot be fixed by installing anything:"
-  say "  • Apps with C or C++ in them. Google publishes no arm64 NDK."
-  say "  • The Android emulator. Google ships no linux-aarch64 build, and even a"
-  say "    self-built one needs /dev/kvm, which Android denies to every app on an"
-  say "    unrooted phone."
-  say ""
-  say "What works instead:"
-  say "  • JVM and Robolectric unit tests run here natively."
-  say "  • The phone itself is the test device: build the APK, then install it."
-  say ""
-  say "Google's own aapt2, aidl, zipalign and split-select are x86-64 only and need"
-  say "aarch64 replacements before a Gradle build will finish."
+  say "A Java or Kotlin Android project builds here with its own ./gradlew. Two limits"
+  say "are permanent: apps containing C or C++ (Google publishes no arm64 NDK), and the"
+  say "emulator (no linux-aarch64 build, and no /dev/kvm on a phone). The phone is the"
+  say "test device: Settings → The computer → Install an app built here."
 }
 
 # --------------------------------------------------------------------------- build tuning
@@ -260,13 +385,17 @@ EOF
 # --------------------------------------------------------------------------- what is present
 
 check() {
-  local browser=no playwright=no android=no
+  local browser=no playwright=no android=no android_sdk=no
   command -v chromium >/dev/null 2>&1 && browser=yes
   [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
   command -v javac >/dev/null 2>&1 && android=yes
+  # Present AND runs: the x86-64 aapt2 Google ships is present and does not.
+  [ -x "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" ] && \
+    "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" version >/dev/null 2>&1 && android_sdk=yes
   echo "browser=$browser"
   echo "playwright=$playwright"
   echo "android=$android"
+  echo "android_sdk=$android_sdk"
   if [ "$browser" = yes ]; then
     echo "chromium=$(chromium --version 2>/dev/null | head -1)"
   fi

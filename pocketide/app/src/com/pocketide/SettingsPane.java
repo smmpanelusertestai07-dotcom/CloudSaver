@@ -351,34 +351,38 @@ final class SettingsPane implements Pane {
         list.addView(automation);
         list.addView(Ui.divider(host, dark, true));
 
-        Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Java toolchain (JDK)",
+        Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Android build tools",
                 !ready ? "Available once Linux is set up"
-                        : tools.android ? "Installed · the first step towards Android builds"
+                        : tools.sdk ? "Installed · JDK 21, SDK 35, build-tools 35.0.1 for arm64"
+                        : tools.android ? "JDK only · tap to finish the toolchain"
                             : "Not installed · about "
                                     + DeviceProbe.formatBytes(Tools.ANDROID_BYTES),
-                v -> offerTools("android", "Java toolchain (JDK)",
-                        "Installs a JDK and writes Gradle settings sized to this phone. It is "
-                                + "what Java and Kotlin need, and it is the first step towards "
-                                + "building an Android app here.\n\n"
-                                + "It is NOT a finished Android setup, and saying so here is "
-                                + "the point — two pieces are still missing and neither is "
-                                + "small:\n\n"
-                                + "• The Android SDK. Google's command-line tools install it, "
-                                + "and ANDROID_HOME has to point at it.\n"
-                                + "• aarch64 builds of aapt2, aidl, zipalign and split-select. "
-                                + "Google ships those four as x86-64 only, so a Gradle build "
-                                + "stops on the first one with an Exec format error until they "
-                                + "are replaced.\n\n"
+                v -> offerTools("android", "Android build tools",
+                        "Installs everything a Java or Kotlin Android project needs to build "
+                                + "here with its own ./gradlew: a JDK, Google's Android SDK "
+                                + "(platform 35 and build-tools 35.0.1) through Google's own "
+                                + "sdkmanager, and Gradle settings sized to this phone.\n\n"
+                                + "Google ships four of the build tools — aapt2, aidl, "
+                                + "zipalign and split-select — as x86-64 only, which is what "
+                                + "used to stop every build on a phone. They are replaced with "
+                                + "aarch64 builds of the same AOSP source (MIT-licensed), each "
+                                + "checked against a checksum written into the app before it "
+                                + "is used, and Gradle is pointed at them.\n\n"
                                 + "Two limits are permanent whatever you install: apps "
                                 + "containing C or C++ cannot be built, because Google "
                                 + "publishes no arm64 NDK; and the Android emulator cannot run "
-                                + "on this phone at all. The phone itself is the test device "
-                                + "instead.\n\n"
-                                + "Everything else on this screen — web, servers, "
-                                + "command-line programs, and JVM tests — works with just this.",
-                        Tools.ANDROID_BYTES, tools.android));
-        if (tools.android) android.setState(Ui.running(dark));
+                                + "on a phone at all. The phone itself is the test device — "
+                                + "the row below installs what you build.",
+                        Tools.ANDROID_BYTES, tools.sdk));
+        if (tools.sdk) android.setState(Ui.running(dark));
+        else if (tools.android) android.setState(Ui.needsYou(dark));
         list.addView(android);
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_install, "Install an app built here",
+                ready ? "Hands an APK from ~/projects to Android's installer"
+                      : "Available once Linux is set up",
+                v -> offerBuiltApks()));
         list.addView(Ui.divider(host, dark, true));
 
         list.addView(Ui.row(host, dark, R.drawable.ic_info, "What can be built here",
@@ -427,6 +431,90 @@ final class SettingsPane implements Pane {
      * The size is in the question rather than discovered afterwards, because on a phone the
      * difference between 60 MB and 340 MB is the difference between yes and not today.
      */
+    /**
+     * Lists the APKs a build left under ~/projects and hands the chosen one to the installer.
+     *
+     * The walk is off the drawing thread and bounded -- six levels, and nothing under
+     * build/intermediates, where Gradle keeps hundreds of partial APKs that are not the
+     * result. Newest first, because the one just built is the one wanted.
+     */
+    private void offerBuiltApks() {
+        if (!Workspace.installed(host)) {
+            Dialogs.message(host, "Install an app built here",
+                    "Linux has to be set up, and an app built, before there is anything to "
+                            + "install.");
+            return;
+        }
+        final Activity on = host;
+        new Thread(() -> {
+            final java.util.List<java.io.File> found = new java.util.ArrayList<>();
+            collectApks(Workspace.projects(on), 0, found);
+            java.util.Collections.sort(found,
+                    (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+            final java.util.List<java.io.File> shown =
+                    found.subList(0, Math.min(found.size(), 12));
+            on.runOnUiThread(() -> {
+                if (on.isFinishing()) return;
+                if (shown.isEmpty()) {
+                    Dialogs.message(on, "Nothing to install yet",
+                            "No .apk was found under ~/projects. Build one — in a project's "
+                                    + "terminal, ./gradlew assembleDebug — and it appears "
+                                    + "here.");
+                    return;
+                }
+                String[] labels = new String[shown.size()];
+                int[] icons = new int[shown.size()];
+                String root = Workspace.projects(on).getAbsolutePath() + "/";
+                for (int i = 0; i < shown.size(); i++) {
+                    String path = shown.get(i).getAbsolutePath();
+                    labels[i] = (path.startsWith(root) ? path.substring(root.length()) : path)
+                            + " · " + DeviceProbe.formatBytes(shown.get(i).length());
+                    icons[i] = R.drawable.ic_apps;
+                }
+                Dialogs.choose(on, "Install which app?", labels, icons, -1,
+                        index -> installBuilt(shown.get(index)));
+            });
+        }, "find-apks").start();
+    }
+
+    private static void collectApks(java.io.File dir, int depth, java.util.List<java.io.File> into) {
+        if (depth > 6 || dir == null) return;
+        java.io.File[] children = dir.listFiles();
+        if (children == null) return;
+        for (java.io.File child : children) {
+            String name = child.getName();
+            if (child.isDirectory()) {
+                if (name.equals("intermediates") || name.equals("node_modules")
+                        || name.equals(".git") || name.startsWith(".")) continue;
+                collectApks(child, depth + 1, into);
+            } else if (name.endsWith(".apk") && child.length() > 0) {
+                into.add(child);
+            }
+        }
+    }
+
+    private void installBuilt(java.io.File apk) {
+        android.net.Uri uri = Built.uriFor(host, apk);
+        if (uri == null) {
+            Dialogs.message(host, "Not offered", "Only an .apk under ~/projects can be handed "
+                    + "to the installer.");
+            return;
+        }
+        Intent install = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, Built.MIME)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        // Android's installer is the phone's own screen, reached on purpose: not a way out
+        // of the app for the lock's purposes.
+        AppLock.expectReturn();
+        try {
+            host.startActivity(install);
+        } catch (Throwable noInstaller) {
+            Dialogs.message(host, "The installer did not open",
+                    "This phone offered no installer for the file. Copy it to the phone's "
+                            + "files and open it from there instead.");
+        }
+    }
+
     private void offerTools(String layer, String title, String explanation, long bytes,
                             boolean already) {
         if (!Workspace.installed(host)) {
