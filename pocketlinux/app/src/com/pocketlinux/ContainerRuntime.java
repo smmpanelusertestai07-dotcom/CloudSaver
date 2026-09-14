@@ -453,6 +453,46 @@ final class ContainerRuntime {
         copyAsset(context, "pocketlinux-software.png", "usr/share/pixmaps/pocketlinux-software.png");
         copyAsset(context, "pocketlinux-package.png", "usr/share/pixmaps/pocketlinux-package.png");
         copyAsset(context, "pocketlinux-bin.png", "usr/share/pixmaps/pocketlinux-bin.png");
+        copyIconTheme(context);
+    }
+
+    /**
+     * The seven marks PocketLinux draws for itself, by their bare names.
+     *
+     * tools/make_icons.py writes each of these at four sizes: the 256 keeps the plain name and
+     * the smaller three carry their size, so pocketlinux-files.png and pocketlinux-files-48.png
+     * are the same picture drawn twice rather than one file scaled down. Tux, the PocketLinux
+     * mark and Antigravity's borrowed icon are shipped pictures at one size only, so they are
+     * not here.
+     */
+    private static final String[] DRAWN_ICONS = {
+            "pocketlinux-files", "pocketlinux-phone", "pocketlinux-projects",
+            "pocketlinux-settings", "pocketlinux-software", "pocketlinux-package",
+            "pocketlinux-bin",
+    };
+
+    /** The four sizes make_icons.py draws, which are four that hicolor's index.theme lists. */
+    private static final int[] ICON_SIZES = {48, 64, 128, 256};
+
+    /**
+     * Puts the drawn marks in as a real icon theme, beside the copies in /usr/share/pixmaps.
+     *
+     * Pixmaps holds one 256-pixel file per name, and it used to be the only place these marks
+     * went, so pcmanfm and tint2 had to squeeze a 256 down to the 48 or 64 they actually paint,
+     * with whatever filter they happened to use. That is why the small icons looked soft. A
+     * theme is searched by size, so here the 48 that was drawn as a 48 is the one handed over.
+     *
+     * The pixmaps copies stay exactly as they are. Every launcher and menu entry names the bare
+     * icon, and pixmaps is the fallback that has always answered when a theme lookup does not.
+     */
+    private static void copyIconTheme(Context context) throws IOException, ErrnoException {
+        for (String name : DRAWN_ICONS) {
+            for (int size : ICON_SIZES) {
+                String asset = size == 256 ? name + ".png" : name + "-" + size + ".png";
+                copyAsset(context, asset,
+                        "usr/share/icons/hicolor/" + size + "x" + size + "/apps/" + name + ".png");
+            }
+        }
     }
 
     /**
@@ -765,6 +805,7 @@ final class ContainerRuntime {
         copyAsset(context, "pocketlinux-software.png", "usr/share/pixmaps/pocketlinux-software.png");
         copyAsset(context, "pocketlinux-package.png", "usr/share/pixmaps/pocketlinux-package.png");
         copyAsset(context, "pocketlinux-bin.png", "usr/share/pixmaps/pocketlinux-bin.png");
+        copyIconTheme(context);
     }
 
     static boolean isAppInstalled(Context context, LinuxApps.App app) {

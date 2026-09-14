@@ -806,7 +806,7 @@ public final class DesktopActivity extends Activity implements KeyboardInputView
         items.add(4, MENU_PHOTO, 32, "Take a photo into the computer").setIcon(R.drawable.ic_phone);
         items.add(4, MENU_CLOUD_FILE, 33, "Add a file from the phone or a cloud drive")
                 .setIcon(R.drawable.ic_download);
-        items.add(4, MENU_PHONE_FILES, 34, "Phone files").setIcon(R.drawable.ic_phone);
+        items.add(4, MENU_PHONE_FILES, 34, "Phone files").setIcon(R.drawable.ic_phone_files);
         items.add(4, MENU_PASTE, 35, "Paste from the phone").setIcon(R.drawable.ic_download);
         items.add(4, MENU_TOUCH_LOCK, 36, "Lock the screen: ignore touches").setIcon(R.drawable.ic_lock);
     }

@@ -200,11 +200,40 @@ echo "PASS Terminology"
 
 # Every desktop helper has to be copied in TWO places: once by set-up, and once by the refresh
 # that runs after each app install, or a computer built by an earlier version never gets it.
+# Real copy lines are counted, not every mention of the name. Counting the bare name made the
+# rule depend on nobody ever writing a file name in a comment, and the icons below are now
+# described in one and installed a second way as well, so a mention would read as a copy.
+runtime="$PROJECT_DIR/app/src/com/pocketlinux/ContainerRuntime.java"
 for helper in pocketlinux-storage.sh pocketlinux-software.sh pocketlinux-shot.sh pocketlinux-mark.png pocketlinux-mcp.py pocketlinux-agent.sh pocketlinux-appshot.sh pocketlinux-graphics.py pocketlinux-appprocess.py pocketlinux-childwatch.py pocketlinux-adb.sh pocketlinux-procinfo.py pocketlinux-save.sh pocketlinux-mobile.sh pocketlinux-settings.sh pocketlinux-files.png pocketlinux-phone.png pocketlinux-projects.png pocketlinux-settings.png pocketlinux-software.png pocketlinux-package.png pocketlinux-bin.png; do
-  n=$(grep -c "$helper" "$PROJECT_DIR/app/src/com/pocketlinux/ContainerRuntime.java" || true)
+  n=$(grep -c "copyAsset(context, \"$helper\"" "$runtime" || true)
   [ "$n" = 2 ] || { echo "FAIL AssetCopySites: $helper must be installed by set-up AND refreshed on every app install (found $n)"; exit 1; }
 done
 echo "PASS AssetCopySites"
+
+# The seven marks the app draws for itself go in as an icon theme as well as into pixmaps, so the
+# file manager and the panel are handed a picture really drawn at the size they paint instead of
+# the 256 squeezed down. One list in ContainerRuntime drives it, and the file names at the three
+# smaller sizes are built rather than written out, so nothing above would notice them going
+# missing. Checked here: both install sites, the four sizes, every name in the list, and that
+# every file the list implies is really in app/assets.
+grep -q 'usr/share/icons/hicolor/' "$runtime" \
+  || { echo "FAIL IconTheme: the drawn marks are not installed under hicolor"; exit 1; }
+grep -q 'ICON_SIZES = {48, 64, 128, 256}' "$runtime" \
+  || { echo "FAIL IconTheme: the sizes installed must be the four hicolor's own index.theme lists"; exit 1; }
+theme_sites=$(grep -c 'copyIconTheme(context);' "$runtime" || true)
+[ "$theme_sites" = 2 ] \
+  || { echo "FAIL IconTheme: the theme must be installed by set-up AND refreshed on every app install (found $theme_sites)"; exit 1; }
+for icon in pocketlinux-files pocketlinux-phone pocketlinux-projects pocketlinux-settings \
+            pocketlinux-software pocketlinux-package pocketlinux-bin; do
+  grep -q "\"$icon\"," "$runtime" \
+    || { echo "FAIL IconTheme: $icon is not in the list the theme install reads"; exit 1; }
+  for size in 48 64 128 256; do
+    case $size in 256) file="$icon.png" ;; *) file="$icon-$size.png" ;; esac
+    [ -f "$PROJECT_DIR/app/assets/$file" ] \
+      || { echo "FAIL IconTheme: app/assets/$file is missing; run tools/make_icons.py"; exit 1; }
+  done
+done
+echo "PASS IconTheme (seven marks at 48, 64, 128 and 256, installed by set-up and by the refresh)"
 
 # The rotation report, kept fixed. Two of Android's constants are named as though they mean
 # "portrait" and "auto-rotate" and do not: USER_PORTRAIT is "portrait, either way up" and

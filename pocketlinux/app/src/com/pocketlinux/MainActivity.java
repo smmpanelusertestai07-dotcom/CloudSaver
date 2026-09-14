@@ -44,8 +44,8 @@ import java.util.Locale;
  * Home is the Linux computer -- its state, the one button that opens it, whether this phone
  * qualifies, and the questions anyone asks before trusting a phone with a computer. Apps is
  * the four AI desktop apps. Settings is everything adjustable, grouped and named, with the
- * permissions and the reports at the end. No separate About or FAQ page: every fact lives
- * next to the thing it is about.
+ * permissions and the storage it uses at the end. No separate About or FAQ page: every fact
+ * lives next to the thing it is about.
  */
 public final class MainActivity extends Activity {
     static final String VERSION = "13.0.0";
@@ -319,6 +319,10 @@ public final class MainActivity extends Activity {
         super.onStart();
         started = true;
         if (safeMode) return;
+        // Once the phone's own screen lock is gone there is no key left to ask for, so App lock
+        // switches itself off here. It belongs on this screen because this is the only one that
+        // can afterwards tell the owner it happened.
+        AppLock.forgetIfNoScreenLock(this);
         AppLock.applyWindowSecurity(this);
         try {
             IntentFilter filter = new IntentFilter(LinuxService.ACTION_STATUS);
@@ -1329,7 +1333,7 @@ public final class MainActivity extends Activity {
                 + "switch like this being off is the usual reason the computer stops working a "
                 + "day after set-up."), 12.5f, muted),
                 Ui.matchWrap(this, 8));
-        phoneFilesRow = new Ui.Row(this, R.drawable.ic_phone, "Phone files", "Checking…",
+        phoneFilesRow = new Ui.Row(this, R.drawable.ic_phone_files, "Phone files", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> {
                     if (PhoneFiles.allowed(this)) {
                         // Already on: the row says so, and the tap goes straight to the Android
@@ -1450,11 +1454,20 @@ public final class MainActivity extends Activity {
         return card;
     }
 
+    /**
+     * The App lock switch.
+     *
+     * Both branches apply the window flag the moment the preference is written. Android takes the
+     * recent-apps picture as a screen leaves the front, which is often the very next thing the
+     * owner does after flipping the switch, so leaving it to the next visit meant that first
+     * picture still showed the home screen.
+     */
     private void onAppLockToggled(boolean checked) {
         boolean current = preferences.getBoolean(ContainerRuntime.KEY_APP_LOCK, false);
         if (checked == current) return;
         if (!checked) {
             preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, false).apply();
+            AppLock.applyWindowSecurity(this);
             return;
         }
         if (!AppLock.hasScreenLock(this)) {
@@ -1469,6 +1482,7 @@ public final class MainActivity extends Activity {
             if (unlocked) {
                 preferences.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, true)
                         .putBoolean(ContainerRuntime.KEY_LOCK_NOTICE, false).apply();
+                AppLock.applyWindowSecurity(this);
                 refreshLockRows();
                 android.widget.Toast.makeText(this, "App lock is on: PocketLinux asks for your fingerprint "
                         + "or PIN whenever it comes to the front", android.widget.Toast.LENGTH_LONG).show();
@@ -2593,8 +2607,10 @@ public final class MainActivity extends Activity {
             boolean on = notificationsAllowed();
             notificationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
             notificationRow.setValue(on
-                    ? "On · you can see setup progress and a Stop button"
-                    : "Off · turn ON to see setup progress and a Stop button");
+                    ? "On · setup and install progress with a Stop button, and one line that stays "
+                    + "while the computer is on · tap to change either one"
+                    : "Off · turn ON for setup and install progress with a Stop button, and the "
+                    + "one line that stays while the computer is on");
         }
         if (phoneFilesRow != null) {
             boolean on = PhoneFiles.allowed(this);
@@ -3035,14 +3051,33 @@ public final class MainActivity extends Activity {
      * false answer as a refusal.
      */
     private void requestNotificationPermission() {
-        // No prompt left to show -- because it is already granted, because Android has stopped
-        // offering it, or because this phone is older than the permission -- so the tap goes to the
-        // phone's own page for this app. It used to do nothing at all on Android 12 and below.
-        if (!notificationPermissionMissing() || !notificationPromptPossible()) {
+        // Nothing left to ask: either it is allowed, or this phone is older than the permission.
+        // The tap goes to the list of the app's two kinds of notice, because the only thing left
+        // to do here is silence one of them, and App info is that same list two taps further away.
+        if (!notificationPermissionMissing()) {
+            openNotificationSettings();
+            return;
+        }
+        // Refused for good, so Android will not show the prompt again and the switch is in the
+        // phone's own settings. It used to do nothing at all on Android 12 and below.
+        if (!notificationPromptPossible()) {
             openAppInfo();
             return;
         }
         askForNotifications();
+    }
+
+    /**
+     * The phone's own page for this app's notifications, where both kinds are listed and each can
+     * be silenced on its own.
+     *
+     * App info is the way back rather than the way in: a few phones do not carry this page at all,
+     * and a tap that opens nothing is worse than one that opens the longer route.
+     */
+    private void openNotificationSettings() {
+        Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        if (!launch(intent)) openAppInfo();
     }
 
     /**
