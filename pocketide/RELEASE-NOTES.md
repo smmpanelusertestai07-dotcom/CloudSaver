@@ -1,5 +1,105 @@
 # Release notes
 
+## 1.6.0
+
+The bars, and the thing nobody had built yet: a workspace that can keep itself current.
+
+### The bottom bar was cutting its own labels off
+
+A screenshot showed it plainly: "Home", "Activity", "Agents" and "Settings" all missing their
+descenders. The bar was fixed at 64 dp while the column inside it came to about 68, and the
+overflow was silently clipped. The number was never the problem — a bar that *cannot grow* is.
+It now holds 64 dp as a minimum and lets its content decide the rest, which is also what makes
+it survive a phone set to large text.
+
+Rebuilt at the same time, because the flat card-coloured strip with square corners and a
+hairline above it is the 2019 bar every app has moved off: it is now a floating glass capsule,
+inset 12 dp from each side, lifted 10 dp off the gesture bar, fully rounded, lit at the top
+edge and clipped to its own outline so a ripple cannot square the ends off.
+
+It still takes its own room in the layout rather than hovering over the page. A bar that floats
+over a scrolling list needs every list in the app to reserve space under it, and the one that
+forgets leaves its last row unreachable. The gap around the capsule is the page's own colour —
+so it looks like it floats, and the layout still has an honest bottom edge.
+
+### The `<>` in the top right was decoration
+
+It opened the editor. Nobody could tell, because it was a bare tinted glyph with nothing around
+it saying it could be pressed. It is a Material 3 filled tonal icon button now: a 40 dp
+container centred in a 48 dp touch target, with the ripple masked to the circle rather than
+flashing a 48 dp square.
+
+### The tagline existed for six-tenths of a second
+
+It appeared on the opening frame and then nowhere at all, which is a flicker rather than a
+tagline. It now sits under the app's name in the top bar, in Material's own
+title-and-subtitle slot.
+
+### Nothing kept itself up to date
+
+Everything in the workspace was pinned — a pinned Ubuntu image, a pinned editor archive,
+extensions frozen at whatever version they arrived as. A pin is right on the day it is made and
+wrong a year later: Ubuntu ships a security fix within hours of a CVE, and a machine that never
+runs `apt` never receives it.
+
+So the pins are now the floor rather than the ceiling:
+
+- **Ubuntu's security updates are taken automatically** — on Wi-Fi, once a day, while the app is
+  open and the editor is not. Security only, never a full upgrade, because Ubuntu's own
+  maintainers have already decided which changes are safe on a stable release.
+- **Extensions keep themselves current**, by the editor, with `extensions.autoUpdate` and
+  `extensions.autoCheckUpdates` both on. "Update them all now" is there for a workspace that has
+  not been opened in a month.
+- **The editor moves when you ask.** code-server cannot update itself — it is a tarball, its own
+  updater is compiled out, and `update.mode: none` is why no notification offers an update that
+  could never install. The app does it instead, from Settings.
+
+The editor update cannot be pinned by checksum the way the first install is, because nobody can
+pin a version that does not exist yet. Four checks stand in for the pin, and they are named in
+the script rather than left to be assumed: the version and URL come from GitHub's own release
+API over TLS; the bytes on disk must match the size GitHub published for that asset; the archive
+must unpack into a tree containing a runnable editor; and that editor must report the exact
+version that was asked for. Only then is anything installed touched — and if the swap leaves
+anything unrunnable, the previous tree goes straight back.
+
+Updates run only while PocketIDE is open, because Linux only runs while PocketIDE is open.
+Android does not keep another operating system alive behind a closed app, and an app claiming
+otherwise would be describing something that cannot happen.
+
+### The app never said what kind of computer this is
+
+"Ubuntu on your phone" tells nobody whether their project will build. Settings → The computer
+now answers it with this phone's own numbers: cores, total and free memory, free storage, and
+the build heap and worker count worked out from them — the same ladder `pocketide-tools.sh`
+writes into Gradle's settings, with a gate comparing the two so they cannot drift apart.
+
+It also says the thing that is counter-intuitive enough to send someone off to buy a phone they
+did not need: **the APK's size is not the limit.** A 200 MB APK is no harder to produce than a
+2 MB one. What costs memory is the compiler, and that is decided by module count, source count
+and the size of the dependency graph — a small app with two hundred dependencies is a heavier
+build than a large app with ten.
+
+### Gradle, sized to the phone
+
+Installing the Android build tools now writes `~/.gradle/gradle.properties` tuned to this
+phone's actual memory: the build heap and worker count from the ladder above, the Kotlin
+compiler daemon bounded separately (it is a second JVM, and two unbounded JVMs is the common way
+a build gets the app killed), the daemon's idle timeout cut from three hours to ninety seconds
+so it is not sitting on 1.5 GB between builds, and file-system watching off because Android's
+inotify limit is low enough that a large project exhausts it — and when it does, Gradle does not
+fail, it stalls.
+
+It is written only when there is no file there already. Someone who has tuned their own build
+has made a decision this app does not get to overrule.
+
+### Gates
+
+46, up from 43. The three new ones guard the update path (that the script is actually copied
+into the workspace — without which every update fails from a row that looks like it works; that
+the editor swap is staged, verified and reversible; and that what happens *without being asked*
+is security updates and nothing else), the build-memory ladder in the two places it has to be
+identical, and the bar's ability to grow.
+
 ## 1.5.5
 
 Everything here came from one screenshot and one list of complaints from a phone. All of it was

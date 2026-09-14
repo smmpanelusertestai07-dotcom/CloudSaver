@@ -116,6 +116,16 @@ python3 "$HERE/marker_order.py" "$ASSETS/pocketide-editor.sh" && pass "MarkerOrd
 in_code 'PIDE-READY' "$SRC/WorkspaceService.java"
 check "MarkerIsRead" $? "the service does not wait for the editor's ready marker"
 
+bash -n "$ASSETS/pocketide-update.sh"
+check "UpdateScriptSyntax" $? "pocketide-update.sh does not parse"
+
+# Everything in this workspace is pinned, and a pin is right on the day it is made and wrong a
+# year later. This is the whole update path: that the script is actually copied into the
+# workspace, that the editor is staged and verified and reversible, and that what happens
+# WITHOUT being asked is Ubuntu's security fixes and nothing else.
+python3 "$HERE/updates.py" "$APP" && pass "UpdatePath" \
+  || fail "UpdatePath" "the update path does not hold what Settings says about it"
+
 in_code 'man-db|mandb' "$ASSETS/pocketide-bootstrap.sh"
 check "ManIndexOff" $? \
   "the manual index is left on; building it under PRoot is the silence that got dpkg killed"
@@ -224,6 +234,12 @@ check "PaletteButton" $? "there is no one-tap way to reach the command palette"
 
 python3 "$HERE/layout_sanity.py" "$SRC" && pass "FitsTheScreen" \
   || fail "FitsTheScreen" "a fixed width wider than a phone screen is set somewhere"
+
+# The build-memory table lives twice: the script writes it into Gradle's settings on the phone,
+# and the screen tells the owner what was written. Drift is silent, and it looks like lying.
+python3 "$HERE/capacity.py" "$APP" && pass "CapacityIsHonest" \
+  || fail "CapacityIsHonest" "what the screen says about this computer is not what the script "\
+"gives it"
 
 # ---------------------------------------------------------------- compile
 

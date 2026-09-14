@@ -148,6 +148,17 @@ EOF
 # The numbers matter. A phone WebView gets roughly 400 density-independent pixels of width, and
 # VS Code's desktop layout assumes three times that: the activity bar alone takes 48 and the
 # sidebar 300. Hiding the chrome is not cosmetic, it is what makes the remaining space usable.
+#
+# The two update settings look contradictory and are not, so they are worth a line each.
+#
+#   extensions.autoCheckUpdates and extensions.autoUpdate are BOTH on. Extensions come from
+#   Open VSX, and while the editor is open it keeps them current by itself -- an agent
+#   extension a month out of date is an agent missing a month of its publisher's fixes.
+#
+#   update.mode is "none" because it governs updating the EDITOR, and code-server cannot
+#   update itself: it is a tarball, not a package, and its own updater is compiled out. Left
+#   on, it would show a notification offering an update that could never install. The app
+#   updates the editor instead, from Settings, with the checks in pocketide-update.sh.
 write_settings() {
   local layout zoom
   layout="${PIDE_LAYOUT:-phone}"
@@ -161,6 +172,7 @@ write_settings() {
   "update.mode": "none",
   "workbench.startupEditor": "none",
   "security.workspace.trust.enabled": false,
+  "extensions.autoCheckUpdates": true,
   "extensions.autoUpdate": true
 }
 EOF
@@ -186,6 +198,7 @@ EOF
   "telemetry.telemetryLevel": "off",
   "update.mode": "none",
   "security.workspace.trust.enabled": false,
+  "extensions.autoCheckUpdates": true,
   "extensions.autoUpdate": true
 }
 EOF

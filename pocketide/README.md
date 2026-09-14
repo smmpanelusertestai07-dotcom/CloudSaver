@@ -28,6 +28,7 @@ This app makes the phone that computer.
 | **Agents** | Antigravity, Claude Code and Codex, each the publisher's own extension from their own verified Open VSX namespace |
 | **Anything else** | The whole Open VSX registry, verified publishers by default |
 | **Tools** | git, python3, build-essential, ripgrep, jq, and whatever else `apt` has |
+| **Staying current** | Ubuntu's security updates automatically; extensions by the editor; the editor itself when you ask |
 
 ## What you can build
 
@@ -38,6 +39,50 @@ Android APKs need an extra toolchain install. iOS builds go through GitHub's mac
 which are free with no minute limit for public repositories — you write the app here and push.
 Games work through Godot. What is not possible is compiling a native Xcode Swift project on the
 phone: Xcode only runs on macOS, and no trick changes that.
+
+### How big a project
+
+The APK's own size is not the limit — a 200 MB APK is no harder to produce than a 2 MB one, it
+is bytes through a zip. What costs memory is the compiler, and that is decided by how many
+modules a project has, how many source files, how large its dependency graph is, and whether R8
+has to rewrite the whole program at the end. A small app with two hundred dependencies is a
+heavier build than a large app with ten.
+
+Settings → The computer shows what your phone actually gives it — cores, memory, free space —
+and the build heap and worker count worked out from them. Those same numbers are written into
+`~/.gradle/gradle.properties` when the Android build tools are installed:
+
+| Phone memory | Build heap | Modules in parallel |
+|---|---|---|
+| 12 GB or more | 3072 MB | 4 |
+| 8 GB | 2048 MB | 3 |
+| 6 GB | 1536 MB | 2 |
+| 4 GB | 1024 MB | 2 |
+| less | 768 MB | 1 |
+
+What actually stops a build is memory — specifically Android taking it back. From Android 17
+there is a per-app ceiling derived from the device's total RAM, applied whatever an app targets,
+with no way to opt out; when it fires, the app reads Android's own record and says so rather
+than leaving you to guess. Heat is second: a phone has no fan, so a long build slows down rather
+than failing. Plugging the phone in and closing other apps are the two things that help most.
+
+## Staying current
+
+A pinned image is right on the day it is pinned and wrong a year later. Ubuntu ships a security
+fix within hours of a CVE, and a machine that never runs `apt` never receives it.
+
+- **Ubuntu's security updates** are taken automatically — on Wi-Fi, once a day, while the app is
+  open and the editor is not. Security only, never a blanket upgrade.
+- **Extensions** keep themselves current, by the editor, from Open VSX.
+- **The editor** moves when you ask. code-server cannot update itself, so the app does it: the
+  version and URL come from GitHub's release API over TLS, the bytes must match the size GitHub
+  published, the archive must unpack into a runnable editor, and that editor must report the
+  version that was asked for — only then is the installed one replaced, and a failed swap puts
+  the previous one straight back.
+
+Ubuntu 24.04 LTS has standard security support until June 2029. All of this runs only while the
+app is open, because Linux only runs while the app is open — Android does not keep another
+operating system alive behind a closed app.
 
 ## Requirements
 

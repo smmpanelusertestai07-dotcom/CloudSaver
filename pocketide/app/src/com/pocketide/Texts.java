@@ -65,10 +65,16 @@ final class Texts {
      * whenever the group changes -- so an array that returns to a group it already used prints
      * that heading twice, which is what this one did.
      *
-     * Nineteen entries, down from thirty-two. What went was everything the screen it sits on
-     * already answers: the list of agents, which Home and Agents both show by name; the
-     * permission list, which is rendered directly beneath it; "do I need a computer", which the
-     * first line of the app answers. A FAQ that restates the app is a FAQ nobody finishes.
+     * Twenty-three entries. It was cut from thirty-two to nineteen once, and the rule that did
+     * the cutting still applies: nothing here may restate what the screen it sits on already
+     * says. What went then was the list of agents, which Home and Agents both show by name; the
+     * permission list, which is rendered directly beneath it; and "do I need a computer", which
+     * the first line of the app answers.
+     *
+     * The four added since are all questions the app cannot answer by showing something -- what
+     * updates itself and what does not, why none of it can happen with the app closed, how long
+     * this Ubuntu is supported, and how big a project the phone can build. A person deciding
+     * whether to start real work here asks all four, and none of them is visible on any screen.
      */
     static final String[][] FAQ = {
             {"About",
@@ -185,6 +191,34 @@ final class Texts {
                      + "and never shows you. Turn on the app lock in Settings and a fingerprint "
                      + "is needed to open the editor at all."},
 
+            {"Updates",
+             "Does it keep itself up to date?",
+             "Ubuntu\u2019s security updates are taken automatically \u2014 on Wi-Fi, once a "
+                     + "day, while the app is open and the editor is not. Extensions are kept "
+                     + "current by the editor itself. The editor\u2019s own version moves only "
+                     + "when you ask, from Settings, because a version change rearranges the "
+                     + "thing you work in. All of it can be switched off in Settings."},
+            {"Updates",
+             "Why only while the app is open?",
+             "Because Linux only exists while the app is open. Android does not keep another "
+                     + "operating system running behind a closed app, and there is no way to "
+                     + "ask it to. An app that claimed to update your Linux overnight would be "
+                     + "describing something that cannot happen."},
+            {"Updates",
+             "How long will Ubuntu 24.04 keep getting updates?",
+             "Until June 2029 for the standard security updates, which is Canonical\u2019s own "
+                     + "published date for this release. Ubuntu Pro extends the same release to "
+                     + "2036 and is free for personal use on a handful of machines. When 26.04 "
+                     + "LTS is worth moving to, that will be a set-up you choose rather than "
+                     + "something that happens to you."},
+
+            {"Phone",
+             "How big a project can this build?",
+             "The app\u2019s own size is not the limit \u2014 a 200 MB APK is no harder to "
+                     + "produce than a 2 MB one. What costs memory is the compiler, and that is "
+                     + "decided by how many modules and dependencies a project has, not how big "
+                     + "it ends up. Settings \u2192 The computer shows what your phone gives "
+                     + "it: cores, memory, free space, and the build heap worked out from them."},
             {"Phone",
              "Which phones can run it?",
              "A 64-bit ARM phone on Android 10 or newer, with about 4 GB of free space and "

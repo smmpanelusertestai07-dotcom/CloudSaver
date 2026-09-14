@@ -312,9 +312,16 @@ final class HomePane implements Pane {
         healthList.removeAllViews();
         DeviceProbe probe = DeviceProbe.read(host);
 
+        // The core count only, not a whole Capacity.read(): this runs every five seconds on
+        // the thread that draws, and a second StatFs and getMemoryInfo per tick is jank paid
+        // for nothing. The full reading is taken when the row is actually tapped.
+        int cores = Math.max(1, Runtime.getRuntime().availableProcessors());
         healthList.addView(Ui.row(host, dark, R.drawable.ic_phone, probe.model,
-                probe.androidVersion + " · " + probe.abi + " · "
-                        + DeviceProbe.formatBytes(probe.totalRam) + " RAM", null));
+                probe.androidVersion + " · " + probe.abi + " · " + cores
+                        + (cores == 1 ? " core · " : " cores · ")
+                        + DeviceProbe.formatBytes(probe.totalRam) + " RAM",
+                v -> Dialogs.message(host, "What this computer is",
+                        Capacity.describe(host, Capacity.read(host)))));
         healthList.addView(Ui.divider(host, dark, true));
 
         Ui.Row space = Ui.row(host, dark, R.drawable.ic_storage, "Free space",

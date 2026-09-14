@@ -61,6 +61,7 @@ final class SettingsPane implements Pane {
         content.addView(permissions(dark), Ui.wide(host, 18));
         content.addView(network(dark), Ui.wide(host, 18));
         content.addView(computer(dark), Ui.wide(host, 18));
+        content.addView(updates(dark), Ui.wide(host, 18));
         content.addView(storage(dark), Ui.wide(host, 18));
         content.addView(about(dark), Ui.wide(host, 18));
 
@@ -281,6 +282,13 @@ final class SettingsPane implements Pane {
         Tools.State tools = lastKnownTools == null
                 ? new Tools.State(false, false, false, "") : lastKnownTools;
         if (ready) refreshTools();
+
+        Capacity.Reading reading = Capacity.read(host);
+        list.addView(Ui.row(host, dark, R.drawable.ic_memory, "What this computer is",
+                Capacity.oneLine(reading) + " · " + Capacity.shortVerdict(reading),
+                v -> Dialogs.message(host, "What this computer is",
+                        Capacity.describe(host, reading))));
+        list.addView(Ui.divider(host, dark, true));
 
         Ui.Row browser = Ui.row(host, dark, R.drawable.ic_globe, "Browser and screenshots",
                 !ready ? "Available once Linux is set up"
@@ -596,6 +604,143 @@ final class SettingsPane implements Pane {
         }
         group.addView(list, Ui.wide(host, 8));
         return group;
+    }
+
+    // ------------------------------------------------------------------ staying current
+
+    /**
+     * Keeping the computer current, and saying plainly what moves on its own and what does not.
+     *
+     * The distinction is the whole of this group. Ubuntu's security fixes are taken
+     * automatically because they are small, they are the ones that matter, and Ubuntu's own
+     * maintainers have already decided they are safe on a stable release. The editor's version
+     * and the extensions are not, because both change what the workspace looks like, and an
+     * interface that rearranged itself overnight without being asked is not a kindness.
+     */
+    private View updates(boolean dark) {
+        LinearLayout group = group(dark, "Staying current");
+        LinearLayout list = list(dark);
+        boolean ready = Workspace.installed(host);
+        Updates.Status status = Updates.last(host);
+        boolean on = Updates.automatic(host);
+
+        Ui.Row automatic = Ui.row(host, dark, R.drawable.ic_shield, "Security updates",
+                !ready ? "Available once Linux is set up"
+                        : on ? "On · Ubuntu's security fixes, on Wi-Fi, once a day"
+                             : "Off · nothing is updated unless you ask",
+                v -> {
+                    Updates.setAutomatic(host, !on);
+                    MainActivity.rebuild(host);
+                });
+        automatic.setState(on ? Ui.running(dark) : Ui.needsYou(dark));
+        list.addView(automatic);
+        list.addView(Ui.divider(host, dark, true));
+
+        Ui.Row state = Ui.row(host, dark, R.drawable.ic_download, "What is waiting",
+                !ready ? "Nothing to check yet" : status.summary(),
+                v -> { if (ready) checkNow(); });
+        if (ready && status.anythingWaiting()) state.setState(Ui.needsYou(dark));
+        list.addView(state);
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_code, "The editor",
+                !ready ? "Available once Linux is set up"
+                        : status.editorCurrent.isEmpty()
+                            ? "Version not read yet"
+                            : status.editorOutOfDate()
+                                ? status.editorCurrent + " · " + status.editorLatest + " available"
+                                : status.editorCurrent + " · newest",
+                v -> { if (ready) offerEditorUpdate(status); }));
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_extension, "Extensions",
+                !ready ? "Available once Linux is set up"
+                        : "Updated by the editor while it is open · tap to do it now",
+                v -> { if (ready) updateNow("extensions", "Extensions",
+                        "Brings every installed extension up to the newest version Open VSX "
+                                + "serves. The editor already does this by itself while it is "
+                                + "open; this is for when it has not been opened in a while."); }));
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_apps, "Everything, now",
+                !ready ? "Available once Linux is set up"
+                        : "Ubuntu, the editor and the extensions in one run",
+                v -> { if (ready) updateNow("all", "Update everything",
+                        "Runs all three in order: Ubuntu's security fixes, then the editor, then "
+                                + "the extensions. It can take a while on a slow connection and "
+                                + "can be left running while you use the phone.\n\n"
+                                + "The editor has to be closed for its own update, and this will "
+                                + "not start one while it is open."); }));
+
+        group.addView(list, Ui.wide(host, 8));
+
+        String note = "Ubuntu 24.04 LTS receives security updates until " + status.supportedUntil
+                + " — that is Canonical's published date for this release, not an estimate. "
+                + "Updates run only while PocketIDE is open, because Linux only runs while "
+                + "PocketIDE is open: Android does not keep it alive behind a closed app.";
+        String ran = Updates.lastRunNote(host);
+        if (!ran.isEmpty()) note = ran + ".\n\n" + note;
+        group.addView(note(dark, note), Ui.wide(host, 8));
+        return group;
+    }
+
+    private void checkNow() {
+        if (Updates.busy()) {
+            Dialogs.message(host, "Already checking",
+                    "A check is running. It will finish on its own.");
+            return;
+        }
+        Dialogs.Live live = Dialogs.live(host, "Checking for updates", "Asking Ubuntu and GitHub…");
+        new Thread(() -> {
+            Updates.Status found = Updates.check(host, live::line);
+            live.done(found != null, found == null
+                    ? "The workspace could not be reached."
+                    : found.summary());
+            host.runOnUiThread(() -> {
+                if (!host.isFinishing()) MainActivity.rebuild(host);
+            });
+        }, "check-updates").start();
+    }
+
+    private void offerEditorUpdate(Updates.Status status) {
+        if (WorkspaceService.editorRunning()) {
+            Dialogs.message(host, "Close the editor first",
+                    "The editor cannot replace itself while it is running. Stop it from the "
+                            + "Activity screen, then come back here.");
+            return;
+        }
+        if (!status.editorOutOfDate()) {
+            Dialogs.message(host, "The editor",
+                    (status.editorCurrent.isEmpty()
+                            ? "The installed version has not been read yet. "
+                            : "Version " + status.editorCurrent + " is installed. ")
+                            + "Tap \"What is waiting\" to check for a newer one.");
+            return;
+        }
+        updateNow("editor", "Update the editor",
+                "Replaces code-server " + status.editorCurrent + " with " + status.editorLatest
+                        + ".\n\nAbout 224 MB to download, and roughly 1.2 GB of free space is "
+                        + "needed while the new copy is unpacked beside the old one.\n\n"
+                        + "The new copy has to unpack, contain a runnable editor, and report "
+                        + "the version that was asked for before anything installed is touched. "
+                        + "If the swap leaves anything unrunnable, the previous editor goes "
+                        + "straight back. Your projects, settings and extensions are in your "
+                        + "home folder and are not part of the replacement.");
+    }
+
+    private void updateNow(String what, String title, String explanation) {
+        Dialogs.confirm(host, title, explanation, "Update", () -> {
+            Dialogs.Live live = Dialogs.live(host, title, "Starting…");
+            new Thread(() -> {
+                boolean ok = Updates.run(host, what, live::line);
+                live.done(ok, ok ? "Done." : "It did not finish. Nothing was left half-applied "
+                        + "that the next attempt cannot repair.");
+                Updates.check(host, line -> {});
+                host.runOnUiThread(() -> {
+                    if (!host.isFinishing()) MainActivity.rebuild(host);
+                });
+            }, "update-" + what).start();
+        });
     }
 
     // ------------------------------------------------------------------ helpers

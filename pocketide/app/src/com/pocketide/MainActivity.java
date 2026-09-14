@@ -110,6 +110,10 @@ public final class MainActivity extends Activity {
         // away in the phone's own Settings, so the pane is rebuilt on return rather than left
         // showing what happened to be true when it was opened.
         render();
+        // And the machine catches itself up, quietly, if a day has passed and the phone is on
+        // Wi-Fi with nothing else running. It returns immediately when any of that is untrue,
+        // which is most of the time -- see Updates.whyNotNow.
+        Updates.maybeRunInBackground(this);
     }
 
     @Override protected void onPause() {
@@ -175,18 +179,13 @@ public final class MainActivity extends Activity {
     private View editorAction() {
         if (!WorkspaceService.editorRunning() && !Workspace.installed(this)) return null;
         boolean dark = Ui.dark(this);
-        android.widget.ImageView open = new android.widget.ImageView(this);
-        open.setImageResource(R.drawable.ic_code);
-        open.setImageTintList(android.content.res.ColorStateList.valueOf(Ui.accent(dark)));
+        // A tonal container, not a bare glyph on the background. As a bare glyph this read as
+        // decoration -- an owner described it as "the code-looking thing in the top right
+        // corner" and did not know it opened anything.
+        View open = Ui.iconButton(this, dark, R.drawable.ic_code, Ui.accent(dark),
+                Ui.alpha(Ui.accent(dark), dark ? 48 : 34), "Open the editor",
+                v -> startActivity(new Intent(this, WorkspaceActivity.class)));
         int target = Ui.dp(this, Ui.TOUCH_TARGET_DP);
-        int pad = Ui.dp(this, 12);
-        open.setPadding(pad, pad, pad, pad);
-        open.setBackground(Ui.tappable(this,
-                Ui.fill(this, android.graphics.Color.TRANSPARENT, 999), dark));
-        open.setClickable(true);
-        open.setFocusable(true);
-        open.setContentDescription("Open the editor");
-        open.setOnClickListener(v -> startActivity(new Intent(this, WorkspaceActivity.class)));
         open.setLayoutParams(new android.widget.LinearLayout.LayoutParams(target, target));
         return open;
     }

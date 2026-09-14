@@ -3,10 +3,16 @@
 
 Two different kinds of claim are checked here.
 
-The bar claims to be Material 3's navigation bar. That is a public specification with numbers
-in it, and a bar that says it follows one while using its own numbers is the sort of thing
-nobody notices in review and everybody notices as "this app feels off". Three to five
-destinations, 80 dp tall, 24 dp icons, and every destination reachable by a 48 dp target.
+The bar claims to be Material 3 Expressive's navigation bar. That is a public specification
+with numbers in it, and a bar that says it follows one while using its own numbers is the sort
+of thing nobody notices in review and everybody notices as "this app feels off". Three to five
+destinations, 64 dp tall, 24 dp icons, a 56 x 32 indicator, and every destination reachable by
+a 48 dp target.
+
+It also checks the bug a screenshot caught: the bar was FIXED at 64 dp while the column inside
+it came to about 68, so the bottom of every label on the screen was sliced off. A height that
+cannot grow is the bug, not the number -- so the bar has to hold 64 as a minimum and let its
+content decide the rest, which is also what makes it survive a phone set to large text.
 
 The editor claims to size itself to the phone. The failure that claim hides is a constant: the
 release before this one gave every phone ever made window.zoomLevel 1.5, which on a 360 dp
@@ -48,6 +54,45 @@ for name, expected in (("NAV_BAR_DP", 64), ("TOP_BAR_DP", 64), ("ICON_DP", 24),
     elif int(found.group(1)) != expected:
         problems.append("Shell.%s is %s; Material 3's navigation bar specifies %d"
                         % (name, found.group(1), expected))
+
+# --- the bar can grow, and the labels cannot be cut off ---------------------------------------
+if "setMinimumHeight" not in shell:
+    problems.append("the bottom bar sets no minimum height, so either it is fixed -- which is "
+                    "what sliced the bottom off every label -- or it has no spec height at all")
+for constant, which in (("NAV_BAR_DP", "bottom"), ("TOP_BAR_DP", "top")):
+    if re.search(r'MATCH_PARENT,\s*Ui\.dp\(host,\s*' + constant + r'\)', shell):
+        problems.append("the %s bar is laid out at a FIXED %s height. Its content is taller "
+                        "than that at a large font scale, and the overflow is silently clipped "
+                        "rather than reported -- which is exactly how every destination's label "
+                        "lost its descenders." % (which, constant))
+
+# --- it is a floating bar, not a slab ---------------------------------------------------------
+#
+# Claimed on screen and in the commit, so it is checked: inset from the sides, lifted off the
+# gesture bar, rounded, and lit. A "rounded" bar whose corners are square where the screen ends
+# is the thing this replaced.
+for name, why in (("BAR_SIDE_DP", "the gutter that makes it float rather than span"),
+                  ("BAR_LIFT_DP", "the lift that keeps it off the gesture bar"),
+                  ("BAR_RADIUS_DP", "the corner radius")):
+    if name not in shell:
+        problems.append("Shell does not define %s -- %s" % (name, why))
+if "floatingGlass" not in shell:
+    problems.append("the bottom bar does not use the floating glass surface, so it is a flat "
+                    "slab wearing a rounded corner")
+if "setClipToOutline(true)" not in shell:
+    problems.append("the bar is not clipped to its own outline, so a ripple at either end "
+                    "squares the capsule off when it is pressed")
+
+# --- the tagline is somewhere an owner can read it ---------------------------------------------
+#
+# It existed only on the opening frame, for six-tenths of a second, which is a flicker rather
+# than a tagline. The top bar's subtitle slot is where it lives now.
+strings = open(app + "/app/res/values/strings.xml").read()
+if "tagline_short" not in strings:
+    problems.append("there is no short tagline string for the top bar")
+if "R.string.tagline_short" not in shell:
+    problems.append("the top bar does not show the tagline, so the only place it appears is the "
+                    "opening frame, for six-tenths of a second")
 
 # Every destination carries a label AND a spoken description. An icon row with no labels is a
 # guessing game for anyone who has not used the app, and these icons are not universal symbols.

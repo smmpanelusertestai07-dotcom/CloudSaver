@@ -38,6 +38,7 @@
 #   pocketide-tools.sh browser      install the browser layer
 #   pocketide-tools.sh playwright   install the automation layer on top of it
 #   pocketide-tools.sh android      install the Java-only Android build toolchain
+#   pocketide-tools.sh tune         write Gradle settings sized to this phone
 #   pocketide-tools.sh check        report what is present, machine-readably
 #   pocketide-tools.sh smoke        prove the browser really loads a page and screenshots it
 
@@ -154,8 +155,10 @@ install_android() {
     say "The JDK could not be installed."; return 1; }
 
   mkdir -p "$TOOLS_DIR/android"
+  tune_gradle
   say ""
-  say "A JDK and Gradle can build Java-only Android projects here."
+  say "A JDK is installed. Gradle comes from each project's own gradlew wrapper,"
+  say "which is how an Android project is meant to be built — nothing to install."
   say ""
   say "What cannot be done on this phone, and cannot be fixed by installing anything:"
   say "  • Apps with C or C++ in them. Google publishes no arm64 NDK."
@@ -171,6 +174,74 @@ install_android() {
   say "aarch64 replacements before a Gradle build will finish."
 }
 
+# --------------------------------------------------------------------------- build tuning
+#
+# Gradle out of the box is configured for a laptop with the machine to itself, and on a phone
+# every one of those defaults is wrong in the same direction: it assumes memory it does not
+# have and holds on to it after the build.
+#
+# What is set here, and why each one:
+#
+#   org.gradle.jvmargs          Sized from this phone's actual RAM, below. Gradle's own default
+#                               is 512 MB, which is not enough to run R8 on a real app; the
+#                               usual desktop advice of 4 GB is more than Android will let this
+#                               process hold. Neither number is right here, so it is computed.
+#
+#   org.gradle.workers.max      One module compiled per worker, each wanting its own memory.
+#                               Uncapped, Gradle uses every core, and eight parallel compiles
+#                               is exactly the shape that trips Android's memory limiter.
+#
+#   org.gradle.daemon.idletimeout
+#                               The daemon is kept, because throwing it away makes every build
+#                               after the first pay the whole start-up again. What is changed
+#                               is how long it sits idle holding that heap: three hours by
+#                               default, ninety seconds here. An idle JVM holding 1.5 GB is
+#                               the most likely reason a workspace is killed between builds.
+#
+#   org.gradle.vfs.watch=false  File-system watching needs inotify watches, and Android's
+#                               per-uid limit is low enough that a large project exhausts it.
+#                               When it does, Gradle does not fail -- it stalls.
+#
+#   kotlin.daemon.jvmargs       The Kotlin compiler runs in a SECOND JVM with its own heap, and
+#                               its default is generous. Two unbounded JVMs is the other common
+#                               way a build gets the app killed.
+#
+# It is written only when there is no file there already: a project owner who has tuned their
+# own build has made a decision this script does not get to overrule.
+
+tune_gradle() {
+  local properties="$HOME_DIR/.gradle/gradle.properties"
+  if [ -f "$properties" ]; then
+    say "Gradle already has settings at ~/.gradle/gradle.properties; leaving them alone."
+    return 0
+  fi
+
+  local total_kb heap workers kotlin_heap
+  total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+  if   [ "$total_kb" -ge 11500000 ]; then heap=3072; workers=4; kotlin_heap=1536
+  elif [ "$total_kb" -ge 7500000  ]; then heap=2048; workers=3; kotlin_heap=1024
+  elif [ "$total_kb" -ge 5500000  ]; then heap=1536; workers=2; kotlin_heap=768
+  elif [ "$total_kb" -ge 3500000  ]; then heap=1024; workers=2; kotlin_heap=512
+  else                                    heap=768;  workers=1; kotlin_heap=512
+  fi
+
+  mkdir -p "$(dirname "$properties")"
+  cat > "$properties" <<EOF
+# Written by PocketIDE, sized from this phone's own memory. Edit freely -- it is only
+# written when the file does not already exist.
+org.gradle.jvmargs=-Xmx${heap}m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+org.gradle.parallel=true
+org.gradle.workers.max=${workers}
+org.gradle.caching=true
+org.gradle.daemon=true
+org.gradle.daemon.idletimeout=90000
+org.gradle.vfs.watch=false
+kotlin.daemon.jvmargs=-Xmx${kotlin_heap}m
+kotlin.incremental=true
+EOF
+  say "Gradle tuned for this phone: ${heap} MB build heap, ${workers} parallel worker(s)."
+}
+
 # --------------------------------------------------------------------------- what is present
 
 check() {
@@ -184,12 +255,20 @@ check() {
   if [ "$browser" = yes ]; then
     echo "chromium=$(chromium --version 2>/dev/null | head -1)"
   fi
+  echo "cores=$(nproc 2>/dev/null || echo 0)"
+  echo "mem_total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  echo "mem_available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  if [ -f "$HOME_DIR/.gradle/gradle.properties" ]; then
+    echo "gradle_heap=$(grep -o 'Xmx[0-9]*m' "$HOME_DIR/.gradle/gradle.properties" \
+      | head -1 | tr -d 'Xmx')"
+  fi
 }
 
 case "${1:-check}" in
   browser)     install_browser ;;
   playwright)  install_playwright ;;
   android)     install_android ;;
+  tune)        tune_gradle ;;
   smoke)       smoke_browser ;;
   check)       check ;;
   *)           say "Unknown command: ${1:-}"; exit 2 ;;

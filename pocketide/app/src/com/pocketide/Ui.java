@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -194,6 +195,62 @@ final class Ui {
                 ColorStateList.valueOf(dark ? 0x28FFFFFF : 0x1C000000), base, null);
     }
 
+    /** The same colour at a chosen opacity, for tints, tonal fills and indicator pills. */
+    static int alpha(int colour, int opacity) {
+        return Color.argb(opacity, Color.red(colour), Color.green(colour), Color.blue(colour));
+    }
+
+    /**
+     * The surface a floating element sits on: glass, lifted, and rounded on every corner.
+     *
+     * The difference from glass() is the shadow rather than the fill. A card is part of the
+     * page and a floating bar is above it, and the only thing that says which is which is
+     * whether light gets under the edge.
+     */
+    static GradientDrawable floatingGlass(Context context, boolean dark, float radiusDp) {
+        GradientDrawable drawable = glass(context, dark, radiusDp);
+        // A stronger edge than a card's, because this one has nothing behind it to sit against:
+        // on a dark ground the hairline IS the boundary between the bar and the page.
+        drawable.setStroke(Math.max(1, dp(context, 1)),
+                dark ? Color.rgb(86, 86, 82) : Color.rgb(210, 206, 196));
+        return drawable;
+    }
+
+    /**
+     * Material 3's filled tonal icon button: a 40 dp container centred in a 48 dp touch target.
+     *
+     * The bare tinted glyph this replaces is what an owner reported as "the code-looking thing
+     * in the top right corner". It was a real control with a real action behind it, and it read
+     * as decoration, because nothing around it said it could be pressed. A tonal container says
+     * it -- and it is what every Google app on the same phone puts an app-bar action inside.
+     *
+     * The container is inset rather than sized, so the thing a finger has to hit stays 48 dp
+     * while the thing an eye sees is 40. An icon button that is visually 48 dp crowds a bar;
+     * one whose TARGET is 40 dp is a control people miss.
+     */
+    static ImageView iconButton(Context context, boolean dark, int iconRes, int tint,
+                                int container, CharSequence description,
+                                View.OnClickListener onClick) {
+        ImageView view = new ImageView(context);
+        view.setImageResource(iconRes);
+        view.setImageTintList(ColorStateList.valueOf(tint));
+        view.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        int inset = dp(context, 4);
+        int pad = inset + dp(context, 9);          // 40 - 2 x 9 = a 22 dp glyph
+        view.setPadding(pad, pad, pad, pad);
+        // The mask is what keeps the ripple inside the circle. Without one a RippleDrawable
+        // fills its whole bounds, so a round button flashes a 48 dp square when it is pressed.
+        view.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(dark ? 0x33FFFFFF : 0x22000000),
+                new InsetDrawable(fill(context, container, 999), inset),
+                new InsetDrawable(fill(context, Color.WHITE, 999), inset)));
+        view.setClickable(true);
+        view.setFocusable(true);
+        view.setContentDescription(description);
+        view.setOnClickListener(onClick);
+        return view;
+    }
+
     /** A glass panel with the padding every card on every screen shares. */
     static LinearLayout card(Context context, boolean dark) {
         LinearLayout card = column(context);
@@ -246,9 +303,7 @@ final class Ui {
         int padX = dp(context, 9);
         int padY = dp(context, 4);
         view.setPadding(padX, padY, padX, padY);
-        view.setBackground(outlined(context,
-                Color.argb(28, Color.red(colour), Color.green(colour), Color.blue(colour)),
-                Color.argb(90, Color.red(colour), Color.green(colour), Color.blue(colour)), 999));
+        view.setBackground(outlined(context, alpha(colour, 28), alpha(colour, 90), 999));
         return view;
     }
 
