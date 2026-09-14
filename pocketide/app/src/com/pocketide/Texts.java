@@ -166,15 +166,25 @@ final class Texts {
                      + "your phone."},
             {"Building",
              "Can I test an Android app here?",
-             "Yes, but not with the emulator \u2014 that cannot run on a phone. Google ships no "
-                     + "emulator for this processor, and even one built by hand needs a "
-                     + "virtualisation device Android does not give apps unless the phone is "
-                     + "rooted.\n\nWhat you get instead is better: your phone is the test "
-                     + "device. Build the APK, then Settings \u2192 The computer \u2192 "
-                     + "Install an app built here hands it to Android\u2019s own installer, "
-                     + "and it runs on real hardware. JVM unit tests and Robolectric tests, "
-                     + "which run Android code on the JVM without an emulator, run here "
-                     + "directly \u2014 that is the free local testing an agent uses."},
+             "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
+                     + "agent can drive it. Settings \u2192 The computer \u2192 Test on this "
+                     + "phone installs adb (Ubuntu\u2019s own arm64 build, about 2 MB) and "
+                     + "pairs the phone with itself over Wireless debugging: the app finds "
+                     + "the port the phone advertises, you type the six-digit code into a "
+                     + "notification, and from then on adb devices in the terminal lists this "
+                     + "phone. An agent can install what it built, launch it, read its log, "
+                     + "screenshot it, tap it and run ./gradlew connectedAndroidTest \u2014 on "
+                     + "real hardware, for nothing. JVM and Robolectric tests run here "
+                     + "directly as well, and Install an app built here hands an APK to "
+                     + "Android\u2019s installer without any pairing.\n\nThe emulator cannot "
+                     + "run on a phone: Google ships none for this processor, and even one "
+                     + "built by hand needs a virtualisation device Android does not give "
+                     + "apps unless the phone is rooted.\n\nKnow what pairing gives: the "
+                     + "same access a computer with USB debugging has \u2014 installing and "
+                     + "removing apps, reading and writing the phone\u2019s shared storage, "
+                     + "screenshots and taps \u2014 to the terminal and any agent in it. Turn "
+                     + "Wireless debugging off when you are done; Android turns it off at "
+                     + "every restart anyway."},
             {"Building",
              "Can I build an iPhone app?",
              "No. Apple requires its own tools on a Mac to build and sign them, and no Android "
@@ -406,7 +416,11 @@ final class Texts {
                      + "written to Downloads, to Documents or anywhere else you would see in "
                      + "a file manager \u2014 unless you turn on The phone\u2019s files in "
                      + "Settings, and even then the app only reads and writes what you or an "
-                     + "agent ask it to, inside ~/phone."},
+                     + "agent ask it to, inside ~/phone.\n\nThe other exception is one you "
+                     + "take yourself: Test on this phone. While the phone is paired and "
+                     + "connected, adb in the terminal has the shared storage a USB-debugging "
+                     + "computer would have, which is why pairing is a step you take and why "
+                     + "the row says so."},
             {"Safety",
              "Can someone read the app\u2019s own code?",
              "Yes, and that is on purpose: the source is published, and the build that "

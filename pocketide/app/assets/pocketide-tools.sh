@@ -55,10 +55,22 @@
 #              itself is the test device instead -- and Settings has a row that hands an APK
 #              built here to Android's own installer.
 #
+#   PHONE      And the phone can be driven, not only handed a file. Android 11 added Wireless
+#              debugging -- adb over TCP with a pairing step -- and adbd listens on loopback
+#              too, so an adb client inside this Linux can pair with and connect to the phone
+#              it is running on. See "the phone itself" below. The adb is Ubuntu's own arm64
+#              package, so there is nothing to pin.
+#
+#   LISTS      Set-up and the nightly update delete /var/lib/apt/lists to save 60 MB, so every
+#              apt-get install here refreshes the list first. Without that, a fresh workspace
+#              answers "Unable to locate package" for a package that exists -- which is how the
+#              JDK step failed on every phone until a review caught it.
+#
 # Usage:
 #   pocketide-tools.sh browser      install the browser layer
 #   pocketide-tools.sh playwright   install the automation layer on top of it
 #   pocketide-tools.sh android      install the complete Android build toolchain
+#   pocketide-tools.sh phone        install adb, so the phone can be paired with itself
 #   pocketide-tools.sh tune         write Gradle settings sized to this phone
 #   pocketide-tools.sh check        report what is present, machine-readably
 #   pocketide-tools.sh smoke        prove the browser really loads a page and screenshots it
@@ -91,6 +103,17 @@ ARM_SHA256_split_select="172ecf6c4e93cc6f80a544f48b9a8fe770dd67f83b2f277504291cb
 
 say() { printf '%s\n' "$*"; }
 
+# Ubuntu's package list, before anything is installed from it. The lists are deleted after
+# set-up and after every update (60 MB, stale within a day), so an install that does not
+# refresh first finds no package at all. A refresh that fails is said, and the install is
+# still tried: a package that is already present needs no list.
+refresh_packages() {
+  say "Refreshing Ubuntu's package list…"
+  if ! apt-get update -qq; then
+    say "The package list could not be refreshed. Trying with what is already here."
+  fi
+}
+
 # --------------------------------------------------------------------------- the browser
 
 install_browser() {
@@ -100,7 +123,7 @@ install_browser() {
   fi
 
   say "Adding the arm64 Chromium source…"
-  apt-get update -qq || true
+  refresh_packages
   if ! apt-get install -y -qq --no-install-recommends \
        software-properties-common ca-certificates curl gnupg; then
     say "Could not install the tools needed to add a package source."
@@ -163,6 +186,7 @@ install_playwright() {
   command -v chromium >/dev/null 2>&1 || { say "Install the browser first."; return 1; }
   command -v npm >/dev/null 2>&1 || {
     say "Installing Node…"
+    refresh_packages
     apt-get install -y -qq nodejs npm || { say "Node could not be installed."; return 1; }
   }
 
@@ -214,8 +238,13 @@ fetch_pinned() {
 
 install_android() {
   say "Installing a JDK…"
+  refresh_packages
   apt-get install -y -qq openjdk-21-jdk-headless unzip libstdc++6 zlib1g || {
     say "The JDK could not be installed."; return 1; }
+  # adb beside it, so that Gradle's install and connected-test tasks have one that runs.
+  # Not fatal: a build needs none of it, and Settings → Test on this phone can add it later.
+  install_adb_package || \
+    say "adb did not install. Builds still work; Test on this phone can add it later."
 
   mkdir -p "$SDK_DIR"
   local manager="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
@@ -245,12 +274,13 @@ install_android() {
 
   say "Accepting the SDK licences…"
   yes | "$manager" --sdk_root="$SDK_DIR" --licenses >/dev/null 2>&1 || true
-  say "Installing platform $PLATFORM and build-tools $BUILD_TOOLS from Google… (about 120 MB)"
+  say "Installing platform $PLATFORM, build-tools $BUILD_TOOLS and platform-tools from Google…"
+  say "(about 130 MB)"
   # Its exit status is read directly, not through a pipe: under pipefail a grep that filters
   # every progress line away exits 1 and would have reported a finished install as a failure.
   local log="/tmp/sdkmanager.log"
   "$manager" --sdk_root="$SDK_DIR" "platforms;$PLATFORM" "build-tools;$BUILD_TOOLS" \
-    >"$log" 2>&1
+    "platform-tools" >"$log" 2>&1
   local status=$?
   grep -v '^\[=' "$log" 2>/dev/null || true
   if [ "$status" -ne 0 ]; then
@@ -282,6 +312,9 @@ install_android() {
     say "aapt2 is installed but will not run on this phone. The build tools are not usable."
     return 1
   fi
+  # Google's platform-tools carry an x86-64 adb, for the same reason. Ubuntu's takes its
+  # place, at the one path the Android Gradle Plugin looks for adb.
+  link_adb
 
   # Where the SDK is, for every shell the editor opens and every Gradle it runs.
   cat > /etc/profile.d/pocketide-android.sh <<EOF
@@ -296,11 +329,19 @@ EOF
   tune_gradle
   # The line Gradle needs whether or not tune_gradle wrote the file: AGP fetches its own
   # x86-64 aapt2 from Maven and ignores the SDK's unless told otherwise, and it reads this
-  # from gradle.properties only.
+  # from gradle.properties only. Appended, never written over anything, and only when absent.
   local properties="$HOME_DIR/.gradle/gradle.properties"
   mkdir -p "$(dirname "$properties")"
   if ! grep -q '^android.aapt2FromMavenOverride=' "$properties" 2>/dev/null; then
+    # On a line of its own even when the owner's file does not end with one. Appended straight
+    # onto a last line with no newline, the property would become the tail of that line and
+    # Gradle would see neither.
+    if [ -s "$properties" ] && [ "$(tail -c1 "$properties" | wc -l)" -eq 0 ]; then
+      printf '\n' >> "$properties"
+    fi
     printf 'android.aapt2FromMavenOverride=%s/aapt2\n' "$bt" >> "$properties"
+    say "Added android.aapt2FromMavenOverride to ~/.gradle/gradle.properties: the one line"
+    say "Gradle needs to use this aapt2. Nothing else in that file was changed."
   fi
 
   say ""
@@ -311,7 +352,80 @@ EOF
   say "A Java or Kotlin Android project builds here with its own ./gradlew. Two limits"
   say "are permanent: apps containing C or C++ (Google publishes no arm64 NDK), and the"
   say "emulator (no linux-aarch64 build, and no /dev/kvm on a phone). The phone is the"
-  say "test device: Settings → The computer → Install an app built here."
+  say "test device: Settings → The computer → Install an app built here, or Test on this"
+  say "phone to pair it with itself so that adb, and an agent, can drive it."
+}
+
+# --------------------------------------------------------------------------- the phone itself
+#
+# The test device is the phone this is running on, and Android 11 added the one thing that
+# makes it reachable from inside: Wireless debugging, which is adb over TCP with pairing. adbd
+# listens on every interface, loopback included, so an adb client inside this Linux can pair
+# with and connect to the phone it is running on -- which is what Shizuku does from an ordinary
+# app, and what Termux users do by hand. Once connected, everything a developer does from a
+# laptop works from the editor's terminal: adb install, adb shell am start, adb logcat, adb
+# exec-out screencap, ./gradlew connectedAndroidTest, adb shell input tap. An agent can build
+# an app, install it, launch it, read its log, screenshot it and tap it, on real hardware.
+#
+# The adb here is Ubuntu's own arm64 package (34.0.4 on Noble; pairing arrived in 30.0.0), so
+# there is no third-party binary and nothing to pin. Google's platform-tools carry an x86-64
+# adb that cannot run here; when the SDK is installed, that copy is set aside and a link to
+# Ubuntu's put in its place, because the Android Gradle Plugin looks for adb at exactly
+# <sdk>/platform-tools/adb and nowhere else.
+#
+# The app does the pairing and the connecting (Phone.java): it finds the ports the phone
+# advertises for itself, takes the pairing code from a notification's reply box, and runs the
+# two commands below. They are plain commands anyone can type, with the ports read off the
+# Wireless debugging screen:
+#   adb pair 127.0.0.1:PAIRING_PORT CODE     once
+#   adb connect 127.0.0.1:PORT               each time Wireless debugging is turned on
+# The adb server is started with the editor (pocketide-editor.sh), so a connection lasts as
+# long as the editor does and the terminal's own adb talks to the same server.
+
+install_adb_package() {
+  if command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1; then
+    return 0
+  fi
+  say "Installing adb from Ubuntu… about 2 MB"
+  refresh_packages
+  apt-get install -y -qq --no-install-recommends adb || {
+    say "adb could not be installed."; return 1; }
+  adb --version >/dev/null 2>&1 || { say "adb installed but will not run."; return 1; }
+}
+
+# Ubuntu's adb at the one path the Android Gradle Plugin looks for it. Google's x86-64 copy,
+# if there is one, is set aside rather than deleted.
+link_adb() {
+  local pt="$SDK_DIR/platform-tools" real
+  [ -d "$pt" ] || return 0
+  real=$(command -v adb 2>/dev/null) || return 0
+  [ -n "$real" ] || return 0
+  if [ -L "$pt/adb" ] && [ "$(readlink "$pt/adb")" = "$real" ]; then
+    return 0
+  fi
+  if [ -e "$pt/adb" ] && ! [ -L "$pt/adb" ] && ! "$pt/adb" --version >/dev/null 2>&1; then
+    mv -f "$pt/adb" "$pt/adb.x86_64"
+  fi
+  if [ -e "$pt/adb" ] && ! [ -L "$pt/adb" ]; then
+    return 0    # a runnable adb of its own; kept
+  fi
+  ln -sf "$real" "$pt/adb"
+}
+
+install_phone() {
+  install_adb_package || return 1
+  link_adb
+  say ""
+  say "adb is installed: $(adb --version 2>/dev/null | head -1)"
+  say ""
+  say "This phone pairs with itself over Wireless debugging (Android 11 and newer):"
+  say "Settings → Developer options → Wireless debugging. The app does the pairing from"
+  say "Settings → The computer → Test on this phone. By hand, with the ports read off"
+  say "the Wireless debugging screen:"
+  say "  adb pair 127.0.0.1:PAIRING_PORT CODE      once"
+  say "  adb connect 127.0.0.1:PORT                each time it is turned on"
+  say "Then adb devices lists this phone, and adb install, adb logcat, adb shell,"
+  say "adb exec-out screencap and ./gradlew connectedAndroidTest all work on it."
 }
 
 # --------------------------------------------------------------------------- build tuning
@@ -347,12 +461,13 @@ EOF
 #                               way a build gets the app killed.
 #
 # It is written only when there is no file there already: a project owner who has tuned their
-# own build has made a decision this script does not get to overrule.
+# own build has made a decision this script does not get to overrule. The one exception is
+# the aapt2 line install_android appends -- one line, added only when absent, over nothing.
 
 tune_gradle() {
   local properties="$HOME_DIR/.gradle/gradle.properties"
   if [ -f "$properties" ]; then
-    say "Gradle already has settings at ~/.gradle/gradle.properties; leaving them alone."
+    say "Gradle already has settings at ~/.gradle/gradle.properties; they are kept as they are."
     return 0
   fi
 
@@ -385,17 +500,22 @@ EOF
 # --------------------------------------------------------------------------- what is present
 
 check() {
-  local browser=no playwright=no android=no android_sdk=no
+  local browser=no playwright=no android=no android_sdk=no adb=no
   command -v chromium >/dev/null 2>&1 && browser=yes
   [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
   command -v javac >/dev/null 2>&1 && android=yes
-  # Present AND runs: the x86-64 aapt2 Google ships is present and does not.
+  # Present AND runs AND Gradle is told to use it: the x86-64 aapt2 Google ships is present
+  # and does not run, and a runnable one Gradle is not pointed at is never used.
   [ -x "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" ] && \
-    "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" version >/dev/null 2>&1 && android_sdk=yes
+    "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" version >/dev/null 2>&1 && \
+    grep -q '^android.aapt2FromMavenOverride=' "$HOME_DIR/.gradle/gradle.properties" \
+      2>/dev/null && android_sdk=yes
+  command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1 && adb=yes
   echo "browser=$browser"
   echo "playwright=$playwright"
   echo "android=$android"
   echo "android_sdk=$android_sdk"
+  echo "adb=$adb"
   if [ "$browser" = yes ]; then
     echo "chromium=$(chromium --version 2>/dev/null | head -1)"
   fi
@@ -412,6 +532,7 @@ case "${1:-check}" in
   browser)     install_browser ;;
   playwright)  install_playwright ;;
   android)     install_android ;;
+  phone)       install_phone ;;
   tune)        tune_gradle ;;
   smoke)       smoke_browser ;;
   check)       check ;;

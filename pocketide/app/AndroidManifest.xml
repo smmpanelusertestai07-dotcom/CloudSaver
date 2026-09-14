@@ -127,6 +127,12 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
+        <!-- Where the pairing code typed into the notification's reply box arrives. Not
+             exported: only this app's own PendingIntent can reach it. See Phone. -->
+        <receiver
+            android:name=".PhoneReceiver"
+            android:exported="false" />
+
         <service
             android:name=".WorkspaceService"
             android:exported="false"

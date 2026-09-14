@@ -31,6 +31,10 @@ public final class WorkspaceService extends Service {
     static final String ACTION_SETUP = "com.pocketide.SETUP";
     static final String ACTION_START = "com.pocketide.START";
     static final String ACTION_STOP = "com.pocketide.STOP";
+    /** The phone as a test device: a pairing code from the notification, or a connect. */
+    static final String ACTION_PHONE_PAIR = "com.pocketide.PHONE_PAIR";
+    static final String ACTION_PHONE_CONNECT = "com.pocketide.PHONE_CONNECT";
+    static final String EXTRA_CODE = "code";
 
     /** What the service tells the screens, as they happen. */
     static final String EVENT = "com.pocketide.EVENT";
@@ -96,7 +100,7 @@ public final class WorkspaceService extends Service {
         }
     }
 
-    private static void record(String line) {
+    static void record(String line) {
         if (line == null) return;
         String trimmed = line.trim();
         if (trimmed.isEmpty()) return;
@@ -109,6 +113,25 @@ public final class WorkspaceService extends Service {
     static void setUp(Context context) { send(context, ACTION_SETUP); }
     static void startEditor(Context context) { send(context, ACTION_START); }
     static void stop(Context context) { send(context, ACTION_STOP); }
+
+    /** The pairing code from the notification's reply box. Acted on only while the editor runs. */
+    static void pairPhone(Context context, String code) {
+        sendPhone(context, ACTION_PHONE_PAIR, code);
+    }
+
+    static void connectPhone(Context context) { sendPhone(context, ACTION_PHONE_CONNECT, null); }
+
+    private static void sendPhone(Context context, String action, String code) {
+        Intent intent = new Intent(context, WorkspaceService.class).setAction(action);
+        if (code != null) intent.putExtra(EXTRA_CODE, code);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent);
+            else context.startService(intent);
+        } catch (Throwable refused) {
+            Phone.tell(context, "Could not reach Linux",
+                    "Open the editor, then try again from Settings → Test on this phone.");
+        }
+    }
 
     private static void send(Context context, String action) {
         Intent intent = new Intent(context, WorkspaceService.class).setAction(action);
@@ -150,8 +173,10 @@ public final class WorkspaceService extends Service {
         // posted before any work begins, for exactly that reason. When work is already under
         // way the text it was showing is kept: a second START while the editor was up used to
         // flip it back to "Starting the editor…" for something already running.
+        boolean phone = ACTION_PHONE_PAIR.equals(action) || ACTION_PHONE_CONNECT.equals(action);
         String text = busy && lastNote != null ? lastNote
-                : ACTION_SETUP.equals(action) ? "Setting up…" : "Starting the editor…";
+                : ACTION_SETUP.equals(action) ? "Setting up…"
+                : phone ? "Linux is not running" : "Starting the editor…";
         try {
             startForeground(NOTIFICATION, notification(text));
         } catch (Throwable refused) {
@@ -164,6 +189,28 @@ public final class WorkspaceService extends Service {
                             + "the app and try again, or allow background activity in Settings.");
             sendBroadcast(failure);
             stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (ACTION_PHONE_PAIR.equals(action) || ACTION_PHONE_CONNECT.equals(action)) {
+            // Only while the editor runs: the adb server that would hold the connection starts
+            // and stops with it, and pairing into a server that will be gone by the time the
+            // terminal asks is worse than saying so.
+            final boolean pair = ACTION_PHONE_PAIR.equals(action);
+            final String code = intent.getStringExtra(EXTRA_CODE);
+            if (!editorRunning) {
+                Phone.tell(this, "The editor is not running", "Open the editor first, then "
+                        + (pair ? "pair" : "connect") + " again: the connection lives as long "
+                        + "as the editor does.");
+                if (!busy) {
+                    stopForeground(true);
+                    stopSelf();
+                }
+                return START_NOT_STICKY;
+            }
+            new Thread(() -> {
+                if (pair) Phone.pair(this, code);
+                else Phone.connect(this, true);
+            }, "phone").start();
             return START_NOT_STICKY;
         }
         if (busy) return START_NOT_STICKY;
@@ -237,6 +284,14 @@ public final class WorkspaceService extends Service {
                                 .putExtra(EXTRA_URL, editorUrl)
                                 .putExtra(EXTRA_LINE, "The editor is running.");
                         sendBroadcast(ready);
+                        // The phone as a test device connects by itself when it can: adb is
+                        // installed and Wireless debugging is on. Quietly -- the Activity
+                        // screen has the line either way, and a notification at every
+                        // start would be noise.
+                        if (Phone.adbInstalled(this) && Phone.wirelessDebuggingOn(this)) {
+                            new Thread(() -> Phone.connect(this, false), "phone-connect")
+                                    .start();
+                        }
                         continue;
                     }
                     announce(null, clean, "setting-up", -1);

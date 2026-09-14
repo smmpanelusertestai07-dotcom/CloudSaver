@@ -298,6 +298,80 @@ else:
 if 'if (!"r".equals(mode))' not in built:
     problems.append("Built.openFile() accepts a write mode")
 
+# --- 15. the package lists every install depends on, and the phone as its own test device ------
+#
+# Set-up and the nightly update delete /var/lib/apt/lists to save 60 MB. Every apt-get install
+# in the tools script therefore has to refresh the list first, or it fails on every fresh
+# workspace with "Unable to locate package" -- which is what a review found the JDK step doing.
+# Structural: the refresh has to come BEFORE the install inside the same function.
+for fn_name in re.findall(r'^(install_[a-z_]+)\(\) \{', tools_script, re.M):
+    fn = re.search(r'^' + fn_name + r'\(\) \{(.*?)\n\}', tools_script, re.S | re.M)
+    body = fn.group(1) if fn else ""
+    install_at = body.find("apt-get install")
+    if install_at < 0:
+        continue
+    refresh_at = body.find("refresh_packages")
+    if refresh_at < 0 or refresh_at > install_at:
+        problems.append("%s() runs apt-get install without refreshing the package list first, "
+                        "which fails on every fresh workspace because set-up deletes the "
+                        "lists" % fn_name)
+# The aapt2 line lands on a line of its own even when the owner's file has no final newline.
+tools_lines = tools_script.split("\n")
+for i, line in enumerate(tools_lines):
+    if "aapt2FromMavenOverride=%s" in line:
+        if not any('tail -c1 "$properties"' in earlier for earlier in tools_lines[max(0, i - 8):i]):
+            problems.append("install_android() appends the aapt2 line without first making sure "
+                            "the owner's gradle.properties ends with a newline, so it can land "
+                            "on the tail of their last line where Gradle sees neither")
+check_fn = re.search(r'^check\(\) \{(.*?)\n\}', tools_script, re.S | re.M)
+check_body = check_fn.group(1) if check_fn else ""
+if "aapt2FromMavenOverride" not in check_body:
+    problems.append("check() reports android_sdk=yes without the line that makes Gradle use the "
+                    "aapt2 it checked, so Settings says installed while every build still "
+                    "fetches the x86-64 one")
+if "adb --version" not in check_body:
+    problems.append("check() does not report whether adb is installed")
+# The phone pairs with ITSELF: adb is pointed at loopback and nowhere else, only an
+# advertisement that resolves to one of this phone's own addresses is taken, the code is six
+# digits before it reaches a command line, and the receiver the code arrives through is not
+# exported. Every one of those is the difference between a test device and an open door.
+if not os.path.exists(src + "Phone.java"):
+    problems.append("there is no Phone.java, so the phone cannot be paired with itself")
+else:
+    phone = code(read("Phone.java"))
+    if 'LOOPBACK = "127.0.0.1"' not in phone:
+        problems.append("Phone does not fix adb's host at 127.0.0.1")
+    # The call sites, not every mention: the by-hand instructions quote the same commands.
+    for command in ("adb pair ", "adb connect "):
+        calls = list(re.finditer(r'run\(context, "' + re.escape(command), phone))
+        if not calls:
+            problems.append("Phone never runs %s" % command.strip())
+        for hit in calls:
+            after = phone[hit.end():hit.end() + 20]
+            if not after.startswith('" + LOOPBACK'):
+                problems.append("Phone runs %s against something other than LOOPBACK"
+                                % command.strip())
+    if "isThisPhone(r.getHost())" not in phone:
+        problems.append("Phone.discover() takes any advertisement it hears; a laptop on the same "
+                        "Wi-Fi advertising adb could be what gets paired with")
+    if 'code.matches("\\\\d{6}")' not in phone:
+        problems.append("the pairing code is not checked to be six digits before it reaches a "
+                        "command line")
+    receiver = re.search(r'<receiver(.*?)/>', manifest, re.S)
+    if not receiver or 'android:exported="false"' not in receiver.group(1):
+        problems.append("PhoneReceiver is exported, so any app could hand the service a code")
+    service = code(read("WorkspaceService.java"))
+    branch = re.search(r'ACTION_PHONE_PAIR\.equals\(action\) \|\| ACTION_PHONE_CONNECT'
+                       r'\.equals\(action\)\) \{(.*?)return START_NOT_STICKY;\s*\}',
+                       service, re.S)
+    if not branch or "if (!editorRunning)" not in branch.group(1):
+        problems.append("the service pairs or connects without the editor running, into an adb "
+                        "server that is gone by the time the terminal asks")
+    editor_script = open(app + "/app/assets/pocketide-editor.sh").read()
+    if not re.search(r'command -v adb >/dev/null 2>&1; then\s*\n\s*adb start-server', editor_script):
+        problems.append("the editor script does not start the adb server beside the editor, so a "
+                        "connection the app makes dies with the one command that made it")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

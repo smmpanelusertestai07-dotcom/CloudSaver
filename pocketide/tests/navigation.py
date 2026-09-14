@@ -540,6 +540,20 @@ else:
         problems.append("MainActivity does not act on the shortcut's extra from both onCreate "
                         "and onNewIntent, so the shortcut opens Home and stops there")
 
+
+# --- the phone as a test device is a row, and Settings notices when it changes -----------------
+settings = code("SettingsPane.java")
+# The row itself, not any mention of the words: the dialogs behind it use the same title.
+if not re.search(r'Ui\.row\(host, dark, R\.drawable\.\w+, "Test on this phone"', settings):
+    problems.append("Settings has no Test on this phone row, so the adb layer is unreachable "
+                    "from the app")
+refresh = re.search(r'private void refreshTools\(final Tools\.State drawn\) \{(.*?)\n    \}',
+                    settings, re.S)
+if (not refresh or "drawn.sdk != found.sdk" not in refresh.group(1)
+        or "drawn.adb != found.adb" not in refresh.group(1)):
+    problems.append("refreshTools() ignores the SDK and adb when deciding whether to redraw, so "
+                    "the row goes on saying JDK only after the toolchain has installed")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

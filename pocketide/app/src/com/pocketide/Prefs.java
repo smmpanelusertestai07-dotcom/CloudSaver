@@ -84,6 +84,8 @@ final class Prefs {
     static final String LOCK_NOTICE = "app_lock_notice";
     /** Whether the owner asked for the phone's storage inside the workspace. Off by default. */
     static final String PHONE_FILES = "phone_files";
+    /** The phone has been paired with itself over Wireless debugging at least once. See Phone. */
+    static final String PHONE_PAIRED = "phone_paired";
     /** Timestamp of the last exit the owner has already been told about. */
     static final String EXIT_SEEN_AT = "exit_seen_at";
     /**

@@ -29,15 +29,45 @@ one to Android's own installer through a content provider that is not exported, 
 with a one-time read grant. Android still asks on its own screen every time. One new permission,
 listed in Help with what it is for.
 
+### Test on this phone
+
+The emulator cannot run on a phone, so the phone is the test device — and from Android 11 the
+agent can drive it. Settings → The computer → Test on this phone installs adb (Ubuntu's own
+arm64 package, about 2 MB, nothing to pin) and pairs the phone with itself over Wireless
+debugging, the way Shizuku does from an ordinary app: the app finds the pairing port the phone
+advertises to itself (NsdManager, and only an advertisement that resolves to one of this phone's
+own addresses counts), the owner types the six-digit code into a notification's reply box so
+that Settings never has to leave the screen, and `adb pair 127.0.0.1:PORT CODE` runs inside
+Linux. From then on the editor's start connects by itself whenever Wireless debugging is on, the
+adb server lives exactly as long as the editor does, and `adb devices` in the terminal lists the
+phone. An agent can `adb install` what it built, launch it, read logcat, screenshot it, tap it
+and run `./gradlew connectedAndroidTest`, on real hardware, for nothing. Google's platform-tools
+carry an x86-64 adb; when the SDK is installed that copy is set aside and Ubuntu's linked at the
+one path the Android Gradle Plugin looks. The row, the FAQ and the install prompt all say what
+pairing gives — what a computer with USB debugging has — and that Android turns it off at every
+restart. adb is pointed at 127.0.0.1 and nowhere else, the code is checked to be six digits
+before it reaches a command line, and the receiver the code arrives through is not exported.
+
+### Five things a review found
+
+Set-up and the nightly update delete apt's package lists to save 60 MB, and the Android and
+Playwright layers ran `apt-get install` without refreshing them, which fails on every fresh
+workspace with "Unable to locate package": every install in the tools script now refreshes the
+list first, and a gate holds it there. The aapt2 line is appended to an owner's existing
+gradle.properties on a line of its own even when their file does not end with a newline. `check`
+reports the SDK as installed only when Gradle is also pointed at the aapt2 it checked. The
+"leaving them alone" message no longer contradicts the one line that is added. And Settings
+redraws when the SDK or adb state changes, not only when the JDK does.
+
 ### Help
 
 The build and test answers say what is true now: a Java or Kotlin project builds with its own
-./gradlew after one 520 MB install; JVM and Robolectric tests are the free local testing an
-agent uses; the emulator and C/C++ remain impossible, and why.
+./gradlew after one 530 MB install; the phone can be paired with itself and driven; JVM and
+Robolectric tests run here directly; the emulator and C/C++ remain impossible, and why.
 
 ### Gates
 
-46, with the new checks inside them, each broken on purpose and confirmed to fail.
+47, with the new checks inside them, each broken on purpose and confirmed to fail.
 
 ## 2.0.0
 

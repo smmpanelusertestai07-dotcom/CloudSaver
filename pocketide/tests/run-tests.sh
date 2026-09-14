@@ -119,6 +119,9 @@ check "MarkerIsRead" $? "the service does not wait for the editor's ready marker
 bash -n "$ASSETS/pocketide-update.sh"
 check "UpdateScriptSyntax" $? "pocketide-update.sh does not parse"
 
+bash -n "$ASSETS/pocketide-tools.sh"
+check "ToolsScriptSyntax" $? "pocketide-tools.sh does not parse"
+
 # Everything in this workspace is pinned, and a pin is right on the day it is made and wrong a
 # year later. This is the whole update path: that the script is actually copied into the
 # workspace, that the editor is staged and verified and reversible, and that what happens

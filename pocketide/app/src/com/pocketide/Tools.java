@@ -39,31 +39,36 @@ final class Tools {
         final boolean browser;
         final boolean playwright;
         final boolean android;
-        /** The SDK is there AND its aapt2 runs on this phone, which is the part that counts. */
+        /** The SDK is there AND its aapt2 runs AND Gradle is pointed at it: the part that counts. */
         final boolean sdk;
+        /** adb, so the phone can be paired with itself and driven. See Phone. */
+        final boolean adb;
         final String chromiumVersion;
 
         State(boolean browser, boolean playwright, boolean android, String chromiumVersion) {
-            this(browser, playwright, android, false, chromiumVersion);
+            this(browser, playwright, android, false, false, chromiumVersion);
         }
 
-        State(boolean browser, boolean playwright, boolean android, boolean sdk,
+        State(boolean browser, boolean playwright, boolean android, boolean sdk, boolean adb,
               String chromiumVersion) {
             this.browser = browser;
             this.playwright = playwright;
             this.android = android;
             this.sdk = sdk;
+            this.adb = adb;
             this.chromiumVersion = chromiumVersion;
         }
 
-        boolean anything() { return browser || playwright || android; }
+        boolean anything() { return browser || playwright || android || adb; }
     }
 
     /** What each layer costs, so the screen can say it before the download starts. */
     static final long BROWSER_BYTES = 120L * 1000 * 1000;
     static final long PLAYWRIGHT_BYTES = 60L * 1000 * 1000;
-    /** JDK 200, Google's command-line tools 182, platform and build-tools about 120, the four aarch64 tools 9. */
-    static final long ANDROID_BYTES = 520L * 1000 * 1000;
+    /** JDK 200, Google's command-line tools 182, platform, build- and platform-tools about 130, the four aarch64 tools 9. */
+    static final long ANDROID_BYTES = 530L * 1000 * 1000;
+    /** Ubuntu's adb and the five small libraries it brings. */
+    static final long PHONE_BYTES = 2L * 1000 * 1000;
 
     private Tools() {}
 
@@ -82,10 +87,14 @@ final class Tools {
                 "yes".equals(values.get("playwright")),
                 "yes".equals(values.get("android")),
                 "yes".equals(values.get("android_sdk")),
+                "yes".equals(values.get("adb")),
                 values.getOrDefault("chromium", ""));
     }
 
-    /** Installs one layer, reporting each line as it arrives. Call from a background thread. */
+    /**
+     * Installs one layer, reporting each line as it arrives. Call from a background thread.
+     * Layers: browser, playwright, android, phone -- the script's own command names.
+     */
     static boolean install(Context context, String layer, Workspace.Progress progress) {
         if (!Workspace.installed(context)) {
             progress.line("Linux is not set up yet.");
@@ -174,10 +183,14 @@ final class Tools {
                     + "security policy denies to every app on a phone that is not rooted. "
                     + "Nothing installable changes that.\n"
                     + "What works instead is better on a phone anyway: the phone IS the test "
-                    + "device. An agent builds the APK; Settings → The computer → Install an "
-                    + "app built here hands it to Android's own installer, and the app runs "
-                    + "on real hardware rather than a simulation of it. JVM and Robolectric "
-                    + "unit tests run here natively as well.\n\n"
+                    + "device, and from Android 11 an agent can drive it. Settings → The "
+                    + "computer → Test on this phone installs adb and pairs the phone with "
+                    + "itself over Wireless debugging; after that adb devices in the "
+                    + "terminal lists this phone, and an agent can install what it built, "
+                    + "launch it, read its log, screenshot it, tap it and run ./gradlew "
+                    + "connectedAndroidTest on real hardware. Install an app built here "
+                    + "hands an APK to Android's own installer without any of that. JVM and "
+                    + "Robolectric unit tests run here natively as well.\n\n"
 
                     + "iOS apps.\n"
                     + "No, and not for a reason this app could fix: Apple requires its own "

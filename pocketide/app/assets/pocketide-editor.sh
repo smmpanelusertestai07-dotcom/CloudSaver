@@ -285,6 +285,15 @@ start_editor() {
   fi
   export NODE_OPTIONS="--max-old-space-size=${heap}"
 
+  # The phone as a test device. When adb is installed its server is started here, under the
+  # same PRoot as the editor, so it lives exactly as long as the editor does -- --kill-on-exit
+  # takes it down with everything else -- and a connection the app makes to the phone's own
+  # Wireless debugging outlives the one command that made it. The terminal's adb talks to this
+  # same server. See pocketide-tools.sh, "the phone itself".
+  if command -v adb >/dev/null 2>&1; then
+    adb start-server >/dev/null 2>&1 || true
+  fi
+
   say "Starting the editor on 127.0.0.1:${PORT}…"
   "$BIN" \
     --config "$CONFIG" \

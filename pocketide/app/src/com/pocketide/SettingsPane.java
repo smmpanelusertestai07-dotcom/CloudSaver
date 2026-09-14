@@ -385,6 +385,20 @@ final class SettingsPane implements Pane {
                 v -> offerBuiltApks()));
         list.addView(Ui.divider(host, dark, true));
 
+        Ui.Row phone = Ui.row(host, dark, R.drawable.ic_touch, "Test on this phone",
+                !ready ? "Available once Linux is set up"
+                        : !Phone.supported() ? "Needs Android 11 or newer"
+                        : !tools.adb ? "Not installed · adb, about "
+                                + DeviceProbe.formatBytes(Tools.PHONE_BYTES)
+                        : Phone.paired(host)
+                            ? "Paired · connects when the editor starts with Wireless debugging on"
+                            : "Installed · tap to pair this phone with itself",
+                v -> offerPhone(tools));
+        if (tools.adb && Phone.paired(host)) phone.setState(Ui.running(dark));
+        else if (tools.adb) phone.setState(Ui.needsYou(dark));
+        list.addView(phone);
+        list.addView(Ui.divider(host, dark, true));
+
         list.addView(Ui.row(host, dark, R.drawable.ic_info, "What can be built here",
                 "Including the two things that cannot, and why",
                 v -> Dialogs.message(host, "What can be built here", Tools.WHAT_CAN_BE_BUILT)));
@@ -419,7 +433,9 @@ final class SettingsPane implements Pane {
                 // and build the whole screen twice.
                 boolean changed = drawn.browser != found.browser
                         || drawn.playwright != found.playwright
-                        || drawn.android != found.android;
+                        || drawn.android != found.android
+                        || drawn.sdk != found.sdk
+                        || drawn.adb != found.adb;
                 if (changed) MainActivity.rebuild(checking);
             });
         }, "check-tools").start();
@@ -513,6 +529,75 @@ final class SettingsPane implements Pane {
                     "This phone offered no installer for the file. Copy it to the phone's "
                             + "files and open it from there instead.");
         }
+    }
+
+    /**
+     * The phone as a test device: install adb, then pair or connect.
+     *
+     * Each step checks what the next one needs and says so, because every failure here is
+     * silent otherwise: Developer options off, Wireless debugging off, the editor not
+     * running, notifications denied. Each of those has a screen, and the dialog names it.
+     */
+    private void offerPhone(final Tools.State tools) {
+        if (!Workspace.installed(host)) {
+            Dialogs.message(host, "Test on this phone",
+                    "Linux has to be set up before anything can be installed into it.");
+            return;
+        }
+        if (!Phone.supported()) {
+            Dialogs.message(host, "Test on this phone",
+                    "Pairing a phone with itself needs Wireless debugging, which Android "
+                            + "added in Android 11. This phone runs Android "
+                            + Build.VERSION.RELEASE + ". An app built here can still be "
+                            + "installed with the row above.");
+            return;
+        }
+        if (!tools.adb) {
+            offerTools("phone", "Test on this phone", Phone.EXPLANATION, Tools.PHONE_BYTES,
+                    false);
+            return;
+        }
+        String[] labels = {"Connect now", "Pair for the first time", "How this works"};
+        int[] icons = {R.drawable.ic_play, R.drawable.ic_touch, R.drawable.ic_info};
+        Dialogs.choose(host, "Test on this phone", labels, icons, -1, index -> {
+            if (index == 2) {
+                Dialogs.message(host, "Test on this phone",
+                        Phone.EXPLANATION + "\n\n" + Phone.STEPS);
+                return;
+            }
+            if (!WorkspaceService.editorRunning()) {
+                Dialogs.message(host, "Open the editor first",
+                        "The connection lives inside the running editor — its adb server "
+                                + "starts and stops with it — so open the editor, then come "
+                                + "back here.");
+                return;
+            }
+            if (!Phone.developerOptionsOn(host)) {
+                Dialogs.message(host, "Developer options first", Phone.DEVELOPER_STEPS);
+                return;
+            }
+            if (index == 0) {
+                if (!Phone.wirelessDebuggingOn(host)) {
+                    Dialogs.confirm(host, "Wireless debugging is off",
+                            "Turn it on in Developer options — Android turns it off at every "
+                                    + "restart — then come back and tap Connect now.",
+                            "Open Developer options", () -> Phone.openDeveloperOptions(host));
+                    return;
+                }
+                WorkspaceService.connectPhone(host);
+                Dialogs.message(host, "Connecting…",
+                        "The result arrives as a notification, and Activity shows it too.");
+                return;
+            }
+            if (!Permissions.notificationsAllowed(host)) {
+                Dialogs.message(host, "Notifications first",
+                        "The pairing code is typed into a notification, so allow "
+                                + "notifications for PocketIDE (Settings → Permissions), or "
+                                + "pair by hand from the terminal:\n\n" + Phone.STEPS);
+                return;
+            }
+            Phone.beginPairing(host);
+        });
     }
 
     private void offerTools(String layer, String title, String explanation, long bytes,
