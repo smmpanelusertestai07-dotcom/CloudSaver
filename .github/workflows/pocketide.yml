@@ -44,6 +44,13 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v4
+        with:
+          # Named explicitly because the action's default is "tools platform-tools", and
+          # "tools" is the legacy SDK Tools package that Google's repository no longer
+          # serves: sdkmanager answers "Failed to find package 'tools'" and the action fails
+          # before the checkout is even built. Two runs went red on that on 2026-09-14 with
+          # no change to anything here. Exactly what the build needs, nothing legacy.
+          packages: "platforms;android-35 build-tools;35.0.0"
       - name: Android platform 35 and build-tools 35.0.0
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
