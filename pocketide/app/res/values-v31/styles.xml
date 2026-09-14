@@ -28,5 +28,6 @@
         <item name="android:navigationBarColor">@color/brand_tile_flat</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -55,6 +56,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     private ProgressBar loading;
     private LinearLayout waiting;
     private TextView waitingLine;
+    private TextView retry;
     private BroadcastReceiver events;
     private android.widget.FrameLayout lockRoot;
     private boolean shown;
@@ -65,13 +67,30 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         super.onCreate(state);
         Theme.apply(this);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        // An agent can work for minutes with nothing typed. Without this the screen sleeps
+        // while it does, and the owner is watching a phone that keeps going dark. The
+        // service's wake lock is the CPU's, not the screen's, and does not cover this.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         // The lock matters most here. This is the screen with the editor on it, the terminal,
         // the agents' own panels and whatever source is open -- everything an app lock exists
         // to keep behind a fingerprint.
         AppLock.applyWindowSecurity(this);
-        lockRoot = new android.widget.FrameLayout(this);
-        lockRoot.addView(build());
-        setContentView(lockRoot);
+        try {
+            lockRoot = new android.widget.FrameLayout(this);
+            lockRoot.addView(build());
+            addRestoreButton();
+            setContentView(lockRoot);
+        } catch (Throwable failure) {
+            // The same reasoning as MainActivity's guard: this screen creates a WebView, and a
+            // phone that cannot give it one throws from the constructor. Closing this screen
+            // leaves the app standing; not catching it closes the app.
+            Crash.save(this, failure);
+            Dialogs.message(this, "The editor could not be opened",
+                    "This phone would not give the app a browser window to draw the editor in. "
+                            + "Nothing in Linux was touched.");
+            finish();
+            return;
+        }
         // Android 13 and later never call onBackPressed() on this app; see Back.
         Back.register(this, () -> {
             if (!back()) finish();
@@ -93,19 +112,35 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         super.onConfigurationChanged(config);
         Theme.apply(this);
         if (lockRoot != null) {
+            // Turning the phone rebuilds the chrome, and the key row's own state -- which keys
+            // are showing, which modifiers are latched -- used to be thrown away with it.
+            int keyState = keys == null ? 0 : keys.snapshot();
             lockRoot.removeAllViews();
             lockRoot.addView(build());
+            addRestoreButton();
+            if (keys != null) keys.restore(keyState);
             if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
         }
     }
 
     @Override protected void onStart() {
         super.onStart();
+        Rotation.apply(this);
         if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
+        if (request == PICK_FILE) {
+            ValueCallback<android.net.Uri[]> waiting = pendingFiles;
+            pendingFiles = null;
+            if (waiting != null) {
+                waiting.onReceiveValue(
+                        android.webkit.WebChromeClient.FileChooserParams
+                                .parseResult(result, data));
+            }
+            return;
+        }
         AppLock.handleResult(this, lockRoot, request, result, null);
     }
 
@@ -192,6 +227,8 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
 
         root.addView(Ui.divider(this, dark, false));
         View bottom = bottomBar(dark);
+        toolbar = bottom;
+        bottom.setVisibility(fullScreen ? View.GONE : View.VISIBLE);
         root.addView(bottom, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -201,6 +238,33 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         // to or not, so a screen that does not handle insets does not get a choice.
         Theme.fitScreen(root, bottom);
         return root;
+    }
+
+    /** The one control left on screen in full screen, floating over the editor's corner. */
+    private void addRestoreButton() {
+        boolean dark = Ui.dark(this);
+        restore = Ui.medium(this, "Menu", 13f, Ui.onAccentContainer(dark));
+        restore.setGravity(Gravity.CENTER);
+        int padX = Ui.dp(this, 14);
+        restore.setPadding(padX, Ui.dp(this, 10), padX, Ui.dp(this, 10));
+        restore.setMinHeight(Ui.dp(this, Ui.TOUCH_TARGET_DP));
+        restore.setBackground(Ui.tappable(this,
+                Ui.fill(this, Ui.alpha(Ui.accent(dark), dark ? 220 : 235), 999), dark));
+        restore.setElevation(Ui.dp(this, 8));
+        restore.setClickable(true);
+        restore.setFocusable(true);
+        restore.setContentDescription("Show this app's buttons again");
+        Ui.asButton(restore);
+        restore.setVisibility(fullScreen ? View.VISIBLE : View.GONE);
+        restore.setOnClickListener(v -> toggleFullScreen());
+        android.widget.FrameLayout.LayoutParams params =
+                new android.widget.FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM | Gravity.END);
+        int margin = Ui.dp(this, 16);
+        params.setMargins(margin, margin, margin, Ui.dp(this, 28));
+        lockRoot.addView(restore, params);
     }
 
     private LinearLayout waitingPanel(boolean dark) {
@@ -219,6 +283,17 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                 13.5f, Ui.muted(dark));
         waitingLine.setGravity(Gravity.CENTER);
         column.addView(waitingLine, Ui.wide(this, 8));
+
+        // Hidden until something goes wrong. A failure used to leave a dialog with a Copy
+        // button and no way forward at all: the only route back to the editor was to leave the
+        // screen and come in again.
+        retry = Ui.primaryButton(this, "Open the editor again", dark);
+        retry.setVisibility(View.GONE);
+        retry.setOnClickListener(v -> tryAgain());
+        LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
+                Ui.dp(this, 240), ViewGroup.LayoutParams.WRAP_CONTENT);
+        retryParams.topMargin = Ui.dp(this, 22);
+        column.addView(retry, retryParams);
         return column;
     }
 
@@ -251,8 +326,8 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         wrapper.addView(bar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        addBarButton(bar, dark, R.drawable.ic_terminal, "Commands",
-                "Open the command palette", v -> commandPalette());
+        addBarButton(bar, dark, R.drawable.ic_apps, "Menu",
+                "Open the editor menu", v -> menu());
         addBarButton(bar, dark, R.drawable.ic_keyboard, "Keys",
                 "Show or hide the key row", v -> keys.toggleKeys());
         addBarButton(bar, dark, R.drawable.ic_cursor, "Cursor",
@@ -354,6 +429,44 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                 return true;
             }
 
+            /**
+             * The browser engine's own process died, and the app is not going with it.
+             *
+             * This is the most important twelve lines in the file. A WebView runs its page in a
+             * separate renderer process, and when that process is killed -- which on a phone
+             * means Android reclaiming memory from the most expensive thing in sight, and the
+             * most expensive thing in sight is Visual Studio Code with an extension host and
+             * three agent panels in it -- Android's rule is that an app which does not handle
+             * the death is killed with it. Not the screen: the whole app, with no dialog, no
+             * report and nothing in the log an owner could find.
+             *
+             * That is exactly the fault an owner reported as "app open karte hi apne aap close
+             * ho raha" -- it closes by itself the moment it opens -- because opening the app
+             * went straight back to the editor, and the editor was what could not fit.
+             *
+             * Returning true says the app has dealt with it. The dead WebView can never be used
+             * again, so it is taken down and the screen offers to start over, which costs the
+             * session but not the app, the workspace, or anything on disk.
+             */
+            @Override public boolean onRenderProcessGone(WebView web,
+                    android.webkit.RenderProcessGoneDetail detail) {
+                boolean crashed = Build.VERSION.SDK_INT < 26 || detail == null
+                        || detail.didCrash();
+                editorDied(crashed
+                        ? "The editor's window stopped unexpectedly."
+                        : "Android reclaimed the editor's memory for something else.");
+                return true;
+            }
+
+            @Override public void onReceivedError(WebView web, WebResourceRequest request,
+                    android.webkit.WebResourceError error) {
+                // Only the page itself. A panel inside it failing to fetch something is the
+                // panel's business and is not worth taking the screen over.
+                if (request == null || !request.isForMainFrame()) return;
+                editorDied("The editor did not answer. "
+                        + (error == null ? "" : error.getDescription()));
+            }
+
             @Override public void onPageFinished(WebView web, String url) {
                 loading.setVisibility(View.GONE);
                 // If the cookie was refused -- a wiped WebView data directory, a password
@@ -375,8 +488,46 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                 loading.setVisibility(progress >= 100 ? View.GONE : View.VISIBLE);
                 loading.setProgress(progress);
             }
+
+            /**
+             * The file picker an agent's own "attach a file" button opens.
+             *
+             * Without this the button is inert: Android's default for a WebView is to refuse
+             * the request, and the page is given no way to say so, so nothing happens at all.
+             */
+            @Override public boolean onShowFileChooser(WebView web,
+                    ValueCallback<android.net.Uri[]> callback,
+                    android.webkit.WebChromeClient.FileChooserParams params) {
+                if (pendingFiles != null) pendingFiles.onReceiveValue(null);
+                pendingFiles = callback;
+                try {
+                    startActivityForResult(params.createIntent(), PICK_FILE);
+                    AppLock.expectReturn();
+                    return true;
+                } catch (Throwable noPicker) {
+                    pendingFiles = null;
+                    return false;
+                }
+            }
+        });
+
+        // A download started from inside the editor -- an agent offering a file, a link in a
+        // panel -- goes to the phone's own downloads rather than nowhere. Without a listener a
+        // WebView silently drops it.
+        view.setDownloadListener((url, agent, disposition, mime, size) -> {
+            try {
+                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            } catch (Throwable noBrowser) {
+                Dialogs.message(this, "Nothing could open that",
+                        "This phone has no app that will take the download.");
+            }
         });
     }
+
+    /** Where the editor's own file picker sends its answer. */
+    private ValueCallback<android.net.Uri[]> pendingFiles;
+    private static final int PICK_FILE = 8814;
 
     /**
      * Opens the editor, already signed in.
@@ -451,28 +602,183 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         }
     }
 
+    /**
+     * The editor is gone and cannot be brought back in place: says so, and offers to start over.
+     *
+     * The WebView is destroyed rather than reloaded because a WebView whose renderer has died
+     * is permanently unusable -- every later call on it throws -- so the next attempt builds a
+     * new one from scratch.
+     */
+    private void editorDied(String reason) {
+        if (isFinishing() || isDestroyed()) return;
+        if (web != null) {
+            ViewGroup parent = (ViewGroup) web.getParent();
+            if (parent != null) parent.removeView(web);
+            try {
+                web.destroy();
+            } catch (Throwable alreadyGone) {
+                // Destroying a dead WebView can itself throw. Nothing left to release.
+            }
+            web = null;
+        }
+        shown = false;
+        formSignInTried = false;
+        if (waiting != null) waiting.setVisibility(View.VISIBLE);
+        if (loading != null) loading.setVisibility(View.GONE);
+        if (waitingLine != null) {
+            waitingLine.setText(reason + "\n\nNothing was lost — your files and everything "
+                    + "running in Linux are untouched. Tap below to open it again.");
+        }
+        if (retry != null) retry.setVisibility(View.VISIBLE);
+    }
+
+    /** Starts the editor screen over, with a new WebView. */
+    private void tryAgain() {
+        if (retry != null) retry.setVisibility(View.GONE);
+        if (waitingLine != null) waitingLine.setText("Starting the editor…");
+        if (lockRoot != null) {
+            lockRoot.removeAllViews();
+            lockRoot.addView(build());
+            addRestoreButton();
+        }
+        if (WorkspaceService.editorRunning()) open(WorkspaceService.editorUrl());
+        else WorkspaceService.startEditor(this);
+    }
+
     private void showEditor() {
         if (shown) return;
         shown = true;
         waiting.setVisibility(View.GONE);
         web.setVisibility(View.VISIBLE);
+        loadPanels();
     }
 
     /**
-     * Opens the Command Palette.
+     * The editor menu: everything a phone cannot otherwise reach, in one sheet.
      *
-     * Of the commands the three agent extensions contribute, 29 are reachable only from the
-     * palette, and one tap here presses its shortcut for them.
+     * This replaces a single "Commands" button that an owner reported as doing nothing. Two
+     * things were wrong with it and both are fixed here.
      *
-     * F1, not Ctrl+Shift+P. Both open the palette in Visual Studio Code, and F1 is the one
-     * that survives the trip through Android: a synthetic Ctrl+Shift+P has to carry two
-     * modifier bits and a shifted letter through the WebView's key translation, and on the
-     * owner's phone it arrived as nothing -- "Commands does not work" was the report. F1 is a
-     * single unmodified key with its own key code on every layout, and the editor binds it to
-     * the same command.
+     * It pressed a key natively, through the WebView's key translation, which is the path that
+     * had already swallowed Ctrl+Shift+P. It now dispatches the key as a DOM event instead --
+     * see press() -- which is the same event the editor would have seen and does not depend on
+     * where Android thinks the focus is.
+     *
+     * And a palette was the wrong answer to the question being asked. The owner's actual
+     * problem was that Antigravity was installed and they could not find how to open it: an
+     * agent lives in the activity bar, which on a phone is a row of small icons along the
+     * bottom of the editor. So the installed agents are named here, each opening its own panel,
+     * and the palette is one row among them rather than the only door.
      */
-    private void commandPalette() {
-        key(KeyEvent.KEYCODE_F1, 0);
+    private void menu() {
+        final java.util.List<String> labels = new java.util.ArrayList<>();
+        final java.util.List<Integer> icons = new java.util.ArrayList<>();
+        final java.util.List<Integer> keys = new java.util.ArrayList<>();
+
+        for (int i = 0; i < panels.size() && i < Extensions.PANEL_KEYS; i++) {
+            labels.add("Open " + panels.get(i).title);
+            icons.add(R.drawable.ic_bolt);
+            keys.add(Extensions.FIRST_PANEL_KEY + i);
+        }
+        labels.add("Command palette");
+        icons.add(R.drawable.ic_terminal);
+        keys.add(1);
+        labels.add("Files");
+        icons.add(R.drawable.ic_storage);
+        keys.add(2);
+        labels.add("Terminal");
+        icons.add(R.drawable.ic_code);
+        keys.add(3);
+        labels.add("Extensions");
+        icons.add(R.drawable.ic_extension);
+        keys.add(4);
+        labels.add("Show or hide the side panel");
+        icons.add(R.drawable.ic_apps);
+        keys.add(11);
+        labels.add(fullScreen ? "Show this app's buttons" : "Full screen");
+        icons.add(R.drawable.ic_fit);
+        keys.add(0);
+        labels.add("Smaller text");
+        icons.add(R.drawable.ic_fit);
+        keys.add(8);
+        labels.add("Larger text");
+        icons.add(R.drawable.ic_fit);
+        keys.add(9);
+        labels.add("Reset the text size");
+        icons.add(R.drawable.ic_rotate);
+        keys.add(10);
+
+        int[] iconIds = new int[icons.size()];
+        for (int i = 0; i < icons.size(); i++) iconIds[i] = icons.get(i);
+        Dialogs.choose(this, "Editor", labels.toArray(new String[0]), iconIds, -1,
+                index -> {
+                    int key = keys.get(index);
+                    // Zero is not a function key: it is the one row here that the app itself
+                    // acts on rather than passing to the editor.
+                    if (key == 0) toggleFullScreen();
+                    else press(key);
+                });
+    }
+
+    /**
+     * Presses one of the function keys the editor's own keybindings.json binds, as a DOM event.
+     *
+     * Not dispatchKeyEvent. That path goes through Android's key translation into the WebView
+     * and depends on what currently holds focus inside the page; it is the path that arrived as
+     * nothing when the button sent Ctrl+Shift+P, and a phone with no hardware keyboard gives it
+     * no help. A KeyboardEvent dispatched on the focused element with bubbles set reaches the
+     * editor's keybinding service the same way a real press would -- the service listens for
+     * keydown and reads the code off the event, and does not ask where the event came from.
+     *
+     * Sent once, by one mechanism. Sending it natively as well would double every toggle in the
+     * menu, so the terminal would open and close again on one tap.
+     */
+    private void press(int functionKey) {
+        if (web == null) return;
+        // F1 is DOM key code 112, and they run consecutively from there.
+        int domCode = 111 + functionKey;
+        String name = "F" + functionKey;
+        String js = "(function(){var t=document.activeElement||document.body;if(!t)return;"
+                + "['keydown','keyup'].forEach(function(type){"
+                + "t.dispatchEvent(new KeyboardEvent(type,{key:'" + name + "',code:'" + name
+                + "',keyCode:" + domCode + ",which:" + domCode
+                + ",bubbles:true,cancelable:true}));});})();";
+        web.evaluateJavascript(js, null);
+    }
+
+    /**
+     * Which installed extensions have a panel of their own, read once the editor is up.
+     *
+     * Off the drawing thread because it opens one manifest per extension and an agent's
+     * manifest runs to hundreds of kilobytes. The menu reads this field, so it opens at once.
+     */
+    private volatile java.util.List<Extensions.Panel> panels = java.util.Collections.emptyList();
+
+    /** True while this app's own toolbar is hidden and the editor has the whole screen. */
+    private boolean fullScreen;
+    private View toolbar;
+    private TextView restore;
+
+    /**
+     * Gives the editor the whole screen, leaving one small button to come back with.
+     *
+     * Held sideways a 64 dp toolbar is most of a fifth of the height, on the screen where the
+     * extra room was the reason for turning the phone. The button that brings it back sits in
+     * the corner rather than disappearing entirely, because a control with no way back is a
+     * trap rather than a mode.
+     */
+    private void toggleFullScreen() {
+        fullScreen = !fullScreen;
+        if (toolbar != null) toolbar.setVisibility(fullScreen ? View.GONE : View.VISIBLE);
+        if (keys != null && fullScreen) keys.hideAll();
+        if (restore != null) restore.setVisibility(fullScreen ? View.VISIBLE : View.GONE);
+    }
+
+    private void loadPanels() {
+        new Thread(() -> {
+            final java.util.List<Extensions.Panel> found = Extensions.panels(this);
+            runOnUiThread(() -> panels = found);
+        }, "read-panels").start();
     }
 
     /**
@@ -496,14 +802,39 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
 
     // ------------------------------------------------------------------ keys
 
+    /**
+     * Sends a key, holding any modifier down as a real key rather than as a flag.
+     *
+     * A meta bit on a synthetic KeyEvent is not what a keyboard does and not what the browser
+     * engine believes. A real Ctrl+C is four events -- Ctrl down, C down, C up, Ctrl up -- and
+     * the engine tracks the modifier from the first of them. Passing META_CTRL_ON on a lone C
+     * is a C, which is why the key row's Ctrl latch lit up and then did nothing: the report was
+     * about the Commands button, but the same mistake was under every chord in the app.
+     *
+     * The modifiers are released in the reverse order they were pressed, which is the order a
+     * hand lets go of them in and the order the engine expects.
+     */
     @Override public void key(int keyCode, int metaState) {
         if (web == null) return;
         web.requestFocus();
         long now = android.os.SystemClock.uptimeMillis();
-        // Both halves of the press, with the modifier state on each. A KeyEvent without its
-        // ACTION_UP never releases, and the editor then behaves as if the key were stuck.
-        web.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0, metaState));
-        web.dispatchKeyEvent(new KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0, metaState));
+        int[] modifiers = {
+                (metaState & KeyEvent.META_CTRL_ON) != 0 ? KeyEvent.KEYCODE_CTRL_LEFT : 0,
+                (metaState & KeyEvent.META_ALT_ON) != 0 ? KeyEvent.KEYCODE_ALT_LEFT : 0,
+                (metaState & KeyEvent.META_SHIFT_ON) != 0 ? KeyEvent.KEYCODE_SHIFT_LEFT : 0};
+        for (int modifier : modifiers) {
+            if (modifier != 0) send(now, KeyEvent.ACTION_DOWN, modifier, metaState);
+        }
+        send(now, KeyEvent.ACTION_DOWN, keyCode, metaState);
+        send(now, KeyEvent.ACTION_UP, keyCode, metaState);
+        for (int i = modifiers.length - 1; i >= 0; i--) {
+            if (modifiers[i] != 0) send(now, KeyEvent.ACTION_UP, modifiers[i], metaState);
+        }
+    }
+
+    private void send(long when, int action, int keyCode, int metaState) {
+        if (web == null) return;
+        web.dispatchKeyEvent(new KeyEvent(when, when, action, keyCode, 0, metaState));
     }
 
     // ------------------------------------------------------------------ service
@@ -520,10 +851,14 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                 }
                 if ("failed".equals(state)) {
                     String advice = Trouble.advice(line);
+                    if (waitingLine != null) {
+                        waitingLine.setText(advice != null ? advice
+                                : "Nothing in Linux was lost.");
+                    }
+                    if (retry != null) retry.setVisibility(View.VISIBLE);
                     Dialogs.details(WorkspaceActivity.this, "The editor did not start",
                             advice != null ? advice
-                                    : "Nothing in Linux was lost. Go back and open it "
-                                            + "again.",
+                                    : "Nothing in Linux was lost. Tap Open the editor again.",
                             line, "Copy details");
                     return;
                 }

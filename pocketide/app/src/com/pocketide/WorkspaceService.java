@@ -146,7 +146,20 @@ public final class WorkspaceService extends Service {
         // flip it back to "Starting the editor…" for something already running.
         String text = busy && lastNote != null ? lastNote
                 : ACTION_SETUP.equals(action) ? "Setting up…" : "Starting the editor…";
-        startForeground(NOTIFICATION, notification(text));
+        try {
+            startForeground(NOTIFICATION, notification(text));
+        } catch (Throwable refused) {
+            // Android 12 and later refuse a foreground service started from the background, and
+            // the refusal is an exception that kills the whole app rather than the request.
+            // Reported instead, which is what every other refusal in this file already does.
+            Intent failure = new Intent(EVENT).setPackage(getPackageName())
+                    .putExtra(EXTRA_STATE, "failed")
+                    .putExtra(EXTRA_LINE, "Android would not let Linux start just now. Open "
+                            + "the app and try again, or allow background activity in Settings.");
+            sendBroadcast(failure);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         if (busy) return START_NOT_STICKY;
         busy = true;
         startedAt = System.currentTimeMillis();
@@ -190,6 +203,9 @@ public final class WorkspaceService extends Service {
     private void runEditor() {
         try {
             Workspace.writeScripts(this);
+            // The keys the editor's menu presses, rewritten on every start because three of
+            // them name whichever agents are installed right now. See Extensions.
+            Extensions.writeKeybindings(this);
             // Screen decides both when the owner has not: the zoom from this phone's own width
             // and font scale, the layout from whether the screen is wide enough for it.
             String layout = Screen.layout(this);
@@ -266,9 +282,9 @@ public final class WorkspaceService extends Service {
         editorRunning = false;
         editorUrl = "";
         runningSince = 0L;
-        Process running = editor;
+        final Process running = editor;
         editor = null;
-        if (running != null) running.destroy();
+        if (running != null) stopTidily(running);
         if (worker != null) worker.interrupt();
         release();
         Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, false).apply();
@@ -280,6 +296,68 @@ public final class WorkspaceService extends Service {
         }
         stopForeground(true);
         stopSelf();
+    }
+
+    /**
+     * Ends PRoot in a way that takes the whole container with it.
+     *
+     * Process.destroy() signals the tracer directly and does not wait, which leaves whatever
+     * PRoot was tracing -- the editor's node, its extension host, a compiler part way through --
+     * reparented and still running, because an Android process dying does not kill its children.
+     * The class comment above once claimed --kill-on-exit covered this; it governs PRoot's own
+     * exit path, and a SIGKILL skips that path entirely.
+     *
+     * SIGQUIT is the signal PRoot answers by killing every process it is tracing. SIGCONT goes
+     * first in case the phone paused it for heat, since a stopped process cannot act on
+     * anything. Then a couple of seconds to let it finish, and destroy() only as the backstop.
+     * On its own thread, because the wait must not be on the one that draws.
+     */
+    private void stopTidily(final Process running) {
+        new Thread(() -> {
+            // SIGCONT first, in case the phone paused it for heat: a stopped process cannot
+            // act on anything else it is sent. Then SIGQUIT, which is the signal PRoot answers
+            // by killing every process it is tracing.
+            sweep(18);
+            sweep(3);
+            waitBriefly(2000);
+            running.destroy();
+            // And the backstop. Anything still alive here outlived its tracer, which is what
+            // being reparented to init looks like from the outside, and is exactly the state
+            // that leaves a compiler running after the owner pressed Stop.
+            waitBriefly(700);
+            sweep(9);
+        }, "stop-linux").start();
+    }
+
+    /**
+     * Signals every process of this app's that belongs to the workspace.
+     *
+     * By walking /proc rather than by remembering a process id, because PRoot re-executes
+     * itself and the editor spawns its own children -- an extension host, a language server,
+     * whatever an agent ran -- and none of those are known in advance. Running.workspace()
+     * already finds exactly that set for the Activity screen, and Android restricts /proc to a
+     * process's own descendants, so this can only ever reach this app's own work.
+     */
+    private void sweep(int signal) {
+        try {
+            for (Running.Process process : Running.workspace(this)) {
+                try {
+                    android.os.Process.sendSignal(process.pid, signal);
+                } catch (Throwable refused) {
+                    // Already gone between the listing and the signal. Not a failure.
+                }
+            }
+        } catch (Throwable unreadable) {
+            // /proc changed under the walk. destroy() below is still the backstop.
+        }
+    }
+
+    private void waitBriefly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException woken) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

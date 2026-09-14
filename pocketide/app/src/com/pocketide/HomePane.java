@@ -215,7 +215,7 @@ final class HomePane implements Pane {
         List<String> present = Registry.installed(host);
         boolean first = true;
         for (Agents.Agent agent : Agents.ALL) {
-            boolean here = present.contains(agent.id);
+            boolean here = Extensions.has(present, agent.id);
             String value = here ? "Installed · open it from the editor's side panel" : agent.plan;
             if (!first) agentList.addView(Ui.divider(host, dark, true));
             first = false;
@@ -239,7 +239,7 @@ final class HomePane implements Pane {
 
     private int countRecommendedInstalled(List<String> present) {
         int count = 0;
-        for (Agents.Agent agent : Agents.ALL) if (present.contains(agent.id)) count++;
+        for (Agents.Agent agent : Agents.ALL) if (Extensions.has(present, agent.id)) count++;
         return count;
     }
 

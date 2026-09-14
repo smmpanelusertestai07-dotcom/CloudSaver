@@ -47,6 +47,14 @@ public final class MainActivity extends Activity {
     private boolean returning;
     /** Back's handler while a destination other than Home is showing; see Back. */
     private Object backToHome;
+    /**
+     * True while the recovery screen is up instead of the app.
+     *
+     * Everything that would otherwise rebuild the screen checks this. Without it a theme flip
+     * or a return from Settings would call render() on a screen whose panes were never built,
+     * and the recovery screen would be replaced by the crash it exists to report.
+     */
+    private boolean recovering;
     /** What the lock runs when it comes down: a fresh pane, and no second one on resume. */
     private final Runnable unlocked = () -> {
         returning = false;
@@ -67,7 +75,29 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        // Counted before anything is built and cleared once a frame has been drawn. An opening
+        // that dies in between leaves its count behind, and three of those open the recovery
+        // screen instead of trying a fourth time. See Boot.
+        Boot.starting(this);
         Theme.apply(this);
+        if (Boot.failing(this)) {
+            recovering = true;
+            Boot.show(this, null);
+            return;
+        }
+        try {
+            buildEverything(state);
+        } catch (Throwable failure) {
+            // The one place in the app where catching Throwable is right: the alternative is
+            // a window that closes with nothing said, which is exactly what was reported.
+            recovering = true;
+            Boot.show(this, failure);
+            return;
+        }
+        getWindow().getDecorView().post(() -> Boot.reached(this));
+    }
+
+    private void buildEverything(Bundle state) {
         panes.clear();
         panes.add(new HomePane());
         panes.add(new ActivityPane());
@@ -84,6 +114,9 @@ public final class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
+        // From onStart, so changing the setting on the other screen reaches this one without
+        // it having to be closed and opened again.
+        Rotation.apply(this);
         // onStart, not onResume: the locked screen must be up before anything is drawn that a
         // shoulder could read, and onResume runs after the first frame.
         raiseLockIfNeeded();
@@ -130,12 +163,14 @@ public final class MainActivity extends Activity {
      */
     @Override public void onConfigurationChanged(android.content.res.Configuration config) {
         super.onConfigurationChanged(config);
+        if (recovering) return;
         Theme.apply(this);
         render();
     }
 
     @Override protected void onResume() {
         super.onResume();
+        if (recovering) return;
         if (returning) {
             returning = false;
             // Permissions, free space and the workspace's own state all change while the
@@ -208,6 +243,7 @@ public final class MainActivity extends Activity {
     // ------------------------------------------------------------------ the frame
 
     private void render() {
+        if (recovering || panes.isEmpty()) return;
         if (showing != null) showing.hidden(this);
         if (selected < 0 || selected >= panes.size()) selected = HOME;
         Pane pane = panes.get(selected);

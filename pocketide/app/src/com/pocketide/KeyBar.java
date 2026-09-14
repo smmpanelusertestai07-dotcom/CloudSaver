@@ -24,6 +24,10 @@ import android.widget.TextView;
  * changing a setting are all done by tapping, and a permanent row of Ctrl and Esc keys under
  * them would be clutter that says "this is really a desktop".
  *
+ * The row deliberately carries no function keys. The editor's own keybindings file gives F1 to
+ * F11 to this app's menu -- the command palette, the agents' panels, the text size -- so a row
+ * of them here would look like the editor's F keys and act like the app's buttons instead.
+ *
  * They exist because the editor is not a webview. Monaco has no touch text selection at all --
  * that is Microsoft's own open issue, not something this app can fix -- so placing a cursor
  * precisely needs something other than a fingertip. The trackpad is that something: dragging on
@@ -42,8 +46,16 @@ final class KeyBar extends LinearLayout {
     private final boolean dark;
     private final LinearLayout keyRow;
     private final Trackpad trackpad;
-    private boolean ctrlLatched;
-    private TextView ctrlButton;
+
+    /**
+     * Which modifiers are held, as the meta bits they will be sent with.
+     *
+     * A set rather than one boolean, because Ctrl+Shift+P is a real shortcut an owner wants and
+     * a single Ctrl latch could never reach it. Each one clears itself after the next ordinary
+     * key, so a latch left on cannot quietly turn the rest of a sentence into shortcuts.
+     */
+    private int latched;
+    private final java.util.Map<Integer, TextView> modifierButtons = new java.util.HashMap<>();
 
     KeyBar(Context context, Target target) {
         super(context);
@@ -65,10 +77,16 @@ final class KeyBar extends LinearLayout {
         int pad = Ui.dp(context, 6);
         keyRow.setPadding(pad, pad, pad, pad);
 
-        ctrlButton = addKey("Ctrl", KeyEvent.KEYCODE_UNKNOWN);
-        ctrlButton.setOnClickListener(v -> toggleCtrl());
+        // Modifiers first, because they are pressed before the key they modify.
+        addModifier("Ctrl", KeyEvent.META_CTRL_ON);
+        addModifier("Alt", KeyEvent.META_ALT_ON);
+        addModifier("Shift", KeyEvent.META_SHIFT_ON);
+
         addKey("Esc", KeyEvent.KEYCODE_ESCAPE);
         addKey("Tab", KeyEvent.KEYCODE_TAB);
+        addKey("Enter", KeyEvent.KEYCODE_ENTER);
+        addKey("⌫", KeyEvent.KEYCODE_DEL);
+        addKey("Del", KeyEvent.KEYCODE_FORWARD_DEL);
         addKey("↑", KeyEvent.KEYCODE_DPAD_UP);
         addKey("↓", KeyEvent.KEYCODE_DPAD_DOWN);
         addKey("←", KeyEvent.KEYCODE_DPAD_LEFT);
@@ -77,6 +95,15 @@ final class KeyBar extends LinearLayout {
         addKey("End", KeyEvent.KEYCODE_MOVE_END);
         addKey("PgUp", KeyEvent.KEYCODE_PAGE_UP);
         addKey("PgDn", KeyEvent.KEYCODE_PAGE_DOWN);
+        // The six characters a shell and a prompt need most and a phone keyboard buries two
+        // layers down. The shifted ones are sent as the unshifted key with Shift held, which
+        // is what a keyboard does and what the browser engine expects.
+        addKey("/", KeyEvent.KEYCODE_SLASH, 0);
+        addKey("-", KeyEvent.KEYCODE_MINUS, 0);
+        addKey("_", KeyEvent.KEYCODE_MINUS, KeyEvent.META_SHIFT_ON);
+        addKey("|", KeyEvent.KEYCODE_BACKSLASH, KeyEvent.META_SHIFT_ON);
+        addKey("~", KeyEvent.KEYCODE_GRAVE, KeyEvent.META_SHIFT_ON);
+        addKey("@", KeyEvent.KEYCODE_AT, 0);
 
         HorizontalScrollView scroll = new HorizontalScrollView(context);
         scroll.setHorizontalScrollBarEnabled(false);
@@ -90,6 +117,14 @@ final class KeyBar extends LinearLayout {
     private HorizontalScrollView keyScroll;
 
     private TextView addKey(String label, int keyCode) {
+        return addKey(label, keyCode, 0);
+    }
+
+    /**
+     * One key. {@code alwaysWith} is the modifier the character itself needs -- Shift for an
+     * underscore -- and is added to whatever the owner has latched rather than replacing it.
+     */
+    private TextView addKey(String label, int keyCode, int alwaysWith) {
         Context context = getContext();
         TextView key = Ui.medium(context, label, 13.5f, Ui.text(dark));
         key.setGravity(Gravity.CENTER);
@@ -103,8 +138,10 @@ final class KeyBar extends LinearLayout {
         key.setFocusable(true);
         if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
             key.setOnClickListener(v -> {
-                target.key(keyCode, ctrlLatched ? KeyEvent.META_CTRL_ON : 0);
-                if (ctrlLatched) setCtrl(false);
+                v.performHapticFeedback(
+                        android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                target.key(keyCode, latched | alwaysWith);
+                clearLatched();
             });
         }
         LayoutParams params = new LayoutParams(
@@ -115,27 +152,64 @@ final class KeyBar extends LinearLayout {
     }
 
     /**
-     * Ctrl latches rather than being held.
+     * Modifiers latch rather than being held.
      *
-     * A finger cannot hold one key and press another, so a chord has to be two taps. It clears
-     * itself after the next key, because a latch left on turns every later keystroke into a
-     * shortcut -- which is a confusing state to be in with no visible modifier light.
+     * A finger cannot hold one key and press another, so a chord has to be two taps -- or
+     * three, for Ctrl+Shift+P. They clear themselves after the next ordinary key, because a
+     * latch left on turns every later keystroke into a shortcut, which is a confusing state to
+     * be in with no modifier light on a phone.
      */
-    private void toggleCtrl() { setCtrl(!ctrlLatched); }
+    private void addModifier(String label, final int metaBit) {
+        TextView button = addKey(label, KeyEvent.KEYCODE_UNKNOWN);
+        modifierButtons.put(metaBit, button);
+        button.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            latched ^= metaBit;
+            styleModifiers();
+        });
+    }
 
-    private void setCtrl(boolean on) {
-        ctrlLatched = on;
-        ctrlButton.setTextColor(on ? Brand.ON_BRAND : Ui.text(dark));
-        ctrlButton.setBackground(on
-                ? Ui.fill(getContext(), Ui.accent(dark), 12)
-                : Ui.tappable(getContext(),
-                        Ui.outlined(getContext(), Ui.card(dark), Ui.line(dark), 12), dark));
+    private void clearLatched() {
+        if (latched == 0) return;
+        latched = 0;
+        styleModifiers();
+    }
+
+    private void styleModifiers() {
+        for (java.util.Map.Entry<Integer, TextView> entry : modifierButtons.entrySet()) {
+            boolean on = (latched & entry.getKey()) != 0;
+            TextView button = entry.getValue();
+            button.setTextColor(on ? Ui.onAccentContainer(dark) : Ui.text(dark));
+            button.setBackground(on
+                    ? Ui.fill(getContext(), Ui.alpha(Ui.accent(dark), dark ? 150 : 120), 12)
+                    : Ui.tappable(getContext(),
+                            Ui.outlined(getContext(), Ui.card(dark), Ui.line(dark), 12), dark));
+        }
+    }
+
+    /**
+     * What is showing and what is latched, as one number.
+     *
+     * Turning the phone rebuilds this whole bar for the new colours, and everything the owner
+     * had set up -- the key row open, a modifier held, the trackpad out -- used to go with it.
+     */
+    int snapshot() {
+        return (keyScroll.getVisibility() == VISIBLE ? 1 : 0)
+                | (trackpad.getVisibility() == VISIBLE ? 2 : 0)
+                | (latched << 8);
+    }
+
+    void restore(int state) {
+        keyScroll.setVisibility((state & 1) != 0 ? VISIBLE : GONE);
+        trackpad.setVisibility((state & 2) != 0 ? VISIBLE : GONE);
+        latched = state >> 8;
+        styleModifiers();
     }
 
     void toggleKeys() {
         boolean showing = keyScroll.getVisibility() == VISIBLE;
         keyScroll.setVisibility(showing ? GONE : VISIBLE);
-        if (showing) setCtrl(false);
+        if (showing) clearLatched();
     }
 
     void toggleTrackpad() {
@@ -149,7 +223,7 @@ final class KeyBar extends LinearLayout {
     void hideAll() {
         keyScroll.setVisibility(GONE);
         trackpad.setVisibility(GONE);
-        setCtrl(false);
+        clearLatched();
     }
 
     /**

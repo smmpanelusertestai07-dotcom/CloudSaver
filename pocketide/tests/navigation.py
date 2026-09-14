@@ -120,10 +120,35 @@ workspace = code("WorkspaceActivity.java")
 if re.search(r'MATCH_PARENT,\s*Ui\.dp\(this,\s*Shell\.NAV_BAR_DP\)', workspace):
     problems.append("the editor's toolbar is laid out at a FIXED 64 dp, which clips its labels "
                     "at a large font scale exactly as the navigation bar once did")
-if "KEYCODE_F1" not in workspace:
-    problems.append("the Commands button does not send F1. Ctrl+Shift+P through the WebView "
-                    "arrived as nothing on the owner's phone; F1 is the palette's other "
-                    "binding and a single unmodified key")
+# The editor menu, and how it presses a key.
+#
+# Ctrl+Shift+P through the WebView's key translation arrived as nothing on the owner's phone --
+# "Commands does not work" was the report -- so the rule is: one unmodified function key, sent
+# as a DOM event rather than through Android's translation, and bound by the editor's own
+# keybindings file. All three halves are checked, because any one of them alone is the bug.
+if "menu()" not in workspace or '"Command palette"' not in workspace:
+    problems.append("the editor has no menu offering the command palette, so the 29 commands "
+                    "that live only there need a keyboard shortcut a phone cannot press")
+press = re.search(r'private void press\(int functionKey\) \{(.*?)\n    \}', workspace, re.S)
+if not press:
+    problems.append("the editor menu has no press() that sends a key to the editor")
+else:
+    if "dispatchKeyEvent" in press.group(1):
+        problems.append("the editor menu presses its key through Android's key translation, "
+                        "which is the path that swallowed Ctrl+Shift+P")
+    if "KeyboardEvent" not in press.group(1):
+        problems.append("the editor menu does not dispatch a DOM KeyboardEvent, so the editor's "
+                        "keybinding service never sees the press")
+extensions = code("Extensions.java")
+for binding in ('"f1", "workbench.action.showCommands"',
+                '"f3", "workbench.action.terminal.toggleTerminal"',
+                '"f4", "workbench.view.extensions"'):
+    if binding.replace('", "', '", "') not in extensions:
+        problems.append("keybindings.json does not bind %s, so the menu row that presses it "
+                        "does nothing" % binding)
+if "workbench.view.extension." not in extensions:
+    problems.append("nothing binds a key to an agent's own panel, so an installed agent can "
+                    "only be opened by finding its icon in the activity bar")
 if "ic_cursor" not in workspace or not os.path.exists(app + "/app/res/drawable/ic_cursor.xml"):
     problems.append("the Cursor button does not use the pointer icon")
 if "setSupportZoom(true)" not in workspace or "setBuiltInZoomControls(true)" not in workspace:
@@ -351,6 +376,149 @@ if "rebuildOnReturn" not in code("Pane.java"):
 elif "public boolean rebuildOnReturn() { return false; }" not in code("AgentsPane.java"):
     problems.append("AgentsPane does not opt out of the rebuild on return, so leaving the app "
                     "for a moment empties the search box and its results")
+
+
+# --- held sideways ---------------------------------------------------------------------------
+#
+# Three separate things have to be true before an owner can use the editor in landscape, and
+# each one alone is a bug that looks like the other two.
+for name in ("values", "values-night", "values-v31"):
+    styles = open(app + "/app/res/%s/styles.xml" % name).read()
+    if "windowLayoutInDisplayCutoutMode" not in styles:
+        problems.append("%s/styles.xml does not set windowLayoutInDisplayCutoutMode, so a "
+                        "phone with a camera notch paints a black band down one whole side of "
+                        "the screen in landscape" % name)
+if not os.path.exists(src + "Rotation.java"):
+    problems.append("there is no rotation setting, so an owner whose phone has auto-rotate "
+                    "switched off can never see the editor in landscape at all")
+else:
+    rotation = code("Rotation.java")
+    if "SCREEN_ORIENTATION_SENSOR_LANDSCAPE" not in rotation:
+        problems.append("the landscape choice pins one side up instead of following the phone, "
+                        "so half the time it has to be turned the way the app picked")
+    if "SCREEN_ORIENTATION_UNSPECIFIED" not in rotation:
+        problems.append("the default rotation overrules the phone's own rotation lock on the "
+                        "strength of a setting nobody chose")
+    for name in ("MainActivity.java", "WorkspaceActivity.java"):
+        if "Rotation.apply(this)" not in code(name):
+            problems.append("%s never applies the rotation setting" % name)
+        if "Rotation.apply(this)" not in re.search(
+                r'protected void onStart\(\) \{(.*?)\n    \}', code(name), re.S).group(1):
+            problems.append("%s applies rotation only once, so changing it in Settings does "
+                            "not reach a screen that is already open" % name)
+
+# --- a modifier is a key, not a flag ----------------------------------------------------------
+#
+# A synthetic KeyEvent carrying META_CTRL_ON and nothing else is not what a keyboard sends and
+# not what the browser engine believes: a real Ctrl+C is Ctrl down, C down, C up, Ctrl up. The
+# key row's Ctrl used to light up and do nothing for exactly this reason.
+chord = re.search(r'public void key\(int keyCode, int metaState\) \{(.*?)\n    \}',
+                  workspace, re.S)
+if not chord:
+    problems.append("WorkspaceActivity has no key() for the key row to send through")
+else:
+    body = chord.group(1)
+    for modifier in ("KEYCODE_CTRL_LEFT", "KEYCODE_ALT_LEFT", "KEYCODE_SHIFT_LEFT"):
+        if modifier not in body:
+            problems.append("key() never presses %s as a real key, so any chord using it "
+                            "arrives as the unmodified key" % modifier)
+keybar = code("KeyBar.java")
+if "META_SHIFT_ON" not in keybar or "META_ALT_ON" not in keybar:
+    problems.append("the key row offers only Ctrl, so Ctrl+Shift+P cannot be typed on a phone")
+if "snapshot()" not in keybar or "restore(" not in keybar:
+    problems.append("the key row cannot save its state, so turning the phone closes it and "
+                    "drops whatever modifier was held")
+
+# --- the editor's own window --------------------------------------------------------------------
+if "onShowFileChooser" not in workspace:
+    problems.append("no file chooser, so an agent panel's own attach-a-file button is inert")
+if "setDownloadListener" not in workspace:
+    problems.append("no download listener, so a download offered inside the editor is dropped "
+                    "with nothing shown")
+
+# --- the editor is never squeezed narrower than it can lay itself out in -----------------------
+#
+# Computed here rather than asserted, because the fault was arithmetic: the font scale was ADDED
+# to the worked-out zoom with nothing holding the result, so a 360 dp phone set to 1.3x text
+# reached the cap and left the workbench 228 effective pixels. That is what an owner photographed
+# running off the side of the screen.
+screen_src = code("Screen.java")
+
+
+def number(name):
+    found = re.search(name + r'\s*=\s*([0-9.]+)f?;', screen_src)
+    return float(found.group(1)) if found else None
+
+
+# The constants are only half of it. This gate replicates the arithmetic in Python, so it
+# would go on passing if Screen.java stopped applying its own floor -- which is precisely the
+# bug it was written for. So the shape of the Java is asserted too.
+automatic = re.search(r'static int automaticZoomTenths\(Context context\) \{(.*?)\n    \}',
+                      screen_src, re.S)
+if not automatic:
+    problems.append("Screen has no automaticZoomTenths for the editor's width to come from")
+else:
+    body = automatic.group(1)
+    if "FLOOR_EFFECTIVE_DP" not in body:
+        problems.append("the zoom is worked out without applying the floor, so a large system "
+                        "text size can squeeze the workbench until it overflows the screen")
+    if body.find("fontScale") > body.find("FLOOR_EFFECTIVE_DP"):
+        problems.append("the floor is applied before the font scale is added, which is the "
+                        "same as not applying it: the addition is what breaks the floor")
+    if "Math.floor(zoom * 10)" not in body:
+        problems.append("the zoom is rounded to the nearest tenth, which can round UP past the "
+                        "floor the line above it just enforced")
+
+floor = number("FLOOR_EFFECTIVE_DP")
+target = number("MIN_EFFECTIVE_DP")
+step = number("STEP")
+lo, hi = number("MIN_ZOOM"), number("MAX_ZOOM")
+if None in (floor, target, step, lo, hi):
+    problems.append("Screen.java no longer states the widths and zoom limits this gate checks")
+else:
+    import math
+    worst = None
+    for width in (320, 360, 393, 411, 432, 480, 600, 673, 800):
+        for scale in (0.85, 1.0, 1.15, 1.3, 1.5, 1.8, 2.0):
+            zoom = math.log(width / target) / math.log(step)
+            zoom += math.log(scale) / math.log(step)
+            widest = math.log(width / floor) / math.log(step)
+            zoom = min(zoom, widest)
+            zoom = max(lo, min(hi, zoom))
+            effective = width / (step ** (math.floor(zoom * 10) / 10.0))
+            if worst is None or effective < worst[0]:
+                worst = (effective, width, scale)
+    if worst[0] < floor - 1:
+        problems.append("at %d dp and text scale %.2f the editor is left %.0f effective pixels, "
+                        "under the %.0f it needs to lay itself out -- the workbench overflows "
+                        "the screen there" % (worst[1], worst[2], worst[0], floor))
+
+
+# --- the app shows what the editor has, not what the app remembers doing ----------------------
+#
+# An owner installed Antigravity from inside the editor -- the ordinary way -- and every screen
+# in the app went on saying it was not installed, because the app was reading a list only it
+# ever wrote. Two separate faults, and either one alone reproduces the report.
+registry = code("Registry.java")
+installed_fn = re.search(r'static List<String> installed\(Context context\) \{(.*?)\n    \}',
+                         registry, re.S)
+if not installed_fn or "Extensions.ids" not in installed_fn.group(1):
+    problems.append("Registry.installed() does not ask the editor what it has, so anything "
+                    "installed from inside the editor is invisible to every screen in the app")
+if not os.path.exists(src + "Extensions.java"):
+    problems.append("there is nothing that reads the editor's own record of its extensions")
+else:
+    ext = code("Extensions.java")
+    if "equalsIgnoreCase" not in ext:
+        problems.append("extension identifiers are compared case-sensitively; the registry "
+                        "publishes Google.google-antigravity and the editor records it lower "
+                        "cased, so the same extension never matches itself")
+for name in ("AgentsPane.java", "HomePane.java"):
+    text = code(name)
+    for wrong in ("present.contains(agent.id)", "present.contains(listing.id)"):
+        if wrong in text:
+            problems.append("%s compares extension identifiers with contains(), which is "
+                            "case-sensitive and therefore always false for Google's" % name)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

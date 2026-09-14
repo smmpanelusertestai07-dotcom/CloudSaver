@@ -259,6 +259,75 @@ final class Texts {
                      + "the path to them in this phone\u2019s own menu words instead. Plugging "
                      + "the phone in helps too: most phones relax the battery manager while "
                      + "charging."},
+            {"About",
+             "Is this a computer, or an editor?",
+             "It is an editor \u2014 an IDE \u2014 that happens to carry the Linux it needs to "
+                     + "build and run what you write. That is the distinction worth being "
+                     + "clear about, because the two are judged on different things.\n\nA "
+                     + "Linux-on-Android app is judged on how complete the Linux is. This is "
+                     + "judged on whether you can actually get work done on a phone: whether "
+                     + "the editor fits a thumb, whether an agent can be signed in to and "
+                     + "watched, whether a build survives the screen going off. Those are the "
+                     + "problems solved here, and they are the ones that do not go away as "
+                     + "phones get faster.\n\nOn a desktop this would be second best; nobody "
+                     + "should give up a laptop for it. On a phone, where the alternative is a "
+                     + "terminal emulator and a text editor, there is nothing else that puts a "
+                     + "real Visual Studio Code, a real Linux and first-party coding agents "
+                     + "together in one thing you can open on a bus."},
+            {"Agents",
+             "Why only these three, and can I add another AI?",
+             "Three are pre-set. Every other one is an install away, and nothing here is a "
+                     + "fence.\n\nThe three are pre-set because they pass the same four tests: "
+                     + "the company trains its own frontier model family, ships its own "
+                     + "first-party agentic coding extension, owns frontier-scale compute, and "
+                     + "publishes a frontier-safety policy. Anthropic, Google DeepMind and "
+                     + "OpenAI are the three that pass all four, and independent 2026 trackers "
+                     + "place them level with each other on agentic coding and ahead of the "
+                     + "rest. Being briefly top of a leaderboard is not one of the tests; "
+                     + "staying there is.\n\nAnything else on Open VSX installs from the "
+                     + "Agents screen \u2014 official extensions and community ones alike. That "
+                     + "is what makes a command-line agent usable here: somebody wraps it in an "
+                     + "extension, and it arrives with a panel, buttons and a diff view instead "
+                     + "of a terminal prompt. Community extensions are hidden until you turn "
+                     + "them on, and then marked UNVERIFIED wherever they appear, because that "
+                     + "is the one thing every counterfeit found on the registry in 2026 had in "
+                     + "common.\n\nWhen a fourth company publishes a first-party coding agent "
+                     + "under a verified publisher name, you will be able to install it the day "
+                     + "it appears, without waiting for this app to be updated."},
+            {"Agents",
+             "I installed an agent. How do I open it?",
+             "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
+                     + "\u201cOpen Antigravity\u201d, and the same for any other agent that "
+                     + "brings a panel with it. Tapping the row on the Agents screen offers the "
+                     + "same thing.\n\nInside the editor it also lives in the activity bar, "
+                     + "which on a phone is the row of small icons along the bottom of the "
+                     + "editor itself. The menu exists because that row is easy to miss."},
+            {"Editor",
+             "Can I use it sideways?",
+             "Yes. Turn the phone and the editor turns with it, keeping the session, the open "
+                     + "files and anything running in the terminal \u2014 it is not reloaded. "
+                     + "Landscape gives the editor roughly twice the width, which is enough for "
+                     + "a file tree beside the code, or a diff with both sides showing.\n\nThe "
+                     + "text size is worked out from the upright width and left alone when you "
+                     + "turn the phone, so the editor does not resize its own text under you. "
+                     + "Menu \u2192 Larger text and Smaller text change it whenever you want."},
+            {"Editor",
+             "Something is running off the side of the screen.",
+             "Menu \u2192 Smaller text. The editor is laid out at a width worked out from this "
+                     + "screen, and a phone set to a large system text size asks for more room "
+                     + "than the layout has \u2014 so the app holds the editor to a minimum "
+                     + "usable width and lets you adjust from there. You can also pinch to zoom "
+                     + "anywhere in the editor, as in a browser."},
+            {"Phone",
+             "The app closes as soon as I open it.",
+             "It will not do that twice more. The app counts its own openings and clears the "
+                     + "count once a screen has actually been drawn; after two openings that "
+                     + "never got that far, the third opens a recovery screen instead. That "
+                     + "screen says what happened, lets you copy the details, and offers to "
+                     + "reset what the app remembers \u2014 which does not touch Linux, the "
+                     + "editor, the extensions or your projects.\n\nIf it happens once and "
+                     + "then stops, Home shows what was recorded under \u201cThe app stopped "
+                     + "unexpectedly\u201d."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "

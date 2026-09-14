@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.PocketIDE" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <!-- Held sideways, a phone with a camera notch otherwise keeps an edge-to-edge window
+             clear of it and paints a black band down one whole side of the screen. This is the
+             attribute that lets the window use that edge; Theme.fitBars already pads the app's
+             own bars for the cutout, so nothing lands under it. Android 15 made this the
+             default and Android 10 to 14 did not, which is why it is stated. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
         <item name="android:windowBackground">@color/window_dark</item>
         <item name="android:navigationBarColor">@color/window_dark</item>
         <item name="android:statusBarColor">@color/window_dark</item>

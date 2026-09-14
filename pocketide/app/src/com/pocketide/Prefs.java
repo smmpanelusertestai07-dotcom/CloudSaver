@@ -24,6 +24,7 @@ final class Prefs {
     static final String THEME = "theme";              // system | light | dark
     static final String EDITOR_LAYOUT = "editor_layout"; // phone | desktop
     static final String EDITOR_ZOOM = "editor_zoom";  // tenths, e.g. 15 == 1.5
+    static final String ROTATION = "rotation";        // auto | portrait | landscape
 
     // Network
     static final String DATA_CAP_MB = "data_cap_mb";  // 0 == no limit

@@ -213,6 +213,19 @@ final class SettingsPane implements Pane {
         list.addView(themeRow);
         list.addView(Ui.divider(host, dark, true));
 
+        // Its own row rather than a corner of the editor, because it decides both screens and
+        // because the reason it exists is a phone-wide setting: with the phone's auto-rotate
+        // off, nothing in this app can ever be shown sideways until this row says so.
+        list.addView(Ui.row(host, dark, R.drawable.ic_rotate, "Screen rotation",
+                Rotation.label(host),
+                v -> Dialogs.choose(host, "Screen rotation", Rotation.LABELS, Rotation.ICONS,
+                        indexOf(Rotation.VALUES, Rotation.choice(host)), index -> {
+                            Rotation.set(host, Rotation.VALUES[index]);
+                            Rotation.apply(host);
+                            MainActivity.rebuild(host);
+                        })));
+        list.addView(Ui.divider(host, dark, true));
+
         String layout = Prefs.of(host).getString(Prefs.EDITOR_LAYOUT, "auto");
         String[] layoutLabels = {"Automatic · recommended", "Phone", "Desktop"};
         String[] layoutValues = {"auto", "phone", "desktop"};

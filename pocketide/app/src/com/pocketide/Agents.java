@@ -87,6 +87,23 @@ final class Agents {
 
     private Agents() {}
 
+    /**
+     * Whether a publisher is the company whose model the extension talks to.
+     *
+     * Open VSX verifies that a publisher name has a real owner, which is the check that keeps
+     * counterfeits out -- but a verified publisher is not the same thing as the company itself.
+     * A perfectly honest third party can publish a perfectly verified Claude client. This says
+     * which rows are the company's own, so the search results can say "official" where it is
+     * true and only "verified" where that is all that is known.
+     */
+    static boolean official(String publisherName) {
+        if (publisherName == null) return false;
+        for (Agent agent : ALL) {
+            if (agent.namespace().equalsIgnoreCase(publisherName)) return true;
+        }
+        return false;
+    }
+
     static Agent byId(String id) {
         for (Agent agent : ALL) if (agent.id.equals(id)) return agent;
         return null;

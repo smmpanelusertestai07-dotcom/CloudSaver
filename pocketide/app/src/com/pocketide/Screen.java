@@ -39,10 +39,36 @@ final class Screen {
     /** The narrowest the editor can be and still be one. Measured, not guessed: see the class note. */
     private static final float MIN_EFFECTIVE_DP = 300f;
 
+    /**
+     * The width the editor is never taken below, whatever else is asked for.
+     *
+     * This is the fix for a screenshot an owner sent of the editor with its own panel running
+     * off the side of the screen. The font scale used to be ADDED to the worked-out zoom with
+     * nothing holding the result: a 360 dp phone set to 1.3x text reached the 2.5 cap and left
+     * Visual Studio Code 228 effective pixels, well under the 300 the rest of this class is
+     * built around. At that width the workbench stops wrapping and starts overflowing, which is
+     * precisely what the screenshot shows.
+     *
+     * 280 rather than 300 so that a larger text setting still does something. Below 280 it
+     * stops being a text-size preference and becomes a broken layout, so that is where it ends.
+     */
+    private static final float FLOOR_EFFECTIVE_DP = 280f;
+
     /** VS Code's own zoom step. Each level is 20 % larger than the one below it. */
     private static final double STEP = 1.2;
 
-    private static final double MIN_ZOOM = 1.0;
+    /**
+     * Zero, not one, and the difference only ever shows on a genuinely narrow phone.
+     *
+     * This used to be 1.0 on the reasoning that no phone is narrower than 300 dp, so the
+     * worked-out value could never want less. That was true of the width alone and stopped
+     * being true once the owner's text scale was folded in: on a 320 dp phone the floor below
+     * wants a zoom under 1.0, and a minimum of 1.0 overrode it and handed the workbench 267
+     * effective pixels -- under its own floor, on the narrowest phones, which are the ones that
+     * could least afford it. Zero is Visual Studio Code's own 100 %, so nothing is ever
+     * rendered smaller than the editor's untouched default.
+     */
+    private static final double MIN_ZOOM = 0.0;
     private static final double MAX_ZOOM = 2.5;
 
     /** Past this the phone is a tablet or an open foldable, and the desktop layout fits. */
@@ -99,9 +125,19 @@ final class Screen {
             zoom += Math.log(fontScale) / Math.log(STEP);
         }
 
+        // The floor, applied after the font scale rather than before it. This is the line
+        // that was missing: without it the addition above could ask for any zoom at all and
+        // the only thing stopping it was a cap chosen for wide screens.
+        double widest = Math.log(width / FLOOR_EFFECTIVE_DP) / Math.log(STEP);
+        if (zoom > widest) zoom = widest;
+
         if (zoom < MIN_ZOOM) zoom = MIN_ZOOM;
         if (zoom > MAX_ZOOM) zoom = MAX_ZOOM;
-        return (int) Math.round(zoom * 10);
+        // Rounded DOWN to the tenth the editor is actually given. Rounding to the nearest one
+        // can round up, and a zoom one tenth higher than the clamp above allowed is a zoom that
+        // breaks the floor the clamp exists to hold: at 393 dp and 1.15x text it put the
+        // workbench back under 280 effective pixels. Down always errs towards more room.
+        return (int) Math.floor(zoom * 10);
     }
 
     /**
@@ -126,6 +162,16 @@ final class Screen {
     static String describeAutomatic(Context context) {
         int tenths = automaticZoomTenths(context);
         return widthDp(context) + " dp wide · zoom " + (tenths / 10) + "." + (tenths % 10)
+                + " · " + effectiveDp(context) + " px for the editor"
                 + " · " + (wideEnoughForDesktop(context) ? "desktop" : "phone") + " layout";
+    }
+
+    /**
+     * The width the editor is left with once the zoom is applied -- the number that decides
+     * whether the workbench fits on the screen or runs off the side of it.
+     */
+    static int effectiveDp(Context context) {
+        int tenths = zoomTenths(context);
+        return (int) Math.round(widthDp(context) / Math.pow(STEP, tenths / 10.0));
     }
 }

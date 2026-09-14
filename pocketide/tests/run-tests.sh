@@ -229,7 +229,7 @@ in_code 'window\.commandCenter' "$ASSETS/pocketide-editor.sh"
 check "CommandCentre" $? \
   "the command centre is off, so 29 commands would need a keyboard shortcut a phone cannot press"
 
-in_code 'commandPalette' "$SRC/WorkspaceActivity.java"
+in_code 'Command palette' "$SRC/WorkspaceActivity.java"
 check "PaletteButton" $? "there is no one-tap way to reach the command palette"
 
 python3 "$HERE/layout_sanity.py" "$SRC" && pass "FitsTheScreen" \

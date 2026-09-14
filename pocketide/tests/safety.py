@@ -27,6 +27,7 @@ Every check here corresponds to a specific way of being wrong that would still l
   5. The phone's files defaulting to on. A default of true would be a permission granted by
      someone who never asked for it.
 """
+import os
 import re
 import sys
 
@@ -166,6 +167,53 @@ for item in ("windowLightStatusBar", "windowLightNavigationBar", "windowBackgrou
     if item not in v31:
         problems.append("values-v31/styles.xml does not restate android:%s, which the base "
                         "splash style sets and this one silently drops" % item)
+
+
+# --- 10. the browser engine's process dying must not take the app with it -------------------
+#
+# The one that produced "app open karte hi apne aap close ho raha". A WebView runs its page in a
+# separate renderer process; when Android kills that process for memory -- and Visual Studio
+# Code with an extension host and three agent panels is the most expensive thing on the phone --
+# an app that does not handle the death is killed with it. No dialog, no report, no log.
+gone = re.search(r'public boolean onRenderProcessGone\(.*?\n            \}', editor, re.S)
+if not gone:
+    problems.append("WorkspaceActivity does not override onRenderProcessGone, so Android kills "
+                    "the whole app when the editor's renderer is reclaimed for memory")
+elif "return true" not in gone.group(0):
+    problems.append("onRenderProcessGone does not return true, which tells Android the app did "
+                    "NOT handle the death -- and Android then kills the app anyway")
+if "FLAG_KEEP_SCREEN_ON" not in editor:
+    problems.append("the editor screen lets the phone sleep while an agent is working; the "
+                    "service's wake lock is the CPU's and does not cover the screen")
+
+# --- 11. the app cannot vanish at startup without saying why ---------------------------------
+boot = code(read("Boot.java")) if os.path.exists(src + "Boot.java") else ""
+if "starting(" not in boot or "reached(" not in boot or "failing(" not in boot:
+    problems.append("Boot does not count launches, so an app that dies before drawing has "
+                    "nothing to notice that it did")
+if ".commit()" not in boot:
+    problems.append("Boot writes its launch count with apply(); a process killed a moment "
+                    "later never gets it to disk, which is the only case it exists for")
+if "Boot.starting" not in main or "Boot.failing" not in main or "Boot.reached" not in main:
+    problems.append("MainActivity does not use the startup guard, so a launch that dies "
+                    "silently dies silently again on every later try")
+guarded = re.search(r'catch \(Throwable failure\) \{(.{0,400}?)\n        \}', main, re.S)
+if not guarded or "Boot.show" not in guarded.group(1):
+    problems.append("MainActivity does not catch a failure while building its first screen, so "
+                    "the first failure is still a window that closes with nothing said")
+
+# --- 12. stopping Linux takes the whole container with it ------------------------------------
+#
+# Process.destroy() signals PRoot and does not wait. A tracer that is killed leaves its tracees
+# detached and still running, so a compiler outlives the Stop button.
+service_text = code(read("WorkspaceService.java"))
+if "sweep(" not in service_text or "Running.workspace" not in service_text:
+    problems.append("WorkspaceService kills PRoot without sweeping the workspace's own "
+                    "processes, so whatever it was tracing is reparented and keeps running")
+for signal, why in ((" 3)", "SIGQUIT, which is what PRoot answers by killing its tracees"),
+                    (" 9)", "SIGKILL as the backstop for anything that outlived its tracer")):
+    if "sweep(%s" % signal.strip().rstrip(")") not in service_text:
+        problems.append("the stop path never sends %s" % why)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

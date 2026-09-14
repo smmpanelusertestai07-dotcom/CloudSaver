@@ -1,5 +1,99 @@
 # Release notes
 
+## 1.9.0
+
+The release that answers a screenshot, a crash report, and the question "how do I open it".
+
+### The app closed itself the moment it opened
+
+A WebView draws its page in a separate process, and Android's rule is blunt: if that process is
+killed and the app has not said it can cope, Android kills the app too — no dialog, no report,
+nothing in a log an owner could find. The most expensive thing on a phone running this app is
+Visual Studio Code with an extension host and three agent panels in it, so the editor's renderer
+is exactly what gets reclaimed first, and reopening the app went straight back to the editor.
+That is the whole of "app open karte hi apne aap close ho raha".
+
+It is handled now. The dead window is taken down and the screen offers to open the editor again,
+which costs the session and nothing else.
+
+Two more layers sit under that, because a sideloaded app has no crash console and the one process
+that could explain a death is the one that died. The app counts its own openings, writes the
+count synchronously, and clears it only once a frame has actually reached the screen; after two
+openings that never got that far, the third opens a recovery screen instead of trying again. And
+anything thrown while the first screen is being built is caught and shown on that same screen —
+so even the first failure is something an owner can read and copy, with a Reset that puts the
+app's settings back to new without touching Linux, the editor, the extensions or the projects.
+
+### An extension installed in the editor was invisible to the app
+
+Install Antigravity from inside the editor — the ordinary way, the way the editor's own
+Extensions panel offers — and every screen in the app went on saying it was not installed, while
+Claude Code and Codex, which the app itself had installed, showed correctly.
+
+Two faults, either one enough on its own. The app kept its own list in a preference and never
+asked the editor, so a list only it ever wrote was wrong the moment anyone installed anything any
+other way. And identifiers were compared with equals(): the registry publishes
+`Google.google-antigravity` and the editor records it lower-cased, so the same extension never
+matched itself.
+
+The app reads the editor's own record now — off the phone's disk, with no Linux running — and
+compares identifiers the way both sides mean them.
+
+### "How do I open it?"
+
+The editor's four buttons were Commands, Keys, Cursor, Back, and Commands did nothing. It is a
+Menu now, and the menu names the agents: **Open Antigravity**, and the same for anything else
+that brings a panel. It also holds the command palette, Files, Terminal, Extensions, the side
+panel, the text size, and full screen.
+
+Underneath, the app writes the editor's own `keybindings.json` and presses those keys as DOM
+events rather than through Android's key translation — which is the path that swallowed
+Ctrl+Shift+P and produced the original "Commands does not work". Three of the bindings are worked
+out from whichever agents are actually installed.
+
+### Held sideways
+
+Landscape needed three separate things and had none of them. The window now uses the screen
+under a camera notch instead of leaving a black band down one side; there is a rotation setting
+with Follow the phone, Portrait and Landscape, because a phone with auto-rotate switched off
+otherwise never offers the editor the extra width at all; and the editor's own state — the key
+row, a held modifier, the trackpad — survives the turn instead of being thrown away with the
+chrome.
+
+### The workbench ran off the side of the screen
+
+The owner's text scale was added to the worked-out zoom with nothing holding the result, so a
+360 dp phone set to 1.3× text reached the cap and left the editor 228 effective pixels — well
+under the 300 the sizing is built around, and below that the workbench stops wrapping and starts
+overflowing. There is a floor now, applied after the font scale rather than before it, and the
+rounding errs towards more room instead of less. A gate computes the result across nine widths
+and seven text scales and fails the build if any of them falls under it.
+
+### A modifier is a key, not a flag
+
+A real Ctrl+C is four events — Ctrl down, C down, C up, Ctrl up. The app sent one event carrying
+a meta bit, which is a plain C. The Ctrl key on the key row lit up and did nothing, and had done
+since it was written. Modifiers are pressed and released as real keys now, they latch together so
+Ctrl+Shift+P is reachable, and the row gains Alt, Shift, Enter, Backspace, Delete and the six
+characters a shell needs most that a phone keyboard buries.
+
+### Smaller things
+
+Stopping Linux sweeps the workspace's own processes rather than killing PRoot and leaving
+whatever it was tracing reparented and still running. A failed start offers Open the editor again
+instead of a dialog with only a Copy button. The editor keeps the screen awake while an agent
+works. An agent panel's attach-a-file button opens a real file picker, and a download offered
+inside the editor reaches the phone instead of being dropped. Android refusing a foreground
+service is reported rather than crashing the app. Search results say *official* where the
+publisher is the company whose model the extension talks to, which is a stronger claim than
+verified and was not being made separately. Six new entries in Help: what this app is, why these
+three agents and how to add others, how to open an agent, landscape, overflow, and what to do if
+the app closes on opening.
+
+### Gates
+
+46, with twenty-three new checks inside them, each broken on purpose and confirmed to fail.
+
 ## 1.8.0
 
 The interface an owner actually asked for, and the last layer that did not update itself.

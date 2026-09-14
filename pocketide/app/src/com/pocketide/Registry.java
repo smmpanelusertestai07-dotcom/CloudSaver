@@ -166,7 +166,22 @@ final class Registry {
     }
 
     /** The installed-extension list the app keeps, so Home can show it without asking Linux. */
+    /**
+     * What the editor actually has, not what this app remembers installing.
+     *
+     * The difference is a bug an owner reported with a screenshot: Antigravity installed from
+     * inside the editor stayed "not installed" everywhere in the app, because the app was
+     * reading a list only it ever wrote. The editor's own record is the answer whenever there
+     * is an editor to ask; the remembered list is the fallback for before there is one. See
+     * Extensions.
+     */
     static List<String> installed(Context context) {
+        List<String> real = Extensions.ids(context);
+        if (real != null) return real;
+        return remembered(context);
+    }
+
+    static List<String> remembered(Context context) {
         String stored = Prefs.of(context).getString(Prefs.INSTALLED_EXTENSIONS, "");
         List<String> ids = new ArrayList<>();
         for (String line : stored.split("\n")) {
@@ -177,7 +192,9 @@ final class Registry {
     }
 
     static void remember(Context context, String id, boolean present) {
-        List<String> ids = installed(context);
+        // The editor has just been changed, so anything read from it a moment ago is stale.
+        Extensions.forget();
+        List<String> ids = remembered(context);
         if (present && !ids.contains(id)) ids.add(id);
         if (!present) ids.remove(id);
         StringBuilder joined = new StringBuilder();
