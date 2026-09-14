@@ -1,4 +1,4 @@
-# PocketLinux 13.0.0, build 420 -- the last audit
+# PocketLinux 14.0.0 -- the audit, the security fix and the new name
 
 Everything below this entry was written before the code was read one more time, cluster by
 cluster. This is what that reading changed. It ships in the same release, under the same version
@@ -2540,7 +2540,7 @@ stopped, and a viewer that no longer tears.
   virtualisation away from apps; emulation would be ten to fifty times slower; macOS is licensed
   only for Apple hardware. Wine can run small native ARM64 Windows programs on Linux, not the
   Windows editions of these AI apps, which are the same programs as their Linux editions anyway.
-- **Ubuntu 24.04 LTS** is supported by Canonical until April 2029 (2034 with Ubuntu Pro).
+- **Ubuntu 24.04 LTS** has security updates from Ubuntu until April 2029.
 - Written in a new Home card, **Linux only, on purpose**, with the answers opening in place; the
   Windows/macOS question and the honest limits were rewritten to hold only what is permanent.
 

@@ -48,7 +48,7 @@ import java.util.Locale;
  * lives next to the thing it is about.
  */
 public final class MainActivity extends Activity {
-    static final String VERSION = "13.0.0";
+    static final String VERSION = "14.0.0";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
     /**
      * Whether this app has ever put the notifications prompt on screen.
