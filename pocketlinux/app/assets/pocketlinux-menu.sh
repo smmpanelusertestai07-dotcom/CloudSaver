@@ -291,7 +291,6 @@ EOF
   printf '  <item label="Download destination"><action name="Execute"><command>'"$OPEN"' pcmanfm %s</command></action></item>\n' "$(xml_escape "$DOWNLOAD_DIR")"
   echo '  <item label="Bin"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.local/share/Trash/files</command></action></item>'
   echo '  <item label="Empty the bin"><action name="Execute"><command>sh -c "rm -rf /home/coder/.local/share/Trash/files/* /home/coder/.local/share/Trash/files/.[!.]* /home/coder/.local/share/Trash/info/* 2>/dev/null; notify-send -a PocketLinux Bin \"The bin is empty.\""</command></action></item>'
-  echo '  <item label="App reports"><action name="Execute"><command>'"$OPEN"' pcmanfm /home/coder/.pocketlinux/logs</command></action></item>'
   echo '  <separator label="Windows"/>'
   echo '  <item label="Open windows"><action name="Execute"><command>'"$WINDOWS"' list</command></action></item>'
   echo '  <item label="Fit window to the screen"><action name="Execute"><command>'"$WINDOWS"' fit</command></action></item>'

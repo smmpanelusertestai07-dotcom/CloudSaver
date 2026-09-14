@@ -15,6 +15,10 @@ not drawn by this script.
 Drawn at 4x and scaled down, which is the whole anti-aliasing story: Pillow's draw has no
 smoothing of its own, and a 128-pixel icon drawn directly has ragged edges on a phone screen.
 
+Every icon is written at 256, 128, 64 and 48 pixels. Only the 256 used to be shipped, and the
+file manager and the bar scaled that one file down themselves for the much smaller sizes they
+draw, which is what made the small icons look soft.
+
     python3 tools/make_icons.py
 """
 import math
@@ -25,6 +29,10 @@ from PIL import Image, ImageDraw
 SIZE = 256
 SS = 4          # supersampling
 W = SIZE * SS
+# pcmanfm draws the desktop grid at 64 to 128 and its list rows at up to 48, and the bar's
+# launchers come out anywhere from 40 to about 120 once the phone's dpi is applied. These four
+# leave a real file near whatever size is wanted.
+SIZES = (256, 128, 64, 48)
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(HERE, "app", "assets")
 
@@ -45,8 +53,22 @@ def canvas():
 
 
 def save(image, name):
-    image.resize((SIZE, SIZE), Image.LANCZOS).save(os.path.join(OUT, name))
-    print("wrote", name)
+    """Writes one icon at every size the desktop draws it at.
+
+    Each size is resampled from the 4x drawing rather than from the finished 256, so a 48-pixel
+    icon is a real 48-pixel picture instead of a big one squeezed by whatever filter the toolkit
+    happened to use.
+
+    The 256 keeps the plain name, because that is the file /usr/share/pixmaps has always
+    carried and the app installs it there under exactly that name. The smaller three carry
+    their size in the name. All four go under the hicolor icon theme as well, where a program
+    asking for an icon is handed one at the size it is about to draw it.
+    """
+    stem = os.path.splitext(name)[0]
+    for size in SIZES:
+        target = name if size == SIZE else "%s-%d.png" % (stem, size)
+        image.resize((size, size), Image.LANCZOS).save(os.path.join(OUT, target))
+        print("wrote", target)
 
 
 def s(value):
@@ -133,20 +155,25 @@ def package():
 
 
 def phone_files():
-    """Phone files: the phone itself, with a folder on its screen.
+    """Phone files: the same folder as the rest of the set, with a small phone on its corner.
 
-    Redrawn heavier than the first one, which was a thin outline that disappeared against the
-    wallpaper at panel size and read as an empty rectangle on the desktop.
+    This one used to be a stock clipart smartphone with a folder drawn on its screen. It was in
+    nobody's style but its own, and at the 48 and 64 pixels the desktop grid and the bar use, the
+    phone body filled the square while the folder -- the thing the launcher opens -- was a small
+    detail on a screen. So the folder is the shape now, and the phone is what is added to it, the
+    way the word "phone" is added to "files".
     """
     image, draw = canvas()
-    draw.rounded_rectangle([s(58), s(14), s(198), s(242)], radius=s(30), fill=INK)
-    draw.rounded_rectangle([s(70), s(38), s(186), s(212)], radius=s(12), fill=(238, 243, 252, 255))
-    draw.rounded_rectangle([s(108), s(22), s(148), s(30)], radius=s(4), fill=STEEL)
-    draw.ellipse([s(118), s(218), s(138), s(238)], fill=STEEL)
-    # The folder on the screen, the same folder as everywhere else in the set.
-    draw.rounded_rectangle([s(86), s(96), s(170), s(180)], radius=s(10), fill=AMBER_DEEP)
-    draw.rounded_rectangle([s(86), s(88), s(124), s(108)], radius=s(6), fill=AMBER_DEEP)
-    draw.rounded_rectangle([s(86), s(110), s(170), s(180)], radius=s(10), fill=AMBER)
+    folder(draw, AMBER, AMBER_DEEP)
+    # The white ring is not decoration. The phone hangs past the folder's corner onto the
+    # wallpaper, which is nearly black, and dark blue on that was invisible.
+    draw.rounded_rectangle([s(150), s(106), s(240), s(252)], radius=s(22), fill=WHITE)
+    draw.rounded_rectangle([s(160), s(116), s(230), s(242)], radius=s(16), fill=INK)
+    draw.rounded_rectangle([s(170), s(134), s(220), s(224)], radius=s(8), fill=(238, 243, 252, 255))
+    # The earpiece slot, which is what keeps the shape from reading as a plain card at 128 and
+    # 256. It is under a pixel at 48 and simply vanishes there, which is fine: at that size the
+    # tall dark outline is already doing the work.
+    draw.rounded_rectangle([s(184), s(122), s(206), s(128)], radius=s(3), fill=STEEL)
     save(image, "pocketlinux-phone.png")
 
 

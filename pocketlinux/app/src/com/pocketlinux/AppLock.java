@@ -51,31 +51,46 @@ final class AppLock {
     /** Called by App when no screen of this app has been in front for a moment. */
     static void relock() { locked = true; }
 
+    /**
+     * Whether the locked screen belongs in front right now. It reads and nothing more: both
+     * screens ask this from onStart, and while the question itself turned App lock off it did
+     * that on the desktop too, where there is no way to tell the owner it happened. That part
+     * is forgetIfNoScreenLock's, and the home screen calls it.
+     */
     static boolean isLocked(Context context) {
         if (!enabled(context)) return false;
-        if (!hasScreenLock(context)) {
-            // The phone's own lock was removed, and removing it required knowing it. The app
-            // lock turns itself off visibly (Settings shows a note) rather than becoming a
-            // door with no key.
-            SharedPreferences prefs = context.getSharedPreferences(ContainerRuntime.PREFS, Context.MODE_PRIVATE);
-            prefs.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, false)
-                    .putBoolean(ContainerRuntime.KEY_LOCK_NOTICE, true).apply();
-            return false;
-        }
+        // With no phone lock there is nothing to ask for, so the app cannot be held shut.
+        if (!hasScreenLock(context)) return false;
         return locked;
+    }
+
+    /**
+     * Turns App lock off when the phone's own screen lock has gone, and says whether it did.
+     *
+     * Removing the phone's lock needs the phone's lock, so this is not a way in. But with it
+     * gone the app has no key left to ask for, and a door that can never be opened is worse
+     * than an open one. The home screen calls this on its way up, because it is the screen
+     * that can show the owner the note saying it happened.
+     */
+    static boolean forgetIfNoScreenLock(Context context) {
+        if (!enabled(context) || hasScreenLock(context)) return false;
+        SharedPreferences prefs = context.getSharedPreferences(ContainerRuntime.PREFS, Context.MODE_PRIVATE);
+        prefs.edit().putBoolean(ContainerRuntime.KEY_APP_LOCK, false)
+                .putBoolean(ContainerRuntime.KEY_LOCK_NOTICE, true).apply();
+        return true;
     }
 
     interface Callback { void done(boolean unlocked); }
 
     /**
-     * Shows the locked screen over {@code root} and asks the phone at once. The overlay is
-     * removed only when the phone says yes; Cancel leaves it, with its Unlock button.
-     */
-    /**
      * Hide the window from the recents list whenever App lock is on -- not only while the lock
      * screen is up. Android takes the task snapshot as a screen goes to the background, which
      * is before the lock is raised on the way back: the whole desktop, with whatever was open
      * on it, was sitting in the recents thumbnail of a locked app.
+     *
+     * Both screens call this on their way up, and Settings calls it the moment the switch goes
+     * on. Waiting for the next onStart was too late: the owner turned the lock on and left, and
+     * that first snapshot, the one taken on the way out, still held the home screen.
      */
     static void applyWindowSecurity(Activity activity) {
         if (activity == null) return;
@@ -86,6 +101,10 @@ final class AppLock {
         }
     }
 
+    /**
+     * Shows the locked screen over {@code root} and asks the phone at once. The overlay is
+     * removed only when the phone says yes; Cancel leaves it, with its Unlock button.
+     */
     static View show(Activity activity, FrameLayout root, Runnable onUnlocked) {
         View existing = root.findViewWithTag("pocketlinux-lock");
         if (existing != null) return existing;

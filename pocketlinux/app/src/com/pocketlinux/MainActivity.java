@@ -3,8 +3,8 @@ package com.pocketlinux;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationManager;
 import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -14,12 +14,10 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -52,6 +50,14 @@ import java.util.Locale;
 public final class MainActivity extends Activity {
     static final String VERSION = "13.0.0";
     static final String EXTRA_ROUTE = "com.pocketlinux.route";
+    /**
+     * Whether this app has ever put the notifications prompt on screen.
+     *
+     * Android's own rationale flag cannot tell "never asked" from "refused for good", so the app
+     * has to keep the difference itself. It lives with this screen because this screen is the only
+     * thing that asks.
+     */
+    private static final String KEY_NOTIFICATIONS_ASKED = "notifications_asked";
     private static final int TAB_HOME = 0;
     private static final int TAB_APPS = 1;
     private static final int TAB_SETTINGS = 2;
@@ -122,10 +128,10 @@ public final class MainActivity extends Activity {
     private Ui.Row desktopScaleRow;
     private Ui.Row notificationRow;
     private Ui.Row batteryOptimisationRow;
-    private Ui.Row autoStartRow;
+    /** Which maker's settings pages this phone has. It cannot change while the app runs. */
+    private final PowerPages.Vendor vendor = PowerPages.vendor();
     private Ui.Row phoneFilesRow;
     private Ui.Row microphoneRow;
-    private Ui.Row errorReportRow;
     private DeviceProbe lastProbe;
     private Ui.Row dataCapRow;
     private Ui.Row downloadTargetRow;
@@ -653,7 +659,7 @@ public final class MainActivity extends Activity {
         attentionCard.addView(Ui.sectionTitle(this, "Needs attention", R.drawable.ic_shield, dark));
         attentionNotifications = attentionRow(R.drawable.ic_notification, "Notifications are off",
                 "Setup progress and the Stop button cannot be shown. Tap to allow.",
-                v -> requestNotificationPermission(true), true);
+                v -> requestNotificationPermission(), true);
         attentionBattery = attentionRow(R.drawable.ic_bolt, "Battery use is restricted",
                 "Android may stop a long setup when the screen turns off. Tap to set Unrestricted.",
                 v -> openBatterySettings(), false);
@@ -1183,7 +1189,6 @@ public final class MainActivity extends Activity {
     private void sendAppTask(String action, String appId) {
         Intent intent = new Intent(this, LinuxService.class).setAction(action)
                 .putExtra(LinuxService.EXTRA_APP_ID, appId);
-        requestNotificationPermission(false);
         try {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
             else startService(intent);
@@ -1281,30 +1286,49 @@ public final class MainActivity extends Activity {
         permissions.addView(Ui.text(this, "PocketLinux asks for the minimum it needs. Tap a row to change it.",
                 12.5f, muted), Ui.matchWrap(this, 0));
         notificationRow = new Ui.Row(this, R.drawable.ic_notification, "Notifications", "Checking…",
-                R.drawable.ic_open_in_new, dark, v -> requestNotificationPermission(true));
+                R.drawable.ic_open_in_new, dark, v -> requestNotificationPermission());
         permissions.addView(notificationRow, Ui.matchWrap(this, 10));
         batteryOptimisationRow = new Ui.Row(this, R.drawable.ic_bolt, "Battery usage", "Checking…",
-                R.drawable.ic_open_in_new, dark, v -> openBatterySettings());
+                R.drawable.ic_open_in_new, dark,
+                v -> PowerPages.open(this, PowerPages.ID_BATTERY_UNRESTRICTED));
         permissions.addView(batteryOptimisationRow, Ui.matchWrap(this, 8));
-        Ui.Row backgroundRow = new Ui.Row(this, R.drawable.ic_auto_mode, "Background activity",
-                "On the phone's battery page for PocketLinux, turn ON Allow foreground activity and "
-                        + "Allow background activity, so the computer keeps running with the screen off",
-                R.drawable.ic_open_in_new, dark, v -> openBackgroundActivitySettings());
-        backgroundRow.setStatus("CHECK", Ui.muted(dark));
-        permissions.addView(backgroundRow, Ui.matchWrap(this, 8));
-        // This row used to promise that a set-up continued after the phone restarted. Nothing
-        // continues: PocketLinux has no boot receiver, on purpose, because a 40-minute download
-        // starting by itself on mobile data with nobody holding the phone is worse than asking
-        // for one tap. What the switch really buys is the phone leaving the app alone while it
-        // works, so that is what the row says now.
-        autoStartRow = new Ui.Row(this, R.drawable.ic_power, "Auto-launch",
-                "Turn ON Allow auto-launch (some phones call it Auto-start). On many phones this is "
-                        + "the switch that lets PocketLinux keep working after you leave the screen, "
-                        + "so a long download is not stopped. After a restart, open PocketLinux and "
-                        + "tap Continue set-up",
-                R.drawable.ic_open_in_new, dark, v -> openAutoStartSettings());
-        autoStartRow.setStatus("CHECK", Ui.muted(dark));
-        permissions.addView(autoStartRow, Ui.matchWrap(this, 8));
+        // The maker's own switches, and only the ones this phone has. Both rows used to show a
+        // "CHECK" pill that read nothing and never changed, on every phone -- a Pixel owner was
+        // being sent to look for an auto-launch page that does not exist there. Now the rows are
+        // built from what this make of phone actually has, they say that Android will not report
+        // them, and they carry the path in the phone's own menu names.
+        for (PowerPages.Requirement requirement : PowerPages.requirementsFor(vendor, batteryUnrestricted())) {
+            if (requirement.readable) continue;
+            final String id = requirement.id;
+            boolean autoLaunch = PowerPages.ID_AUTO_LAUNCH.equals(id);
+            Ui.Row row = new Ui.Row(this,
+                    autoLaunch ? R.drawable.ic_power : R.drawable.ic_auto_mode,
+                    autoLaunch ? "Auto-launch" : "Background activity",
+                    makerSwitchValue(id), R.drawable.ic_open_in_new, dark,
+                    v -> PowerPages.open(this, id));
+            row.setStatus("NOT SHOWN", Ui.muted(dark));
+            permissions.addView(row, Ui.matchWrap(this, 8));
+        }
+        String makerSwitches = makerSwitchNames();
+        boolean severalSwitches = makerSwitches != null && makerSwitches.contains(" and ");
+        permissions.addView(Ui.text(this,
+                "Battery usage is the one the phone will tell an app about. That row shows what "
+                + "Android says right now, and tapping it opens the setting. It is a real button, "
+                + "not a message. When it is already allowed, the tap opens the battery page for "
+                + "PocketLinux instead, because Android shows no dialog for a setting that is "
+                + "already on.\n\n"
+                + (makerSwitches == null
+                ? "This phone is not known to add the extra maker switches that Realme, Xiaomi, "
+                + "Samsung, vivo and Huawei have for auto-launch and background activity. If yours "
+                + "does have them, App info below is the way in."
+                : makerSwitches + (severalSwitches
+                ? " are the phone maker's own switches. No app is allowed to read them"
+                : " is the phone maker's own switch. No app is allowed to read it")
+                + ", on any phone, so PocketLinux does not guess. It takes you to the page, and "
+                + "you look at the switch yourself. On Realme, Oppo, Xiaomi and vivo phones, a "
+                + "switch like this being off is the usual reason the computer stops working a "
+                + "day after set-up."), 12.5f, muted),
+                Ui.matchWrap(this, 8));
         phoneFilesRow = new Ui.Row(this, R.drawable.ic_phone, "Phone files", "Checking…",
                 R.drawable.ic_open_in_new, dark, v -> {
                     if (PhoneFiles.allowed(this)) {
@@ -1355,14 +1379,6 @@ public final class MainActivity extends Activity {
                 PrivacyMonitor.summary(this), R.drawable.ic_chevron, dark, v -> showPrivacyMonitor());
         privacyRow.setStatus("SEE", Ui.muted(dark));
         permissions.addView(privacyRow, Ui.matchWrap(this, 8));
-        // "See Last error report" was on screen with nothing behind it: the report was written
-        // and never read by anything. This is the screen the app was pointing at.
-        errorReportRow = new Ui.Row(this, R.drawable.ic_stop, "Last error report",
-                "Checking…", R.drawable.ic_chevron, dark, v -> showErrorReport());
-        permissions.addView(errorReportRow, Ui.matchWrap(this, 8));
-        permissions.addView(new Ui.Row(this, R.drawable.ic_terminal, "Linux app reports",
-                "Startup, sign-in handoff and exit logs for Linux apps",
-                R.drawable.ic_chevron, dark, v -> showLinuxAppReports()), Ui.matchWrap(this, 8));
         permissions.addView(new Ui.Row(this, R.drawable.ic_info, "App info",
                 "Android's full settings page for PocketLinux",
                 R.drawable.ic_open_in_new, dark, v -> openAppInfo()), Ui.matchWrap(this, 8));
@@ -1405,6 +1421,9 @@ public final class MainActivity extends Activity {
                 + "files. Desktop text size applies the next time the desktop starts.", 12.5f, muted);
         footer.setPadding(Ui.dp(this, 4), 0, Ui.dp(this, 4), 0);
         page.addView(footer, Ui.matchWrap(this, 4));
+        storage.addView(new Ui.Row(this, R.drawable.ic_lock, "Privacy",
+                "What leaves the phone, what is kept, and what this app can reach",
+                R.drawable.ic_chevron, dark, v -> showPrivacy()), Ui.matchWrap(this, 10));
         storage.addView(new Ui.Row(this, R.drawable.ic_shield, "Terms",
                 "What this app is, what it is not, and whose terms apply to what",
                 R.drawable.ic_chevron, dark, v -> showTerms()), Ui.matchWrap(this, 10));
@@ -1863,9 +1882,13 @@ public final class MainActivity extends Activity {
                 false);
 
         addAnswer(card, R.drawable.ic_shield, "What can this app touch on my phone?",
-                "Its permissions are: internet, network status, notifications, running in "
-                        + "the background with battery settings, and the phone's fingerprint prompt "
-                        + "for the optional App lock.\n\nYour phone's storage is reachable only if "
+                "Every permission it holds is listed live under Settings → Permissions → "
+                        + "Privacy monitor, read off the phone rather than off this answer. In "
+                        + "short: internet and network type, notifications, keeping the phone awake "
+                        + "and the battery setting while a long job runs, a short buzz for a "
+                        + "long-press, running the computer in the background with a notification "
+                        + "you can see, and the phone's fingerprint prompt for the optional App "
+                        + "lock.\n\nYour phone's storage is reachable only if "
                         + "you turn on Phone files in Settings → Permissions; off (the default) the "
                         + "computer cannot see a single file on the phone. It has NO permission for "
                         + "the camera, location, contacts, calls or messages. The microphone it can "
@@ -1919,9 +1942,9 @@ public final class MainActivity extends Activity {
                         + "when you have finished using them.\n\n"
                         + "PocketLinux preserves a running app during repeated taps and sign-in "
                         + "callbacks. If available memory is very low, a new heavy Linux app waits "
-                        + "until you free memory and retry. The browser stays open. Settings → Linux "
-                        + "app reports has startup and exit output; Home records desktop stops. "
-                        + "Saved files remain, but unsaved work may need recovery.", false);
+                        + "until you free memory and retry. The browser stays open. Home shows when "
+                        + "the desktop stopped by itself, and why. Saved files remain, but unsaved "
+                        + "work may need recovery.", false);
 
         addAnswer(card, R.drawable.ic_desktop, "Live voice, camera and screen share \u2014 what works?",
                 "Voice: YES. Now that the microphone works, a live voice conversation runs in the "
@@ -2461,14 +2484,30 @@ public final class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Whether a notification from this app would actually appear.
+     *
+     * Two different things have to be true, and the app used to read only one of them. On Android
+     * 13 and up there is a permission to hold; on every version, including the Android 11 phones
+     * this is built for, the owner can switch this app's notifications off in the phone's settings,
+     * and then nothing is shown whatever the permission says. The row claimed "On" on those phones.
+     */
     private boolean notificationsAllowed() {
-        return Build.VERSION.SDK_INT < 33
-                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED;
+        if (notificationPermissionMissing()) return false;
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        return manager == null || manager.areNotificationsEnabled();
+    }
+
+    /** True only while Android still has a permission to grant, so the prompt has something to do. */
+    private boolean notificationPermissionMissing() {
+        return Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED;
     }
 
     private boolean batteryUnrestricted() {
-        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
-        return power != null && power.isIgnoringBatteryOptimizations(getPackageName());
+        // One reading, shared with the code that decides which page a tap opens.
+        return PowerPages.batteryUnrestricted(this);
     }
 
     /**
@@ -2502,141 +2541,46 @@ public final class MainActivity extends Activity {
                 .show();
     }
 
+    /** The maker's switches this phone has, in its own words, or null when it has none. */
+    private String makerSwitchNames() {
+        boolean autoLaunch = false;
+        boolean background = false;
+        for (PowerPages.Requirement requirement : PowerPages.requirementsFor(vendor, batteryUnrestricted())) {
+            if (requirement.readable) continue;
+            if (PowerPages.ID_AUTO_LAUNCH.equals(requirement.id)) autoLaunch = true;
+            else background = true;
+        }
+        if (autoLaunch && background) return "Background activity and Auto-launch";
+        if (autoLaunch) return "Auto-launch";
+        return background ? "Background activity" : null;
+    }
+
     /**
-     * The last thing that went wrong, in full, with a way to hand it on.
+     * What one of the maker's own switches does, and where it is on this phone.
      *
-     * A message that says "see the report" and then has no report is worse than no message: the
-     * owner is told there is an answer and given no way to it. The Copy button is the point --
-     * an owner with no PC cannot read a log file, but they can paste one.
+     * The row cannot say On or Off. Android publishes no way to read these switches, so any state
+     * here would be a guess, and a guess that says "Off" about a switch that is already on teaches
+     * the owner to ignore the app. So it says that plainly and then names the page.
+     *
+     * Auto-launch does not promise that a set-up continues after the phone restarts. Nothing
+     * continues: PocketLinux has no boot receiver, on purpose, because a 40-minute download
+     * starting by itself on mobile data with nobody holding the phone is worse than asking for one
+     * tap. What the switch really buys is the phone leaving the app alone while it works.
      */
-    private void showErrorReport() {
-        String report = Crash.read(this);
-        if (report.isEmpty()) {
-            showMessage("No error report", "Nothing has gone wrong since this was last cleared.");
-            return;
-        }
-        dialogBuilder()
-                .setTitle("Last error report")
-                .setMessage(report)
-                .setNeutralButton("Clear", (d, w) -> {
-                    Crash.clear(this);
-                    refreshPermissionRows();
-                })
-                .setNegativeButton("Close", null)
-                .setPositiveButton("Copy", (d, w) -> {
-                    android.content.ClipboardManager board =
-                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    if (board != null) {
-                        board.setPrimaryClip(android.content.ClipData.newPlainText(
-                                "PocketLinux error report", report));
-                        android.widget.Toast.makeText(this, "Copied. Paste it wherever you are "
-                                + "asking for help.", android.widget.Toast.LENGTH_LONG).show();
-                    }
-                })
-                .show();
-    }
-
-
-
-    private void showLinuxAppReports() {
-        final String[] names = {"ChatGPT", "Chrome", "Browser sign-in handoff", "Claude", "Cursor",
-                "Antigravity", "Desktop session", "Previous desktop session", "Runtime and viewer"};
-        final String[] files = {"chatgpt.log", "google-chrome.log", "browser-handoff.log", "claude-desktop.log",
-                "cursor.log", "antigravity.log", "desktop-session.log", "desktop-session.previous.log", "runtime-events.log"};
-        dialogBuilder().setTitle("Linux app reports").setItems(names, (dialog, index) -> {
-            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this),
-                    "home/coder/.pocketlinux/logs");
-            java.io.File reportFile = index == files.length - 1 ? RuntimeDiagnostics.file(this)
-                    : new java.io.File(folder, files[index]);
-            String output = readReportTail(reportFile);
-            if (output.isEmpty()) output = "No startup report yet. Open this Linux app once, then check here.";
-            if (index < 6) {
-                long desktopOpenedAt = preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L);
-                output = DiagnosticReport.ageNotice(reportFile.lastModified(), desktopOpenedAt) + output;
-                java.io.File failureFile = new java.io.File(folder, files[index] + ".failure");
-                String failure = readReportTail(failureFile);
-                if (!failure.isEmpty()) {
-                    output += "\n\n=== " + names[index] + " · retained failure ===\n"
-                            + DiagnosticReport.failureNotice(failureFile.lastModified()) + failure;
-                }
-            }
-            // Old launcher versions could echo OAuth URLs. Redact their queries when displaying
-            // and copying too, so existing reports do not expose sign-in credentials.
-            output = DiagnosticReport.redact(output);
-            final String report = "PocketLinux " + VERSION + " · " + names[index] + " (Linux)\n\n" + output;
-            dialogBuilder().setTitle(names[index] + " · Linux report").setMessage(report)
-                    .setNegativeButton("Close", null)
-                    .setPositiveButton("Copy", (entry, which) -> {
-                        android.content.ClipboardManager board =
-                                (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        if (board != null) {
-                            board.setPrimaryClip(android.content.ClipData.newPlainText(
-                                    "PocketLinux Linux app report", report));
-                            android.widget.Toast.makeText(this, "Linux app report copied.", android.widget.Toast.LENGTH_SHORT).show();
-                        }
-                    }).show();
-        }).setNegativeButton("Close", null).setPositiveButton("Copy all", (dialog, which) -> {
-            StringBuilder combined = new StringBuilder("PocketLinux " + VERSION + " | Android "
-                    + android.os.Build.VERSION.RELEASE + " | " + android.os.Build.MODEL + "\n");
-            String reason = preferences.getString(ContainerRuntime.KEY_LAST_STOP_REASON, "");
-            if (reason != null && !reason.isEmpty()) combined.append("Last stop: ").append(reason).append('\n');
-            java.io.File folder = new java.io.File(ContainerRuntime.rootfs(this), "home/coder/.pocketlinux/logs");
-            String[] reports = new String[files.length];
-            String[] failures = new String[6];
-            long[] modifiedAt = new long[6];
-            long[] failureModifiedAt = new long[6];
-            for (int i = 0; i < files.length; i++) {
-                java.io.File reportFile = i == files.length - 1 ? RuntimeDiagnostics.file(this)
-                        : new java.io.File(folder, files[i]);
-                reports[i] = readReportTail(reportFile);
-                if (i < 6) {
-                    modifiedAt[i] = reportFile.lastModified();
-                    java.io.File failureFile = new java.io.File(folder, files[i] + ".failure");
-                    failures[i] = readReportTail(failureFile);
-                    failureModifiedAt[i] = failureFile.lastModified();
-                }
-            }
-            String report = DiagnosticReport.combine(combined.toString(), names, reports, failures,
-                    modifiedAt, failureModifiedAt, preferences.getLong(ContainerRuntime.KEY_LAST_OPENED_AT, 0L));
-            android.content.ClipboardManager board = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            if (board != null) {
-                board.setPrimaryClip(android.content.ClipData.newPlainText("PocketLinux Linux reports", report));
-                android.widget.Toast.makeText(this, "Linux reports copied.", android.widget.Toast.LENGTH_SHORT).show();
-            }
-        }).show();
-    }
-
-
-    private String readReportTail(java.io.File file) {
-        if (!file.isFile() || file.length() <= 0L) return "";
-        final int limit = 160 * 1024;
-        try (java.io.RandomAccessFile input = new java.io.RandomAccessFile(file, "r")) {
-            long length = input.length();
-            long start = Math.max(0L, length - limit);
-            input.seek(start);
-            byte[] bytes = new byte[(int) (length - start)];
-            input.readFully(bytes);
-            String text = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-            if (start > 0L) {
-                int line = text.indexOf('\n');
-                if (line >= 0) text = text.substring(line + 1);
-                text = "…showing the latest part of the report…\n\n" + text;
-            }
-            return text.trim();
-        } catch (Exception error) {
-            return "The report exists, but Android could not read it: " + error.getMessage();
-        }
+    private String makerSwitchValue(String id) {
+        String what = PowerPages.ID_AUTO_LAUNCH.equals(id)
+                ? "Android cannot report this one. Turn ON Allow auto-launch (some phones call it "
+                + "Auto-start). On many phones this is the switch that lets PocketLinux keep "
+                + "working after you leave the screen, so a long download is not stopped. After a "
+                + "restart, open PocketLinux and tap Continue set-up."
+                : "Android cannot report this one. Turn ON Allow background activity, and Allow "
+                + "foreground activity on the same page, so the computer keeps running with the "
+                + "screen off.";
+        String where = PowerPages.pathHint(vendor, id);
+        return where == null ? what : what + "\nOn this phone: " + where;
     }
 
     private void refreshPermissionRows() {
-        if (errorReportRow != null) {
-            long at = Crash.recordedAt(this);
-            boolean any = at > 0;
-            errorReportRow.setStatus(any ? "SEE" : "NONE", any ? Ui.WARNING : Ui.muted(dark));
-            errorReportRow.setValue(any
-                    ? "Something went wrong " + clock(at) + ". Tap to read it, and to copy it."
-                    : "Nothing has gone wrong. Anything that does is kept here.");
-        }
         if (microphoneRow != null) {
             boolean on = checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                     == PackageManager.PERMISSION_GRANTED;
@@ -2666,10 +2610,14 @@ public final class MainActivity extends Activity {
         if (downloadTargetRow != null) downloadTargetRow.setValue(downloadTargetValue());
         if (batteryOptimisationRow != null) {
             boolean on = batteryUnrestricted();
-            batteryOptimisationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
-            batteryOptimisationRow.setValue(on
-                    ? "Unrestricted · a 30-minute setup keeps running"
-                    : "Restricted · set to Unrestricted, or Android stops setup in the background");
+            String where = PowerPages.pathHint(vendor, PowerPages.ID_BATTERY_UNRESTRICTED);
+            batteryOptimisationRow.setStatus(on ? "ALLOWED" : "RESTRICTED", on ? Ui.SUCCESS : Ui.WARNING);
+            batteryOptimisationRow.setValue((on
+                    ? "Allowed · read from the phone just now, so this is the real state. A "
+                    + "30-minute set-up keeps running. Tap to see it on the phone."
+                    : "Restricted · read from the phone just now. Android will stop a set-up that "
+                    + "is running in the background. Tap to allow it.")
+                    + (where == null ? "" : "\nOn this phone: " + where));
         }
     }
 
@@ -2686,16 +2634,22 @@ public final class MainActivity extends Activity {
             preferences.edit().putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply();
             return;
         }
+        // Item three only where it exists, named the way this phone names it. A Pixel has no
+        // maker's auto-launch page, and telling its owner to go and find one is the kind of
+        // instruction that makes people stop reading the rest.
+        String makerSwitches = makerSwitchNames();
         permissionIntro = dialogBuilder()
-                .setTitle("Allow three things first")
-                .setMessage("Setting up the Linux computer downloads for 10–30 minutes in the background. "
+                .setTitle(makerSwitches == null ? "Allow two things first" : "Allow three things first")
+                .setMessage("Setting up the Linux computer downloads for 10\u201330 minutes in the background. "
                         + "Without these, the phone stops it half way.\n\n"
-                        + "1. Notifications — ON, so you can watch progress and stop it any time.\n\n"
-                        + "2. Battery usage — Unrestricted, so the download is not killed when the "
+                        + "1. Notifications: ON, so you can watch progress and stop it any time.\n\n"
+                        + "2. Battery usage: Unrestricted, so the download is not killed when the "
                         + "screen turns off.\n\n"
-                        + "3. Background activity and Auto-launch — ON, on the phone's battery page for "
-                        + "PocketLinux (Settings → Permissions opens it).\n\n"
-                        + "Nothing else is requested. All three can be changed later under Settings → Permissions.")
+                        + (makerSwitches == null ? ""
+                        : "3. " + makerSwitches + ": ON, on the phone's own page for PocketLinux. "
+                        + "Settings \u2192 Permissions has the exact path for this phone, and opens "
+                        + "it.\n\n")
+                        + "Nothing else is requested. These can be changed later under Settings \u2192 Permissions.")
                 .setNegativeButton("Later", (dialog, which) -> preferences.edit()
                         .putBoolean(ContainerRuntime.KEY_PERMISSION_INTRO, true).apply())
                 .setPositiveButton("Allow", (dialog, which) -> {
@@ -2706,9 +2660,9 @@ public final class MainActivity extends Activity {
     }
 
     private void startPermissionFlow() {
-        if (Build.VERSION.SDK_INT >= 33 && !notificationsAllowed()) {
+        if (notificationPermissionMissing()) {
             askBatteryAfterNotifications = true;
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 41);
+            askForNotifications();
             return;
         }
         askBatteryPermission();
@@ -2853,6 +2807,17 @@ public final class MainActivity extends Activity {
         String warning = batteryUnrestricted() ? ""
                 : "\n\nBattery usage is still Restricted. Android may stop the setup when the screen "
                 + "turns off — set it to Unrestricted under Settings → Permissions first.";
+        // Notifications are asked for here and nowhere else. Every service start used to ask
+        // silently, so the bare Android dialog arrived with nothing on screen to explain it, and
+        // it came back on every tap until Android stopped offering it. This is the moment it
+        // makes sense: the owner is about to agree to half an hour of downloading, and the
+        // notification is how they watch it and how they stop it.
+        boolean willAskAboutNotifications = notificationPermissionMissing()
+                && notificationPromptPossible();
+        String notifications = willAskAboutNotifications
+                ? "\n\nThe phone will ask about notifications next. Allow it, and progress and a "
+                + "Stop button stay on screen while this runs."
+                : "";
         dialogBuilder()
                 .setTitle("Set up the Linux computer?")
                 .setMessage("Ubuntu 24.04 LTS will be downloaded and set up inside this app, with "
@@ -2865,9 +2830,68 @@ public final class MainActivity extends Activity {
                         + "• Takes 15–45 minutes depending on your connection\n"
                         + "• Safe to stop: tapping Continue set-up later carries on from the step "
                         + "it reached, without downloading anything twice"
-                        + warning)
+                        + warning + notifications)
                 .setNegativeButton("Cancel", null)
-                .setPositiveButton("Set up", (d, which) -> sendServiceAction(LinuxService.ACTION_SETUP))
+                .setPositiveButton("Set up", (d, which) -> {
+                    if (willAskAboutNotifications) askForNotifications();
+                    sendServiceAction(LinuxService.ACTION_SETUP);
+                })
+                .show();
+    }
+
+    /**
+     * Privacy in one place, because it used to be in six.
+     *
+     * The list of what the app never asks for is read from PrivacyMonitor, not typed here, so this
+     * statement cannot go on claiming an absence that a later version has quietly ended. Nothing
+     * here is new policy: it is the Settings notes, the Q&A answers and the Privacy monitor said
+     * once, in the order someone worried would ask.
+     */
+    private void showPrivacy() {
+        StringBuilder never = new StringBuilder();
+        for (PrivacyMonitor.Entry entry : PrivacyMonitor.read(this)) {
+            if (!entry.neverAsked) continue;
+            if (never.length() > 0) never.append(", ");
+            never.append(entry.name);
+        }
+        dialogBuilder()
+                .setTitle("Privacy")
+                .setMessage("What leaves this phone: nothing of yours. PocketLinux has no account, "
+                        + "no server of its own and no analytics. What you type, your files, which "
+                        + "apps you installed and anything that goes wrong all stay on the phone.\n\n"
+                        + "What is downloaded, and from whom: Ubuntu from Canonical, then the apps "
+                        + "you choose, each from its own publisher. Google Chrome and Antigravity "
+                        + "from Google, ChatGPT from OpenAI, Claude Desktop from Anthropic, Cursor "
+                        + "from Anysphere. These are ordinary downloads over HTTPS from "
+                        + "cdimage.ubuntu.com, Ubuntu's package servers, dl.google.com, "
+                        + "us-central1-apt.pkg.dev, persistent.oaistatic.com, downloads.claude.ai "
+                        + "and api2.cursor.sh. Each of them sees a download, the way any website "
+                        + "does.\n\n"
+                        + "What is kept, and where: the Linux computer, its apps, their sign-ins "
+                        + "and your files are all in this app's private storage at "
+                        + "/data/data/com.pocketlinux. No other app on the phone can open it. "
+                        + "Android's cloud backup is switched off for this app, so none of it "
+                        + "is copied to a server, and removing PocketLinux removes every bit of it.\n\n"
+                        + "What this app can reach: only the permissions it holds, and the Privacy "
+                        + "monitor lists them live, read off the phone rather than off this page. "
+                        + "The Linux computer holds none of its own; it reaches what this app "
+                        + "reaches, and nothing more.\n\n"
+                        + "What it never asks for: " + never + ".\n\n"
+                        + "Two things you can hand over, and both start off. The microphone: turn "
+                        + "it on from the desktop's Phone menu, and it is off again at every "
+                        + "desktop start and the moment you leave that screen. Phone files: six of "
+                        + "the phone's folders appear inside the computer, and it stays off "
+                        + "until you turn it on in Settings \u2192 Permissions.\n\n"
+                        + "One more, only if you use it: Tools \u2192 Phone app testing pairs the "
+                        + "computer with this phone's Wireless debugging, so an app built in "
+                        + "the computer can be installed and tested. While that pairing is on, "
+                        + "programs in the computer have the debugging bridge's reach over the "
+                        + "phone. Turn Wireless debugging off when you have finished.\n\n"
+                        + "What you type into ChatGPT, Claude, Cursor or Antigravity goes to those "
+                        + "companies on their own terms, exactly as it would on a laptop. Terms "
+                        + "has that part.")
+                .setPositiveButton("Close", null)
+                .setNeutralButton("Privacy monitor", (dialog, which) -> showPrivacyMonitor())
                 .show();
     }
 
@@ -2982,14 +3006,15 @@ public final class MainActivity extends Activity {
         } catch (Throwable error) {
             desktopOpening = false;
             if (startButton != null) startButton.setEnabled(true);
+            // The error still goes to the crash file: an owner who reports by screenshot needs
+            // something to have been written down, even though nothing in Settings reads it now.
             Crash.save(this, error);
             showMessage("The desktop did not open", "Android refused to open the desktop screen. "
-                    + "The error is saved under Settings → Last error report.");
+                    + "Tap Open desktop again. If it keeps happening, restart the phone.");
         }
     }
 
     private void sendServiceAction(String action) {
-        requestNotificationPermission(false);
         try {
             Intent intent = new Intent(this, LinuxService.class).setAction(action);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent); else startService(intent);
@@ -2999,16 +3024,42 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void requestNotificationPermission(boolean fromRow) {
-        if (Build.VERSION.SDK_INT < 33) return;
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            if (fromRow) openAppInfo();
-            return;
-        }
-        if (fromRow && !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+    /**
+     * The Notifications row and the Needs-attention row: the prompt when one is still possible,
+     * the phone's own page when it is not.
+     *
+     * shouldShowRequestPermissionRationale answers false in two opposite situations -- before the
+     * app has ever asked, and after the owner has refused for good. Read on its own it sent the
+     * very first tap to App info, which is three taps from the switch, instead of showing the
+     * one-tap prompt. So the app remembers whether it has actually asked, and only then treats a
+     * false answer as a refusal.
+     */
+    private void requestNotificationPermission() {
+        // No prompt left to show -- because it is already granted, because Android has stopped
+        // offering it, or because this phone is older than the permission -- so the tap goes to the
+        // phone's own page for this app. It used to do nothing at all on Android 12 and below.
+        if (!notificationPermissionMissing() || !notificationPromptPossible()) {
             openAppInfo();
             return;
         }
+        askForNotifications();
+    }
+
+    /**
+     * Whether Android would still show the notifications prompt.
+     *
+     * False once the app has asked and Android has stopped offering it, which is when the owner
+     * has to be sent to the settings page instead.
+     */
+    private boolean notificationPromptPossible() {
+        if (Build.VERSION.SDK_INT < 33) return false;
+        return !preferences.getBoolean(KEY_NOTIFICATIONS_ASKED, false)
+                || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS);
+    }
+
+    /** The one place that asks, so the record of having asked cannot drift from the asking. */
+    private void askForNotifications() {
+        preferences.edit().putBoolean(KEY_NOTIFICATIONS_ASKED, true).apply();
         requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 41);
     }
 
@@ -3021,70 +3072,20 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void openBatterySettings() {
-        if (batteryUnrestricted()) {
-            openAppInfo();
-            return;
-        }
-        // The targeted action is a single yes/no prompt; the list is the fallback for OEMs
-        // that block it, and App info is the last resort.
-        if (launch(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                Uri.parse("package:" + getPackageName())))) {
-            return;
-        }
-        if (!launch(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))) openAppInfo();
-    }
-
     /**
-     * The phone's battery page for this app, where Realme/OPPO (ColorOS) keep "Allow foreground
-     * activity" and "Allow background activity". The page has no public intent, so the known
-     * ColorOS activities are tried and App info (whose Battery usage row leads there) is the
-     * fallback every phone has.
+     * The battery page for this app, through PowerPages, which knows this make of phone's pages.
+     *
+     * A phone that is already exempt is taken to the maker's background-activity page instead of
+     * the ignore-optimisations dialog: Android closes that dialog without showing anything when
+     * the app is already exempt, so on the phone that needed the maker's own switch the tap did
+     * nothing at all.
      */
-    private void openBackgroundActivitySettings() {
-        String[][] targets = {
-                {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"},
-                {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"},
-                {"com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"},
-        };
-        for (String[] target : targets) {
-            Intent intent = new Intent().setComponent(new ComponentName(target[0], target[1]));
-            intent.putExtra("package_name", getPackageName());
-            intent.putExtra("packageName", getPackageName());
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (launch(intent)) return;
-        }
-        android.widget.Toast.makeText(this, "Open Battery usage on this page, then turn on foreground and background activity",
-                android.widget.Toast.LENGTH_LONG).show();
-        openAppInfo();
-    }
-
-    /** Realme, OPPO, Xiaomi, vivo and Huawei each hide auto-launch in their own security app. */
-    private void openAutoStartSettings() {
-        String[][] targets = {
-                {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
-                {"com.coloros.safecenter", "com.coloros.privacypermissionsentry.PermissionTopActivity"},
-                {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"},
-                {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"},
-                {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
-                {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
-                {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
-        };
-        for (String[] target : targets) {
-            Intent intent = new Intent().setComponent(new ComponentName(target[0], target[1]));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (launch(intent)) return;
-        }
-        showMessage("Auto-launch", "This phone does not expose an auto-launch page to other apps. "
-                + "Open App info, then Battery usage, and turn on Allow auto-launch.");
-        openAppInfo();
+    private void openBatterySettings() {
+        PowerPages.open(this, PowerPages.ID_BATTERY_UNRESTRICTED);
     }
 
     private void openAppInfo() {
-        if (!launch(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + getPackageName())))) {
-            launch(new Intent(Settings.ACTION_SETTINGS));
-        }
+        PowerPages.openAppInfo(this);
     }
 
     private boolean launch(Intent intent) {

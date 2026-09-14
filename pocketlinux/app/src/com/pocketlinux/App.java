@@ -24,9 +24,9 @@ public final class App extends Application {
     @Override public void onCreate() {
         super.onCreate();
         Crash.install(this);
-        // The notification category exists from the first launch, so Settings -> Notifications
-        // lists it before the first set-up rather than only after the service has run once.
-        LinuxService.ensureNotificationChannel(this);
+        // Both notification categories exist from the first launch, so Settings -> Notifications
+        // lists them before the first set-up rather than only after the service has run once.
+        LinuxService.ensureNotificationChannels(this);
         watchForeground();
     }
 

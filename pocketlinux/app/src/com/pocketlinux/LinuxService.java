@@ -65,7 +65,21 @@ public final class LinuxService extends Service {
     // A live desktop is user-started foreground work too. Its independent CPU lease must
     // survive finishing setup or a parallel install, but expire promptly if renewal stops.
     private static final long DESKTOP_WAKE_LOCK_MS = 120_000L;
-    private static final String CHANNEL_ID = "pocketlinux_linux";
+    /**
+     * The category for work that ends: set-up, an install, a removal, and whatever it had to
+     * report. Low importance, silent, and dismissible once nothing is running.
+     */
+    static final String CHANNEL_SETUP = "pocketlinux_setup";
+    /**
+     * The category for the one line that stays there while the computer is on.
+     *
+     * Minimum importance, so the owner can push it out of the status bar. Both notices shared a
+     * single category before, which meant silencing the permanent one silenced the set-up
+     * progress he actually wanted to watch.
+     */
+    static final String CHANNEL_DESKTOP = "pocketlinux_desktop";
+    /** The single category those two replaced; see retireOldChannel. */
+    private static final String CHANNEL_RETIRED = "pocketlinux_linux";
     private static final AtomicBoolean BUSY = new AtomicBoolean(false);
     /** An app install running beside an open desktop, which BUSY (the desktop's own task) is not. */
     private static final AtomicBoolean INSTALLING = new AtomicBoolean(false);
@@ -507,11 +521,13 @@ public final class LinuxService extends Service {
         lastStartId = startId;
         String action = intent == null ? null : intent.getAction();
         final String appId = intent == null ? null : intent.getStringExtra(EXTRA_APP_ID);
+        // The service only ever comes up to do something, so this first line belongs to that job
+        // even when a desktop is already running and an install is what woke it.
+        Notification starting = notification("PocketLinux", "Preparing local Linux…", -1, CHANNEL_SETUP);
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, notification("PocketLinux", "Preparing local Linux…", -1),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+            startForeground(NOTIFICATION_ID, starting, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
-            startForeground(NOTIFICATION_ID, notification("PocketLinux", "Preparing local Linux…", -1));
+            startForeground(NOTIFICATION_ID, starting);
         }
         if (ACTION_STOP.equals(action)) {
             stopEverything(true);
@@ -1697,10 +1713,22 @@ public final class LinuxService extends Service {
 
     private void updateNotification(String title, String detail, int progress) {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        manager.notify(NOTIFICATION_ID, notification(title, detail, progress));
+        manager.notify(NOTIFICATION_ID, notification(title, detail, progress, currentChannel()));
     }
 
-    private Notification notification(String title, String detail, int progress) {
+    /**
+     * Which of the two categories this one row belongs in at this moment.
+     *
+     * The service posts through a single notification id, so the row is either a job telling the
+     * owner how it is getting on or the line that says the computer is on. Anything with a job
+     * behind it is set-up and installs; a desktop sitting there with nothing running is the
+     * always-on one, and that is the one the owner is allowed to push out of the status bar.
+     */
+    private String currentChannel() {
+        return desktopRunning && !BUSY.get() && !INSTALLING.get() ? CHANNEL_DESKTOP : CHANNEL_SETUP;
+    }
+
+    private Notification notification(String title, String detail, int progress, String channel) {
         Intent open = desktopRunning
                 ? new Intent(this, DesktopActivity.class)
                 : new Intent(this, MainActivity.class);
@@ -1711,7 +1739,7 @@ public final class LinuxService extends Service {
                 new Intent(this, LinuxService.class).setAction(ACTION_STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(this, CHANNEL_ID)
+                ? new Notification.Builder(this, channel)
                 : new Notification.Builder(this);
         builder.setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
@@ -1727,24 +1755,54 @@ public final class LinuxService extends Service {
         return builder.build();
     }
 
-    private void createNotificationChannel() { ensureNotificationChannel(this); }
+    private void createNotificationChannel() { ensureNotificationChannels(this); }
 
     /**
-     * Registers the app's one notification category.
+     * Registers the app's two notification categories.
      *
      * Called from the Application as well as from here: Android only lists a category under
-     * Settings -> Notifications once the app has created it, and creating it only when the
-     * service first started meant the category was missing exactly when someone went looking --
+     * Settings -> Notifications once the app has created it, and creating them only when the
+     * service first started meant they were missing exactly when someone went looking --
      * before the first set-up, when they wanted to check what the app would be allowed to show.
      */
-    static void ensureNotificationChannel(android.content.Context context) {
+    static void ensureNotificationChannels(android.content.Context context) {
         if (Build.VERSION.SDK_INT < 26) return;
-        NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
-                context.getString(R.string.notification_channel_name), NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(context.getString(R.string.notification_channel_description));
-        channel.setShowBadge(false);
         NotificationManager manager = (NotificationManager) context.getSystemService(NOTIFICATION_SERVICE);
-        if (manager != null) manager.createNotificationChannel(channel);
+        if (manager == null) return;
+        NotificationChannel setup = new NotificationChannel(CHANNEL_SETUP,
+                "Setup and installs", NotificationManager.IMPORTANCE_LOW);
+        setup.setDescription("How the set-up or an app install is getting on, with a Stop button. "
+                + "It goes away when nothing is running.");
+        setup.setShowBadge(false);
+        manager.createNotificationChannel(setup);
+        NotificationChannel desktop = new NotificationChannel(CHANNEL_DESKTOP,
+                "Linux desktop running", NotificationManager.IMPORTANCE_MIN);
+        desktop.setDescription("One line that stays while the computer is on. Android needs it to "
+                + "let the computer keep running.");
+        desktop.setShowBadge(false);
+        manager.createNotificationChannel(desktop);
+        retireOldChannel(manager);
+    }
+
+    /**
+     * Leaves the category those two replaced where the owner can still find it.
+     *
+     * Android keeps a category for as long as the app is installed. Deleting one only takes it
+     * out of the list: its settings are remembered, and creating it again later brings them
+     * back. So a row that disappeared after an update would look like the app had quietly taken
+     * a switch away, and one left wearing its old description would describe notices that no
+     * longer arrive. It is renamed in place instead, and only where it already exists, so a
+     * phone installing PocketLinux for the first time never gets a row for something it never
+     * had. The importance passed here is ignored: Android keeps whatever the owner set.
+     */
+    private static void retireOldChannel(NotificationManager manager) {
+        if (manager.getNotificationChannel(CHANNEL_RETIRED) == null) return;
+        NotificationChannel old = new NotificationChannel(CHANNEL_RETIRED, "Linux desktop (old)",
+                NotificationManager.IMPORTANCE_LOW);
+        old.setDescription("The old single category. It is now two: Setup and installs, and "
+                + "Linux desktop running.");
+        old.setShowBadge(false);
+        manager.createNotificationChannel(old);
     }
 
     /**
