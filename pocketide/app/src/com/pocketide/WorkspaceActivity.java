@@ -673,46 +673,48 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     private void menu() {
         final java.util.List<String> labels = new java.util.ArrayList<>();
         final java.util.List<Integer> icons = new java.util.ArrayList<>();
-        final java.util.List<Integer> keys = new java.util.ArrayList<>();
+        // keyCodes, not keys: this class already has a field called keys, and it is the key
+        // row rather than a list of numbers.
+        final java.util.List<Integer> keyCodes = new java.util.ArrayList<>();
 
         for (int i = 0; i < panels.size() && i < Extensions.PANEL_KEYS; i++) {
             labels.add("Open " + panels.get(i).title);
             icons.add(R.drawable.ic_bolt);
-            keys.add(Extensions.FIRST_PANEL_KEY + i);
+            keyCodes.add(Extensions.FIRST_PANEL_KEY + i);
         }
         labels.add("Command palette");
         icons.add(R.drawable.ic_terminal);
-        keys.add(1);
+        keyCodes.add(1);
         labels.add("Files");
         icons.add(R.drawable.ic_storage);
-        keys.add(2);
+        keyCodes.add(2);
         labels.add("Terminal");
         icons.add(R.drawable.ic_code);
-        keys.add(3);
+        keyCodes.add(3);
         labels.add("Extensions");
         icons.add(R.drawable.ic_extension);
-        keys.add(4);
+        keyCodes.add(4);
         labels.add("Show or hide the side panel");
         icons.add(R.drawable.ic_apps);
-        keys.add(11);
+        keyCodes.add(11);
         labels.add(fullScreen ? "Show this app's buttons" : "Full screen");
         icons.add(R.drawable.ic_fit);
-        keys.add(0);
+        keyCodes.add(0);
         labels.add("Smaller text");
         icons.add(R.drawable.ic_fit);
-        keys.add(8);
+        keyCodes.add(8);
         labels.add("Larger text");
         icons.add(R.drawable.ic_fit);
-        keys.add(9);
+        keyCodes.add(9);
         labels.add("Reset the text size");
         icons.add(R.drawable.ic_rotate);
-        keys.add(10);
+        keyCodes.add(10);
 
         int[] iconIds = new int[icons.size()];
         for (int i = 0; i < icons.size(); i++) iconIds[i] = icons.get(i);
         Dialogs.choose(this, "Editor", labels.toArray(new String[0]), iconIds, -1,
                 index -> {
-                    int key = keys.get(index);
+                    int key = keyCodes.get(index);
                     // Zero is not a function key: it is the one row here that the app itself
                     // acts on rather than passing to the editor.
                     if (key == 0) toggleFullScreen();

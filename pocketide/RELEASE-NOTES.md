@@ -1,5 +1,19 @@
 # Release notes
 
+## 1.9.5
+
+Two faults found by re-reading 1.9.0's own diff before shipping it.
+
+The recovery screen — the one that opens when the app has failed to start twice, and therefore
+the one screen that has to work when nothing else does — asked for its insets with no bottom bar
+to apply them to. It was the only screen in the app doing that, and the result was no
+gesture-bar padding at all, so its Reset button could sit underneath the gesture handle on a
+phone using gesture navigation. It takes both insets now.
+
+And the editor menu's list of key codes was called `keys`, which is already the name of the key
+row on the same class. Nothing behaved wrongly, but a later edit reading the wrong one would
+have compiled.
+
 ## 1.9.0
 
 The release that answers a screenshot, a crash report, and the question "how do I open it".

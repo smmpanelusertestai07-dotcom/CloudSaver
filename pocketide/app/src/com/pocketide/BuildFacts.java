@@ -11,8 +11,8 @@ package com.pocketide;
 final class BuildFacts {
     private BuildFacts() {}
 
-    static final String VERSION_NAME = "1.9.0";
-    static final int VERSION_CODE = 190;
+    static final String VERSION_NAME = "1.9.5";
+    static final int VERSION_CODE = 195;
 
     /** What the whole set-up costs, so the screen can say it before spending anyone's data. */
     static final long BASE_DOWNLOAD_BYTES = 410L * 1000 * 1000;

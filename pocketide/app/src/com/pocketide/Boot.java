@@ -159,8 +159,10 @@ final class Boot {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         // Its own insets, because the frame that normally handles them is the thing that
-        // could not be built.
-        Theme.fitScreen(page, null);
+        // could not be built. The page is passed as BOTH bars: fitScreen writes the top inset
+        // first and the bottom one second, so one view takes both. Passing null for the bottom
+        // gave this screen no gesture-bar padding at all and put its last button underneath it.
+        Theme.fitScreen(page, page);
         activity.setContentView(page);
     }
 
