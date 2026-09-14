@@ -12,7 +12,14 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.Scanner;
 
-/** Writes the last fatal error to app storage so the recovery screen can explain what happened. */
+/**
+ * Keeps the last fatal error, and the last failure the app handled, in a file in app storage.
+ *
+ * A record, not a screen. The recovery screen prints the error it caught itself, and no screen
+ * shows this file, which is read back only here, to decide whether a new report is worth keeping.
+ * What it is for is what happens after the process dies: a crash takes the only account of
+ * itself with it unless it was written down first.
+ */
 final class Crash {
     private static final String FILE = "last-crash.txt";
 
@@ -82,8 +89,8 @@ final class Crash {
      * A failure that was handled, kept the same way a crash is.
      *
      * A set-up or an install that fails says why in a dialog, and the dialog is gone the moment
-     * it is dismissed -- taking with it the one line that would have explained the failure. This
-     * keeps it, so "Last error report" answers for both kinds of trouble.
+     * it is dismissed, taking with it the one line that would have explained the failure. The
+     * file is where that line survives, the same way a crash does.
      */
     static void note(Context context, String title, String detail) {
         try {

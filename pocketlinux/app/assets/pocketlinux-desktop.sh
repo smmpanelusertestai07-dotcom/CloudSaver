@@ -801,6 +801,16 @@ xrdb -merge "$HOME/.Xresources" >/dev/null 2>&1 || true
 # background, so the seam is invisible either way.
 xsetroot -solid '#0b1320' >/dev/null 2>&1 || true
 xsetroot -cursor_name left_ptr >/dev/null 2>&1 || true
+# PocketLinux's own marks are installed into /usr/share/icons/hicolor at 48, 64, 128 and 256 so
+# that the panel and the file manager get the size they actually draw instead of shrinking a 256
+# every time. GTK decides an icon cache is still good by comparing it against the mtime of the
+# THEME ROOT, not of the folder a file landed in -- so copying a PNG into an existing 48x48/apps
+# leaves the cache looking valid and GTK keeps serving only what the cache already lists. Without
+# this line the whole icon theme is invisible to every GTK program on a container that has a
+# cache, and the single 256 in pixmaps answers instead, which is the soft icon this was fixing.
+if [ -d /usr/share/icons/hicolor ]; then
+  gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+fi
 # The root preparation mode has already checked the system bus. Do not attempt another
 # daemon here as coder: a second startup can unlink the listener used by running apps.
 openbox-session >/tmp/pocketlinux-openbox.log 2>&1 &

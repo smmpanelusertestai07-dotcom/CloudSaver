@@ -112,8 +112,14 @@ public final class LinuxAppsTest {
         bin.resolve("dpkg").toFile().setExecutable(true);
 
         String prelude = "#!/bin/bash\nset -eu\nexport PATH='" + bin + "':$PATH\n"
-                + "export POCKETLINUX_TEST_ROOT='" + root + "'\n"
-                + "export POCKETLINUX_RETRY_SLEEP=0\n" + LinuxApps.APT_HELPERS + "\n";
+                + "export POCKETLINUX_RETRY_SLEEP=0\n" + LinuxApps.APT_HELPERS + "\n"
+                // The helpers keep their real state path, as the shipped product must. The sandbox
+                // is made here instead: PD_STATE is pointed at a temporary tree AFTER the helpers
+                // have been sourced, so nothing in the product carries a switch that would let an
+                // environment variable move where it believes its package state lives.
+                + "PD_STATE='" + root + "/var/lib/pocketlinux'\n"
+                + "PD_ETC='" + root + "/etc'\n"
+                + "mkdir -p \"$PD_STATE/stage\" \"$PD_ETC/apt/sources.list.d\"\n";
 
         // Succeeds first time, and records that it finished.
         Files.write(counter, new byte[0]);

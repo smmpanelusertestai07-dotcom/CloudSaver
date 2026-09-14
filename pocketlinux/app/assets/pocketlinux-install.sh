@@ -198,9 +198,9 @@ Remove $pkg from the Linux computer?"
   sudo dpkg --configure -a >> "$log" 2>&1 || true
   sudo apt-get -y -f install >> "$log" 2>&1 || true
   say error "$pkg was not removed" \
-"The computer could not finish removing it, and it was put back in working order.
+"The computer could not finish removing it, and it was put back in working order. Nothing else was changed.
 
-The details are in the Apps menu -> App reports -> install.log."
+Try Remove again. If it still will not go, stop the Linux computer in PocketLinux, start it again, and try once more."
   return 1
 }
 
@@ -499,6 +499,6 @@ else
   say error "${PACKAGE:-The app} did not install" \
 "The computer could not finish installing it. The usual reasons are a package built for a different version of Ubuntu, or software it needs that is not available here.
 
-The computer was put back in working order, and anything half-installed was cleaned up. The details are in the Apps menu -> App reports -> install.log."
+The computer was put back in working order, and anything half-installed was cleaned up. Look for a Linux ARM64 build made for Ubuntu 24.04, or install the app from the Apps tab when it is one of the four AI apps."
   exit 1
 fi

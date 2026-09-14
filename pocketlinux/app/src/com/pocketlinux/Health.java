@@ -1,6 +1,7 @@
 package com.pocketlinux;
 
 import android.Manifest;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -38,9 +39,7 @@ final class Health {
 
     /** Cheap system calls only: this runs every few seconds while the home screen is open. */
     static Health read(Context context, DeviceProbe probe, boolean compatible) {
-        boolean notificationsOff = Build.VERSION.SDK_INT >= 33
-                && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED;
+        boolean notificationsOff = notificationsOff(context);
         PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         boolean batteryRestricted = power == null
                 || !power.isIgnoringBatteryOptimizations(context.getPackageName());
@@ -52,6 +51,27 @@ final class Health {
         boolean lockNotice = prefs.getBoolean(ContainerRuntime.KEY_LOCK_NOTICE, false);
         return new Health(notificationsOff, batteryRestricted, spaceLow, hot,
                 DataBudget.exhausted(context), !compatible, lockNotice);
+    }
+
+    /**
+     * Whether a notice from this app would be shown at all, read the way the Settings row reads it.
+     *
+     * Two separate things decide it. The permission exists only on Android 13 and up, while the
+     * switch in the phone's own settings exists on every version. Counting the permission alone
+     * marked an Android 11 phone as having notices off when it was perfectly able to show them,
+     * and kept the dot away when the owner had turned this app's notices off by hand. The dot
+     * and the row it leads to have to answer from the same two facts, or they contradict
+     * each other on the same screen.
+     */
+    private static boolean notificationsOff(Context context) {
+        if (Build.VERSION.SDK_INT >= 33
+                && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            return true;
+        }
+        NotificationManager manager =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        return manager != null && !manager.areNotificationsEnabled();
     }
 
     /** Settings gets a dot only for what Settings can fix. */

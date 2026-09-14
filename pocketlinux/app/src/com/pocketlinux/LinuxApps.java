@@ -95,10 +95,20 @@ final class LinuxApps {
      */
     static final String APT_HELPERS =
             "export DEBIAN_FRONTEND=noninteractive; "
-            // POCKETLINUX_TEST_ROOT is empty on the phone, so these are the real paths; the test
-            // suite sets it to a temporary folder and runs these very functions.
-            + "PD_ROOT=\"${POCKETLINUX_TEST_ROOT:-}\"; PD_STATE=\"$PD_ROOT/var/lib/pocketlinux\"; "
-            + "mkdir -p \"$PD_STATE/stage\" \"$PD_ROOT/etc/apt/apt.conf.d\" \"$PD_ROOT/etc/dpkg/dpkg.cfg.d\"; "
+            + "PD_STATE=\"/var/lib/pocketlinux\"; "
+            // The two roots the helpers build every path on. The product never gives them
+            // another value, and nothing reads an environment variable to set them -- an apt
+            // helper whose idea of where configuration lives could be moved from outside is
+            // not a helper anyone should ship. They are variables so that the unit test can
+            // point them at a temporary tree AFTER sourcing this, which is the only way to
+            // exercise pd_repo and pd_step without writing into the machine running the test.
+            + "PD_ETC=\"/etc\"; "
+            // Tolerant on purpose. Inside the container this runs as PRoot's fake root and always
+            // succeeds; the guard is for anywhere else the helpers are sourced, where /etc is not
+            // ours to create and the shell runs under set -e. A directory that could not be made
+            // announces itself at the first write rather than killing the whole prelude.
+            + "mkdir -p \"$PD_STATE/stage\" \"$PD_ETC/apt/apt.conf.d\" \"$PD_ETC/dpkg/dpkg.cfg.d\" "
+            + "2>/dev/null || true; "
             + "printf 'Acquire::Retries \"5\";\nAcquire::http::Timeout \"40\";\n"
             + "Acquire::https::Timeout \"40\";\nAcquire::Languages \"none\";\n"
             // A phone network that advertises IPv6 it cannot route made every fetch wait for the
@@ -114,7 +124,7 @@ final class LinuxApps {
             + "APT::Sandbox::User \"root\";\n"
             + "APT::Install-Suggests \"false\";\nquiet \"1\";\n"
             + "Dpkg::Options {\"--force-confdef\";\"--force-confold\";};\n' "
-            + "> \"$PD_ROOT/etc/apt/apt.conf.d/99pocketlinux\"; "
+            + "> \"$PD_ETC/apt/apt.conf.d/99pocketlinux\"; "
             // Phone storage is slow, and dpkg's fsync after every file was most of the wait.
             // force-unsafe-io is what container images use for the same reason; an install cut
             // off mid-way is repaired by pd_repair rather than by the filesystem. Changelogs and
@@ -126,7 +136,7 @@ final class LinuxApps {
             // The base image's own excludes file drops every man page; this line, read after it,
             // puts them back. Without it man-db and the manuals were fetched and thrown away.
             + "path-include=/usr/share/man/*\n' "
-            + "> \"$PD_ROOT/etc/dpkg/dpkg.cfg.d/99pocketlinux\"; "
+            + "> \"$PD_ETC/dpkg/dpkg.cfg.d/99pocketlinux\"; "
             // man-db's postinst normally builds its index with mandb, and under PRoot's traced
             // syscalls that is minutes. man <page> works without an index; only apropos and
             // man -k need one, and "sudo mandb" builds it whenever the owner wants it.
@@ -157,7 +167,7 @@ final class LinuxApps {
             // and the basics update after it -- for as long as the container exists. From the
             // second attempt, a source named in apt's own error is set aside so the computer
             // keeps working with the ones that do answer.
-            + "if [ $pd_u -ge 2 ]; then for pd_l in \"$PD_ROOT\"/etc/apt/sources.list.d/*.list; do "
+            + "if [ $pd_u -ge 2 ]; then for pd_l in \"$PD_ETC/apt/sources.list.d\"/*.list; do "
             + "[ -f \"$pd_l\" ] || continue; "
             + "pd_url=$(awk '{for (i=1; i<=NF; i++) if ($i ~ /^https?:/) { print $i; exit }}' \"$pd_l\"); "
             + "[ -n \"$pd_url\" ] || continue; "
@@ -179,8 +189,8 @@ final class LinuxApps {
             + "else pd_update; fi; }; "
             // A repository is written, proved, and rolled back if it does not answer: an
             // unproven source must never be left behind to break every later install.
-            + "pd_repo() { pd_f=\"$PD_ROOT/etc/apt/sources.list.d/$1\"; "
-            + "pd_done=\"$PD_STATE/repo-$1\"; mkdir -p \"$PD_ROOT/etc/apt/sources.list.d\"; "
+            + "pd_repo() { pd_f=\"$PD_ETC/apt/sources.list.d/$1\"; "
+            + "pd_done=\"$PD_STATE/repo-$1\"; mkdir -p \"$PD_ETC/apt/sources.list.d\"; "
             // A source written a second ago is in no index that has been fetched, so its
             // packages stay invisible to apt until the lists are fetched again, past the
             // freshness check. But a source file that is already there word for word, and was

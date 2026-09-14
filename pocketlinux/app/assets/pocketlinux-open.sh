@@ -8,7 +8,6 @@
 # on screen and a log to read instead of silence.
 #
 # Usage: pocketlinux-open [--label <text>] [--real-dir <folder>] [--log-name <name>]
-#        [--probe-seconds <n>]
 #        <command> [args...]
 set -u
 
@@ -16,7 +15,6 @@ label=""
 profile=""
 real_dir_override=""
 log_name=""
-probe_seconds=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --label)
@@ -30,10 +28,6 @@ while [ "$#" -gt 0 ]; do
     --log-name)
       [ "$#" -ge 2 ] || exit 2
       log_name=$2
-      shift 2 ;;
-    --probe-seconds)
-      [ "$#" -ge 2 ] || exit 2
-      probe_seconds=$2
       shift 2 ;;
     --) shift; break ;;
     *) break ;;
@@ -74,12 +68,9 @@ if [ -z "$label" ]; then
 fi
 [ -n "$label" ] || label=$name
 
-case "$probe_seconds" in
-  ''|*[!0-9]*) probe_seconds=0 ;;
-esac
-[ "$probe_seconds" -le 600 ] 2>/dev/null || probe_seconds=600
+# Five minutes before a start is called a failure. A Chromium app unpacking itself for the first
+# time on a phone has been seen to take most of that, and cutting it short kills a working start.
 max_wait=300
-[ "$probe_seconds" -le 0 ] || max_wait=$probe_seconds
 
 log_dir="$HOME/.pocketlinux/logs"
 mkdir -p "$log_dir" 2>/dev/null || true
@@ -130,7 +121,6 @@ is_browser() {
 }
 
 notify() {   # notify <urgency> <summary> <body>
-  [ "$probe_seconds" -eq 0 ] || return 0
   command -v notify-send >/dev/null 2>&1 || return 0
   notify-send -a PocketLinux -u "$1" -i "$name" "$2" "$3" >/dev/null 2>&1 || true
 }
@@ -154,7 +144,6 @@ expected_wait() {
 # already says what is opening and how long it usually takes.
 spinner_open=0
 spinner_start() {
-  [ "$probe_seconds" -eq 0 ] || return 0
   command -v xsetroot >/dev/null 2>&1 && xsetroot -cursor_name watch >/dev/null 2>&1 || true
   spinner_open=1
 }
@@ -357,12 +346,8 @@ run_attempt() {
   done
   spinner_stop
   if kill -0 "$pid" 2>/dev/null || { [ -n "$(app_pids)" ]; }; then
-    if [ "$probe_seconds" -gt 0 ]; then
-      echo "launch proof timed out after ${elapsed}s without a product window" >> "$log"
-      return 124
-    fi
     echo "still running after ${elapsed}s without a detected window · process kept · $(free_mb) MB free" >> "$log"
-    notify normal "$label is still starting" "Its process is still running. Settings → Linux app reports has the startup output."
+    notify normal "$label is still starting" "It is still working, but it has not drawn its window yet. Give it a little longer, or close other apps to leave it more memory."
     return 0
   fi
   wait "$pid" 2>/dev/null
@@ -415,12 +400,6 @@ fi
 # because the stop ends it with a signal rather than a quit, and on a phone screen that bubble
 # sits over the page. Chrome's own switch keeps it away; nothing else about the session changes.
 [ "$name" != google-chrome ] || [ "${#flags[@]}" -eq 0 ] || flags+=(--hide-crash-restore-bubble)
-
-# The old path inherited Linux-only
-# process switches (--no-zygote, --in-process-gpu, site-isolation changes and Ozone/X11), and the
-# real RMX3197 report showed it dying before a window existed. Keep the official process model and
-# vary only sandbox/GPU compatibility. Installation tries these profiles separately and remembers
-# the first one that actually maps a stable publisher window.
 
 # A browser is the one Chromium program here that must keep its extensions and its background
 # work (extension and safe-browsing updates). For an AI app both are only memory.
@@ -615,12 +594,12 @@ if [ "$managed_app" = 1 ] && { [ -n "$open_id$existing_pids" ] \
     status=$?
     echo "argument handoff finished · exit $status (this does not confirm sign-in)" >> "$log"
     if [ "$status" != 0 ]; then
-      notify critical "$label could not receive the link" "Handoff exit $status. Check the app report; the existing app and browser were kept."
+      notify critical "$label could not receive the link" "Open $label and try again from inside it. Nothing was closed."
     fi
     exit "$status"
   fi
   if true; then
-    [ -n "$open_id" ] || notify normal "$label is already running" "Its window is not ready yet. See Settings → Linux app reports."
+    [ -n "$open_id" ] || notify normal "$label is already running" "Its window is not ready yet. Give it a moment. No second copy was started."
     echo 'existing process kept; no duplicate startup' >> "$log"
     exit 0
   fi
@@ -651,67 +630,9 @@ launch_guarded() {
   run_attempt "$@"
 }
 
-# Stays quietly until the app ends, and writes down how it ended: "closed by itself" is only a
-# mystery while nobody records the exit. SIGKILL alone cannot identify who sent the signal.
-record_end() {
-  local started_at end ran
-  started_at=$(date +%s)
-  wait "$pid" 2>/dev/null
-  end=$?
-  # The launcher we started may have handed over to the real program; wait for that too.
-  while [ -n "$(app_pids)" ]; do sleep 5 || break; done
-  ran=$(( $(date +%s) - started_at ))
-  echo "$(date '+%I:%M:%S %p') $label ended after ${ran}s · exit $end · $(free_mb) MB free" >> "$log"
-  if [ "$end" = 137 ] || [ "$end" = 9 ]; then
-    notify critical "$label was stopped" "Its process received SIGKILL. Memory pressure or another forced stop may be responsible. See the app report."
-  elif [ "$end" != 0 ] && [ "$end" != 143 ]; then
-    notify critical "$label stopped with an error" "Exit $end. Settings → Linux app reports has the last output."
-  fi
-}
-
 launch_guarded ${flags[@]+"${flags[@]}"} "$@"
 status=$?
 unlock_startup
-if [ "$status" = 0 ]; then
-  if [ "$probe_seconds" -gt 0 ]; then
-    # An unpacked EXE is not an installed GUI app until it keeps a real window mapped. Hold it
-    # briefly to reject a splash-only crash, then record the proof that Android and the menu use.
-    stable_seconds=${POCKETLINUX_PROBE_STABLE_SECONDS:-8}
-    case "$stable_seconds" in ''|*[!0-9]*) stable_seconds=8 ;; esac
-    [ "$stable_seconds" -ge 1 ] || stable_seconds=1
-    [ "$stable_seconds" -le 30 ] || stable_seconds=30
-    stable_until=$((SECONDS + stable_seconds))
-    while [ "$SECONDS" -lt "$stable_until" ]; do
-      if ! has_window; then
-        echo "launch proof failed: the first window disappeared" >> "$log"
-        status=70
-        break
-      fi
-      sleep 1 || { echo 'PD_ERROR: Linux sleep failed during window verification.' >> "$log"; status=159; break; }
-    done
-    if [ "$status" = 0 ]; then
-      proof_file=${POCKETLINUX_PROOF_FILE:-}
-      if [ -n "$proof_file" ]; then
-        umask 077
-        printf 'window-stable-%ss\n%s\n' "$stable_seconds" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$proof_file"
-      fi
-      echo "launch proof passed: a window stayed mapped for ${stable_seconds}s" >> "$log"
-      probe_pids="$(app_pids | tr '\n' ' ') ${pid:-}"
-      [ -z "${probe_pids// /}" ] || {
-        kill $probe_pids 2>/dev/null || true
-        sleep 2
-        kill -9 $probe_pids 2>/dev/null || true
-      }
-      exit 0
-    fi
-    probe_pids="$(app_pids | tr '\n' ' ') ${pid:-}"
-    [ -z "${probe_pids// /}" ] || {
-      kill $probe_pids 2>/dev/null || true
-      sleep 1
-      kill -9 $probe_pids 2>/dev/null || true
-    }
-  fi
-fi
 if [ "$status" = 0 ]; then
   exit 0
 fi
@@ -731,19 +652,11 @@ append_own_log() {
 }
 append_own_log
 
-# During setup Android displays the exact report; starting invisible zenity/notification processes
-# wastes memory and can keep the private display/session alive after its task has finished.
-if [ "$probe_seconds" -gt 0 ]; then
-  exit "$status"
-fi
-
 case "$status" in
-  137|9) reason="its process was killed (SIGKILL); memory pressure is one possible cause"
+  137|9) reason="something stopped it, and the phone freeing memory is the usual reason"
          advice="Close the browser and any other app, then open $label again." ;;
-  159)   reason="Linux reported a blocked system call or lost runtime"
-         advice="Open Settings → Linux app reports; stop this session before retrying." ;;
-  124)   reason="it reached the launch time limit"
-         advice="Open the app report for the last startup output." ;;
+  159)   reason="the Linux computer stopped answering"
+         advice="Stop the Linux computer in PocketLinux, start it again, then open $label." ;;
   139)   reason="it crashed while starting"
          advice="Open $label again. If it keeps happening, tap $label on the Apps tab to update it." ;;
   134)   reason="it stopped itself with an error"

@@ -2606,11 +2606,15 @@ public final class MainActivity extends Activity {
         if (notificationRow != null) {
             boolean on = notificationsAllowed();
             notificationRow.setStatus(on ? "ON" : "OFF", on ? Ui.SUCCESS : Ui.WARNING);
+            // Both kinds are named the way the phone's own page names them, so the owner who goes
+            // there to silence one can tell which row is which.
             notificationRow.setValue(on
-                    ? "On · setup and install progress with a Stop button, and one line that stays "
-                    + "while the computer is on · tap to change either one"
-                    : "Off · turn ON for setup and install progress with a Stop button, and the "
-                    + "one line that stays while the computer is on");
+                    ? "On · Setup and installs shows progress and a Stop button. Linux desktop "
+                    + "running is the one line that stays while the computer is on. Tap to change "
+                    + "either one."
+                    : "Off · turn ON for Setup and installs, which shows progress and a Stop "
+                    + "button. The other kind, Linux desktop running, is the one line that stays "
+                    + "while the computer is on.");
         }
         if (phoneFilesRow != null) {
             boolean on = PhoneFiles.allowed(this);

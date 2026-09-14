@@ -326,12 +326,14 @@ final class CloudFiles {
     private static final class Copy {
         private static final int NOTIFICATION = 2308;
         /**
-         * The app's one notification category, created at start-up by LinuxService.
+         * The same category set-up and app installs use, created at start-up by LinuxService.
          *
-         * Named here rather than owned here: a category of its own would put a second row in the
-         * phone's notification settings for something that is over in a minute.
+         * Borrowed rather than owned: a category of its own would add a row to the phone's
+         * notification settings for something that is over in a minute. Bringing files in is
+         * work that ends, like an install, so silencing the line that stays while the computer
+         * is on must not silence this too.
          */
-        private static final String CHANNEL = "pocketlinux_linux";
+        private static final String CHANNEL = LinuxService.CHANNEL_SETUP;
         private static final String STOP = "com.pocketlinux.action.STOP_CLOUD_COPY";
         private static final long SHOW_AFTER_MS = 1200;
         private static final long REDRAW_MS = 500;
