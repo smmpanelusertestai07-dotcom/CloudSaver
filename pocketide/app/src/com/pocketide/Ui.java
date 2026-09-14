@@ -209,9 +209,34 @@ final class Ui {
         return drawable;
     }
 
+    /**
+     * A background that responds to a finger.
+     *
+     * The third argument used to be null, and that is the difference between a ripple and no
+     * ripple at all. RippleDrawable with no explicit mask masks the ripple against the
+     * composite of its content layers -- and nearly every call here passes a TRANSPARENT
+     * GradientDrawable as that content, because the row underneath wants no fill of its own.
+     * A transparent composite multiplies the ripple away completely: every settings row, every
+     * permission row, every extension row and the back button on two screens did nothing
+     * visible when pressed. Nobody reports a missing ripple; they just find the app
+     * unresponsive and tap again.
+     *
+     * A radius of zero does not escape it either, which is worth stating because it looks like
+     * it should: GradientDrawable reports OPAQUE only when its solid colour is opaque, and
+     * TRANSPARENT never is.
+     *
+     * So the mask is built here, from the base's own corner radius, which means a rounded row
+     * gets a rounded ripple and a square one gets a square ripple without any call site having
+     * to say so.
+     */
     static RippleDrawable tappable(Context context, Drawable base, boolean dark) {
+        GradientDrawable mask = new GradientDrawable();
+        mask.setColor(Color.WHITE);
+        if (base instanceof GradientDrawable) {
+            mask.setCornerRadius(((GradientDrawable) base).getCornerRadius());
+        }
         return new RippleDrawable(
-                ColorStateList.valueOf(dark ? 0x28FFFFFF : 0x1C000000), base, null);
+                ColorStateList.valueOf(dark ? 0x28FFFFFF : 0x1C000000), base, mask);
     }
 
     /** The same colour at a chosen opacity, for tints, tonal fills and indicator pills. */

@@ -155,10 +155,18 @@ EOF
 #   Open VSX, and while the editor is open it keeps them current by itself -- an agent
 #   extension a month out of date is an agent missing a month of its publisher's fixes.
 #
-#   update.mode is "none" because it governs updating the EDITOR, and code-server cannot
-#   update itself: it is a tarball, not a package, and its own updater is compiled out. Left
-#   on, it would show a notification offering an update that could never install. The app
-#   updates the editor instead, from Settings, with the checks in pocketide-update.sh.
+#   update.mode is "none", and the reason is narrower than it looks. code-server DOES ship a
+#   release check of its own -- its documentation lists the notification as a feature -- and
+#   what governs that is code-server's own --disable-update-check flag, which this script
+#   sets twice: in the config file and on the command line. update.mode is Visual Studio
+#   Code's DESKTOP update-service setting and does not control it.
+#
+#   It is still set to "none", because what it would govern cannot work here either: the
+#   editor is an unpacked tarball rather than a package, so nothing inside it can replace
+#   itself in place. The app owns that instead, from Settings, with the checks in
+#   pocketide-update.sh. Written out at this length because the previous comment gave the
+#   wrong reason, and a maintainer who dropped --disable-update-check believing update.mode
+#   covered it would get the notification back.
 write_settings() {
   local layout zoom
   layout="${PIDE_LAYOUT:-phone}"

@@ -134,11 +134,30 @@ latest_version() {
   version_from "$json"
 }
 
-# Packages whose upgrade comes from the security pocket. This is the same rule
-# unattended-upgrades applies, read off apt's own simulated run rather than a package list:
-# "Inst curl [8.5.0] (8.5.0-2ubuntu10.6 Ubuntu:24.04/noble-security ...)".
+# Packages whose CANDIDATE version comes from the security pocket, read off apt's own
+# simulated run: "Inst curl [8.5.0-2ubuntu10.5] (8.5.0-2ubuntu10.6 Ubuntu:24.04/noble-security
+# [arm64])".
+#
+# Two details, and both were wrong before.
+#
+# dist-upgrade, not upgrade. apt-get upgrade never installs a new package, so any security fix
+# whose new version pulls in a new dependency or bumps a library soname is "kept back" and
+# produces no Inst line at all -- it simply would not appear, the screen would read "everything
+# is up to date", and the fix would sit there. The simulation is only a listing; what is
+# actually installed is still the named set and nothing else.
+#
+# And the origin is matched inside the PARENTHESES rather than anywhere on the line, because
+# that is the part naming the candidate's own archive. Matching the whole line counts a package
+# whose NAME contains "-security" as a security update.
+#
+# This is not literally what unattended-upgrades does -- it reads candidate origin metadata
+# through apt's own Python API -- but it selects on the same property, which is the candidate's
+# archive rather than the package's name or its installed version.
 security_list() {
-  apt-get -s upgrade 2>/dev/null | awk '/^Inst / && /-security/ {print $2}'
+  apt-get -s dist-upgrade 2>/dev/null | awk '
+    /^Inst / {
+      if (match($0, /\(([^)]*)\)/) && substr($0, RSTART, RLENGTH) ~ /-security/) print $2
+    }'
 }
 
 check() {
@@ -152,7 +171,7 @@ check() {
 
   local security all
   security=$(security_list | wc -l | tr -d ' ')
-  all=$(apt-get -s upgrade 2>/dev/null | awk '/^Inst /' | wc -l | tr -d ' ')
+  all=$(apt-get -s dist-upgrade 2>/dev/null | awk '/^Inst /' | wc -l | tr -d ' ')
   say "ubuntu_security=$security"
   say "ubuntu_all=$all"
 
@@ -167,9 +186,12 @@ check() {
   fi
   say "extensions=$count"
 
-  # Ubuntu 24.04 LTS is supported to June 2029 with standard updates, and to 2036 under
-  # Ubuntu Pro. Printed so the screen can say the date rather than promise "long term".
-  say "ubuntu_supported_until=2029-06"
+  # Read off Canonical's own release-cycle page rather than remembered: standard security
+  # maintenance for 24.04 LTS ends May 2029, Expanded Security Maintenance (the Ubuntu Pro
+  # entitlement) May 2034, and the separate PAID Legacy add-on May 2039. Printed so the screen
+  # can say a date rather than promise "long term". A month is not a rounding error when the
+  # sentence on screen says it is quoting Canonical.
+  say "ubuntu_supported_until=2029-05"
 
   # The lists apt downloaded to answer this are tens of megabytes, and every command that needs
   # them fetches them again anyway. Keeping them on a phone to save one apt-get update is the
@@ -204,8 +226,11 @@ update_ubuntu() {
     fi
     # shellcheck disable=SC2086
     say "Installing $(printf '%s\n' "$packages" | wc -l | tr -d ' ') security update(s)…"
+    # Without --only-upgrade on purpose: a security fix that bumps a library soname needs its
+    # new dependency installed, and --only-upgrade is precisely the flag that refuses to do
+    # that. The set is still exactly what the simulation named; apt resolves what those need.
     # shellcheck disable=SC2086
-    if ! apt_upgrade install --only-upgrade $packages; then
+    if ! apt_upgrade install $packages; then
       say "Some security updates could not be installed."
       return 1
     fi

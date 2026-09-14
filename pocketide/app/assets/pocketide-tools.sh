@@ -26,13 +26,20 @@
 #              is pure userspace -- but it costs memory for nothing unless a real GUI app has to
 #              be filmed.
 #
-#   ANDROID    An agent can build a real, signed, installable APK here, but only a Java-only
-#              one: Google publishes no arm64 NDK, so anything with C or C++ in it cannot be
-#              built at all. Four of Google's own tools ship x86-64 only and are replaced with
-#              aarch64 rebuilds. The emulator is impossible and always will be -- Google ships
-#              no linux-aarch64 emulator, and even a self-built one needs /dev/kvm, which
-#              SELinux denies to every app on an unrooted phone. The phone itself is the test
-#              device instead.
+#   ANDROID    This layer installs a JDK and tunes Gradle. It does NOT install the Android
+#              SDK, and it does not supply aarch64 rebuilds of Google's aapt2, aidl, zipalign
+#              and split-select, which ship as x86-64 only and which a Gradle Android build
+#              stops at. Those are steps the owner still has to take, and the screen says so
+#              rather than implying the layer finishes the job -- an earlier version of this
+#              header asserted that those four tools were already swapped for aarch64 builds,
+#              while the function's own closing lines correctly said they were not. A claim
+#              that contradicts itself inside one file is a claim nobody ever checked.
+#
+#              Two limits are permanent whatever is installed: apps containing C or C++ cannot
+#              be built, because Google publishes no arm64 NDK; and the emulator cannot run,
+#              because Google ships no linux-aarch64 build and even a self-built one needs
+#              /dev/kvm, which SELinux denies to every app on an unrooted phone. The phone
+#              itself is the test device instead.
 #
 # Usage:
 #   pocketide-tools.sh browser      install the browser layer
@@ -157,8 +164,16 @@ install_android() {
   mkdir -p "$TOOLS_DIR/android"
   tune_gradle
   say ""
-  say "A JDK is installed. Gradle comes from each project's own gradlew wrapper,"
+  say "A JDK is installed, and Gradle comes from each project's own gradlew wrapper,"
   say "which is how an Android project is meant to be built — nothing to install."
+  say ""
+  say "This is NOT a finished Android build setup, and the two missing pieces are"
+  say "not small:"
+  say "  • The Android SDK itself. Install Google's command-line tools and use"
+  say "    sdkmanager for a platform and build-tools, then point ANDROID_HOME at it."
+  say "  • aarch64 builds of aapt2, aidl, zipalign and split-select. Google ships"
+  say "    those four as x86-64 only, so a Gradle build stops on the first one with"
+  say "    an Exec format error until they are replaced."
   say ""
   say "What cannot be done on this phone, and cannot be fixed by installing anything:"
   say "  • Apps with C or C++ in them. Google publishes no arm64 NDK."

@@ -150,12 +150,19 @@ final class Theme {
     }
 
     /**
-     * The same, for a screen whose content runs to both edges and has no bar of its own.
+     * For a screen with no bar of its own at the top: the root itself takes the inset.
      *
-     * Used by the editor: the WebView is given the top inset as padding so the page does not
-     * start under the clock, and the toolbar along the bottom takes the gesture bar's height.
+     * This existed as fitContent() and had ZERO call sites, which is the whole of the bug it
+     * was written to prevent. Only the main screen ever asked for insets at all -- so the
+     * editor, Set up and About all still drew at y=0 on Android 15, with the clock over their
+     * titles and the gesture bar over the row of buttons along the bottom. Exactly the fault
+     * an owner reported for the main screen, still present on the other three, because the
+     * helper for them was never wired up.
+     *
+     * Passing the root as its own top bar is deliberate and works because of the order inside
+     * fitBars: the sides are written first, then the top is written on top of them.
      */
-    static void fitContent(final View root, final View content, final View bottomBar) {
-        fitBars(root, content, bottomBar);
+    static void fitScreen(final View root, final View bottomBar) {
+        fitBars(root, root, bottomBar);
     }
 }

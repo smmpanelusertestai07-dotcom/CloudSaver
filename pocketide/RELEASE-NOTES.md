@@ -1,5 +1,100 @@
 # Release notes
 
+## 1.7.0
+
+The second half of the audit, and it found the thing I had fixed once and left broken
+everywhere else.
+
+### Only one screen out of four handled the system bars
+
+An owner reported the clock drawn over the app's title and the gesture bar over the row of
+destinations. That was fixed — on the main screen. `Theme.fitContent()` was written for the
+editor and had **zero call sites**, so the editor's toolbar still sat under the gesture handle,
+exactly where Commands, Keys, Trackpad and Home have their labels, and Set up and About still
+drew their back bars under the clock. `targetSdk 35` means Android 15 draws every window edge to
+edge whether it asks to or not, so a screen that does not handle insets does not get a choice.
+
+All four handle it now, and a gate names each screen and the call it has to reach.
+
+### Nothing in the app responded to being pressed
+
+`Ui.tappable()` built `new RippleDrawable(colour, base, null)`. With no explicit mask, a ripple
+is masked against the composite of its content layers — and nearly every call passes a
+*transparent* GradientDrawable as that content, because the row underneath wants no fill of its
+own. A transparent composite multiplies the ripple away completely.
+
+Every settings row, every permission row, every extension row, every FAQ entry and the back
+button on two screens gave no touch feedback at all. Nobody reports a missing ripple; they
+report that the app feels unresponsive, and tap again. A radius of zero does not escape it
+either: GradientDrawable reports OPAQUE only when its solid colour is opaque, and transparent
+never is.
+
+The mask is built from the base's own corner radius now, so a rounded row gets a rounded ripple
+without any call site having to say so.
+
+### The dates were a month out, and the screen said they were Canonical's
+
+Ubuntu 24.04 LTS standard security maintenance ends **May 2029**, not June — checked against
+Canonical's own release-cycle page rather than remembered. The Ubuntu Pro entitlement runs to
+**May 2034**, not 2036; 2036 is not a date Canonical publishes for this release at all, and the
+separate Legacy add-on that reaches May 2039 is paid and not part of the free personal tier the
+same sentence referred to.
+
+A sentence that says "that is Canonical's published date for this release, not an estimate" is
+the one sentence that cannot afford to be a month out. One gate now holds the date in the script,
+the Java, the FAQ and the README to a single value.
+
+### "Android build tools" promised a build it could not finish
+
+The dialog said "Installs a JDK so Java and Kotlin Android projects can be built into a real,
+installable APK". What the layer installs is a JDK. There is no Android SDK, and no aarch64
+replacements for Google's aapt2, aidl, zipalign and split-select, which ship as x86-64 only —
+so a Gradle build stops on the first of them with an Exec format error. The script even
+contradicted itself about this, asserting in its header that those four were already replaced
+while its own closing lines correctly said they were not.
+
+The row is "Java toolchain (JDK)" now, and it says exactly what is missing and what a Gradle
+build will do until it is supplied. Everything else on that screen — web, servers, command-line
+programs, JVM tests — works with just the JDK, and it says that too.
+
+### The memory figure the app told you to watch was the wrong one
+
+`Exits.footprintBytes()` read `/proc/self/status` — the Android process alone — and the Activity
+screen printed it as "counted against Android's limit", directly beside a workspace total in the
+gigabytes. Everything that actually uses memory here is a PRoot child: the editor, its extension
+host, a compiler. The row sat at around a hundred megabytes and gave no warning at all, right up
+to the kill the app then explains as "Android ran Linux out of memory". It sums the whole
+workspace now, from the process list the caller has already built.
+
+### Held-back security updates were invisible
+
+`apt-get upgrade` never installs a new package, so any security fix whose new version pulls in a
+dependency or bumps a soname is "kept back" and produces no line in the simulation at all — the
+screen would read "everything is up to date" while the fix sat waiting. The listing uses
+`dist-upgrade` now, matches the origin inside the parentheses where the *candidate's* archive is
+named rather than anywhere on the line, and installs without `--only-upgrade`, which is the flag
+that was refusing to pull the new dependency.
+
+### A theme change while the app was open did nothing
+
+Every activity declares `uiMode` in `configChanges`, so Android does not recreate them — and
+nothing overrode `onConfigurationChanged`. Flipping Dark mode from the quick-settings tile left
+PocketIDE painting the old palette while every other app on the phone flipped, and
+`setSystemBarsAppearance` is sticky per window, so the clock stayed the wrong colour too. All
+four handle it. The editor rebuilds its chrome and carries the WebView across rather than
+recreating it, because losing an editor session over a change of colour would be the worse bug.
+
+### And one wrong explanation
+
+`update.mode: "none"` was justified by "code-server's own updater is compiled out". It is not —
+code-server ships a release check, and what suppresses it is its own `--disable-update-check`
+flag, which this script already sets twice. The setting stays, for the narrower reason that is
+actually true, and the comment now says which flag does what so nobody drops the wrong one.
+
+### Gates
+
+46, with eight more checks inside them, each verified against the broken code before the fix.
+
 ## 1.6.5
 
 An audit of what 1.6.0 shipped, and eight things it was wrong about. All eight were confirmed by

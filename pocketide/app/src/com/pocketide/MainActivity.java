@@ -104,6 +104,24 @@ public final class MainActivity extends Activity {
         out.putInt(EXTRA_TAB, selected);
     }
 
+    /**
+     * The phone's Dark theme flipped while this screen was on it.
+     *
+     * Every activity in this app declares uiMode in android:configChanges, so Android does NOT
+     * recreate them for a theme change -- and nothing overrode this, so the app went on
+     * painting the old palette while every other app on the phone flipped. It is a quick
+     * settings tile, so it happens with the app fully on screen.
+     *
+     * Theme.apply() has to run too, not just the rebuild: setSystemBarsAppearance is sticky
+     * per window, so a light-to-dark switch left the clock and battery dark on the app's own
+     * near-black strip until the activity was recreated for some other reason.
+     */
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        Theme.apply(this);
+        render();
+    }
+
     @Override protected void onResume() {
         super.onResume();
         // Permissions, free space and the workspace's own state all change while the owner is

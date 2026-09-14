@@ -168,6 +168,60 @@ for method in ("doRun", "collect"):
         problems.append("Updates.%s never destroys the PRoot process, so an aborted read "
                         "orphans apt holding the package lock" % method)
 
+# --- the support date is one date, everywhere ---------------------------------------------------
+#
+# Three places carry it and all three shipped a month late: the script prints it, Updates.java
+# defaults and falls back to it, and the FAQ and README state it in prose. The sentence on the
+# Settings screen says "that is Canonical's published date for this release, not an estimate" --
+# which is exactly the sentence that cannot afford to be a month out.
+#
+# The values are Canonical's release-cycle page for 24.04 LTS: standard security maintenance to
+# May 2029, Expanded Security Maintenance (the Ubuntu Pro entitlement) to May 2034, and a
+# separate PAID Legacy add-on to May 2039. Written here so a future bump has one place to
+# change and one test to satisfy.
+STANDARD_ISO = "2029-05"
+STANDARD_WORDS = "May 2029"
+PRO_WORDS = "May 2034"
+
+if 'ubuntu_supported_until=%s' % STANDARD_ISO not in script:
+    problems.append("the script does not report %s as the standard-support date" % STANDARD_ISO)
+for name, text in (("Updates.java", updates),
+                   ("Texts.java", code(src + "Texts.java"))):
+    if STANDARD_WORDS not in text:
+        problems.append("%s does not carry %s as the standard-support date" % (name, STANDARD_WORDS))
+    if re.search(r'(June|April|July) 2029', text):
+        problems.append("%s still carries a standard-support date other than %s"
+                        % (name, STANDARD_WORDS))
+readme = read(app + "/README.md")
+if STANDARD_WORDS not in readme or re.search(r'(June|April|July) 2029', readme):
+    problems.append("README.md does not agree that standard support ends " + STANDARD_WORDS)
+faq = code(src + "Texts.java")
+if PRO_WORDS not in faq:
+    problems.append("the FAQ does not give %s as the Ubuntu Pro date; 2036 was there once and "
+                    "is not a date Canonical publishes for this release" % PRO_WORDS)
+if "2036" in faq or "2036" in script:
+    problems.append("2036 is quoted as an Ubuntu 24.04 date somewhere; Pro covers it to 2034 "
+                    "and the separate paid Legacy add-on to 2039")
+
+# --- the Android layer does not promise what it does not install --------------------------------
+#
+# The dialog said "Installs a JDK so Java and Kotlin Android projects can be built into a real,
+# installable APK", and the layer installs a JDK and nothing else -- no SDK, and no aarch64
+# replacements for the four Google tools that ship x86-64 only. The script even contradicted
+# itself about it inside one file.
+tools = read(assets + "pocketide-tools.sh")
+settings_raw = read(src + "SettingsPane.java")
+if "are replaced with" in tools:
+    problems.append("pocketide-tools.sh claims Google's x86-64 tools 'are replaced with' "
+                    "aarch64 rebuilds. Nothing in this app supplies them.")
+for text, where in ((settings_raw, "the Settings dialog"), (read(src + "Tools.java"), "Tools")):
+    if re.search(r'Installs a JDK so [^"]*installable\s*"?\s*\+?\s*"?\s*APK', text):
+        problems.append("%s still promises an installable APK from a layer that installs only "
+                        "a JDK" % where)
+if "Android SDK" not in settings_raw:
+    problems.append("the Settings dialog never mentions that the Android SDK is not installed, "
+                    "which is the first thing a Gradle build stops on")
+
 # --- the switch is real ----------------------------------------------------------------------
 if "Prefs.AUTO_UPDATE" not in updates:
     problems.append("there is no stored setting behind the automatic-updates switch")

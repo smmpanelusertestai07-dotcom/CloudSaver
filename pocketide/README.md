@@ -80,7 +80,7 @@ fix within hours of a CVE, and a machine that never runs `apt` never receives it
   version that was asked for — only then is the installed one replaced, and a failed swap puts
   the previous one straight back.
 
-Ubuntu 24.04 LTS has standard security support until June 2029. All of this runs only while the
+Ubuntu 24.04 LTS has standard security support until May 2029. All of this runs only while the
 app is open, because Linux only runs while the app is open — Android does not keep another
 operating system alive behind a closed app.
 

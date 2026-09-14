@@ -135,7 +135,7 @@ final class Updates {
                 prefs.getString(Prefs.UPDATE_EDITOR_CURRENT, ""),
                 prefs.getString(Prefs.UPDATE_EDITOR_LATEST, ""),
                 prefs.getInt(Prefs.UPDATE_EXTENSIONS, 0),
-                prefs.getString(Prefs.UPDATE_SUPPORTED_UNTIL, "June 2029"),
+                prefs.getString(Prefs.UPDATE_SUPPORTED_UNTIL, "May 2029"),
                 prefs.getLong(Prefs.UPDATE_CHECKED_AT, 0));
     }
 
@@ -373,7 +373,7 @@ final class Updates {
         return days + (days == 1 ? " day ago" : " days ago");
     }
 
-    /** "2029-06" as the script prints it, into "June 2029" as a person reads it. */
+    /** "2029-05" as the script prints it, into "May 2029" as a person reads it. */
     private static String month(String iso) {
         String[] names = {"January", "February", "March", "April", "May", "June", "July",
                 "August", "September", "October", "November", "December"};
@@ -385,6 +385,6 @@ final class Updates {
                 // Falls through to the default below, which is the same date in words.
             }
         }
-        return "June 2029";
+        return "May 2029";
     }
 }

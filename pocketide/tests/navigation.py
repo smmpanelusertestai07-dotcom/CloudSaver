@@ -94,6 +94,73 @@ if "R.string.tagline_short" not in shell:
     problems.append("the top bar does not show the tagline, so the only place it appears is the "
                     "opening frame, for six-tenths of a second")
 
+# --- every screen handles the system bars, not just this one -----------------------------------
+#
+# targetSdk 35 means Android 15 draws EVERY window edge to edge whether it asks to or not. The
+# main screen was fixed after an owner reported the clock over its title -- and the fix went
+# only there. Theme.fitContent() was written for the editor and had zero call sites, so the
+# editor's toolbar still sat under the gesture handle, and Set up and About still drew their
+# back bars under the clock.
+import os as _os
+SCREENS = {
+    "MainActivity.java": "Shell.frame",      # reaches Theme.fitBars through the shell
+    "WorkspaceActivity.java": "Theme.fitScreen",
+    "SetupActivity.java": "Theme.fitScreen",
+    "HelpActivity.java": "Theme.fitScreen",
+}
+for name, expected in SCREENS.items():
+    text = code(name)
+    if expected not in text:
+        problems.append("%s never reaches the inset handling (%s). On Android 15 its window "
+                        "starts at y=0 and ends behind the gesture bar." % (name, expected))
+if "static void fitScreen" not in code("Theme.java"):
+    problems.append("Theme has no fitScreen, so a screen with no bar of its own has no way to "
+                    "ask for the insets it needs")
+
+# --- a theme change while the app is on screen is handled --------------------------------------
+#
+# Every activity declares uiMode in configChanges, so Android does not recreate them when the
+# phone's Dark theme is flipped from the quick-settings tile. Nothing overrode
+# onConfigurationChanged, so the app went on painting the old palette while every other app
+# flipped -- and setSystemBarsAppearance is sticky, so the clock stayed the wrong colour too.
+manifest = open(app + "/app/AndroidManifest.xml").read()
+declares_uimode = len(re.findall(r'configChanges="[^"]*uiMode', manifest))
+handlers = 0
+for name in sorted(_os.listdir(src)):
+    if not name.endswith("Activity.java"):
+        continue
+    # The BODY, not the file. Every activity calls Theme.apply in onCreate, so searching the
+    # whole file finds that one and passes an activity whose handler does nothing -- which is
+    # what this check caught itself doing before it was tightened.
+    body = re.search(r'onConfigurationChanged\([^)]*\)\s*\{(.*?)\n    \}', code(name), re.S)
+    if body and "Theme.apply(this)" in body.group(1):
+        handlers += 1
+if declares_uimode and handlers < declares_uimode:
+    problems.append("%d activities opt out of being recreated for a theme change but only %d "
+                    "re-apply the theme when one happens, so the rest keep painting the old "
+                    "palette -- and the system bar icons stay the wrong colour, because "
+                    "setSystemBarsAppearance is sticky per window"
+                    % (declares_uimode, handlers))
+
+# --- a control that is pressed shows that it was ------------------------------------------------
+#
+# RippleDrawable with no explicit mask masks the ripple against the composite of its content
+# layers, and nearly every call passes a TRANSPARENT GradientDrawable as that content -- which
+# multiplies the ripple away entirely. Every settings row, every permission row and the back
+# button on two screens did nothing visible when pressed.
+uisrc = code("Ui.java")
+tappable = re.search(r'static RippleDrawable tappable\(.*?\n    \}', uisrc, re.S)
+if not tappable:
+    problems.append("Ui.tappable cannot be read")
+elif re.search(r'new RippleDrawable\(\s*ColorStateList[^;]*?,\s*base,\s*null\s*\)',
+               tappable.group(0), re.S):
+    problems.append("Ui.tappable passes a null ripple mask. With a transparent content layer "
+                    "-- which is what almost every call site passes -- that produces no ripple "
+                    "at all, so no tappable row in the app responds to being pressed.")
+elif "getCornerRadius" not in tappable.group(0):
+    problems.append("Ui.tappable does not take its mask's radius from the base, so a rounded "
+                    "row gets a square ripple")
+
 # Every destination carries a label AND a spoken description. An icon row with no labels is a
 # guessing game for anyone who has not used the app, and these icons are not universal symbols.
 labelled = re.findall(r'new Shell\.Tab\("([^"]+)",\s*R\.drawable\.\w+,\s*\n?\s*"([^"]+)"', main)

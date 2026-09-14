@@ -206,11 +206,12 @@ final class Texts {
                      + "describing something that cannot happen."},
             {"Updates",
              "How long will Ubuntu 24.04 keep getting updates?",
-             "Until June 2029 for the standard security updates, which is Canonical\u2019s own "
+             "Until May 2029 for the standard security updates, which is Canonical\u2019s own "
                      + "published date for this release. Ubuntu Pro extends the same release to "
-                     + "2036 and is free for personal use on a handful of machines. When 26.04 "
-                     + "LTS is worth moving to, that will be a set-up you choose rather than "
-                     + "something that happens to you."},
+                     + "May 2034 and is free for personal use on up to five machines. There is "
+                     + "a further paid Legacy add-on to May 2039, which the free tier does not "
+                     + "include. When 26.04 LTS is worth moving to, that will be a set-up you "
+                     + "choose rather than something that happens to you."},
 
             {"Phone",
              "How big a project can this build?",

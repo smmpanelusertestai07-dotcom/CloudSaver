@@ -77,6 +77,24 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         else WorkspaceService.startEditor(this);
     }
 
+    /**
+     * The phone's Dark theme flipped while the editor was open.
+     *
+     * The chrome is rebuilt and the WebView is carried across rather than recreated -- see
+     * build(). Losing an editor session, its open files and whatever a terminal was running,
+     * because someone tapped a quick-settings tile, would be a far worse bug than the stale
+     * colours this fixes.
+     */
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        Theme.apply(this);
+        if (lockRoot != null) {
+            lockRoot.removeAllViews();
+            lockRoot.addView(build());
+            if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
+        }
+    }
+
     @Override protected void onStart() {
         super.onStart();
         if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
@@ -133,9 +151,18 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         root.addView(waiting, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        web = new WebView(this);
-        configure(web);
-        web.setVisibility(View.GONE);
+        // Built once and re-parented afterwards. build() runs again when the phone's Dark
+        // theme is flipped, and a new WebView there would drop the editor session, the open
+        // files and whatever the terminal was in the middle of -- for a change of colour.
+        if (web == null) {
+            web = new WebView(this);
+            configure(web);
+            web.setVisibility(View.GONE);
+        } else {
+            ViewGroup previous = (ViewGroup) web.getParent();
+            if (previous != null) previous.removeView(web);
+        }
+        if (web.getVisibility() == View.VISIBLE) waiting.setVisibility(View.GONE);
         root.addView(web, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -144,8 +171,15 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(Ui.divider(this, dark, false));
-        root.addView(bottomBar(dark), new LinearLayout.LayoutParams(
+        View bottom = bottomBar(dark);
+        root.addView(bottom, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Without this the toolbar's bottom 24 dp sat behind the gesture handle -- which is
+        // exactly where Commands, Keys, Trackpad and Home have their labels -- and the WebView
+        // started under the clock. targetSdk 35 draws every window edge to edge whether it asks
+        // to or not, so a screen that does not handle insets does not get a choice.
+        Theme.fitScreen(root, bottom);
         return root;
     }
 

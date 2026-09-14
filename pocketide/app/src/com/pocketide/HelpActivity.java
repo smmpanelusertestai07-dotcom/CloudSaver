@@ -39,6 +39,25 @@ public final class HelpActivity extends Activity {
         setContentView(build());
     }
 
+    /**
+     * The phone's Dark theme flipped while this screen was on it.
+     *
+     * Every activity in this app declares uiMode in android:configChanges, so Android does NOT
+     * recreate them for a theme change -- and nothing overrode this, so the app went on
+     * painting the old palette while every other app on the phone flipped. It is a quick
+     * settings tile, so it happens with the app fully on screen.
+     *
+     * Theme.apply() has to run too, not just the rebuild: setSystemBarsAppearance is sticky
+     * per window, so a light-to-dark switch left the clock and battery dark on the app's own
+     * near-black strip until the activity was recreated for some other reason.
+     */
+    @Override public void onConfigurationChanged(android.content.res.Configuration config) {
+        super.onConfigurationChanged(config);
+        Theme.apply(this);
+        answers.clear();
+        setContentView(build());
+    }
+
     private View build() {
         boolean dark = Ui.dark(this);
         LinearLayout root = Ui.column(this);
@@ -61,6 +80,9 @@ public final class HelpActivity extends Activity {
         ScrollView page = Ui.page(this, content, dark);
         root.addView(page, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // The back bar was drawn under the clock and the page ran under the gesture bar, on
+        // every phone, because only the main screen ever asked for insets. See Theme.fitScreen.
+        Theme.fitScreen(root, page);
         return root;
     }
 

@@ -152,24 +152,51 @@ final class Exits {
     }
 
     /**
-     * This app's memory footprint as the Android 17 limiter measures it: RssAnon + VmSwap.
+     * The footprint the Android 17 limiter measures: RssAnon + VmSwap, summed over every
+     * process this app has -- its own AND the whole workspace.
      *
      * Not RSS and not VSS, which is why the number here will not match what a task manager
-     * shows. Read from this process's own /proc/self/status, which needs no permission.
+     * shows.
+     *
+     * The sum is the correction. This used to read /proc/self/status alone, so it returned the
+     * Android process's footprint and nothing else -- and the screen printed it as "counted
+     * against Android's limit" directly beside a workspace total in the gigabytes. Everything
+     * that actually consumes memory here is a PRoot child: the editor, its extension host, a
+     * compiler. Reporting the app process alone meant the row sat at around a hundred megabytes
+     * and gave no warning at all, right up to the kill this class then explains as "Android ran
+     * Linux out of memory".
+     *
+     * The limiter is per-app, so a child process under the app's own uid counts against the
+     * same ceiling as the app. Nothing outside this app is readable here and nothing is asked
+     * for: Android has restricted /proc since Nougat to a process's own and its children's.
+     *
+     * The list is passed in rather than fetched, because the one caller has already walked
+     * /proc to build it and doing it twice per refresh is a second pass over every process on
+     * the phone for a number it already has.
      */
-    static long footprintBytes() {
+    static long footprintBytes(List<Running.Process> workspace) {
+        long total = kilobytesOf(new java.io.File("/proc/self/status"));
+        for (Running.Process process : workspace) {
+            total += kilobytesOf(new java.io.File("/proc/" + process.pid + "/status"));
+        }
+        return total * 1024;
+    }
+
+    /** RssAnon + VmSwap out of one /proc/<pid>/status, in kilobytes. Zero if it is gone. */
+    private static long kilobytesOf(java.io.File status) {
         long anon = 0, swap = 0;
         try {
-            for (String line : new String(java.nio.file.Files.readAllBytes(
-                    new java.io.File("/proc/self/status").toPath()),
+            for (String line : new String(java.nio.file.Files.readAllBytes(status.toPath()),
                     java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
                 if (line.startsWith("RssAnon:")) anon = kilobytes(line);
                 else if (line.startsWith("VmSwap:")) swap = kilobytes(line);
             }
         } catch (Throwable unreadable) {
+            // A process that exited between the listing and this read is not an error; it is
+            // simply no longer part of the footprint.
             return 0;
         }
-        return (anon + swap) * 1024;
+        return anon + swap;
     }
 
     private static long kilobytes(String line) {

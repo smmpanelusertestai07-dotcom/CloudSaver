@@ -206,7 +206,7 @@ final class ActivityPane implements Pane {
                 // The footprint, not the resident size. Android 17's per-app memory limiter
                 // measures RssAnon + VmSwap, so that is the number worth watching -- it is what
                 // decides whether the workspace is about to be stopped.
-                long footprint = Exits.footprintBytes();
+                long footprint = Exits.footprintBytes(processes);
                 summary.setText(processes.size() + (processes.size() == 1 ? " process" : " processes")
                         + " · " + DeviceProbe.formatBytes(resident) + " in use"
                         + (footprint > 0

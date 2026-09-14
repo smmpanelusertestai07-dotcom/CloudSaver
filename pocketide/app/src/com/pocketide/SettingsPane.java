@@ -334,19 +334,31 @@ final class SettingsPane implements Pane {
         list.addView(automation);
         list.addView(Ui.divider(host, dark, true));
 
-        Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Android build tools",
+        Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Java toolchain (JDK)",
                 !ready ? "Available once Linux is set up"
-                        : tools.android ? "Installed · Java and Kotlin projects"
+                        : tools.android ? "Installed · the first step towards Android builds"
                             : "Not installed · about "
                                     + DeviceProbe.formatBytes(Tools.ANDROID_BYTES),
-                v -> offerTools("android", "Android build tools",
-                        "Installs a JDK so Java and Kotlin Android projects can be built into a "
-                                + "real, installable APK.\n\n"
-                                + "Two limits are permanent and worth knowing before you spend "
-                                + "the download: apps containing C or C++ cannot be built, "
-                                + "because Google publishes no arm64 NDK; and the Android "
-                                + "emulator cannot run on this phone at all. The phone itself is "
-                                + "the test device instead.",
+                v -> offerTools("android", "Java toolchain (JDK)",
+                        "Installs a JDK and writes Gradle settings sized to this phone. It is "
+                                + "what Java and Kotlin need, and it is the first step towards "
+                                + "building an Android app here.\n\n"
+                                + "It is NOT a finished Android setup, and saying so here is "
+                                + "the point — two pieces are still missing and neither is "
+                                + "small:\n\n"
+                                + "• The Android SDK. Google's command-line tools install it, "
+                                + "and ANDROID_HOME has to point at it.\n"
+                                + "• aarch64 builds of aapt2, aidl, zipalign and split-select. "
+                                + "Google ships those four as x86-64 only, so a Gradle build "
+                                + "stops on the first one with an Exec format error until they "
+                                + "are replaced.\n\n"
+                                + "Two limits are permanent whatever you install: apps "
+                                + "containing C or C++ cannot be built, because Google "
+                                + "publishes no arm64 NDK; and the Android emulator cannot run "
+                                + "on this phone at all. The phone itself is the test device "
+                                + "instead.\n\n"
+                                + "Everything else on this screen — web, servers, "
+                                + "command-line programs, and JVM tests — works with just this.",
                         Tools.ANDROID_BYTES, tools.android));
         if (tools.android) android.setState(Ui.running(dark));
         list.addView(android);

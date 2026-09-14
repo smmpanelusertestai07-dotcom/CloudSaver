@@ -167,6 +167,12 @@ final class Capacity {
                         + "Google publishes no arm64 Android NDK. That is their decision, not a "
                         + "limit of this hardware.\n\n")
 
+                .append("Those are the MEMORY limits. Before any of them applies, an Android "
+                        + "build needs two things this app does not install: the Android SDK, "
+                        + "and aarch64 builds of Google's aapt2, aidl, zipalign and "
+                        + "split-select, which ship as x86-64 only. Settings → The computer → "
+                        + "Java toolchain says so before you spend the download.\n\n")
+
                 .append("Websites, servers, command-line programs and anything else that "
                         + "compiles for arm64 Linux have no such ceiling. Node, Deno, Python, "
                         + "Go, Rust, Ruby, PHP, C and C++ all build here natively, at full "
