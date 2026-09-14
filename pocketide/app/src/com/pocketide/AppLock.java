@@ -83,7 +83,29 @@ final class AppLock {
         return android.os.SystemClock.elapsedRealtime() < expectingReturnUntil;
     }
 
-    static void returned() { expectingReturnUntil = 0L; }
+    /** How long an errand may take before coming back counts as coming back to a locked app. */
+    private static final long ERRAND_MS = 120_000L;
+    private static volatile long leftForErrandAt;
+
+    /** No screen is in front, and the app sent the owner out itself. */
+    static void leftForErrand() { leftForErrandAt = android.os.SystemClock.elapsedRealtime(); }
+
+    /**
+     * A screen of this app is in front again.
+     *
+     * An errand that took longer than the grace period re-locks here. The check used to be
+     * made only at the moment of leaving: an owner who went to the phone's Settings and then
+     * put the phone down for an hour came back to an unlocked app, because nothing looked
+     * again.
+     */
+    static void returned() {
+        long left = leftForErrandAt;
+        if (left > 0 && android.os.SystemClock.elapsedRealtime() - left > ERRAND_MS) {
+            locked = true;
+        }
+        leftForErrandAt = 0L;
+        expectingReturnUntil = 0L;
+    }
 
     static boolean isLocked(Context context) {
         if (!enabled(context)) return false;
@@ -270,6 +292,8 @@ final class AppLock {
         boolean ok = result == Activity.RESULT_OK;
         Callback waiting = pending;
         pending = null;
+        // The PIN screen answering is the errand ending, however long the PIN took to type.
+        leftForErrandAt = 0L;
         if (ok) {
             locked = false;
             View screen = root == null ? null : root.findViewWithTag(TAG);

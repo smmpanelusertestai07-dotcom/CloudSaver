@@ -68,12 +68,13 @@ final class Theme {
         window.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Ui.bg(dark)));
 
         // Honoured up to Android 14 and ignored from 15, where the app paints the strip behind
-        // each bar itself. Kept for the versions that still listen: the nav bar takes the CARD
-        // colour rather than the page, because the app's own bottom bar is card, and a system
-        // bar a shade off the bar above it is a seam an owner notices without knowing why.
+        // each bar itself. Kept for the versions that still listen. Both take the PAGE colour:
+        // the app's own bottom bar floats over the page now, so what meets the system bar is
+        // the page, and a system bar a shade off it is a seam an owner notices without knowing
+        // why.
         if (Build.VERSION.SDK_INT < 35) {
             window.setStatusBarColor(Ui.bg(dark));
-            window.setNavigationBarColor(Ui.card(dark));
+            window.setNavigationBarColor(Ui.bg(dark));
         }
         setBarIcons(window, dark);
     }
@@ -121,7 +122,7 @@ final class Theme {
      */
     static void fitBars(final View root, final View topBar, final View bottomBar) {
         root.setOnApplyWindowInsetsListener((view, insets) -> {
-            int top, bottom, left, right;
+            int top, bottom, left, right, keyboard;
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets bars = insets.getInsets(
                         WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
@@ -129,13 +130,23 @@ final class Theme {
                 bottom = bars.bottom;
                 left = bars.left;
                 right = bars.right;
+                keyboard = insets.getInsets(WindowInsets.Type.ime()).bottom;
             } else {
                 top = insets.getSystemWindowInsetTop();
                 bottom = insets.getSystemWindowInsetBottom();
                 left = insets.getSystemWindowInsetLeft();
                 right = insets.getSystemWindowInsetRight();
+                keyboard = 0;
             }
-            view.setPadding(left, 0, right, 0);
+            // The keyboard is an inset too, and on Android 15 an app drawn edge to edge is no
+            // longer resized for it by adjustResize alone: the search box on Agents and the
+            // editor's own toolbar sat under the keyboard. The root gives up the keyboard's
+            // height at the bottom, and the bottom bar keeps only whatever the gesture bar
+            // still needs above that -- which, while the keyboard is up, is nothing. On the
+            // versions that still resize the window themselves the keyboard inset arrives
+            // already consumed, as zero, so nothing is padded twice.
+            view.setPadding(left, 0, right, keyboard);
+            bottom = Math.max(0, bottom - keyboard);
             if (topBar != null) {
                 topBar.setPadding(topBar.getPaddingLeft(), top,
                         topBar.getPaddingRight(), topBar.getPaddingBottom());

@@ -72,22 +72,41 @@ if "$STAGE_DIR/bin/code-server" not in script:
     problems.append("nothing confirms the staged tree contains a runnable editor before the "
                     "installed one is moved aside")
 
-# --- automatic means security, and nothing else ----------------------------------------------
+# --- automatic means security fixes and the editor, each behind its own switch ---------------
+#
+# The editor moves on its own only when its own switch is on, only when a newer release is
+# actually known, and only while nothing is running -- and through the same staged, verified,
+# reversible swap the manual row uses. A blanket upgrade of every Ubuntu package is never
+# automatic: that is a decision about someone's machine and stays theirs.
 auto = re.search(r'maybeRunInBackground\s*\([^)]*\)\s*\{(.*?)\n    \}', updates, re.S)
 if not auto:
     problems.append("Updates.maybeRunInBackground cannot be read")
 else:
     body = auto.group(1)
     for forbidden, why in (('"ubuntu-all"', "every package, not just the security ones"),
-                           ('"editor"', "the editor's own version"),
                            ('"all"', "everything at once"),
-                           ('"extensions"', "the extensions")):
+                           ('"extensions"', "the extensions, which the editor already keeps current")):
         if forbidden in body:
-            problems.append("the automatic background run applies %s. Settings says only "
-                            "Ubuntu's security fixes are taken without being asked." % why)
+            problems.append("the automatic background run applies %s. Settings does not say "
+                            "so." % why)
     if '"ubuntu"' not in body:
         problems.append("the automatic background run applies nothing at all, so the switch "
                         "Settings shows as On does nothing")
+    if '"editor"' not in body:
+        problems.append("the automatic background run never updates the editor, so the "
+                        "'Editor updates: Automatic' row in Settings is a promise nothing keeps")
+    else:
+        editor_at = body.index('"editor"')
+        window = body[max(0, editor_at - 600):editor_at]
+        for needed, why in (("automaticEditor(", "its own switch"),
+                            ("editorOutOfDate()", "a newer release actually being known"),
+                            ("editorRunning()", "the editor being closed")):
+            if needed not in window:
+                problems.append("the automatic editor update does not check %s first" % why)
+if "Updates.setAutomaticEditor" not in settings:
+    problems.append("Settings cannot switch the automatic editor update off")
+if "Prefs.AUTO_UPDATE_EDITOR" not in updates:
+    problems.append("there is no stored setting behind the editor-updates switch")
 
 if "isWifi" not in updates:
     problems.append("the automatic run never checks for Wi-Fi, so it spends a mobile data "
@@ -249,6 +268,40 @@ if '"update.mode": "none"' not in editor_script:
 if "update_editor" not in script:
     problems.append("update.mode is off and nothing else updates the editor either, so the "
                     "editor is pinned for ever")
+
+# --- the app itself knows when it is out of date -----------------------------------------------
+#
+# The workflow publishes releases under one tag prefix and the app looks for one. If the two
+# ever differ, the app says "newest" for ever while releases pile up under a name it never
+# reads. So both strings are parsed and compared, rather than trusted to match.
+app_updates = code(src + "AppUpdates.java")
+workflow = read(app + "/../.github/workflows/pocketide.yml")
+prefix_java = re.search(r'TAG_PREFIX\s*=\s*"([^"]+)"', app_updates)
+prefix_yaml = re.search(r'TAG="([^"$]+)\$\{VERSION\}"', workflow)
+if not prefix_java:
+    problems.append("AppUpdates.java does not name the release tag prefix it looks for")
+if not prefix_yaml:
+    problems.append("pocketide.yml does not publish a release under a tag built from a prefix "
+                    "and the version, so the app has nothing to find")
+if prefix_java and prefix_yaml and prefix_java.group(1) != prefix_yaml.group(1):
+    problems.append("the app looks for releases tagged %r and the workflow publishes them as "
+                    "%r; the app would report 'newest' for ever"
+                    % (prefix_java.group(1), prefix_yaml.group(1)))
+if prefix_java and prefix_java.group(1).startswith("v"):
+    problems.append("the PocketIDE release prefix starts with 'v', which is CloudSaver's own "
+                    "tag prefix in the same repository; the two must never collide")
+if "stable_key == 'true'" not in workflow:
+    problems.append("the release job does not require the repository's own signing key, so it "
+                    "would publish an APK signed with a throwaway key that cannot install "
+                    "over any other build")
+if "AppUpdates.maybeCheckInBackground" not in main:
+    problems.append("nothing ever asks whether a newer PocketIDE exists")
+if "AppUpdates.setEnabled" not in settings:
+    problems.append("Settings cannot turn the app's own update check off")
+if "GitHub" not in code(src + "Texts.java"):
+    problems.append("the privacy text does not admit the once-a-day request to GitHub")
+if "Releases" not in readme:
+    problems.append("README.md does not tell an owner where the published APK is")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

@@ -47,6 +47,9 @@ final class AgentsPane implements Pane {
         handler.removeCallbacksAndMessages(null);
     }
 
+    /** Coming back keeps the search and its results; a rebuild would empty both. */
+    @Override public boolean rebuildOnReturn() { return false; }
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private LinearLayout searchResults;
     private TextView searchState;
@@ -64,19 +67,18 @@ final class AgentsPane implements Pane {
     @Override public View build(Activity activity) {
         host = activity;
         boolean dark = Ui.dark(host);
-        LinearLayout root = Ui.column(host);
-        root.setBackgroundColor(Ui.bg(dark));
 
         LinearLayout content = Ui.column(host);
         content.addView(intro(dark));
         content.addView(recommendedCard(dark), Ui.wide(host, 16));
         content.addView(searchCard(dark), Ui.wide(host, 16));
         content.addView(unverifiedCard(dark), Ui.wide(host, 16));
+        // Filled here, not left for an install to fill: the recommended list opened EMPTY
+        // until something was installed or removed, because nothing else ever asked for it.
+        refreshRecommended();
 
-        ScrollView page = Ui.page(host, content, dark);
-        root.addView(page, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        return root;
+        // The page itself, unwrapped, so the frame can let it scroll under the floating bar.
+        return Ui.page(host, content, dark);
     }
 
     private View intro(boolean dark) {
@@ -102,10 +104,13 @@ final class AgentsPane implements Pane {
         recommendedList = Ui.column(host);
         recommendedList.setBackground(Ui.glass(host, dark, 20));
         column.addView(recommendedList, Ui.wide(host, 8));
-        TextView why = Ui.text(host, "Why only these three?", 13f, Ui.accent(dark));
+        TextView why = Ui.text(host, "Why only these three?", 13f, Ui.link(dark));
         why.setPadding(Ui.dp(host, 4), Ui.dp(host, 10), 0, 0);
         why.setMinHeight(Ui.dp(host, Ui.TOUCH_TARGET_DP));
+        why.setGravity(android.view.Gravity.CENTER_VERTICAL);
         why.setClickable(true);
+        why.setFocusable(true);
+        Ui.asButton(why);
         why.setOnClickListener(v ->
                 Dialogs.message(host, "Why these three", Agents.WHY_THESE_THREE));
         column.addView(why);
@@ -169,7 +174,7 @@ final class AgentsPane implements Pane {
             return;
         }
         Dialogs.confirm(host, "Show unverified publishers?",
-                "Open VSX marks a namespace verified only when it has a real owner. Every "
+                "Open VSX marks a publisher name verified only when it has a real owner. Every "
                         + "counterfeit extension found on the registry in 2026 came from an "
                         + "account unaffiliated with the publisher it imitated — 73 cloned "
                         + "packages in April, 77 impersonating AMD, Azure, Salesforce and a US "
@@ -222,7 +227,7 @@ final class AgentsPane implements Pane {
         }
         Dialogs.confirm(host, "Install " + agent.name + "?",
                 agent.summary + "\n\n"
-                        + "Publisher: " + agent.publisher + " (verified namespace)\n"
+                        + "Publisher: " + agent.publisher + " (verified)\n"
                         + "Download: " + DeviceProbe.formatBytes(agent.sizeBytes) + "\n"
                         + "Plan: " + agent.plan + "\n\n"
                         + "The download is checked against the checksum Open VSX publishes "
@@ -315,7 +320,7 @@ final class AgentsPane implements Pane {
             return;
         }
         String warning = listing.verified ? ""
-                : "\n\nThis publisher is NOT verified. Open VSX marks a namespace verified only "
+                : "\n\nThis publisher is NOT verified. Open VSX marks a publisher name verified only "
                         + "when it has a real owner, and every counterfeit extension found on "
                         + "the registry in 2026 came from an unverified account.";
         Dialogs.confirm(host, "Install " + listing.name + "?",
@@ -341,17 +346,11 @@ final class AgentsPane implements Pane {
      * workspace if the bytes are compared against what was published.
      */
     private void install(String namespace, String name, String platform, String label) {
-        boolean dark = Ui.dark(host);
-        TextView progress = Ui.text(host, "Preparing…", 13f, Ui.muted(dark));
-        android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(host)
-                .setTitle("Installing " + label)
-                .setView(progress)
-                .setCancelable(false)
-                .create();
-        int pad = Ui.dp(host, 24);
-        progress.setPadding(pad, pad, pad, pad);
-        dialog.show();
-
+        // The app's own live dialog rather than a bare platform one: the same surface as every
+        // other dialog here, the last lines of output as they happen, and a Done button at the
+        // end -- the platform box had none and could only be dismissed by the code.
+        final Dialogs.Live live = Dialogs.live(host, "Installing " + label,
+                "Downloaded, checked against the registry's checksum, then handed to the editor.");
         new Thread(() -> {
             String failure = null;
             try {
@@ -359,11 +358,11 @@ final class AgentsPane implements Pane {
                 if (listing.downloadUrl == null || listing.downloadUrl.isEmpty()) {
                     throw new IOException("The registry did not offer a download for this build.");
                 }
-                say(progress, "Downloading " + listing.version + "…");
+                live.line("Downloading " + listing.version + "…");
                 File vsix = new File(host.getCacheDir(), namespace + "." + name + ".vsix");
-                fetch(listing.downloadUrl, vsix, progress);
+                fetch(listing.downloadUrl, vsix, live);
 
-                say(progress, "Checking the download…");
+                live.line("Checking the download…");
                 String published = Registry.publishedChecksum(listing.sha256Url);
                 String actual = Workspace.checksum(vsix);
                 if (!published.isEmpty() && !published.equalsIgnoreCase(actual)) {
@@ -374,14 +373,14 @@ final class AgentsPane implements Pane {
                             + "publishes for it, and was discarded.");
                 }
 
-                say(progress, "Installing into the editor…");
+                live.line("Installing into the editor…");
                 StringBuilder output = new StringBuilder();
                 int code = Workspace.run(host,
                         "bash /opt/pocketide/pocketide-editor.sh install-extension "
                                 + namespace + "." + name + " " + vsix.getAbsolutePath(),
                         line -> {
                             output.append(line).append('\n');
-                            say(progress, line);
+                            live.line(line);
                         });
                 vsix.delete();
                 if (code != 0) throw new IOException(output.toString().trim());
@@ -392,18 +391,21 @@ final class AgentsPane implements Pane {
             }
             final String reported = failure;
             host.runOnUiThread(() -> {
-                dialog.dismiss();
-                if (host.isFinishing()) return;
+                if (host.isFinishing()) {
+                    live.close();
+                    return;
+                }
                 if (reported != null) {
+                    live.close();
                     String advice = Trouble.advice(reported);
                     Dialogs.details(host, label + " was not installed",
                             advice != null ? advice
                                     : "Nothing was changed in the editor.",
                             reported, "Copy details");
                 } else {
-                    Dialogs.message(host, label + " is installed",
-                            "Open the editor and it will be in the side panel. Sign in there "
-                                    + "with your own account — this app never sees it.");
+                    live.done(true, label + " is installed. Open the editor and it is in the "
+                            + "side panel. Sign in there with your own account — this app never "
+                            + "sees it.");
                 }
                 refreshRecommended();
                 runSearch(searchBox.getText().toString());
@@ -428,7 +430,7 @@ final class AgentsPane implements Pane {
         }, "remove-extension").start();
     }
 
-    private void fetch(String url, File target, TextView progress) throws IOException {
+    private void fetch(String url, File target, Dialogs.Live live) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setConnectTimeout(30000);
         connection.setReadTimeout(60000);
@@ -450,7 +452,7 @@ final class AgentsPane implements Pane {
                 done += read;
                 if (done - announced > 2L * 1024 * 1024) {
                     announced = done;
-                    say(progress, "Downloading… " + DeviceProbe.formatBytes(done)
+                    live.line("Downloading… " + DeviceProbe.formatBytes(done)
                             + (total > 0 ? " of " + DeviceProbe.formatBytes(total) : ""));
                 }
             }
@@ -458,11 +460,5 @@ final class AgentsPane implements Pane {
         } finally {
             connection.disconnect();
         }
-    }
-
-    private void say(TextView view, String words) {
-        host.runOnUiThread(() -> {
-            if (!host.isFinishing()) view.setText(words);
-        });
     }
 }

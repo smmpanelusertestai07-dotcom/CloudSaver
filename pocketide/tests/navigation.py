@@ -20,6 +20,7 @@ screen left Visual Studio Code 275 effective pixels to lay itself out in. A cons
 exactly like a calculation from the outside, so the check is that the value actually depends on
 the screen.
 """
+import os
 import re
 import sys
 
@@ -82,6 +83,62 @@ if "floatingGlass" not in shell:
 if "setClipToOutline(true)" not in shell:
     problems.append("the bar is not clipped to its own outline, so a ripple at either end "
                     "squares the capsule off when it is pressed")
+
+# --- and the page scrolls UNDER it ---------------------------------------------------------------
+#
+# A capsule the page stops at is a slab with round corners. What makes it float is the page
+# passing underneath: the bar is laid over the page, the page is padded by the bar's measured
+# height so its last row can be scrolled clear, and a ScrollView keeps drawing into that padding.
+if "Gravity.BOTTOM" not in shell:
+    problems.append("the bottom bar takes a row of its own under the page instead of being laid "
+                    "over it, so nothing ever passes beneath the glass")
+if "padUnderBar" not in shell or "setClipToPadding(false)" not in shell:
+    problems.append("the frame does not pad the page by the bar's height and let it draw into "
+                    "the padding, so either the last row hides under the bar or nothing "
+                    "scrolls under it")
+if re.search(r'holder\.setBackgroundColor\(Ui\.(bg|card)', shell):
+    problems.append("the bar's holder paints a solid colour across the screen, so the page "
+                    "cannot show around the capsule and the bar is a slab again")
+if "FLOATING_ALPHA_LIGHT" not in code("Ui.java"):
+    problems.append("the floating glass has no opacity constants, so tests/contrast.py cannot "
+                    "measure the bar's words over what is really behind them")
+if "slot = new FrameLayout" in main:
+    problems.append("MainActivity wraps the pane in a FrameLayout before handing it to the "
+                    "frame, which hides the ScrollView the frame has to pad")
+
+# --- the editor action says what it is -----------------------------------------------------------
+#
+# A bare glyph in the top-right corner read as decoration: an owner called it "the code-looking
+# thing" and did not know it opened anything. A tonal circle around the same glyph did not fix
+# that. A word beside it does.
+if "tonalButton(" not in main or '"Editor"' not in main:
+    problems.append("the top bar's editor action is not a labelled tonal button; a glyph with "
+                    "no word beside it is the control an owner reported as decoration")
+
+# --- the editor's own toolbar --------------------------------------------------------------------
+workspace = code("WorkspaceActivity.java")
+if re.search(r'MATCH_PARENT,\s*Ui\.dp\(this,\s*Shell\.NAV_BAR_DP\)', workspace):
+    problems.append("the editor's toolbar is laid out at a FIXED 64 dp, which clips its labels "
+                    "at a large font scale exactly as the navigation bar once did")
+if "KEYCODE_F1" not in workspace:
+    problems.append("the Commands button does not send F1. Ctrl+Shift+P through the WebView "
+                    "arrived as nothing on the owner's phone; F1 is the palette's other "
+                    "binding and a single unmodified key")
+if "ic_cursor" not in workspace or not os.path.exists(app + "/app/res/drawable/ic_cursor.xml"):
+    problems.append("the Cursor button does not use the pointer icon")
+if "setSupportZoom(true)" not in workspace or "setBuiltInZoomControls(true)" not in workspace:
+    problems.append("pinch zoom is off in the editor; the owner asked for it by name")
+if "user-scalable=yes" not in workspace:
+    problems.append("the workbench's own viewport forbids scaling and nothing loosens it, so "
+                    "the zoom setting alone does nothing")
+if "setTextZoom(100)" not in workspace:
+    problems.append("the WebView is left at its default text zoom, which applies the phone's "
+                    "font scale a second time on top of the zoom Screen.java already computed")
+
+# --- the set-up transcript scrolls ---------------------------------------------------------------
+if "Ui.innerScroll" not in code("SetupActivity.java"):
+    problems.append("the set-up transcript is a plain ScrollView inside the page's ScrollView, "
+                    "which never moves: the page takes every drag first")
 
 # --- the tagline is somewhere an owner can read it ---------------------------------------------
 #
@@ -250,6 +307,50 @@ for name in sorted(os.listdir(src)):
                     "%s:%d calls %s outside a background thread. It starts PRoot and waits, "
                     "which on the drawing thread is an ANR." % (name, line, call.rstrip("(")))
             at += len(call)
+
+
+# --- Back on Android 13 and later -------------------------------------------------------------
+#
+# The manifest opts this app into predictive back, and an app that has opted in never has
+# onBackPressed() called on Android 13 or later. Every screen with its own idea of Back must
+# register it through Back as well, or a new phone closes the app where an old one goes Home.
+manifest_text = open(app + "/app/AndroidManifest.xml").read()
+if 'enableOnBackInvokedCallback="true"' in manifest_text:
+    if (not os.path.exists(src + "Back.java")
+            or "registerOnBackInvokedCallback" not in code("Back.java")):
+        problems.append("the manifest opts in to predictive back but nothing registers an "
+                        "OnBackInvokedCallback, so every onBackPressed() is dead on Android 13+")
+    for name in ("MainActivity.java", "WorkspaceActivity.java"):
+        text = code(name)
+        if "onBackPressed()" in text and "Back.register(" not in text:
+            problems.append("%s overrides onBackPressed() without registering through Back; on "
+                            "Android 13 and later that override never runs" % name)
+
+# --- the keyboard is an inset too ------------------------------------------------------------
+#
+# On Android 15 an app drawn edge to edge is not resized for the keyboard by adjustResize
+# alone; fitBars has to read the ime() inset or the search box and the editor's toolbar sit
+# under the keyboard.
+theme = code("Theme.java")
+fit = re.search(r'static void fitBars\(.*?\n    \}', theme, re.S)
+if not fit or "WindowInsets.Type.ime()" not in fit.group(0):
+    problems.append("Theme.fitBars ignores the keyboard inset (WindowInsets.Type.ime()), so on "
+                    "Android 15 the keyboard covers whatever is at the bottom of the screen")
+
+# --- the recommended list is filled when the screen is built ---------------------------------
+agents_build = re.search(r'public View build\(Activity activity\) \{(.*?)\n    \}',
+                         code("AgentsPane.java"), re.S)
+if not agents_build or "refreshRecommended()" not in agents_build.group(1):
+    problems.append("AgentsPane.build() never calls refreshRecommended(), so the three "
+                    "recommended agents are an empty card until something is installed")
+
+# --- coming back does not throw the search away ----------------------------------------------
+if "rebuildOnReturn" not in code("Pane.java"):
+    problems.append("Pane has no rebuildOnReturn(), so every pane is rebuilt on every return "
+                    "and Agents loses whatever was typed into its search box")
+elif "public boolean rebuildOnReturn() { return false; }" not in code("AgentsPane.java"):
+    problems.append("AgentsPane does not opt out of the rebuild on return, so leaving the app "
+                    "for a moment empties the search box and its results")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

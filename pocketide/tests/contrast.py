@@ -113,17 +113,28 @@ def brand_colour(name):
 
 
 def glass_stops(theme):
-    """The gradient stops Ui.glass paints, read out of the method rather than assumed."""
-    body = re.search(r'static GradientDrawable glass\(.*?\n    \}', ui, re.S)
+    """The capsule's gradient stops, read out of Ui.floatingGlass rather than assumed, and
+    composited over the page at the capsule's own opacity -- because the bar is see-through,
+    and what is really behind its words is the capsule over the page, not the capsule alone."""
+    body = re.search(r'static GradientDrawable floatingGlass\(.*?\n    \}', ui, re.S)
     if not body:
         return []
+    # Only the two fill stops -- the lines wrapped in alpha(..., opacity). The hairline stroke
+    # on the line below them is an edge, not a ground anything is written on, and matching it
+    # as a stop is how this gate once measured the labels against a 1 dp line.
     pairs = re.findall(
-        r'dark \? Color\.rgb\((\d+), (\d+), (\d+)\) : Color\.rgb\((\d+), (\d+), (\d+)\)',
+        r'alpha\(dark \? Color\.rgb\((\d+), (\d+), (\d+)\) : Color\.rgb\((\d+), (\d+), (\d+)\), '
+        r'opacity\)',
         body.group(0))
+    opacity = re.search(r'FLOATING_ALPHA_%s\s*=\s*(\d+)' % theme.upper(), ui)
+    page = grounds[theme]["bg"]
+    if not opacity or not page:
+        return []
     stops = []
     for group in pairs:
         values = [int(v) for v in group]
-        stops.append(tuple(values[0:3]) if theme == "dark" else tuple(values[3:6]))
+        stop = tuple(values[0:3]) if theme == "dark" else tuple(values[3:6])
+        stops.append(composite(stop, int(opacity.group(1)), page))
     return stops
 
 
@@ -173,6 +184,70 @@ for theme in ("light", "dark"):
             if measured < floor:
                 problems.append("the bar's %s measures %.2f:1 in the %s theme, under the "
                                 "%.1f:1 floor" % (what, measured, theme, floor))
+
+# ------------------------------------------------------------------------------------------
+# The Editor button in the top bar: a word and a glyph on a tonal container.
+#
+# The container is the accent at low opacity over the PAGE, and what sits on it is the
+# on-container tone -- the same pairing as the navigation bar's indicator, measured the same
+# way, because a tonal button whose word cannot be read is the top-right decoration again.
+tonal = re.search(r'static LinearLayout tonalButton\(.*?\n    \}', ui, re.S)
+tonal_alpha = re.search(r'alpha\(accent\(dark\), dark \? (\d+) : (\d+)\)',
+                        tonal.group(0)) if tonal else None
+if not tonal or not tonal_alpha:
+    missing.append("the tonal button's container opacity cannot be read from Ui.java")
+else:
+    for theme in ("light", "dark"):
+        page = grounds[theme]["bg"]
+        alpha = int(tonal_alpha.group(1) if theme == "dark" else tonal_alpha.group(2))
+        if not page or not ACCENT[theme] or not ON_CONTAINER[theme]:
+            continue
+        container = composite(ACCENT[theme], alpha, page)
+        measured = ratio(ON_CONTAINER[theme], container)
+        rows.append("    %-18s %-6s %5.2f:1  %s" % ("tonal button", theme, measured,
+                                                    "ok" if measured >= FLOOR else "FAILS"))
+        if measured < FLOOR:
+            problems.append("the Editor button's word measures %.2f:1 on its container in the "
+                            "%s theme, under the %.1f:1 floor" % (measured, theme, FLOOR))
+
+
+# ------------------------------------------------------------------------------------------
+# The accent used as WORDS: dialog buttons and the "why" link, on the card they sit on.
+#
+# Ui.link() exists because the accent itself, as 15 sp text on the light card, is under the
+# floor. Read from the Java so that changing the colour there is what changes the measurement.
+brand = open(app + "/app/src/com/pocketide/Brand.java").read()
+
+
+def brand_constant(name):
+    found = re.search(name + r'\s*=\s*Color\.parseColor\("(#[0-9A-Fa-f]{6})"\)', brand)
+    return parse(found.group(1)) if found else None
+
+
+link = re.search(r'static int link\(boolean dark\) \{ return dark \? Brand\.(\w+)(?:\(true\))? '
+                 r': Brand\.(\w+); \}', ui)
+if not link:
+    missing.append("Ui.link(dark) is missing or not in the form the gate reads")
+else:
+    dark_name, light_name = link.group(1), link.group(2)
+    dark_colour = (brand_constant("ACCENT_ON_DARK") if dark_name == "accent"
+                   else brand_constant(dark_name))
+    light_colour = (brand_constant("ACCENT") if light_name == "accent"
+                    else brand_constant(light_name))
+    for theme, colour in (("light", light_colour), ("dark", dark_colour)):
+        ground = grounds[theme]["card"]
+        if not colour or not ground:
+            missing.append("the link colour for the %s theme cannot be read" % theme)
+            continue
+        measured = ratio(colour, ground)
+        rows.append("    %-18s %-6s %5.2f:1  %s" % ("link words", theme, measured,
+                                                    "ok" if measured >= FLOOR else "FAILS"))
+        if measured < FLOOR:
+            problems.append("Ui.link() measures %.2f:1 on the %s card, under the %.1f:1 floor "
+                            "for a dialog button" % (measured, theme, FLOOR))
+if "Ui.link(dark)" not in open(app + "/app/src/com/pocketide/Dialogs.java").read():
+    problems.append("Dialogs colours its buttons with something other than Ui.link(dark), so "
+                    "the measurement above is not of the colour on screen")
 
 for row in rows:
     print(row)

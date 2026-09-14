@@ -273,8 +273,17 @@ start_editor() {
 
   # Node's default heap is sized for a server, not for a phone sharing four gigabytes with
   # Android. Left alone, the editor plus an extension host is what pushes the phone into
-  # reclaiming the app mid-session.
-  export NODE_OPTIONS="--max-old-space-size=512"
+  # reclaiming the app mid-session. The cap follows the phone: 512 MB on a 4 GB phone, more
+  # where there is more, because a cap sized for the smallest phone starves an 8 GB one that
+  # could have kept a larger project open without swapping.
+  local total_kb heap
+  total_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+  if   [ "$total_kb" -ge 11500000 ]; then heap=1536
+  elif [ "$total_kb" -ge 7500000  ]; then heap=1024
+  elif [ "$total_kb" -ge 5500000  ]; then heap=768
+  else                                    heap=512
+  fi
+  export NODE_OPTIONS="--max-old-space-size=${heap}"
 
   say "Starting the editor on 127.0.0.1:${PORT}…"
   "$BIN" \

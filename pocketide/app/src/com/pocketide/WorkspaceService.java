@@ -67,6 +67,8 @@ public final class WorkspaceService extends Service {
     private volatile Process editor;
     private PowerManager.WakeLock wakeLock;
     private long startedAt;
+    /** What the notification last said, so a repeated START does not talk over it. */
+    private volatile String lastNote;
 
     static boolean busy() { return busy; }
     static boolean editorRunning() { return editorRunning; }
@@ -126,16 +128,31 @@ public final class WorkspaceService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            // Delivered by startForegroundService(), and a service started that way has to
+            // call startForeground() before it goes away, or Android reports the app as
+            // having crashed -- even when going away was the whole point. One more frame of
+            // the notification, then everything comes down.
+            try {
+                startForeground(NOTIFICATION, notification("Stopping…"));
+            } catch (Throwable refused) {
+                // Not allowed into the foreground just now. Stopping needs no permission.
+            }
             stopEverything("stopped", "Linux stopped.");
             return START_NOT_STICKY;
         }
         // The notification must be posted in this call or Android kills the service. It is
-        // posted before any work begins, for exactly that reason.
-        startForeground(NOTIFICATION, notification(
-                ACTION_SETUP.equals(action) ? "Setting up…" : "Starting the editor…"));
+        // posted before any work begins, for exactly that reason. When work is already under
+        // way the text it was showing is kept: a second START while the editor was up used to
+        // flip it back to "Starting the editor…" for something already running.
+        String text = busy && lastNote != null ? lastNote
+                : ACTION_SETUP.equals(action) ? "Setting up…" : "Starting the editor…";
+        startForeground(NOTIFICATION, notification(text));
         if (busy) return START_NOT_STICKY;
         busy = true;
         startedAt = System.currentTimeMillis();
+        // Remembered on disk, so that if Android kills the process the next start can tell
+        // whether Linux was running at the time. See Exits.
+        Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, true).apply();
         hold();
         boolean setup = ACTION_SETUP.equals(action);
         worker = new Thread(setup ? this::runSetup : this::runEditor, "Linux");
@@ -254,6 +271,7 @@ public final class WorkspaceService extends Service {
         if (running != null) running.destroy();
         if (worker != null) worker.interrupt();
         release();
+        Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, false).apply();
         if (state != null) {
             Intent event = new Intent(EVENT).setPackage(getPackageName())
                     .putExtra(EXTRA_STATE, state);
@@ -278,7 +296,11 @@ public final class WorkspaceService extends Service {
             if (power == null) return;
             wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "pocketide:Linux");
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire(4L * 60 * 60 * 1000);
+            // No timeout. There was one, of four hours, and an agent left on a long build
+            // found it: the CPU went to sleep under a job that was still running, with the
+            // notification still promising it was awake. The lock ends with the work, in
+            // stopEverything, and the kernel drops it with the process if that never runs.
+            wakeLock.acquire();
         } catch (Throwable refused) {
             // A phone that refuses the lock still works; it is just slower with the screen off.
         }
@@ -303,6 +325,7 @@ public final class WorkspaceService extends Service {
     }
 
     private Notification notification(String text) {
+        lastNote = text;
         Intent open = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent openIntent = PendingIntent.getActivity(this, 0, open,

@@ -55,6 +55,22 @@ final class Prefs {
     static final String UPDATE_SUPPORTED_UNTIL = "update_supported_until";
     static final String UPDATE_LAST_RESULT = "update_last_result";
     static final String UPDATE_LAST_RUN_AT = "update_last_run_at";
+    /**
+     * Whether the editor itself moves on its own. On by default, and narrower than it sounds:
+     * on Wi-Fi, once a day, only while the editor is closed, and only through the staged,
+     * verified, reversible swap in pocketide-update.sh. Off, the editor moves only when asked.
+     */
+    static final String AUTO_UPDATE_EDITOR = "auto_update_editor";
+
+    // ---------------------------------------------------------------- the app itself
+    /** Whether the app asks, once a day, if a newer PocketIDE has been published. On by default. */
+    static final String APP_UPDATE_CHECK = "app_update_check";
+    static final String APP_UPDATE_CHECKED_AT = "app_update_checked_at";
+    static final String APP_UPDATE_TRIED_AT = "app_update_tried_at";
+    static final String APP_UPDATE_LATEST = "app_update_latest";
+    static final String APP_UPDATE_PAGE = "app_update_page";
+    static final String APP_UPDATE_APK = "app_update_apk";
+    static final String APP_UPDATE_APK_BYTES = "app_update_apk_bytes";
 
     // Diagnostics
     static final String LAST_FAILURE = "last_failure";
@@ -69,6 +85,12 @@ final class Prefs {
     static final String PHONE_FILES = "phone_files";
     /** Timestamp of the last exit the owner has already been told about. */
     static final String EXIT_SEEN_AT = "exit_seen_at";
+    /**
+     * True while the service has Linux running, false once it has stopped tidily. If the
+     * process dies it keeps whatever it was, which is how the next start knows whether a
+     * Task-Manager stop or a low-memory kill actually took anything down. See Exits.
+     */
+    static final String LINUX_WAS_RUNNING = "linux_was_running";
     /**
      * Whether notifications have ever been asked for.
      *

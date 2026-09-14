@@ -1,13 +1,15 @@
 # PocketIDE — master plan
 
-**Status:** planning. Name and icon are settled; application code starts on the owner's word.
+**Status:** shipped. PocketIDE 1.8.0 is the current build under `pocketide/`; this document is
+the record of what was decided before the first line of code and why. Where the app and this
+plan differ, the app and `pocketide/RELEASE-NOTES.md` are current.
 Last researched: 13 September 2026.
 
 **Standing rules this plan inherits (do not break):**
 
 - Never edit anything that already exists in CloudSaver. New work goes in its own top-level folder.
 - Never touch `pocketlinux/` on GitHub. It stays exactly as it is.
-- Push to `main` and to `claude/mobile-vm-ai-app-2siqua`.
+- Push to `main`. (The mirror branch this rule once named no longer exists.)
 - Every string inside the app is English. Every reply in chat is Hinglish.
 - Version names end in 0 or 5.
 - Comparisons go in chat as tables, never as an HTML artifact.
@@ -702,7 +704,7 @@ CloudSaver/
 | Framework | ✅ plain Java, no Gradle, no AndroidX |
 | Design system | ✅ Material 3 Expressive + glass accents |
 | FAQ / Terms / Privacy | ✅ drafted here, to be typeset into the app |
-| **Application code** | ⏸ **not started — begins on the owner's word** |
+| **Application code** | ✅ shipped — 1.0.0 on 13 Sep 2026, 1.8.0 on 14 Sep 2026 |
 
 ## 15. Sources checked (13 Sep 2026)
 

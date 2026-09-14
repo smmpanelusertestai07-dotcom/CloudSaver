@@ -1,5 +1,110 @@
 # Release notes
 
+## 1.8.0
+
+The interface an owner actually asked for, and the last layer that did not update itself.
+
+### The bar floats, and the page runs under it
+
+The bottom bar is a glass capsule laid over the page now, not a strip the page stops at. It is
+inset from both edges, lifted off the gesture bar, fully rounded, faintly see-through, lit along
+its top edge and shadowed underneath — the shape Telegram's 2026 redesign and Google's own apps
+settled on — and every page is padded by the bar's measured height so its last row can always be
+scrolled out from under it. The gate that checks the bar's numbers also checks, now, that the
+page passes beneath it: a capsule the page stops at is a slab with round corners.
+
+### "The code-looking thing in the top right corner"
+
+That was the button that opens the editor. As a bare glyph it read as decoration; as a glyph in
+a tonal circle it still did. It is a Material 3 tonal button with a word now — **Editor** — and
+the word is measured against its container in both themes like everything else on the bar.
+
+### Commands did not work
+
+The button under the editor sent Ctrl+Shift+P, and on the owner's phone that arrived as nothing:
+two modifier bits and a shifted letter through the WebView's key translation. It sends F1 now,
+which Visual Studio Code binds to the same command and which is one unmodified key.
+
+### Pinch to zoom, and text the right size once
+
+The editor refused pinch zoom, and the workbench's own viewport forbids it even when the WebView
+allows it, so the app loosens that rule after the page loads. Separately, the WebView was
+applying the phone's font scale on top of the zoom the app had already worked out from it, so
+text was scaled twice; it is applied once now. The Cursor button carries a pointer icon rather
+than a hand, and the toolbar holds 64 dp as a minimum instead of a fixed height.
+
+### The set-up transcript scrolls
+
+"What it is doing" was a scrolling box inside a scrolling page, and a plain ScrollView there
+never moves: the page takes every drag first. It claims the drag for itself while it has
+somewhere to scroll to.
+
+### The battery switches, in this phone's own words
+
+No app can read a maker's auto-launch or background switch, and the rows said nothing useful
+about that. They now say so plainly and print the path through this phone's menus — on a realme,
+Settings › Battery › App battery management › PocketIDE — in the words that phone uses. Three OEM
+pages that were missing are added, the newer oplus page is tried before the older ColorOS one,
+and a tap on Battery when the app is already exempt opens the maker's page instead of a dialog
+Android closes on its own.
+
+### Everything updates itself now, including the app
+
+The editor follows code-server's releases automatically — on Wi-Fi, once a day, only while it is
+closed, and only through the staged, verified, reversible swap — with a switch to make it manual.
+And the app itself asks GitHub once a day whether a newer PocketIDE has been published, says so
+on Home and in Settings, and hands the download to the phone's browser; every release is signed
+with the same key, so it installs over the last and touches nothing in Linux. Releases are
+published by the workflow under `pocketide-v<version>`, only from a build signed with the
+repository's own key, and a gate holds the app's tag prefix and the workflow's to one string.
+
+### Smaller things
+
+The editor's Node heap follows the phone's memory instead of a 4 GB constant. Anything shown or
+copied from a "details" dialog has credentials blanked first — bearer tokens, key=value secrets,
+provider-prefixed keys, URL query strings — because that text is what gets pasted into a chat
+asking for help. Two lines in "Where this fits" had been damaged by an earlier rename ("desktop
+Linux", "Browser Linux") and read correctly again. The FAQ gains how to work the editor with a
+thumb, where the agents actually run, and why a set-up stops when the screen goes off, and the
+privacy text admits the fourth network use. The lock-turned-itself-off notice has a button to
+the phone's security page. The Home footer that repeated the version is gone.
+
+### Found in review, fixed before release
+
+A second reading of the whole app, done against the change above, turned up faults that had
+been there for versions. Back never worked on Android 13 or later: the manifest opts into
+predictive back, and an app that has opted in never has its onBackPressed() called, so Back
+closed the app from Settings on a new phone and went Home on an old one; both screens register
+through the new Back class now. The keyboard is treated as an inset, so on Android 15 the search
+box on Agents and the editor's toolbar no longer sit under it. The three recommended agents
+opened as an empty card until something was installed, because nothing filled the list on
+build. A live dialog's Done button was added after the dialog was showing, where Android never
+lays it out, so a finished install could not be closed; the button exists from the start and is
+revealed at the end, and installing an extension uses that dialog instead of a bare platform
+box. The Activity screen read every process's status file on the drawing thread every two
+seconds, and rebuilt every row each time; it reads on its own thread and updates rows in place.
+The Linux size was walked — tens of thousands of files — on every five-second refresh of Home;
+it is measured once a minute at most. Remove everything deleted a whole Linux on the drawing
+thread; it runs behind a live dialog. Changing the theme replayed the opening splash, because it
+recreated the activity; it repaints in place. Coming back to the app rebuilt every pane,
+emptying the Agents search box; panes that refresh themselves are only told they are back. The
+notification question before set-up offered "Cancel", which left set-up unstarted on a screen
+that said Starting; it offers "Not now", and set-up starts either way. The wake lock had a
+four-hour timeout, under which the CPU slept beneath a running build. The Task-Manager and
+low-memory notices claimed Linux had no chance to shut down even when nothing was running; the
+service now records whether it was. An errand to the phone's Settings was trusted for ever once
+it had begun; it is re-checked on return, and two minutes is the limit. The set-up screen lost
+its transcript, its progress and its stage marks on rotation; it replays them. The Android 12+
+splash style silently dropped the bar colours the base style sets. Dialog buttons and the "why"
+link use a deeper violet on the light theme, because the accent itself did not reach 4.5:1 as
+words on the card, and the contrast gate measures it. Every plain-text button tells a screen
+reader it is a button. The Stop action from the notification calls startForeground before it
+stops, which Android requires of a service started that way.
+
+### Gates
+
+46, with twenty-eight new checks inside them, each verified against the code as it shipped.
+
 ## 1.7.0
 
 The second half of the audit, and it found the thing I had fixed once and left broken

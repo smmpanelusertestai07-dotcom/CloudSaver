@@ -59,6 +59,9 @@ final class ActivityPane implements Pane {
 
     @Override public String key() { return "activity"; }
 
+    /** Refreshes itself every two seconds; being told it is back is enough. */
+    @Override public boolean rebuildOnReturn() { return false; }
+
     @Override public View build(Activity activity) {
         host = activity;
         boolean dark = Ui.dark(host);
@@ -133,6 +136,9 @@ final class ActivityPane implements Pane {
         processEmpty = Ui.text(host, "Nothing is running.", 14f, Ui.muted(dark));
         int pad = Ui.dp(host, 16);
         processEmpty.setPadding(pad, pad, pad, pad);
+        processList.addView(processEmpty);
+        rowsByPid.clear();
+        shownPids.clear();
         column.addView(processList, Ui.wide(host, 8));
         return column;
     }
@@ -172,23 +178,72 @@ final class ActivityPane implements Pane {
 
     // ------------------------------------------------------------------ live state
 
+    /** One reading of everything the screen shows, taken off the thread that draws it. */
+    private static final class Reading {
+        final List<Running.Process> processes;
+        final long resident;
+        final long footprint;
+        final int battery;
+
+        Reading(List<Running.Process> processes, long resident, long footprint, int battery) {
+            this.processes = processes;
+            this.resident = resident;
+            this.footprint = footprint;
+            this.battery = battery;
+        }
+    }
+
+    private volatile boolean reading;
+    private final java.util.Map<Integer, Ui.Row> rowsByPid = new java.util.HashMap<>();
+    private final List<Integer> shownPids = new java.util.ArrayList<>();
+
+    /**
+     * Reads, then paints.
+     *
+     * Walking /proc for every process, then a status file for each, then the battery, was
+     * done every two seconds on the thread that draws the screen -- which is the one thread
+     * that must not spend its time reading files. It is a few milliseconds on a fast phone and
+     * a dropped frame on a slow one, every two seconds, on the screen whose whole purpose is to
+     * show that the phone is working smoothly. The read now happens on its own thread and only
+     * the painting comes back here; a tick that arrives while a read is still running is
+     * skipped rather than queued.
+     */
     private void refresh() {
-        if (host == null || host.isFinishing()) return;
+        if (host == null || host.isFinishing() || reading) return;
+        reading = true;
+        final Activity on = host;
+        new Thread(() -> {
+            Reading taken = null;
+            try {
+                List<Running.Process> processes = Running.workspace(on);
+                boolean alive = WorkspaceService.editorRunning() || WorkspaceService.busy();
+                // The footprint, not the resident size. Android 17's per-app memory limiter
+                // measures RssAnon + VmSwap, so that is the number worth watching -- it is
+                // what decides whether the workspace is about to be stopped.
+                taken = new Reading(processes, Running.totalResidentBytes(processes),
+                        alive ? Exits.footprintBytes(processes) : 0L,
+                        alive ? DeviceProbe.read(on).batteryPercent : -1);
+            } catch (Throwable unreadable) {
+                // /proc changes under a walk. The next tick reads it again.
+            }
+            final Reading result = taken;
+            on.runOnUiThread(() -> {
+                reading = false;
+                if (result == null || on != host || on.isFinishing()) return;
+                paint(result);
+            });
+        }, "read-proc").start();
+    }
+
+    private void paint(Reading reading) {
         boolean dark = Ui.dark(host);
         boolean running = WorkspaceService.editorRunning();
         boolean busy = WorkspaceService.busy();
 
         if (statePill != null) {
-            if (running) {
-                statePill.setText("RUNNING");
-                statePill.setTextColor(Ui.running(dark));
-            } else if (busy) {
-                statePill.setText("WORKING");
-                statePill.setTextColor(Ui.needsYou(dark));
-            } else {
-                statePill.setText("STOPPED");
-                statePill.setTextColor(Ui.muted(dark));
-            }
+            if (running) Ui.recolour(statePill, "RUNNING", Ui.running(dark));
+            else if (busy) Ui.recolour(statePill, "WORKING", Ui.needsYou(dark));
+            else Ui.recolour(statePill, "STOPPED", Ui.muted(dark));
         }
 
         long since = WorkspaceService.runningSince();
@@ -197,22 +252,15 @@ final class ActivityPane implements Pane {
                     ? "up " + Stage.clock(System.currentTimeMillis() - since) : "");
         }
 
-        List<Running.Process> processes = Running.workspace(host);
-        long resident = Running.totalResidentBytes(processes);
-
+        List<Running.Process> processes = reading.processes;
         if (summary != null) {
             if (running || busy) {
-                DeviceProbe probe = DeviceProbe.read(host);
-                // The footprint, not the resident size. Android 17's per-app memory limiter
-                // measures RssAnon + VmSwap, so that is the number worth watching -- it is what
-                // decides whether the workspace is about to be stopped.
-                long footprint = Exits.footprintBytes(processes);
                 summary.setText(processes.size() + (processes.size() == 1 ? " process" : " processes")
-                        + " · " + DeviceProbe.formatBytes(resident) + " in use"
-                        + (footprint > 0
-                                ? " · " + DeviceProbe.formatBytes(footprint) + " counted against "
-                                        + "Android's limit" : "")
-                        + (probe.batteryPercent >= 0 ? " · battery " + probe.batteryPercent + "%" : ""));
+                        + " · " + DeviceProbe.formatBytes(reading.resident) + " in use"
+                        + (reading.footprint > 0
+                                ? " · " + DeviceProbe.formatBytes(reading.footprint)
+                                        + " counted against Android's limit" : "")
+                        + (reading.battery >= 0 ? " · battery " + reading.battery + "%" : ""));
             } else {
                 summary.setText("Linux is not running. Your files are where you left "
                         + "them; starting the editor again picks up where you stopped.");
@@ -228,30 +276,55 @@ final class ActivityPane implements Pane {
         refreshLog(dark);
     }
 
+    /**
+     * The rows, updated in place while the same processes are there.
+     *
+     * Throwing every row away and building new ones each tick made the list flicker and lost
+     * the ripple under a finger that was pressing one. Only when a process appears or goes,
+     * or the order changes, is the list built again.
+     */
     private void refreshProcesses(boolean dark, List<Running.Process> processes) {
         if (processList == null) return;
-        processList.removeAllViews();
-        if (processes.isEmpty()) {
-            processList.addView(processEmpty);
-            return;
+        List<Integer> pids = new java.util.ArrayList<>(processes.size());
+        for (Running.Process process : processes) pids.add(process.pid);
+        if (!pids.equals(shownPids)) {
+            processList.removeAllViews();
+            rowsByPid.clear();
+            shownPids.clear();
+            shownPids.addAll(pids);
+            if (processes.isEmpty()) {
+                processList.addView(processEmpty);
+                return;
+            }
         }
         boolean first = true;
         for (Running.Process process : processes) {
-            if (!first) processList.addView(Ui.divider(host, dark, true));
-            first = false;
-            Ui.Row row = Ui.row(host, dark,
-                    process.working() ? R.drawable.ic_bolt : R.drawable.ic_timer,
-                    process.command,
-                    process.stateWords() + " · " + DeviceProbe.formatBytes(process.residentBytes)
-                            + " · pid " + process.pid,
-                    v -> Dialogs.details(host, process.command,
-                            "State: " + process.stateWords() + "\nMemory: "
-                                    + DeviceProbe.formatBytes(process.residentBytes)
-                                    + "\nProcess id: " + process.pid,
-                            process.detail, "Copy the command"));
+            String value = process.stateWords() + " · "
+                    + DeviceProbe.formatBytes(process.residentBytes) + " · pid " + process.pid;
+            int glyph = process.working() ? R.drawable.ic_bolt : R.drawable.ic_timer;
+            Ui.Row row = rowsByPid.get(process.pid);
+            if (row == null) {
+                if (!first) processList.addView(Ui.divider(host, dark, true));
+                row = Ui.row(host, dark, glyph, process.command, value, v -> details(process));
+                rowsByPid.put(process.pid, row);
+                processList.addView(row);
+            } else {
+                row.setValue(value);
+                row.icon.setImageResource(glyph);
+                row.setOnClickListener(v -> details(process));
+            }
             if (process.working()) row.setState(Ui.running(dark));
-            processList.addView(row);
+            else row.setMutedIcon();
+            first = false;
         }
+    }
+
+    private void details(Running.Process process) {
+        Dialogs.details(host, process.command,
+                "State: " + process.stateWords() + "\nMemory: "
+                        + DeviceProbe.formatBytes(process.residentBytes)
+                        + "\nProcess id: " + process.pid,
+                process.detail, "Copy the command");
     }
 
     private void refreshLog(boolean dark) {

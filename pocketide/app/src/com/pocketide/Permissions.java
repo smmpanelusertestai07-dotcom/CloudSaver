@@ -11,6 +11,8 @@ import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 
+import java.util.Locale;
+
 /**
  * Everything this app has to ask the phone for, and the one page on this phone that grants it.
  *
@@ -20,18 +22,118 @@ import android.provider.Settings;
  * the owner to find it themselves, so each row goes to the nearest real page, and App info is
  * only the last resort.
  *
+ * Two things about those maker's switches are worth stating, because both were got wrong here
+ * once:
+ *
+ *   They cannot be READ. No app on any Android skin can ask whether its own auto-launch or
+ *   background switch is on. A row that pretends to know -- "CHECK", or worse, "Off" -- teaches
+ *   people to ignore the app. So the rows say plainly that Android cannot report them, and then
+ *   print the path through this phone's own menus, in the words that phone uses, so the owner
+ *   can look for themselves. The paths are per maker: on a realme the switch is under Battery,
+ *   on a Xiaomi under Apps, on a Samsung it is a list of apps allowed never to sleep.
+ *
+ *   The battery prompt closes itself when the app is already exempt. Android finishes the
+ *   "ignore optimisations" dialog silently in that state, so on precisely the phone the row was
+ *   written for -- battery unrestricted, the maker's own switch still killing the app -- a tap
+ *   used to do nothing at all. An already-exempt tap goes to the maker's background page now.
+ *
  * The OEM component lists below are the part that actually earns its place. Realme, OPPO,
  * Xiaomi, vivo, OnePlus, Huawei and Samsung each hide auto-launch somewhere different, several
  * moved it between their own versions, and from Android 11 on package visibility hides those
  * security-centre packages from resolveActivity -- which answers null on exactly the phones
  * that do have the page. So the components are started rather than resolved: a phone without
- * the page throws, which is the same answer, arrived at honestly.
+ * the page throws, which is the same answer, arrived at honestly. The newer oplus components
+ * come before the older coloros ones, which is the order realme UI 3 and later need.
  */
 final class Permissions {
 
     static final int REQUEST_NOTIFICATIONS = 41;
 
+    /** What every row says about a switch the phone will not let an app read. */
+    static final String CANNOT_READ = "Android cannot report this one";
+
     private Permissions() {}
+
+    // ------------------------------------------------------------------ whose phone
+
+    /** The maker's skin, judged from the phone's own identification. */
+    enum Skin { REALME, OPPO, ONEPLUS, XIAOMI, VIVO, HUAWEI, SAMSUNG, OTHER }
+
+    static Skin skin() {
+        String maker = ((Build.MANUFACTURER == null ? "" : Build.MANUFACTURER) + " "
+                + (Build.BRAND == null ? "" : Build.BRAND)).toLowerCase(Locale.ROOT);
+        if (maker.contains("realme")) return Skin.REALME;
+        if (maker.contains("oneplus")) return Skin.ONEPLUS;
+        if (maker.contains("oppo")) return Skin.OPPO;
+        if (maker.contains("xiaomi") || maker.contains("redmi") || maker.contains("poco")) {
+            return Skin.XIAOMI;
+        }
+        if (maker.contains("vivo") || maker.contains("iqoo")) return Skin.VIVO;
+        if (maker.contains("huawei") || maker.contains("honor")) return Skin.HUAWEI;
+        if (maker.contains("samsung")) return Skin.SAMSUNG;
+        return Skin.OTHER;
+    }
+
+    /**
+     * The path to the auto-launch switch, in the words this phone's own menus use.
+     *
+     * Printed on the row because the switch cannot be read: the one honest thing the app can
+     * do is say where it is. The realme one is the one this app was tested on and is exact for
+     * realme UI 2 through 5; the others follow each maker's own current layout.
+     */
+    static String autoLaunchPath() {
+        switch (skin()) {
+            case REALME:
+            case OPPO:
+                return "Settings › Battery › App battery management › PocketIDE › "
+                        + "Allow auto-launch";
+            case ONEPLUS:
+                return "Settings › Apps › PocketIDE › Battery usage › Allow auto-launch";
+            case XIAOMI:
+                return "Settings › Apps › Manage apps › PocketIDE › Autostart";
+            case VIVO:
+                return "i Manager › App manager › Autostart manager › PocketIDE";
+            case HUAWEI:
+                return "Settings › Apps › App launch › PocketIDE › Manage manually › "
+                        + "Auto-launch";
+            case SAMSUNG:
+                return "Settings › Battery › Background usage limits › Never sleeping apps › "
+                        + "add PocketIDE";
+            default:
+                return "Settings › Apps › PocketIDE › Battery";
+        }
+    }
+
+    /** The path to the background-activity switch, in this phone's own words. */
+    static String backgroundPath() {
+        switch (skin()) {
+            case REALME:
+            case OPPO:
+                return "Settings › Battery › App battery management › PocketIDE › "
+                        + "Allow background activity";
+            case ONEPLUS:
+                return "Settings › Apps › PocketIDE › Battery usage › "
+                        + "Allow background activity";
+            case XIAOMI:
+                return "Settings › Apps › Manage apps › PocketIDE › Battery saver › "
+                        + "No restrictions";
+            case VIVO:
+                return "Settings › Battery › Background power consumption management › "
+                        + "PocketIDE";
+            case HUAWEI:
+                return "Settings › Apps › App launch › PocketIDE › Manage manually › "
+                        + "Run in background";
+            case SAMSUNG:
+                return "Settings › Apps › PocketIDE › Battery › Unrestricted";
+            default:
+                return "Settings › Apps › PocketIDE › Battery › Unrestricted";
+        }
+    }
+
+    /** True where the maker keeps switches of its own beyond Android's battery optimisation. */
+    static boolean makerHasOwnSwitches() {
+        return skin() != Skin.OTHER;
+    }
 
     // ------------------------------------------------------------------ state
 
@@ -111,18 +213,30 @@ final class Permissions {
             then.run();
             return;
         }
-        Dialogs.confirm(activity, "Show progress while this runs?",
+        Dialogs.ask(activity, "Show progress while this runs?",
                 "Setting up takes twenty to forty minutes. A notification is how you see how "
                         + "far it has got, and how you stop it without hunting through the "
                         + "phone's settings.\n\nIt makes no sound, and it is the only "
                         + "notification this app ever posts.",
-                "Allow", () -> {
+                "Allow", "Not now",
+                () -> {
                     pendingAfterNotifications = then;
                     askNotifications(activity, false);
-                });
-        // Refusing the dialog leaves the work unstarted, which is the honest reading of Cancel
-        // on a question asked before anything has begun.
+                },
+                // "Not now" answers the notification, not the set-up: the work starts either
+                // way, as the screen behind this dialog said it would. The button used to say
+                // Cancel and leave nothing running, on a screen whose headline said Starting.
+                then);
     }
+
+    /**
+     * Drops whatever was waiting on an answer.
+     *
+     * The waiting Runnable holds the screen that asked. A screen destroyed before the answer
+     * arrives would otherwise be kept alive by it, and a late answer would start work on a
+     * screen that is gone.
+     */
+    static void forget() { pendingAfterNotifications = null; }
 
     /** What to run once the notification answer arrives, whichever way it went. */
     private static Runnable pendingAfterNotifications;
@@ -146,10 +260,15 @@ final class Permissions {
     /**
      * The battery prompt: a single yes/no dialog where the phone allows it, the system list
      * where it does not, and App info as the floor.
+     *
+     * Already exempt, the tap goes to the maker's own background page instead. Android closes
+     * the "ignore optimisations" dialog silently when the app is already exempt, so on the one
+     * phone this row was written for the tap used to do nothing -- and the switch that was
+     * still ending long downloads was the maker's, on the page this now opens.
      */
     static void openBatterySettings(Activity activity) {
         if (batteryUnrestricted(activity)) {
-            openAppInfo(activity);
+            if (!openBackgroundActivitySettings(activity)) openAppInfo(activity);
             return;
         }
         if (launch(activity, new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
@@ -173,6 +292,7 @@ final class Permissions {
                 {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"},
                 {"com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity"},
                 {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+                {"com.huawei.systemmanager", "com.huawei.systemmanager.appcontrol.activity.StartupAppControlActivity"},
                 {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
                 {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"},
         };
@@ -187,12 +307,20 @@ final class Permissions {
     /**
      * Background activity, which on Realme and OPPO is a separate switch from battery
      * optimisation and is the one that actually ends a long download.
+     *
+     * The oplus package first: the per-app battery page moved packages when ColorOS became
+     * "oplus" (realme UI 3 and later), and the older name is what an Android 11 realme still
+     * has. Both carry the package as an extra, under both spellings the skins have used, so
+     * the page opens on this app rather than on the list.
      */
     static boolean openBackgroundActivitySettings(Activity activity) {
         String[][] targets = {
+                {"com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"},
                 {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"},
                 {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"},
-                {"com.oplus.battery", "com.oplus.powermanager.fuelgaue.PowerUsageModelActivity"},
+                {"com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerSaverModeActivity"},
+                {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"},
+                {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"},
         };
         for (String[] target : targets) {
             Intent intent = new Intent().setComponent(new ComponentName(target[0], target[1]));
@@ -220,6 +348,13 @@ final class Permissions {
             }
         }
         openAppInfo(activity);
+    }
+
+    /** The phone's own security page, for the owner who removed their screen lock. */
+    static void openSecuritySettings(Activity activity) {
+        if (!launch(activity, new Intent(Settings.ACTION_SECURITY_SETTINGS))) {
+            launch(activity, new Intent(Settings.ACTION_SETTINGS));
+        }
     }
 
     /**

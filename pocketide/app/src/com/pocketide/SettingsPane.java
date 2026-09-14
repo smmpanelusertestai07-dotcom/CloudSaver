@@ -52,8 +52,6 @@ final class SettingsPane implements Pane {
     @Override public View build(Activity activity) {
         host = activity;
         boolean dark = Ui.dark(host);
-        LinearLayout root = Ui.column(host);
-        root.setBackgroundColor(Ui.bg(dark));
 
         LinearLayout content = Ui.column(host);
         content.addView(appearance(dark));
@@ -65,10 +63,8 @@ final class SettingsPane implements Pane {
         content.addView(storage(dark), Ui.wide(host, 18));
         content.addView(about(dark), Ui.wide(host, 18));
 
-        ScrollView page = Ui.page(host, content, dark);
-        root.addView(page, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        return root;
+        // The page itself, unwrapped, so the frame can let it scroll under the floating bar.
+        return Ui.page(host, content, dark);
     }
 
     // ------------------------------------------------------------------ safety
@@ -118,6 +114,10 @@ final class SettingsPane implements Pane {
                     "The app lock was turned off because this phone no longer has a screen "
                             + "lock. Set one in the phone's own Settings and you can turn it "
                             + "back on here."), Ui.wide(host, 10));
+            android.widget.TextView setOne = Ui.button(host, "Open the phone's security settings",
+                    false, dark);
+            setOne.setOnClickListener(v -> Permissions.openSecuritySettings(host));
+            group.addView(setOne, Ui.wide(host, 10));
             Prefs.of(host).edit().putBoolean(Prefs.LOCK_NOTICE, false).apply();
         } else {
             group.addView(note(dark,
@@ -204,7 +204,11 @@ final class SettingsPane implements Pane {
                 v -> Dialogs.choose(host, "Theme", Theme.LABELS, Theme.ICONS,
                         indexOf(Theme.VALUES, Theme.choice(host)), index -> {
                             Theme.set(host, Theme.VALUES[index]);
-                            host.recreate();
+                            // Repainted in place. recreate() replayed the opening frame --
+                            // the brand splash -- for a change of colour, which read as the
+                            // app restarting.
+                            Theme.apply(host);
+                            MainActivity.rebuild(host);
                         }));
         list.addView(themeRow);
         list.addView(Ui.divider(host, dark, true));
@@ -281,7 +285,7 @@ final class SettingsPane implements Pane {
         // what was learned last time and corrected in the background; see refreshTools().
         Tools.State tools = lastKnownTools == null
                 ? new Tools.State(false, false, false, "") : lastKnownTools;
-        if (ready) refreshTools();
+        if (ready) refreshTools(tools);
 
         Capacity.Reading reading = Capacity.read(host);
         list.addView(Ui.row(host, dark, R.drawable.ic_memory, "What this computer is",
@@ -383,7 +387,7 @@ final class SettingsPane implements Pane {
      * followed would call build() again, which would call this again. Comparing first ends it
      * after one round.
      */
-    private void refreshTools() {
+    private void refreshTools(final Tools.State drawn) {
         if (toolsCheckRunning) return;
         toolsCheckRunning = true;
         final Activity checking = host;
@@ -392,12 +396,13 @@ final class SettingsPane implements Pane {
             checking.runOnUiThread(() -> {
                 toolsCheckRunning = false;
                 if (checking.isFinishing()) return;
-                Tools.State before = lastKnownTools;
                 lastKnownTools = found;
-                boolean changed = before == null
-                        || before.browser != found.browser
-                        || before.playwright != found.playwright
-                        || before.android != found.android;
+                // Compared with what the rows were DRAWN from, not with whether anything was
+                // known yet: a first opening with nothing installed used to count as a change
+                // and build the whole screen twice.
+                boolean changed = drawn.browser != found.browser
+                        || drawn.playwright != found.playwright
+                        || drawn.android != found.android;
                 if (changed) MainActivity.rebuild(checking);
             });
         }, "check-tools").start();
@@ -460,28 +465,32 @@ final class SettingsPane implements Pane {
         list.addView(batteryRow);
         list.addView(Ui.divider(host, dark, true));
 
+        // The two switches no app can read. The rows say so, and then say where the switch is
+        // in this phone's own menus -- which is the only honest thing a row can do about a
+        // state it cannot see. A row that always said "CHECK" taught people to ignore it.
         list.addView(Ui.row(host, dark, R.drawable.ic_bolt, "Auto-launch",
-                "Realme, OPPO, Xiaomi, vivo, OnePlus, Huawei and Samsung keep this in their own "
-                        + "security app. Tap to open it.",
+                Permissions.CANNOT_READ + " · " + Permissions.autoLaunchPath(),
                 v -> {
                     if (!Permissions.openAutoStartSettings(host)) {
                         Dialogs.message(host, "Auto-launch",
                                 "This phone does not open its auto-launch page to other apps. "
-                                        + "Open App info, then Battery, and turn on Allow "
-                                        + "auto-launch.");
+                                        + "The switch is at:\n\n" + Permissions.autoLaunchPath()
+                                        + "\n\nApp info opens next; Battery is usually the "
+                                        + "way in from there.");
                         Permissions.openAppInfo(host);
                     }
                 }));
         list.addView(Ui.divider(host, dark, true));
 
         list.addView(Ui.row(host, dark, R.drawable.ic_power, "Background activity",
-                "On Realme and OPPO this is a separate switch from battery optimisation, and it "
-                        + "is the one that ends a long download.",
+                Permissions.CANNOT_READ + " · " + Permissions.backgroundPath(),
                 v -> {
                     if (!Permissions.openBackgroundActivitySettings(host)) {
                         Dialogs.message(host, "Background activity",
-                                "Open Battery usage on the next page and turn on foreground and "
-                                        + "background activity.");
+                                "This phone does not open its battery page to other apps. The "
+                                        + "switch is at:\n\n" + Permissions.backgroundPath()
+                                        + "\n\nApp info opens next; Battery is usually the "
+                                        + "way in from there.");
                         Permissions.openAppInfo(host);
                     }
                 }));
@@ -498,7 +507,10 @@ final class SettingsPane implements Pane {
         group.addView(list, Ui.wide(host, 8));
         group.addView(note(dark,
                 "Every one of these is optional and the app works without them — just less "
-                        + "reliably. Nothing here is requested silently."), Ui.wide(host, 8));
+                        + "reliably. Nothing here is requested silently. Battery and "
+                        + "notifications are read from the phone; auto-launch and background "
+                        + "activity are the maker's own switches, which no app can read, so "
+                        + "those two rows show the way to them instead."), Ui.wide(host, 8));
         return group;
     }
 
@@ -550,16 +562,10 @@ final class SettingsPane implements Pane {
                 Workspace.installed(host) ? "Measuring…" : "Not set up yet", null);
         list.addView(sizeRow);
         if (Workspace.installed(host)) {
-            new Thread(() -> {
-                long bytes = Workspace.sizeBytes(host);
-                host.runOnUiThread(() -> {
-                    if (!host.isFinishing() && sizeRow != null) {
-                        sizeRow.setValue(DeviceProbe.formatBytes(bytes)
-                                + " · " + DeviceProbe.formatBytes(Workspace.freeBytes(host))
-                                + " free on the phone");
-                    }
-                });
-            }, "measure").start();
+            final Ui.Row row = sizeRow;
+            Workspace.size(host, bytes -> row.setValue(DeviceProbe.formatBytes(bytes)
+                    + " · " + DeviceProbe.formatBytes(Workspace.freeBytes(host))
+                    + " free on the phone"));
         }
         list.addView(Ui.divider(host, dark, true));
 
@@ -577,7 +583,8 @@ final class SettingsPane implements Pane {
     private void confirmRemoveEverything() {
         if (WorkspaceService.busy()) {
             Dialogs.message(host, "Still running",
-                    "Stop Linux from the notification first.");
+                    "Stop Linux first: the Stop button on Activity, or the one on the "
+                            + "notification.");
             return;
         }
         Dialogs.confirm(host, "Remove everything?",
@@ -585,10 +592,22 @@ final class SettingsPane implements Pane {
                         + "Linux. It cannot be undone, and setting up again downloads "
                         + "everything from the start.",
                 "Remove everything", true, () -> {
-                    Workspace.removeEverything(host);
-                    Dialogs.message(host, "Removed", "Linux is gone. The app is back to "
-                            + "how it was when it was installed.");
-                    MainActivity.rebuild(host);
+                    // Off the drawing thread, with a dialog up while it runs. A Linux is tens
+                    // of thousands of files, and deleting them on the thread that draws the
+                    // screen froze it for as long as that took -- on a slow phone, long
+                    // enough for Android to call the app unresponsive.
+                    final Activity on = host;
+                    final Dialogs.Live live = Dialogs.live(on, "Removing everything",
+                            "Deleting Linux, the editor, the extensions and the projects…");
+                    new Thread(() -> {
+                        Workspace.removeEverything(on);
+                        lastKnownTools = null;
+                        live.done(true, "Removed. The app is back to how it was when it was "
+                                + "installed.");
+                        on.runOnUiThread(() -> {
+                            if (!on.isFinishing()) MainActivity.rebuild(on);
+                        });
+                    }, "remove-everything").start();
                 });
     }
 
@@ -635,6 +654,7 @@ final class SettingsPane implements Pane {
         boolean ready = Workspace.installed(host);
         Updates.Status status = Updates.last(host);
         boolean on = Updates.automatic(host);
+        boolean editorAuto = Updates.automaticEditor(host);
 
         Ui.Row automatic = Ui.row(host, dark, R.drawable.ic_shield, "Security updates",
                 !ready ? "Available once Linux is set up"
@@ -646,6 +666,20 @@ final class SettingsPane implements Pane {
                 });
         automatic.setState(on ? Ui.running(dark) : Ui.needsYou(dark));
         list.addView(automatic);
+        list.addView(Ui.divider(host, dark, true));
+
+        Ui.Row editorSwitch = Ui.row(host, dark, R.drawable.ic_auto_mode, "Editor updates",
+                !ready ? "Available once Linux is set up"
+                        : !on ? "Off · automatic updates are off above"
+                        : editorAuto
+                            ? "Automatic · on Wi-Fi, while the editor is closed, with a rollback"
+                            : "Only when you ask · from the row below",
+                v -> {
+                    Updates.setAutomaticEditor(host, !editorAuto);
+                    MainActivity.rebuild(host);
+                });
+        editorSwitch.setState(on && editorAuto ? Ui.running(dark) : Ui.muted(dark));
+        list.addView(editorSwitch);
         list.addView(Ui.divider(host, dark, true));
 
         Ui.Row state = Ui.row(host, dark, R.drawable.ic_download, "What is waiting",
@@ -684,16 +718,103 @@ final class SettingsPane implements Pane {
                                 + "The editor has to be closed for its own update, and this will "
                                 + "not start one while it is open."); }));
 
+        list.addView(Ui.divider(host, dark, true));
+
+        // The app itself: the one thing that used to have no idea it could be out of date.
+        AppUpdates.Status app = AppUpdates.last(host);
+        boolean looks = AppUpdates.enabled(host);
+        Ui.Row self = Ui.row(host, dark, R.drawable.ic_download, "This app",
+                app.newer()
+                        ? "PocketIDE " + app.latest + " is available · tap to get it"
+                                + (app.apkBytes > 0
+                                        ? " · " + DeviceProbe.formatBytes(app.apkBytes) : "")
+                        : !looks ? BuildFacts.VERSION_NAME + " · not looking for new versions"
+                        : app.everChecked()
+                            ? BuildFacts.VERSION_NAME + " · newest · looks once a day"
+                            : BuildFacts.VERSION_NAME + " · not checked yet · tap to check",
+                v -> {
+                    if (app.newer()) offerAppUpdate(app);
+                    else checkAppNow();
+                });
+        if (app.newer()) self.setState(Ui.needsYou(dark));
+        list.addView(self);
+        list.addView(Ui.divider(host, dark, true));
+
+        Ui.Row looking = Ui.row(host, dark, R.drawable.ic_info, "Look for new versions",
+                looks ? "On · asks GitHub once a day whether a newer PocketIDE exists"
+                      : "Off · you will not be told about new versions",
+                v -> {
+                    AppUpdates.setEnabled(host, !looks);
+                    MainActivity.rebuild(host);
+                });
+        looking.setState(looks ? Ui.running(dark) : Ui.muted(dark));
+        list.addView(looking);
+
         group.addView(list, Ui.wide(host, 8));
 
         String note = "Ubuntu 24.04 LTS receives security updates until " + status.supportedUntil
                 + " — that is Canonical's published date for this release, not an estimate. "
-                + "Updates run only while PocketIDE is open, because Linux only runs while "
-                + "PocketIDE is open: Android does not keep it alive behind a closed app.";
+                + "Updates to Linux and the editor run only while PocketIDE is open, because "
+                + "Linux only runs while PocketIDE is open: Android does not keep it alive "
+                + "behind a closed app. A new version of the app itself is a download you "
+                + "start; it installs over this one and touches nothing in Linux.";
         String ran = Updates.lastRunNote(host);
         if (!ran.isEmpty()) note = ran + ".\n\n" + note;
         group.addView(note(dark, note), Ui.wide(host, 8));
         return group;
+    }
+
+    private void checkAppNow() {
+        Dialogs.Live live = Dialogs.live(host, "Checking for a new version", "Asking GitHub…");
+        new Thread(() -> {
+            AppUpdates.Status found = AppUpdates.check(host);
+            live.done(found != null, found == null
+                    ? "GitHub could not be reached."
+                    : found.newer()
+                        ? "PocketIDE " + found.latest + " is available."
+                        : "This is the newest version.");
+            host.runOnUiThread(() -> {
+                if (!host.isFinishing()) MainActivity.rebuild(host);
+            });
+        }, "check-app-update").start();
+    }
+
+    /**
+     * Hands the download to the phone's browser and Android's own installer.
+     *
+     * Every release is signed with the same key, so the new one installs over this one and
+     * Linux, the editor and the projects are untouched -- they live in the app's storage, which
+     * an update keeps. Said in the dialog, because "install a new version" sounds like the
+     * thing that loses a workspace, and here it is not.
+     */
+    private void offerAppUpdate(AppUpdates.Status app) {
+        String link = !app.apkUrl.isEmpty() ? app.apkUrl : app.pageUrl;
+        if (link.isEmpty()) {
+            Dialogs.message(host, "PocketIDE " + app.latest,
+                    "A newer version was published but its download link could not be read. "
+                            + "Tap \"Look for new versions\" again later.");
+            return;
+        }
+        Dialogs.confirm(host, "Get PocketIDE " + app.latest + "?",
+                "The download opens in the phone's browser"
+                        + (app.apkBytes > 0
+                                ? " (about " + DeviceProbe.formatBytes(app.apkBytes) + ")" : "")
+                        + ". When it finishes, open the file and Android installs it over this "
+                        + "version.\n\nLinux, the editor, the extensions and your projects "
+                        + "stay exactly as they are: an update keeps the app's storage. Every "
+                        + "release is signed with the same key, which is what lets it install "
+                        + "over this one.",
+                "Download", () -> {
+                    try {
+                        AppLock.expectReturn();
+                        host.startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(link))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    } catch (Throwable noBrowser) {
+                        AppLock.returned();
+                        Dialogs.details(host, "No browser", "This phone has no browser to open "
+                                + "the download with. The link is:", link, "Copy the link");
+                    }
+                });
     }
 
     private void checkNow() {

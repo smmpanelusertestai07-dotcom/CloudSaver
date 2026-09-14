@@ -38,9 +38,20 @@ public final class MainActivity extends Activity {
 
     private final List<Pane> panes = new ArrayList<>();
     private int selected = HOME;
-    private FrameLayout slot;
     private FrameLayout lockRoot;
     private Pane showing;
+    /**
+     * Set on the way out, so that coming back refreshes the pane -- and a cold start, which
+     * has no way out before its first onResume, does not build the same screen twice.
+     */
+    private boolean returning;
+    /** Back's handler while a destination other than Home is showing; see Back. */
+    private Object backToHome;
+    /** What the lock runs when it comes down: a fresh pane, and no second one on resume. */
+    private final Runnable unlocked = () -> {
+        returning = false;
+        render();
+    };
 
     private List<Shell.Tab> tabs() {
         return Arrays.asList(
@@ -80,12 +91,12 @@ public final class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (AppLock.handleResult(this, lockRoot, request, result, this::render)) return;
+        if (AppLock.handleResult(this, lockRoot, request, result, unlocked)) return;
     }
 
     private void raiseLockIfNeeded() {
         if (lockRoot != null && AppLock.isLocked(this)) {
-            AppLock.show(this, lockRoot, this::render);
+            AppLock.show(this, lockRoot, unlocked);
         }
     }
 
@@ -95,6 +106,7 @@ public final class MainActivity extends Activity {
         int asked = intent.getIntExtra(EXTRA_TAB, -1);
         if (asked >= 0 && asked < panes.size()) {
             selected = asked;
+            returning = false;
             render();
         }
     }
@@ -124,18 +136,33 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        // Permissions, free space and the workspace's own state all change while the owner is
-        // away in the phone's own Settings, so the pane is rebuilt on return rather than left
-        // showing what happened to be true when it was opened.
-        render();
+        if (returning) {
+            returning = false;
+            // Permissions, free space and the workspace's own state all change while the
+            // owner is away in the phone's own Settings, so what is showing is refreshed on
+            // return rather than left showing what happened to be true when it was opened.
+            // A pane that keeps itself fresh is told it is back; the rest are built again.
+            // Neither happens under the lock, which rebuilds when it comes down.
+            if (AppLock.showing(lockRoot)) {
+                // Waiting on the fingerprint. See unlocked.
+            } else if (showing != null && !showing.rebuildOnReturn()) {
+                showing.shown(this);
+            } else {
+                render();
+            }
+        }
         // And the machine catches itself up, quietly, if a day has passed and the phone is on
         // Wi-Fi with nothing else running. It returns immediately when any of that is untrue,
         // which is most of the time -- see Updates.whyNotNow.
         Updates.maybeRunInBackground(this);
+        // And once a day, whether a newer PocketIDE has been published. A few kilobytes of
+        // public text; nothing about the owner goes with it.
+        AppUpdates.maybeCheckInBackground(this);
     }
 
     @Override protected void onPause() {
         if (showing != null) showing.hidden(this);
+        returning = true;
         super.onPause();
     }
 
@@ -149,10 +176,17 @@ public final class MainActivity extends Activity {
 
     @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] granted) {
         super.onRequestPermissionsResult(code, permissions, granted);
+        returning = false;
         render();
     }
 
-    /** Back leaves the app from Home, and returns to Home from anywhere else. */
+    /**
+     * Back leaves the app from Home, and returns to Home from anywhere else.
+     *
+     * This method is what runs before Android 13. From 13 the same rule is registered through
+     * Back, and only while it applies: on Home nothing is registered, so the phone's own
+     * predictive animation out of the app is left alone.
+     */
     @Override public void onBackPressed() {
         if (selected != HOME) {
             select(HOME);
@@ -161,25 +195,38 @@ public final class MainActivity extends Activity {
         super.onBackPressed();
     }
 
+    private void syncBack() {
+        boolean wanted = selected != HOME;
+        if (wanted && backToHome == null) {
+            backToHome = Back.register(this, () -> select(HOME));
+        } else if (!wanted && backToHome != null) {
+            Back.unregister(this, backToHome);
+            backToHome = null;
+        }
+    }
+
     // ------------------------------------------------------------------ the frame
 
     private void render() {
         if (showing != null) showing.hidden(this);
         if (selected < 0 || selected >= panes.size()) selected = HOME;
         Pane pane = panes.get(selected);
-        slot = new FrameLayout(this);
+        // The pane's own view goes straight into the frame, not wrapped: the frame pads a
+        // ScrollView so the page can slide under the floating bar, and a wrapper would hide
+        // the ScrollView from it.
         View content = pane.build(this);
-        slot.addView(content);
         // The lock lives in a frame of its own above everything, so it covers the bars as well
         // as the pane. A lock the bottom bar sticks out from under is not a lock.
         lockRoot = new FrameLayout(this);
-        lockRoot.addView(Shell.frame(this, slot, tabs(), selected, this::select, editorAction()));
+        lockRoot.addView(Shell.frame(this, content, tabs(), selected, this::select,
+                editorAction()));
         setContentView(lockRoot);
         showing = pane;
         pane.shown(this);
         // Before the lock, so a locked app does not show its contents behind the brand frame.
         BrandFrame.openOver(this, lockRoot);
         raiseLockIfNeeded();
+        syncBack();
     }
 
     private void select(int index) {
@@ -197,15 +244,11 @@ public final class MainActivity extends Activity {
     private View editorAction() {
         if (!WorkspaceService.editorRunning() && !Workspace.installed(this)) return null;
         boolean dark = Ui.dark(this);
-        // A tonal container, not a bare glyph on the background. As a bare glyph this read as
-        // decoration -- an owner described it as "the code-looking thing in the top right
-        // corner" and did not know it opened anything.
-        View open = Ui.iconButton(this, dark, R.drawable.ic_code, Ui.accent(dark),
-                Ui.alpha(Ui.accent(dark), dark ? 48 : 34), "Open the editor",
+        // A word beside the glyph, in a tonal pill. A bare glyph here read as decoration -- an
+        // owner described it as "the code-looking thing in the top right corner" and did not
+        // know it opened anything -- and a circle around the same glyph did not fix that.
+        return Ui.tonalButton(this, dark, R.drawable.ic_code, "Editor", "Open the editor",
                 v -> startActivity(new Intent(this, WorkspaceActivity.class)));
-        int target = Ui.dp(this, Ui.TOUCH_TARGET_DP);
-        open.setLayoutParams(new android.widget.LinearLayout.LayoutParams(target, target));
-        return open;
     }
 
     /**

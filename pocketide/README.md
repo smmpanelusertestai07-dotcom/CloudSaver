@@ -9,6 +9,22 @@ Visual Studio Code on it, and lets you install any coding-agent extension from t
 registry — with Google's Antigravity, Anthropic's Claude Code and OpenAI's Codex set up in one
 tap. Everything runs on the phone. No computer is needed at any point, including for set-up.
 
+## Install
+
+Download `PocketIDE-v<version>-release.apk` from this repository's
+[Releases](../../releases) page — PocketIDE's releases are the ones tagged `pocketide-v<version>` —
+and open it on the phone. Play Protect warns about any sideloaded APK; choose "More details" →
+"Install anyway".
+
+Every release is signed with the same key, so each one installs over the last and keeps Linux,
+the editor, the extensions and your projects. The app itself asks GitHub once a day whether a
+newer release exists and says so on the Home screen; installing it is your tap, never automatic.
+
+The build from every push is also attached to its workflow run as an artifact named
+`PocketIDE-apk`, for testing. Those are signed with the same key only when the secrets under
+[Signing](#signing) are set; without them each run signs with a key of its own, and that APK
+will not install over any other build.
+
 ## Who it is for
 
 Someone who wants to build software and does not own a computer.
@@ -74,11 +90,15 @@ fix within hours of a CVE, and a machine that never runs `apt` never receives it
 - **Ubuntu's security updates** are taken automatically — on Wi-Fi, once a day, while the app is
   open and the editor is not. Security only, never a blanket upgrade.
 - **Extensions** keep themselves current, by the editor, from Open VSX.
-- **The editor** moves when you ask. code-server cannot update itself, so the app does it: the
-  version and URL come from GitHub's release API over TLS, the bytes must match the size GitHub
-  published, the archive must unpack into a runnable editor, and that editor must report the
-  version that was asked for — only then is the installed one replaced, and a failed swap puts
-  the previous one straight back.
+- **The editor** follows code-server's releases automatically too, under the same conditions and
+  only while it is closed. code-server cannot update itself, so the app does it: the version and
+  URL come from GitHub's release API over TLS, the bytes must match the size GitHub published,
+  the archive must unpack into a runnable editor, and that editor must report the version that
+  was asked for — only then is the installed one replaced, and a failed swap puts the previous
+  one straight back. A switch in Settings makes it manual instead.
+- **The app itself** checks GitHub's releases once a day and tells you when a newer PocketIDE
+  exists. Downloading it is your tap; it installs over the running copy with nothing in Linux
+  touched.
 
 Ubuntu 24.04 LTS has standard security support until May 2029. All of this runs only while the
 app is open, because Linux only runs while the app is open — Android does not keep another
@@ -101,13 +121,15 @@ location, contacts, SMS, calendar or storage.**
 
 No analytics, no telemetry, no account, no server. Your files live in this app's private storage
 and are never synced, backed up or uploaded. The agents' models run in their own companies'
-clouds, as they do everywhere; your files stay on the phone and edits happen on the phone.
+clouds, as they do everywhere; your files stay on the phone and edits happen on the phone. The
+only request the app makes on its own behalf is the once-a-day question to GitHub about new
+releases — a public list, with nothing about you in the request — and Settings can turn it off.
 
 ## Build
 
 ```
 ./build.sh          # aapt2 + javac + d8 + apksigner. No Gradle, no network.
-./tests/run-tests.sh   # 43 gates
+./tests/run-tests.sh   # 46 gates
 ```
 
 Requires Android SDK platform 35 and build-tools 35.0.0. Every gate exists because of a specific

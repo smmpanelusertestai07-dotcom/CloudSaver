@@ -58,6 +58,26 @@ final class Dialogs {
     }
 
     /**
+     * A question with two named answers, neither of them "Cancel".
+     *
+     * For the case where declining is itself a choice with a consequence: "Not now" before a
+     * long job means the job still starts, only without a progress notification, and a button
+     * that said Cancel would promise the opposite. Dismissing the dialog counts as the second
+     * answer, so nothing is left half-decided.
+     */
+    static void ask(Activity activity, String title, CharSequence body, String yes, String no,
+                    Runnable onYes, Runnable onNo) {
+        boolean dark = Ui.dark(activity);
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setView(body(activity, dark, title, body))
+                .setNegativeButton(no, (d, which) -> onNo.run())
+                .setPositiveButton(yes, (d, which) -> onYes.run())
+                .setOnCancelListener(d -> onNo.run())
+                .create();
+        show(activity, dialog, dark);
+    }
+
+    /**
      * A list of choices with the current one marked.
      *
      * Rows rather than a platform single-choice list, because the platform's radio rows are
@@ -136,8 +156,14 @@ final class Dialogs {
         AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setView(scroll)
                 .setCancelable(false)
+                // Made now and hidden until the work ends. A button added to a dialog that is
+                // already showing is never laid out, so "Done" used to be missing and a
+                // finished install had no way to be closed.
+                .setPositiveButton("Done", (d, which) -> d.dismiss())
                 .create();
         show(activity, dialog, dark);
+        View done = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (done != null) done.setVisibility(View.GONE);
         return new Live(activity, dialog, note, output, scroll);
     }
 
@@ -182,30 +208,41 @@ final class Dialogs {
         /** Ends it: the dialog becomes dismissible and says how it went. */
         void done(boolean ok, String message) {
             activity.runOnUiThread(() -> {
-                if (activity.isFinishing()) {
-                    dialog.dismiss();
+                if (activity.isFinishing() || activity.isDestroyed()) {
+                    dismissQuietly();
                     return;
                 }
                 note.setText(message);
                 boolean nowDark = Ui.dark(activity);
                 note.setTextColor(ok ? Ui.running(nowDark) : Ui.failed(nowDark));
                 dialog.setCancelable(true);
-                dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Done", (d, which) -> d.dismiss());
-                // setButton after show() needs the button re-laid out, which re-showing does.
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE);
-                try {
-                    dialog.show();
-                } catch (Throwable alreadyGone) {
-                    // The window went away while work was running. Nothing to show it on.
-                }
+                View done = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+                if (done != null) done.setVisibility(View.VISIBLE);
             });
+        }
+
+        /** Takes the dialog down without a verdict, for a caller about to show its own. */
+        void close() {
+            activity.runOnUiThread(this::dismissQuietly);
+        }
+
+        private void dismissQuietly() {
+            try {
+                dialog.dismiss();
+            } catch (Throwable alreadyGone) {
+                // The window went away while work was running. Nothing to take down.
+            }
         }
     }
 
     /** A long body with a monospace block under it, for raw technical output. */
-    static void details(Activity activity, String title, CharSequence explanation, String raw,
+    static void details(Activity activity, String title, CharSequence explanation, String rawText,
                         String copyLabel) {
         boolean dark = Ui.dark(activity);
+        // Blanked before it is shown or copied. This is the text an owner pastes into a chat
+        // asking for help, and it is where a sign-in token or a git credential ends up when
+        // some tool printed it. See Redact.
+        final String raw = Redact.secrets(rawText);
         LinearLayout column = Ui.column(activity);
         int pad = Ui.dp(activity, 20);
         column.setPadding(pad, pad, pad, Ui.dp(activity, 8));
@@ -272,7 +309,7 @@ final class Dialogs {
             View button = dialog.getButton(which);
             if (button instanceof TextView) {
                 TextView view = (TextView) button;
-                view.setTextColor(Ui.accent(dark));
+                view.setTextColor(Ui.link(dark));
                 view.setAllCaps(false);
                 view.setTextSize(15f);
                 view.setMinHeight(Ui.dp(activity, Ui.TOUCH_TARGET_DP));

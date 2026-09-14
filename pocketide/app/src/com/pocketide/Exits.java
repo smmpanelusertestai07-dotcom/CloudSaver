@@ -61,6 +61,24 @@ final class Exits {
 
     private Exits() {}
 
+    /** Whether Linux was up when this process last died. Read once, at process start. */
+    private static volatile boolean linuxWasRunningAtLastExit;
+
+    /**
+     * Called once per process start, before the service can write the flag again.
+     *
+     * The flag is the service's: true while Linux runs, false once it has stopped tidily, and
+     * whatever it was if the process was killed. Read here and put back to false, so that it
+     * describes the death that just happened and not one from a week ago.
+     */
+    static void noteStart(Context context) {
+        android.content.SharedPreferences prefs = Prefs.of(context);
+        linuxWasRunningAtLastExit = prefs.getBoolean(Prefs.LINUX_WAS_RUNNING, false);
+        if (linuxWasRunningAtLastExit) {
+            prefs.edit().putBoolean(Prefs.LINUX_WAS_RUNNING, false).apply();
+        }
+    }
+
     /**
      * The most recent exit worth telling the owner about, or null.
      *
@@ -81,14 +99,16 @@ final class Exits {
         }
         if (records == null || records.isEmpty()) return null;
 
-        for (ApplicationExitInfo info : records) {
-            Exit exit = translate(info);
+        for (int i = 0; i < records.size(); i++) {
+            // Only the newest record can be matched to the flag; an older stop is not told
+            // apart from an idle app being closed, so it is left alone.
+            Exit exit = translate(records.get(i), i == 0 && linuxWasRunningAtLastExit);
             if (exit != null && exit.worthShowing) return exit;
         }
         return null;
     }
 
-    private static Exit translate(ApplicationExitInfo info) {
+    private static Exit translate(ApplicationExitInfo info, boolean linuxWasRunning) {
         String description = info.getDescription() == null ? "" : info.getDescription();
         long when = info.getTimestamp();
         String raw = "reason=" + info.getReason()
@@ -113,6 +133,9 @@ final class Exits {
 
         switch (info.getReason()) {
             case ApplicationExitInfo.REASON_USER_REQUESTED:
+                // Stopping an app that had nothing running is not worth a notice, and the
+                // explanation below -- "Linux had no chance to shut down" -- would be untrue.
+                if (!linuxWasRunning) return new Exit(when, "", "", false, raw);
                 return new Exit(when, "The app was stopped from the phone's Task Manager",
                         "Android's Task Manager has a Stop button beside apps that are running "
                                 + "in the background. It stops the whole app at once, without "
@@ -123,6 +146,7 @@ final class Exits {
                         true, raw);
 
             case ApplicationExitInfo.REASON_LOW_MEMORY:
+                if (!linuxWasRunning) return new Exit(when, "", "", false, raw);
                 return new Exit(when, "The phone ran short of memory",
                         "Something else on the phone needed the memory and Android reclaimed it "
                                 + "from here. It is likelier when several large apps are open.\n\n"

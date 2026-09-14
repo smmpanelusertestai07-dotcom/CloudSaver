@@ -110,6 +110,17 @@ final class Ui {
     static int accent(boolean dark) { return Brand.accent(dark); }
 
     /**
+     * The accent as a colour for WORDS -- a dialog button, a "why" link -- rather than for a
+     * surface.
+     *
+     * The accent itself was chosen for surfaces, and as 15 sp text on the light card it does
+     * not reach the 4.5:1 floor. TILE_FLAT, the deep violet the launcher tile is built from,
+     * reads as the same hue and clears it comfortably; dark keeps the lighter accent, which
+     * already does. tests/contrast.py measures both over the card they sit on.
+     */
+    static int link(boolean dark) { return dark ? Brand.accent(true) : Brand.TILE_FLAT; }
+
+    /**
      * What is drawn ON a surface tinted with the accent -- the icon inside the navigation bar's
      * active indicator, and anything else that sits on an accent-coloured container.
      *
@@ -251,13 +262,76 @@ final class Ui {
      * page and a floating bar is above it, and the only thing that says which is which is
      * whether light gets under the edge.
      */
+    /**
+     * How see-through the floating bar is. Mostly opaque, on purpose: a bar the page shows
+     * through at half strength is a bar whose labels sit on whatever text happens to be
+     * scrolling past, and tests/contrast.py measures the words on this bar against the capsule
+     * composited over the page at exactly these values.
+     */
+    static final int FLOATING_ALPHA_LIGHT = 242;
+    static final int FLOATING_ALPHA_DARK = 238;
+
     static GradientDrawable floatingGlass(Context context, boolean dark, float radiusDp) {
-        GradientDrawable drawable = glass(context, dark, radiusDp);
+        int opacity = dark ? FLOATING_ALPHA_DARK : FLOATING_ALPHA_LIGHT;
+        // The lit edge and the darker foot, as glass(), but faintly see-through, so what is
+        // scrolling underneath is felt rather than read.
+        int top = alpha(dark ? Color.rgb(52, 52, 51) : Color.rgb(255, 255, 254), opacity);
+        int bottom = alpha(dark ? Color.rgb(31, 31, 30) : Color.rgb(238, 236, 229), opacity);
+        GradientDrawable drawable = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM, new int[]{top, bottom});
+        drawable.setCornerRadius(dp(context, radiusDp));
         // A stronger edge than a card's, because this one has nothing behind it to sit against:
         // on a dark ground the hairline IS the boundary between the bar and the page.
         drawable.setStroke(Math.max(1, dp(context, 1)),
-                dark ? Color.rgb(86, 86, 82) : Color.rgb(210, 206, 196));
+                dark ? Color.rgb(94, 94, 90) : Color.rgb(212, 208, 198));
         return drawable;
+    }
+
+    /**
+     * Material 3's filled tonal button with a leading icon: the one action in the top bar.
+     *
+     * It replaces a bare icon that read as decoration. An owner described it as "the
+     * code-looking thing in the top right corner" and did not know it opened anything; a tonal
+     * circle around the same glyph did not fix that, because a glyph with no word beside it
+     * still asks to be decoded. The word is what says it can be pressed and what pressing it
+     * does. 40 dp tall inside a 48 dp touch target, fully rounded, the accent as a tonal
+     * container with the on-container tone for the icon and the word -- the pairing
+     * tests/contrast.py measures.
+     */
+    static LinearLayout tonalButton(Context context, boolean dark, int iconRes,
+                                    CharSequence label, CharSequence description,
+                                    View.OnClickListener onClick) {
+        LinearLayout button = new LinearLayout(context);
+        button.setOrientation(LinearLayout.HORIZONTAL);
+        button.setGravity(Gravity.CENTER);
+        int inset = dp(context, 4);
+        int container = alpha(accent(dark), dark ? 60 : 44);
+        button.setBackground(new RippleDrawable(
+                ColorStateList.valueOf(dark ? 0x33FFFFFF : 0x22000000),
+                new InsetDrawable(fill(context, container, 999), 0, inset, 0, inset),
+                new InsetDrawable(fill(context, Color.WHITE, 999), 0, inset, 0, inset)));
+        button.setMinimumHeight(dp(context, TOUCH_TARGET_DP));
+        int padX = dp(context, 14);
+        button.setPadding(padX, 0, padX + dp(context, 2), 0);
+
+        ImageView icon = new ImageView(context);
+        icon.setImageResource(iconRes);
+        icon.setImageTintList(ColorStateList.valueOf(onAccentContainer(dark)));
+        int size = dp(context, 18);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(size, size);
+        iconParams.rightMargin = dp(context, 7);
+        button.addView(icon, iconParams);
+
+        TextView words = medium(context, label, 14f, onAccentContainer(dark));
+        words.setSingleLine(true);
+        button.addView(words);
+
+        button.setClickable(true);
+        button.setFocusable(true);
+        button.setContentDescription(description);
+        button.setOnClickListener(onClick);
+        asButton(button);
+        return button;
     }
 
     /**
@@ -323,6 +397,7 @@ final class Ui {
                         : outlined(context, card(dark), line(dark), 14), dark));
         view.setClickable(true);
         view.setFocusable(true);
+        asButton(view);
         return view;
     }
 
@@ -337,7 +412,25 @@ final class Ui {
         view.setBackground(tappable(context, metal(context, 14), true));
         view.setClickable(true);
         view.setFocusable(true);
+        asButton(view);
         return view;
+    }
+
+    /**
+     * Tells a screen reader that a plain view is a button.
+     *
+     * Every button in this app is a TextView or a LinearLayout with a click listener, which
+     * TalkBack announces as text -- "Set up", with no hint that it can be pressed. Reporting
+     * the Button class is what makes it say "button" after the label and offer a double-tap.
+     */
+    static void asButton(View view) {
+        view.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+            @Override public void onInitializeAccessibilityNodeInfo(View host,
+                    android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(host, info);
+                info.setClassName(android.widget.Button.class.getName());
+            }
+        });
     }
 
     /** A small capsule saying one word about state. Its colour is the state, not decoration. */
@@ -349,6 +442,17 @@ final class Ui {
         view.setPadding(padX, padY, padX, padY);
         view.setBackground(outlined(context, alpha(colour, 28), alpha(colour, 90), 999));
         return view;
+    }
+
+    /**
+     * Changes what a pill says and the colour it says it in -- fill and outline as well as the
+     * word. Setting the text colour alone left a "RUNNING" in green inside a grey capsule.
+     */
+    static void recolour(TextView pill, CharSequence label, int colour) {
+        pill.setText(label);
+        pill.setTextColor(colour);
+        pill.setBackground(outlined(pill.getContext(), alpha(colour, 28), alpha(colour, 90),
+                999));
     }
 
     /**
@@ -476,18 +580,51 @@ final class Ui {
         // Past roughly 600dp a line of text is too long to track back to. On a phone this
         // never bites; on a tablet or a folded-open screen it is the difference between a
         // readable column and a page that runs wall to wall.
-        content.setOnHierarchyChangeListener(null);
         final int maxPx = dp(context, CONTENT_MAX_DP);
-        scroll.getViewTreeObserver().addOnGlobalLayoutListener(() -> {
-            if (content.getWidth() > maxPx && content.getLayoutParams().width != maxPx) {
-                content.getLayoutParams().width = maxPx;
-                content.requestLayout();
+        // On the content's own layout rather than the window's ViewTreeObserver. A listener
+        // added there belongs to the window and outlives the page, so every page ever built
+        // kept being consulted on every layout of every page after it -- views held for the
+        // life of the screen, and a little more work per frame with each tab switch.
+        content.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (r - l > maxPx && v.getLayoutParams().width != maxPx) {
+                v.getLayoutParams().width = maxPx;
+                v.post(v::requestLayout);
             }
         });
         centring.addView(content);
         scroll.addView(centring, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         return scroll;
+    }
+
+    /**
+     * A scrolling box inside a scrolling page, which a plain ScrollView cannot be.
+     *
+     * The page takes every drag before the box sees it, so the box never moves -- which is what
+     * an owner meant by "the transcript does not scroll". This one keeps the touch for itself
+     * while it actually has somewhere to scroll to, and hands it back to the page when it does
+     * not, so a short transcript still lets the page move.
+     */
+    static ScrollView innerScroll(Context context) {
+        return new ScrollView(context) {
+            private void claim(android.view.MotionEvent event) {
+                if (getParent() == null) return;
+                boolean can = canScrollVertically(1) || canScrollVertically(-1);
+                if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && can) {
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                }
+            }
+
+            @Override public boolean onInterceptTouchEvent(android.view.MotionEvent event) {
+                claim(event);
+                return super.onInterceptTouchEvent(event);
+            }
+
+            @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+                claim(event);
+                return super.onTouchEvent(event);
+            }
+        };
     }
 
     /** A back bar: one target, the title beside it, nothing else. */

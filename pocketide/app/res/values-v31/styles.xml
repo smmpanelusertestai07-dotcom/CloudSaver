@@ -19,5 +19,14 @@
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_animated</item>
         <item name="android:windowSplashScreenAnimationDuration">600</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/brand_tile_flat</item>
+        <!-- Restated, because a style in values-v31 REPLACES the one in values rather than
+             adding to it. Without these five the Android 12+ splash inherited the light
+             theme's dark clock and battery icons over the violet, and the frame between the
+             system splash and the app's own opening frame was cream instead of violet. -->
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/brand_tile_flat</item>
+        <item name="android:navigationBarColor">@color/brand_tile_flat</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

@@ -110,6 +110,63 @@ if "isExternalStorageManager" not in files:
     problems.append("PhoneFiles does not check whether Android actually granted the access, so "
                     "the app would claim a folder exists that does not")
 
+
+# --- 6. an errand is timed --------------------------------------------------------------------
+#
+# expectReturn() lets the owner go to the phone's own Settings without a fingerprint on the way
+# back. That decision used to be made once, at the moment of leaving, so a phone put down for
+# an hour in the middle of an errand came back unlocked. AppLock has to look again on return.
+if "leftForErrand" not in lock or "ERRAND_MS" not in lock:
+    problems.append("AppLock never re-checks how long an errand took; an owner who left for the "
+                    "phone's Settings and came back an hour later finds the app unlocked")
+elif "AppLock.leftForErrand()" not in code(read("App.java")):
+    problems.append("App does not tell AppLock when the app went out on an errand, so the "
+                    "errand timer never starts")
+
+# --- 7. the service's death is told apart from an idle app being closed -----------------------
+#
+# The Task-Manager and low-memory notices say Linux had no chance to shut down. That is only
+# true when Linux was running, and the only way to know after the process is gone is a flag the
+# service writes while it runs and the next start reads before the service can write it again.
+service = code(read("WorkspaceService.java"))
+exits = code(read("Exits.java"))
+application = code(read("App.java"))
+if "Prefs.LINUX_WAS_RUNNING, true" not in service or "Prefs.LINUX_WAS_RUNNING, false" not in service:
+    problems.append("WorkspaceService does not write LINUX_WAS_RUNNING on start and stop, so a "
+                    "kill cannot be told apart from an idle app being closed")
+if "noteStart" not in exits or "Exits.noteStart(this)" not in application:
+    problems.append("Exits.noteStart() is missing or App never calls it, so the flag is read "
+                    "after the service may already have rewritten it")
+for reason in ("REASON_USER_REQUESTED", "REASON_LOW_MEMORY"):
+    at = exits.find(reason)
+    if at < 0 or "linuxWasRunning" not in exits[at:at + 400]:
+        problems.append("Exits reports %s without checking whether Linux was running, so "
+                        "closing an idle app produces a notice about a Linux that was not "
+                        "there" % reason)
+
+# --- 8. a live dialog can be closed ------------------------------------------------------------
+#
+# A button added to a dialog that is already showing is never laid out. The "Done" button has
+# to exist before show() and be revealed at the end, or a finished install cannot be closed.
+dialogs = code(read("Dialogs.java"))
+live_at = dialogs.find("static Live live(")
+live_done = dialogs.find('.setPositiveButton("Done"', live_at)
+live_show = dialogs.find("show(activity, dialog, dark)", live_at)
+if live_at < 0 or live_done < 0 or live_show < 0 or live_done > live_show:
+    problems.append("Dialogs.live() adds its Done button after show(), where it never appears")
+if "dialog.setButton(" in dialogs:
+    problems.append("Dialogs still calls setButton() on a dialog that is already showing")
+
+# --- 9. the Android 12+ splash style restates what it replaces ---------------------------------
+#
+# A style in values-v31 REPLACES the one in values. Without the bar items the light theme's
+# dark clock is drawn over the violet splash on every phone from Android 12 on.
+v31 = open(app + "/app/res/values-v31/styles.xml").read()
+for item in ("windowLightStatusBar", "windowLightNavigationBar", "windowBackground"):
+    if item not in v31:
+        problems.append("values-v31/styles.xml does not restate android:%s, which the base "
+                        "splash style sets and this one silently drops" % item)
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

@@ -47,8 +47,10 @@
 
     <!--
         Deliberately not requested, and the Help screen says so: camera, microphone, location,
-        contacts, SMS, calendar, storage. Nothing in this app needs them, and an app that asks
-        for what it does not need is an app nobody should trust with a code repository.
+        contacts, SMS, calendar, phone, accounts. Nothing in this app needs them, and an app
+        that asks for what it does not need is an app nobody should trust with a code
+        repository. Storage is the one exception, declared above: never asked for at set-up,
+        only from the switch in Settings, and the Help screen says that too.
     -->
 
     <application
@@ -75,6 +77,7 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@style/Theme.PocketIDE.Splash"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -54,6 +54,11 @@ public final class SetupActivity extends Activity {
     private ScrollView transcriptScroll;
     private TextView primary;
     private final StringBuilder lines = new StringBuilder();
+    /** What the current stage last said, and how far along it was, for restore(). */
+    private String lastMessage;
+    private int lastPercent = -1;
+    private boolean ready;
+    private String lastFailure;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -93,6 +98,42 @@ public final class SetupActivity extends Activity {
         super.onConfigurationChanged(config);
         Theme.apply(this);
         setContentView(build());
+        restore();
+    }
+
+    /**
+     * Paints the state back onto a screen build() has just made new.
+     *
+     * Rotation and a theme flip both rebuild every view, and every view came back blank: the
+     * transcript empty, every stage waiting, the bar at zero, until the next line arrived.
+     * What is known lives in fields and is replayed onto the new rows.
+     */
+    private void restore() {
+        boolean dark = Ui.dark(this);
+        for (Stage stage : Stage.values()) if (finishedAt.containsKey(stage)) markDone(stage);
+        if (lines.length() > 0) transcript.setText(lines.toString().trim());
+        if (lastPercent >= 0) {
+            bar.setProgress(lastPercent);
+            percentText.setText(lastPercent + "%");
+        }
+        if (ready) {
+            onReady();
+            return;
+        }
+        if (lastFailure != null) {
+            paintFailure(lastFailure);
+            return;
+        }
+        if (lastMessage != null) {
+            Ui.Row row = rows.get(current);
+            if (row != null) {
+                row.icon.setImageResource(R.drawable.ic_bolt);
+                row.setState(Ui.accent(dark));
+                row.title.setTextColor(Ui.text(dark));
+                row.setValue(lastMessage);
+            }
+            headline.setText(current.title);
+        }
     }
 
     @Override protected void onResume() {
@@ -112,6 +153,8 @@ public final class SetupActivity extends Activity {
             unregisterReceiver(events);
             events = null;
         }
+        // Nothing waiting on the notification answer may hold this screen after it is gone.
+        Permissions.forget();
         super.onDestroy();
     }
 
@@ -286,7 +329,9 @@ public final class SetupActivity extends Activity {
         transcript.setPadding(pad, pad, pad, pad);
         transcript.setBackground(Ui.glass(this, dark, 16));
         transcript.setTextIsSelectable(true);
-        transcriptScroll = new ScrollView(this);
+        // A box that scrolls inside a page that scrolls. A plain ScrollView here never moved:
+        // the page took every drag first, which is what "the transcript does not scroll" meant.
+        transcriptScroll = Ui.innerScroll(this);
         transcriptScroll.addView(transcript);
         LinearLayout.LayoutParams params = Ui.wide(this, 8);
         params.height = Ui.dp(this, 150);
@@ -303,11 +348,18 @@ public final class SetupActivity extends Activity {
             return;
         }
         failed = false;
+        ready = false;
+        lastFailure = null;
+        lastMessage = null;
+        lastPercent = -1;
         startedAt = System.currentTimeMillis();
         finishedAt.clear();
         for (Stage stage : Stage.values()) resetRow(stage);
         lines.setLength(0);
         transcript.setText("");
+        // Back from the red a failure painted it; a second attempt that still said "Set-up
+        // stopped" in red over a moving bar was the screen contradicting itself.
+        headline.setTextColor(Ui.text(Ui.dark(this)));
         WorkspaceService.setUp(this);
     }
 
@@ -337,7 +389,9 @@ public final class SetupActivity extends Activity {
         if (percent >= 0) {
             bar.setProgress(percent);
             percentText.setText(percent + "%");
+            lastPercent = percent;
         }
+        lastMessage = message;
         headline.setText(current.title);
         if (elapsed > 0) startedAt = System.currentTimeMillis() - elapsed;
         note(message);
@@ -348,7 +402,9 @@ public final class SetupActivity extends Activity {
         if (row == null) return;
         long took = System.currentTimeMillis() - startedAt;
         Long previous = finishedAt.get(stage);
-        finishedAt.put(stage, took);
+        // The first time a stage is marked done is when it finished; marking it again -- on
+        // Ready, or on a rebuild -- must not move that.
+        if (previous == null) finishedAt.put(stage, took);
         row.icon.setImageResource(R.drawable.ic_check);
         row.setState(Ui.running(Ui.dark(this)));
         row.title.setTextColor(Ui.text(Ui.dark(this)));
@@ -356,6 +412,7 @@ public final class SetupActivity extends Activity {
     }
 
     private void onReady() {
+        ready = true;
         if (edge != null) edge.stop();
 
         for (Stage stage : Stage.values()) markDone(stage);
@@ -371,7 +428,20 @@ public final class SetupActivity extends Activity {
     }
 
     private void showFailure(String raw) {
+        paintFailure(raw);
+        note(raw);
+        String advice = Trouble.advice(raw);
+        Dialogs.details(this, "Set-up stopped",
+                advice != null ? advice
+                        : "Nothing downloaded so far is lost. Tap Try again and it continues "
+                                + "from where it stopped.",
+                raw, "Copy details");
+    }
+
+    /** The failed state on the screen, without the dialog; restore() paints it again. */
+    private void paintFailure(String raw) {
         failed = true;
+        lastFailure = raw;
         boolean dark = Ui.dark(this);
         headline.setText("Set-up stopped");
         headline.setTextColor(Ui.failed(dark));
@@ -381,15 +451,8 @@ public final class SetupActivity extends Activity {
             row.setState(Ui.failed(dark));
             row.setValue(raw);
         }
-        String advice = Trouble.advice(raw);
-        note(raw);
         primary.setText("Try again");
         primary.setOnClickListener(v -> begin());
-        Dialogs.details(this, "Set-up stopped",
-                advice != null ? advice
-                        : "Nothing downloaded so far is lost. Tap Try again and it continues "
-                                + "from where it stopped.",
-                raw, "Copy details");
     }
 
     private void note(String line) {

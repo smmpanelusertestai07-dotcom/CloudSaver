@@ -52,7 +52,8 @@ final class Texts {
     static final String HOW =
             "Your phone\n"
                     + "  └─ PocketIDE, an Android app\n"
-                    + "      └─ Ubuntu 24.04 LTS (ARM64), under PRoot — no root, no virtual machine\n"
+                    + "      └─ Ubuntu 24.04 LTS (ARM64), through PRoot, a translation layer — "
+                    + "no root, no virtual machine\n"
                     + "          └─ code-server — Visual Studio Code, MIT licensed\n"
                     + "              └─ extensions from Open VSX — the agents\n\n"
                     + "The agents' models run in their own companies' clouds, as they do "
@@ -65,16 +66,17 @@ final class Texts {
      * whenever the group changes -- so an array that returns to a group it already used prints
      * that heading twice, which is what this one did.
      *
-     * Twenty-three entries. It was cut from thirty-two to nineteen once, and the rule that did
+     * Twenty-five entries. It was cut from thirty-two to nineteen once, and the rule that did
      * the cutting still applies: nothing here may restate what the screen it sits on already
      * says. What went then was the list of agents, which Home and Agents both show by name; the
      * permission list, which is rendered directly beneath it; and "do I need a computer", which
      * the first line of the app answers.
      *
-     * The four added since are all questions the app cannot answer by showing something -- what
+     * The ones added since are all questions the app cannot answer by showing something -- what
      * updates itself and what does not, why none of it can happen with the app closed, how long
-     * this Ubuntu is supported, and how big a project the phone can build. A person deciding
-     * whether to start real work here asks all four, and none of them is visible on any screen.
+     * this Ubuntu is supported, how big a project the phone can build, how the editor is worked
+     * with a thumb, and why a set-up stops when the screen goes off. A person deciding whether
+     * to start real work here asks all of them, and none is visible on any screen.
      */
     static final String[][] FAQ = {
             {"About",
@@ -100,6 +102,18 @@ final class Texts {
              "No. Code-OSS is MIT licensed and so is code-server. Nothing here asks Microsoft "
                      + "for anything."},
             {"Editor",
+             "How do I zoom, reach a command, or move the cursor?",
+             "Pinch to zoom the editor, as in a browser, and pinch back. The Commands button "
+                     + "under the editor opens the command palette, which is where every "
+                     + "command lives \u2014 the same as pressing F1 on a keyboard. Keys shows "
+                     + "a row of the keys a phone keyboard lacks: Ctrl, Esc, Tab, the arrows, "
+                     + "Home and End. Cursor shows a pad that moves the text cursor when you "
+                     + "drag on it.\n\nThe pad exists because the code editor itself does not "
+                     + "yet support selecting text with a finger \u2014 that is a limit of "
+                     + "Visual Studio Code's editor component on every phone, not of this "
+                     + "app. The agents' panels and the terminal are ordinary web pages, and "
+                     + "a long press selects text in them as it does anywhere."},
+            {"Editor",
              "What is Open VSX?",
              "The extension registry this app installs from, run by the Eclipse Foundation. "
                      + "Microsoft's own marketplace is licensed for Microsoft's own products "
@@ -118,13 +132,17 @@ final class Texts {
                      + "pay-as-you-go; Codex is included with ChatGPT Plus and above. The "
                      + "Agents screen shows each one's terms in the publisher's own words."},
             {"Agents",
-             "Does my code go to the cloud?",
-             "Your project stays here \u2014 the files, the git history, the build output, "
-                     + "whatever is in your terminal. The agent does its work on this phone.\n\n"
-                     + "The AI model does not. It runs in the company's data centre, so your "
-                     + "questions and the files the agent needs to read are sent there to be "
-                     + "answered, exactly as they would be from a laptop. Running on your phone "
-                     + "is not the same as working offline, and no app can make it so."},
+             "Do the agents run here, or on a cloud computer?",
+             "Here. Each agent's extension runs its loop on this phone: it reads your files, "
+                     + "edits them, and runs commands in this Linux. Your project stays here "
+                     + "\u2014 the files, the git history, the build output, whatever is in "
+                     + "your terminal.\n\nThe AI model does not. It runs in the company's data "
+                     + "centre, so your questions and the files the agent needs to read are "
+                     + "sent there to be answered, exactly as they would be from a laptop. "
+                     + "Running on your phone is not the same as working offline, and no app "
+                     + "can make it so.\n\nAll three companies also sell a separate mode where "
+                     + "the whole job runs on a computer of theirs. This app does not use "
+                     + "those: the point of it is that the computer is the one in your hand."},
             {"Agents",
              "Can it see what it built?",
              "Yes, once you add the browser in Settings. An agent can start your site, open it, "
@@ -193,11 +211,17 @@ final class Texts {
 
             {"Updates",
              "Does it keep itself up to date?",
-             "Ubuntu\u2019s security updates are taken automatically \u2014 on Wi-Fi, once a "
-                     + "day, while the app is open and the editor is not. Extensions are kept "
-                     + "current by the editor itself. The editor\u2019s own version moves only "
-                     + "when you ask, from Settings, because a version change rearranges the "
-                     + "thing you work in. All of it can be switched off in Settings."},
+             "Yes, every layer of it, and each can be switched off in Settings.\n\n"
+                     + "Ubuntu\u2019s security updates are taken automatically \u2014 on Wi-Fi, "
+                     + "once a day, while the app is open and the editor is not. The editor "
+                     + "follows code-server\u2019s releases the same way, only while it is "
+                     + "closed, and only after the new copy has unpacked and proved it runs; "
+                     + "if it does not, the old one goes straight back. Extensions are kept "
+                     + "current by the editor itself, from Open VSX.\n\nThe app itself asks "
+                     + "GitHub once a day whether a newer PocketIDE has been published and "
+                     + "tells you on the Home screen. Installing it is your tap: it downloads "
+                     + "in the browser and installs over this version, and Linux, the editor "
+                     + "and your projects are untouched."},
             {"Updates",
              "Why only while the app is open?",
              "Because Linux only exists while the app is open. Android does not keep another "
@@ -225,6 +249,16 @@ final class Texts {
              "A 64-bit ARM phone on Android 10 or newer, with about 4 GB of free space and "
                      + "ideally 6 GB of memory. It runs on 4 GB with fewer things open at once. "
                      + "Home tells you where your phone stands before you start."},
+            {"Phone",
+             "Set-up or a build stopped when the screen went off. Why?",
+             "The phone\u2019s battery manager ended it. Android\u2019s own switch is "
+                     + "\u201cBattery: unrestricted\u201d, and Settings \u2192 Permissions "
+                     + "reads it and opens it. Realme, OPPO, Xiaomi, vivo, OnePlus, Huawei and "
+                     + "Samsung add switches of their own \u2014 auto-launch and background "
+                     + "activity \u2014 that no app is allowed to read, so those two rows show "
+                     + "the path to them in this phone\u2019s own menu words instead. Plugging "
+                     + "the phone in helps too: most phones relax the battery manager while "
+                     + "charging."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
@@ -304,12 +338,15 @@ final class Texts {
                     + "app on the phone. Nothing is backed up, synced or copied anywhere.\n\n"
 
                     + "When the app uses the network.\n"
-                    + "Three times, and only these three:\n"
+                    + "Four times, and only these four:\n"
                     + "  • downloading Ubuntu packages from Canonical\n"
                     + "  • downloading the editor and extensions from Coder's releases and the "
                     + "Open VSX registry\n"
                     + "  • each agent talking to its own company, under that company's own "
-                    + "privacy policy\n\n"
+                    + "privacy policy\n"
+                    + "  • asking GitHub once a day whether a newer PocketIDE has been "
+                    + "published — a request for a public list, with no account and nothing "
+                    + "about you in it; Settings can turn it off\n\n"
 
                     + "Where your sign-ins are kept.\n"
                     + "Inside Linux, in each publisher's own extension storage. "
@@ -317,7 +354,8 @@ final class Texts {
 
                     + "The editor's password.\n"
                     + "Generated on this phone, kept on this phone, and used only to stop other "
-                    + "apps on the same phone from reaching the editor over loopback.\n\n"
+                    + "apps on the same phone from reaching the editor from inside the "
+                    + "phone.\n\n"
 
                     + "Crash records.\n"
                     + "If the app stops unexpectedly it writes the technical details to a file "
@@ -369,10 +407,11 @@ final class Texts {
 
     /** Named so the Help screen can say what is deliberately absent. */
     static final String NOT_REQUESTED =
-            "Camera, microphone, location, contacts, SMS, calendar, phone, storage and account "
-                    + "access are not requested at all. Nothing in this app needs them, and an "
-                    + "app that asks for what it does not need is not one to trust with a code "
-                    + "repository.";
+            "Camera, microphone, location, contacts, SMS, calendar, phone and account access "
+                    + "are not requested at all. Nothing in this app needs them, and an app "
+                    + "that asks for what it does not need is not one to trust with a code "
+                    + "repository. Storage is asked for only if you turn on The phone's files "
+                    + "in Settings, and never at set-up.";
 
     // ------------------------------------------------------------------ where it fits
 
@@ -381,14 +420,14 @@ final class Texts {
     static final String SURFACES =
             "The industry calls these development interfaces, or product surfaces. There are "
                     + "four, and all three companies support all four:\n\n"
-                    + "• Agent-first desktop Linux — hand over a project and supervise. "
+                    + "• Agent-first desktop workspace — hand over a project and supervise. "
                     + "Desktop only; a phone can watch it through a remote companion.\n\n"
                     + "• IDE integration — the agent inside the editor, with code, terminal and "
                     + "debugger. Normally desktop only.\n\n"
                     + "• Terminal agent (CLI) — the agent in the project folder's terminal. "
                     + "Normally desktop; a phone can reach it remotely.\n\n"
-                    + "• Browser Linux — build and preview on a website. Works on a phone, "
-                    + "but what it can do varies.\n\n"
+                    + "• Browser workspace — build and preview on a website. Works on a "
+                    + "phone, but what it can do varies.\n\n"
                     + "Two supporting modes exist as well: a mobile remote companion, where the "
                     + "work still runs on a connected computer or in the cloud, and headless "
                     + "automation through an SDK or CI.\n\n"

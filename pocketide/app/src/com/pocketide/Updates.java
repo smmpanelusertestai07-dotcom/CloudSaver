@@ -29,11 +29,14 @@ import java.util.Map;
  * honest design is the one below -- when the app is open, the editor is not in use, the phone
  * is on Wi-Fi and a day has passed, the machine catches itself up quietly in the background.
  *
- * WHAT IS AUTOMATIC. Ubuntu's security updates, and nothing else. They are small, they are the
- * ones that matter, and Ubuntu's own maintainers have already decided they are safe to take on
- * a stable release. The editor's own version and the extensions move only when the owner asks,
- * because those change what the workspace looks like and an interface that rearranged itself
- * overnight without being asked is not a kindness. The switch for all of it is in Settings.
+ * WHAT IS AUTOMATIC. Ubuntu's security updates, and the editor -- each behind its own switch in
+ * Settings, both on by default. The security updates are small, they are the ones that matter,
+ * and Ubuntu's own maintainers have already decided they are safe to take on a stable release.
+ * The editor moves only under the conditions below AND only through the staged, verified,
+ * reversible swap in pocketide-update.sh, and only while it is closed: replacing an editor
+ * someone is typing in is the one thing this must never do. The extensions are kept current by
+ * the editor itself, from Open VSX, while it is open. What is never automatic is a blanket
+ * upgrade of every Ubuntu package, which is a decision about someone's machine and stays theirs.
  */
 final class Updates {
 
@@ -105,6 +108,15 @@ final class Updates {
 
     static void setAutomatic(Context context, boolean on) {
         Prefs.of(context).edit().putBoolean(Prefs.AUTO_UPDATE, on).apply();
+    }
+
+    /** On unless the owner turned it off: the editor follows code-server's releases by itself. */
+    static boolean automaticEditor(Context context) {
+        return Prefs.of(context).getBoolean(Prefs.AUTO_UPDATE_EDITOR, true);
+    }
+
+    static void setAutomaticEditor(Context context, boolean on) {
+        Prefs.of(context).edit().putBoolean(Prefs.AUTO_UPDATE_EDITOR, on).apply();
     }
 
     /** True while a check or an update is in flight, so two cannot start at once. */
@@ -192,15 +204,29 @@ final class Updates {
         new Thread(() -> {
             try {
                 Status status = doCheck(app, line -> {});
+                boolean changed = false;
                 if (status != null && status.ubuntuSecurity > 0) {
                     boolean ok = doRun(app, "ubuntu", line -> {});
                     note(app, ok
                             ? "Installed " + status.ubuntuSecurity + " Ubuntu security update"
                                     + (status.ubuntuSecurity == 1 ? "" : "s")
                             : "Some Ubuntu security updates could not be installed");
-                    // Re-read, so the screen does not go on offering updates already taken.
-                    doCheck(app, line -> {});
+                    changed = true;
                 }
+                // The editor, only when its own switch is on, only when a newer release is
+                // actually known, and only while nothing is running -- checked here and again
+                // by the script with pgrep, because the two are seconds apart. Wi-Fi was
+                // already required above for the whole run.
+                if (status != null && status.editorOutOfDate() && automaticEditor(app)
+                        && !WorkspaceService.editorRunning() && !WorkspaceService.busy()) {
+                    boolean ok = doRun(app, "editor", line -> {});
+                    note(app, ok
+                            ? "Updated the editor to " + status.editorLatest
+                            : "The editor could not be updated; the installed one was kept");
+                    changed = true;
+                }
+                // Re-read, so the screen does not go on offering updates already taken.
+                if (changed) doCheck(app, line -> {});
             } finally {
                 release();
             }

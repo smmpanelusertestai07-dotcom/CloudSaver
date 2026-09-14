@@ -48,6 +48,17 @@ final class HomePane implements Pane {
 
     @Override public String key() { return "home"; }
 
+    /** Refreshes itself every five seconds; being told it is back is enough. */
+    @Override public boolean rebuildOnReturn() { return false; }
+
+    /**
+     * The last exit worth mentioning, read once per showing rather than on every tick.
+     *
+     * It is a call into the system server, and the answer cannot change while the app is
+     * running: the only exit it could add is this one's.
+     */
+    private Exits.Exit lastExit;
+
     @Override public View build(Activity activity) {
         host = activity;
         boolean dark = Ui.dark(host);
@@ -60,14 +71,15 @@ final class HomePane implements Pane {
         attention.setVisibility(View.GONE);
         content.addView(attention, Ui.wide(host, 14));
         content.addView(healthCard(dark), Ui.wide(host, 14));
-        content.addView(footer(dark), Ui.wide(host, 18));
 
+        lastExit = Exits.last(host);
         refreshEverything();
         return Ui.page(host, content, dark);
     }
 
     @Override public void shown(Activity activity) {
         host = activity;
+        lastExit = Exits.last(host);
         handler.removeCallbacks(refresh);
         handler.post(refresh);
         if (events == null) {
@@ -147,13 +159,6 @@ final class HomePane implements Pane {
         return column;
     }
 
-    private View footer(boolean dark) {
-        TextView line = Ui.text(host, "PocketIDE " + BuildFacts.VERSION_NAME
-                + " · everything runs on this phone", 12f, Ui.muted(dark));
-        line.setGravity(Gravity.CENTER);
-        return line;
-    }
-
     // ------------------------------------------------------------------ live state
 
     private void refreshEverything() {
@@ -164,26 +169,20 @@ final class HomePane implements Pane {
         boolean busy = WorkspaceService.busy();
 
         if (statePill != null) {
-            if (running) {
-                statePill.setText("RUNNING");
-                statePill.setTextColor(Brand.ON_BRAND);
-            } else if (busy) {
-                statePill.setText("WORKING");
-                statePill.setTextColor(Brand.ON_BRAND);
-            } else if (installed) {
-                statePill.setText("READY");
-                statePill.setTextColor(Brand.ON_BRAND);
-            } else {
-                statePill.setText("NOT SET UP");
-                statePill.setTextColor(Brand.ON_BRAND_MUTED);
-            }
+            if (running) Ui.recolour(statePill, "RUNNING", Brand.ON_BRAND);
+            else if (busy) Ui.recolour(statePill, installed ? "STARTING" : "WORKING",
+                    Brand.ON_BRAND);
+            else if (installed) Ui.recolour(statePill, "READY", Brand.ON_BRAND);
+            else Ui.recolour(statePill, "NOT SET UP", Brand.ON_BRAND_MUTED);
         }
 
         if (stateLine != null) {
             if (running) {
                 stateLine.setText("The editor is running.");
             } else if (busy) {
-                stateLine.setText("Working. Tap to watch what it is doing.");
+                // Busy with Linux installed is the editor starting, not set-up running.
+                stateLine.setText(installed ? "The editor is starting."
+                        : "Setting up. Tap to watch what it is doing.");
             } else if (installed) {
                 long took = Prefs.of(host).getLong(Prefs.SETUP_ELAPSED_MS, 0);
                 stateLine.setText(took > 0
@@ -199,9 +198,8 @@ final class HomePane implements Pane {
         }
 
         if (action != null) {
-            action.setText(running ? "Open the editor"
-                    : busy ? "See what it is doing"
-                    : installed ? "Open the editor" : "Set up");
+            action.setText(running || installed ? "Open the editor"
+                    : busy ? "See what it is doing" : "Set up");
             action.setEnabled(installed || busy || DeviceCheck.ready(host));
             action.setAlpha(action.isEnabled() ? 1f : 0.55f);
         }
@@ -273,7 +271,7 @@ final class HomePane implements Pane {
                     blocked, v -> MainActivity.open(host, "settings")));
             any = true;
         }
-        Exits.Exit exit = Exits.last(host);
+        Exits.Exit exit = lastExit;
         if (exit != null && exit.when > Prefs.of(host).getLong(Prefs.EXIT_SEEN_AT, 0)) {
             if (any) list.addView(Ui.divider(host, dark, true));
             final Exits.Exit shown = exit;
@@ -287,14 +285,30 @@ final class HomePane implements Pane {
                     }));
             any = true;
         }
+        AppUpdates.Status app = AppUpdates.last(host);
+        if (app.newer()) {
+            if (any) list.addView(Ui.divider(host, dark, true));
+            list.addView(Ui.row(host, dark, R.drawable.ic_download,
+                    "PocketIDE " + app.latest + " is available",
+                    "A newer version of this app was published. Tap to get it.",
+                    v -> MainActivity.open(host, "settings")));
+            any = true;
+        }
         if (Crash.exists(host)) {
             if (any) list.addView(Ui.divider(host, dark, true));
             list.addView(Ui.row(host, dark, R.drawable.ic_info, "The app stopped unexpectedly",
                     "Nothing in Linux was lost. Tap to see the record.",
-                    v -> Dialogs.details(host, "What was recorded",
-                            "The app itself stopped. Linux and its files live in their "
-                                    + "own storage, so nothing in them was lost.",
-                            Crash.read(host), "Copy details")));
+                    v -> {
+                        // Read, shown, and then cleared: a record that stayed put the same
+                        // row on Home for ever, long after it had been read and copied.
+                        String record = Crash.read(host);
+                        Crash.clear(host);
+                        Dialogs.details(host, "What was recorded",
+                                "The app itself stopped. Linux and its files live in their "
+                                        + "own storage, so nothing in them was lost.",
+                                record, "Copy details");
+                        refreshEverything();
+                    }));
             any = true;
         }
 
@@ -353,18 +367,13 @@ final class HomePane implements Pane {
 
         if (Workspace.installed(host)) {
             healthList.addView(Ui.divider(host, dark, true));
-            Ui.Row size = Ui.row(host, dark, R.drawable.ic_memory, "Linux size",
+            final Ui.Row size = Ui.row(host, dark, R.drawable.ic_memory, "Linux size",
                     "Measuring…", null);
             healthList.addView(size);
-            final Activity measuring = host;
-            // Walking the tree touches thousands of files, which is not something to do on the
-            // thread that draws the screen.
-            new Thread(() -> {
-                long bytes = Workspace.sizeBytes(measuring);
-                measuring.runOnUiThread(() -> {
-                    if (!measuring.isFinishing()) size.setValue(DeviceProbe.formatBytes(bytes));
-                });
-            }, "measure-Linux").start();
+            // Measured off the drawing thread and at most once a minute -- see Workspace.size.
+            // This row is redrawn every five seconds, and each redraw used to start a fresh
+            // walk over tens of thousands of files.
+            Workspace.size(host, bytes -> size.setValue(DeviceProbe.formatBytes(bytes)));
         }
     }
 
@@ -380,16 +389,15 @@ final class HomePane implements Pane {
     // ------------------------------------------------------------------ actions
 
     private void onPrimaryAction() {
-        if (WorkspaceService.editorRunning()) {
+        // Installed and busy is the editor starting, and the editor screen is where its
+        // progress shows. Sending that tap to the set-up screen, as it used to, showed a
+        // set-up that was not happening.
+        if (WorkspaceService.editorRunning() || Workspace.installed(host)) {
             host.startActivity(new Intent(host, WorkspaceActivity.class));
             return;
         }
         if (WorkspaceService.busy()) {
             host.startActivity(new Intent(host, SetupActivity.class));
-            return;
-        }
-        if (Workspace.installed(host)) {
-            host.startActivity(new Intent(host, WorkspaceActivity.class));
             return;
         }
         String refusal = DeviceCheck.refusal(host);

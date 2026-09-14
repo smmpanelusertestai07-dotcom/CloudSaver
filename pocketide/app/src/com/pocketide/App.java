@@ -32,6 +32,7 @@ public final class App extends Application {
     @Override public void onCreate() {
         super.onCreate();
         Crash.arm(this);
+        Exits.noteStart(this);
         watchForegroundState();
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -63,7 +64,11 @@ public final class App extends Application {
 
             @Override public void onActivityStopped(Activity activity) {
                 screensInFront = Math.max(0, screensInFront - 1);
-                if (screensInFront == 0 && !AppLock.expectingReturn()) AppLock.relock();
+                if (screensInFront > 0) return;
+                // An errand is not a way out: the phone's own Settings, the PIN screen. But it
+                // is timed, and AppLock.returned() re-locks if it took too long.
+                if (AppLock.expectingReturn()) AppLock.leftForErrand();
+                else AppLock.relock();
             }
 
             @Override public void onActivityCreated(Activity activity, Bundle state) {}

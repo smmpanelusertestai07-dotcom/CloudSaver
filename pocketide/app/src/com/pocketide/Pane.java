@@ -29,4 +29,14 @@ interface Pane {
 
     /** Called when it stops being visible, and before the host goes away. Stop them here. */
     void hidden(Activity host);
+
+    /**
+     * Whether coming back to the app should build this pane again.
+     *
+     * Settings draws its rows from permissions the owner may just have changed in the phone's
+     * own Settings, so it is rebuilt. Home and Activity refresh themselves every few seconds
+     * and are only told they are back; Agents keeps what was typed into its search box, which
+     * a rebuild would throw away.
+     */
+    default boolean rebuildOnReturn() { return true; }
 }

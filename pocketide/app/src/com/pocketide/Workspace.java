@@ -476,8 +476,49 @@ final class Workspace {
         return total;
     }
 
+    private static volatile long lastSizeBytes = -1L;
+    private static volatile long lastSizedAt;
+    private static volatile boolean sizing;
+
+    /**
+     * The Linux size for a screen: the last measurement straight away while it is under a
+     * minute old, otherwise a fresh walk off the caller's thread, reported back on it.
+     *
+     * Two screens asked for this, one of them every five seconds, and every ask walked tens
+     * of thousands of files. The phone was warm for nothing.
+     */
+    static void size(final android.app.Activity activity,
+                     final java.util.function.LongConsumer whenKnown) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (lastSizeBytes >= 0 && now - lastSizedAt < 60_000L) {
+            whenKnown.accept(lastSizeBytes);
+            return;
+        }
+        if (sizing) {
+            if (lastSizeBytes >= 0) whenKnown.accept(lastSizeBytes);
+            return;
+        }
+        sizing = true;
+        new Thread(() -> {
+            long bytes;
+            try {
+                bytes = sizeBytes(activity);
+            } catch (Throwable unreadable) {
+                bytes = Math.max(0L, lastSizeBytes);
+            }
+            lastSizeBytes = bytes;
+            lastSizedAt = android.os.SystemClock.elapsedRealtime();
+            sizing = false;
+            final long known = bytes;
+            activity.runOnUiThread(() -> {
+                if (!activity.isFinishing()) whenKnown.accept(known);
+            });
+        }, "measure-Linux").start();
+    }
+
     /** Deletes everything: Linux, the editor, the extensions, the projects. */
     static void removeEverything(Context context) {
+        lastSizeBytes = -1L;
         delete(root(context));
         delete(new File(context.getFilesDir(), "proot-tmp"));
         delete(new File(context.getCacheDir(), "ubuntu-base.tar.gz"));

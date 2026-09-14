@@ -72,6 +72,10 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         lockRoot = new android.widget.FrameLayout(this);
         lockRoot.addView(build());
         setContentView(lockRoot);
+        // Android 13 and later never call onBackPressed() on this app; see Back.
+        Back.register(this, () -> {
+            if (!back()) finish();
+        });
         listen();
         if (WorkspaceService.editorRunning()) open(WorkspaceService.editorUrl());
         else WorkspaceService.startEditor(this);
@@ -119,17 +123,33 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     }
 
     @Override public void onBackPressed() {
+        if (back()) return;
+        super.onBackPressed();
+    }
+
+    /** True when Back was used up inside the editor; false when it should leave the screen. */
+    private boolean back() {
         if (keys != null && keys.anythingShowing()) {
             keys.hideAll();
-            return;
+            return true;
         }
         // The editor's own history is where a person expects Back to go first: out of a file,
-        // out of a panel. Only when it has nowhere left does Back leave the screen.
-        if (web != null && web.canGoBack()) {
+        // out of a panel. Only when it has nowhere left does Back leave the screen -- and the
+        // sign-in page does not count as somewhere to go: with the cookie already set it only
+        // bounces straight back to the editor, so Back never got out at all.
+        if (web != null && web.canGoBack() && !previousIsSignIn()) {
             web.goBack();
-            return;
+            return true;
         }
-        super.onBackPressed();
+        return false;
+    }
+
+    private boolean previousIsSignIn() {
+        android.webkit.WebBackForwardList list = web.copyBackForwardList();
+        int index = list.getCurrentIndex() - 1;
+        if (index < 0) return true;
+        android.webkit.WebHistoryItem item = list.getItemAtIndex(index);
+        return item == null || item.getUrl() == null || item.getUrl().contains("/login");
     }
 
     // ------------------------------------------------------------------ the screen
@@ -225,14 +245,17 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         edge.setBackgroundColor(Ui.line(dark));
         wrapper.addView(edge, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 0.5f))));
+        // A minimum, never a fixed height: fixed at 64 dp, a phone set to large text clipped
+        // the bottom off every label, exactly as the navigation bar once did.
+        bar.setMinimumHeight(Ui.dp(this, Shell.NAV_BAR_DP));
         wrapper.addView(bar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, Shell.NAV_BAR_DP)));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         addBarButton(bar, dark, R.drawable.ic_terminal, "Commands",
                 "Open the command palette", v -> commandPalette());
         addBarButton(bar, dark, R.drawable.ic_keyboard, "Keys",
                 "Show or hide the key row", v -> keys.toggleKeys());
-        addBarButton(bar, dark, R.drawable.ic_touch, "Cursor",
+        addBarButton(bar, dark, R.drawable.ic_cursor, "Cursor",
                 "Show or hide the cursor pad", v -> keys.toggleTrackpad());
         addBarButton(bar, dark, R.drawable.ic_home, "Back",
                 "Leave the editor", v -> finish());
@@ -250,6 +273,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                               String description, View.OnClickListener click) {
         LinearLayout button = Ui.column(this);
         button.setGravity(Gravity.CENTER);
+        button.setPadding(0, Ui.dp(this, 8), 0, Ui.dp(this, 8));
 
         ImageView icon = new ImageView(this);
         icon.setImageResource(iconRes);
@@ -260,6 +284,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         TextView words = Ui.text(this, label, 12f, Ui.muted(dark));
         words.setGravity(Gravity.CENTER);
         words.setSingleLine(true);
+        words.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams wordParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         wordParams.topMargin = Ui.dp(this, 4);
@@ -275,7 +300,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         // A quarter each. Without this every button wrapped its own width and the four of them
         // ran together against the left edge.
         bar.addView(button, new LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.MATCH_PARENT, 1f));
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
     }
 
     // ------------------------------------------------------------------ the editor
@@ -285,14 +310,22 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        // The editor is a local server on this phone. It is not a website, and treating it as
-        // one -- pinch zoom, overview mode, a viewport it never asked for -- is what makes a
-        // WebView feel like a bad browser instead of an application.
+        // The editor is a local server on this phone, laid out at the phone's own width: no
+        // wide viewport and no overview mode, which are for websites built for a desktop.
         settings.setUseWideViewPort(false);
         settings.setLoadWithOverviewMode(false);
-        settings.setSupportZoom(false);
-        settings.setBuiltInZoomControls(false);
+        // Pinch to zoom, as a browser does. It was refused before, and an owner asked for it
+        // by name: a diff, a diagram in a panel or a small line of terminal output is
+        // something a finger should be able to enlarge for a moment and let go of. The
+        // on-screen +/- controls stay off; the gesture is the control.
+        settings.setSupportZoom(true);
+        settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
+        // 100, not the phone's font-scale percentage that WebView defaults to. Screen.java
+        // already folds the owner's text size into the editor's own zoom level; left at the
+        // default, the WebView applied it a second time on top and the editor's text was
+        // scaled twice.
+        settings.setTextZoom(100);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         // The editor keeps its session in a cookie. Without this the sign-in is forgotten on
@@ -332,6 +365,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                     signInWithForm();
                     return;
                 }
+                allowPinchZoom(web);
                 showEditor();
             }
         });
@@ -428,11 +462,36 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
      * Opens the Command Palette.
      *
      * Of the commands the three agent extensions contribute, 29 are reachable only from the
-     * palette, and the palette's own shortcut is Ctrl+Shift+P -- three keys a phone keyboard
-     * does not offer together. One tap here presses it for them.
+     * palette, and one tap here presses its shortcut for them.
+     *
+     * F1, not Ctrl+Shift+P. Both open the palette in Visual Studio Code, and F1 is the one
+     * that survives the trip through Android: a synthetic Ctrl+Shift+P has to carry two
+     * modifier bits and a shifted letter through the WebView's key translation, and on the
+     * owner's phone it arrived as nothing -- "Commands does not work" was the report. F1 is a
+     * single unmodified key with its own key code on every layout, and the editor binds it to
+     * the same command.
      */
     private void commandPalette() {
-        key(KeyEvent.KEYCODE_P, KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON);
+        key(KeyEvent.KEYCODE_F1, 0);
+    }
+
+    /**
+     * Lets the owner pinch to zoom the editor's page.
+     *
+     * The workbench declares a viewport that forbids scaling, which is right for a desktop and
+     * wrong for a thumb. The WebView's own zoom setting is not enough on its own -- the page's
+     * viewport rule wins -- so the rule is loosened after the page has loaded. The layout width
+     * is untouched: it stays the phone's own width, and only the scale is freed.
+     */
+    private void allowPinchZoom(WebView view) {
+        if (view == null) return;
+        view.evaluateJavascript(
+                "(function(){var m=document.querySelector('meta[name=viewport]');"
+                        + "if(!m){m=document.createElement('meta');m.name='viewport';"
+                        + "document.head.appendChild(m);}"
+                        + "m.setAttribute('content','width=device-width, initial-scale=1, "
+                        + "minimum-scale=1, maximum-scale=4, user-scalable=yes');})();",
+                null);
     }
 
     // ------------------------------------------------------------------ keys
