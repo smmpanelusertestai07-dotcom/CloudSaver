@@ -332,6 +332,27 @@ final class Texts {
                      + "under a verified publisher name, you will be able to install it the day "
                      + "it appears, without waiting for this app to be updated."},
             {"Agents",
+             "Can I use an open model, a new model, or one running on the phone?",
+             "Yes, through the one community row on the Agents screen: Kilo Code, an "
+                     + "independent MIT-licensed agent you point at whichever model you like. "
+                     + "It reads its model list from a registry as it runs, so a model "
+                     + "released tomorrow is there without an update to anything, and it can "
+                     + "talk to OpenRouter, Google AI Studio, Groq, Mistral, the model "
+                     + "companies directly, or a model running here in Linux through Ollama or "
+                     + "llama.cpp.\n\nThe honest part: none of it is unlimited. Free tiers "
+                     + "exist and every one is capped \u2014 OpenRouter serves open models at "
+                     + "about twenty requests a minute and fifty a day, Google\u2019s AI Studio "
+                     + "and Groq have their own daily limits, and Kilo\u2019s own free setting "
+                     + "routes to whoever will take the request, including providers that keep "
+                     + "your prompts. All of them see what you send.\n\nA model running here "
+                     + "sends nothing anywhere, and on a 4 GB phone it is not a real answer: "
+                     + "what fits beside Android and the editor is about a billion parameters, "
+                     + "enough to finish a line and not enough to plan an edit across files. "
+                     + "On an 8 GB phone a three-billion model is worth trying. The app "
+                     + "installs neither \u2014 both are one command away in the terminal.\n\n"
+                     + "It is not official and the row says so. Install it if you want it, not "
+                     + "because it is on the screen."},
+            {"Agents",
              "I installed an agent. How do I open it?",
              "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
                      + "\u201cOpen Antigravity\u201d, and the same for any other agent that "

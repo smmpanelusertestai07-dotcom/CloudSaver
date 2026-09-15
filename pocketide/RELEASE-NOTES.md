@@ -32,6 +32,44 @@ PRoot is not a security sandbox against a program that sets out to escape it, an
 not claim that. What is claimed is narrower and checkable: the workspace has no path to the
 phone except the door.
 
+### One community row: bring your own model
+
+An owner asked whether there is one extension that keeps up with every new model, works with
+open ones, can be pointed at a model running on the Linux here, and comes with an agent. There
+is, and it is not any of the three official ones: Kilo Code, MIT-licensed, a verified Open VSX
+namespace, with an aarch64 build of its own, a model list read from a registry at run time (so
+a model released tomorrow is there without an update to anything), and support for OpenRouter,
+Google AI Studio, Groq, Mistral, the model companies directly, and Ollama or llama.cpp for a
+model running in Linux. It is one row under its own heading, "Bring your own model · community,
+not official", and every place it appears says community where the three above say official —
+the row, the install dialog, and Help. Agents.official() reads only the official list, and a
+gate holds that.
+
+The checked alternatives, so the choice is not a matter of taste: Roo Code was shut down in May
+2026 and Continue's repository has been read-only since June, so neither belongs in a list meant
+to last; Cline is alive and universal but ships no arm64-specific build and has an open
+code-server crash report. Continue's Linux build ships an x86-64 ripgrep, which is exactly the
+kind of thing that does not run here.
+
+And the honest sentence, in Help and behind a link on the row: nothing is unlimited. OpenRouter
+serves open models at about twenty requests a minute and fifty a day, Google's AI Studio and
+Groq have their own daily caps, Kilo's own free setting routes to whoever will take the request
+including providers that keep prompts, and all of them see what is sent. A model running here
+sends nothing anywhere and, on a 4 GB phone, is about a billion parameters — enough to finish a
+line, not to plan an edit across files. The app installs neither; both are one command away.
+
+### An emulator, answered with evidence
+
+The same owner asked whether an emulator could be downloaded or built inside Linux instead. The
+answer, researched rather than assumed, is no, and Help now says why: Google's SDK repository
+serves the emulator for Linux on x86-64 only (every aarch64 entry in its manifest is macOS);
+plain QEMU cannot boot Google's Android images, which expect the emulator's own ranchu board and
+goldfish devices; and Cuttlefish, Waydroid, Anbox and redroid each need KVM, binder kernel
+modules or root. On a 4 GB phone a software-emulated Android would not fit beside the phone's
+own either. Robolectric is the sandboxed alternative and its limits are stated too: on this
+processor its native graphics do not load, so views lay out and Espresso checks pass but nothing
+is drawn to pixels, and its SQLite does not run.
+
 ### Permissions and power, honestly
 
 An audit of every permission against the code found one with no use: VIBRATE, because the key

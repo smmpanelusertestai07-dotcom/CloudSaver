@@ -15,8 +15,18 @@ text = open(f"{src}/Agents.java").read()
 agents = re.findall(
     r'new Agent\(\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*([0-9_]+)L,\s*"([^"]+)"',
     text)
-if len(agents) != 3:
-    print(f"  expected 3 agents, parsed {len(agents)}", file=sys.stderr)
+# Three official rows and one community row. Both lists are checked against the registry the
+# same way; what differs is the claim the app makes about them, which safety.py holds.
+if len(agents) != 4:
+    print(f"  expected 4 agents, parsed {len(agents)}", file=sys.stderr)
+    sys.exit(1)
+official_block = text.split("COMMUNITY")[0]
+for ident, *_ in agents[:3]:
+    if ident not in official_block:
+        print(f"  {ident} is not in the official list it is counted in", file=sys.stderr)
+        sys.exit(1)
+if agents[3][0] in official_block:
+    print(f"  {agents[3][0]} is in ALL, so the app would call it official", file=sys.stderr)
     sys.exit(1)
 
 def fetch(url):
