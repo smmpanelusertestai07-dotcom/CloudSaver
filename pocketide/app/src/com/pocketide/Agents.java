@@ -1,6 +1,7 @@
 package com.pocketide;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -89,6 +90,39 @@ final class Agents {
                     "OpenAI's coding agent, working in the editor alongside the rest of Codex.")
     );
 
+    /**
+     * The one row that is not a company's own: an agent you point at whichever model you like.
+     *
+     * The three above are each one company's own extension talking to that company's own
+     * models, and each wants an account with it. The question an owner asked is the other one:
+     * is there one extension that keeps up with every new model, works with open ones, and can
+     * be pointed at a model running on the Linux here. There is, and this is it -- but it is
+     * not official, it is not free of an account with whoever serves the model, and the "free"
+     * tiers it can reach are rate-limited rather than unlimited. All of that is said on the
+     * row, in the dialog that installs it, and in Help.
+     *
+     * Chosen over the alternatives on facts that were checked rather than reputation. Kilo
+     * Code is MIT-licensed, published by a verified namespace, has an aarch64 build of its own
+     * (the others ship one binary for every processor, or a Linux one for x86-64 only, which
+     * is how a grep tool ends up not running here), reads its model list from a registry at
+     * run time so a model released tomorrow appears without an update to the extension, and
+     * speaks to Ollama and llama.cpp for a model on this machine as well as to the hosted
+     * providers. Roo Code was shut down in May 2026 and Continue's repository is read-only
+     * since June; neither belongs in a list meant to last.
+     */
+    static final List<Agent> COMMUNITY = Collections.unmodifiableList(Arrays.asList(
+            new Agent(
+                    "kilocode.kilo-code", "Kilo Code", "Kilo Code", "linux-arm64",
+                    115_430_359L, "^1.105.1",
+                    "Bring your own key · free tiers exist and are rate-limited", true,
+                    "A coding agent you point at whichever model you want: an account with "
+                            + "OpenRouter, Google AI Studio, Groq, Mistral, Anthropic, OpenAI "
+                            + "or its own gateway, or a model running here in Linux through "
+                            + "Ollama. Its model list is read from a registry as it runs, so a "
+                            + "model released tomorrow is there without an update. MIT "
+                            + "licensed, and not made by any of the model companies.")
+    ));
+
     private Agents() {}
 
     /**
@@ -110,8 +144,38 @@ final class Agents {
 
     static Agent byId(String id) {
         for (Agent agent : ALL) if (agent.id.equals(id)) return agent;
+        for (Agent agent : COMMUNITY) if (agent.id.equals(id)) return agent;
         return null;
     }
+
+    /** What "bring your own model" honestly costs, in the words the screens use. */
+    static final String BRING_YOUR_OWN =
+            "One row here is not a company's own extension: Kilo Code is an independent, "
+                    + "MIT-licensed agent that you point at whichever model you like. It is "
+                    + "listed because it answers a real question — how do I use an open model, "
+                    + "or a new one, or one running on this phone's own Linux — and because it "
+                    + "keeps its model list on a registry it reads as it runs, so a model "
+                    + "released tomorrow appears without an update to anything.\n\n"
+                    + "What it does not do is make any of that unlimited or free of an "
+                    + "account. Free tiers exist and every one of them is capped: OpenRouter "
+                    + "serves a set of open models at no charge, at about twenty requests a "
+                    + "minute and fifty a day; Google's AI Studio and Groq have free tiers of "
+                    + "their own with their own daily limits; Kilo's own gateway has a free "
+                    + "setting that routes to whoever will take it, including providers that "
+                    + "keep your prompts. None of them is unlimited, and all of them see what "
+                    + "you send.\n\n"
+                    + "A model running here instead, with Ollama or llama.cpp, sends nothing "
+                    + "anywhere — and on a 4 GB phone it is not a real answer. A model small "
+                    + "enough to fit beside Android and the editor is about a billion "
+                    + "parameters, which can finish a line of code but cannot plan an edit "
+                    + "across files. On an 8 GB phone a three-billion model is worth trying. "
+                    + "The app installs neither; both are an apt or a download away in the "
+                    + "terminal, and Kilo Code is told where to find them.\n\n"
+                    + "It is not official and it is not endorsed here. It is verified on Open "
+                    + "VSX, its download is checked against the registry's checksum like every "
+                    + "other, and an extension — any extension — can read every file in your "
+                    + "Linux and reach the network. Install it if you want it, not because it "
+                    + "is on this screen.";
 
     /**
      * Why only these three are pre-set, in the words the Help screen uses.
@@ -129,5 +193,8 @@ final class Agents {
                     + "installed from the Extensions screen. When a fourth company publishes a "
                     + "first-party coding agent under a verified namespace, it belongs here too "
                     + "— and you will be able to install it the day it appears, without waiting "
-                    + "for this app to be updated.";
+                    + "for this app to be updated.\n\n"
+                    + "Under them is one community row, marked as such: an agent you point at "
+                    + "whichever model you like, including an open one or one running here. It "
+                    + "is not official and says so.";
 }

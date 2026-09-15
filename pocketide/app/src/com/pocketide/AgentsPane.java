@@ -55,6 +55,7 @@ final class AgentsPane implements Pane {
     private TextView searchState;
     private EditText searchBox;
     private LinearLayout recommendedList;
+    private LinearLayout communityList;
     private volatile int searchGeneration;
 
 
@@ -119,6 +120,26 @@ final class AgentsPane implements Pane {
         why.setOnClickListener(v ->
                 Dialogs.message(host, "Why these three", Agents.WHY_THESE_THREE));
         column.addView(why);
+
+        // The community row, under its own heading and never inside the recommended list: the
+        // heading is the label. An owner who wants an open model, a new model or a model
+        // running here has one answer, and it is not one of the three above.
+        column.addView(Ui.sectionLabel(host, "Bring your own model · community, not official",
+                dark), Ui.wide(host, 18));
+        communityList = Ui.column(host);
+        communityList.setBackground(Ui.glass(host, dark, 20));
+        column.addView(communityList, Ui.wide(host, 8));
+        TextView costs = Ui.text(host, "What \"free\" and \"unlimited\" really mean", 13f,
+                Ui.link(dark));
+        costs.setPadding(Ui.dp(host, 4), Ui.dp(host, 10), 0, 0);
+        costs.setMinHeight(Ui.dp(host, Ui.TOUCH_TARGET_DP));
+        costs.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        costs.setClickable(true);
+        costs.setFocusable(true);
+        Ui.asButton(costs);
+        costs.setOnClickListener(v ->
+                Dialogs.message(host, "Bring your own model", Agents.BRING_YOUR_OWN));
+        column.addView(costs);
         return column;
     }
 
@@ -200,15 +221,28 @@ final class AgentsPane implements Pane {
         boolean dark = Ui.dark(host);
         recommendedList.removeAllViews();
         List<String> present = Registry.installed(host);
+        fill(recommendedList, Agents.ALL, present, dark, true);
+        if (communityList != null) {
+            communityList.removeAllViews();
+            fill(communityList, Agents.COMMUNITY, present, dark, false);
+        }
+    }
+
+    /**
+     * One list of rows. {@code official} decides the one word that separates the two lists:
+     * a company's own extension, or somebody else's good one.
+     */
+    private void fill(LinearLayout into, List<Agents.Agent> agents, List<String> present,
+                      boolean dark, boolean official) {
         boolean first = true;
-        for (Agents.Agent agent : Agents.ALL) {
-            if (!first) recommendedList.addView(Ui.divider(host, dark, true));
+        for (Agents.Agent agent : agents) {
+            if (!first) into.addView(Ui.divider(host, dark, true));
             first = false;
             // Extensions.has, not contains: the registry publishes "Google.google-
             // antigravity" and the editor records it lower-cased, so equals() is false between
             // two spellings of the same extension and everything showed as not installed.
             boolean here = Extensions.has(present, agent.id);
-            String value = agent.publisher + " · official · "
+            String value = agent.publisher + (official ? " · official · " : " · community · ")
                     + (here ? "Installed — tap to open it"
                             : "about " + DeviceProbe.formatBytes(agent.sizeBytes) + " · "
                                     + agent.plan);
@@ -217,7 +251,7 @@ final class AgentsPane implements Pane {
                     agent.name, value, v -> onAgentTapped(agent, here));
             if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
-            recommendedList.addView(row);
+            into.addView(row);
         }
     }
 
@@ -247,9 +281,17 @@ final class AgentsPane implements Pane {
                     });
             return;
         }
+        boolean official = Agents.official(agent.namespace());
         Dialogs.confirm(host, "Install " + agent.name + "?",
                 agent.summary + "\n\n"
-                        + "Publisher: " + agent.publisher + " (verified)\n"
+                        + (official ? "" : "Not official: this is an independent extension, "
+                                + "not the work of any of the model companies. It is verified "
+                                + "on Open VSX and its download is checked, like every other. "
+                                + "An extension can read every file in your Linux and reach "
+                                + "the network.\n\n")
+                        + "Publisher: " + agent.publisher
+                        + (official ? " (verified · official)" : " (verified · community)")
+                        + "\n"
                         + "Download: " + DeviceProbe.formatBytes(agent.sizeBytes) + "\n"
                         + "Plan: " + agent.plan + "\n\n"
                         + "The download is checked against the checksum Open VSX publishes "

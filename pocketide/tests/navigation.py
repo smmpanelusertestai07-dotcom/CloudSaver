@@ -344,6 +344,40 @@ for stray in os.listdir(app + "/app/res/drawable-nodpi"):
 if "listing.verified && Agents.official(listing.namespace)" not in code("AgentsPane.java"):
     problems.append("search can say 'official' about a version the registry has not verified")
 
+
+# --- the community row is never sold as official -------------------------------------------------
+#
+# One row on the Agents screen is somebody else's extension, listed because it answers "an open
+# model, a new model, or one running here" and nothing official does. Everything about it has to
+# say so: its own list, its own heading, the word on the row, the dialog that installs it.
+agents_src = code("Agents.java")
+pane_src = code("AgentsPane.java")
+if "kilocode.kilo-code" not in agents_src:
+    problems.append("there is no bring-your-own-model row, so an owner who wants an open model "
+                    "is told nothing")
+else:
+    # The official list's own body, and official() reading only that: those two together are
+    # what keeps "official" true. Splitting on the word COMMUNITY would not -- a list renamed
+    # COMMUNITYX splits the same way and the check would pass on a Kilo moved into ALL.
+    all_list = re.search(r'static final List<Agent> ALL\s*=(.*?\n    \);)', agents_src, re.S)
+    if not all_list:
+        problems.append("the official agent list cannot be read")
+    elif "kilocode" in all_list.group(1):
+        problems.append("the community extension is in the official list, so Agents.official() "
+                        "would call it official")
+    official_fn = re.search(r'static boolean official\(String publisherName\) \{(.*?)\n    \}',
+                            agents_src, re.S)
+    if not official_fn or "COMMUNITY" in official_fn.group(1):
+        problems.append("Agents.official() reads the community list, so a community publisher "
+                        "would be called official")
+    if "Agents.COMMUNITY" not in pane_src or "community, not official" not in pane_src:
+        problems.append("the community row is not under a heading that says it is not official")
+    if "community \u00b7 " not in pane_src.replace("\u00b7", "\u00b7"):
+        problems.append("the community row does not say community where the others say official")
+    if "Not official: this is an independent extension" not in pane_src:
+        problems.append("the install dialog for a community extension does not say it is not "
+                        "official")
+
 # --- nothing slow on the thread that draws -----------------------------------------------
 #
 # Starting PRoot and running a script inside it takes seconds. On the drawing thread that is an

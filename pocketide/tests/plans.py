@@ -10,8 +10,16 @@ text = open(f"{src}/Agents.java").read()
 agents = re.findall(
     r'new Agent\(\s*"([^"]+)",[^)]*?"([^"]*)",\s*(true|false),', text, re.S)
 
-# Verified from each publisher's own words on 13 September 2026.
-publishes_free_tier = {"Google.google-antigravity"}
+# Verified from each publisher's own words on 15 September 2026.
+#
+#   Google.google-antigravity  Google's own page states a free tier.
+#   kilocode.kilo-code         Kilo's own documentation has a page titled "Using Kilo for
+#                              free", describing an Auto Free setting on its gateway. The
+#                              caveat that belongs with it -- that such a provider may keep
+#                              the prompts, and that every free tier anywhere is rate-limited
+#                              -- is on the row's own plan text and in Agents.BRING_YOUR_OWN,
+#                              which is where a caveat is read rather than in a boolean.
+publishes_free_tier = {"Google.google-antigravity", "kilocode.kilo-code"}
 
 problems = []
 for ident, plan, free in agents:
