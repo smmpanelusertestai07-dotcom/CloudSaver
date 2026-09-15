@@ -59,9 +59,19 @@ final class Installer {
     /** How long an owner is given to answer Android's confirmation before it is a no. */
     private static final long ANSWER_WITHIN_MS = 180_000L;
 
-    /** The one session in flight, and where its result is posted. */
+    /**
+     * The one session in flight, and where its result is posted.
+     *
+     * One at a time, under a lock: the queue and the token below are a single slot, and two
+     * terminals running phone install at the same moment would have answered each other's
+     * sessions. Android shows one confirmation at a time in any case.
+     */
+    private static final Object ONE_AT_A_TIME = new Object();
     private static final ArrayBlockingQueue<String> RESULT = new ArrayBlockingQueue<>(1);
     private static volatile String expecting = "";
+
+    /** The notification an owner taps when the confirmation could not come to the front. */
+    private static final int NOTIFICATION = 4203;
 
     private Installer() {}
 
@@ -103,6 +113,13 @@ final class Installer {
      */
     static String install(Context context, File apk, String packageName,
                           Workspace.Progress progress) {
+        synchronized (ONE_AT_A_TIME) {
+            return installOne(context, apk, packageName, progress);
+        }
+    }
+
+    private static String installOne(Context context, File apk, String packageName,
+                                     Workspace.Progress progress) {
         if (!allowed(context)) {
             return "Android has not been allowed to install apps from PocketIDE. Turn on "
                     + "\"Install unknown apps\" for PocketIDE in the phone's Settings, or pair "
@@ -170,8 +187,10 @@ final class Installer {
         }
         expecting = "";
         if (answer == null) {
-            return "Nobody answered Android's confirmation. Unlock the phone, run this again, "
-                    + "and tap Install when it asks.";
+            cancelConfirmation(context);
+            return "Nobody answered Android's confirmation. Unlock the phone, open PocketIDE, "
+                    + "and run this again \u2014 or pull down the notification shade, where the "
+                    + "same question is waiting.";
         }
         return answer;
     }
@@ -198,21 +217,71 @@ final class Installer {
             confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             // The owner is leaving for Android's own screen and coming straight back.
             AppLock.expectReturn();
+            boolean shown = false;
             try {
                 context.startActivity(confirm);
+                shown = true;
             } catch (Throwable refused) {
-                RESULT.offer("Android would not show the confirmation screen: "
-                        + (refused.getMessage() == null ? refused.getClass().getSimpleName()
-                        : refused.getMessage()));
+                // Reported by the notification below rather than as a failure: the screen may
+                // simply have been off.
             }
+            // And a notification carrying the same screen, always. Android blocks an activity
+            // started while no screen of this app is in front -- which is exactly what happens
+            // when the owner puts the phone down mid-build -- and it blocks it silently, with
+            // no exception to catch. A notification is the one thing that reaches them then,
+            // and it is harmless when the screen came up anyway: it is cancelled either way.
+            offerConfirmation(context, confirm, shown);
             return;
         }
+        cancelConfirmation(context);
         if (status == PackageInstaller.STATUS_SUCCESS) {
             RESULT.offer("");
             return;
         }
         String said = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
         RESULT.offer(reason(status) + (said == null || said.isEmpty() ? "" : " (" + said + ")"));
+    }
+
+    /**
+     * The confirmation, as something to tap, for the moment when it could not be shown.
+     *
+     * Low importance and no sound: it is the same channel the workspace's own notification
+     * uses, which an owner has already seen and allowed.
+     */
+    private static void offerConfirmation(Context context, Intent confirm, boolean alsoShown) {
+        android.app.NotificationManager manager = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        try {
+            PendingIntent tap = PendingIntent.getActivity(context, 4, confirm, flags);
+            String text = alsoShown
+                    ? "Android is asking on screen. This is the same question, if you missed it."
+                    : "Tap to answer Android's install question for the app built here.";
+            manager.notify(NOTIFICATION, new android.app.Notification.Builder(
+                    context, App.CHANNEL_WORKSPACE)
+                    .setContentTitle("Confirm the install")
+                    .setContentText(text)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                    .setSmallIcon(R.drawable.ic_stat_pocketide)
+                    .setContentIntent(tap)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .build());
+        } catch (Throwable notAllowed) {
+            // Notifications denied. The install still works when the screen is in front.
+        }
+    }
+
+    private static void cancelConfirmation(Context context) {
+        try {
+            android.app.NotificationManager manager = (android.app.NotificationManager)
+                    context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) manager.cancel(NOTIFICATION);
+        } catch (Throwable alreadyGone) {
+            // Nothing to undo.
+        }
     }
 
     private static String reason(int status) {
