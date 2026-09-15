@@ -580,6 +580,11 @@ final class Phone {
                     + "while that app is on the screen — take a screenshot, tap, type or press "
                     + "a key. No shell on the phone, no other app, no files, no device "
                     + "details. That is the whole list.\n\n"
+                    + "Two of those need no pairing and no Developer options at all: phone "
+                    + "install and phone launch go through Android's own installer, which asks "
+                    + "you to confirm each install on its own screen. Pairing is what makes "
+                    + "them silent and adds the other three — the log, the screenshot and the "
+                    + "taps.\n\n"
                     + "Wireless debugging itself lives in Developer options, because Android "
                     + "offers no narrower switch; the app keeps its access to the list above. "
                     + "Turn Wireless debugging off when you are done. Android turns it off at "
@@ -608,7 +613,9 @@ final class Phone {
                     + "An agent's loop, in the terminal: ./gradlew assembleDebug, then phone "
                     + "install app/build/outputs/apk/debug/app-debug.apk, phone launch "
                     + "com.example.app, phone log com.example.app -d, phone screenshot "
-                    + "com.example.app shot.png. Gradle's own installDebug and "
-                    + "connectedAndroidTest expect adb's network port, which this app never "
-                    + "opens; phone install and phone instrument do the same work.";
+                    + "com.example.app shot.png. The first two work with the phone unpaired, "
+                    + "with a tap each time Android asks; the rest need the pairing. Gradle's "
+                    + "own installDebug and connectedAndroidTest expect adb's network port, "
+                    + "which this app never opens; phone install and phone instrument do the "
+                    + "same work.";
 }

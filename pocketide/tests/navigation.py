@@ -345,6 +345,29 @@ if "listing.verified && Agents.official(listing.namespace)" not in code("AgentsP
     problems.append("search can say 'official' about a version the registry has not verified")
 
 
+# --- the phone bridge works without Developer options, as far as Android allows -----------------
+#
+# Wireless debugging costs an owner their Developer options. Android lets an app install another
+# app and open it without any of that, so the two operations that can work unpaired do, and the
+# three that cannot say so rather than failing silently.
+broker_src = code("PhoneBroker.java")
+if "Installer.install(service" not in broker_src or "Installer.launch(service" not in broker_src:
+    problems.append("phone install and phone launch demand a paired phone, though Android lets "
+                    "an app install and open another app with no Developer options at all")
+if "private boolean connected()" not in broker_src:
+    problems.append("the bridge cannot tell a running adb server from a connected phone, so it "
+                    "would take the adb path with nothing on the end of it")
+installer_src = code("Installer.java")
+if "MODE_FULL_INSTALL" not in installer_src or "STATUS_PENDING_USER_ACTION" not in installer_src:
+    problems.append("the unpaired install does not go through a PackageInstaller session, so "
+                    "nothing reports back to the terminal and this app is not the installer of "
+                    "record")
+if "getLaunchIntentForPackage" not in installer_src:
+    problems.append("there is no way to open an installed app without adb")
+if "<queries" in open(app + "/app/AndroidManifest.xml").read():
+    problems.append("the manifest asks to see other packages; being the installer of record is "
+                    "what makes the apps built here visible, and nothing else should be")
+
 # --- the community row is never sold as official -------------------------------------------------
 #
 # One row on the Agents screen is somebody else's extension, listed because it answers "an open
