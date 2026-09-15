@@ -448,18 +448,88 @@ else:
     if "od -An -tx1 -j18 -N1" not in tools_code:
         problems.append("the tools script decides whether a build tool runs by an exit code PRoot "
                         "does not give, so foreign build-tools are never repaired")
-    # The server is started inside start_editor and BEFORE the editor is launched, comments
-    # between the test and the command allowed: after the launch it would start only when the
-    # editor had already stopped.
-    start_fn = re.search(r'^start_editor\(\) \{(.*?)\n\}', shell_code(editor_script), re.S | re.M)
-    start_body = start_fn.group(1) if start_fn else ""
-    server = re.search(r'command -v adb >/dev/null 2>&1; then\s*\n(?:\s*#.*\n)*\s*adb start-server',
-                       start_body)
-    launch = start_body.find('"$BIN" \\')
-    if not server or launch < 0 or server.start() > launch:
-        problems.append("the editor script does not start the adb server inside start_editor "
-                        "before the editor is launched, so a connection the app makes dies "
-                        "with the one command that made it")
+    # THE DOOR, NOT THE KEY. The editor's PRoot never starts adb and never sees the key: the
+    # server is the app's own, in a directory bound only into the app's adb commands, and the
+    # editor's PRoot is given the bridge directory instead. The bridge does a short list of
+    # things, each to a package it installed itself, and a screenshot or an input only while
+    # that package is on the screen.
+    if "adb start-server" in shell_code(editor_script):
+        problems.append("the editor script starts adb inside the editor's PRoot, which puts the "
+                        "phone's key and server where every agent can use them")
+    if "Workspace.start(this, command, PhoneBroker.editorBinds(this))" not in service:
+        problems.append("the editor is started without the bridge bind, so the phone command "
+                        "has nothing to talk to; or with more than the bridge")
+    if '":/root/.android"' not in phone or "androidDir(context)" not in phone:
+        problems.append("adb's key directory is not bound from the app's own storage, so the "
+                        "key and the socket sit in the rootfs where the terminal can read them")
+    if '"exec adb server nodaemon",\n                    Phone.binds(this)' not in service:
+        problems.append("the app's adb server is started without the key bind")
+    if "adb pair 127.0.0.1" in phone.split("static final String STEPS")[-1]:
+        problems.append("the Help still hands the owner the by-hand pairing that would give the "
+                        "terminal the whole key")
+    broker = code(read("PhoneBroker.java"))
+    for forbidden in ('"shell"', '"pull"', '"push"', '"forward"', '"reverse"', '"root"',
+                      '"tcpip"'):
+        if forbidden in broker:
+            problems.append("the phone bridge offers %s, which is the whole key again" % forbidden)
+    for op in ("uninstall", "launch", "stop", "clear", "instrument", "log", "screenshot"):
+        if not re.search(r'case "%s":\s*\n\s*return forAllowed\(' % op, broker):
+            problems.append("phone %s is not restricted to packages the bridge installed" % op)
+    if not re.search(r'case "tap":\s*\n\s*case "text":\s*\n\s*case "key":\s*\n\s*return forAllowed\(',
+                     broker):
+        problems.append("phone tap, text and key are not restricted to packages the bridge "
+                        "installed")
+    for needs_screen in ("screenshot", "input"):
+        body = re.search(r'private int ' + needs_screen + r'\((.*?)\n    \}', broker, re.S)
+        if not body or "if (!onScreen(pkg, reply)) return 3;" not in body.group(1):
+            problems.append("phone %s reaches the screen without checking that the package is "
+                            "the one on it" % needs_screen)
+    if ('projectFile(args.get(0), cwd, ".apk")' not in broker
+            or "getPackageArchiveInfo" not in broker):
+        problems.append("phone install takes something other than an APK under ~/projects that "
+                        "Android can read")
+    if 'GUEST_SOCKET = GUEST_DIR + "/phone.sock"' not in broker or 'GUEST_DIR = "/run/pocketide"' not in broker:
+        problems.append("the bridge socket is not where the phone command looks")
+    cli = re.search(r"cat > /usr/local/bin/phone <<'PHONE'(.*?)\nPHONE\n", tools_script, re.S)
+    if not cli or 'SOCK = "/run/pocketide/phone.sock"' not in cli.group(1):
+        problems.append("the tools script does not install the phone command, or points it "
+                        "somewhere other than the bridge")
+
+# --- 16. permissions and power, honestly ---------------------------------------------------------
+#
+# Nothing requested that no code needs; the rows say what is true; a long job cannot be killed
+# quietly by the daily update running outside the service.
+manifest_code = re.sub(r"<!--.*?-->", "", manifest, flags=re.S)
+if "android.permission.VIBRATE" in manifest_code:
+    problems.append("VIBRATE is requested, and nothing needs it: the key row's haptics go "
+                    "through View.performHapticFeedback")
+if 'android:requestLegacyExternalStorage="true"' not in manifest_code:
+    problems.append("requestLegacyExternalStorage is not set, so ~/phone cannot read the shared "
+                    "storage on Android 10")
+permissions_src = code(read("Permissions.java"))
+allowed_fn = re.search(r'static boolean notificationsAllowed\(Context context\) \{(.*?)\n    \}',
+                       permissions_src, re.S)
+if not allowed_fn or "areNotificationsEnabled()" not in allowed_fn.group(1):
+    problems.append("the Notifications row says Allowed on Android 10 to 12 whatever the app's "
+                    "own switch says")
+updates_src = code(read("Updates.java"))
+maybe = re.search(r'static void maybeRunInBackground\(final Context context\) \{(.*?)\n    \}',
+                  updates_src, re.S)
+if not maybe or "WorkspaceService.update(context)" not in maybe.group(1) \
+        or "new Thread" in maybe.group(1):
+    problems.append("the daily update runs on a bare thread from a screen instead of under the "
+                    "service's wake lock and notification")
+if "ACTION_UPDATE" not in service or "Updates.runQuietly(this" not in service:
+    problems.append("the service has no update job")
+if "isPowerSaveMode()" not in service:
+    problems.append("a job starts with power saving on and nothing says so")
+settings_src = code(read("SettingsPane.java"))
+if '"Data Saver"' in settings_src:
+    problems.append("the Data Saver row is back; a foreground job is not governed by it")
+if '"Not needed: this app never starts itself · "' not in settings_src:
+    problems.append("the Auto-launch row does not say it is not needed")
+if '"Keep working with the screen off"' not in settings_src:
+    problems.append("the battery exemption row is not named for what it does")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

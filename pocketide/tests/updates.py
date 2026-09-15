@@ -78,9 +78,16 @@ if "$STAGE_DIR/bin/code-server" not in script:
 # actually known, and only while nothing is running -- and through the same staged, verified,
 # reversible swap the manual row uses. A blanket upgrade of every Ubuntu package is never
 # automatic: that is a decision about someone's machine and stays theirs.
-auto = re.search(r'maybeRunInBackground\s*\([^)]*\)\s*\{(.*?)\n    \}', updates, re.S)
+# The run itself lives in runQuietly, which the foreground service calls; maybeRunInBackground
+# only decides whether today is the day and hands over. Both are read: the decision must hand
+# over to the service (a bare thread from a screen is what left dpkg to be killed mid-apt),
+# and the run must do exactly the two things Settings promises.
+auto = re.search(r'static void runQuietly\s*\([^)]*\)\s*\{(.*?)\n    \}', updates, re.S)
+decide = re.search(r'maybeRunInBackground\s*\([^)]*\)\s*\{(.*?)\n    \}', updates, re.S)
+if not decide or "WorkspaceService.update(context)" not in decide.group(1):
+    problems.append("Updates.maybeRunInBackground does not hand the run to the service")
 if not auto:
-    problems.append("Updates.maybeRunInBackground cannot be read")
+    problems.append("Updates.runQuietly cannot be read")
 else:
     body = auto.group(1)
     for forbidden, why in (('"ubuntu-all"', "every package, not just the security ones"),

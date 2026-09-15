@@ -113,9 +113,10 @@ operating system alive behind a closed app.
 
 ## Permissions
 
-Internet, network state, a wake lock, notifications, a foreground service, vibration, and an
-optional prompt to keep working when the battery saver would stop it. **No camera, microphone,
-location, contacts, SMS, calendar or storage.**
+Internet, network state, a wake lock, notifications, a foreground service, an optional prompt to
+keep working when the screen goes off, the app lock's biometric check, install-an-APK (only from
+the row in Settings, and Android still asks), and the phone's shared storage only if you switch
+The phone's files on. **No camera, microphone, location, contacts, SMS or calendar.**
 
 ## Privacy
 

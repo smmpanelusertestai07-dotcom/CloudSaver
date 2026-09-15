@@ -192,46 +192,50 @@ final class Updates {
         // again sooner than that but not on every single return to the app.
         if (now - Prefs.of(context).getLong(Prefs.UPDATE_TRIED_AT, 0) < RETRY_AFTER_MS) return;
 
-        // The application context, never the Activity. This thread outlives a rotation, and a
-        // thread holding an Activity across one is a leaked screen.
-        final Context app = context.getApplicationContext();
+        // Under the foreground service -- its wake lock, its thermal pause, its notification --
+        // rather than on a bare thread from this screen. An owner who put the phone down mid-apt
+        // used to leave dpkg to be frozen or killed with nothing on screen to say so.
+        WorkspaceService.update(context);
+    }
+
+    /**
+     * The quiet run itself, on the service's worker.
+     *
+     * Claims the one slot every update path shares, so this and a manual run from Settings
+     * cannot overlap, and releases it whatever happens. Each stage is reported as one line,
+     * which the service puts in the notification and in the Activity log.
+     */
+    static void runQuietly(Context app, Workspace.Progress stage) {
         if (!claim()) return;
-        // Started inside a try, because claim() has already been taken. A phone under memory
-        // pressure can refuse to create a thread, and an exception escaping here would leave
-        // the slot held for the life of the process -- after which every check, every manual
-        // update and the switch in Settings would report "already checking" for ever.
         try {
-        new Thread(() -> {
-            try {
-                Status status = doCheck(app, line -> {});
-                boolean changed = false;
-                if (status != null && status.ubuntuSecurity > 0) {
-                    boolean ok = doRun(app, "ubuntu", line -> {});
-                    note(app, ok
-                            ? "Installed " + status.ubuntuSecurity + " Ubuntu security update"
-                                    + (status.ubuntuSecurity == 1 ? "" : "s")
-                            : "Some Ubuntu security updates could not be installed");
-                    changed = true;
-                }
-                // The editor, only when its own switch is on, only when a newer release is
-                // actually known, and only while nothing is running -- checked here and again
-                // by the script with pgrep, because the two are seconds apart. Wi-Fi was
-                // already required above for the whole run.
-                if (status != null && status.editorOutOfDate() && automaticEditor(app)
-                        && !WorkspaceService.editorRunning() && !WorkspaceService.busy()) {
-                    boolean ok = doRun(app, "editor", line -> {});
-                    note(app, ok
-                            ? "Updated the editor to " + status.editorLatest
-                            : "The editor could not be updated; the installed one was kept");
-                    changed = true;
-                }
-                // Re-read, so the screen does not go on offering updates already taken.
-                if (changed) doCheck(app, line -> {});
-            } finally {
-                release();
+            stage.line("Checking for updates…");
+            Status status = doCheck(app, line -> {});
+            boolean changed = false;
+            if (status != null && status.ubuntuSecurity > 0) {
+                String count = status.ubuntuSecurity + " Ubuntu security update"
+                        + (status.ubuntuSecurity == 1 ? "" : "s");
+                stage.line("Installing " + count + "…");
+                boolean ok = doRun(app, "ubuntu", line -> {});
+                note(app, ok ? "Installed " + count
+                        : "Some Ubuntu security updates could not be installed");
+                changed = true;
             }
-        }, "updates").start();
-        } catch (Throwable couldNotStart) {
+            // The editor, only when its own switch is on, only when a newer release is
+            // actually known, and only while it is not running -- checked here and again by
+            // the script with pgrep, because the two are seconds apart. Wi-Fi was already
+            // required before this job was started.
+            if (status != null && status.editorOutOfDate() && automaticEditor(app)
+                    && !WorkspaceService.editorRunning()) {
+                stage.line("Updating the editor to " + status.editorLatest + "…");
+                boolean ok = doRun(app, "editor", line -> {});
+                note(app, ok ? "Updated the editor to " + status.editorLatest
+                        : "The editor could not be updated; the installed one was kept");
+                changed = true;
+            }
+            // Re-read, so the screen does not go on offering updates already taken.
+            if (changed) doCheck(app, line -> {});
+            stage.line(changed ? "Updates done" : "Up to date");
+        } finally {
             release();
         }
     }
