@@ -135,7 +135,13 @@
              exported: only this app's own PendingIntent can reach it. See Phone. -->
         <receiver
             android:name=".PhoneReceiver"
-            android:exported="false" />
+            android:exported="false">
+            <!-- The install session's own answer. Not exported and package-restricted at the
+                 sending end too, so nothing outside this app can pretend to be a result. -->
+            <intent-filter>
+                <action android:name="com.pocketide.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".WorkspaceService"

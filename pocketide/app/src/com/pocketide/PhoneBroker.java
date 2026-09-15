@@ -54,6 +54,15 @@ import java.util.regex.Pattern;
  * the one on the screen -- a screenshot, a tap, typed text or a key. No shell. No pull. No
  * package list. No device properties. No forwarding. The list is the whole list.
  *
+ * TWO MODES, because Wireless debugging costs an owner their Developer options and not every
+ * owner wants to pay it. Paired, everything above is automatic. UNPAIRED, install and launch
+ * still work: Android lets an app install another app and open it, with the permission the
+ * phone's own permission manager calls "Install unknown apps" and a confirmation tapped every
+ * time, and Installer does exactly that. Reading a log, taking a screenshot and driving taps
+ * are the three that need adb and say so. An agent can therefore build, install and run the
+ * app it wrote with no Developer options at all, and gets the rest by pairing if the owner
+ * wants it.
+ *
  * The bridge answers only while the editor runs, because the adb server it relies on lives
  * exactly that long (WorkspaceService.ensureAdbServer), and it says so when it is asked for
  * something it will not do, with the list of what it will.
@@ -235,7 +244,7 @@ final class PhoneBroker {
     // ------------------------------------------------------------------ the operations
 
     static final String HELP =
-            "phone devices                    is the phone connected\n"
+            "phone devices                    is the phone paired and connected\n"
                     + "phone install <app.apk>          install an APK built under ~/projects\n"
                     + "phone launch <package>           open it; it comes to the front\n"
                     + "phone stop <package>             force-stop it\n"
@@ -249,7 +258,10 @@ final class PhoneBroker {
                     + "phone key <package> <KEYCODE>    a key, same rule (KEYCODE_BACK ...)\n"
                     + "phone allowed                    the packages this bridge may touch\n"
                     + "Only packages installed through phone install, from ~/projects. No "
-                    + "shell, no other app, no device details.";
+                    + "shell, no other app, no device details.\n"
+                    + "install and launch work without pairing: Android asks you to confirm "
+                    + "each install. log, screenshot, tap, text, key and instrument need the "
+                    + "phone paired (PocketIDE: Settings, The computer, Test on this phone).";
 
     private int handle(String op, List<String> args, String cwd, Reply reply)
             throws IOException {
@@ -275,7 +287,8 @@ final class PhoneBroker {
                 return forAllowed(args, reply, pkg -> adbTo(reply, "adb uninstall " + pkg) == 0
                         ? forget(pkg) : 1);
             case "launch":
-                return forAllowed(args, reply, pkg -> launch(pkg, reply));
+                // Needs no phone of its own: forAllowed's connection check is skipped for it.
+                return forAllowed(args, reply, false, pkg -> launch(pkg, reply));
             case "stop":
                 return forAllowed(args, reply, pkg ->
                         adbTo(reply, "adb shell am force-stop " + pkg));
@@ -304,6 +317,11 @@ final class PhoneBroker {
 
     /** The one rule every operation but install shares: a package this bridge installed. */
     private int forAllowed(List<String> args, Reply reply, OnPackage then) throws IOException {
+        return forAllowed(args, reply, true, then);
+    }
+
+    private int forAllowed(List<String> args, Reply reply, boolean needsPhone, OnPackage then)
+            throws IOException {
         if (args.isEmpty() || !PACKAGE.matcher(args.get(0)).matches()) {
             reply.line("Give a package name, as in com.example.app. phone allowed lists them.");
             return 2;
@@ -317,8 +335,28 @@ final class PhoneBroker {
                 return 3;
             }
         }
-        if (!withPhone(reply)) return 3;
+        if (needsPhone && !withPhone(reply)) return 3;
         return then.run(pkg);
+    }
+
+    /**
+     * True when adb is installed, its server answers and a device is actually on the end of it.
+     *
+     * A running server is not a connected phone: unpaired, or with Wireless debugging off, the
+     * server answers and lists nothing. The ops that need adb ask this; install and launch use
+     * it only to choose the quicker of their two paths.
+     */
+    private boolean connected() {
+        if (!Phone.adbInstalled(service) || !service.ensureAdbServer()) return false;
+        try {
+            for (String line : adbLines("adb devices")) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith(Phone.LOOPBACK) && trimmed.endsWith("device")) return true;
+            }
+        } catch (IOException unreadable) {
+            return false;
+        }
+        return false;
     }
 
     /** The server and the connection, or a sentence about which is missing. */
@@ -360,17 +398,42 @@ final class PhoneBroker {
             reply.line("Not this app itself.");
             return 3;
         }
-        if (!withPhone(reply)) return 3;
-        int code = adbTo(reply, "adb install -r -t " + quote(guestPath(apk)));
-        if (code == 0) {
-            allow(info.packageName, guestPath(apk));
-            reply.line("Installed " + info.packageName + ". Next: phone launch "
-                    + info.packageName);
+        // Allowed from the moment its APK is read out of ~/projects, whichever way it then
+        // goes on to the phone: the list is "what this owner built here", not "what adb did".
+        allow(info.packageName, guestPath(apk));
+        if (connected()) {
+            int code = adbTo(reply, "adb install -r -t " + quote(guestPath(apk)));
+            if (code == 0) {
+                reply.line("Installed " + info.packageName + ". Next: phone launch "
+                        + info.packageName);
+            }
+            return code;
         }
-        return code;
+        // No pairing. Android's own installer, which asks the owner once and answers back.
+        reply.line("The phone is not paired, so Android will ask you to confirm this install.");
+        String failure = Installer.install(service, apk, info.packageName, reply::line);
+        if (!failure.isEmpty()) {
+            reply.line(failure);
+            return 1;
+        }
+        reply.line("Installed " + info.packageName + ". Next: phone launch "
+                + info.packageName);
+        return 0;
     }
 
     private int launch(String pkg, Reply reply) throws IOException {
+        if (!connected()) {
+            // No pairing needed to open an app this app installed: PocketIDE is its installer
+            // of record, which is what makes it visible to us without asking Android to show
+            // us every package on the phone.
+            String failure = Installer.launch(service, pkg);
+            if (failure.isEmpty()) {
+                reply.line("Opened " + pkg + " on the phone.");
+                return 0;
+            }
+            reply.line(failure);
+            return 1;
+        }
         String component = "";
         for (String line : adbLines("adb shell " + quote("cmd package resolve-activity --brief "
                 + "-c android.intent.category.LAUNCHER " + pkg + " 2>/dev/null | tail -n 1"))) {

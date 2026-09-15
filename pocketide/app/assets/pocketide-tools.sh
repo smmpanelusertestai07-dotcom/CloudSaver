@@ -429,7 +429,7 @@ install_phone_command() {
 #!/usr/bin/env python3
 """phone: test the app you built, on this phone, through PocketIDE's bridge.
 
-  phone devices                    is the phone connected
+  phone devices                    is the phone paired and connected
   phone install <app.apk>          install an APK built under ~/projects (test APKs too)
   phone launch <package>           open it; it comes to the front of the phone
   phone stop <package>             force-stop it
@@ -445,7 +445,11 @@ install_phone_command() {
 
 Only packages installed through phone install, and only from ~/projects. The phone's own
 adb access never enters this Linux: no shell, no other app, no files, no device details.
-The bridge answers while the editor is running and the phone is paired and connected.
+
+install and launch need no pairing at all: Android asks you to confirm each install on its
+own screen, and the app opens from there. log, screenshot, tap, text, key and instrument do
+need the phone paired -- PocketIDE: Settings > The computer > Test on this phone. The bridge
+answers while the editor is running.
 """
 import json
 import os
@@ -555,12 +559,15 @@ install_phone() {
   say ""
   say "adb is installed: $(adb --version 2>/dev/null | head -1)"
   say ""
-  say "This phone pairs with itself over Wireless debugging (Android 11 and newer), from"
-  say "Settings → The computer → Test on this phone in PocketIDE. The key and the adb server"
-  say "stay in the app's own storage; this Linux gets the phone command instead:"
+  say "This Linux gets the phone command, a door to the phone with a short list on it:"
   say "  phone install app.apk · launch · stop · clear · uninstall · instrument · log"
   say "  phone screenshot / tap / text / key, only while that app is on the screen"
   say "phone help lists everything. No shell on the phone, no other app, no device details."
+  say ""
+  say "install and launch need no pairing: Android asks you to confirm each install."
+  say "The rest needs the phone paired with itself over Wireless debugging (Android 11 and"
+  say "newer), from Settings → The computer → Test on this phone in PocketIDE. The key and"
+  say "the adb server stay in the app's own storage, never in here."
   say "Gradle's installDebug and connectedAndroidTest expect adb's network port, which the"
   say "app never opens; phone install and phone instrument do the same work."
 }

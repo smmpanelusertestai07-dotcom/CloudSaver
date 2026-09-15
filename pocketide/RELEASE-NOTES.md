@@ -70,6 +70,23 @@ own either. Robolectric is the sandboxed alternative and its limits are stated t
 processor its native graphics do not load, so views lay out and Espresso checks pass but nothing
 is drawn to pixels, and its SQLite does not run.
 
+### No Developer options needed for two thirds of it
+
+Wireless debugging lives behind Developer options because Android offers no narrower switch, and
+an owner asked, reasonably, whether the agent could get anywhere without paying that. It can:
+Android lets an app install another app and open it, with the permission the phone's permission
+manager calls "Install unknown apps" and a confirmation tapped every time. So the bridge has two
+modes. Paired, everything is automatic. Unpaired, `phone install` and `phone launch` still work
+— the APK goes through a PackageInstaller session, Android asks on its own screen, and the
+result comes back to the terminal instead of being left to guess. Only the log, the screenshot
+and the taps need adb, and they say so.
+
+The session is used rather than an intent for three reasons that matter here: it answers, with
+SUCCESS or a named failure an agent can act on; it makes PocketIDE the installer of record,
+which is what lets the app see and open what it installed without a `<queries>` element broad
+enough to see every app on the phone (a gate now forbids one); and Android's own App info shows
+PocketIDE as where the app came from.
+
 ### Permissions and power, honestly
 
 An audit of every permission against the code found one with no use: VIBRATE, because the key
