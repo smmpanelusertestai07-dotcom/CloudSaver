@@ -69,6 +69,8 @@ public final class WorkspaceService extends Service {
 
     private Thread worker;
     private volatile Process editor;
+    /** adb's server, held here when the editor's own start could not have started one. */
+    private volatile Process adbServer;
     private PowerManager.WakeLock wakeLock;
     private long startedAt;
     /** What the notification last said, so a repeated START does not talk over it. */
@@ -198,9 +200,10 @@ public final class WorkspaceService extends Service {
             final boolean pair = ACTION_PHONE_PAIR.equals(action);
             final String code = intent.getStringExtra(EXTRA_CODE);
             if (!editorRunning) {
-                Phone.tell(this, "The editor is not running", "Open the editor first, then "
-                        + (pair ? "pair" : "connect") + " again: the connection lives as long "
-                        + "as the editor does.");
+                Phone.tell(this, "The editor is not running", "Open the editor, then "
+                        + "Settings → Test on this phone → "
+                        + (pair ? "Pair for the first time" : "Connect now")
+                        + ". The connection lives as long as the editor does.");
                 if (!busy) {
                     stopForeground(true);
                     stopSelf();
@@ -346,7 +349,13 @@ public final class WorkspaceService extends Service {
         runningSince = 0L;
         final Process running = editor;
         editor = null;
+        final Process server = adbServer;
+        adbServer = null;
         unwatchHeat();
+        // The held adb server goes with the editor: the sweep in stopTidily reaches every
+        // PRoot of this app's, its included, and destroy() is the backstop for its tracer.
+        if (server != null && running == null) stopTidily(server);
+        else if (server != null) server.destroy();
         if (running != null) stopTidily(running);
         if (worker != null) worker.interrupt();
         release();
@@ -359,6 +368,44 @@ public final class WorkspaceService extends Service {
         }
         stopForeground(true);
         stopSelf();
+    }
+
+    /**
+     * Makes sure an adb server is answering before a pair or a connect is run.
+     *
+     * The editor's start runs adb start-server under the editor's own PRoot, but only when adb
+     * existed at that moment. Installed later -- which is the documented first-run order: open
+     * the editor, install adb, pair -- there is no server, and the adb the pairing runs forks
+     * one inside its own PRoot, where --kill-on-exit takes it down the moment the command
+     * ends. That server said "connected" and was gone before the terminal asked, which showed
+     * as a phone that claimed to be connected and was not. So the service holds one of its
+     * own: server nodaemon keeps adb in the foreground, this process keeps the PRoot alive,
+     * and the terminal's adb, in whichever PRoot, finds it on loopback. It ends with the
+     * workspace, in stopEverything.
+     */
+    boolean ensureAdbServer() {
+        if (Phone.serverListening(this)) return true;
+        if (!Phone.adbInstalled(this)) return false;
+        try {
+            final Process server = Workspace.start(this, "exec adb server nodaemon");
+            adbServer = server;
+            new Thread(() -> {
+                // Drained, not read: a pipe nobody empties fills, and a server blocked on
+                // its own log line is a server that stops answering.
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        server.getInputStream(), StandardCharsets.UTF_8))) {
+                    while (reader.readLine() != null) { /* nothing to keep */ }
+                } catch (IOException gone) {
+                    // The server ended. Nothing left to drain.
+                }
+            }, "adb-server").start();
+            for (int tries = 0; tries < 40 && !Phone.serverListening(this); tries++) {
+                waitBriefly(100);
+            }
+        } catch (IOException notStarted) {
+            adbServer = null;
+        }
+        return Phone.serverListening(this);
     }
 
     /**

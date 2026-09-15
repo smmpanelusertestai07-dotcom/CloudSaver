@@ -2,8 +2,8 @@
 # What the agents can actually use: a real browser, screenshots, video, and a build toolchain.
 #
 # None of this is installed during set-up. Set-up is already a 410 MB download and twenty
-# minutes; this is another 400 MB-odd that most people will not need on the first day, so it is
-# a switch in Settings that installs on demand and says what it will cost before it starts.
+# minutes; this is up to another 530 MB that most people will not need on the first day, so it
+# is a switch in Settings that installs on demand and says what it will cost before it starts.
 #
 # Everything here was checked against what arm64 Linux under PRoot can actually do, rather than
 # assumed from what a laptop can:
@@ -59,7 +59,9 @@
 #              debugging -- adb over TCP with a pairing step -- and adbd listens on loopback
 #              too, so an adb client inside this Linux can pair with and connect to the phone
 #              it is running on. See "the phone itself" below. The adb is Ubuntu's own arm64
-#              package, so there is nothing to pin.
+#              package, so there is nothing to pin. Its server answers on a socket inside the
+#              app's own storage and on no network port: loopback is shared by every app on
+#              the phone and adb's protocol has no authentication.
 #
 #   LISTS      Set-up and the nightly update delete /var/lib/apt/lists to save 60 MB, so every
 #              apt-get install here refreshes the list first. Without that, a fresh workspace
@@ -315,6 +317,7 @@ install_android() {
   # Google's platform-tools carry an x86-64 adb, for the same reason. Ubuntu's takes its
   # place, at the one path the Android Gradle Plugin looks for adb.
   link_adb
+  fix_build_tools
 
   # Where the SDK is, for every shell the editor opens and every Gradle it runs.
   cat > /etc/profile.d/pocketide-android.sh <<EOF
@@ -331,17 +334,29 @@ EOF
   # x86-64 aapt2 from Maven and ignores the SDK's unless told otherwise, and it reads this
   # from gradle.properties only. Appended, never written over anything, and only when absent.
   local properties="$HOME_DIR/.gradle/gradle.properties"
+  local expected_line="android.aapt2FromMavenOverride=$bt/aapt2"
   mkdir -p "$(dirname "$properties")"
-  if ! grep -q '^android.aapt2FromMavenOverride=' "$properties" 2>/dev/null; then
-    # On a line of its own even when the owner's file does not end with one. Appended straight
-    # onto a last line with no newline, the property would become the tail of that line and
-    # Gradle would see neither.
-    if [ -s "$properties" ] && [ "$(tail -c1 "$properties" | wc -l)" -eq 0 ]; then
-      printf '\n' >> "$properties"
+  if ! grep -qxF "$expected_line" "$properties" 2>/dev/null; then
+    # The exact line, not any line: one this script wrote for an earlier build-tools version
+    # names an aapt2 that may be gone, and is replaced. One the owner wrote pointing somewhere
+    # else is theirs, left alone and said.
+    if grep -q '^android.aapt2FromMavenOverride=.*pocketide-tools' "$properties" 2>/dev/null; then
+      sed -i '/^android.aapt2FromMavenOverride=.*pocketide-tools/d' "$properties"
     fi
-    printf 'android.aapt2FromMavenOverride=%s/aapt2\n' "$bt" >> "$properties"
-    say "Added android.aapt2FromMavenOverride to ~/.gradle/gradle.properties: the one line"
-    say "Gradle needs to use this aapt2. Nothing else in that file was changed."
+    if grep -q '^android.aapt2FromMavenOverride=' "$properties" 2>/dev/null; then
+      say "~/.gradle/gradle.properties already points android.aapt2FromMavenOverride elsewhere;"
+      say "it is left as you wrote it. Point it at $bt/aapt2 to use the aapt2 installed here."
+    else
+      # On a line of its own even when the owner's file does not end with one. Appended
+      # straight onto a last line with no newline, the property would become the tail of that
+      # line and Gradle would see neither.
+      if [ -s "$properties" ] && [ "$(tail -c1 "$properties" | wc -l)" -eq 0 ]; then
+        printf '\n' >> "$properties"
+      fi
+      printf '%s\n' "$expected_line" >> "$properties"
+      say "Added android.aapt2FromMavenOverride to ~/.gradle/gradle.properties: the one line"
+      say "Gradle needs to use this aapt2. Nothing else in that file was changed."
+    fi
   fi
 
   say ""
@@ -354,6 +369,11 @@ EOF
   say "emulator (no linux-aarch64 build, and no /dev/kvm on a phone). The phone is the"
   say "test device: Settings → The computer → Install an app built here, or Test on this"
   say "phone to pair it with itself so that adb, and an agent, can drive it."
+  say ""
+  say "One line worth adding to a project's build file: buildToolsVersion \"$BUILD_TOOLS\"."
+  say "Without it the Android Gradle Plugin installs its own build-tools version, x86-64"
+  say "and all; the four tools in any such directory are repaired here at every check,"
+  say "but naming this one saves the download."
 }
 
 # --------------------------------------------------------------------------- the phone itself
@@ -364,8 +384,8 @@ EOF
 # with and connect to the phone it is running on -- which is what Shizuku does from an ordinary
 # app, and what Termux users do by hand. Once connected, everything a developer does from a
 # laptop works from the editor's terminal: adb install, adb shell am start, adb logcat, adb
-# exec-out screencap, ./gradlew connectedAndroidTest, adb shell input tap. An agent can build
-# an app, install it, launch it, read its log, screenshot it and tap it, on real hardware.
+# exec-out screencap, adb shell am instrument, adb shell input tap. An agent can build an app,
+# install it, launch it, read its log, screenshot it, tap it and test it, on real hardware.
 #
 # The adb here is Ubuntu's own arm64 package (34.0.4 on Noble; pairing arrived in 30.0.0), so
 # there is no third-party binary and nothing to pin. Google's platform-tools carry an x86-64
@@ -380,10 +400,17 @@ EOF
 #   adb pair 127.0.0.1:PAIRING_PORT CODE     once
 #   adb connect 127.0.0.1:PORT               each time Wireless debugging is turned on
 # The adb server is started with the editor (pocketide-editor.sh), so a connection lasts as
-# long as the editor does and the terminal's own adb talks to the same server.
+# long as the editor does and the terminal's own adb talks to the same server -- on a socket
+# inside this storage, never on TCP 5037: loopback is shared by every app on the phone, the adb
+# protocol has no authentication, and the server is what holds the paired key. The app sets
+# ADB_SERVER_SOCKET for every PRoot it starts (Workspace.java); configure_adb_socket below sets
+# the same for every login shell, so a terminal an owner opens by hand agrees. Gradle's own
+# installDebug and connectedAndroidTest speak only to the port and fail closed; the Help says
+# to use assembleDebugAndroidTest plus adb shell am instrument instead.
 
 install_adb_package() {
   if command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1; then
+    configure_adb_socket
     return 0
   fi
   say "Installing adb from Ubuntu… about 2 MB"
@@ -391,6 +418,50 @@ install_adb_package() {
   apt-get install -y -qq --no-install-recommends adb || {
     say "adb could not be installed."; return 1; }
   adb --version >/dev/null 2>&1 || { say "adb installed but will not run."; return 1; }
+  configure_adb_socket
+}
+
+# Where adb's server answers, for every shell. Idempotent; run at every install.
+configure_adb_socket() {
+  mkdir -p "$HOME_DIR/.android"
+  cat > /etc/profile.d/pocketide-adb.sh <<EOF
+export ADB_SERVER_SOCKET="localfilesystem:$HOME_DIR/.android/adb.sock"
+EOF
+  grep -q 'pocketide-adb.sh' "$HOME_DIR/.bashrc" 2>/dev/null || \
+    printf '\n[ -f /etc/profile.d/pocketide-adb.sh ] && . /etc/profile.d/pocketide-adb.sh\n' \
+      >> "$HOME_DIR/.bashrc"
+}
+
+# True when a binary can be executed on this processor at all: 126 is bash saying it cannot,
+# whatever the program would have said about its arguments.
+runs() {
+  "$1" --version >/dev/null 2>&1
+  [ $? -ne 126 ]
+}
+
+# The same four tools in EVERY build-tools directory, not only the one this script installs.
+# The Android Gradle Plugin insists on its own build-tools version when a project names none
+# (35.0.0 for AGP 8.13, 36.0.0 for AGP 9) and installs it itself, x86-64 and all. aapt2 comes
+# from the override either way, but aidl is run out of that directory and stops with Exec
+# format error on the first .aidl file, with everything still reporting "installed". So every
+# build-tools directory is walked and any of the four that will not run is replaced by a copy
+# of the verified aarch64 build. Run at install and from check, which is how a directory AGP
+# added during last night's build is repaired before the next one.
+fix_build_tools() {
+  local bt="$SDK_DIR/build-tools/$BUILD_TOOLS" dir tool
+  [ -d "$SDK_DIR/build-tools" ] || return 0
+  for dir in "$SDK_DIR"/build-tools/*/; do
+    dir="${dir%/}"
+    [ -d "$dir" ] || continue
+    [ "$dir" = "$bt" ] && continue
+    for tool in aapt2 aidl zipalign split-select; do
+      [ -f "$dir/$tool" ] || continue
+      runs "$dir/$tool" && continue
+      [ -f "$bt/$tool" ] && runs "$bt/$tool" || continue
+      [ -f "$dir/$tool.x86_64" ] || mv -f "$dir/$tool" "$dir/$tool.x86_64"
+      cp -f "$bt/$tool" "$dir/$tool" && chmod +x "$dir/$tool"
+    done
+  done
 }
 
 # Ubuntu's adb at the one path the Android Gradle Plugin looks for it. Google's x86-64 copy,
@@ -425,7 +496,10 @@ install_phone() {
   say "  adb pair 127.0.0.1:PAIRING_PORT CODE      once"
   say "  adb connect 127.0.0.1:PORT                each time it is turned on"
   say "Then adb devices lists this phone, and adb install, adb logcat, adb shell,"
-  say "adb exec-out screencap and ./gradlew connectedAndroidTest all work on it."
+  say "adb exec-out screencap and adb shell am instrument all work on it. The server"
+  say "answers on a socket inside this storage, never on a network port, so no other app"
+  say "on the phone can use the connection; Gradle's installDebug and connectedAndroidTest"
+  say "expect the port -- use assembleDebugAndroidTest plus adb shell am instrument."
 }
 
 # --------------------------------------------------------------------------- build tuning
@@ -504,12 +578,18 @@ check() {
   command -v chromium >/dev/null 2>&1 && browser=yes
   [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
   command -v javac >/dev/null 2>&1 && android=yes
-  # Present AND runs AND Gradle is told to use it: the x86-64 aapt2 Google ships is present
-  # and does not run, and a runnable one Gradle is not pointed at is never used.
+  # Two repairs first, both idempotent and both silent: Gradle can re-install platform-tools
+  # over the adb link or add a build-tools directory of its own overnight, and a check that
+  # only reported it would leave the next build to find out.
+  link_adb
+  fix_build_tools
+  # Present AND runs AND Gradle is told to use THIS one: the x86-64 aapt2 Google ships is
+  # present and does not run, a runnable one Gradle is not pointed at is never used, and a
+  # line naming some other aapt2 is not this one.
   [ -x "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" ] && \
     "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" version >/dev/null 2>&1 && \
-    grep -q '^android.aapt2FromMavenOverride=' "$HOME_DIR/.gradle/gradle.properties" \
-      2>/dev/null && android_sdk=yes
+    grep -qxF "android.aapt2FromMavenOverride=$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" \
+      "$HOME_DIR/.gradle/gradle.properties" 2>/dev/null && android_sdk=yes
   command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1 && adb=yes
   echo "browser=$browser"
   echo "playwright=$playwright"

@@ -65,8 +65,10 @@ final class Tools {
     /** What each layer costs, so the screen can say it before the download starts. */
     static final long BROWSER_BYTES = 120L * 1000 * 1000;
     static final long PLAYWRIGHT_BYTES = 60L * 1000 * 1000;
-    /** JDK 200, Google's command-line tools 182, platform, build- and platform-tools about 130, the four aarch64 tools 9. */
+    /** JDK 200, Google's command-line tools 182, platform, build- and platform-tools about 137, the four aarch64 tools 9, adb 2. */
     static final long ANDROID_BYTES = 530L * 1000 * 1000;
+    /** The JDK's share of that, so a phone that already has one is asked for the rest only. */
+    static final long JDK_BYTES = 200L * 1000 * 1000;
     /** Ubuntu's adb and the five small libraries it brings. */
     static final long PHONE_BYTES = 2L * 1000 * 1000;
 
@@ -187,9 +189,13 @@ final class Tools {
                     + "computer → Test on this phone installs adb and pairs the phone with "
                     + "itself over Wireless debugging; after that adb devices in the "
                     + "terminal lists this phone, and an agent can install what it built, "
-                    + "launch it, read its log, screenshot it, tap it and run ./gradlew "
-                    + "connectedAndroidTest on real hardware. Install an app built here "
-                    + "hands an APK to Android's own installer without any of that. JVM and "
+                    + "launch it, read its log, screenshot it, tap it and run its "
+                    + "instrumented tests with adb shell am instrument, on real hardware. "
+                    + "adb answers on a private socket, not a network port, so no other app "
+                    + "on the phone can use the connection; Gradle's own connectedAndroidTest "
+                    + "expects the port and will not see the phone — assembleDebugAndroidTest "
+                    + "plus am instrument does the same job. Install an app built here hands "
+                    + "an APK to Android's own installer without any of that. JVM and "
                     + "Robolectric unit tests run here natively as well.\n\n"
 
                     + "iOS apps.\n"

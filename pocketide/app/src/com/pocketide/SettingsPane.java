@@ -281,7 +281,7 @@ final class SettingsPane implements Pane {
      * What the agents can reach beyond the editor, and what they can never reach.
      *
      * None of it ships with set-up. Set-up is already 410 MB and twenty minutes, a browser is
-     * another 120 and the build tools 340 on top, and most people need none of it on the first
+     * another 120 and the build tools 530 on top, and most people need none of it on the first
      * day. So each layer says what it costs before it spends anything.
      *
      * The last row is the one that matters most and is the easiest to leave out: what cannot be
@@ -351,10 +351,15 @@ final class SettingsPane implements Pane {
         list.addView(automation);
         list.addView(Ui.divider(host, dark, true));
 
+        // What is still to download: the JDK is a third of it, and an owner who already has
+        // one is not asked to spend it twice.
+        final long androidBytes = tools.android && !tools.sdk
+                ? Tools.ANDROID_BYTES - Tools.JDK_BYTES : Tools.ANDROID_BYTES;
         Ui.Row android = Ui.row(host, dark, R.drawable.ic_apps, "Android build tools",
                 !ready ? "Available once Linux is set up"
                         : tools.sdk ? "Installed · JDK 21, SDK 35, build-tools 35.0.1 for arm64"
-                        : tools.android ? "JDK only · tap to finish the toolchain"
+                        : tools.android ? "JDK only · tap to finish the toolchain, about "
+                                    + DeviceProbe.formatBytes(androidBytes)
                             : "Not installed · about "
                                     + DeviceProbe.formatBytes(Tools.ANDROID_BYTES),
                 v -> offerTools("android", "Android build tools",
@@ -373,7 +378,7 @@ final class SettingsPane implements Pane {
                                 + "publishes no arm64 NDK; and the Android emulator cannot run "
                                 + "on a phone at all. The phone itself is the test device — "
                                 + "the row below installs what you build.",
-                        Tools.ANDROID_BYTES, tools.sdk));
+                        androidBytes, tools.sdk));
         if (tools.sdk) android.setState(Ui.running(dark));
         else if (tools.android) android.setState(Ui.needsYou(dark));
         list.addView(android);
@@ -445,7 +450,7 @@ final class SettingsPane implements Pane {
      * Asks first, then installs with its output on screen.
      *
      * The size is in the question rather than discovered afterwards, because on a phone the
-     * difference between 60 MB and 340 MB is the difference between yes and not today.
+     * difference between 60 MB and 530 MB is the difference between yes and not today.
      */
     /**
      * Lists the APKs a build left under ~/projects and hands the chosen one to the installer.
@@ -573,7 +578,8 @@ final class SettingsPane implements Pane {
                 return;
             }
             if (!Phone.developerOptionsOn(host)) {
-                Dialogs.message(host, "Developer options first", Phone.DEVELOPER_STEPS);
+                Dialogs.confirm(host, "Developer options first", Phone.DEVELOPER_STEPS,
+                        "Open About phone", () -> Phone.openAboutPhone(host));
                 return;
             }
             if (index == 0) {
@@ -585,15 +591,32 @@ final class SettingsPane implements Pane {
                     return;
                 }
                 WorkspaceService.connectPhone(host);
-                Dialogs.message(host, "Connecting…",
-                        "The result arrives as a notification, and Activity shows it too.");
+                Dialogs.message(host, "Connecting…", Phone.canNotify(host)
+                        ? "The result arrives as a notification, and Activity shows it too."
+                        : "Notifications are off for PocketIDE, so the result shows on the "
+                                + "Activity screen.");
                 return;
             }
-            if (!Permissions.notificationsAllowed(host)) {
-                Dialogs.message(host, "Notifications first",
-                        "The pairing code is typed into a notification, so allow "
-                                + "notifications for PocketIDE (Settings → Permissions), or "
-                                + "pair by hand from the terminal:\n\n" + Phone.STEPS);
+            if (!Phone.canNotify(host)) {
+                // The code is typed into a notification, so this is the one step that cannot
+                // do without them. Offered, not merely described: the by-hand route needs
+                // split-screen and is in How this works for whoever prefers it.
+                Dialogs.confirm(host, "Notifications first",
+                        "The pairing code is typed into a notification's reply box, because "
+                                + "the code disappears the moment Settings leaves the "
+                                + "screen. Allow notifications for PocketIDE, then choose "
+                                + "Pair for the first time again.\n\nOr pair by hand: "
+                                + "How this works explains the split-screen way.",
+                        "Allow notifications", () -> {
+                            // Three switches can be off: the permission, the app's
+                            // notifications as a whole, or the Linux channel. The permission
+                            // has a prompt; the other two live on the app's own page.
+                            if (Permissions.notificationsAllowed(host)) {
+                                Permissions.openNotificationSettings(host);
+                            } else {
+                                Permissions.askNotifications(host, false);
+                            }
+                        });
                 return;
             }
             Phone.beginPairing(host);

@@ -365,6 +365,14 @@ final class Workspace {
         args.add("TERM=xterm-256color");
         args.add("LANG=C.UTF-8");
         args.add("TMPDIR=/tmp");
+        // adb's server answers on this socket, inside the app's own storage, and on no network
+        // port. A port on loopback is reachable by every app on the phone, the adb wire
+        // protocol has no authentication, and it is the server that holds the paired key --
+        // so a TCP server would have let any app with INTERNET install, read and tap through
+        // this one while the phone was connected. Set for every PRoot this app starts, so the
+        // editor's start, its terminals and the app's own pair and connect all mean the same
+        // server. See Phone.
+        args.add("ADB_SERVER_SOCKET=localfilesystem:/root/.android/adb.sock");
         args.add("TZ=" + java.util.TimeZone.getDefault().getID());
         args.add("PIDE_PORT=" + EDITOR_PORT);
         args.add("PIDE_PASSWORD=" + editorPassword(context));

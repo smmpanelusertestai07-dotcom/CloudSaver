@@ -19,6 +19,7 @@ import java.net.NetworkInterface;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,9 +35,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  * So an adb client inside this app's Linux can pair with and connect to the phone it is
  * running on -- the same thing Shizuku does from an ordinary app -- and from then on every
  * command a developer runs from a laptop runs from the editor's terminal instead: adb install,
- * adb shell am start, adb logcat, adb exec-out screencap, adb shell input tap, ./gradlew
- * connectedAndroidTest. Build, install, launch, read the log, screenshot, tap: an agent can do
- * the whole loop on real hardware, for nothing.
+ * adb shell am start, adb logcat, adb exec-out screencap, adb shell input tap, adb shell am
+ * instrument. Build, install, launch, read the log, screenshot, tap, test: an agent can do the
+ * whole loop on real hardware, for nothing.
+ *
+ * ON NO NETWORK PORT. adb's server normally listens on TCP 5037 on loopback, and on a phone
+ * loopback is shared by every app: the wire protocol has no authentication, so a TCP server
+ * would have let any app with INTERNET install, read and tap through this connection. The
+ * server answers on a socket inside the app's own storage instead (ADB_SERVER_SOCKET, set by
+ * Workspace.start for every PRoot), which nothing outside this app's sandbox can open. The one
+ * cost is Gradle's own installDebug and connectedAndroidTest tasks, which speak only to the
+ * port and therefore fail closed; assembleDebugAndroidTest plus adb shell am instrument does
+ * the same job, and the Help says so.
  *
  * What this class does is the two things a terminal cannot do for itself:
  *
@@ -121,33 +131,39 @@ final class Phone {
      * The code is checked to be six digits before it goes anywhere near a command line, and
      * the port is a number this class discovered itself. Nothing typed by anyone reaches the
      * shell unvalidated.
+     *
+     * A failure the owner can put right -- the wrong number of digits, a box that had closed,
+     * a mistyped code -- puts the reply box BACK, with the reason on it. A plain notification
+     * in its place would tell them to type "here" with nothing left to type into.
      */
-    static void pair(Context context, String code) {
+    static void pair(WorkspaceService service, String code) {
         if (code == null || !code.matches("\\d{6}")) {
-            tell(context, "Not paired", "The pairing code is six digits. In Wireless "
-                    + "debugging tap Pair device with pairing code again, and type the six "
-                    + "digits it shows.");
+            askForCode(service, "That was not six digits. ");
             return;
         }
-        int port = discover(context, PAIRING_SERVICE, DISCOVERY_MS);
+        if (!service.ensureAdbServer()) {
+            tell(service, "adb is not answering", NO_SERVER);
+            return;
+        }
+        int port = discover(service, PAIRING_SERVICE, DISCOVERY_MS);
         if (port <= 0) {
-            tell(context, "Not paired", "The phone is not offering to pair. Keep the Pair "
-                    + "device with pairing code box open in Settings while you type the code "
-                    + "here, with Wi-Fi on.");
+            askForCode(service, "The phone was not offering to pair. Keep the Pair device "
+                    + "with pairing code box open, with Wi-Fi on, and type its code again. ");
             return;
         }
-        String out = run(context, "adb pair " + LOOPBACK + ":" + port + " " + code);
+        String out = run(service, "adb pair " + LOOPBACK + ":" + port + " " + code);
         if (!out.contains("Successfully paired")) {
-            tell(context, "Not paired", trimmed(out, "adb pair did not succeed."));
+            askForCode(service, "Pairing failed: " + trimmed(out, "adb pair did not succeed.")
+                    + " Tap Pair device with pairing code again and type the new code. ");
             return;
         }
-        Prefs.of(context).edit().putBoolean(Prefs.PHONE_PAIRED, true).apply();
+        Prefs.of(service).edit().putBoolean(Prefs.PHONE_PAIRED, true).apply();
         WorkspaceService.record("Phone: paired with itself over Wireless debugging.");
-        if (connect(context, false)) {
-            tell(context, "Paired and connected", "adb devices in the terminal lists this "
+        if (connect(service, false)) {
+            tell(service, "Paired and connected", "adb devices in the terminal lists this "
                     + "phone. Turn Wireless debugging off when you are done testing.");
         } else {
-            tell(context, "Paired", "Paired. It did not connect just now: with Wireless "
+            tell(service, "Paired", "Paired. It did not connect just now: with Wireless "
                     + "debugging on, tap Test on this phone → Connect now.");
         }
     }
@@ -156,34 +172,78 @@ final class Phone {
      * Connects to the port the phone is advertising. Quiet when the editor starts, loud when
      * the owner tapped Connect. True when adb reports the device connected.
      */
-    static boolean connect(Context context, boolean loud) {
-        int port = discover(context, CONNECT_SERVICE, DISCOVERY_MS);
+    static boolean connect(WorkspaceService service, boolean loud) {
+        if (!service.ensureAdbServer()) {
+            if (loud) tell(service, "adb is not answering", NO_SERVER);
+            return false;
+        }
+        int port = discover(service, CONNECT_SERVICE, DISCOVERY_MS);
         if (port <= 0) {
             if (loud) {
-                tell(context, "Not connected", "Wireless debugging is not advertising a "
+                tell(service, "Not connected", "Wireless debugging is not advertising a "
                         + "port. Turn it on in Developer options — it turns itself off at "
                         + "every restart — with Wi-Fi on, then try again.");
             }
             return false;
         }
-        String out = run(context, "adb connect " + LOOPBACK + ":" + port);
+        String out = run(service, "adb connect " + LOOPBACK + ":" + port);
         boolean ok = out.contains("connected to " + LOOPBACK);
         if (ok) {
+            // A connection only succeeds with a paired key, so this is the proof of pairing
+            // too -- for a phone paired by hand, or before the app was reinstalled.
+            Prefs.of(service).edit().putBoolean(Prefs.PHONE_PAIRED, true).apply();
             WorkspaceService.record("Phone: connected to " + LOOPBACK + ":" + port
                     + " — adb devices lists this phone.");
             if (loud) {
-                tell(context, "Connected", "adb devices in the terminal lists this phone. "
+                tell(service, "Connected", "adb devices in the terminal lists this phone. "
                         + "Turn Wireless debugging off when you are done testing.");
             }
         } else if (loud) {
             boolean notPaired = out.contains("failed to authenticate")
                     || out.contains("unauthorized");
-            tell(context, "Not connected", notPaired
+            tell(service, "Not connected", notPaired
                     ? "This phone has not been paired yet, or the pairing was removed. "
                             + "Choose Pair for the first time."
                     : trimmed(out, "adb connect did not succeed."));
         }
         return ok;
+    }
+
+    private static final String NO_SERVER =
+            "adb is installed, but no adb server is answering inside Linux. Stop the editor "
+                    + "and open it again, then try once more.";
+
+    /** adb's server socket, inside the app's own storage. Its guest path is /root/.android/adb.sock. */
+    static File serverSocket(Context context) {
+        return new File(Workspace.root(context), "root/.android/adb.sock");
+    }
+
+    /**
+     * True when an adb server answers on its socket: the editor's, or the one the service holds.
+     *
+     * A socket in the app's own storage rather than a TCP port, and that is the security
+     * boundary of the whole feature: a port on loopback is reachable by every app on the
+     * phone, the adb wire protocol has no authentication, and it is the server that holds the
+     * paired key. Nothing outside this app's sandbox can open this file. Workspace.start sets
+     * ADB_SERVER_SOCKET for every PRoot, which is what puts the server here.
+     */
+    static boolean serverListening(Context context) {
+        File socket = serverSocket(context);
+        if (!socket.exists()) return false;
+        android.net.LocalSocket client = new android.net.LocalSocket();
+        try {
+            client.connect(new android.net.LocalSocketAddress(socket.getAbsolutePath(),
+                    android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+            return true;
+        } catch (Throwable nobody) {
+            return false;
+        } finally {
+            try {
+                client.close();
+            } catch (Throwable alreadyClosed) {
+                // Nothing to undo.
+            }
+        }
     }
 
     // ------------------------------------------------------------------ the notification
@@ -196,11 +256,16 @@ final class Phone {
      * back here and find the dialog gone.
      */
     static void beginPairing(Activity activity) {
-        askForCode(activity);
+        askForCode(activity, "");
         openDeveloperOptions(activity);
     }
 
-    static void askForCode(Context context) {
+    /**
+     * The notification with the reply box. {@code status} is empty the first time and the
+     * reason the last attempt did not work after that, so the box comes back with its
+     * explanation rather than being replaced by one.
+     */
+    static void askForCode(Context context, String status) {
         NotificationManager manager =
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
@@ -217,12 +282,14 @@ final class Phone {
                 Icon.createWithResource(context, R.drawable.ic_touch), "Enter the code", pending)
                 .addRemoteInput(input)
                 .build();
-        String text = "In Wireless debugging, tap Pair device with pairing code. Type the "
-                + "six digits it shows here, without leaving Settings.";
+        String text = status + "In Wireless debugging, tap Pair device with pairing code. "
+                + "Type the six digits it shows here, without leaving Settings.";
+        if (!status.isEmpty()) WorkspaceService.record("Phone: not paired yet. " + status);
         Notification.Builder builder = new Notification.Builder(context, App.CHANNEL_WORKSPACE);
         try {
             manager.notify(NOTIFICATION, builder
-                    .setContentTitle("Pair this phone with itself")
+                    .setContentTitle(status.isEmpty()
+                            ? "Pair this phone with itself" : "Not paired yet")
                     .setContentText(text)
                     .setStyle(new Notification.BigTextStyle().bigText(text))
                     .setSmallIcon(R.drawable.ic_stat_pocketide)
@@ -232,6 +299,30 @@ final class Phone {
         } catch (Throwable notAllowed) {
             // Notifications denied. The screen that led here checked first and offered the
             // by-hand commands instead; this is the backstop.
+        }
+    }
+
+    /**
+     * Whether a notification from this app can appear at all.
+     *
+     * The permission is one of three switches. An owner can turn the app's notifications off
+     * as a whole, or this one channel off, and either makes notify() a silent no-op --
+     * NotificationManager drops it without an exception. The pairing code is typed INTO a
+     * notification, so this is checked before the owner is sent to Settings to read one.
+     */
+    static boolean canNotify(Context context) {
+        if (!Permissions.notificationsAllowed(context)) return false;
+        NotificationManager manager =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return false;
+        try {
+            if (!manager.areNotificationsEnabled()) return false;
+            android.app.NotificationChannel channel =
+                    manager.getNotificationChannel(App.CHANNEL_WORKSPACE);
+            return channel == null
+                    || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
+        } catch (Throwable unreadable) {
+            return true;
         }
     }
 
@@ -276,6 +367,17 @@ final class Phone {
         }
     }
 
+    /** About phone, where Build number lives: seven taps there turn Developer options on. */
+    static void openAboutPhone(Activity activity) {
+        AppLock.expectReturn();
+        try {
+            activity.startActivity(new Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (Throwable noSuchScreen) {
+            openDeveloperOptions(activity);
+        }
+    }
+
     // ------------------------------------------------------------------ finding the port
 
     /** One discovery at a time: NsdManager refuses a second resolve while one is running. */
@@ -295,7 +397,14 @@ final class Phone {
             final CountDownLatch done = new CountDownLatch(1);
             final AtomicInteger port = new AtomicInteger(-1);
             final AtomicBoolean resolving = new AtomicBoolean(false);
-            NsdManager.DiscoveryListener listener = new NsdManager.DiscoveryListener() {
+            // Everything heard, resolved one at a time. NsdManager refuses a second resolve
+            // while one runs, and it does not repeat onServiceFound for a service it has
+            // already announced -- so a service dropped because another was being resolved
+            // was gone for good. On a Wi-Fi where a laptop advertises adb too, that other
+            // one is exactly what resolves first and is (rightly) rejected.
+            final ConcurrentLinkedQueue<NsdServiceInfo> waiting = new ConcurrentLinkedQueue<>();
+
+            final class Discovery implements NsdManager.DiscoveryListener {
                 @Override public void onStartDiscoveryFailed(String t, int code) {
                     done.countDown();
                 }
@@ -305,11 +414,31 @@ final class Phone {
                 @Override public void onServiceLost(NsdServiceInfo info) {}
                 @Override public void onServiceFound(NsdServiceInfo info) {
                     if (done.getCount() == 0) return;
+                    waiting.add(info);
+                    resolveNext();
+                }
+
+                /**
+                 * Starts the next resolve when none is running. Also kicked every 300 ms by
+                 * the thread waiting below, so a resolve refused as busy is tried again --
+                 * on Android 11 and 12 an earlier resolve can hang for good, and nothing else
+                 * would ever try.
+                 */
+                void resolveNext() {
+                    if (done.getCount() == 0) return;
                     if (!resolving.compareAndSet(false, true)) return;
+                    final NsdServiceInfo next = waiting.poll();
+                    if (next == null) {
+                        resolving.set(false);
+                        return;
+                    }
                     try {
-                        nsd.resolveService(info, new NsdManager.ResolveListener() {
+                        nsd.resolveService(next, new NsdManager.ResolveListener() {
                             @Override public void onResolveFailed(NsdServiceInfo i, int code) {
+                                boolean busy = code == NsdManager.FAILURE_ALREADY_ACTIVE;
+                                if (busy) waiting.add(next);
                                 resolving.set(false);
+                                if (!busy) resolveNext();
                             }
                             @Override public void onServiceResolved(NsdServiceInfo r) {
                                 if (r.getPort() > 0 && isThisPhone(r.getHost())) {
@@ -317,20 +446,27 @@ final class Phone {
                                     done.countDown();
                                 }
                                 resolving.set(false);
+                                resolveNext();
                             }
                         });
                     } catch (Throwable refused) {
                         resolving.set(false);
+                        resolveNext();
                     }
                 }
-            };
+            }
+            final Discovery listener = new Discovery();
             try {
                 nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener);
             } catch (Throwable refused) {
                 return -1;
             }
+            long deadline = System.currentTimeMillis() + timeoutMs;
             try {
-                done.await(timeoutMs, TimeUnit.MILLISECONDS);
+                while (System.currentTimeMillis() < deadline
+                        && !done.await(300, TimeUnit.MILLISECONDS)) {
+                    listener.resolveNext();
+                }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             }
@@ -390,8 +526,11 @@ final class Phone {
                     + "Wireless debugging, which Android added in Android 11. After that, adb "
                     + "devices in the editor's terminal lists this phone, and an agent can "
                     + "install what it built, launch it, read its log, screenshot it, tap it "
-                    + "and run ./gradlew connectedAndroidTest — on real hardware, for nothing. "
-                    + "The emulator cannot run on a phone; this is what replaces it.\n\n"
+                    + "and run its instrumented tests with adb shell am instrument — on real "
+                    + "hardware, for nothing. The emulator cannot run on a phone; this is "
+                    + "what replaces it.\n\nadb answers on a socket inside the app's own "
+                    + "storage, not on a network port, so no other app on the phone can use "
+                    + "the connection.\n\n"
                     + "Know what pairing gives: the same access a computer with USB debugging "
                     + "has — installing and removing apps, reading and writing the phone's "
                     + "shared storage, screenshots and taps — to the terminal and any agent in "
@@ -408,16 +547,25 @@ final class Phone {
                     + "1. Open the editor, so Linux is running.\n"
                     + "2. Here, choose Pair for the first time. A notification appears and "
                     + "Developer options open.\n"
-                    + "3. Turn on Wireless debugging (Wi-Fi must be on), then tap Pair device "
-                    + "with pairing code.\n"
+                    + "3. Tap Wireless debugging — its name, not only its switch — and turn "
+                    + "it on. Wi-Fi must be on, and the first time Android asks whether to "
+                    + "allow it on this network. Then tap Pair device with pairing code.\n"
                     + "4. Pull the notification shade down and type the six digits into "
                     + "Enter the code. Do not leave Settings — the code disappears with it.\n"
                     + "5. The result arrives as a notification, and adb devices in the "
                     + "terminal lists this phone.\n\n"
                     + "Every time after that: turn Wireless debugging on, open the editor, "
                     + "and it connects by itself. Connect now does the same by hand.\n\n"
-                    + "By hand in the terminal, with the ports read off the Wireless "
-                    + "debugging screen:\n"
+                    + "By hand, without the notification: put Settings and the editor side "
+                    + "by side in split-screen, because the pairing code disappears the "
+                    + "moment Settings leaves the screen. Then, with the ports read off the "
+                    + "Wireless debugging screen:\n"
                     + "adb pair 127.0.0.1:PAIRING_PORT CODE\n"
-                    + "adb connect 127.0.0.1:PORT";
+                    + "adb connect 127.0.0.1:PORT\n"
+                    + "Connecting alone needs no split-screen.\n\n"
+                    + "Gradle's own installDebug and connectedAndroidTest talk to adb over a "
+                    + "network port, which is exactly what is closed here so that no other "
+                    + "app on the phone can use the connection. Build the test APK with "
+                    + "./gradlew assembleDebugAndroidTest and run it with adb shell am "
+                    + "instrument — the same thing those tasks would have done.";
 }

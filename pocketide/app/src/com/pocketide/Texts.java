@@ -157,7 +157,7 @@ final class Texts {
              "Can it build an Android app?",
              "Java and Kotlin projects, yes \u2014 into a real, signed, installable APK, with "
                      + "the project\u2019s own ./gradlew, once Settings \u2192 The computer "
-                     + "\u2192 Android build tools has been installed (about 520 MB, once). "
+                     + "\u2192 Android build tools has been installed (about 530 MB, once). "
                      + "That installs a JDK, Google\u2019s own SDK, and aarch64 builds of the "
                      + "four build tools Google only ships for x86-64 \u2014 each checked "
                      + "against a checksum before it is used.\n\nApps containing C or C++ "
@@ -173,10 +173,17 @@ final class Texts {
                      + "the port the phone advertises, you type the six-digit code into a "
                      + "notification, and from then on adb devices in the terminal lists this "
                      + "phone. An agent can install what it built, launch it, read its log, "
-                     + "screenshot it, tap it and run ./gradlew connectedAndroidTest \u2014 on "
-                     + "real hardware, for nothing. JVM and Robolectric tests run here "
-                     + "directly as well, and Install an app built here hands an APK to "
-                     + "Android\u2019s installer without any pairing.\n\nThe emulator cannot "
+                     + "screenshot it, tap it and run its instrumented tests with adb shell "
+                     + "am instrument \u2014 on real hardware, for nothing. JVM and "
+                     + "Robolectric tests run here directly as well, and Install an app built "
+                     + "here hands an APK to Android\u2019s installer without any pairing."
+                     + "\n\nadb answers on a socket inside the app\u2019s own storage rather "
+                     + "than a network port, so no other app on the phone can use the "
+                     + "connection. Gradle\u2019s own installDebug and connectedAndroidTest "
+                     + "tasks expect that port and will not see the phone \u2014 build the "
+                     + "test APK with ./gradlew assembleDebugAndroidTest and run it with adb "
+                     + "shell am instrument, which is what they would have done.\n\nThe "
+                     + "emulator cannot "
                      + "run on a phone: Google ships none for this processor, and even one "
                      + "built by hand needs a virtualisation device Android does not give "
                      + "apps unless the phone is rooted.\n\nKnow what pairing gives: the "
@@ -420,7 +427,7 @@ final class Texts {
                      + "take yourself: Test on this phone. While the phone is paired and "
                      + "connected, adb in the terminal has the shared storage a USB-debugging "
                      + "computer would have, which is why pairing is a step you take and why "
-                     + "the row says so."},
+                     + "the prompt that installs it says so first."},
             {"Safety",
              "Can someone read the app\u2019s own code?",
              "Yes, and that is on purpose: the source is published, and the build that "

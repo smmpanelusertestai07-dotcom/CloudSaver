@@ -15,8 +15,8 @@ APP_BASENAME="PocketIDE"
 # them from here, and the screens can only take them from there. tests/version_agreement.py
 # fails the build if the two ever disagree, because an app that reports one version to the
 # package manager and shows another in Settings produces bug reports nobody can act on.
-VERSION_NAME="2.1.0"
-VERSION_CODE="210"
+VERSION_NAME="2.1.5"
+VERSION_CODE="215"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2

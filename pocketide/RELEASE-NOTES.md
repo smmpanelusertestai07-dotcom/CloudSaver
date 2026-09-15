@@ -1,5 +1,78 @@
 # Release notes
 
+## 2.1.5
+
+What three reviews of 2.1.0 found, within the hour of its publication.
+
+### Test on this phone, corrected
+
+Finding a port could miss this phone's own advertisement. NsdManager resolves one service at a
+time and never repeats an announcement, so on a Wi-Fi where a laptop advertises adb too, the
+laptop resolved first, was rejected — correctly — and this phone's own service, heard during
+that resolve, was dropped for good. Everything heard is queued now and resolved in turn until
+one is this phone's. A successful connect records the phone as paired, so a phone paired by hand
+or before a reinstall no longer says "tap to pair" while `adb devices` lists it. The by-hand
+route is described as it is: the pairing code disappears when Settings leaves the screen, so
+pairing by hand needs Settings and the editor side by side in split-screen, while connecting
+alone does not. The steps name the Wireless debugging page (tap its name, not only its switch)
+and Android's one-time "allow on this network" question. With notifications denied, Pair for
+the first time offers to allow them rather than quoting instructions that could not work as
+quoted; Connect now says where its result will appear; Developer options first opens About
+phone instead of ending at OK.
+
+### The server that was not there
+
+The editor's start runs adb's server, but only when adb existed at that moment — and the
+documented first-run order is open the editor, install adb, pair. In that order there was no
+server; the adb the pairing ran forked one inside its own PRoot, where --kill-on-exit took it
+down the moment the command ended, so the phone said "connected" and the terminal's adb saw
+nothing until the editor was reopened. The service now holds a server of its own whenever none
+answers on loopback (`adb server nodaemon`, alive as long as the service is) and pair and connect
+refuse, saying so, if even that cannot be started. Retryable failures — not six digits, the
+pairing box had closed, a mistyped code — put the reply box back with the reason on it rather
+than replacing it with a notification that said "type here". And "notifications allowed" now
+means all three switches: the permission, the app's notifications as a whole, and the Linux
+channel; any of them off is caught before the owner is sent to Settings to read a code.
+
+### On no network port
+
+adb's server listens on TCP 5037 by default, and on a phone loopback is shared by every app: the
+wire protocol has no authentication, and it is the server that holds the paired key, so while
+the phone was connected any app with the INTERNET permission could have installed, read and
+tapped through it. The server answers on a socket inside the app's own storage now
+(ADB_SERVER_SOCKET, set for every PRoot the app starts and for every login shell), which nothing
+outside the app's sandbox can open. Gradle's own installDebug and connectedAndroidTest speak only
+to the port and fail closed; assembleDebugAndroidTest plus adb shell am instrument does the same
+job, and every text that promised connectedAndroidTest now says so.
+
+### The toolchain, kept whole
+
+check and install only accepted "some line" naming an aapt2; they accept the exact line naming
+the one they verified now, a line this script wrote for an earlier version is replaced, and one
+the owner wrote pointing elsewhere is left and said. The Android Gradle Plugin installs its own
+build-tools version when a project names none, x86-64 and all: every build-tools directory is
+now walked at install and at every check, and any of the four tools that will not run is
+replaced by a copy of the verified aarch64 build, so a directory AGP added overnight is repaired
+before the next build. The closing message says to name buildToolsVersion. The adb link is
+re-made at every check for the same reason. And the safety gates read the scripts with their
+comments stripped, match every spelling of apt install, check the newline guard's condition and
+require the adb server to be started before the editor is launched, because a review showed
+each could be satisfied by a comment or by the right words in the wrong place.
+
+### Numbers that disagreed
+
+Help and the capacity screen said the Android toolchain was 520 MB while the row and its prompt
+said 530: it is 530 everywhere, and the row asks for about 330 when the JDK is already there.
+Two sentences claimed the row says what pairing gives; the prompt that installs it does, and the
+sentences say that now.
+
+### Gates
+
+47, with five more checks inside the safety gate — found services are queued, a connect
+records the pairing, pair and connect first make sure a server answers, a retryable failure
+re-posts the reply box, and all three notification switches are checked before pairing — each
+broken on purpose and confirmed to fail.
+
 ## 2.1.0
 
 An Android build finishes on the phone, and the phone installs it.
@@ -43,9 +116,9 @@ adb server lives exactly as long as the editor does, and `adb devices` in the te
 phone. An agent can `adb install` what it built, launch it, read logcat, screenshot it, tap it
 and run `./gradlew connectedAndroidTest`, on real hardware, for nothing. Google's platform-tools
 carry an x86-64 adb; when the SDK is installed that copy is set aside and Ubuntu's linked at the
-one path the Android Gradle Plugin looks. The row, the FAQ and the install prompt all say what
-pairing gives — what a computer with USB debugging has — and that Android turns it off at every
-restart. adb is pointed at 127.0.0.1 and nowhere else, the code is checked to be six digits
+one path the Android Gradle Plugin looks. The FAQ, the How-this-works dialog and the install
+prompt all say what pairing gives — what a computer with USB debugging has — and that Android
+turns it off at every restart. adb is pointed at 127.0.0.1 and nowhere else, the code is checked to be six digits
 before it reaches a command line, and the receiver the code arrives through is not exported.
 
 ### Five things a review found

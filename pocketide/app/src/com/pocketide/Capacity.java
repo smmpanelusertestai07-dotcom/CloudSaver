@@ -170,7 +170,7 @@ final class Capacity {
                 .append("Those are the MEMORY limits. Before any of them applies, an Android "
                         + "build needs the toolchain from Settings → The computer → Android "
                         + "build tools: a JDK, Google's SDK, and aarch64 builds of the four "
-                        + "tools Google ships as x86-64 only. About 520 MB, once.\n\n")
+                        + "tools Google ships as x86-64 only. About 530 MB, once.\n\n")
 
                 .append("Websites, servers, command-line programs and anything else that "
                         + "compiles for arm64 Linux have no such ceiling. Node, Deno, Python, "
