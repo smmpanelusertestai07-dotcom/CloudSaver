@@ -364,6 +364,12 @@ if "MODE_FULL_INSTALL" not in installer_src or "STATUS_PENDING_USER_ACTION" not 
                     "record")
 if "getLaunchIntentForPackage" not in installer_src:
     problems.append("there is no way to open an installed app without adb")
+if "synchronized (ONE_AT_A_TIME)" not in installer_src:
+    problems.append("two installs at once share one result slot, so each could be told the "
+                    "other's answer")
+if "offerConfirmation(context, confirm" not in installer_src:
+    problems.append("a confirmation Android refuses to bring to the front is a silent timeout: "
+                    "the same question has to reach the notification shade too")
 if "<queries" in open(app + "/app/AndroidManifest.xml").read():
     problems.append("the manifest asks to see other packages; being the installer of record is "
                     "what makes the apps built here visible, and nothing else should be")
