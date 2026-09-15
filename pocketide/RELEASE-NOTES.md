@@ -4,6 +4,64 @@
 
 What three reviews of 2.1.0 found, within the hour of its publication.
 
+### Text size that works
+
+The editor's zoom was written as window.zoomLevel, and three menu rows pressed the editor's
+zoom commands. Neither exists in the web build of the editor: zoomLevel is an Electron setting,
+and code-server's workbench answered the commands with "command not found". So the whole
+text-size feature — the zoom worked out from the phone's width and text-size setting, the
+Editor size picker, Smaller and Larger in the menu — changed nothing on screen. It is the
+page's viewport now, which is where a browser keeps its zoom: the same arithmetic (a layout
+width of widthDp / 1.2^z at a scale of 1.2^z) applied by the app to the editor's page, at
+once, with no restart, re-applied when the phone is turned so the editor always fills the
+screen, and with pinch still free above it. The zoom is worked out from the upright width, so
+an editor opened sideways no longer overflows the moment the phone comes back up.
+
+### The editor's own settings, kept
+
+settings.json was written from scratch at every start, and keybindings.json with it, so a
+colour theme chosen in the editor, a font, an agent's stored settings and any shortcut the
+owner added were gone by the next opening. Both are merged now: the app sets its own keys and
+carries everything else over.
+
+### The menu and the keys agree
+
+F5 to F7 were bound once, when the editor started, while the menu re-read the installed
+agents whenever the editor screen came back — so an agent installed since the start could open
+the wrong panel, or start the debugger. The bindings and the menu now come from one read, made
+whenever the editor screen comes to the front and again after every install or removal; the
+editor reloads the file when it changes.
+
+### Marks, honestly
+
+Three publisher logos shipped in the app were never shown anywhere, two of them were
+look-alikes rather than the publishers' own icons, and the notices said they were displayed.
+They are gone, with Microsoft's Visual Studio Code icon, which is the mark of a build this is
+not: the set-up screen shows the app's own glyph beside "code-server · the open-source Visual
+Studio Code (Code - OSS)", and the notices say exactly what is and is not shown. The editor
+itself shows its own mark, Coder's, at its top-left, as it should. Search never says "official"
+without the registry's own "verified". Sizes on the agent rows say "about", are current, and
+the comment that promised a size gate promises only the gate that exists.
+
+### Dialogs, splash, shortcut, cursor
+
+Dialogs are built in the app's own light or dark, with Theme.Material rather than the maker's
+DeviceDefault, so a dark app on a light phone no longer gets a light frame and invisible button
+ripples, and a realme skin no longer restyles the buttons. The platform's accent — the text
+cursor, the selection handles, the highlight — is the brand's, not the wallpaper's. The splash
+mark's fade animated a property a vector group does not have and never played; it fades on the
+root now. Android 12 and later show their own splash and are not shown a second one. The
+long-press shortcut's icon was a white glyph the launcher wrapped in a white disc; it is an
+adaptive icon on the brand tile. The trackpad's hint follows the phone's text-size setting.
+
+### Smaller
+
+Help says 1.4 GB free to set up, which is what Home checks, and about 4 GB with the browser and
+the Android build tools; the Agents row is described as opening the editor, where Menu names
+the agent. The tools script reads an ELF's own processor field instead of trusting an exit code
+PRoot does not give. A pairing resolve that never answers is given up on after three seconds so
+the next in line is tried, and two quick taps cannot start two adb servers.
+
 ### Test on this phone, corrected
 
 Finding a port could miss this phone's own advertisement. NsdManager resolves one service at a
@@ -68,10 +126,15 @@ sentences say that now.
 
 ### Gates
 
-47, with five more checks inside the safety gate — found services are queued, a connect
-records the pairing, pair and connect first make sure a server answers, a retryable failure
-re-posts the reply box, and all three notification switches are checked before pairing — each
-broken on purpose and confirmed to fail.
+47, with the audit's checks inside them: the zoom is applied as the page's viewport with a wide
+viewport and nothing writes or binds the desktop-only zoom; the keys and the menu come from one
+read, after every install and removal, and the owner's own bindings and settings survive a
+start; dialogs in the app's theme, the brand accent in both themes, the splash fade on the root,
+one splash on Android 12, an adaptive shortcut icon, no product mark shipped, "official" only
+with "verified"; found services queued, a connect records the pairing, a server answering
+before adb runs, the reply box re-posted on a retryable failure, all three notification
+switches, a hung resolve given up on, one adb server at a time, and the ELF's own word on its
+processor. Every one broken on purpose and confirmed to fail.
 
 ## 2.1.0
 

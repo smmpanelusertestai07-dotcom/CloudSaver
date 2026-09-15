@@ -28,10 +28,25 @@ final class Dialogs {
 
     private Dialogs() {}
 
+    /**
+     * The platform dialog, in the app's OWN light or dark rather than the phone's.
+     *
+     * A builder given only the activity takes the phone's night mode and the maker's
+     * DeviceDefault skin: set this app to Dark on a phone in Light mode and the dialog's frame,
+     * its button ripple and the selection handles on a selectable block came out of the wrong
+     * theme, inside a card show() had already painted dark. Theme.Material rather than
+     * DeviceDefault, so a realme or Samsung skin does not restyle the buttons either.
+     */
+    private static AlertDialog.Builder builder(Activity activity, boolean dark) {
+        return new AlertDialog.Builder(activity, dark
+                ? android.R.style.Theme_Material_Dialog_Alert
+                : android.R.style.Theme_Material_Light_Dialog_Alert);
+    }
+
     /** A message with one button. Used when there is nothing to decide. */
     static void message(Activity activity, String title, CharSequence body) {
         boolean dark = Ui.dark(activity);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = builder(activity, dark)
                 .setView(body(activity, dark, title, body))
                 .setPositiveButton("OK", null)
                 .create();
@@ -47,7 +62,7 @@ final class Dialogs {
     static void confirm(Activity activity, String title, CharSequence body, String action,
                         boolean destructive, Runnable onConfirmed) {
         boolean dark = Ui.dark(activity);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = builder(activity, dark)
                 .setView(body(activity, dark, title, body))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton(action, (d, which) -> onConfirmed.run())
@@ -68,7 +83,7 @@ final class Dialogs {
     static void ask(Activity activity, String title, CharSequence body, String yes, String no,
                     Runnable onYes, Runnable onNo) {
         boolean dark = Ui.dark(activity);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = builder(activity, dark)
                 .setView(body(activity, dark, title, body))
                 .setNegativeButton(no, (d, which) -> onNo.run())
                 .setPositiveButton(yes, (d, which) -> onYes.run())
@@ -116,7 +131,7 @@ final class Dialogs {
 
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(column);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = builder(activity, dark)
                 .setView(scroll)
                 .setNegativeButton("Cancel", null)
                 .create();
@@ -153,7 +168,7 @@ final class Dialogs {
 
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(column);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog dialog = builder(activity, dark)
                 .setView(scroll)
                 .setCancelable(false)
                 // Made now and hidden until the work ends. A button added to a dialog that is
@@ -262,7 +277,7 @@ final class Dialogs {
         }
         ScrollView scroll = new ScrollView(activity);
         scroll.addView(column);
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+        AlertDialog.Builder builder = builder(activity, dark)
                 .setView(scroll)
                 .setNegativeButton("Close", null);
         if (raw != null && !raw.isEmpty()) {

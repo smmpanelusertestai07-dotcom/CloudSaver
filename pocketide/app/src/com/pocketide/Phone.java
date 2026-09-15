@@ -397,6 +397,8 @@ final class Phone {
             final CountDownLatch done = new CountDownLatch(1);
             final AtomicInteger port = new AtomicInteger(-1);
             final AtomicBoolean resolving = new AtomicBoolean(false);
+            final java.util.concurrent.atomic.AtomicLong resolvingSince =
+                    new java.util.concurrent.atomic.AtomicLong(0L);
             // Everything heard, resolved one at a time. NsdManager refuses a second resolve
             // while one runs, and it does not repeat onServiceFound for a service it has
             // already announced -- so a service dropped because another was being resolved
@@ -432,6 +434,7 @@ final class Phone {
                         resolving.set(false);
                         return;
                     }
+                    resolvingSince.set(System.currentTimeMillis());
                     try {
                         nsd.resolveService(next, new NsdManager.ResolveListener() {
                             @Override public void onResolveFailed(NsdServiceInfo i, int code) {
@@ -465,6 +468,14 @@ final class Phone {
             try {
                 while (System.currentTimeMillis() < deadline
                         && !done.await(300, TimeUnit.MILLISECONDS)) {
+                    // A resolve that never calls back -- Android 11 and 12 can hang one for
+                    // good -- would otherwise hold the queue until the deadline. After three
+                    // seconds it is given up on and the next in line is tried; a late answer
+                    // from it is harmless, and a busy refusal is queued again as above.
+                    if (resolving.get()
+                            && System.currentTimeMillis() - resolvingSince.get() > 3000) {
+                        resolving.set(false);
+                    }
                     listener.resolveNext();
                 }
             } catch (InterruptedException interrupted) {

@@ -256,29 +256,65 @@ final class Extensions {
     static final int FIRST_PANEL_KEY = 5;
     static final int PANEL_KEYS = 3;
 
-    static void writeKeybindings(Context context) {
+    /** Writes the file and returns the panels it bound, so a menu can be built from the same list. */
+    static List<Panel> writeKeybindings(Context context) {
+        List<Panel> panels = panels(context);
         File user = userDirectory(context);
-        if (!user.isDirectory() && !user.mkdirs()) return;
+        if (!user.isDirectory() && !user.mkdirs()) return panels;
+        File file = new File(user, "keybindings.json");
         StringBuilder json = new StringBuilder();
-        json.append("// Written by PocketIDE. The editor's menu presses these.\n[\n");
+        json.append("// Written by PocketIDE. The editor's menu presses F1 to F11; anything "
+                + "else here is yours and is kept.\n[\n");
+        for (String kept : ownersBindings(file)) json.append("  ").append(kept).append(",\n");
         append(json, "f1", "workbench.action.showCommands");
         append(json, "f2", "workbench.view.explorer");
         append(json, "f3", "workbench.action.terminal.toggleTerminal");
         append(json, "f4", "workbench.view.extensions");
-        List<Panel> panels = panels(context);
         for (int i = 0; i < PANEL_KEYS && i < panels.size(); i++) {
             append(json, "f" + (FIRST_PANEL_KEY + i), panels.get(i).command);
         }
-        append(json, "f8", "workbench.action.zoomOut");
-        append(json, "f9", "workbench.action.zoomIn");
-        append(json, "f10", "workbench.action.zoomReset");
+        // F8 to F10 once bound workbench.action.zoomOut, zoomIn and zoomReset. Those exist
+        // only in the desktop build; the web build the phone runs answered "command not
+        // found", and the text size is the WebView's own business now (WorkspaceActivity).
         append(json, "f11", "workbench.action.toggleSidebarVisibility");
         // The trailing comma of the last entry, removed: a comment-tolerant parser still
         // refuses a dangling comma before the closing bracket.
         int comma = json.lastIndexOf(",");
         if (comma > 0) json.deleteCharAt(comma);
         json.append("]\n");
-        write(new File(user, "keybindings.json"), json.toString());
+        write(file, json.toString());
+        return panels;
+    }
+
+    /**
+     * The bindings in the file that are not this app's, kept across a rewrite.
+     *
+     * An owner who added a binding of their own through the editor's Keyboard Shortcuts
+     * screen wrote it into this same file, and a rewrite that started from nothing threw it
+     * away at every start. Everything whose key is not one of the app's F keys is carried
+     * over as it was. A file that cannot be parsed -- half-written, or a format this build
+     * does not know -- keeps nothing, which is only what happened before at every start.
+     */
+    private static List<String> ownersBindings(File file) {
+        List<String> kept = new ArrayList<>();
+        if (!file.isFile()) return kept;
+        try {
+            StringBuilder plain = new StringBuilder();
+            for (String line : read(file).split("\n")) {
+                if (!line.trim().startsWith("//")) plain.append(line).append('\n');
+            }
+            JSONArray entries = new JSONArray(plain.toString());
+            for (int i = 0; i < entries.length(); i++) {
+                JSONObject entry = entries.optJSONObject(i);
+                if (entry == null) continue;
+                String key = entry.optString("key", "").trim().toLowerCase(Locale.ROOT);
+                if (key.matches("f([1-9]|1[01])")) continue;
+                kept.add(entry.toString());
+            }
+        } catch (Throwable unreadable) {
+            kept.clear();
+        }
+        return kept;
     }
 
     private static void append(StringBuilder json, String key, String command) {

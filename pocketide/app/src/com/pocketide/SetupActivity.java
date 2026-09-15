@@ -230,13 +230,17 @@ public final class SetupActivity extends Activity {
         LinearLayout editorRow = new LinearLayout(this);
         editorRow.setOrientation(LinearLayout.HORIZONTAL);
         editorRow.setGravity(Gravity.CENTER_VERTICAL);
+        // The app's own glyph, not Microsoft's product mark: what is installed is Code - OSS
+        // as code-server, MIT-licensed, and the Visual Studio Code icon is a trademark of a
+        // build this is not. The editor shows its own mark, Coder's, at its top-left.
         ImageView code = new ImageView(this);
-        code.setImageResource(R.drawable.logo_vscode);
+        code.setImageResource(R.drawable.ic_code);
+        code.setImageTintList(ColorStateList.valueOf(Ui.muted(dark)));
         int codeSize = Ui.dp(this, 28);
         editorRow.addView(code, new LinearLayout.LayoutParams(codeSize, codeSize));
         TextView codeWords = Ui.text(this,
-                "Visual Studio Code 1.137 · code-server 4.137 · MIT licensed, no Microsoft "
-                        + "account required", 12.5f, Ui.muted(dark));
+                "code-server 4.137 · the open-source Visual Studio Code (Code - OSS 1.137) · "
+                        + "MIT licensed, no Microsoft account required", 12.5f, Ui.muted(dark));
         LinearLayout.LayoutParams codeParams = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         codeParams.leftMargin = Ui.dp(this, 12);

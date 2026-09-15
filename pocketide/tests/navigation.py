@@ -28,6 +28,11 @@ app = sys.argv[1]
 src = app + "/app/src/com/pocketide/"
 
 
+def shell_code_of(path):
+    """A shell script with its comments removed, so prose cannot satisfy a check."""
+    return re.sub(r'^\s*#.*$', '', open(path).read(), flags=re.M)
+
+
 def code(name):
     text = open(src + name).read()
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
@@ -37,6 +42,7 @@ def code(name):
 problems = []
 shell = code("Shell.java")
 main = code("MainActivity.java")
+editor = code("WorkspaceActivity.java")
 screen = code("Screen.java")
 service = code("WorkspaceService.java")
 
@@ -266,14 +272,77 @@ if "fontScale" not in screen:
 if "widthDp" not in screen:
     problems.append("Screen never reads the screen's width")
 
-# The service must ask Screen rather than read the preference, or the automatic value is
-# computed, shown in Settings, and then not used.
-if "Screen.zoomTenths" not in service or "Screen.layout" not in service:
-    problems.append("WorkspaceService does not ask Screen for the zoom and layout, so whatever "
-                    "Settings shows is not what the editor is started with")
+# The service must ask Screen for the layout rather than read the preference, or the automatic
+# value is computed, shown in Settings, and then not used.
+if "Screen.layout" not in service:
+    problems.append("WorkspaceService does not ask Screen for the layout, so whatever Settings "
+                    "shows is not what the editor is started with")
 if re.search(r'Prefs\.EDITOR_ZOOM', service):
     problems.append("WorkspaceService still reads EDITOR_ZOOM directly, bypassing the automatic "
                     "value")
+
+# --- the zoom is applied where a browser keeps it, because the editor has no zoomLevel --------
+#
+# The web build of the editor has no window.zoomLevel and no zoom commands: both are Electron's.
+# A release wrote the setting and bound the commands, and the whole text-size feature was inert
+# while three menu rows raised "command not found". The size is the page's viewport now: the
+# activity names a layout width and a scale from Screen, with the wide viewport the WebView
+# needs to honour a width, and nothing writes or binds the desktop-only things.
+if "Screen.scale(this)" not in editor or "initial-scale=" not in editor:
+    problems.append("WorkspaceActivity does not apply the zoom as the page's viewport, so the "
+                    "text size worked out in Screen changes nothing on screen")
+if "setUseWideViewPort(true)" not in editor:
+    problems.append("the WebView is not given a wide viewport, so the layout width named in the "
+                    "viewport rule is ignored and the zoom cannot take effect")
+if "window.zoomLevel" in shell_code_of(app + "/app/assets/pocketide-editor.sh"):
+    problems.append("the editor script still writes window.zoomLevel, which the web build "
+                    "ignores; the text size lives in the WebView's viewport")
+if "workbench.action.zoom" in code("Extensions.java"):
+    problems.append("keybindings still bind the desktop-only zoom commands, which the web build "
+                    "answers with 'command not found'")
+
+# --- the keys and the menu come from one read, and the owner's own bindings survive ------------
+if "Extensions.writeKeybindings(this)" not in editor:
+    problems.append("the editor screen builds its menu from a list the keybindings were not "
+                    "written from, so an agent installed since the start can open another's panel")
+if code("AgentsPane.java").count("Extensions.writeKeybindings(host)") < 2:
+    problems.append("installing or removing an agent does not rewrite the keybindings, so F5 to "
+                    "F7 keep pointing at what was installed when the editor started")
+if ": ownersBindings(file))" not in code("Extensions.java"):
+    problems.append("writeKeybindings starts from nothing, so a shortcut the owner added in the "
+                    "editor is thrown away at every start")
+if "json.loads" not in shell_code_of(app + "/app/assets/pocketide-editor.sh") \
+        or "setdefault" not in shell_code_of(app + "/app/assets/pocketide-editor.sh"):
+    problems.append("write_settings writes settings.json from scratch, so a theme or font the "
+                    "owner chose in the editor, and any agent's stored settings, are lost at "
+                    "every start")
+
+# --- the app's own theme and marks -------------------------------------------------------------
+if "Theme_Material_Dialog_Alert" not in code("Dialogs.java"):
+    problems.append("dialogs take the phone's night mode and the maker's skin instead of the "
+                    "app's own light or dark")
+for variant in ("values", "values-night"):
+    if "android:colorAccent" not in open(app + "/app/res/" + variant + "/styles.xml").read():
+        problems.append("%s/styles.xml leaves the platform accent to the wallpaper, so the "
+                        "search box's cursor and selection come out in another colour" % variant)
+animated = open(app + "/app/res/drawable/splash_mark_animated.xml").read()
+if not re.search(r'<target android:name="root">.*?propertyName="alpha"', animated, re.S):
+    problems.append("the splash fade animates alpha on a vector group, which has none, so it "
+                    "never plays")
+if "SDK_INT >= 31) return;" not in code("BrandFrame.java"):
+    problems.append("a second splash is drawn after Android 12's own")
+shortcuts_xml = open(app + "/app/res/xml/shortcuts.xml").read()
+shortcut_icon = re.search(r'android:icon="@drawable/(\w+)"', shortcuts_xml)
+if not shortcut_icon or "<adaptive-icon" not in open(
+        app + "/app/res/drawable/" + shortcut_icon.group(1) + ".xml").read():
+    problems.append("the long-press shortcut's icon is a bare glyph the launcher wraps in a "
+                    "white disc")
+for stray in os.listdir(app + "/app/res/drawable-nodpi"):
+    if stray.startswith("logo_"):
+        problems.append("a product mark ships in the app (%s); none is shown and none should be"
+                        % stray)
+if "listing.verified && Agents.official(listing.namespace)" not in code("AgentsPane.java"):
+    problems.append("search can say 'official' about a version the registry has not verified")
 
 # --- nothing slow on the thread that draws -----------------------------------------------
 #

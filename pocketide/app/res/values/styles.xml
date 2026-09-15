@@ -20,6 +20,14 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowNoTitle">true</item>
+        <!-- The three things the platform draws in its own accent inside this app's fixed
+             palette: the text cursor, the selection handles and the selection highlight of the
+             search box and of every selectable block. Left to DeviceDefault they take the
+             wallpaper's or the maker's colour, which on a violet interface is one green
+             cursor. -->
+        <item name="android:colorAccent">@color/brand_accent</item>
+        <item name="android:colorControlActivated">@color/brand_accent</item>
+        <item name="android:textColorHighlight">#408B55E8</item>
     </style>
 
     <!-- The splash: the brand tile flat, with the mark centred. A window background takes a

@@ -266,9 +266,9 @@ public final class WorkspaceService extends Service {
             // Screen decides both when the owner has not: the zoom from this phone's own width
             // and font scale, the layout from whether the screen is wide enough for it.
             String layout = Screen.layout(this);
-            int zoomTenths = Screen.zoomTenths(this);
+            // No zoom here. The web build has no window.zoomLevel; the text size is the
+            // WebView's viewport, applied by WorkspaceActivity from the same Screen.
             String command = "PIDE_LAYOUT=" + layout
-                    + " PIDE_ZOOM=" + (zoomTenths / 10) + "." + (zoomTenths % 10)
                     + " bash /opt/pocketide/pocketide-editor.sh start";
             editor = Workspace.start(this, command);
             announce(null, "Starting the editor…", "setting-up", -1);
@@ -383,7 +383,7 @@ public final class WorkspaceService extends Service {
      * and the terminal's adb, in whichever PRoot, finds it on loopback. It ends with the
      * workspace, in stopEverything.
      */
-    boolean ensureAdbServer() {
+    synchronized boolean ensureAdbServer() {
         if (Phone.serverListening(this)) return true;
         if (!Phone.adbInstalled(this)) return false;
         try {

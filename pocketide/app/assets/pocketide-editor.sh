@@ -168,14 +168,76 @@ EOF
 #   wrong reason, and a maintainer who dropped --disable-update-check believing update.mode
 #   covered it would get the notification back.
 write_settings() {
-  local layout zoom
+  local layout file="$USER_DATA/User/settings.json"
   layout="${PIDE_LAYOUT:-phone}"
-  zoom="${PIDE_ZOOM:-1.5}"
+  mkdir -p "$USER_DATA/User"
+  # Merged over what is there, never written from scratch: the editor writes the owner's own
+  # choices -- a colour theme, a font, an agent extension's stored settings -- into this same
+  # file, and a start that replaced it threw all of that away every time. Policy keys
+  # (telemetry, updates, trust) are always set; the phone-layout keys are set only when
+  # absent, so a choice the owner made in the editor stands; and for the desktop layout the
+  # four layout keys are removed only while they still hold this script's values. python3 is
+  # in the base image (set-up installs it); without it the file is written whole, as before.
+  # No window.zoomLevel: the web build has none, and the text size is the app's viewport.
+  if command -v python3 >/dev/null 2>&1; then
+    if PIDE_LAYOUT_CHOSEN="$layout" python3 - "$file" <<'PYEOF'
+import json, os, re, sys
+path = sys.argv[1]
+layout = os.environ.get("PIDE_LAYOUT_CHOSEN", "phone")
+try:
+    text = open(path, encoding="utf-8").read()
+    text = re.sub(r'^\s*//.*$', '', text, flags=re.M)
+    settings = json.loads(text) if text.strip() else {}
+    if not isinstance(settings, dict):
+        settings = {}
+except Exception:
+    settings = {}
+layout_keys = {
+    "window.commandCenter": True,
+    "workbench.activityBar.location": "bottom",
+    "workbench.statusBar.visible": False,
+    "workbench.editor.showTabs": "none",
+}
+phone = dict(layout_keys)
+phone.update({
+    "workbench.tips.enabled": False,
+    "editor.minimap.enabled": False,
+    "editor.fontSize": 13,
+    "editor.lineNumbers": "on",
+    "editor.wordWrap": "on",
+    "editor.stickyScroll.enabled": False,
+    "terminal.integrated.fontSize": 13,
+    "explorer.compactFolders": False,
+})
+always = {
+    "workbench.startupEditor": "none",
+    "telemetry.telemetryLevel": "off",
+    "update.mode": "none",
+    "security.workspace.trust.enabled": False,
+    "extensions.autoCheckUpdates": True,
+    "extensions.autoUpdate": True,
+}
+if layout == "desktop":
+    for key, ours in layout_keys.items():
+        if settings.get(key) == ours:
+            del settings[key]
+else:
+    for key, ours in phone.items():
+        settings.setdefault(key, ours)
+settings.update(always)
+tmp = path + ".tmp"
+with open(tmp, "w", encoding="utf-8") as out:
+    json.dump(settings, out, indent=2, sort_keys=True)
+    out.write("\n")
+os.replace(tmp, path)
+PYEOF
+    then return 0; fi
+  fi
 
+  # Without python3, settings.json for the desktop layout is written whole, as before.
   if [ "$layout" = "desktop" ]; then
-    cat > "$USER_DATA/User/settings.json" <<EOF
+    cat > "$file" <<EOF
 {
-  "window.zoomLevel": ${zoom},
   "telemetry.telemetryLevel": "off",
   "update.mode": "none",
   "workbench.startupEditor": "none",
@@ -187,7 +249,8 @@ EOF
     return 0
   fi
 
-  cat > "$USER_DATA/User/settings.json" <<EOF
+  # Without python3, settings.json for the phone layout is written whole, as before.
+  cat > "$file" <<EOF
 {
   "window.commandCenter": true,
   "workbench.activityBar.location": "bottom",
@@ -195,7 +258,6 @@ EOF
   "workbench.editor.showTabs": "none",
   "workbench.startupEditor": "none",
   "workbench.tips.enabled": false,
-  "window.zoomLevel": ${zoom},
   "editor.minimap.enabled": false,
   "editor.fontSize": 13,
   "editor.lineNumbers": "on",

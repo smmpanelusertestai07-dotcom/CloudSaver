@@ -432,11 +432,13 @@ EOF
       >> "$HOME_DIR/.bashrc"
 }
 
-# True when a binary can be executed on this processor at all: 126 is bash saying it cannot,
-# whatever the program would have said about its arguments.
+# True when a binary is built for this processor: the ELF e_machine field, one byte at offset
+# 18 (little-endian), is 0xB7 for AArch64 and 0x3E for x86-64. Read rather than run, because
+# under PRoot a foreign binary does not fail in the kernel with bash's 126: PRoot's own loader
+# takes the exec, resolves the x86-64 interpreter it names, and fails with whatever status
+# that gives, which an exit-code test mistook for "it runs".
 runs() {
-  "$1" --version >/dev/null 2>&1
-  [ $? -ne 126 ]
+  [ "$(od -An -tx1 -j18 -N1 "$1" 2>/dev/null | tr -d ' \n')" = "b7" ]
 }
 
 # The same four tools in EVERY build-tools directory, not only the one this script installs.

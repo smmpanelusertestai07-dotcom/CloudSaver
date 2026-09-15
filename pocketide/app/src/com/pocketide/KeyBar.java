@@ -253,7 +253,10 @@ final class KeyBar extends LinearLayout {
             stroke.setStrokeWidth(Math.max(1, Ui.dp(context, 1)));
             stroke.setColor(Ui.line(dark));
             label.setColor(Ui.muted(dark));
-            label.setTextSize(Ui.dp(context, 11));
+            // sp, like every other line of text in the app: a phone set to large text grows it.
+            label.setTextSize(android.util.TypedValue.applyDimension(
+                    android.util.TypedValue.COMPLEX_UNIT_SP, 11,
+                    context.getResources().getDisplayMetrics()));
             label.setTextAlign(Paint.Align.CENTER);
         }
 

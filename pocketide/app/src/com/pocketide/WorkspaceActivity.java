@@ -121,6 +121,18 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
             if (keys != null) keys.restore(keyState);
             if (AppLock.isLocked(this)) AppLock.show(this, lockRoot, null);
         }
+        // The layout width follows the way the phone is held; the zoom does not change.
+        if (shown && web != null) web.post(() -> applyViewport(web));
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        // Settings may have changed the text size, and the Agents screen may have installed
+        // something with a panel, while the editor kept running underneath.
+        if (shown && web != null) {
+            applyViewport(web);
+            loadPanels();
+        }
     }
 
     @Override protected void onStart() {
@@ -385,9 +397,10 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        // The editor is a local server on this phone, laid out at the phone's own width: no
-        // wide viewport and no overview mode, which are for websites built for a desktop.
-        settings.setUseWideViewPort(false);
+        // A wide viewport, because the page's own viewport rule is how the editor is sized:
+        // applyViewport() names a layout width and a scale, and the WebView honours a width
+        // in that rule only with this on. No overview mode: the scale is chosen, not fitted.
+        settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(false);
         // Pinch to zoom, as a browser does. It was refused before, and an owner asked for it
         // by name: a diff, a diagram in a panel or a small line of terminal output is
@@ -478,7 +491,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                     signInWithForm();
                     return;
                 }
-                allowPinchZoom(web);
+                applyViewport(web);
                 showEditor();
             }
         });
@@ -718,6 +731,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
                     // Zero is not a function key: it is the one row here that the app itself
                     // acts on rather than passing to the editor.
                     if (key == 0) toggleFullScreen();
+                    else if (key >= 8 && key <= 10) resizeText(key);
                     else press(key);
                 });
     }
@@ -778,28 +792,61 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
 
     private void loadPanels() {
         new Thread(() -> {
-            final java.util.List<Extensions.Panel> found = Extensions.panels(this);
+            // The keys and the menu from ONE read: the file that decides what F5 to F7 do is
+            // rewritten here from the same list the rows are built from, so an agent
+            // installed since the editor started opens its own panel and not another's.
+            // The editor reloads keybindings.json when it changes; nothing restarts.
+            final java.util.List<Extensions.Panel> found = Extensions.writeKeybindings(this);
             runOnUiThread(() -> panels = found);
         }, "read-panels").start();
     }
 
     /**
-     * Lets the owner pinch to zoom the editor's page.
+     * Sizes the editor: the page's viewport, which is where a browser's own zoom lives.
      *
-     * The workbench declares a viewport that forbids scaling, which is right for a desktop and
-     * wrong for a thumb. The WebView's own zoom setting is not enough on its own -- the page's
-     * viewport rule wins -- so the rule is loosened after the page has loaded. The layout width
-     * is untouched: it stays the phone's own width, and only the scale is freed.
+     * The web build of the editor has no window.zoomLevel -- that is an Electron setting, and
+     * the three zoom commands that go with it do not exist in the workbench code-server
+     * serves -- so the setting the app used to write did nothing, and the three text-size
+     * rows in the menu raised "command not found". What a browser has instead is the viewport
+     * rule: a layout width in CSS pixels and a scale. Naming widthDp / 1.2^z as the width and
+     * 1.2^z as the scale gives exactly zoomLevel's arithmetic, worked out in Screen: the
+     * workbench lays itself out in the narrower width and is drawn larger to fill the screen.
+     * Pinch stays free above that scale, as in a browser, and never goes below it.
+     *
+     * Re-applied on every load, on return from Settings and when the phone is turned: the
+     * zoom is worked out from the upright width and left alone, and the layout width follows
+     * whichever way the phone is held, so the editor always fills the screen.
      */
-    private void allowPinchZoom(WebView view) {
+    private void applyViewport(WebView view) {
         if (view == null) return;
+        double scale = Screen.scale(this);
+        int width = Math.max(1, (int) Math.round(Screen.currentWidthDp(this) / scale));
+        String content = "width=" + width + ", initial-scale=" + decimal(scale)
+                + ", minimum-scale=" + decimal(scale) + ", maximum-scale=" + decimal(scale * 4)
+                + ", user-scalable=yes";
         view.evaluateJavascript(
                 "(function(){var m=document.querySelector('meta[name=viewport]');"
                         + "if(!m){m=document.createElement('meta');m.name='viewport';"
                         + "document.head.appendChild(m);}"
-                        + "m.setAttribute('content','width=device-width, initial-scale=1, "
-                        + "minimum-scale=1, maximum-scale=4, user-scalable=yes');})();",
+                        + "m.setAttribute('content','" + content + "');})();",
                 null);
+    }
+
+    private static String decimal(double value) {
+        return String.format(java.util.Locale.ROOT, "%.3f", value);
+    }
+
+    /**
+     * Smaller, larger, or back to automatic: the three text-size rows of the menu, acted on
+     * here rather than sent to the editor, which has no command for them. Three tenths of a
+     * zoom level a step, which is about 6 per cent; applied at once, and remembered.
+     */
+    private void resizeText(int key) {
+        int current = Screen.zoomTenths(this);
+        int next = key == 8 ? Math.max(1, current - 3)
+                : key == 9 ? Math.min(Screen.MAX_ZOOM_TENTHS, current + 3) : 0;
+        Prefs.of(this).edit().putInt(Prefs.EDITOR_ZOOM, next).apply();
+        applyViewport(web);
     }
 
     // ------------------------------------------------------------------ keys

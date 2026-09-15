@@ -8,7 +8,7 @@ import android.view.WindowManager;
  * How large the editor should draw itself on this particular phone.
  *
  * Visual Studio Code was designed for a window about four times as wide as a phone, and the one
- * number that decides whether it is usable here is window.zoomLevel. Get it wrong in one
+ * number that decides whether it is usable here is its zoom level. Get it wrong in one
  * direction and the text is too small to read; wrong in the other and a single panel fills the
  * screen with nothing beside it. The right value is different on a 5-inch phone, a 6.7-inch
  * phone and a folded-open tablet, which is why it is worked out rather than chosen.
@@ -16,9 +16,13 @@ import android.view.WindowManager;
  * The arithmetic, and it is arithmetic rather than taste:
  *
  *   The WebView hands code-server roughly one CSS pixel per density-independent pixel, so the
- *   editor starts with the phone's own width in dp. window.zoomLevel z scales everything by
+ *   editor starts with the phone's own width in dp. A zoom level z scales everything by
  *   1.2^z -- VS Code's own step, not an invention here -- which leaves the editor an EFFECTIVE
- *   width of widthDp / 1.2^z to lay itself out in.
+ *   width of widthDp / 1.2^z to lay itself out in. The web build of the editor has no
+ *   window.zoomLevel of its own (that is an Electron setting, and the one the app once wrote
+ *   did nothing), so WorkspaceActivity applies z as the page's viewport: that width as the
+ *   layout width and 1.2^z as the scale, which is the same arithmetic in the place a browser
+ *   keeps it.
  *
  *   Below about 300 effective pixels the editor stops being an editor: the command centre
  *   truncates to an ellipsis, the agents' panels get a column too narrow for a diff, and the
@@ -70,20 +74,30 @@ final class Screen {
      */
     private static final double MIN_ZOOM = 0.0;
     private static final double MAX_ZOOM = 2.5;
+    /** The same cap, for the menu's larger-text step, which counts in tenths. */
+    static final int MAX_ZOOM_TENTHS = 25;
 
     /** Past this the phone is a tablet or an open foldable, and the desktop layout fits. */
     static final int DESKTOP_WIDTH_DP = 600;
 
     private Screen() {}
 
-    /** The width the editor actually gets, in density-independent pixels. */
+    /**
+     * The phone's UPRIGHT width in density-independent pixels, whichever way it is held.
+     *
+     * The zoom is worked out once from this and left alone when the phone is turned, as the
+     * Help says; a zoom taken from the long edge is one that overflows the screen the moment
+     * the phone comes back upright, and the desktop layout is for screens that are wide
+     * standing up, not phones lying down.
+     */
     static int widthDp(Context context) {
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        int widthPixels = metrics.widthPixels;
+        int widthPixels = Math.min(metrics.widthPixels, metrics.heightPixels);
         WindowManager windows = context.getSystemService(WindowManager.class);
         if (windows != null) {
             try {
-                widthPixels = windows.getMaximumWindowMetrics().getBounds().width();
+                android.graphics.Rect bounds = windows.getMaximumWindowMetrics().getBounds();
+                widthPixels = Math.min(bounds.width(), bounds.height());
             } catch (Throwable unavailable) {
                 // Some builds refuse this outside an Activity context. The metrics above are
                 // already a reasonable answer; a thrown exception must not become no answer.
@@ -95,6 +109,29 @@ final class Screen {
         // Android has ever shipped and 2000 is wider than any foldable opens to.
         if (dp < 320 || dp > 2000) return 360;
         return dp;
+    }
+
+    /** The window's width as it is held right now: what the editor's layout has to fill. */
+    static int currentWidthDp(Context context) {
+        DisplayMetrics metrics = context.getResources().getDisplayMetrics();
+        int widthPixels = metrics.widthPixels;
+        WindowManager windows = context.getSystemService(WindowManager.class);
+        if (windows != null) {
+            try {
+                widthPixels = windows.getMaximumWindowMetrics().getBounds().width();
+            } catch (Throwable unavailable) {
+                // As above: the metrics are a fair answer when the window's are refused.
+            }
+        }
+        float density = metrics.density <= 0 ? 1f : metrics.density;
+        int dp = Math.round(widthPixels / density);
+        if (dp < 320 || dp > 2000) return widthDp(context);
+        return dp;
+    }
+
+    /** The scale the editor is drawn at: 1.2 to the zoom level, as VS Code counts it. */
+    static double scale(Context context) {
+        return Math.pow(STEP, zoomTenths(context) / 10.0);
     }
 
     /** True when this screen is wide enough that the full desktop layout is the better one. */

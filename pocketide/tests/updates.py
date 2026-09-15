@@ -258,6 +258,12 @@ for index, block in enumerate(blocks):
             problems.append("settings block %d does not set %s, so extensions installed there "
                             "stay at whatever version they were on the day they arrived"
                             % (index + 1, setting.split('"')[1]))
+# The merge path, which is the one a phone with python3 (every phone: set-up installs it)
+# actually takes, sets the same two keys as policy on every start.
+for setting in ('"extensions.autoUpdate": True', '"extensions.autoCheckUpdates": True'):
+    if setting not in editor_script:
+        problems.append("the merged settings path does not set %s, so extensions stop updating "
+                        "on every phone that has python3" % setting.split('"')[1])
 
 # code-server is a tarball, not a package: its own updater is compiled out, so leaving
 # update.mode on would offer an update that could never install. It must stay "none" AND the

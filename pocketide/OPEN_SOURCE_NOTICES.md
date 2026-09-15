@@ -82,18 +82,16 @@ rendering by Larry Ewing, Simon Budig and Garrett LeSage published on Wikimedia 
 (lewing@isc.tamu.edu) and The GIMP are acknowledged in the document or on the web page; this
 notice is that acknowledgement.
 
-## Product marks shown in this app
-
-`logo_vscode.png`, `logo_claude.png`, `logo_codex.png` and `logo_antigravity.png` are the marks
-of Microsoft, Anthropic, OpenAI and Google. They appear only to identify whose software is being
-installed or run, which is nominative use. No endorsement, sponsorship or affiliation is claimed
-or implied, and this app is not produced by any of them.
-
 ## Marks this app does and does not show
 
-The app shows a publisher's mark beside that publisher's own software and nowhere else. It does
-not put any company's mark on its own icon, its own splash screen, or its own name, because
-those would suggest an association that does not exist.
+The app shows no company's product mark: not Microsoft's Visual Studio Code icon, which belongs
+to a build this is not, and not a publisher's, which the app has no need to draw when the
+editor's own Extensions view and each extension's own panel already carry it. Names — Visual
+Studio Code, Code - OSS, code-server, Ubuntu, Claude Code, Codex, Antigravity — are used only to
+identify whose software is being installed or run, which is nominative use. No endorsement,
+sponsorship or affiliation is claimed or implied, and this app is not produced by any of them.
+The app puts no company's mark on its own icon, its own splash screen or its own name either,
+because those would suggest an association that does not exist.
 
 ## What set-up installs inside the workspace
 

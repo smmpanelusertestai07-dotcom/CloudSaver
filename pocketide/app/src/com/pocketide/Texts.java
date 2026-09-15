@@ -29,7 +29,8 @@ final class Texts {
                     + "still happens on a computer somewhere, and if you do not have one, you "
                     + "have nothing.\n\n"
                     + "This app makes the phone that computer. A real Ubuntu system, a real "
-                    + "Visual Studio Code, and whichever coding agent you want, all running on "
+                    + "Visual Studio Code (its open-source build, code-server), and whichever "
+                    + "coding agent you want, all running on "
                     + "the handset in your pocket. No laptop, no cloud subscription for compute, "
                     + "no remote machine to keep awake.";
 
@@ -81,7 +82,8 @@ final class Texts {
     static final String[][] FAQ = {
             {"About",
              "What is this?",
-             "A real Ubuntu Linux system and a real Visual Studio Code, running inside an "
+             "A real Ubuntu Linux system and a real Visual Studio Code \u2014 its open-source "
+                     + "build, Code - OSS, as code-server \u2014 running inside an "
                      + "Android app, with coding agents added as their publishers' own "
                      + "extensions. It all runs on the phone \u2014 nothing is streamed from a "
                      + "server, which is why a phone several years old can run it."},
@@ -272,7 +274,8 @@ final class Texts {
             {"Phone",
              "Which phones can run it?",
              "A 64-bit ARM phone on Android 10 or newer \u2014 any version from 10 up to the "
-                     + "current one \u2014 with about 4 GB of free space and ideally 6 GB of "
+                     + "current one \u2014 with 1.4 GB free to set up (about 4 GB if you add "
+                     + "the browser and the Android build tools) and ideally 6 GB of "
                      + "memory. It runs on 4 GB with fewer things open at once: the phone this "
                      + "app is sized for is a 4 GB realme C25s on Android 12, and every memory "
                      + "figure inside it \u2014 the editor\u2019s heap, the build workers, the "
@@ -331,8 +334,9 @@ final class Texts {
              "I installed an agent. How do I open it?",
              "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
                      + "\u201cOpen Antigravity\u201d, and the same for any other agent that "
-                     + "brings a panel with it. Tapping the row on the Agents screen offers the "
-                     + "same thing.\n\nInside the editor it also lives in the activity bar, "
+                     + "brings a panel with it. Tapping the row on the Agents screen opens the "
+                     + "editor, where Menu names it.\n\nInside the editor it also lives in the "
+                     + "activity bar, "
                      + "which on a phone is the row of small icons along the bottom of the "
                      + "editor itself. The menu exists because that row is easy to miss."},
             {"Editor",
@@ -393,7 +397,8 @@ final class Texts {
                      + "hardware virtualisation, which is why it is Pixel-first; it is a "
                      + "terminal, not an editor; and it comes with no coding agents. This app "
                      + "runs Ubuntu without a virtual machine, which is why it runs on a 4 GB "
-                     + "phone from 2021 on Android 10, and it puts a real Visual Studio Code and "
+                     + "phone from 2021 on Android 10, and it puts a real Visual Studio Code "
+                     + "(as code-server) and "
                      + "first-party agents on top. The honest trade: a virtual machine runs "
                      + "closer to native speed than the translation layer used here. What you "
                      + "get in return is that it works on the phone you have."},

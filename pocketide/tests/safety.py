@@ -439,6 +439,15 @@ else:
     if not branch or "if (!editorRunning)" not in branch.group(1):
         problems.append("the service pairs or connects without the editor running, into an adb "
                         "server that is gone by the time the terminal asks")
+    if "synchronized boolean ensureAdbServer()" not in service:
+        problems.append("ensureAdbServer() is not synchronized, so two quick taps start two "
+                        "servers and the first keeps running on a socket nobody can reach")
+    if "resolvingSince" not in phone:
+        problems.append("a resolve that never calls back holds the discovery queue until the "
+                        "deadline, and this phone's own advertisement behind it is never tried")
+    if "od -An -tx1 -j18 -N1" not in tools_code:
+        problems.append("the tools script decides whether a build tool runs by an exit code PRoot "
+                        "does not give, so foreign build-tools are never repaired")
     # The server is started inside start_editor and BEFORE the editor is launched, comments
     # between the test and the command allowed: after the launch it would start only when the
     # editor had already stopped.

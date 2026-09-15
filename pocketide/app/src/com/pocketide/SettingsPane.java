@@ -259,8 +259,9 @@ final class SettingsPane implements Pane {
                         Math.max(0, indexOfInt(zoomValues, zoom)), index -> {
                             Prefs.of(host).edit()
                                     .putInt(Prefs.EDITOR_ZOOM, zoomValues[index]).apply();
+                            // No restart: the size is the editor page's viewport, and the
+                            // editor screen re-applies it the next time it comes to the front.
                             MainActivity.rebuild(host);
-                            restartNeeded();
                         }));
         list.addView(zoomRow);
 

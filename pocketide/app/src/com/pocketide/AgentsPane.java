@@ -210,7 +210,8 @@ final class AgentsPane implements Pane {
             boolean here = Extensions.has(present, agent.id);
             String value = agent.publisher + " · official · "
                     + (here ? "Installed — tap to open it"
-                            : DeviceProbe.formatBytes(agent.sizeBytes) + " · " + agent.plan);
+                            : "about " + DeviceProbe.formatBytes(agent.sizeBytes) + " · "
+                                    + agent.plan);
             Ui.Row row = Ui.row(host, dark,
                     here ? R.drawable.ic_check : R.drawable.ic_install,
                     agent.name, value, v -> onAgentTapped(agent, here));
@@ -307,7 +308,9 @@ final class AgentsPane implements Pane {
             // Official is a stronger claim than verified and is kept separate from it. Verified
             // says Open VSX confirmed the publisher name has a real owner; official says the
             // publisher IS the company whose model the extension talks to.
-            if (Agents.official(listing.namespace)) value.append(" · official");
+            // Never "official" without the registry's own "verified": the namespace is the
+            // company's, but a version published into it before it was claimed is not.
+            if (listing.verified && Agents.official(listing.namespace)) value.append(" · official");
             value.append(listing.verified ? " · verified" : " · UNVERIFIED");
             if (listing.downloads > 0) {
                 value.append(" · ").append(shortCount(listing.downloads)).append(" downloads");
@@ -410,6 +413,9 @@ final class AgentsPane implements Pane {
                 vsix.delete();
                 if (code != 0) throw new IOException(output.toString().trim());
                 Registry.remember(host, namespace + "." + name, true);
+                // What the editor has is different now, and so is what F5 to F7 should open.
+                Extensions.forget();
+                Extensions.writeKeybindings(host);
             } catch (Throwable error) {
                 failure = error.getMessage() == null
                         ? error.getClass().getSimpleName() : error.getMessage();
@@ -450,6 +456,7 @@ final class AgentsPane implements Pane {
             }
             Registry.remember(host, id, false);
             Extensions.forget();
+            Extensions.writeKeybindings(host);
             host.runOnUiThread(() -> {
                 if (host.isFinishing()) return;
                 refreshRecommended();

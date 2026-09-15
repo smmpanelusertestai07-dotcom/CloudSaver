@@ -7,7 +7,7 @@
     <shortcut
         android:shortcutId="editor"
         android:enabled="true"
-        android:icon="@drawable/ic_code"
+        android:icon="@drawable/ic_shortcut_editor"
         android:shortcutShortLabel="@string/shortcut_editor_short"
         android:shortcutLongLabel="@string/shortcut_editor_long">
         <intent

@@ -69,6 +69,12 @@ final class BrandFrame {
     static void openOver(Activity activity, FrameLayout root) {
         if (shownThisProcess) return;
         shownThisProcess = true;
+        // Android 12 and later show the app's splash themselves -- the same mark on the same
+        // ground, from values-v31/styles.xml -- and the platform's guidance is not to draw a
+        // second one after it. On those phones this cover would have been exactly that: the
+        // bare mark replaced by the tile a frame later, then the name, for most of a second.
+        // The tagline lives in the top bar's subtitle; nothing is lost.
+        if (android.os.Build.VERSION.SDK_INT >= 31) return;
 
         LinearLayout cover = Ui.column(activity);
         cover.setGravity(Gravity.CENTER);

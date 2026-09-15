@@ -11,12 +11,16 @@ import java.util.List;
  * checkable: the company publishes its own agentic coding extension, under its own verified
  * namespace, and keeps it current.
  *
- * Every number below was read from the Open VSX API on 13 September 2026 and is re-checked by
- * tests/agent_facts.py against the live registry, which fails the build rather than let the app
- * quietly claim a version or a size that has moved. That gate exists because an earlier build
- * of this project told an owner a download was 700 MB when it was 143, and because the same
- * project once searched for Google's extension, did not find it under 507 community results,
- * and told the owner it did not exist. It does. It is the first row here.
+ * Every identifier, platform and engine below was read from the Open VSX API on 15 September
+ * 2026 and is re-checked by tests/agent_facts.py against the live registry, which fails the
+ * build rather than let the app quietly claim a namespace that is no longer verified. The
+ * sizes are from the same day and are shown as "about": a publisher ships a new build every
+ * week or two, so the exact figure is read from the download itself the moment it starts
+ * (AgentsPane.install shows the registry's Content-Length), and the number here only has to
+ * be near enough to decide yes or not today. The gate exists because an earlier build of this
+ * project told an owner a download was 700 MB when it was 143, and because the same project
+ * once searched for Google's extension, did not find it under 507 community results, and told
+ * the owner it did not exist. It does. It is the first row here.
  */
 final class Agents {
 
@@ -74,13 +78,13 @@ final class Agents {
                             + "connects tools through MCP."),
             new Agent(
                     "Anthropic.claude-code", "Claude Code", "Anthropic",
-                    "linux-arm64", 99_000_000L, "^1.94.0",
+                    "linux-arm64", 105_000_000L, "^1.94.0",
                     "Pro, Max, Team or Enterprise · or pay-as-you-go", false,
                     "Anthropic's coding agent inside the editor, with the same tools and agent "
                             + "loop as Claude Code in a terminal."),
             new Agent(
                     "openai.chatgpt", "Codex", "OpenAI",
-                    "linux-arm64", 231_000_000L, "^1.96.2",
+                    "linux-arm64", 242_000_000L, "^1.96.2",
                     "Included in ChatGPT Plus, Pro, Business, Edu and Enterprise", false,
                     "OpenAI's coding agent, working in the editor alongside the rest of Codex.")
     );
