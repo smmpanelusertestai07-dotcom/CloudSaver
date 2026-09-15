@@ -667,31 +667,20 @@ final class SettingsPane implements Pane {
         list.addView(Ui.divider(host, dark, true));
 
         boolean battery = Permissions.batteryUnrestricted(host);
-        Ui.Row batteryRow = Ui.row(host, dark, R.drawable.ic_battery, "Battery",
-                battery ? "Unrestricted — long work will not be cut off"
-                        : "Restricted — Android may stop a long set-up",
+        Ui.Row batteryRow = Ui.row(host, dark, R.drawable.ic_battery,
+                "Keep working with the screen off",
+                battery ? "Allowed — a long set-up, build or agent run keeps going"
+                        : "Not yet — Android may stop a long job when the screen goes off",
                 v -> Permissions.openBatterySettings(host));
         batteryRow.setState(battery ? Ui.running(dark) : Ui.needsYou(dark));
         list.addView(batteryRow);
         list.addView(Ui.divider(host, dark, true));
 
-        // The two switches no app can read. The rows say so, and then say where the switch is
-        // in this phone's own menus -- which is the only honest thing a row can do about a
+        // The switch no app can read, and the one that matters: on a realme, Xiaomi, vivo or
+        // Samsung phone it is what stops the maker's own battery manager from freezing or
+        // ending a long job minutes after the screen goes off. The row says where it is in
+        // this phone's own menu words, which is the only honest thing a row can do about a
         // state it cannot see. A row that always said "CHECK" taught people to ignore it.
-        list.addView(Ui.row(host, dark, R.drawable.ic_bolt, "Auto-launch",
-                Permissions.CANNOT_READ + " · " + Permissions.autoLaunchPath(),
-                v -> {
-                    if (!Permissions.openAutoStartSettings(host)) {
-                        Dialogs.message(host, "Auto-launch",
-                                "This phone does not open its auto-launch page to other apps. "
-                                        + "The switch is at:\n\n" + Permissions.autoLaunchPath()
-                                        + "\n\nApp info opens next; Battery is usually the "
-                                        + "way in from there.");
-                        Permissions.openAppInfo(host);
-                    }
-                }));
-        list.addView(Ui.divider(host, dark, true));
-
         list.addView(Ui.row(host, dark, R.drawable.ic_power, "Background activity",
                 Permissions.CANNOT_READ + " · " + Permissions.backgroundPath(),
                 v -> {
@@ -706,21 +695,41 @@ final class SettingsPane implements Pane {
                 }));
         list.addView(Ui.divider(host, dark, true));
 
-        list.addView(Ui.row(host, dark, R.drawable.ic_network, "Data Saver",
-                "Android's own Data Saver can block this app's downloads on mobile data.",
-                v -> Permissions.openDataSaverSettings(host)));
+        // Auto-launch, last and said plainly: this app never starts itself -- nothing at boot,
+        // nothing on a timer, every job is one the owner started -- so the switch buys it
+        // nothing on most phones. It stays as a row because on Xiaomi and vivo the same switch
+        // also feeds the phone's cleaner, which is a reason to know where it is.
+        list.addView(Ui.row(host, dark, R.drawable.ic_bolt, "Auto-launch",
+                "Not needed: this app never starts itself · " + Permissions.autoLaunchPath(),
+                v -> Dialogs.confirm(host, "Auto-launch",
+                        "PocketIDE never starts itself: nothing runs at boot, nothing runs on "
+                                + "a timer, and every job is one you started. So this switch "
+                                + "buys the app nothing on most phones.\n\nOn Xiaomi and vivo "
+                                + "the same switch also keeps the phone's cleaner from ending "
+                                + "a running app. Turn it on there only if long jobs still "
+                                + "stop after Keep working with the screen off and Background "
+                                + "activity are allowed.\n\nThe switch is at:\n"
+                                + Permissions.autoLaunchPath(),
+                        "Open the page", () -> {
+                            if (!Permissions.openAutoStartSettings(host)) {
+                                Permissions.openAppInfo(host);
+                            }
+                        })));
         list.addView(Ui.divider(host, dark, true));
 
-        list.addView(Ui.row(host, dark, R.drawable.ic_info, "All app permissions",
-                "The phone's own page for this app", v -> Permissions.openAppInfo(host)));
+        list.addView(Ui.row(host, dark, R.drawable.ic_info, "App info",
+                "The phone's own page for this app: permissions, storage, battery",
+                v -> Permissions.openAppInfo(host)));
 
         group.addView(list, Ui.wide(host, 8));
         group.addView(note(dark,
-                "Every one of these is optional and the app works without them — just less "
-                        + "reliably. Nothing here is requested silently. Battery and "
-                        + "notifications are read from the phone; auto-launch and background "
-                        + "activity are the maker's own switches, which no app can read, so "
-                        + "those two rows show the way to them instead."), Ui.wide(host, 8));
+                "Two of these are read from the phone: notifications, and keeping the "
+                        + "processor awake with the screen off. Background activity is the "
+                        + "maker's own switch, which no app can read, so its row shows the way "
+                        + "to it; it is the one that keeps a long job alive on a realme, "
+                        + "Xiaomi, vivo or Samsung phone. Nothing here is requested silently, "
+                        + "and the app works without all of it — just less reliably with the "
+                        + "screen off."), Ui.wide(host, 8));
         return group;
     }
 

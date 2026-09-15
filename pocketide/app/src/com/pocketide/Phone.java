@@ -19,6 +19,7 @@ import java.net.NetworkInterface;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -67,10 +68,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * running, and the screen says so rather than pairing into a server that would be gone by the
  * time the terminal asked.
  *
- * Said plainly wherever it is offered: pairing gives the terminal, and any agent in it, what a
- * computer with USB debugging has -- installing and removing apps, reading and writing shared
- * storage, screenshots and taps. It is a step the owner takes, and Android turns Wireless
- * debugging off at every restart on its own.
+ * Pairing gives the APP what a computer with USB debugging has. The terminal, and any agent in
+ * it, gets none of that directly: the key and the server live in a directory bound only into
+ * the app's own adb commands (binds()), and the workspace reaches the phone through
+ * PhoneBroker, a socket that does a short list of things to the apps the owner built and
+ * nothing else. It is still a step the owner takes, and Android turns Wireless debugging off
+ * at every restart on its own.
  */
 final class Phone {
 
@@ -98,6 +101,40 @@ final class Phone {
     /** Cheap enough for a screen: a file test, not a run of the tools script. */
     static boolean adbInstalled(Context context) {
         return new File(Workspace.root(context), "usr/bin/adb").exists();
+    }
+
+    /**
+     * Where the paired key and the server's socket live: the app's own storage, outside the
+     * Linux rootfs, bound into PRoot only for the app's own adb commands.
+     *
+     * 2.1.x kept them in the rootfs at /root/.android, where the terminal -- and so any agent
+     * in it -- could read the key and reach the socket. A key found there now is moved here,
+     * not copied: a key left behind is a second door.
+     */
+    static File androidDir(Context context) {
+        File dir = new File(context.getFilesDir(), "phone/android");
+        boolean fresh = !dir.isDirectory() && dir.mkdirs();
+        File old = new File(Workspace.root(context), "root/.android");
+        for (String name : new String[]{"adbkey", "adbkey.pub"}) {
+            File was = new File(old, name);
+            if (!was.isFile()) continue;
+            File now = new File(dir, name);
+            if (fresh && !now.exists() && !was.renameTo(now)) {
+                try {
+                    java.nio.file.Files.copy(was.toPath(), now.toPath());
+                } catch (java.io.IOException notCopied) {
+                    // Then the owner pairs again from Settings; the old key is still removed.
+                }
+            }
+            was.delete();
+        }
+        new File(old, "adb.sock").delete();
+        return dir;
+    }
+
+    /** The one bind the app's adb commands run with: the key directory as /root/.android. */
+    static List<String> binds(Context context) {
+        return Collections.singletonList(androidDir(context).getAbsolutePath() + ":/root/.android");
     }
 
     static boolean paired(Context context) {
@@ -213,9 +250,9 @@ final class Phone {
             "adb is installed, but no adb server is answering inside Linux. Stop the editor "
                     + "and open it again, then try once more.";
 
-    /** adb's server socket, inside the app's own storage. Its guest path is /root/.android/adb.sock. */
+    /** adb's server socket: in the key directory, which the server sees as /root/.android. */
     static File serverSocket(Context context) {
-        return new File(Workspace.root(context), "root/.android/adb.sock");
+        return new File(androidDir(context), "adb.sock");
     }
 
     /**
@@ -513,7 +550,7 @@ final class Phone {
     private static String run(Context context, String command) {
         final StringBuilder out = new StringBuilder();
         try {
-            Workspace.run(context, command, line -> {
+            Workspace.run(context, command, binds(context), line -> {
                 if (out.length() < 4000) out.append(line).append('\n');
             });
         } catch (Throwable failed) {
@@ -532,21 +569,21 @@ final class Phone {
     // ------------------------------------------------------------------ the words
 
     static final String EXPLANATION =
-            "Makes this phone the test device an agent can drive. It installs adb — Ubuntu's "
-                    + "own arm64 build, about 2 MB — and pairs the phone with itself over "
-                    + "Wireless debugging, which Android added in Android 11. After that, adb "
-                    + "devices in the editor's terminal lists this phone, and an agent can "
-                    + "install what it built, launch it, read its log, screenshot it, tap it "
-                    + "and run its instrumented tests with adb shell am instrument — on real "
-                    + "hardware, for nothing. The emulator cannot run on a phone; this is "
-                    + "what replaces it.\n\nadb answers on a socket inside the app's own "
-                    + "storage, not on a network port, so no other app on the phone can use "
-                    + "the connection.\n\n"
-                    + "Know what pairing gives: the same access a computer with USB debugging "
-                    + "has — installing and removing apps, reading and writing the phone's "
-                    + "shared storage, screenshots and taps — to the terminal and any agent in "
-                    + "it. Turn Wireless debugging off when you are done. Android turns it off "
-                    + "at every restart anyway.";
+            "Makes this phone the test device an agent can drive — through a door with a "
+                    + "short list on it, not with the whole key. It installs adb (Ubuntu's own "
+                    + "arm64 build, about 2 MB) and pairs the phone with itself over Wireless "
+                    + "debugging, which Android added in Android 11. The pairing key and the "
+                    + "adb server stay in this app's own storage; the Linux the agent works in "
+                    + "never holds them. What Linux gets is one command, phone, which can: "
+                    + "install an APK built under ~/projects, open it, stop it, clear it, "
+                    + "uninstall it, run its instrumented tests, read its own log, and — only "
+                    + "while that app is on the screen — take a screenshot, tap, type or press "
+                    + "a key. No shell on the phone, no other app, no files, no device "
+                    + "details. That is the whole list.\n\n"
+                    + "Wireless debugging itself lives in Developer options, because Android "
+                    + "offers no narrower switch; the app keeps its access to the list above. "
+                    + "Turn Wireless debugging off when you are done. Android turns it off at "
+                    + "every restart anyway.";
 
     static final String DEVELOPER_STEPS =
             "Developer options are off on this phone. To turn them on: Settings → About "
@@ -563,20 +600,15 @@ final class Phone {
                     + "allow it on this network. Then tap Pair device with pairing code.\n"
                     + "4. Pull the notification shade down and type the six digits into "
                     + "Enter the code. Do not leave Settings — the code disappears with it.\n"
-                    + "5. The result arrives as a notification, and adb devices in the "
-                    + "terminal lists this phone.\n\n"
+                    + "5. The result arrives as a notification. In the editor's terminal, "
+                    + "phone devices lists this phone and phone help lists everything the "
+                    + "bridge does.\n\n"
                     + "Every time after that: turn Wireless debugging on, open the editor, "
                     + "and it connects by itself. Connect now does the same by hand.\n\n"
-                    + "By hand, without the notification: put Settings and the editor side "
-                    + "by side in split-screen, because the pairing code disappears the "
-                    + "moment Settings leaves the screen. Then, with the ports read off the "
-                    + "Wireless debugging screen:\n"
-                    + "adb pair 127.0.0.1:PAIRING_PORT CODE\n"
-                    + "adb connect 127.0.0.1:PORT\n"
-                    + "Connecting alone needs no split-screen.\n\n"
-                    + "Gradle's own installDebug and connectedAndroidTest talk to adb over a "
-                    + "network port, which is exactly what is closed here so that no other "
-                    + "app on the phone can use the connection. Build the test APK with "
-                    + "./gradlew assembleDebugAndroidTest and run it with adb shell am "
-                    + "instrument — the same thing those tasks would have done.";
+                    + "An agent's loop, in the terminal: ./gradlew assembleDebug, then phone "
+                    + "install app/build/outputs/apk/debug/app-debug.apk, phone launch "
+                    + "com.example.app, phone log com.example.app -d, phone screenshot "
+                    + "com.example.app shot.png. Gradle's own installDebug and "
+                    + "connectedAndroidTest expect adb's network port, which this app never "
+                    + "opens; phone install and phone instrument do the same work.";
 }

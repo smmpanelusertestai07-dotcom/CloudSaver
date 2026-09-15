@@ -97,8 +97,7 @@ final class Permissions {
                 return "Settings › Apps › App launch › PocketIDE › Manage manually › "
                         + "Auto-launch";
             case SAMSUNG:
-                return "Settings › Battery › Background usage limits › Never sleeping apps › "
-                        + "add PocketIDE";
+                return "not a switch on Samsung; Background activity is the one that matters";
             default:
                 return "Settings › Apps › PocketIDE › Battery";
         }
@@ -138,9 +137,20 @@ final class Permissions {
     // ------------------------------------------------------------------ state
 
     static boolean notificationsAllowed(Context context) {
-        if (Build.VERSION.SDK_INT < 33) return true;
-        return context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED;
+        if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            return false;
+        }
+        // The permission is one switch; the app's notifications as a whole are another, on
+        // every Android version. A row that said "Allowed" while the owner had turned them
+        // off on the app's page lied on Android 10 to 12, where there is no permission at all.
+        try {
+            android.app.NotificationManager manager = (android.app.NotificationManager)
+                    context.getSystemService(Context.NOTIFICATION_SERVICE);
+            return manager == null || manager.areNotificationsEnabled();
+        } catch (Throwable unreadable) {
+            return true;
+        }
     }
 
     static boolean batteryUnrestricted(Context context) {
@@ -172,9 +182,20 @@ final class Permissions {
      * hand.
      */
     static void askNotifications(Activity activity, boolean fromRow) {
-        if (Build.VERSION.SDK_INT < 33) return;
+        if (Build.VERSION.SDK_INT < 33) {
+            // No runtime permission before Android 13: the only switch is the app's own page.
+            if (fromRow || !notificationsAllowed(activity)) openNotificationSettings(activity);
+            return;
+        }
         if (notificationsAllowed(activity)) {
             if (fromRow) openNotificationSettings(activity);
+            return;
+        }
+        if (activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            // The permission is granted and the app's notifications are off as a whole: no
+            // prompt can change that, only the page.
+            openNotificationSettings(activity);
             return;
         }
         boolean askedBefore = Prefs.of(activity).getBoolean(Prefs.ASKED_NOTIFICATIONS, false);
@@ -337,17 +358,6 @@ final class Permissions {
                 Uri.parse("package:" + activity.getPackageName())))) {
             launch(activity, new Intent(Settings.ACTION_SETTINGS));
         }
-    }
-
-    /** Android's own data-saver page, which can block this app's downloads outright. */
-    static void openDataSaverSettings(Activity activity) {
-        if (Build.VERSION.SDK_INT >= 24) {
-            if (launch(activity, new Intent(Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS,
-                    Uri.parse("package:" + activity.getPackageName())))) {
-                return;
-            }
-        }
-        openAppInfo(activity);
     }
 
     /** The phone's own security page, for the owner who removed their screen lock. */

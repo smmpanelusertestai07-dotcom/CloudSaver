@@ -169,31 +169,36 @@ final class Texts {
             {"Building",
              "Can I test an Android app here?",
              "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
-                     + "agent can drive it. Settings \u2192 The computer \u2192 Test on this "
-                     + "phone installs adb (Ubuntu\u2019s own arm64 build, about 2 MB) and "
-                     + "pairs the phone with itself over Wireless debugging: the app finds "
-                     + "the port the phone advertises, you type the six-digit code into a "
-                     + "notification, and from then on adb devices in the terminal lists this "
-                     + "phone. An agent can install what it built, launch it, read its log, "
-                     + "screenshot it, tap it and run its instrumented tests with adb shell "
-                     + "am instrument \u2014 on real hardware, for nothing. JVM and "
-                     + "Robolectric tests run here directly as well, and Install an app built "
-                     + "here hands an APK to Android\u2019s installer without any pairing."
-                     + "\n\nadb answers on a socket inside the app\u2019s own storage rather "
-                     + "than a network port, so no other app on the phone can use the "
-                     + "connection. Gradle\u2019s own installDebug and connectedAndroidTest "
-                     + "tasks expect that port and will not see the phone \u2014 build the "
-                     + "test APK with ./gradlew assembleDebugAndroidTest and run it with adb "
-                     + "shell am instrument, which is what they would have done.\n\nThe "
-                     + "emulator cannot "
-                     + "run on a phone: Google ships none for this processor, and even one "
-                     + "built by hand needs a virtualisation device Android does not give "
-                     + "apps unless the phone is rooted.\n\nKnow what pairing gives: the "
-                     + "same access a computer with USB debugging has \u2014 installing and "
-                     + "removing apps, reading and writing the phone\u2019s shared storage, "
-                     + "screenshots and taps \u2014 to the terminal and any agent in it. Turn "
-                     + "Wireless debugging off when you are done; Android turns it off at "
-                     + "every restart anyway."},
+                     + "agent can drive it through a door with a short list on it. Settings "
+                     + "\u2192 The computer \u2192 Test on this phone installs adb (Ubuntu\u2019s "
+                     + "own arm64 build, about 2 MB) and pairs the phone with itself over "
+                     + "Wireless debugging: the app finds the port the phone advertises, you "
+                     + "type the six-digit code into a notification, and the pairing key and "
+                     + "the adb server stay in the app\u2019s own storage, outside the Linux "
+                     + "the agent works in.\n\nWhat the terminal gets is one command, phone. "
+                     + "It can install an APK built under ~/projects, open it, stop it, clear "
+                     + "it, uninstall it, run its instrumented tests, read its own log, and "
+                     + "\u2014 only while that app is on the screen \u2014 take a screenshot, "
+                     + "tap, type or press a key. It cannot open a shell on the phone, touch "
+                     + "another app, read the phone\u2019s files, list what is installed or "
+                     + "read the phone\u2019s details; phone help is the whole list. Install an "
+                     + "app built here hands an APK to Android\u2019s installer without any "
+                     + "of it.\n\nWithout the phone at all: JVM unit tests run in Linux "
+                     + "directly, and so does Robolectric, with two limits on this processor "
+                     + "\u2014 its graphics run in legacy mode, so views lay out and Espresso "
+                     + "checks pass but nothing is drawn to pixels or screenshots, and its "
+                     + "SQLite does not run, so tests that use a database go to the phone "
+                     + "through the bridge. Its first run downloads about 200 MB of Android "
+                     + "framework.\n\nWireless debugging lives in Developer options because "
+                     + "Android has no narrower switch for it; the app keeps its access to "
+                     + "the list above. Turn it off when you are done; Android turns it off at "
+                     + "every restart anyway.\n\nAn emulator cannot run here, and cannot be "
+                     + "downloaded or built into Linux either: Google publishes its emulator "
+                     + "for Linux only on x86-64, plain QEMU cannot boot Google\u2019s Android "
+                     + "images, and Cuttlefish, Waydroid, Anbox and redroid all need kernel "
+                     + "features or root that Android gives no app. On a 4 GB phone a "
+                     + "software-emulated Android would not fit beside the phone\u2019s own "
+                     + "either. The phone itself, behind the door above, is the test device."},
             {"Building",
              "Can I build an iPhone app?",
              "No. Apple requires its own tools on a Mac to build and sign them, and no Android "
@@ -237,19 +242,6 @@ final class Texts {
                      + "is needed to open the editor at all."},
 
             {"Updates",
-             "Does it keep itself up to date?",
-             "Yes, every layer of it, and each can be switched off in Settings.\n\n"
-                     + "Ubuntu\u2019s security updates are taken automatically \u2014 on Wi-Fi, "
-                     + "once a day, while the app is open and the editor is not. The editor "
-                     + "follows code-server\u2019s releases the same way, only while it is "
-                     + "closed, and only after the new copy has unpacked and proved it runs; "
-                     + "if it does not, the old one goes straight back. Extensions are kept "
-                     + "current by the editor itself, from Open VSX.\n\nThe app itself asks "
-                     + "GitHub once a day whether a newer PocketIDE has been published and "
-                     + "tells you on the Home screen. Installing it is your tap: it downloads "
-                     + "in the browser and installs over this version, and Linux, the editor "
-                     + "and your projects are untouched."},
-            {"Updates",
              "Why only while the app is open?",
              "Because Linux only exists while the app is open. Android does not keep another "
                      + "operating system running behind a closed app, and there is no way to "
@@ -286,15 +278,24 @@ final class Texts {
                      + "because iOS does not let an app run another operating system inside "
                      + "itself the way Android does."},
             {"Phone",
-             "Set-up or a build stopped when the screen went off. Why?",
-             "The phone\u2019s battery manager ended it. Android\u2019s own switch is "
-                     + "\u201cBattery: unrestricted\u201d, and Settings \u2192 Permissions "
-                     + "reads it and opens it. Realme, OPPO, Xiaomi, vivo, OnePlus, Huawei and "
-                     + "Samsung add switches of their own \u2014 auto-launch and background "
-                     + "activity \u2014 that no app is allowed to read, so those two rows show "
-                     + "the path to them in this phone\u2019s own menu words instead. Plugging "
-                     + "the phone in helps too: most phones relax the battery manager while "
-                     + "charging."},
+             "Which battery settings can stop a long job?",
+             "A set-up, a build or an agent run keeps going with the screen off: the app holds "
+                     + "the processor awake while it works, and the notification\u2019s Stop "
+                     + "button is the only thing meant to end it. Three things can still end "
+                     + "it.\n\nSuper power saving (realme, OPPO), Ultra battery saver (Xiaomi) "
+                     + "and Samsung\u2019s \u201cLimit apps and Home screen\u201d shut down every "
+                     + "app not on their short list \u2014 turn those off while a job runs. "
+                     + "Ordinary Power saving mode is fine once Keep working with the screen "
+                     + "off is allowed in Settings; it only makes the job slower, and Activity "
+                     + "says so when a job starts with it on.\n\nThe phone\u2019s own per-app "
+                     + "switch must be on: Allow background activity on realme and OPPO, No "
+                     + "restrictions on Xiaomi, Unrestricted on Samsung. Settings \u2192 "
+                     + "Permissions shows the path in this phone\u2019s own menu words. On "
+                     + "realme and Xiaomi, locking the app in the Recents screen (its card "
+                     + "\u2192 Lock) also stops \u201cclear all\u201d from ending it.\n\nAuto-"
+                     + "launch is not one of them: this app never starts itself. Data Saver "
+                     + "and Adaptive Battery do not affect a running job. Plugging the phone "
+                     + "in helps: phones relax all of this while charging."},
             {"About",
              "Is this a computer, or an editor?",
              "It is an editor \u2014 an IDE \u2014 that happens to carry the Linux it needs to "
@@ -428,11 +429,9 @@ final class Texts {
                      + "written to Downloads, to Documents or anywhere else you would see in "
                      + "a file manager \u2014 unless you turn on The phone\u2019s files in "
                      + "Settings, and even then the app only reads and writes what you or an "
-                     + "agent ask it to, inside ~/phone.\n\nThe other exception is one you "
-                     + "take yourself: Test on this phone. While the phone is paired and "
-                     + "connected, adb in the terminal has the shared storage a USB-debugging "
-                     + "computer would have, which is why pairing is a step you take and why "
-                     + "the prompt that installs it says so first."},
+                     + "agent ask it to, inside ~/phone.\n\nTest on this phone is not an "
+                     + "exception either: the terminal gets a phone command that can touch only "
+                     + "the apps you built here, never the phone\u2019s files."},
             {"Safety",
              "Can someone read the app\u2019s own code?",
              "Yes, and that is on purpose: the source is published, and the build that "
@@ -558,8 +557,6 @@ final class Texts {
              "Foreground service", "So Android does not kill Linux while you are using it."},
             {"android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
              "Foreground service type", "Declares what that service is for, as Android requires."},
-            {"android.permission.VIBRATE",
-             "Vibration", "Feedback on the key row."},
             {"android.permission.USE_BIOMETRIC",
                     "App lock",
                     "Only to ask the phone to confirm it is you when the app lock is on. The "
@@ -589,7 +586,9 @@ final class Texts {
                             + "anything by itself, and nothing outside ~/projects can be "
                             + "offered."},
             {"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-             "Battery", "A one-tap prompt so long work is not stopped. Always optional."},
+             "Keep working with the screen off",
+             "A one-tap prompt so a long set-up, build or agent run is not stopped when the "
+                     + "screen goes off. Always optional."},
     };
 
     /** Named so the Help screen can say what is deliberately absent. */

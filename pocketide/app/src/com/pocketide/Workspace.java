@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -314,6 +315,19 @@ final class Workspace {
 
     /** Starts a command inside Linux. The caller owns the process and must stop it. */
     static Process start(Context context, String command) throws IOException {
+        return start(context, command, Collections.<String>emptyList());
+    }
+
+    /**
+     * The same, with extra host:guest binds for this one PRoot.
+     *
+     * A bind is per instance, which is what makes it a boundary: what one PRoot is given, the
+     * others do not see. The app's own adb commands get the phone's key directory
+     * (Phone.binds); the editor gets the bridge directory (PhoneBroker.editorBinds); neither
+     * is given the other's.
+     */
+    static Process start(Context context, String command, List<String> extraBinds)
+            throws IOException {
         File root = root(context);
         // Android gives a container no working resolver. Without this every fetch fails with
         // "Temporary failure resolving", which is how the first set-up on a real phone died.
@@ -345,6 +359,10 @@ final class Workspace {
                 directory(context, "proc-fakes")).entrySet()) {
             args.add("-b");
             args.add(fake.getValue() + ":" + fake.getKey());
+        }
+        for (String bind : extraBinds) {
+            args.add("-b");
+            args.add(bind);
         }
         // The phone's own storage, only when the owner turned it on and Android granted it.
         // Binding it unconditionally would put every photo on the phone inside a workspace an
@@ -396,7 +414,12 @@ final class Workspace {
 
     /** Runs a command to completion, passing each line on. Returns its exit code. */
     static int run(Context context, String command, Progress progress) throws IOException {
-        Process process = start(context, command);
+        return run(context, command, Collections.<String>emptyList(), progress);
+    }
+
+    static int run(Context context, String command, List<String> extraBinds, Progress progress)
+            throws IOException {
+        Process process = start(context, command, extraBinds);
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;

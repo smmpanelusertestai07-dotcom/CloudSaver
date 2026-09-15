@@ -149,10 +149,9 @@ final class Exits {
                 if (!linuxWasRunning) return new Exit(when, "", "", false, raw);
                 return new Exit(when, "The phone ran short of memory",
                         "Something else on the phone needed the memory and Android reclaimed it "
-                                + "from here. It is likelier when several large apps are open.\n\n"
-                                + "Turning on Battery unrestricted in Settings makes it less "
-                                + "likely, and so does closing the browser when an agent is not "
-                                + "using it.",
+                                + "from here. It is likelier when several large apps are open; "
+                                + "closing them, and closing the browser when an agent is not "
+                                + "using it, makes it less likely.",
                         true, raw);
 
             case ApplicationExitInfo.REASON_CRASH:

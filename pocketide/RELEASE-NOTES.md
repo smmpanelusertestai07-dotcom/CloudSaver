@@ -1,5 +1,79 @@
 # Release notes
 
+## 2.2.0
+
+The phone's key leaves Linux, and the workspace gets a door with a list on it.
+
+### Test on this phone, scoped
+
+Wireless debugging hands whoever holds the paired key everything a computer on a USB cable
+has: a shell as the shell user, every app's name, the shared storage, screenshots of whatever is
+on the screen, taps into any app, install and uninstall of anything. In 2.1.5 that key sat in
+the Linux rootfs beside the adb server's socket, so the terminal — and any agent in it — had
+all of it. An owner asked for the opposite: the computer, the app and the agent should not get
+the phone's details, and the agent should be able to test only the app it built.
+
+So the key and the server moved out. They live in a directory of the app's own storage that is
+bound into PRoot only for the app's own adb commands; the editor's PRoot is given a different
+directory, the bridge, and nothing of the phone's. A key 2.1.5 left in the rootfs is moved, not
+copied, at the first start. The editor no longer starts adb at all. What the terminal gets is
+the `phone` command, a client for the app's bridge (PhoneBroker): a socket the app serves that
+does exactly these things — install an APK from under ~/projects, open it, stop it, clear it,
+uninstall it, run its instrumented tests, read its own log by process id, and, only while that
+app is the one on the screen, a screenshot, a tap, typed text or a key — and each only to a
+package the bridge itself installed. No shell, no other app, no package list, no device
+properties, no files, no forwarding; every argument is checked before it goes near a shell, and
+asking for anything else returns the list. The Help, the install prompt and the notices say the
+same, and the by-hand pairing that would have given the terminal the whole key is no longer
+described. Wireless debugging still lives in Developer options, because Android has no narrower
+switch; the app's access is what is narrowed.
+
+PRoot is not a security sandbox against a program that sets out to escape it, and the notes do
+not claim that. What is claimed is narrower and checkable: the workspace has no path to the
+phone except the door.
+
+### Permissions and power, honestly
+
+An audit of every permission against the code found one with no use: VIBRATE, because the key
+row's haptics go through View.performHapticFeedback, which needs no permission. It is gone,
+from the manifest and from Help. requestLegacyExternalStorage is set, which is what lets ~/phone
+work on Android 10 once The phone's files is on; Android 11 and later ignore it.
+
+The rows in Settings say what is true. Auto-launch is not needed: this app never starts itself
+— nothing at boot, nothing on a timer, every job is one the owner started — and the row now
+says so, keeping only the note that on Xiaomi and vivo the same switch feeds the phone's
+cleaner. Background activity is the switch that matters on a realme, Xiaomi, vivo or Samsung
+phone, and is said to be. "Battery" is "Keep working with the screen off", which is what the
+exemption does, and no longer shares a name with Home's battery row. The Data Saver row is gone:
+a foreground job counts as foreground for network policy, and the daily update already waits
+for Wi-Fi. "All app permissions" is "App info". The Notifications row no longer says Allowed
+on Android 10 to 12 when the owner has turned them off; it reads the app's own switch, and
+tapping it opens the page. A refusal to start Linux from the background says to open the app,
+not to flip a switch that does not govern it. A low-memory exit no longer claims the battery
+exemption helps, because it does not.
+
+A new Help entry says which battery settings can stop a long job: Super power saving, Ultra
+battery saver and Samsung's app limit end every app not on their list; ordinary power saving
+only slows a job and Activity says so when one starts with it on; the per-app switch and the
+Recents lock; Data Saver and Adaptive Battery do not matter; charging helps.
+
+The daily Ubuntu and editor update runs under the foreground service now — its wake lock, its
+thermal pause, its notification — instead of on a bare thread from the Home screen, where an
+owner who put the phone down mid-apt left dpkg to be frozen or killed with nothing to say so.
+
+### Gates
+
+Every claim above is held: no VIBRATE, the legacy-storage flag, the Notifications row reading
+the app's own switch, the update started as a service job and never on a bare thread, the
+power-saving note at a job's start, no Data Saver row and an Auto-launch row that says "Not
+needed". And for the bridge: the editor's PRoot is started with the bridge bind and no adb; the
+key directory is bound from the app's storage for the app's commands only; the bridge's list has
+no shell, pull, push, forward, reverse, root or tcpip; every operation but install goes through
+the package allow-list; a screenshot or an input first checks the package is the one on the
+screen; install takes only an APK under ~/projects that Android can read; the phone command
+talks to the bridge's socket and nowhere else; and the Help no longer hands out the by-hand
+pairing. Each broken on purpose and confirmed to fail.
+
 ## 2.1.5
 
 What three reviews of 2.1.0 found, within the hour of its publication.

@@ -59,9 +59,9 @@
 #              debugging -- adb over TCP with a pairing step -- and adbd listens on loopback
 #              too, so an adb client inside this Linux can pair with and connect to the phone
 #              it is running on. See "the phone itself" below. The adb is Ubuntu's own arm64
-#              package, so there is nothing to pin. Its server answers on a socket inside the
-#              app's own storage and on no network port: loopback is shared by every app on
-#              the phone and adb's protocol has no authentication.
+#              package, so there is nothing to pin. The paired key and the server stay in the
+#              app's own storage, outside this Linux; what this Linux gets is the phone
+#              command, a door with a short list on it (PhoneBroker.java).
 #
 #   LISTS      Set-up and the nightly update delete /var/lib/apt/lists to save 60 MB, so every
 #              apt-get install here refreshes the list first. Without that, a fresh workspace
@@ -394,23 +394,21 @@ EOF
 # <sdk>/platform-tools/adb and nowhere else.
 #
 # The app does the pairing and the connecting (Phone.java): it finds the ports the phone
-# advertises for itself, takes the pairing code from a notification's reply box, and runs the
-# two commands below. They are plain commands anyone can type, with the ports read off the
-# Wireless debugging screen:
-#   adb pair 127.0.0.1:PAIRING_PORT CODE     once
-#   adb connect 127.0.0.1:PORT               each time Wireless debugging is turned on
-# The adb server is started with the editor (pocketide-editor.sh), so a connection lasts as
-# long as the editor does and the terminal's own adb talks to the same server -- on a socket
-# inside this storage, never on TCP 5037: loopback is shared by every app on the phone, the adb
-# protocol has no authentication, and the server is what holds the paired key. The app sets
-# ADB_SERVER_SOCKET for every PRoot it starts (Workspace.java); configure_adb_socket below sets
-# the same for every login shell, so a terminal an owner opens by hand agrees. Gradle's own
-# installDebug and connectedAndroidTest speak only to the port and fail closed; the Help says
-# to use assembleDebugAndroidTest plus adb shell am instrument instead.
+# advertises for itself, takes the pairing code from a notification's reply box, and runs adb
+# pair and adb connect itself, in a PRoot of its own with the key directory bound in from the
+# app's storage (Phone.binds). This Linux never holds the key or the server: the editor's PRoot
+# has no such bind, so /root/.android here stays empty, the raw adb installed below has nothing
+# to talk to, and no server is on TCP 5037 either (loopback is every app's on a phone, and
+# adb's protocol has no authentication; ADB_SERVER_SOCKET keeps even a stray server off it).
+# What this Linux gets is the phone command (install_phone_command): a client for the app's
+# bridge (PhoneBroker.java), which does a short list of things to the apps built here and
+# nothing else. Gradle's own installDebug and connectedAndroidTest speak only to the port and
+# fail closed; phone install and phone instrument do the same work.
 
 install_adb_package() {
   if command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1; then
     configure_adb_socket
+    install_phone_command
     return 0
   fi
   say "Installing adb from Ubuntu… about 2 MB"
@@ -419,6 +417,72 @@ install_adb_package() {
     say "adb could not be installed."; return 1; }
   adb --version >/dev/null 2>&1 || { say "adb installed but will not run."; return 1; }
   configure_adb_socket
+  install_phone_command
+}
+
+# The workspace's door to the phone: a small client for the app's bridge. Everything it can do
+# is in its help; everything else adb could do is not reachable from here, by design -- the
+# pairing key and the server live outside this Linux (Phone.java, PhoneBroker.java).
+install_phone_command() {
+  mkdir -p /usr/local/bin
+  cat > /usr/local/bin/phone <<'PHONE'
+#!/usr/bin/env python3
+"""phone: test the app you built, on this phone, through PocketIDE's bridge.
+
+  phone devices                    is the phone connected
+  phone install <app.apk>          install an APK built under ~/projects (test APKs too)
+  phone launch <package>           open it; it comes to the front of the phone
+  phone stop <package>             force-stop it
+  phone clear <package>            clear its data
+  phone uninstall <package>
+  phone instrument <test package> [runner]   run its instrumented tests (am instrument -w -r)
+  phone log <package> [-d]         its log, by process id; -d dumps and returns
+  phone screenshot <package> <out.png>       only while that package is on the screen
+  phone tap <package> <x> <y>      a tap, only while that package is on the screen
+  phone text <package> <text>      typed text, same rule
+  phone key <package> <KEYCODE>    a key, same rule (KEYCODE_BACK, KEYCODE_HOME ...)
+  phone allowed                    the packages this bridge may touch
+
+Only packages installed through phone install, and only from ~/projects. The phone's own
+adb access never enters this Linux: no shell, no other app, no files, no device details.
+The bridge answers while the editor is running and the phone is paired and connected.
+"""
+import json
+import os
+import socket
+import sys
+
+SOCK = "/run/pocketide/phone.sock"
+
+args = sys.argv[1:]
+if not args or args[0] in ("-h", "--help", "help"):
+    print(__doc__.strip())
+    sys.exit(0)
+request = {"op": args[0], "args": args[1:], "cwd": os.getcwd()}
+link = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+try:
+    link.connect(SOCK)
+except OSError:
+    print("The phone bridge is not answering. Open the editor from PocketIDE, and pair the "
+          "phone under Settings > The computer > Test on this phone.", file=sys.stderr)
+    sys.exit(2)
+link.sendall((json.dumps(request) + "\n").encode("utf-8"))
+link.shutdown(socket.SHUT_WR)
+code = 1
+with link.makefile("rb") as stream:
+    for raw in stream:
+        line = raw.decode("utf-8", "replace")
+        if line.startswith("\x1e"):
+            try:
+                code = int(line[1:].strip())
+            except ValueError:
+                code = 1
+            break
+        sys.stdout.write(line)
+        sys.stdout.flush()
+sys.exit(code)
+PHONE
+  chmod +x /usr/local/bin/phone
 }
 
 # Where adb's server answers, for every shell. Idempotent; run at every install.
@@ -491,17 +555,14 @@ install_phone() {
   say ""
   say "adb is installed: $(adb --version 2>/dev/null | head -1)"
   say ""
-  say "This phone pairs with itself over Wireless debugging (Android 11 and newer):"
-  say "Settings → Developer options → Wireless debugging. The app does the pairing from"
-  say "Settings → The computer → Test on this phone. By hand, with the ports read off"
-  say "the Wireless debugging screen:"
-  say "  adb pair 127.0.0.1:PAIRING_PORT CODE      once"
-  say "  adb connect 127.0.0.1:PORT                each time it is turned on"
-  say "Then adb devices lists this phone, and adb install, adb logcat, adb shell,"
-  say "adb exec-out screencap and adb shell am instrument all work on it. The server"
-  say "answers on a socket inside this storage, never on a network port, so no other app"
-  say "on the phone can use the connection; Gradle's installDebug and connectedAndroidTest"
-  say "expect the port -- use assembleDebugAndroidTest plus adb shell am instrument."
+  say "This phone pairs with itself over Wireless debugging (Android 11 and newer), from"
+  say "Settings → The computer → Test on this phone in PocketIDE. The key and the adb server"
+  say "stay in the app's own storage; this Linux gets the phone command instead:"
+  say "  phone install app.apk · launch · stop · clear · uninstall · instrument · log"
+  say "  phone screenshot / tap / text / key, only while that app is on the screen"
+  say "phone help lists everything. No shell on the phone, no other app, no device details."
+  say "Gradle's installDebug and connectedAndroidTest expect adb's network port, which the"
+  say "app never opens; phone install and phone instrument do the same work."
 }
 
 # --------------------------------------------------------------------------- build tuning

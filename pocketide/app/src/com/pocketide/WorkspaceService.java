@@ -31,6 +31,8 @@ public final class WorkspaceService extends Service {
     static final String ACTION_SETUP = "com.pocketide.SETUP";
     static final String ACTION_START = "com.pocketide.START";
     static final String ACTION_STOP = "com.pocketide.STOP";
+    /** The daily update, under this service's wake lock and notification. See Updates. */
+    static final String ACTION_UPDATE = "com.pocketide.UPDATE";
     /** The phone as a test device: a pairing code from the notification, or a connect. */
     static final String ACTION_PHONE_PAIR = "com.pocketide.PHONE_PAIR";
     static final String ACTION_PHONE_CONNECT = "com.pocketide.PHONE_CONNECT";
@@ -71,6 +73,8 @@ public final class WorkspaceService extends Service {
     private volatile Process editor;
     /** adb's server, held here when the editor's own start could not have started one. */
     private volatile Process adbServer;
+    /** The workspace's door to the phone, open exactly as long as the editor is. See PhoneBroker. */
+    private volatile PhoneBroker broker;
     private PowerManager.WakeLock wakeLock;
     private long startedAt;
     /** What the notification last said, so a repeated START does not talk over it. */
@@ -115,6 +119,7 @@ public final class WorkspaceService extends Service {
     static void setUp(Context context) { send(context, ACTION_SETUP); }
     static void startEditor(Context context) { send(context, ACTION_START); }
     static void stop(Context context) { send(context, ACTION_STOP); }
+    static void update(Context context) { send(context, ACTION_UPDATE); }
 
     /** The pairing code from the notification's reply box. Acted on only while the editor runs. */
     static void pairPhone(Context context, String code) {
@@ -178,6 +183,7 @@ public final class WorkspaceService extends Service {
         boolean phone = ACTION_PHONE_PAIR.equals(action) || ACTION_PHONE_CONNECT.equals(action);
         String text = busy && lastNote != null ? lastNote
                 : ACTION_SETUP.equals(action) ? "Setting up…"
+                : ACTION_UPDATE.equals(action) ? "Checking for updates…"
                 : phone ? "Linux is not running" : "Starting the editor…";
         try {
             startForeground(NOTIFICATION, notification(text));
@@ -187,8 +193,8 @@ public final class WorkspaceService extends Service {
             // Reported instead, which is what every other refusal in this file already does.
             Intent failure = new Intent(EVENT).setPackage(getPackageName())
                     .putExtra(EXTRA_STATE, "failed")
-                    .putExtra(EXTRA_LINE, "Android would not let Linux start just now. Open "
-                            + "the app and try again, or allow background activity in Settings.");
+                    .putExtra(EXTRA_LINE, "Android would not let Linux start from the "
+                            + "background just now. Open the app and start it from there.");
             sendBroadcast(failure);
             stopSelf();
             return START_NOT_STICKY;
@@ -219,13 +225,28 @@ public final class WorkspaceService extends Service {
         if (busy) return START_NOT_STICKY;
         busy = true;
         startedAt = System.currentTimeMillis();
+        // Said once, where the owner will look: a normal power-saving mode only slows a job;
+        // a super or ultra mode ends every app not on its short list, this one included, and
+        // the Help says which is which.
+        try {
+            PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+            if (power != null && power.isPowerSaveMode()) {
+                record("Power saving is on. A normal power-saving mode only slows this job; "
+                        + "a super or ultra mode ends every app not on its list, this one "
+                        + "included.");
+            }
+        } catch (Throwable unreadable) {
+            // Not knowing is not worth failing over.
+        }
         // Remembered on disk, so that if Android kills the process the next start can tell
         // whether Linux was running at the time. See Exits.
         Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, true).apply();
         hold();
         watchHeat();
         boolean setup = ACTION_SETUP.equals(action);
-        worker = new Thread(setup ? this::runSetup : this::runEditor, "Linux");
+        boolean update = ACTION_UPDATE.equals(action);
+        worker = new Thread(update ? this::runUpdate : setup ? this::runSetup : this::runEditor,
+                "Linux");
         worker.start();
         // Not sticky: if Android kills this, restarting it without the owner asking would
         // silently spend their battery and their data.
@@ -255,6 +276,28 @@ public final class WorkspaceService extends Service {
         }
     }
 
+    // ------------------------------------------------------------------ the daily update
+
+    /**
+     * The quiet daily update, under this service rather than on a bare thread from a screen.
+     *
+     * It used to run from Home's onResume on a thread of its own: an owner who put the phone
+     * down mid-apt left dpkg to be frozen or killed with nothing on screen to say so, and the
+     * next run began with a repair. Here it has the wake lock, the thermal pause and the
+     * notification every other long job has, and it ends the way they do.
+     */
+    private void runUpdate() {
+        try {
+            Updates.runQuietly(this, line -> {
+                record(line);
+                note(line);
+            });
+            stopEverything(null, null);
+        } catch (Throwable failure) {
+            fail(failure);
+        }
+    }
+
     // ------------------------------------------------------------------ the editor
 
     private void runEditor() {
@@ -270,7 +313,9 @@ public final class WorkspaceService extends Service {
             // WebView's viewport, applied by WorkspaceActivity from the same Screen.
             String command = "PIDE_LAYOUT=" + layout
                     + " bash /opt/pocketide/pocketide-editor.sh start";
-            editor = Workspace.start(this, command);
+            // With the bridge directory bound in, and nothing of the phone's: the editor's
+            // PRoot is the one an agent works in, and it gets the door, not the key.
+            editor = Workspace.start(this, command, PhoneBroker.editorBinds(this));
             announce(null, "Starting the editor…", "setting-up", -1);
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                     editor.getInputStream(), StandardCharsets.UTF_8))) {
@@ -287,6 +332,10 @@ public final class WorkspaceService extends Service {
                                 .putExtra(EXTRA_URL, editorUrl)
                                 .putExtra(EXTRA_LINE, "The editor is running.");
                         sendBroadcast(ready);
+                        // The door to the phone opens with the editor and closes with it.
+                        PhoneBroker open = broker;
+                        if (open != null) open.stop();
+                        broker = PhoneBroker.start(this);
                         // The phone as a test device connects by itself when it can: adb is
                         // installed and Wireless debugging is on. Quietly -- the Activity
                         // screen has the line either way, and a notification at every
@@ -351,6 +400,9 @@ public final class WorkspaceService extends Service {
         editor = null;
         final Process server = adbServer;
         adbServer = null;
+        final PhoneBroker door = broker;
+        broker = null;
+        if (door != null) door.stop();
         unwatchHeat();
         // The held adb server goes with the editor: the sweep in stopTidily reaches every
         // PRoot of this app's, its included, and destroy() is the backstop for its tracer.
@@ -387,7 +439,8 @@ public final class WorkspaceService extends Service {
         if (Phone.serverListening(this)) return true;
         if (!Phone.adbInstalled(this)) return false;
         try {
-            final Process server = Workspace.start(this, "exec adb server nodaemon");
+            final Process server = Workspace.start(this, "exec adb server nodaemon",
+                    Phone.binds(this));
             adbServer = server;
             new Thread(() -> {
                 // Drained, not read: a pipe nobody empties fills, and a server blocked on

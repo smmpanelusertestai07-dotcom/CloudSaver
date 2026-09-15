@@ -10,7 +10,6 @@
          stretch. Without this Android sleeps the CPU mid-download and the owner sees a
          set-up that stopped for no visible reason. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -59,9 +58,14 @@
         only from the switch in Settings, and the Help screen says that too.
     -->
 
+    <!-- requestLegacyExternalStorage: honoured on Android 10 only, where it is what lets
+         ~/phone read and write the shared storage through ordinary file paths once the owner
+         has turned The phone's files on. Android 11 and later ignore it and use the all-files
+         permission above instead. -->
     <application
         android:name=".App"
         android:allowBackup="false"
+        android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
         android:fullBackupContent="false"
         android:hardwareAccelerated="true"
