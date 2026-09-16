@@ -393,15 +393,13 @@ final class SettingsPane implements Pane {
 
         Ui.Row phone = Ui.row(host, dark, R.drawable.ic_touch, "Test on this phone",
                 !ready ? "Available once Linux is set up"
-                        : !Phone.supported() ? "Needs Android 11 or newer"
-                        : !tools.adb ? "Not installed · adb, about "
-                                + DeviceProbe.formatBytes(Tools.PHONE_BYTES)
+                        : !Phone.supported() ? "Install and launch only · pairing needs Android 11"
                         : Phone.paired(host)
                             ? "Paired · connects when the editor starts with Wireless debugging on"
-                            : "Installed · tap to pair this phone with itself",
-                v -> offerPhone(tools));
-        if (tools.adb && Phone.paired(host)) phone.setState(Ui.running(dark));
-        else if (tools.adb) phone.setState(Ui.needsYou(dark));
+                            : "Install and launch work now · tap to pair for the rest",
+                v -> offerPhone());
+        if (ready && Phone.supported() && Phone.paired(host)) phone.setState(Ui.running(dark));
+        else if (ready && Phone.supported()) phone.setState(Ui.needsYou(dark));
         list.addView(phone);
         list.addView(Ui.divider(host, dark, true));
 
@@ -440,8 +438,7 @@ final class SettingsPane implements Pane {
                 boolean changed = drawn.browser != found.browser
                         || drawn.playwright != found.playwright
                         || drawn.android != found.android
-                        || drawn.sdk != found.sdk
-                        || drawn.adb != found.adb;
+                        || drawn.sdk != found.sdk;
                 if (changed) MainActivity.rebuild(checking);
             });
         }, "check-tools").start();
@@ -538,29 +535,27 @@ final class SettingsPane implements Pane {
     }
 
     /**
-     * The phone as a test device: install adb, then pair or connect.
+     * The phone as a test device: pair or connect. Nothing to install -- the app's own adb
+     * ships inside it -- so the row goes straight to the pairing.
      *
      * Each step checks what the next one needs and says so, because every failure here is
      * silent otherwise: Developer options off, Wireless debugging off, the editor not
      * running, notifications denied. Each of those has a screen, and the dialog names it.
      */
-    private void offerPhone(final Tools.State tools) {
+    private void offerPhone() {
         if (!Workspace.installed(host)) {
             Dialogs.message(host, "Test on this phone",
-                    "Linux has to be set up before anything can be installed into it.");
+                    "Linux has to be set up before the editor, and the phone command in it, "
+                            + "exist.");
             return;
         }
         if (!Phone.supported()) {
             Dialogs.message(host, "Test on this phone",
-                    "Pairing a phone with itself needs Wireless debugging, which Android "
-                            + "added in Android 11. This phone runs Android "
-                            + Build.VERSION.RELEASE + ". An app built here can still be "
-                            + "installed with the row above.");
-            return;
-        }
-        if (!tools.adb) {
-            offerTools("phone", "Test on this phone", Phone.EXPLANATION, Tools.PHONE_BYTES,
-                    false);
+                    "phone install and phone launch work in the terminal on this phone with "
+                            + "no set-up: Android asks you to confirm each install. The rest "
+                            + "— the log, screenshots, taps, instrumented tests — needs "
+                            + "Wireless debugging, which Android added in Android 11. This "
+                            + "phone runs Android " + Build.VERSION.RELEASE + ".");
             return;
         }
         String[] labels = {"Connect now", "Pair for the first time", "How this works"};

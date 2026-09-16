@@ -13,24 +13,48 @@ the Linux rootfs beside the adb server's socket, so the terminal — and any age
 all of it. An owner asked for the opposite: the computer, the app and the agent should not get
 the phone's details, and the agent should be able to test only the app it built.
 
-So the key and the server moved out. They live in a directory of the app's own storage that is
-bound into PRoot only for the app's own adb commands; the editor's PRoot is given a different
-directory, the bridge, and nothing of the phone's. A key 2.1.5 left in the rootfs is moved, not
-copied, at the first start. The editor no longer starts adb at all. What the terminal gets is
-the `phone` command, a client for the app's bridge (PhoneBroker): a socket the app serves that
-does exactly these things — install an APK from under ~/projects, open it, stop it, clear it,
-uninstall it, run its instrumented tests, read its own log by process id, and, only while that
-app is the one on the screen, a screenshot, a tap, typed text or a key — and each only to a
-package the bridge itself installed. No shell, no other app, no package list, no device
-properties, no files, no forwarding; every argument is checked before it goes near a shell, and
-asking for anything else returns the list. The Help, the install prompt and the notices say the
-same, and the by-hand pairing that would have given the terminal the whole key is no longer
-described. Wireless debugging still lives in Developer options, because Android has no narrower
-switch; the app's access is what is narrowed.
+So adb, the key and the server moved out — all three, and the first of them is the one that
+matters. A first draft of this release moved the key into the app's storage and bound it into a
+PRoot that still ran Ubuntu's adb out of the Linux rootfs, through `bash -lc`. A review of that
+draft found the hole: a rootfs the agent can write to is a rootfs where `/usr/bin/adb`,
+`/etc/profile.d/*.sh`, `~/.profile` and `/bin/bash` are all the agent's to replace, and any of
+them, run with the key bound in, hands the key over. So adb is now the app's own. `build.sh`
+assembles it at build time from Ubuntu 24.04's arm64 packages — adb and the eighteen libraries
+it loads, each pinned by name and SHA-256 from Ubuntu's release pocket, which never changes —
+into a 5 MB zip that ships inside the APK. The app unpacks it once per version into its private
+storage and runs it there under a PRoot of its own (`Workspace.startPrivate`): one program by
+absolute path, no shell, no profile, an environment set by the app, and exactly two binds —
+the key directory and a staging directory. Nothing in that PRoot comes from the rootfs. The
+Linux the agent works in has no adb at all; a shim at the path Gradle looks says to use
+`phone` instead, and the profile line 2.1.5 wrote is removed. A key 2.1.5 left in the rootfs is
+moved, not copied, at the first start.
+
+What the terminal gets is the `phone` command, a client for the app's bridge (PhoneBroker): a
+socket the app serves that does exactly these things — install an APK from under ~/projects,
+open it, stop it, clear it, uninstall it, run its instrumented tests, read its own log by process
+id, and, only while that app is the one on the screen, a screenshot, a tap, typed text or a key
+— and each only to a package the bridge itself installed. No shell, no other app, no package
+list, no device properties, no files, no forwarding; arguments reach adb as arguments, never as
+a command line, and asking for anything else returns the list. The Help, the install prompt and
+the notices say the same, and the by-hand pairing that would have given the terminal the whole
+key is no longer described. Wireless debugging still lives in Developer options, because Android
+has no narrower switch; the app's access is what is narrowed.
+
+The same review found the smaller gaps around the door, and each is closed: the APK an agent
+asks to install is copied into the app's storage first and read and installed from the copy, so
+the file under ~/projects cannot change between being inspected and being installed; a package
+is added to the allow-list only once it is actually on the phone; a screenshot or a tap is
+decided and done in one command on the phone, so no other app can come to the front between the
+check and the action; ~/projects and /root above it must be real directories, not links, before
+a path under them is trusted; the bridge serves four requests at once and says "busy" past that
+rather than growing a thread per request; and closing the door wakes the thread waiting on it
+instead of leaving it holding the socket. Process.destroy() sends SIGTERM, which PRoot ignores,
+so every PRoot the app ends is sent SIGQUIT first — including the adb server, and including a
+`phone log` an agent closed, which used to keep running.
 
 PRoot is not a security sandbox against a program that sets out to escape it, and the notes do
 not claim that. What is claimed is narrower and checkable: the workspace has no path to the
-phone except the door.
+phone except the door, and nothing the workspace can write is ever run with the key in reach.
 
 ### One community row: bring your own model
 
@@ -81,11 +105,18 @@ modes. Paired, everything is automatic. Unpaired, `phone install` and `phone lau
 result comes back to the terminal instead of being left to guess. Only the log, the screenshot
 and the taps need adb, and they say so.
 
-The session is used rather than an intent for three reasons that matter here: it answers, with
-SUCCESS or a named failure an agent can act on; it makes PocketIDE the installer of record,
-which is what lets the app see and open what it installed without a `<queries>` element broad
-enough to see every app on the phone (a gate now forbids one); and Android's own App info shows
-PocketIDE as where the app came from.
+The session is used rather than an intent for two reasons that matter here: it answers, with
+SUCCESS or a named failure an agent can act on, and Android's own App info shows PocketIDE as
+where the app came from. The first draft claimed a third — that being the installer of record
+lets the app see what it installed — and the review read the platform's source and found it
+false: Android 11 shows an app its installer, not an installer its apps. So the manifest now
+declares the one query every launcher makes, apps with a home-screen activity, and the gate
+that forbade any `<queries>` element forbids anything more than that one intent instead: no
+QUERY_ALL_PACKAGES, no named packages, no other intent, and no code that lists packages. The
+review also found that an activity started while no screen of this app is in front is dropped
+by Android without a word, so `phone launch` unpaired now checks that first and, when nothing of
+this app is on the screen, puts the same launch in a notification and says so, rather than
+printing "Opened" over nothing.
 
 ### Permissions and power, honestly
 
@@ -115,6 +146,45 @@ Recents lock; Data Saver and Adaptive Battery do not matter; charging helps.
 The daily Ubuntu and editor update runs under the foreground service now — its wake lock, its
 thermal pause, its notification — instead of on a bare thread from the Home screen, where an
 owner who put the phone down mid-apt left dpkg to be frozen or killed with nothing to say so.
+Two things the review found in that move are fixed with it: an editor asked for while the update
+ran was dropped without a word, and now waits for it ("Finishing the update first; the editor
+opens right after") and opens the moment it is done; and Stop during the update did nothing to
+apt, because the update's PRoot was nobody's handle in the service — the sweep that ends the
+workspace now runs for any job, handle or not.
+
+### The app that closes as it opens
+
+An owner reports that the app still closes the moment it opens, again and again, with nothing
+shown — after 2.1.5 added the recovery screen that was meant to catch exactly that. The recovery
+screen could not catch two things: a failure before the launch count was taken, and a failure in
+the steps that run after the screen is built but before its first frame, which the recovery
+screen itself goes through. Both are closed. The count is now the first thing the process does,
+in App.onCreate, before the crash handler, before the notification channel, before anything that
+could fail, and every step after it in App.onCreate, onStart and onResume is caught and recorded
+rather than allowed to end the process. The recovery screen now also says how far the last
+opening got (application, home, built, drawn) and shows Android's own record of why the last
+three processes ended — the reason by name, CRASH, ANR, LOW_MEMORY, or OTHER with the system's
+description, which on a phone whose maker kills apps of its own accord is the one line that says
+so. That record is the thing to copy and send when it happens again, and Help says so.
+
+### What can and cannot be built, with evidence
+
+Asked for iPhone apps, Unity, Unreal and "a game like Free Fire", the Help now answers each
+from evidence rather than hope. Apple's licence allows its SDK on Apple hardware only, and every
+sideloading tool needs a Mac or a PC for its signing step; what works is a free cloud Mac —
+GitHub Actions on a public repository, Codemagic's 500 minutes, Expo's 15 builds a month — with
+the code written here. Unity's release list has no Linux arm64 editor and Unreal supports Linux
+on x86-64 only, so neither runs here and nothing installable changes that. Godot 4 does: its
+arm64 Linux build exports an Android APK headlessly from the terminal, and the Help gives the
+command — not yet a row in Settings, because it has not been proved on a 4 GB phone. And the
+honest sentence about scale: a game like Free Fire is a studio's years on those engines with
+servers and a team, a hardware and headcount fact rather than a limit of this app.
+
+Two more entries answer what an owner asked by name: "unlimited" exists only as an open-weight
+model on hardware you own (Kimi K3 is real, open-weight, already in Kilo's list through
+OpenRouter, paid there, and at 2.8 trillion parameters not something any phone runs); and there
+is no "Bettergravity" extension on Open VSX, no "cloud computer" extension, and browser
+automation is Microsoft's own Playwright extension with the Chromium the Browser row installs.
 
 ### Gates
 
@@ -127,7 +197,17 @@ no shell, pull, push, forward, reverse, root or tcpip; every operation but insta
 the package allow-list; a screenshot or an input first checks the package is the one on the
 screen; install takes only an APK under ~/projects that Android can read; the phone command
 talks to the bridge's socket and nowhere else; and the Help no longer hands out the by-hand
-pairing. Each broken on purpose and confirmed to fail.
+pairing. And for this round: adb never runs from the rootfs (startPrivate runs one program by
+absolute path with no shell, and nothing in PhoneBroker or Phone starts a rootfs PRoot); every
+package in adb's root is pinned by a 64-digit SHA-256 and the zip is assembled from that list
+alone; the allow-list grows only after a successful install; the APK is staged before it is
+read; the screen check and the action are one command; the projects directory is checked
+without following links; the bridge's executor is bounded; the door's close wakes its acceptor;
+SIGQUIT precedes destroy; the manifest's one query is exactly the launcher intent and no code
+lists packages; an unpaired launch checks the app is in front; a start during the update waits
+rather than being dropped; a job with no handle is still swept; the launch count is the first
+thing App.onCreate does and each step after it is caught; and the recovery screen reads
+Android's exit record. Each broken on purpose and confirmed to fail.
 
 ## 2.1.5
 

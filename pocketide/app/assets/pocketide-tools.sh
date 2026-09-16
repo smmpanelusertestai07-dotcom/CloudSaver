@@ -57,11 +57,11 @@
 #
 #   PHONE      And the phone can be driven, not only handed a file. Android 11 added Wireless
 #              debugging -- adb over TCP with a pairing step -- and adbd listens on loopback
-#              too, so an adb client inside this Linux can pair with and connect to the phone
-#              it is running on. See "the phone itself" below. The adb is Ubuntu's own arm64
-#              package, so there is nothing to pin. The paired key and the server stay in the
-#              app's own storage, outside this Linux; what this Linux gets is the phone
-#              command, a door with a short list on it (PhoneBroker.java).
+#              too, so the app's own adb can pair with and connect to the phone it is running
+#              on. That adb ships inside the APK and runs in a root of its own, outside this
+#              Linux, with the paired key and the server; what this Linux gets is the phone
+#              command, a door with a short list on it (PhoneBroker.java). See "the phone
+#              itself" below.
 #
 #   LISTS      Set-up and the nightly update delete /var/lib/apt/lists to save 60 MB, so every
 #              apt-get install here refreshes the list first. Without that, a fresh workspace
@@ -72,7 +72,7 @@
 #   pocketide-tools.sh browser      install the browser layer
 #   pocketide-tools.sh playwright   install the automation layer on top of it
 #   pocketide-tools.sh android      install the complete Android build toolchain
-#   pocketide-tools.sh phone        install adb, so the phone can be paired with itself
+#   pocketide-tools.sh phone        the phone command, and the adb shim where Gradle looks
 #   pocketide-tools.sh tune         write Gradle settings sized to this phone
 #   pocketide-tools.sh check        report what is present, machine-readably
 #   pocketide-tools.sh smoke        prove the browser really loads a page and screenshots it
@@ -243,11 +243,6 @@ install_android() {
   refresh_packages
   apt-get install -y -qq openjdk-21-jdk-headless unzip libstdc++6 zlib1g || {
     say "The JDK could not be installed."; return 1; }
-  # adb beside it, so that Gradle's install and connected-test tasks have one that runs.
-  # Not fatal: a build needs none of it, and Settings → Test on this phone can add it later.
-  install_adb_package || \
-    say "adb did not install. Builds still work; Test on this phone can add it later."
-
   mkdir -p "$SDK_DIR"
   local manager="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
 
@@ -314,8 +309,8 @@ install_android() {
     say "aapt2 is installed but will not run on this phone. The build tools are not usable."
     return 1
   fi
-  # Google's platform-tools carry an x86-64 adb, for the same reason. Ubuntu's takes its
-  # place, at the one path the Android Gradle Plugin looks for adb.
+  # Google's platform-tools carry an x86-64 adb, for the same reason. The shim that names the
+  # phone command takes its place, at the one path the Android Gradle Plugin looks for adb.
   link_adb
   fix_build_tools
 
@@ -378,126 +373,46 @@ EOF
 
 # --------------------------------------------------------------------------- the phone itself
 #
-# The test device is the phone this is running on, and Android 11 added the one thing that
-# makes it reachable from inside: Wireless debugging, which is adb over TCP with pairing. adbd
-# listens on every interface, loopback included, so an adb client inside this Linux can pair
-# with and connect to the phone it is running on -- which is what Shizuku does from an ordinary
-# app, and what Termux users do by hand. Once connected, everything a developer does from a
-# laptop works from the editor's terminal: adb install, adb shell am start, adb logcat, adb
-# exec-out screencap, adb shell am instrument, adb shell input tap. An agent can build an app,
-# install it, launch it, read its log, screenshot it, tap it and test it, on real hardware.
+# The test device is the phone this is running on. What this Linux gets for it is ONE command,
+# phone: a client for the app's bridge (PhoneBroker.java), which installs an APK built under
+# ~/projects, opens it, stops it, clears it, uninstalls it, runs its instrumented tests, reads
+# its own log, and -- only while it is on the screen -- screenshots and drives it. Nothing else
+# adb could do is reachable from here, by design.
 #
-# The adb here is Ubuntu's own arm64 package (34.0.4 on Noble; pairing arrived in 30.0.0), so
-# there is no third-party binary and nothing to pin. Google's platform-tools carry an x86-64
-# adb that cannot run here; when the SDK is installed, that copy is set aside and a link to
-# Ubuntu's put in its place, because the Android Gradle Plugin looks for adb at exactly
-# <sdk>/platform-tools/adb and nowhere else.
+# There is no adb in this Linux at all, and there must not be one that the app trusts: a
+# program that runs from a rootfs an agent can write to is a program the agent can replace.
+# The app carries its own adb (Ubuntu's arm64 build, inside the APK) and runs it in a root of
+# its own, outside this Linux, with the paired key bound in there and nowhere else. 2.1.x and
+# the 2.2.0 preview installed adb in here and pointed it at the app's socket; that socket is
+# no longer reachable from here, so the package is harmless, and the profile line that named
+# it is removed below.
 #
-# The app does the pairing and the connecting (Phone.java): it finds the ports the phone
-# advertises for itself, takes the pairing code from a notification's reply box, and runs adb
-# pair and adb connect itself, in a PRoot of its own with the key directory bound in from the
-# app's storage (Phone.binds). This Linux never holds the key or the server: the editor's PRoot
-# has no such bind, so /root/.android here stays empty, the raw adb installed below has nothing
-# to talk to, and no server is on TCP 5037 either (loopback is every app's on a phone, and
-# adb's protocol has no authentication; ADB_SERVER_SOCKET keeps even a stray server off it).
-# What this Linux gets is the phone command (install_phone_command): a client for the app's
-# bridge (PhoneBroker.java), which does a short list of things to the apps built here and
-# nothing else. Gradle's own installDebug and connectedAndroidTest speak only to the port and
-# fail closed; phone install and phone instrument do the same work.
+# The Android Gradle Plugin looks for adb at exactly <sdk>/platform-tools/adb, and Google's
+# platform-tools carry an x86-64 one that cannot run here. What sits at that path instead is a
+# shim that says what to run: phone install does what installDebug would, phone instrument
+# what connectedAndroidTest would. The same shim answers a bare "adb" in the terminal.
 
-install_adb_package() {
-  if command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1; then
-    configure_adb_socket
-    install_phone_command
-    return 0
-  fi
-  say "Installing adb from Ubuntu… about 2 MB"
-  refresh_packages
-  apt-get install -y -qq --no-install-recommends adb || {
-    say "adb could not be installed."; return 1; }
-  adb --version >/dev/null 2>&1 || { say "adb installed but will not run."; return 1; }
-  configure_adb_socket
-  install_phone_command
-}
-
-# The workspace's door to the phone: a small client for the app's bridge. Everything it can do
-# is in its help; everything else adb could do is not reachable from here, by design -- the
-# pairing key and the server live outside this Linux (Phone.java, PhoneBroker.java).
 install_phone_command() {
   mkdir -p /usr/local/bin
-  cat > /usr/local/bin/phone <<'PHONE'
-#!/usr/bin/env python3
-"""phone: test the app you built, on this phone, through PocketIDE's bridge.
-
-  phone devices                    is the phone paired and connected
-  phone install <app.apk>          install an APK built under ~/projects (test APKs too)
-  phone launch <package>           open it; it comes to the front of the phone
-  phone stop <package>             force-stop it
-  phone clear <package>            clear its data
-  phone uninstall <package>
-  phone instrument <test package> [runner]   run its instrumented tests (am instrument -w -r)
-  phone log <package> [-d]         its log, by process id; -d dumps and returns
-  phone screenshot <package> <out.png>       only while that package is on the screen
-  phone tap <package> <x> <y>      a tap, only while that package is on the screen
-  phone text <package> <text>      typed text, same rule
-  phone key <package> <KEYCODE>    a key, same rule (KEYCODE_BACK, KEYCODE_HOME ...)
-  phone allowed                    the packages this bridge may touch
-
-Only packages installed through phone install, and only from ~/projects. The phone's own
-adb access never enters this Linux: no shell, no other app, no files, no device details.
-
-install and launch need no pairing at all: Android asks you to confirm each install on its
-own screen, and the app opens from there. log, screenshot, tap, text, key and instrument do
-need the phone paired -- PocketIDE: Settings > The computer > Test on this phone. The bridge
-answers while the editor is running.
-"""
-import json
-import os
-import socket
-import sys
-
-SOCK = "/run/pocketide/phone.sock"
-
-args = sys.argv[1:]
-if not args or args[0] in ("-h", "--help", "help"):
-    print(__doc__.strip())
-    sys.exit(0)
-request = {"op": args[0], "args": args[1:], "cwd": os.getcwd()}
-link = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-try:
-    link.connect(SOCK)
-except OSError:
-    print("The phone bridge is not answering. Open the editor from PocketIDE, and pair the "
-          "phone under Settings > The computer > Test on this phone.", file=sys.stderr)
-    sys.exit(2)
-link.sendall((json.dumps(request) + "\n").encode("utf-8"))
-link.shutdown(socket.SHUT_WR)
-code = 1
-with link.makefile("rb") as stream:
-    for raw in stream:
-        line = raw.decode("utf-8", "replace")
-        if line.startswith("\x1e"):
-            try:
-                code = int(line[1:].strip())
-            except ValueError:
-                code = 1
-            break
-        sys.stdout.write(line)
-        sys.stdout.flush()
-sys.exit(code)
-PHONE
-  chmod +x /usr/local/bin/phone
-}
-
-# Where adb's server answers, for every shell. Idempotent; run at every install.
-configure_adb_socket() {
-  mkdir -p "$HOME_DIR/.android"
-  cat > /etc/profile.d/pocketide-adb.sh <<EOF
-export ADB_SERVER_SOCKET="localfilesystem:$HOME_DIR/.android/adb.sock"
-EOF
-  grep -q 'pocketide-adb.sh' "$HOME_DIR/.bashrc" 2>/dev/null || \
-    printf '\n[ -f /etc/profile.d/pocketide-adb.sh ] && . /etc/profile.d/pocketide-adb.sh\n' \
-      >> "$HOME_DIR/.bashrc"
+  if [ -f /opt/pocketide/pocketide-phone.py ]; then
+    install -m 0755 /opt/pocketide/pocketide-phone.py /usr/local/bin/phone
+  fi
+  # The shim, wherever adb would be looked for.
+  cat > /usr/local/bin/adb <<'SHIM'
+#!/bin/sh
+echo "adb does not run inside this Linux: the phone's key never enters it." >&2
+echo "Use the phone command instead: phone install app.apk, phone launch com.example.app," >&2
+echo "phone log, phone screenshot, phone instrument. phone help lists everything." >&2
+exit 1
+SHIM
+  chmod +x /usr/local/bin/adb
+  # What 2.1.x wrote: a socket path this Linux can no longer reach. Removed, not left to
+  # confuse the next shell.
+  rm -f /etc/profile.d/pocketide-adb.sh
+  if [ -f "$HOME_DIR/.bashrc" ] && grep -q 'pocketide-adb.sh' "$HOME_DIR/.bashrc" 2>/dev/null; then
+    grep -v 'pocketide-adb.sh' "$HOME_DIR/.bashrc" > "$HOME_DIR/.bashrc.tmp" && \
+      mv -f "$HOME_DIR/.bashrc.tmp" "$HOME_DIR/.bashrc"
+  fi
 }
 
 # True when a binary is built for this processor: the ELF e_machine field, one byte at offset
@@ -534,30 +449,25 @@ fix_build_tools() {
   done
 }
 
-# Ubuntu's adb at the one path the Android Gradle Plugin looks for it. Google's x86-64 copy,
-# if there is one, is set aside rather than deleted.
+# The shim at the one path the Android Gradle Plugin looks for adb. Google's x86-64 copy, if
+# there is one, is set aside rather than deleted; a link 2.1.x made to Ubuntu's adb is
+# replaced, because that adb has nothing to talk to any more.
 link_adb() {
-  local pt="$SDK_DIR/platform-tools" real
+  local pt="$SDK_DIR/platform-tools"
   [ -d "$pt" ] || return 0
-  real=$(command -v adb 2>/dev/null) || return 0
-  [ -n "$real" ] || return 0
-  if [ -L "$pt/adb" ] && [ "$(readlink "$pt/adb")" = "$real" ]; then
+  [ -x /usr/local/bin/adb ] || install_phone_command
+  if [ -L "$pt/adb" ] && [ "$(readlink "$pt/adb")" = "/usr/local/bin/adb" ]; then
     return 0
   fi
-  if [ -e "$pt/adb" ] && ! [ -L "$pt/adb" ] && ! "$pt/adb" --version >/dev/null 2>&1; then
+  if [ -e "$pt/adb" ] && ! [ -L "$pt/adb" ]; then
     mv -f "$pt/adb" "$pt/adb.x86_64"
   fi
-  if [ -e "$pt/adb" ] && ! [ -L "$pt/adb" ]; then
-    return 0    # a runnable adb of its own; kept
-  fi
-  ln -sf "$real" "$pt/adb"
+  ln -sf /usr/local/bin/adb "$pt/adb"
 }
 
 install_phone() {
-  install_adb_package || return 1
+  install_phone_command
   link_adb
-  say ""
-  say "adb is installed: $(adb --version 2>/dev/null | head -1)"
   say ""
   say "This Linux gets the phone command, a door to the phone with a short list on it:"
   say "  phone install app.apk · launch · stop · clear · uninstall · instrument · log"
@@ -566,8 +476,9 @@ install_phone() {
   say ""
   say "install and launch need no pairing: Android asks you to confirm each install."
   say "The rest needs the phone paired with itself over Wireless debugging (Android 11 and"
-  say "newer), from Settings → The computer → Test on this phone in PocketIDE. The key and"
-  say "the adb server stay in the app's own storage, never in here."
+  say "newer), from Settings → The computer → Test on this phone in PocketIDE. The app's own"
+  say "adb, the key and the adb server stay in the app's storage, in a root of their own,"
+  say "never in here."
   say "Gradle's installDebug and connectedAndroidTest expect adb's network port, which the"
   say "app never opens; phone install and phone instrument do the same work."
 }
@@ -644,7 +555,7 @@ EOF
 # --------------------------------------------------------------------------- what is present
 
 check() {
-  local browser=no playwright=no android=no android_sdk=no adb=no
+  local browser=no playwright=no android=no android_sdk=no
   command -v chromium >/dev/null 2>&1 && browser=yes
   [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
   command -v javac >/dev/null 2>&1 && android=yes
@@ -660,12 +571,10 @@ check() {
     "$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" version >/dev/null 2>&1 && \
     grep -qxF "android.aapt2FromMavenOverride=$SDK_DIR/build-tools/$BUILD_TOOLS/aapt2" \
       "$HOME_DIR/.gradle/gradle.properties" 2>/dev/null && android_sdk=yes
-  command -v adb >/dev/null 2>&1 && adb --version >/dev/null 2>&1 && adb=yes
   echo "browser=$browser"
   echo "playwright=$playwright"
   echo "android=$android"
   echo "android_sdk=$android_sdk"
-  echo "adb=$adb"
   if [ "$browser" = yes ]; then
     echo "chromium=$(chromium --version 2>/dev/null | head -1)"
   fi

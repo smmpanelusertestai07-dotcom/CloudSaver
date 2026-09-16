@@ -55,7 +55,7 @@ final class Workspace {
     /** The scripts copied out of the APK on every start, so an update replaces them. */
     static final String[] SCRIPTS = {
             "pocketide-bootstrap.sh", "pocketide-editor.sh", "pocketide-tools.sh",
-            "pocketide-update.sh"};
+            "pocketide-update.sh", "pocketide-phone.py"};
 
     interface Progress { void line(String message); }
 
@@ -383,14 +383,8 @@ final class Workspace {
         args.add("TERM=xterm-256color");
         args.add("LANG=C.UTF-8");
         args.add("TMPDIR=/tmp");
-        // adb's server answers on this socket, inside the app's own storage, and on no network
-        // port. A port on loopback is reachable by every app on the phone, the adb wire
-        // protocol has no authentication, and it is the server that holds the paired key --
-        // so a TCP server would have let any app with INTERNET install, read and tap through
-        // this one while the phone was connected. Set for every PRoot this app starts, so the
-        // editor's start, its terminals and the app's own pair and connect all mean the same
-        // server. See Phone.
-        args.add("ADB_SERVER_SOCKET=localfilesystem:/root/.android/adb.sock");
+        // Nothing about adb here, on purpose: the Linux the agent works in has no adb, no key
+        // and no server socket. Those live in a root of their own (startPrivate, Phone).
         args.add("TZ=" + java.util.TimeZone.getDefault().getID());
         args.add("PIDE_PORT=" + EDITOR_PORT);
         args.add("PIDE_PASSWORD=" + editorPassword(context));
@@ -431,6 +425,91 @@ final class Workspace {
             throw new IOException("Stopped.", interrupted);
         } finally {
             process.destroy();
+        }
+    }
+
+    /**
+     * Starts a program in a PRoot rooted somewhere OTHER than the Linux rootfs: the phone's
+     * adb, in the root the APK ships for it (Phone.root).
+     *
+     * The difference from start() is the whole point of it. start() runs bash -lc inside a
+     * rootfs the agent can write to, and a program run that way trusts /bin/bash, /etc/profile,
+     * ~/.profile and every directory on PATH -- each of which the agent owns. An adb run like
+     * that with the phone's key bound in would be an adb the agent could replace, and a
+     * replaced adb is the key handed over. So this runs ONE program by absolute path, with no
+     * shell in front of it, from a root the rootfs cannot reach, with an environment set here
+     * and nowhere else. The binds are the caller's, and only the caller's: /dev, /proc and
+     * /sys for the program to work at all, and whatever the caller passes -- never the
+     * phone's storage, never the rootfs.
+     */
+    static Process startPrivate(Context context, File root, List<String> argv,
+                                List<String> binds, Map<String, String> environment)
+            throws IOException {
+        File natives = new File(context.getApplicationInfo().nativeLibraryDir);
+        File temporary = new File(context.getFilesDir(), "proot-tmp");
+        if (!temporary.isDirectory() && !temporary.mkdirs()) {
+            throw new IOException("Cannot create Linux's temporary folder.");
+        }
+        List<String> args = new ArrayList<>();
+        args.add(new File(natives, "libproot.so").getAbsolutePath());
+        args.add("--kill-on-exit");
+        args.add("-0");
+        args.add("-r");
+        args.add(root.getAbsolutePath());
+        args.add("-b");
+        args.add("/dev");
+        args.add("-b");
+        args.add("/proc");
+        args.add("-b");
+        args.add("/sys");
+        for (String bind : binds) {
+            args.add("-b");
+            args.add(bind);
+        }
+        args.add("-w");
+        args.add("/root");
+        args.addAll(argv);
+
+        ProcessBuilder builder = new ProcessBuilder(args);
+        builder.redirectErrorStream(true);
+        // The environment is exactly this: PRoot passes its own on to the program it runs,
+        // so the host's is cleared first rather than inherited.
+        Map<String, String> env = builder.environment();
+        env.clear();
+        env.putAll(environment);
+        env.put("PROOT_TMP_DIR", temporary.getAbsolutePath());
+        env.put("PROOT_LOADER", new File(natives, "libproot-loader.so").getAbsolutePath());
+        env.put("PROOT_NO_SECCOMP", "1");
+        env.put("PROOT_NO_MOUNTINFO", "1");
+        env.put("LD_LIBRARY_PATH", natives.getAbsolutePath());
+        return builder.start();
+    }
+
+    /**
+     * Ends a PRoot and everything it traces.
+     *
+     * Process.destroy() sends SIGTERM, and PRoot ignores SIGTERM: its event loop answers only
+     * SIGQUIT (and the fatal signals) by killing every process it traces and leaving. So a
+     * destroy() on its own left an adb logcat running under a tracer that had been told
+     * nothing it would act on. SIGQUIT first, then destroy() as the backstop, then a moment
+     * for the exit to land.
+     */
+    static void quit(Process process) {
+        if (process == null) return;
+        try {
+            if (process.isAlive()) {
+                // "Process[pid=1234, exitValue=...]" is what the platform's Process prints.
+                java.util.regex.Matcher pid = java.util.regex.Pattern.compile("pid=(\\d+)")
+                        .matcher(process.toString());
+                if (pid.find()) android.os.Process.sendSignal(Integer.parseInt(pid.group(1)), 3);
+            }
+        } catch (Throwable unreadable) {
+            // Then destroy() below is all there is.
+        }
+        try {
+            process.destroy();
+        } catch (Throwable alreadyGone) {
+            // Nothing to undo.
         }
     }
 

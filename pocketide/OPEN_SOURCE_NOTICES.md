@@ -40,6 +40,37 @@ https://github.com/termux/proot. A copy of the GPL-2.0 text accompanies that sou
 PRoot is what lets a complete Ubuntu system run on the phone's own kernel without root and
 without a virtual machine.
 
+## adb, and the libraries it loads
+
+`app/assets/adb-root.zip`, assembled by `build.sh` and shipped inside the APK, is Ubuntu 24.04's
+own arm64 build of the Android Debug Bridge client with the shared libraries it links against,
+taken unmodified from the packages below (Ubuntu's release pocket, each pinned by SHA-256 in
+`build.sh`; the source of every one is at `https://launchpad.net/ubuntu/+source/<source>`). The
+app unpacks them into its private storage and runs adb there under PRoot; nothing is linked into
+the app itself, and each library remains the separate file it was in the package, replaceable
+by anyone with the APK. Ubuntu's `/usr/share/doc/<package>/copyright` text for each is the
+full notice.
+
+| Package | Version | Licence | Source |
+|---|---|---|---|
+| adb, android-libbase, android-libcutils, android-liblog, android-libziparchive | 34.0.4-1build3 | **Apache-2.0** (© The Android Open Source Project) | android-platform-tools |
+| android-libboringssl | 14.0.0+r11-4build1 | **ISC / OpenSSL / BSD** (Google, OpenSSL Project) | android-platform-external-boringssl |
+| libprotobuf32t64 | 3.21.12-8.2build1 | **BSD-3-Clause** (© Google) | protobuf |
+| libbrotli1 | 1.1.0-2build2 | **MIT** (© Google) | brotli |
+| liblz4-1 | 1.9.4-1build1 | **BSD-2-Clause** | lz4 |
+| libzstd1 | 1.5.5+dfsg2-2build1 | **BSD-3-Clause** (© Meta Platforms) | libzstd |
+| zlib1g | 1:1.3.dfsg-3.1ubuntu2 | **Zlib** | zlib |
+| libusb-1.0-0 | 2:1.0.27-1 | **LGPL-2.1-or-later** | libusb-1.0 |
+| libudev1 | 255.4-1ubuntu8 | **LGPL-2.1-or-later** | systemd |
+| libcap2 | 1:2.66-5ubuntu2 | **BSD-3-Clause or GPL-2.0** | libcap2 |
+| libbsd0 | 0.12.1-1build1 | **BSD-3-Clause** and others | libbsd |
+| libmd0 | 1.1.0-2build1 | **BSD-3-Clause** and others | libmd |
+| libc6 | 2.39-0ubuntu8 | **LGPL-2.1-or-later** (© Free Software Foundation) | glibc |
+| libgcc-s1, libstdc++6 | 14-20240412-0ubuntu1 | **GPL-3.0-or-later with the GCC Runtime Library Exception** | gcc-14 |
+
+The LGPL libraries are used only as separate shared objects loaded at run time, which is the
+use the LGPL permits without further obligation beyond this notice and the source above.
+
 ## Ubuntu
 
 Set-up downloads `ubuntu-base-24.04.5-base-arm64.tar.gz` from Canonical's own mirror at

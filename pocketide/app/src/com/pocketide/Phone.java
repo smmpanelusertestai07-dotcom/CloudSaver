@@ -14,6 +14,7 @@ import android.os.Build;
 import android.provider.Settings;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Arrays;
@@ -62,18 +63,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   reply box can: the owner reads the six digits, pulls the shade down and types them there,
  *   Settings never leaves the screen, and the code arrives at PhoneReceiver.
  *
- * The adb commands themselves run inside the workspace, and the server they talk to is started
- * with the editor (pocketide-editor.sh), so a connection lasts exactly as long as the editor
- * does and the terminal's own adb sees the same device. Nothing here works without the editor
- * running, and the screen says so rather than pairing into a server that would be gone by the
- * time the terminal asked.
+ * The adb that does this is the app's own, not the workspace's. It ships inside the APK -- a
+ * root of its own, assembled at build time from Ubuntu's pinned arm64 packages (build.sh) --
+ * and is unpacked into the app's private storage, where it runs under a PRoot of its own
+ * (Workspace.startPrivate) with the key directory bound in. The Linux the agent works in never
+ * holds adb, the key or the server socket, and cannot reach any of them: not by path, not by
+ * replacing a binary, not by editing a profile, because none of what that PRoot runs comes
+ * from the rootfs. The server lives exactly as long as the editor does
+ * (WorkspaceService.ensureAdbServer), so nothing here works without the editor running, and
+ * the screen says so rather than pairing into a server that would be gone by the time the
+ * terminal asked.
  *
  * Pairing gives the APP what a computer with USB debugging has. The terminal, and any agent in
- * it, gets none of that directly: the key and the server live in a directory bound only into
- * the app's own adb commands (binds()), and the workspace reaches the phone through
- * PhoneBroker, a socket that does a short list of things to the apps the owner built and
- * nothing else. It is still a step the owner takes, and Android turns Wireless debugging off
- * at every restart on its own.
+ * it, gets none of that directly: the workspace reaches the phone through PhoneBroker, a
+ * socket that does a short list of things to the apps the owner built and nothing else. It is
+ * still a step the owner takes, and Android turns Wireless debugging off at every restart on
+ * its own.
  */
 final class Phone {
 
@@ -98,9 +103,158 @@ final class Phone {
     /** Wireless debugging with pairing is Android 11 and later. */
     static boolean supported() { return Build.VERSION.SDK_INT >= 30; }
 
-    /** Cheap enough for a screen: a file test, not a run of the tools script. */
-    static boolean adbInstalled(Context context) {
-        return new File(Workspace.root(context), "usr/bin/adb").exists();
+    /** Where the app's own adb lives once unpacked: outside the Linux rootfs, beside the key. */
+    static File root(Context context) {
+        return new File(context.getFilesDir(), "phone/root");
+    }
+
+    /** True once the private root is unpacked and its adb is in place. Cheap: one stat. */
+    static boolean ready(Context context) {
+        return new File(root(context), "usr/bin/adb").isFile();
+    }
+
+    /**
+     * Unpacks the APK's adb root, once per app version.
+     *
+     * The zip's own SHA-256 is written beside it at build time (adb-root.stamp) and again on
+     * the phone when the unpacking finishes; the two agreeing is what "already unpacked"
+     * means, so an update that ships the same packages unpacks nothing and one that changes
+     * them replaces everything. Call from a worker thread: it writes about 15 MB the first
+     * time. Returns false when the phone would not take it, and says why in the Activity log.
+     */
+    static synchronized boolean prepareRoot(Context context) {
+        File root = root(context);
+        File stamp = new File(root, ".stamp");
+        String wanted;
+        try {
+            wanted = readAsset(context, "adb-root.stamp").trim();
+        } catch (IOException missing) {
+            WorkspaceService.record("Phone: this build carries no adb root (" + missing.getMessage()
+                    + ").");
+            return false;
+        }
+        if (ready(context) && stamp.isFile()) {
+            try {
+                if (wanted.equals(new String(java.nio.file.Files.readAllBytes(stamp.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8).trim())) {
+                    return true;
+                }
+            } catch (IOException unreadable) {
+                // Then it is unpacked again below, which is the safe answer.
+            }
+        }
+        File fresh = new File(context.getFilesDir(), "phone/root.unpacking");
+        deleteTree(fresh);
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.BufferedInputStream(context.getAssets().open("adb-root.zip")))) {
+            String rootPath = fresh.getCanonicalPath() + File.separator;
+            java.util.zip.ZipEntry entry;
+            byte[] buffer = new byte[65536];
+            while ((entry = zip.getNextEntry()) != null) {
+                File target = new File(fresh, entry.getName());
+                // A zip is a list of names, and a name can say "..": every target has to land
+                // inside the directory being filled, whatever the name says.
+                if (!target.getCanonicalPath().startsWith(rootPath)) {
+                    throw new IOException("bad entry " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    if (!target.isDirectory() && !target.mkdirs()) throw new IOException("mkdir");
+                    continue;
+                }
+                File parent = target.getParentFile();
+                if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+                    throw new IOException("mkdir " + parent.getName());
+                }
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
+                    int read;
+                    while ((read = zip.read(buffer)) != -1) out.write(buffer, 0, read);
+                    out.getFD().sync();
+                }
+                if (entry.getName().endsWith("/adb") || entry.getName().contains(".so")) {
+                    target.setExecutable(true, false);
+                }
+            }
+            // The mount points the binds land on, and the working directory, made here rather
+            // than trusted to the zip, which carries no empty directories.
+            for (String name : new String[]{"root", "root/.android", "tmp", "stage", "dev",
+                    "proc", "sys", "etc"}) {
+                File dir = new File(fresh, name);
+                if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("mkdir " + name);
+            }
+            // The links the zip could not carry: "lib usr/lib", one per line.
+            File links = new File(fresh, "links.txt");
+            if (links.isFile()) {
+                for (String line : new String(java.nio.file.Files.readAllBytes(links.toPath()),
+                        java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                    String[] pair = line.trim().split("\\s+");
+                    if (pair.length != 2 || pair[0].contains("..") || pair[1].contains("..")) {
+                        continue;
+                    }
+                    android.system.Os.symlink(pair[1], new File(fresh, pair[0]).getAbsolutePath());
+                }
+            }
+            try (java.io.FileOutputStream out = new java.io.FileOutputStream(
+                    new File(fresh, ".stamp"))) {
+                out.write((wanted + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                out.getFD().sync();
+            }
+        } catch (Throwable failed) {
+            deleteTree(fresh);
+            WorkspaceService.record("Phone: adb could not be unpacked (" + (failed.getMessage()
+                    == null ? failed.getClass().getSimpleName() : failed.getMessage()) + ").");
+            return false;
+        }
+        // The swap. The old root goes only once the new one is whole, and the key directory
+        // is not under either of them.
+        File old = new File(context.getFilesDir(), "phone/root.old");
+        deleteTree(old);
+        if (root.exists() && !root.renameTo(old)) {
+            deleteTree(fresh);
+            WorkspaceService.record("Phone: the old adb root could not be moved aside.");
+            return false;
+        }
+        if (!fresh.renameTo(root)) {
+            if (old.exists()) old.renameTo(root);
+            deleteTree(fresh);
+            WorkspaceService.record("Phone: the new adb root could not be put in place.");
+            return false;
+        }
+        deleteTree(old);
+        WorkspaceService.record("Phone: adb unpacked (" + wanted.split("\n")[0] + ").");
+        return true;
+    }
+
+    private static String readAsset(Context context, String name) throws IOException {
+        try (java.io.InputStream in = context.getAssets().open(name)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+            return new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void deleteTree(File file) {
+        if (file == null || !file.exists()) return;
+        try {
+            // Never through a link: a tree is deleted, what a link points at is left alone.
+            if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
+                file.delete();
+                return;
+            }
+        } catch (Throwable unreadable) {
+            // Treated as a plain file below.
+        }
+        File[] children = file.isDirectory() ? file.listFiles() : null;
+        if (children != null) for (File child : children) deleteTree(child);
+        file.delete();
+    }
+
+    /** Where an APK waits while it is being installed, and a screenshot while it is written. */
+    static File stageDir(Context context) {
+        File dir = new File(context.getFilesDir(), "phone/stage");
+        if (!dir.isDirectory()) dir.mkdirs();
+        return dir;
     }
 
     /**
@@ -132,9 +286,55 @@ final class Phone {
         return dir;
     }
 
-    /** The one bind the app's adb commands run with: the key directory as /root/.android. */
+    /**
+     * The binds the app's adb PRoot runs with, and the whole list: the key directory as
+     * /root/.android, and the staging directory as /stage, where an APK being installed is a
+     * copy of the agent's file rather than the file itself (see PhoneBroker.install).
+     */
     static List<String> binds(Context context) {
-        return Collections.singletonList(androidDir(context).getAbsolutePath() + ":/root/.android");
+        return Arrays.asList(androidDir(context).getAbsolutePath() + ":/root/.android",
+                stageDir(context).getAbsolutePath() + ":/stage");
+    }
+
+    /**
+     * adb's environment, set here and nowhere else.
+     *
+     * ADB_SERVER_SOCKET puts the server on a socket inside the app's own storage and on no
+     * network port. A port on loopback is reachable by every app on the phone, the adb wire
+     * protocol has no authentication, and it is the server that holds the paired key -- so a
+     * TCP server would have let any app with INTERNET install, read and tap through this one
+     * while the phone was connected. ADB_MDNS=0 keeps the server from advertising or scanning
+     * for anything: the ports are found by NsdManager (discover) and handed to it. ADB_LIBUSB=0
+     * keeps it off the USB bus, which a phone's own app has no business on.
+     */
+    static java.util.Map<String, String> environment() {
+        java.util.Map<String, String> env = new java.util.LinkedHashMap<>();
+        env.put("HOME", "/root");
+        env.put("USER", "root");
+        env.put("PATH", "/usr/bin");
+        env.put("TMPDIR", "/tmp");
+        env.put("LANG", "C.UTF-8");
+        env.put("ADB_SERVER_SOCKET", "localfilesystem:/root/.android/adb.sock");
+        env.put("ADB_MDNS", "0");
+        env.put("ADB_LIBUSB", "0");
+        return env;
+    }
+
+    /**
+     * One adb command in the app's own PRoot -- the one with the key -- as a running process.
+     *
+     * argv, not a command line: there is no shell between here and adb, so an argument is an
+     * argument and nothing an agent typed can become a second command. The caller owns the
+     * process and ends it with Workspace.quit.
+     */
+    static Process start(Context context, String... adbArguments) throws java.io.IOException {
+        if (!ready(context) && !prepareRoot(context)) {
+            throw new java.io.IOException("adb is not unpacked on this phone.");
+        }
+        List<String> argv = new java.util.ArrayList<>();
+        argv.add("/usr/bin/adb");
+        argv.addAll(Arrays.asList(adbArguments));
+        return Workspace.startPrivate(context, root(context), argv, binds(context), environment());
     }
 
     static boolean paired(Context context) {
@@ -188,7 +388,7 @@ final class Phone {
                     + "with pairing code box open, with Wi-Fi on, and type its code again. ");
             return;
         }
-        String out = run(service, "adb pair " + LOOPBACK + ":" + port + " " + code);
+        String out = run(service, "pair", LOOPBACK + ":" + port, code);
         if (!out.contains("Successfully paired")) {
             askForCode(service, "Pairing failed: " + trimmed(out, "adb pair did not succeed.")
                     + " Tap Pair device with pairing code again and type the new code. ");
@@ -223,7 +423,7 @@ final class Phone {
             }
             return false;
         }
-        String out = run(service, "adb connect " + LOOPBACK + ":" + port);
+        String out = run(service, "connect", LOOPBACK + ":" + port);
         boolean ok = out.contains("connected to " + LOOPBACK);
         if (ok) {
             // A connection only succeeds with a paired key, so this is the proof of pairing
@@ -247,8 +447,8 @@ final class Phone {
     }
 
     private static final String NO_SERVER =
-            "adb is installed, but no adb server is answering inside Linux. Stop the editor "
-                    + "and open it again, then try once more.";
+            "No adb server is answering. Stop the editor and open it again, then try once "
+                    + "more. The Activity screen says why if adb could not be unpacked.";
 
     /** adb's server socket: in the key directory, which the server sees as /root/.android. */
     static File serverSocket(Context context) {
@@ -261,8 +461,8 @@ final class Phone {
      * A socket in the app's own storage rather than a TCP port, and that is the security
      * boundary of the whole feature: a port on loopback is reachable by every app on the
      * phone, the adb wire protocol has no authentication, and it is the server that holds the
-     * paired key. Nothing outside this app's sandbox can open this file. Workspace.start sets
-     * ADB_SERVER_SOCKET for every PRoot, which is what puts the server here.
+     * paired key. Nothing outside this app's sandbox can open this file. environment() sets
+     * ADB_SERVER_SOCKET for every adb the app runs, which is what puts the server here.
      */
     static boolean serverListening(Context context) {
         File socket = serverSocket(context);
@@ -547,15 +747,25 @@ final class Phone {
 
     // ------------------------------------------------------------------ running adb
 
-    private static String run(Context context, String command) {
+    private static String run(Context context, String... adbArguments) {
         final StringBuilder out = new StringBuilder();
+        Process process = null;
         try {
-            Workspace.run(context, command, binds(context), line -> {
-                if (out.length() < 4000) out.append(line).append('\n');
-            });
+            process = start(context, adbArguments);
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream(),
+                            java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (out.length() < 4000) out.append(Workspace.clean(line)).append('\n');
+                }
+            }
+            process.waitFor();
         } catch (Throwable failed) {
             out.append(failed.getMessage() == null
                     ? failed.getClass().getSimpleName() : failed.getMessage());
+        } finally {
+            Workspace.quit(process);
         }
         return out.toString();
     }
@@ -570,11 +780,12 @@ final class Phone {
 
     static final String EXPLANATION =
             "Makes this phone the test device an agent can drive — through a door with a "
-                    + "short list on it, not with the whole key. It installs adb (Ubuntu's own "
-                    + "arm64 build, about 2 MB) and pairs the phone with itself over Wireless "
-                    + "debugging, which Android added in Android 11. The pairing key and the "
-                    + "adb server stay in this app's own storage; the Linux the agent works in "
-                    + "never holds them. What Linux gets is one command, phone, which can: "
+                    + "short list on it, not with the whole key. The app carries its own adb "
+                    + "(Ubuntu's arm64 build, inside the APK) and pairs the phone with itself "
+                    + "over Wireless debugging, which Android added in Android 11. That adb, "
+                    + "the pairing key and the adb server stay in this app's own storage, in a "
+                    + "root of their own; the Linux the agent works in never holds them and "
+                    + "cannot reach them. What Linux gets is one command, phone, which can: "
                     + "install an APK built under ~/projects, open it, stop it, clear it, "
                     + "uninstall it, run its instrumented tests, read its own log, and — only "
                     + "while that app is on the screen — take a screenshot, tap, type or press "

@@ -41,36 +41,31 @@ final class Tools {
         final boolean android;
         /** The SDK is there AND its aapt2 runs AND Gradle is pointed at it: the part that counts. */
         final boolean sdk;
-        /** adb, so the phone can be paired with itself and driven. See Phone. */
-        final boolean adb;
         final String chromiumVersion;
 
         State(boolean browser, boolean playwright, boolean android, String chromiumVersion) {
-            this(browser, playwright, android, false, false, chromiumVersion);
+            this(browser, playwright, android, false, chromiumVersion);
         }
 
-        State(boolean browser, boolean playwright, boolean android, boolean sdk, boolean adb,
+        State(boolean browser, boolean playwright, boolean android, boolean sdk,
               String chromiumVersion) {
             this.browser = browser;
             this.playwright = playwright;
             this.android = android;
             this.sdk = sdk;
-            this.adb = adb;
             this.chromiumVersion = chromiumVersion;
         }
 
-        boolean anything() { return browser || playwright || android || adb; }
+        boolean anything() { return browser || playwright || android; }
     }
 
     /** What each layer costs, so the screen can say it before the download starts. */
     static final long BROWSER_BYTES = 120L * 1000 * 1000;
     static final long PLAYWRIGHT_BYTES = 60L * 1000 * 1000;
-    /** JDK 200, Google's command-line tools 182, platform, build- and platform-tools about 137, the four aarch64 tools 9, adb 2. */
+    /** JDK 200, Google's command-line tools 182, platform, build- and platform-tools about 137, the four aarch64 tools 9. */
     static final long ANDROID_BYTES = 530L * 1000 * 1000;
     /** The JDK's share of that, so a phone that already has one is asked for the rest only. */
     static final long JDK_BYTES = 200L * 1000 * 1000;
-    /** Ubuntu's adb and the five small libraries it brings. */
-    static final long PHONE_BYTES = 2L * 1000 * 1000;
 
     private Tools() {}
 
@@ -89,7 +84,6 @@ final class Tools {
                 "yes".equals(values.get("playwright")),
                 "yes".equals(values.get("android")),
                 "yes".equals(values.get("android_sdk")),
-                "yes".equals(values.get("adb")),
                 values.getOrDefault("chromium", ""));
     }
 
@@ -185,23 +179,43 @@ final class Tools {
                     + "security policy denies to every app on a phone that is not rooted. "
                     + "Nothing installable changes that.\n"
                     + "What works instead is better on a phone anyway: the phone IS the test "
-                    + "device, and from Android 11 an agent can drive it. Settings → The "
-                    + "computer → Test on this phone pairs the phone with itself over "
-                    + "Wireless debugging and gives the terminal one command, phone, that "
-                    + "can install an APK built here, open it, read its own log, screenshot "
-                    + "and tap it while it is on the screen, and run its instrumented tests "
-                    + "— and nothing else: no shell, no other app, no files, no device "
-                    + "details. The key stays in the app's own storage, outside Linux. "
-                    + "Gradle's own installDebug and connectedAndroidTest expect adb's "
-                    + "network port, which the app never opens; phone install and phone "
-                    + "instrument do the same work. Install an app built here hands an APK "
-                    + "to Android's own installer without any of that. JVM unit tests run "
-                    + "here natively; Robolectric too, in legacy graphics mode and without "
-                    + "SQLite on this processor, so pixels and databases go to the phone.\n\n"
+                    + "device, and the terminal has one command for it, phone. phone install "
+                    + "and phone launch work on any phone with no set-up: Android asks you to "
+                    + "confirm each install, and the app opens. From Android 11, Settings → "
+                    + "The computer → Test on this phone pairs the phone with itself over "
+                    + "Wireless debugging, and then phone can also read the app's own log, "
+                    + "screenshot and tap it while it is on the screen, run its instrumented "
+                    + "tests and uninstall it — and nothing else: no shell, no other app, no "
+                    + "files, no device details. The app's own adb, the key and the server "
+                    + "live in the app's storage in a root of their own, which Linux cannot "
+                    + "reach; there is no adb inside Linux at all. Gradle's own installDebug "
+                    + "and connectedAndroidTest expect adb's network port, which the app "
+                    + "never opens; phone install and phone instrument do the same work. "
+                    + "JVM unit tests run here natively; Robolectric too, in legacy graphics "
+                    + "mode and without SQLite on this processor, so pixels and databases go "
+                    + "to the phone.\n\n"
 
                     + "iOS apps.\n"
-                    + "No, and not for a reason this app could fix: Apple requires its own "
-                    + "toolchain on macOS to build and sign them.\n\n"
+                    + "Written here, yes; built and installed, not here. Apple's licence "
+                    + "allows its SDK on Apple hardware only, so there is no legitimate "
+                    + "Linux trick, and every sideloading tool needs a Mac or a Windows PC "
+                    + "for the signing step. What works: push the code to a free cloud Mac "
+                    + "— GitHub Actions is free and unlimited for a public repository, "
+                    + "Codemagic gives 500 Mac minutes a month, Expo EAS 15 builds a month "
+                    + "— and ship the result as a web app, through TestFlight with a $99 a "
+                    + "year Apple developer account, or as a 7-day sideload from a computer. "
+                    + "The FAQ has the detail.\n\n"
+
+                    + "Games.\n"
+                    + "Small 2D and 3D games, yes, with Godot 4: it publishes a Linux arm64 "
+                    + "build that exports an Android APK from the terminal with no window "
+                    + "(godot --headless --export-debug Android game.apk), once its 1.3 GB "
+                    + "of export templates are downloaded. Unity and Unreal cannot run here "
+                    + "at all: both publish their Linux editors for x86-64 only, and there "
+                    + "is no arm64 build to download. A game the size of Free Fire is a "
+                    + "studio's multi-year work on those two engines with servers and a "
+                    + "team behind it, which is a hardware and headcount fact rather than "
+                    + "a limit of this app; the FAQ says what is realistic.\n\n"
 
                     + "Machine learning.\n"
                     + "Small models and ordinary data work, yes. Training anything large needs "

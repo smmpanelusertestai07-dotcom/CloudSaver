@@ -347,9 +347,11 @@ start_editor() {
   fi
   export NODE_OPTIONS="--max-old-space-size=${heap}"
 
-  # No adb here, on purpose. The phone's key and adb server belong to the app, in a directory
-  # this PRoot is never given; what this Linux gets is the phone command, a client for the
-  # app's bridge. See pocketide-tools.sh, "the phone itself".
+  # No adb here, on purpose. The app's own adb, the phone's key and the adb server live in a
+  # root of their own that this PRoot is never given; what this Linux gets is the phone
+  # command, a client for the app's bridge, written fresh at every start so it is always the
+  # one this build of the app speaks. See pocketide-tools.sh, "the phone itself".
+  bash /opt/pocketide/pocketide-tools.sh phone >/dev/null 2>&1 || true
 
   say "Starting the editor on 127.0.0.1:${PORT}…"
   "$BIN" \

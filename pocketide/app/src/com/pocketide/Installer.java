@@ -72,6 +72,8 @@ final class Installer {
 
     /** The notification an owner taps when the confirmation could not come to the front. */
     private static final int NOTIFICATION = 4203;
+    /** And the one that opens an app when this app was not in front to open it itself. */
+    private static final int NOTIFICATION_OPEN = 4204;
 
     private Installer() {}
 
@@ -322,10 +324,14 @@ final class Installer {
     /**
      * Opens an app this one installed, with no adb.
      *
-     * Visible without a <queries> element because this app is its installer of record, which
-     * is the whole reason the install above goes through PackageInstaller. Started from the
-     * foreground -- the editor is on the screen when an agent runs a command -- so Android's
-     * background-activity rules are satisfied.
+     * Visible because the manifest declares the one query every launcher makes -- apps with a
+     * home-screen activity -- and for no other reason: Android 11 hides an app from the app
+     * that installed it unless that app has said, in its manifest, that it will look. Started
+     * only while a screen of this app is in front, because Android drops an activity started
+     * from the background without a word: the call returns, nothing opens, and a "launched"
+     * printed after it would be a lie. When nothing of this app is on the screen the same
+     * intent goes into a notification instead, where a tap is a user action Android allows,
+     * and the terminal is told which.
      */
     static String launch(Context context, String packageName) {
         Intent open;
@@ -341,6 +347,12 @@ final class Installer {
                             + "phone install first.";
         }
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        if (!App.inFront()) {
+            offerOpen(context, open, packageName);
+            return "PocketIDE is not on the screen, so Android will not let it open another "
+                    + "app from here. Bring PocketIDE to the front and run phone launch again, "
+                    + "or tap the notification \"Open " + packageName + "\".";
+        }
         AppLock.expectReturn();
         try {
             context.startActivity(open);
@@ -348,6 +360,31 @@ final class Installer {
         } catch (Throwable refused) {
             return "Android would not open it: " + (refused.getMessage() == null
                     ? refused.getClass().getSimpleName() : refused.getMessage());
+        }
+    }
+
+    /** The launch, as something to tap, for the moment when it could not be started. */
+    private static void offerOpen(Context context, Intent open, String packageName) {
+        android.app.NotificationManager manager = (android.app.NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT
+                | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_IMMUTABLE : 0);
+        try {
+            PendingIntent tap = PendingIntent.getActivity(context, 5, open, flags);
+            String text = "The agent asked to open " + packageName + ". Tap to open it.";
+            manager.notify(NOTIFICATION_OPEN, new android.app.Notification.Builder(
+                    context, App.CHANNEL_WORKSPACE)
+                    .setContentTitle("Open " + packageName)
+                    .setContentText(text)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                    .setSmallIcon(R.drawable.ic_stat_pocketide)
+                    .setContentIntent(tap)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .build());
+        } catch (Throwable notAllowed) {
+            // Notifications denied. The sentence the caller prints still says what to do.
         }
     }
 }

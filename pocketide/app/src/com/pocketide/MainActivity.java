@@ -77,17 +77,24 @@ public final class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        // Counted before anything is built and cleared once a frame has been drawn. An opening
-        // that dies in between leaves its count behind, and three of those open the recovery
-        // screen instead of trying a fourth time. See Boot.
+        // Counted before anything is built (App.onCreate did it already; this is the same
+        // count) and cleared once a frame has been drawn. An opening that dies in between
+        // leaves its count behind, and three of those open the recovery screen instead of
+        // trying a fourth time. See Boot.
         Boot.starting(this);
-        Theme.apply(this);
+        Boot.mark(this, "home");
         if (Boot.failing(this)) {
             recovering = true;
+            try {
+                Theme.apply(this);
+            } catch (Throwable evenTheTheme) {
+                // The recovery screen paints its own ground.
+            }
             Boot.show(this, null);
             return;
         }
         try {
+            Theme.apply(this);
             buildEverything(state);
         } catch (Throwable failure) {
             // The one place in the app where catching Throwable is right: the alternative is
@@ -96,6 +103,7 @@ public final class MainActivity extends Activity {
             Boot.show(this, failure);
             return;
         }
+        Boot.mark(this, "built");
         getWindow().getDecorView().post(() -> Boot.reached(this));
     }
 
@@ -132,12 +140,23 @@ public final class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
-        // From onStart, so changing the setting on the other screen reaches this one without
-        // it having to be closed and opened again.
-        Rotation.apply(this);
-        // onStart, not onResume: the locked screen must be up before anything is drawn that a
-        // shoulder could read, and onResume runs after the first frame.
-        raiseLockIfNeeded();
+        // Both caught: onStart and onResume run BEFORE the first frame, so a failure in either
+        // is an app that closes with nothing said -- and one that would close the recovery
+        // screen the same way, since that screen goes through the same onStart.
+        try {
+            // From onStart, so changing the setting on the other screen reaches this one
+            // without it having to be closed and opened again.
+            Rotation.apply(this);
+        } catch (Throwable notApplied) {
+            Crash.save(this, notApplied);
+        }
+        try {
+            // onStart, not onResume: the locked screen must be up before anything is drawn
+            // that a shoulder could read, and onResume runs after the first frame.
+            raiseLockIfNeeded();
+        } catch (Throwable notRaised) {
+            Crash.save(this, notRaised);
+        }
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
@@ -207,11 +226,20 @@ public final class MainActivity extends Activity {
         }
         // And the machine catches itself up, quietly, if a day has passed and the phone is on
         // Wi-Fi with nothing else running. It returns immediately when any of that is untrue,
-        // which is most of the time -- see Updates.whyNotNow.
-        Updates.maybeRunInBackground(this);
+        // which is most of the time -- see Updates.whyNotNow. Caught, both of them: neither
+        // is worth the screen, and both run before the first frame on a cold start.
+        try {
+            Updates.maybeRunInBackground(this);
+        } catch (Throwable notStarted) {
+            Crash.save(this, notStarted);
+        }
         // And once a day, whether a newer PocketIDE has been published. A few kilobytes of
         // public text; nothing about the owner goes with it.
-        AppUpdates.maybeCheckInBackground(this);
+        try {
+            AppUpdates.maybeCheckInBackground(this);
+        } catch (Throwable notStarted) {
+            Crash.save(this, notStarted);
+        }
     }
 
     @Override protected void onPause() {

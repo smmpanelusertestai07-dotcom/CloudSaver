@@ -58,6 +58,22 @@
         only from the switch in Settings, and the Help screen says that too.
     -->
 
+    <!-- The one thing this app asks to see of other apps: which of them have a home-screen
+         activity, the same declaration every launcher and every share sheet makes. It is
+         there for exactly one call, opening an app that was built here and installed
+         through phone install with the phone unpaired (Installer.launch): Android 11 hides
+         an installed app even from the app that installed it unless that app says here that
+         it will look. Not QUERY_ALL_PACKAGES, which would be every package and is a
+         permission; not a list this app ever reads or shows; nothing an agent receives,
+         since the bridge answers only about packages it installed itself. The gate in
+         tests/navigation.py fails the build on anything more than this one intent. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <!-- requestLegacyExternalStorage: honoured on Android 10 only, where it is what lets
          ~/phone read and write the shared storage through ordinary file paths once the owner
          has turned The phone's files on. Android 11 and later ignore it and use the all-files

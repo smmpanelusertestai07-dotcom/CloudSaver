@@ -75,6 +75,10 @@ public final class WorkspaceService extends Service {
     private volatile Process adbServer;
     /** The workspace's door to the phone, open exactly as long as the editor is. See PhoneBroker. */
     private volatile PhoneBroker broker;
+    /** True while the job under way is the daily update, whose PRoot no field here holds. */
+    private volatile boolean updating;
+    /** An editor asked for during the update: it opens the moment the update is done. */
+    private volatile boolean startAfterUpdate;
     private PowerManager.WakeLock wakeLock;
     private long startedAt;
     /** What the notification last said, so a repeated START does not talk over it. */
@@ -222,8 +226,20 @@ public final class WorkspaceService extends Service {
             }, "phone").start();
             return START_NOT_STICKY;
         }
-        if (busy) return START_NOT_STICKY;
+        if (busy) {
+            // A start that arrives while the daily update is running used to be dropped
+            // without a word: the screen waited for an editor nobody was starting. It is
+            // queued instead -- apt is not interrupted half way -- and the screen is told.
+            if (updating && ACTION_START.equals(action)) {
+                startAfterUpdate = true;
+                announce(null, "Finishing the update first; the editor opens right after.",
+                        "setting-up", -1);
+            }
+            return START_NOT_STICKY;
+        }
         busy = true;
+        updating = ACTION_UPDATE.equals(action);
+        startAfterUpdate = false;
         startedAt = System.currentTimeMillis();
         // Said once, where the owner will look: a normal power-saving mode only slows a job;
         // a super or ultra mode ends every app not on its short list, this one included, and
@@ -292,8 +308,15 @@ public final class WorkspaceService extends Service {
                 record(line);
                 note(line);
             });
+            updating = false;
+            if (startAfterUpdate && busy) {
+                startAfterUpdate = false;
+                runEditor();
+                return;
+            }
             stopEverything(null, null);
         } catch (Throwable failure) {
+            updating = false;
             fail(failure);
         }
     }
@@ -333,14 +356,12 @@ public final class WorkspaceService extends Service {
                                 .putExtra(EXTRA_LINE, "The editor is running.");
                         sendBroadcast(ready);
                         // The door to the phone opens with the editor and closes with it.
-                        PhoneBroker open = broker;
-                        if (open != null) open.stop();
-                        broker = PhoneBroker.start(this);
-                        // The phone as a test device connects by itself when it can: adb is
-                        // installed and Wireless debugging is on. Quietly -- the Activity
-                        // screen has the line either way, and a notification at every
-                        // start would be noise.
-                        if (Phone.adbInstalled(this) && Phone.wirelessDebuggingOn(this)) {
+                        openBroker();
+                        // The phone as a test device connects by itself when it can: this
+                        // Android has Wireless debugging and it is on. Quietly -- the
+                        // Activity screen has the line either way, and a notification at
+                        // every start would be noise.
+                        if (Phone.supported() && Phone.wirelessDebuggingOn(this)) {
                             new Thread(() -> Phone.connect(this, false), "phone-connect")
                                     .start();
                         }
@@ -391,8 +412,34 @@ public final class WorkspaceService extends Service {
 
     private long elapsed() { return System.currentTimeMillis() - startedAt; }
 
+    /**
+     * The door to the phone, opened and closed under one lock so the two cannot cross. A lock
+     * of its own, not the service's: ensureAdbServer holds that one for up to four seconds,
+     * and a Stop tapped on the main thread must not wait behind it.
+     */
+    private final Object brokerLock = new Object();
+
+    private void openBroker() {
+        synchronized (brokerLock) {
+            PhoneBroker open = broker;
+            if (open != null) open.stop();
+            broker = PhoneBroker.start(this);
+        }
+    }
+
+    private void closeBroker() {
+        synchronized (brokerLock) {
+            PhoneBroker door = broker;
+            broker = null;
+            if (door != null) door.stop();
+        }
+    }
+
     private void stopEverything(String state, String message) {
+        final boolean hadJob = busy;
         busy = false;
+        updating = false;
+        startAfterUpdate = false;
         editorRunning = false;
         editorUrl = "";
         runningSince = 0L;
@@ -400,15 +447,15 @@ public final class WorkspaceService extends Service {
         editor = null;
         final Process server = adbServer;
         adbServer = null;
-        final PhoneBroker door = broker;
-        broker = null;
-        if (door != null) door.stop();
+        closeBroker();
         unwatchHeat();
-        // The held adb server goes with the editor: the sweep in stopTidily reaches every
-        // PRoot of this app's, its included, and destroy() is the backstop for its tracer.
-        if (server != null && running == null) stopTidily(server);
-        else if (server != null) server.destroy();
+        // The held adb server goes with the editor. quit(), not destroy(): PRoot ignores the
+        // SIGTERM that destroy() sends and answers SIGQUIT, and the sweep below reaches it
+        // too. A job with no handle here -- the daily update keeps its PRoot to itself -- is
+        // swept all the same: Stop used to do nothing at all to a running apt.
+        if (server != null) Workspace.quit(server);
         if (running != null) stopTidily(running);
+        else if (hadJob) stopTidily(null);
         if (worker != null) worker.interrupt();
         release();
         Prefs.of(this).edit().putBoolean(Prefs.LINUX_WAS_RUNNING, false).apply();
@@ -425,22 +472,22 @@ public final class WorkspaceService extends Service {
     /**
      * Makes sure an adb server is answering before a pair or a connect is run.
      *
-     * The editor's start runs adb start-server under the editor's own PRoot, but only when adb
-     * existed at that moment. Installed later -- which is the documented first-run order: open
-     * the editor, install adb, pair -- there is no server, and the adb the pairing runs forks
-     * one inside its own PRoot, where --kill-on-exit takes it down the moment the command
-     * ends. That server said "connected" and was gone before the terminal asked, which showed
-     * as a phone that claimed to be connected and was not. So the service holds one of its
-     * own: server nodaemon keeps adb in the foreground, this process keeps the PRoot alive,
-     * and the terminal's adb, in whichever PRoot, finds it on loopback. It ends with the
-     * workspace, in stopEverything.
+     * An adb run on its own forks a server inside its own PRoot, where --kill-on-exit takes
+     * it down the moment the command ends: that server said "connected" and was gone before
+     * the next command asked, which showed as a phone that claimed to be connected and was
+     * not. So the service holds one of its own: server nodaemon keeps adb in the foreground,
+     * this process keeps its PRoot alive, and every later adb -- the bridge's, the pairing's
+     * -- finds it on the socket in the key directory. It runs in the app's private adb root
+     * (Phone.start), never in the Linux rootfs, and ends with the workspace, in
+     * stopEverything.
      */
     synchronized boolean ensureAdbServer() {
         if (Phone.serverListening(this)) return true;
-        if (!Phone.adbInstalled(this)) return false;
+        // The APK's own adb, unpacked into the app's storage once per version; the Activity
+        // log says why when the phone would not take it.
+        if (!Phone.prepareRoot(this)) return false;
         try {
-            final Process server = Workspace.start(this, "exec adb server nodaemon",
-                    Phone.binds(this));
+            final Process server = Phone.start(this, "server", "nodaemon");
             adbServer = server;
             new Thread(() -> {
                 // Drained, not read: a pipe nobody empties fills, and a server blocked on
@@ -549,7 +596,7 @@ public final class WorkspaceService extends Service {
             sweep(18);
             sweep(3);
             waitBriefly(2000);
-            running.destroy();
+            if (running != null) Workspace.quit(running);
             // And the backstop. Anything still alive here outlived its tracer, which is what
             // being reparented to init looks like from the outside, and is exactly the state
             // that leaves a compiler running after the owner pressed Stop.

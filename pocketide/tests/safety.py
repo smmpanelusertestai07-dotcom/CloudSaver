@@ -139,7 +139,7 @@ if "noteStart" not in exits or "Exits.noteStart(this)" not in application:
     problems.append("Exits.noteStart() is missing or App never calls it, so the flag is read "
                     "after the service may already have rewritten it")
 for reason in ("REASON_USER_REQUESTED", "REASON_LOW_MEMORY"):
-    at = exits.find(reason)
+    at = exits.find("case ApplicationExitInfo." + reason + ":")
     if at < 0 or "linuxWasRunning" not in exits[at:at + 400]:
         problems.append("Exits reports %s without checking whether Linux was running, so "
                         "closing an idle app produces a notice about a Linux that was not "
@@ -353,8 +353,18 @@ if EXACT_LINE not in check_body:
     problems.append("check() reports android_sdk=yes without the exact line that makes Gradle use "
                     "the aapt2 it checked, so Settings says installed while every build still "
                     "fetches the x86-64 one")
-if "adb --version" not in check_body:
-    problems.append("check() does not report whether adb is installed")
+if "adb --version" in check_body or "adb=" in check_body:
+    problems.append("check() runs or reports an adb inside Linux; there is none, and the app's "
+                    "own is not this Linux's to run")
+phone_fn = re.search(r'^install_phone_command\(\) \{(.*?)\n\}', tools_code, re.S | re.M)
+phone_body = phone_fn.group(1) if phone_fn else ""
+if ("install -m 0755 /opt/pocketide/pocketide-phone.py /usr/local/bin/phone" not in phone_body
+        or "cat > /usr/local/bin/adb <<'SHIM'" not in phone_body
+        or "rm -f /etc/profile.d/pocketide-adb.sh" not in phone_body):
+    problems.append("install_phone_command() does not install the phone command from the app's "
+                    "asset, put the adb shim in place, and remove the 2.1.x profile line")
+if APT_INSTALL.search(phone_body) or re.search(r'apt-get install[^\n]*\badb\b', tools_code):
+    problems.append("the tools script installs adb inside Linux, where an agent can replace it")
 for repair in ("link_adb", "fix_build_tools"):
     if repair not in check_body:
         problems.append("check() does not run %s, so what Gradle undid overnight stays undone "
@@ -371,16 +381,20 @@ else:
     phone = code(read("Phone.java"))
     if 'LOOPBACK = "127.0.0.1"' not in phone:
         problems.append("Phone does not fix adb's host at 127.0.0.1")
-    # The call sites, not every mention: the by-hand instructions quote the same commands.
-    for command in ("adb pair ", "adb connect "):
-        calls = list(re.finditer(r'run\(service, "' + re.escape(command), phone))
+    # The call sites, not every mention: arguments to adb, never a command line, and the
+    # host is LOOPBACK and nothing else.
+    for command in ("pair", "connect"):
+        calls = list(re.finditer(r'run\(service, "' + command + r'", ', phone))
         if not calls:
-            problems.append("Phone never runs %s" % command.strip())
+            problems.append("Phone never runs adb %s" % command)
         for hit in calls:
-            after = phone[hit.end():hit.end() + 20]
-            if not after.startswith('" + LOOPBACK'):
-                problems.append("Phone runs %s against something other than LOOPBACK"
-                                % command.strip())
+            after = phone[hit.end():hit.end() + 12]
+            if not after.startswith('LOOPBACK'):
+                problems.append("Phone runs adb %s against something other than LOOPBACK"
+                                % command)
+    if re.search(r'"adb (pair|connect) " \+', phone):
+        problems.append("Phone builds an adb command line out of strings; arguments go to adb "
+                        "as arguments or a typed value becomes a second command")
     if "isThisPhone(r.getHost())" not in phone:
         problems.append("Phone.discover() takes any advertisement it hears; a laptop on the same "
                         "Wi-Fi advertising adb could be what gets paired with")
@@ -416,9 +430,12 @@ else:
     # ON NO NETWORK PORT. The server answers on a socket in the app's own storage; a port on
     # loopback would be every app's. The app sets it for every PRoot, the app tests the socket
     # rather than a port, and no script or class names adb's port at all.
-    if "ADB_SERVER_SOCKET=localfilesystem:" not in workspace:
-        problems.append("Workspace.start() does not set ADB_SERVER_SOCKET, so adb's server "
+    if '"ADB_SERVER_SOCKET", "localfilesystem:/root/.android/adb.sock"' not in phone:
+        problems.append("Phone.environment() does not set ADB_SERVER_SOCKET, so adb's server "
                         "listens on a TCP port every app on the phone can reach")
+    if "ADB_SERVER_SOCKET" in workspace:
+        problems.append("Workspace names adb's socket, so the Linux the agent works in is told "
+                        "where the app's adb server answers")
     if "LocalSocket" not in phone or "Namespace.FILESYSTEM" not in phone:
         problems.append("Phone does not test adb's socket, so it cannot tell whether the server "
                         "it relies on is the private one")
@@ -462,16 +479,31 @@ else:
     if '":/root/.android"' not in phone or "androidDir(context)" not in phone:
         problems.append("adb's key directory is not bound from the app's own storage, so the "
                         "key and the socket sit in the rootfs where the terminal can read them")
-    if '"exec adb server nodaemon",\n                    Phone.binds(this)' not in service:
-        problems.append("the app's adb server is started without the key bind")
+    if 'Phone.start(this, "server", "nodaemon")' not in service:
+        problems.append("the app's adb server is not started through Phone.start, the one door "
+                        "to the private adb root")
     if "adb pair 127.0.0.1" in phone.split("static final String STEPS")[-1]:
         problems.append("the Help still hands the owner the by-hand pairing that would give the "
                         "terminal the whole key")
     broker = code(read("PhoneBroker.java"))
-    for forbidden in ('"shell"', '"pull"', '"push"', '"forward"', '"reverse"', '"root"',
-                      '"tcpip"'):
-        if forbidden in broker:
+    ops = re.search(r'static final String\[\] OPS = \{(.*?)\};', broker, re.S)
+    ops_list = re.findall(r'"([a-z]+)"', ops.group(1)) if ops else []
+    if not ops_list:
+        problems.append("the phone bridge has no OPS list")
+    for forbidden in ("shell", "pull", "push", "forward", "reverse", "root", "tcpip", "sync",
+                      "backup", "restore", "sideload"):
+        if forbidden in ops_list:
             problems.append("the phone bridge offers %s, which is the whole key again" % forbidden)
+    # And every op in the list is one the switch handles, and nothing reaches adb shell with
+    # an argument the agent typed unchecked: the shell argument is always a string this class
+    # wrote, with validated pieces in it.
+    for op in ops_list:
+        if 'case "%s":' % op not in broker:
+            problems.append("phone %s is listed but not handled" % op)
+    for hit in re.finditer(r'adbTo\(reply, "shell", ([^\n]+)', broker):
+        if 'args.get(' in hit.group(1):
+            problems.append("an argument the agent typed reaches adb shell unvalidated: "
+                            + hit.group(1)[:60])
     for op in ("uninstall", "launch", "stop", "clear", "instrument", "log", "screenshot"):
         if not re.search(r'case "%s":\s*\n\s*return forAllowed\(' % op, broker):
             problems.append("phone %s is not restricted to packages the bridge installed" % op)
@@ -481,19 +513,33 @@ else:
                         "installed")
     for needs_screen in ("screenshot", "input"):
         body = re.search(r'private int ' + needs_screen + r'\((.*?)\n    \}', broker, re.S)
-        if not body or "if (!onScreen(pkg, reply)) return 3;" not in body.group(1):
+        if not body or "onlyOnScreen(pkg, " not in body.group(1):
             problems.append("phone %s reaches the screen without checking that the package is "
                             "the one on it" % needs_screen)
+    only = re.search(r'static String onlyOnScreen\(String pkg, String action\) \{(.*?)\n    \}',
+                     broker, re.S)
+    if (not only or "topResumedActivity|mResumedActivity" not in only.group(1)
+            or "case \\\"$t\\\" in *' u0 \" + pkg + \"/'*) \" + action" not in only.group(1)
+            or "exit 3" not in only.group(1)):
+        problems.append("the screen check and the action are not one command on the phone, so "
+                        "another app can come to the front between them")
     if ('projectFile(args.get(0), cwd, ".apk")' not in broker
             or "getPackageArchiveInfo" not in broker):
         problems.append("phone install takes something other than an APK under ~/projects that "
                         "Android can read")
     if 'GUEST_SOCKET = GUEST_DIR + "/phone.sock"' not in broker or 'GUEST_DIR = "/run/pocketide"' not in broker:
         problems.append("the bridge socket is not where the phone command looks")
-    cli = re.search(r"cat > /usr/local/bin/phone <<'PHONE'(.*?)\nPHONE\n", tools_script, re.S)
-    if not cli or 'SOCK = "/run/pocketide/phone.sock"' not in cli.group(1):
-        problems.append("the tools script does not install the phone command, or points it "
-                        "somewhere other than the bridge")
+    cli_path = app + "/app/assets/pocketide-phone.py"
+    cli = open(cli_path).read() if os.path.exists(cli_path) else ""
+    if 'SOCK = "/run/pocketide/phone.sock"' not in cli:
+        problems.append("the phone command asset is missing, or points somewhere other than the "
+                        "bridge")
+    if '"pocketide-phone.py"' not in workspace:
+        problems.append("Workspace does not write the phone command with the other scripts, so "
+                        "the terminal's copy is whatever an older build left")
+    if "pocketide-tools.sh phone" not in shell_code(editor_script):
+        problems.append("the editor's start does not install the phone command, so a fresh "
+                        "workspace has no door to the phone")
 
 # --- 16. permissions and power, honestly ---------------------------------------------------------
 #
@@ -530,6 +576,165 @@ if '"Not needed: this app never starts itself · "' not in settings_src:
     problems.append("the Auto-launch row does not say it is not needed")
 if '"Keep working with the screen off"' not in settings_src:
     problems.append("the battery exemption row is not named for what it does")
+
+# --- 17. nothing the workspace can write is ever run with the key in reach ---------------------
+#
+# A review of the first 2.2.0 draft found the hole that undid the whole door: the app's adb
+# ran out of the Linux rootfs through bash -lc, so /usr/bin/adb, /etc/profile.d, ~/.profile
+# and /bin/bash -- every one of them the agent's to write -- ran with the key bound in. adb
+# now has a root of its own, assembled at build time from pinned packages, run by absolute
+# path with no shell. Each clause below is one way that could quietly come back.
+workspace_src = code(read("Workspace.java"))
+private = re.search(r'static Process startPrivate\((.*?)\n    \}', workspace_src, re.S)
+if not private:
+    problems.append("Workspace has no startPrivate(), so the app's adb has no root of its own")
+else:
+    body = private.group(1)
+    for shell in ("/bin/bash", "-lc", "/usr/bin/env", "sh -c"):
+        if shell in body:
+            problems.append("startPrivate() puts a shell (%s) in front of the program it runs; "
+                            "a shell reads files, and the files are the agent's" % shell)
+    if "args.addAll(argv)" not in body or "env.clear()" not in body:
+        problems.append("startPrivate() does not run the caller's argv with an environment "
+                        "set by the app alone")
+    if 'args.add("-r");\n        args.add(root.getAbsolutePath())' not in body:
+        problems.append("startPrivate() is not rooted at the root it is given")
+    if "root(context)" in body or "PhoneFiles" in body or "proc-fakes" in body:
+        problems.append("startPrivate() reaches for the Linux rootfs, the phone's files or the "
+                        "rootfs's fakes; the private root gets none of them")
+for name in ("PhoneBroker.java", "Phone.java"):
+    text = code(read(name))
+    if re.search(r'Workspace\.(start|run)\(', text):
+        problems.append("%s starts a PRoot in the Linux rootfs; adb runs only through "
+                        "Phone.start, in its own root" % name)
+    if "process.destroy()" in text and name == "PhoneBroker.java":
+        problems.append("PhoneBroker destroys a PRoot with SIGTERM, which PRoot ignores; "
+                        "Workspace.quit sends the SIGQUIT it answers")
+if ('"/usr/bin/adb"' not in phone or "Workspace.startPrivate(context, root(context), argv, "
+        "binds(context), environment())" not in phone):
+    problems.append("Phone.start() does not run /usr/bin/adb by absolute path in the private "
+                    "root with the app's binds and environment")
+if '"ADB_MDNS", "0"' not in phone:
+    problems.append("the app's adb is left advertising and scanning on the network")
+prepare = re.search(r'static synchronized boolean prepareRoot\(Context context\) \{(.*?)\n    \}',
+                    phone, re.S)
+if (not prepare or 'readAsset(context, "adb-root.stamp")' not in prepare.group(1)
+        or "getCanonicalPath().startsWith(rootPath)" not in prepare.group(1)
+        or 'getAssets().open("adb-root.zip")' not in prepare.group(1)):
+    problems.append("Phone.prepareRoot() does not unpack the APK's adb root against its stamp "
+                    "with every entry kept inside the root")
+build_sh = open(app + "/build.sh").read()
+debs = re.search(r'ADB_ROOT_DEBS=\((.*?)\n\)', build_sh, re.S)
+entries = re.findall(r'"([^"]+)"', debs.group(1)) if debs else []
+if len(entries) < 19:
+    problems.append("build.sh pins fewer than the nineteen packages adb's root needs")
+for entry in entries:
+    if not re.match(r'^[a-z0-9+.-]+\|pool/[a-z0-9+./_-]+\.deb\|[0-9a-f]{64}\|[0-9]+$', entry):
+        problems.append("build.sh entry is not name|path|sha256|size: %s" % entry[:40])
+assemble = re.search(r'^assemble_adb_root\(\) \{(.*?)\n\}', build_sh, re.S | re.M)
+if (not assemble or 'if [[ "$got" != "$sha" ]]; then' not in assemble.group(1)
+        or "Refusing to build" not in assemble.group(1)
+        or "dpkg-deb -x" not in assemble.group(1)
+        or 'adb-root.zip' not in assemble.group(1) or 'adb-root.stamp' not in assemble.group(1)):
+    problems.append("build.sh does not verify every package against its pin before it goes "
+                    "into adb's root, or does not write the zip and its stamp")
+if "ports.ubuntu.com/ubuntu-ports" not in build_sh:
+    problems.append("adb's packages are not fetched from Ubuntu's own ports archive")
+# The door's smaller gaps, each found by the same review.
+install_fn = re.search(r'private int install\(List<String> args, String cwd, Reply reply\)(.*?)'
+                       r'\n    \}', broker, re.S)
+install_body = install_fn.group(1) if install_fn else ""
+if ('File staged = stage(apk, ".apk");' not in install_body
+        or "staged.getAbsolutePath(), 0);" not in install_body
+        or '"/stage/" + staged.getName()' not in install_body
+        or "Installer.install(service, staged," not in install_body):
+    problems.append("phone install reads or installs the agent's own file rather than a copy "
+                    "in the app's storage, so the file can change between the two")
+first_allow = install_body.find("allow(info.packageName")
+first_install = install_body.find('adbTo(reply, "install"')
+if first_allow < 0 or first_install < 0 or first_allow < first_install:
+    problems.append("phone install allows a package before it is on the phone")
+allows = [m.start() for m in re.finditer(r'allow\(info\.packageName', install_body)]
+adb_success = install_body.find("if (code == 0) {")
+unpaired_failure = install_body.find("if (!failure.isEmpty()) {")
+if (len(allows) != 2 or adb_success < 0 or unpaired_failure < 0
+        or not adb_success < allows[0] < unpaired_failure < allows[1]):
+    problems.append("the allow-list does not grow only on the two success paths")
+project_fn = re.search(r'private File projectFile\((.*?)\n    \}', broker, re.S)
+if (not project_fn or "plainDirectory(home)" not in project_fn.group(1)
+        or "plainDirectory(projects)" not in project_fn.group(1)
+        or "LinkOption.NOFOLLOW_LINKS" not in broker):
+    problems.append("projectFile() follows a link at ~/projects or /root, so a link to / makes "
+                    "the whole host 'under ~/projects'")
+if ("new ThreadPoolExecutor(AT_ONCE, AT_ONCE" not in broker
+        or "catch (RejectedExecutionException full)" not in broker):
+    problems.append("the bridge grows a thread per request instead of serving a few and "
+                    "saying busy")
+if "android.system.Os.shutdown(bound.getFileDescriptor()" not in broker:
+    problems.append("closing the bridge does not wake the thread waiting in accept(), which "
+                    "keeps the old socket")
+if "Workspace.quit(process)" not in broker or "static void quit(Process process)" not in workspace_src \
+        or "sendSignal(Integer.parseInt(pid.group(1)), 3)" not in workspace_src:
+    problems.append("a PRoot the bridge ends is not sent SIGQUIT, the one signal PRoot answers")
+installer_src = code(read("Installer.java"))
+launch_fn = re.search(r'static String launch\(Context context, String packageName\) \{(.*?)'
+                      r'\n    \}', installer_src, re.S)
+if (not launch_fn or "if (!App.inFront())" not in launch_fn.group(1)
+        or launch_fn.group(1).find("if (!App.inFront())")
+        > launch_fn.group(1).find("context.startActivity(open)")):
+    problems.append("an unpaired launch starts the activity without checking that this app is "
+                    "in front, so Android drops it and the terminal is told it opened")
+if "static boolean inFront()" not in code(read("App.java")):
+    problems.append("App does not say whether a screen of this app is in front")
+if ("if (updating && ACTION_START.equals(action))" not in service
+        or "startAfterUpdate = true;" not in service):
+    problems.append("a start that arrives during the daily update is dropped without a word")
+update_fn = re.search(r'private void runUpdate\(\) \{(.*?)\n    \}', service, re.S)
+if not update_fn or "runEditor();" not in update_fn.group(1):
+    problems.append("runUpdate() does not open the editor that was asked for during the update")
+if "else if (hadJob) stopTidily(null);" not in service:
+    problems.append("Stop during a job with no process handle -- the daily update -- sweeps "
+                    "nothing, so apt keeps running")
+if (service.count("synchronized (brokerLock) {") != 2
+        or "private void openBroker()" not in service or "private void closeBroker()" not in service):
+    problems.append("the bridge is opened and closed without a lock, so an editor stopping while "
+                    "one starts can leave a door open with no service behind it")
+
+# --- 18. the app cannot close at startup without saying why --------------------------------------
+app_src = code(read("App.java"))
+on_create = re.search(r'@Override public void onCreate\(\) \{\n        super\.onCreate\(\);'
+                      r'\n        try \{\n            Boot\.starting\(this\);', app_src)
+if not on_create:
+    problems.append("the launch count is not the first thing App.onCreate does, so a failure "
+                    "before it is one the recovery screen never sees")
+for step in ("Crash.arm(this)", "Exits.noteStart(this)", "watchForegroundState()",
+             "createNotificationChannel(channel)"):
+    at = app_src.find(step)
+    # Inside a try: the nearest try { before it has not been closed by a catch yet.
+    opened = app_src.rfind("try {", 0, at) if at >= 0 else -1
+    if at < 0 or opened < 0 or "catch (" in app_src[opened:at]:
+        problems.append("App.onCreate runs %s outside a try, where a failure ends the process "
+                        "with nothing said" % step)
+boot_src = code(read("Boot.java"))
+if "if (counted) return;" not in boot_src or "Exits.recent(context)" not in boot_src \
+        or 'putString(STAGE, "application")' not in boot_src:
+    problems.append("Boot does not count once per process, record how far the opening got, and "
+                    "show Android's own exit record on the recovery screen")
+main_src = code(read("MainActivity.java"))
+for method, steps in (("onStart", ("Rotation.apply(this)", "raiseLockIfNeeded()")),
+                      ("onResume", ("Updates.maybeRunInBackground(this)",
+                                    "AppUpdates.maybeCheckInBackground(this)"))):
+    body = re.search(r'@Override protected void ' + method + r'\(\) \{(.*?)\n    \}', main_src,
+                     re.S)
+    body = body.group(1) if body else ""
+    for step in steps:
+        at = body.find(step + ";")
+        if at < 0 or "try {" not in body[max(0, at - 200):at]:
+            problems.append("MainActivity.%s runs %s before the first frame outside a try, where "
+                            "a failure closes the recovery screen as well as the app"
+                            % (method, step))
+if "static String recent(Context context)" not in code(read("Exits.java")):
+    problems.append("Exits cannot describe the last exits for the recovery screen")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

@@ -27,24 +27,58 @@ public final class App extends Application {
      * down after the new one comes up, and a naive "onPause means gone" would re-lock on every
      * single navigation.
      */
-    private int screensInFront;
+    private static volatile int screensInFront;
 
+    /** True while a screen of this app is on the phone's screen. See Installer.launch. */
+    static boolean inFront() { return screensInFront > 0; }
+
+    /**
+     * Each step on its own, and the count first.
+     *
+     * The process is a few milliseconds old here and nothing has been drawn: a failure in
+     * this method is the one kind the recovery screen could not report, because the count it
+     * works from had not been taken yet. So the count comes before anything that could fail,
+     * and every step after it is caught, recorded and skipped rather than allowed to end the
+     * process -- an app with no notification channel is worse than one with a channel, but it
+     * is an app that opens and can say what went wrong.
+     */
     @Override public void onCreate() {
         super.onCreate();
-        Crash.arm(this);
-        Exits.noteStart(this);
-        watchForegroundState();
-        if (Build.VERSION.SDK_INT >= 26) {
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                NotificationChannel channel = new NotificationChannel(
-                        CHANNEL_WORKSPACE, "Linux", NotificationManager.IMPORTANCE_LOW);
-                channel.setDescription(
-                        "Shows while the development environment is running, with a Stop button. "
-                                + "Low importance: it never makes a sound.");
-                channel.setShowBadge(false);
-                manager.createNotificationChannel(channel);
+        try {
+            Boot.starting(this);
+        } catch (Throwable evenThat) {
+            // Preferences unreadable. The screens below still try, and say so if they cannot.
+        }
+        try {
+            Crash.arm(this);
+        } catch (Throwable notArmed) {
+            // The platform's own handler stays in place.
+        }
+        try {
+            Exits.noteStart(this);
+        } catch (Throwable unreadable) {
+            Crash.save(this, unreadable);
+        }
+        try {
+            watchForegroundState();
+        } catch (Throwable notWatched) {
+            Crash.save(this, notWatched);
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                NotificationManager manager = getSystemService(NotificationManager.class);
+                if (manager != null) {
+                    NotificationChannel channel = new NotificationChannel(
+                            CHANNEL_WORKSPACE, "Linux", NotificationManager.IMPORTANCE_LOW);
+                    channel.setDescription(
+                            "Shows while the development environment is running, with a Stop "
+                                    + "button. Low importance: it never makes a sound.");
+                    channel.setShowBadge(false);
+                    manager.createNotificationChannel(channel);
+                }
             }
+        } catch (Throwable noChannel) {
+            Crash.save(this, noChannel);
         }
     }
 

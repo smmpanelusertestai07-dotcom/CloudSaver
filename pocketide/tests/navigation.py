@@ -370,9 +370,30 @@ if "synchronized (ONE_AT_A_TIME)" not in installer_src:
 if "offerConfirmation(context, confirm" not in installer_src:
     problems.append("a confirmation Android refuses to bring to the front is a silent timeout: "
                     "the same question has to reach the notification shade too")
-if "<queries" in open(app + "/app/AndroidManifest.xml").read():
-    problems.append("the manifest asks to see other packages; being the installer of record is "
-                    "what makes the apps built here visible, and nothing else should be")
+# The one query every launcher makes, and nothing more: Android 11 shows an app its installer,
+# not an installer its apps (the platform's AppsFilter, read for the review), so opening what
+# phone install put on the phone needs this intent declared. Anything beyond it -- a named
+# package, another intent, QUERY_ALL_PACKAGES -- asks to see other packages, and any code that
+# lists packages would be the app reading what it promised not to.
+manifest_text = re.sub(r"<!--.*?-->", "", open(app + "/app/AndroidManifest.xml").read(), flags=re.S)
+queries = re.findall(r"<queries>(.*?)</queries>", manifest_text, re.S)
+launcher_query = ('<intent>\n            <action android:name="android.intent.action.MAIN" />\n'
+                  '            <category android:name="android.intent.category.LAUNCHER" />\n'
+                  '        </intent>')
+if len(queries) != 1 or queries[0].strip() != launcher_query:
+    problems.append("the manifest asks to see other packages beyond the one launcher intent "
+                    "that opening an app built here needs")
+if "QUERY_ALL_PACKAGES" in manifest_text:
+    problems.append("the manifest asks to see every package")
+for name in sorted(os.listdir(src)):
+    if not name.endswith(".java"):
+        continue
+    text = code(name)
+    for call in ("getInstalledPackages", "getInstalledApplications", "queryIntentActivities",
+                 "getInstalledModules"):
+        if call in text:
+            problems.append("%s lists other apps with %s; the launcher query exists for one "
+                            "launch, not for a list" % (name, call))
 
 # --- the community row is never sold as official -------------------------------------------------
 #
@@ -681,10 +702,12 @@ if not re.search(r'Ui\.row\(host, dark, R\.drawable\.\w+, "Test on this phone"',
                     "from the app")
 refresh = re.search(r'private void refreshTools\(final Tools\.State drawn\) \{(.*?)\n    \}',
                     settings, re.S)
-if (not refresh or "drawn.sdk != found.sdk" not in refresh.group(1)
-        or "drawn.adb != found.adb" not in refresh.group(1)):
-    problems.append("refreshTools() ignores the SDK and adb when deciding whether to redraw, so "
-                    "the row goes on saying JDK only after the toolchain has installed")
+if not refresh or "drawn.sdk != found.sdk" not in refresh.group(1):
+    problems.append("refreshTools() ignores the SDK when deciding whether to redraw, so the row "
+                    "goes on saying JDK only after the toolchain has installed")
+if "tools.adb" in settings or "PHONE_BYTES" in settings:
+    problems.append("Settings still offers to install an adb into Linux; the app's own ships "
+                    "inside it and the row goes straight to pairing")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

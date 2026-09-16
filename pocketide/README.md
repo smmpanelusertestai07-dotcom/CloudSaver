@@ -51,10 +51,15 @@ This app makes the phone that computer.
 Websites and web apps, Node and Python backends, APIs, scripts, bots, command-line tools, and
 anything in Go, Rust, Java, C or C++ — write, compile and run, with git throughout.
 
-Android APKs need an extra toolchain install. iOS builds go through GitHub's macOS runners,
-which are free with no minute limit for public repositories — you write the app here and push.
-Games work through Godot. What is not possible is compiling a native Xcode Swift project on the
-phone: Xcode only runs on macOS, and no trick changes that.
+Android APKs need an extra toolchain install, and the phone itself is the test device: the
+terminal's `phone` command installs what was built and opens it on any phone, and on Android 11
+or newer, once the phone is paired with itself, also reads the app's log, screenshots and taps
+it while it is on the screen, and runs its instrumented tests — and nothing else. iOS builds go
+through GitHub's macOS runners, which are free with no minute limit for public repositories —
+you write the app here and push. Games work through Godot 4's arm64 build, exported from the
+terminal. What is not possible is compiling a native Xcode Swift project on the phone, or
+running Unity or Unreal: Xcode only runs on macOS, the two engines publish Linux editors for
+x86-64 only, and no trick changes either.
 
 ### How big a project
 
@@ -115,8 +120,16 @@ operating system alive behind a closed app.
 
 Internet, network state, a wake lock, notifications, a foreground service, an optional prompt to
 keep working when the screen goes off, the app lock's biometric check, install-an-APK (only from
-the row in Settings, and Android still asks), and the phone's shared storage only if you switch
-The phone's files on. **No camera, microphone, location, contacts, SMS or calendar.**
+the row in Settings or the `phone` command, and Android still asks), and the phone's shared
+storage only if you switch The phone's files on. The manifest also declares the one query every
+launcher makes — which apps have a home-screen activity — used for exactly one thing: opening an
+app built here after `phone install` on an unpaired phone. It is not a permission, no list is
+ever read or shown, and the agent is never told. **No camera, microphone, location, contacts,
+SMS or calendar.**
+
+The phone's adb is the app's own: Ubuntu's arm64 build, assembled at build time from packages
+pinned by SHA-256 and shipped inside the APK, unpacked into the app's private storage and run in
+a PRoot of its own. The Linux the agent works in has no adb, no key and no way to reach either.
 
 ## Privacy
 
@@ -130,7 +143,7 @@ releases — a public list, with nothing about you in the request — and Settin
 
 ```
 ./build.sh          # aapt2 + javac + d8 + apksigner. No Gradle, no network.
-./tests/run-tests.sh   # 46 gates
+./tests/run-tests.sh   # the gates, each named for the mistake it guards against
 ```
 
 Requires Android SDK platform 35 and build-tools 35.0.0. Every gate exists because of a specific

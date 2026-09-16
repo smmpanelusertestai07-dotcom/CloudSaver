@@ -122,6 +122,9 @@ check "UpdateScriptSyntax" $? "pocketide-update.sh does not parse"
 bash -n "$ASSETS/pocketide-tools.sh"
 check "ToolsScriptSyntax" $? "pocketide-tools.sh does not parse"
 
+python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$ASSETS/pocketide-phone.py" 2>/dev/null
+check "PhoneCommandSyntax" $? "pocketide-phone.py, the terminal's door to the phone, does not parse"
+
 # Everything in this workspace is pinned, and a pin is right on the day it is made and wrong a
 # year later. This is the whole update path: that the script is actually copied into the
 # workspace, that the editor is staged and verified and reversible, and that what happens
@@ -145,6 +148,19 @@ check "KillOnExit" $? "PRoot is started without --kill-on-exit, so processes out
 
 in_code 'IMAGE_SHA256' "$SRC/Workspace.java"
 check "UbuntuPinned" $? "the Ubuntu image is not checked against its published checksum"
+
+# The phone's adb, assembled by the build from pinned packages: the zip the APK carries has to
+# be the one the stamp names, or the app unpacks something the build did not verify. Checked on
+# the build's own output, after the build has run.
+if [ -f "$APP/build/assets/adb-root.zip" ] && [ -f "$APP/build/assets/adb-root.stamp" ]; then
+  [ "$(sed -n 2p "$APP/build/assets/adb-root.stamp")" = \
+    "$(sha256sum "$APP/build/assets/adb-root.zip" | cut -d' ' -f1)" ] \
+    && unzip -l "$APP/build/assets/adb-root.zip" | grep -q ' usr/bin/adb$' \
+    && unzip -l "$APP/build/assets/adb-root.zip" | grep -q ' usr/lib/ld-linux-aarch64.so.1$'
+  check "AdbRootStamped" $? "the adb root the build packed does not match its stamp, or has no adb in it"
+else
+  fail "AdbRootStamped" "the build produced no adb root; build.sh has to assemble one before the gates run"
+fi
 
 # A point release has to move every place the version is written, or a screen says one version
 # while the phone downloads another.

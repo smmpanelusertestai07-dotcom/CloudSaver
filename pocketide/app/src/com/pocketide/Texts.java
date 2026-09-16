@@ -170,12 +170,15 @@ final class Texts {
              "Can I test an Android app here?",
              "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
                      + "agent can drive it through a door with a short list on it. Settings "
-                     + "\u2192 The computer \u2192 Test on this phone installs adb (Ubuntu\u2019s "
-                     + "own arm64 build, about 2 MB) and pairs the phone with itself over "
-                     + "Wireless debugging: the app finds the port the phone advertises, you "
-                     + "type the six-digit code into a notification, and the pairing key and "
-                     + "the adb server stay in the app\u2019s own storage, outside the Linux "
-                     + "the agent works in.\n\nWhat the terminal gets is one command, phone. "
+                     + "\u2192 The computer \u2192 Test on this phone pairs the phone with "
+                     + "itself over Wireless debugging: the app finds the port the phone "
+                     + "advertises, you type the six-digit code into a notification, and the "
+                     + "app\u2019s own adb does the rest. That adb ships inside the app "
+                     + "(Ubuntu\u2019s arm64 build, assembled from packages pinned by checksum) "
+                     + "and lives, with the pairing key and the adb server, in the app\u2019s "
+                     + "own storage in a root of its own. The Linux the agent works in has no "
+                     + "adb at all and cannot reach that one: nothing it can write is ever run "
+                     + "with the key in reach.\n\nWhat the terminal gets is one command, phone. "
                      + "It can install an APK built under ~/projects, open it, stop it, clear "
                      + "it, uninstall it, run its instrumented tests, read its own log, and "
                      + "\u2014 only while that app is on the screen \u2014 take a screenshot, "
@@ -186,10 +189,13 @@ final class Texts {
                      + "of it.\n\nTwo of those need no pairing and no Developer options at "
                      + "all: phone install and phone launch go through Android\u2019s own "
                      + "installer, which asks you to confirm each install on its own screen, "
-                     + "and the app opens from there. So an agent can build, install and run "
-                     + "what it wrote with your phone unpaired. Pairing makes those two silent "
-                     + "and adds the other three \u2014 the log, the screenshot and the "
-                     + "taps.\n\nWithout the phone at all: JVM unit tests run in Linux "
+                     + "and the app opens from there \u2014 while PocketIDE is on the screen; "
+                     + "if it is not, Android will not let it open another app, and a "
+                     + "notification with Open on it appears instead. So an agent can build, "
+                     + "install and run what it wrote with your phone unpaired. Pairing makes "
+                     + "those two silent and adds the rest \u2014 the log, the screenshot, "
+                     + "the taps, the tests and uninstall.\n\nWithout the phone at all: JVM "
+                     + "unit tests run in Linux "
                      + "directly, and so does Robolectric, with two limits on this processor "
                      + "\u2014 its graphics run in legacy mode, so views lay out and Espresso "
                      + "checks pass but nothing is drawn to pixels or screenshots, and its "
@@ -207,13 +213,42 @@ final class Texts {
                      + "either. The phone itself, behind the door above, is the test device."},
             {"Building",
              "Can I build an iPhone app?",
-             "No. Apple requires its own tools on a Mac to build and sign them, and no Android "
-                     + "app can provide that."},
+             "Write one here, yes; build and install it, not here, and not through any trick. "
+                     + "Apple\u2019s licence allows its SDK on Apple hardware only, so the "
+                     + "Linux cross-compilers that exist (xtool, theos) need Xcode downloaded "
+                     + "with an Apple ID and break that licence on a phone; and every "
+                     + "sideloading tool \u2014 AltStore, Sideloadly, SideStore \u2014 needs a "
+                     + "Mac or a Windows PC for the signing step and gives an app that lasts "
+                     + "seven days without a paid account.\n\nWhat works, and what an agent "
+                     + "here can do end to end: write the app in Swift, React Native or "
+                     + "Flutter, push it to a free cloud Mac \u2014 GitHub Actions is free "
+                     + "and unlimited for a public repository, Codemagic gives 500 Mac minutes "
+                     + "a month, Expo EAS 15 builds a month \u2014 and ship the result as a "
+                     + "web app anyone can open, or through TestFlight and the App Store with "
+                     + "an Apple developer account ($99 a year). The phone writes and pushes; "
+                     + "the Mac in the cloud compiles."},
             {"Building",
-             "Can I make games?",
-             "2D and web games, yes \u2014 any engine that runs on Linux and does not need a "
-                     + "graphics card. Large 3D engines expect a desktop GPU and will not be "
-                     + "happy here."},
+             "Can I make games? Unity, Unreal, something like Free Fire?",
+             "Godot 4, yes: it publishes a Linux arm64 build (about 77 MB) that exports an "
+                     + "Android APK from the terminal with no window at all \u2014 godot "
+                     + "--headless --export-debug Android game.apk \u2014 once its export "
+                     + "templates (about 1.3 GB) are downloaded and the Android build tools "
+                     + "row is installed. An agent can write the game in GDScript, export it "
+                     + "and install it with phone install. It is not a row in Settings yet "
+                     + "because it has not been proved on a 4 GB phone; the terminal is the "
+                     + "way to try it. 2D and web games in any engine that runs on Linux "
+                     + "without a graphics card work the same way.\n\nUnity and Unreal cannot "
+                     + "run here at all, and nothing installable changes that: Unity publishes "
+                     + "its Linux editor for x86-64 only (its release list has no Linux arm64 "
+                     + "build), and Unreal supports Linux on x86-64 only. A headless Unity "
+                     + "build still needs that editor. The nearest real thing is a cloud "
+                     + "x86-64 machine \u2014 GitHub Actions again \u2014 running Unity in "
+                     + "batch mode on code written here.\n\nA game the size of Free Fire is "
+                     + "Unity, and years of work by a studio: dozens to hundreds of engineers "
+                     + "and artists, a 3D art pipeline on GPU workstations, authoritative game "
+                     + "servers, anti-cheat, a device farm. That is a hardware and headcount "
+                     + "fact, not a limit of this app or of you. What is realistic here is "
+                     + "what most studios started with: a small game, finished."},
 
             {"Safety",
              "How do I know an extension is safe?",
@@ -359,6 +394,39 @@ final class Texts {
                      + "It is not official and the row says so. Install it if you want it, not "
                      + "because it is on the screen."},
             {"Agents",
+             "Is any model free and unlimited? What about Kimi K3?",
+             "Unlimited exists in one form only: an open-weight model running on hardware you "
+                     + "own. No provider offers unlimited free use of a capable model, and the "
+                     + "free tiers are all capped \u2014 OpenRouter\u2019s free models at "
+                     + "twenty requests a minute and fifty a day, Groq\u2019s free plan at "
+                     + "about a thousand a day, Google AI Studio\u2019s free tier with its "
+                     + "own daily limits, Kilo\u2019s free setting routing to whoever will "
+                     + "take the request, prompts possibly kept. What IS free and unlimited "
+                     + "is compute: GitHub Actions runs a public repository\u2019s builds "
+                     + "free with no minute limit.\n\nKimi K3 is real and open-weight, and "
+                     + "it is already in Kilo Code\u2019s list through OpenRouter, where new "
+                     + "models appear on their own \u2014 but it is paid there, and at about "
+                     + "2.8 trillion parameters it is not something any phone runs. A model "
+                     + "that runs here on a 4 GB phone is about a billion parameters; that "
+                     + "one is unlimited, private, and modest."},
+            {"Agents",
+             "Browser automation, agent browsing, a cloud computer, \u201cBettergravity\u201d?",
+             "Browser automation: Microsoft\u2019s own Playwright extension is on Open VSX "
+                     + "(verified), and the Browser row in Settings installs the Chromium it "
+                     + "drives; that is the tested path. Cline and Kilo Code each carry a "
+                     + "browser tool of their own, which needs a Chrome they can reach; "
+                     + "pointing them at the Chromium installed here is possible in their "
+                     + "settings and has not been tested by this app.\n\nA cloud computer: "
+                     + "there is no extension by that name. The nearest real ones on Open VSX "
+                     + "are Daytona\u2019s (verified) and connectors for GitHub Codespaces; "
+                     + "the official Codespaces extension is Marketplace-only. This app is "
+                     + "the computer, on the phone, and a cloud machine is what you would "
+                     + "reach from it over SSH or a git remote.\n\n\u201cBettergravity\u201d: "
+                     + "nothing by that name exists on Open VSX. Searching turns up companion "
+                     + "add-ons for Google\u2019s Antigravity \u2014 quota monitors and the "
+                     + "like \u2014 none of which is a coding agent, and none of which this "
+                     + "app lists."},
+            {"Agents",
              "I installed an agent. How do I open it?",
              "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
                      + "\u201cOpen Antigravity\u201d, and the same for any other agent that "
@@ -385,14 +453,22 @@ final class Texts {
                      + "anywhere in the editor, as in a browser."},
             {"Phone",
              "The app closes as soon as I open it.",
-             "It will not do that twice more. The app counts its own openings and clears the "
-                     + "count once a screen has actually been drawn; after two openings that "
-                     + "never got that far, the third opens a recovery screen instead. That "
-                     + "screen says what happened, lets you copy the details, and offers to "
-                     + "reset what the app remembers \u2014 which does not touch Linux, the "
-                     + "editor, the extensions or your projects.\n\nIf it happens once and "
-                     + "then stops, Home shows what was recorded under \u201cThe app stopped "
-                     + "unexpectedly\u201d."},
+             "It will not do that twice more. The app counts its own openings \u2014 the "
+                     + "count is the very first thing the process writes \u2014 and clears it "
+                     + "once a screen has actually been drawn; after two openings that never "
+                     + "got that far, the third opens a recovery screen instead. That screen "
+                     + "says how far the last opening got, shows Android\u2019s own record of "
+                     + "why the process ended (a crash, a hang, low memory, or the phone "
+                     + "maker\u2019s cleaner killing it, by name), lets you copy all of it, "
+                     + "and offers to reset what the app remembers \u2014 which does not "
+                     + "touch Linux, the editor, the extensions or your projects. Every step "
+                     + "before the first frame is caught, so a failure in any of them shows "
+                     + "that screen rather than closing the window.\n\nIf it happens once "
+                     + "and then stops, Home shows what was recorded under \u201cThe app "
+                     + "stopped unexpectedly\u201d. If it still closes with nothing shown, "
+                     + "the phone is ending the process before the app runs at all: check "
+                     + "the Battery settings the entry below names, and that the APK came "
+                     + "from the project\u2019s own release page."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
@@ -468,7 +544,8 @@ final class Texts {
                      + "generated on your phone and never leaves it, and the app has no "
                      + "account of its own. Security here does not depend on the code being "
                      + "secret. It depends on the code being right, which is what the "
-                     + "forty-six checks that run on every build are for."},
+                     + "checks that run on every build \u2014 more than fifty of them \u2014 "
+                     + "are for."},
     };
 
     // ------------------------------------------------------------------ terms

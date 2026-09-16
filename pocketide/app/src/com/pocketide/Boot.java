@@ -40,25 +40,52 @@ final class Boot {
 
     /** Launches begun since one last finished. Written synchronously; see the class note. */
     private static final String ATTEMPTS = "boot_attempts";
+    /** How far the last opening got: application, home, built, drawn. Written synchronously. */
+    private static final String STAGE = "boot_stage";
 
     /** Three strikes: two silent deaths are a pattern, and the third opening is the repair. */
     private static final int GIVE_UP_AFTER = 3;
 
+    /** Counted once per process, however many screens ask. */
+    private static boolean counted;
+    /** Where the opening BEFORE this one got to, read before this one overwrites it. */
+    private static String previousStage = "";
+
     private Boot() {}
 
-    /** Called first thing in onCreate, before any view exists. */
+    /**
+     * Called first thing when the process starts (App.onCreate), and again, harmlessly, by
+     * the first screen: the count is taken once, before any view exists and before anything
+     * that could fail.
+     */
     static void starting(Context context) {
+        if (counted) return;
+        counted = true;
         SharedPreferences prefs = Prefs.of(context);
+        previousStage = prefs.getString(STAGE, "");
         int attempts = prefs.getInt(ATTEMPTS, 0) + 1;
         // commit(), not apply(). A process killed a hundred milliseconds from now must still
         // find this number on disk, and apply() only promises to get there eventually.
-        prefs.edit().putInt(ATTEMPTS, attempts).commit();
+        prefs.edit().putInt(ATTEMPTS, attempts).putString(STAGE, "application").commit();
+    }
+
+    /**
+     * A milestone on the way to the first frame, written synchronously for the same reason
+     * as the count: an opening that dies leaves behind how far it got, and "it got as far as
+     * building the screen" narrows the search from the whole app to one method.
+     */
+    static void mark(Context context, String stage) {
+        try {
+            Prefs.of(context).edit().putString(STAGE, stage).commit();
+        } catch (Throwable unwritable) {
+            // The mark is a diagnostic, never the thing that fails.
+        }
     }
 
     /** Called once a frame has been drawn, which is the only honest definition of "it opened". */
     static void reached(Context context) {
         SharedPreferences prefs = Prefs.of(context);
-        if (prefs.getInt(ATTEMPTS, 0) != 0) prefs.edit().putInt(ATTEMPTS, 0).apply();
+        prefs.edit().putInt(ATTEMPTS, 0).putString(STAGE, "drawn").apply();
     }
 
     /** True when the last two openings died before drawing anything. */
@@ -198,13 +225,30 @@ final class Boot {
         activity.finish();
     }
 
-    /** What went wrong, as much of it as there is, with anything secret blanked out. */
+    /**
+     * What went wrong, as much of it as there is, with anything secret blanked out.
+     *
+     * Three sources, because each catches what the others miss: the failure this screen was
+     * given, the last one the crash handler wrote down, and what Android itself recorded
+     * about the last exits -- which is the only account there is of a process the system
+     * killed rather than one that threw, and names the killer.
+     */
     private static String details(Context context, Throwable failure) {
         StringBuilder all = new StringBuilder();
         all.append("PocketIDE ").append(BuildFacts.VERSION_NAME)
                 .append(" · Android ").append(android.os.Build.VERSION.SDK_INT)
                 .append(" · ").append(android.os.Build.MANUFACTURER)
                 .append(' ').append(android.os.Build.MODEL).append('\n');
+        if (!previousStage.isEmpty()) {
+            all.append("The last opening got as far as: ").append(previousStage)
+                    .append(" (application → home → built → drawn)\n");
+        }
+        try {
+            String exits = Exits.recent(context);
+            if (!exits.isEmpty()) all.append("Android's record of the last exits:\n").append(exits);
+        } catch (Throwable unreadable) {
+            // Android 11 and later only, and not worth failing the screen over.
+        }
         if (failure != null) {
             java.io.StringWriter writer = new java.io.StringWriter();
             failure.printStackTrace(new java.io.PrintWriter(writer));
