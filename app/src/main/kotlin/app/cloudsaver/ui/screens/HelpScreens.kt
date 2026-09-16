@@ -64,6 +64,7 @@ import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Formats
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.BatterySaver
 import androidx.compose.material.icons.outlined.Gavel
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Shield
@@ -676,6 +677,7 @@ fun HelpLogsScreen(nav: NavHostController) {
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
+                        app.cloudsaver.util.Errand.begin()
                         context.startActivity(Intent.createChooser(share, shareTitle))
                     }
                 } catch (e: Exception) {
@@ -751,6 +753,11 @@ fun HelpPrivacyScreen(nav: NavHostController) {
             Icons.Outlined.Info,
             stringResource(R.string.privacy_b5_title),
             stringResource(R.string.privacy_b5)
+        )
+        PrivacyBlock(
+            Icons.Outlined.BatterySaver,
+            stringResource(R.string.privacy_b7_title),
+            stringResource(R.string.privacy_b7)
         )
         PrivacyBlock(
             Icons.Outlined.Gavel,

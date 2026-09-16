@@ -43,8 +43,15 @@ class PermissionsCenterTest {
         for (read in listOf(
             "Permissions.mediaAccess(context)",
             "Permissions.hasNotifications(context)",
+            "Permissions.alertsChannelOff(context)",
             "UsageVerifier.hasUsageAccess(context)",
-            "Permissions.isIgnoringBatteryOptimizations(context)"
+            "Permissions.isIgnoringBatteryOptimizations(context)",
+            "Permissions.isBackgroundRestricted(context)",
+            "Permissions.permissionsAutoResetOn(context)",
+            "Permissions.batterySaverOn(context)",
+            "Permissions.standbyBucket(context)",
+            "Exits.last(context)",
+            "PermissionLedger.read(context)"
         )) {
             assertTrue("$read must be re-read on resume", screen.contains("remember(tick) { $read }"))
         }
@@ -106,5 +113,86 @@ class PermissionsCenterTest {
             .substringAfter("private fun AlertsPermissionRow(").substringBefore("\n}\n")
         assertFalse("the alerts row must not fall silent below Android 13", row.contains("SDK_INT < 33) return"))
         assertTrue("below 13 the only way to the switch is the settings page", row.contains("openNotificationSettings(context)"))
+    }
+
+    @Test
+    fun `the switches Android does report are read and judged, not guessed`() {
+        // Three of them were missing: the per-app Restricted ban, the
+        // unused-app permission reset, and the phone-wide Battery Saver. Each
+        // stops the work without a word, and each has a public API.
+        val perms = File(main, "util/Permissions.kt").readText()
+        assertTrue(perms.contains("am.isBackgroundRestricted"))
+        assertTrue(perms.contains("!context.packageManager.isAutoRevokeWhitelisted"))
+        assertTrue(perms.contains("pm.isPowerSaveMode"))
+        assertTrue(perms.contains("usm.appStandbyBucket"))
+        assertTrue(screen.contains("state = if (backgroundRestricted) State.PROBLEM else State.OK"))
+        assertTrue(screen.contains("state = if (autoReset) State.PROBLEM else State.OK"))
+        assertTrue(screen.contains("state = if (saver) State.PROBLEM else State.OK"))
+        // The reset does not exist on Android 10: the row is absent there, never "Off".
+        assertTrue(perms.contains("if (Build.VERSION.SDK_INT < 30) return null"))
+        assertTrue(screen.contains("if (autoReset != null) {"))
+    }
+
+    @Test
+    fun `the readable switches reach setup, Home and the Settings dot as well`() {
+        val power = File(main, "util/PowerPages.kt").readText()
+        val fn = power.substringAfter("fun requirementsFor(").substringBefore("\n    }\n")
+        assertTrue(fn.contains("Requirement(ID_BACKGROUND_RESTRICTION, readable = true, satisfied = !backgroundRestricted)"))
+        assertTrue(fn.contains("Requirement(ID_KEEP_PERMISSIONS, readable = true, satisfied = !it)"))
+        val open = power.substringAfter("fun open(context: Context, requirementId: String)")
+        assertTrue(open.contains("ID_BACKGROUND_RESTRICTION -> openBackgroundActivity(context)"))
+        assertTrue(open.contains("ID_KEEP_PERMISSIONS -> OemPages.openAutoRevokeSettings(context)"))
+        val vm = File(main, "ui/AppViewModel.kt").readText()
+        assertTrue(vm.contains("backgroundRestricted = Permissions.isBackgroundRestricted(ctx)"))
+        assertTrue(vm.contains("permissionsAutoReset = Permissions.permissionsAutoResetOn(ctx)"))
+        val home = File(main, "ui/screens/HomeScreen.kt").readText()
+        assertTrue(home.contains("PowerPages.ID_BACKGROUND_RESTRICTION ->"))
+        assertTrue(home.contains("PowerPages.ID_KEEP_PERMISSIONS ->"))
+        val app = File(main, "ui/App.kt").readText()
+        assertTrue(app.contains("phoneWillStopIt = health.backgroundRestricted ||"))
+        val onboarding = File(main, "ui/screens/OnboardingScreen.kt").readText()
+        assertTrue(onboarding.contains("PowerPages.ID_BACKGROUND_RESTRICTION -> stringResource(R.string.power_background_restriction)"))
+        assertTrue(onboarding.contains("PowerPages.ID_KEEP_PERMISSIONS -> stringResource(R.string.power_keep_permissions)"))
+    }
+
+    @Test
+    fun `the alerts category has its own state and its own page`() {
+        // Notifications on with the Alerts category off is "Allowed" by the
+        // app-level switch and silence in practice.
+        assertTrue(screen.contains("alertsChannelOff -> R.string.perm_alerts_channel_off"))
+        assertTrue(screen.contains("notifications && alertsChannelOff -> OemPages.openAlertsChannelSettings(context)"))
+        val oem = File(main, "util/OemPages.kt").readText()
+        assertTrue(oem.contains("Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS"))
+        assertTrue(oem.contains("Settings.EXTRA_CHANNEL_ID, Notifications.CH_ALERTS"))
+        // And the reset page is Android's own, with app info as the floor.
+        assertTrue(oem.contains("Intent.ACTION_AUTO_REVOKE_PERMISSIONS"))
+    }
+
+    @Test
+    fun `a row with nowhere to go is a fact, not a task`() {
+        // The rationing bucket and the last exit have no switch. They are
+        // shown without a button rather than with one that opens app info
+        // and changes nothing.
+        val row = screen.substringAfter("private fun PermissionRow(").substringBefore("\n}\n")
+        assertTrue(row.contains("actionLabel: String? = null"))
+        assertTrue(row.contains("if (actionLabel != null && onAction != null) {"))
+        val bucket = screen.substringAfter("if (bucket != null) {").substringBefore("for (requirement in makerRows)")
+        assertFalse(bucket.contains("actionLabel"))
+        val exit = screen.substringAfter("if (lastExit != null) {").substringBefore("stringResource(R.string.perm_why)")
+        assertFalse(exit.contains("actionLabel"))
+    }
+
+    @Test
+    fun `the stall alert and the stopped chip share one rule`() {
+        // Two copies of "the phone stopped the work" would disagree one day.
+        val vm = File(main, "ui/AppViewModel.kt").readText()
+        assertTrue(vm.contains("backgroundWorkStopped = !o.pauseAll && StallAlert.stalled("))
+        val engine = File(main, "engine/MaintainEngine.kt").readText()
+        assertTrue(engine.contains("StallAlert.stalled("))
+        assertTrue(engine.contains("StallAlert.due(stalled, o.stallAlerts, o.stallAlertAt, now)"))
+        assertTrue(engine.contains("route = \"permissions\""))
+        // A week apart, not the daily cadence the other alerts keep.
+        assertTrue(engine.contains("repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)"))
+        assertTrue(engine.contains("repo.setLong(OptionsRepo.K.STALL_ALERT_AT, now)"))
     }
 }

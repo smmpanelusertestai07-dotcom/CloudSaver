@@ -37,6 +37,7 @@ object Notifications {
     const val ID_WARN_AGED = 20
     const val ID_WARN_SAFETY = 21
     const val ID_WARN_SPACE = 22
+    const val ID_WARN_STALLED = 23
 
     /** The same alert is worth saying once a day at most. */
     const val DEDUP_MS = 86_400_000L

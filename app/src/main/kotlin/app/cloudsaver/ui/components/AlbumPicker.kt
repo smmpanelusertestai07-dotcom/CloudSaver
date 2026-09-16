@@ -282,6 +282,8 @@ private fun peekAlbum(context: Context, coverUri: String) {
             setDataAndType(uri, mime)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        // A trip the app started: the lock lets this one return through.
+        app.cloudsaver.util.Errand.begin()
         try {
             context.startActivity(view)
         } catch (e: android.content.ActivityNotFoundException) {

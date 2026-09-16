@@ -31,6 +31,9 @@ object TabBadges {
         cloudMissing: Boolean,
         usageAccessOff: Boolean,
         backgroundWorkStopped: Boolean,
-        spaceLow: Boolean
-    ): Boolean = cloudMissing || usageAccessOff || backgroundWorkStopped || spaceLow
+        spaceLow: Boolean,
+        /** Android's own per-app ban on background work, or its permission reset armed. */
+        phoneWillStopIt: Boolean = false
+    ): Boolean = cloudMissing || usageAccessOff || backgroundWorkStopped || spaceLow ||
+        phoneWillStopIt
 }

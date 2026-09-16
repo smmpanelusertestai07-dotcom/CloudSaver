@@ -82,6 +82,7 @@ fun RecoveryScreen(onTryAgain: () -> Unit) {
                                 putExtra(Intent.EXTRA_STREAM, uri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
+                            app.cloudsaver.util.Errand.begin()
                             context.startActivity(
                                 Intent.createChooser(share, shareTitle)
                             )

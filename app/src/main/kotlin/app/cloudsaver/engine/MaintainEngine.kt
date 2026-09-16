@@ -2,6 +2,8 @@ package app.cloudsaver.engine
 
 import android.content.Context
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.StallAlert
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeletePlanner
@@ -90,6 +92,30 @@ class MaintainEngine(private val context: Context) {
             val next = FirstChain.next(o.firstChainState, o.firstReleaseAt, confirmed, now)
             if (next != o.firstChainState) {
                 repo.setString(OptionsRepo.K.FIRST_CHAIN_STATE, next)
+            }
+        }
+
+        // The phone has been stopping the compress runs: say so, once, from
+        // the one run that did get through. A week apart, three times at
+        // most, then the chip on Home is the only notice (StallAlert).
+        step("stall") {
+            val waiting = db.items().newInScopeCount(o.excludedBuckets)
+            val stalled = !o.pauseAll && StallAlert.stalled(
+                now, o.lastRunAt, waiting, Stops.isRationed(o.lastStopReason)
+            )
+            if (StallAlert.due(stalled, o.stallAlerts, o.stallAlertAt, now)) {
+                Notifications.alert(
+                    context, Notifications.ID_WARN_STALLED,
+                    context.getString(R.string.warn_stalled_title),
+                    context.getString(R.string.warn_stalled_text),
+                    o, dedupKey = "stalled", route = "permissions"
+                )
+                repo.setInt(OptionsRepo.K.STALL_ALERTS, o.stallAlerts + 1)
+                repo.setLong(OptionsRepo.K.STALL_ALERT_AT, now)
+                activity.record(
+                    ActivityLog.Kind.PROBLEM,
+                    detail = context.getString(R.string.warn_stalled_title)
+                )
             }
         }
 

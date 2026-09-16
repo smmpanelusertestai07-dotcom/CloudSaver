@@ -607,9 +607,25 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                             nav.goTo(Routes.OPTIONS)
                         }
                     }
-                    if (anyPower) {
-                        StatusChip(stringResource(R.string.chip_battery)) {
-                            vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                    // Three readable switches, three chips that name the
+                    // right one: "battery restricted" for all of them sent
+                    // people to a dialog Android closes on its own when the
+                    // switch that is actually off is a different one.
+                    for (requirement in power) {
+                        if (!requirement.readable || requirement.satisfied) continue
+                        when (requirement.id) {
+                            PowerPages.ID_BATTERY_UNRESTRICTED ->
+                                StatusChip(stringResource(R.string.chip_battery)) {
+                                    vm.openPowerPage(PowerPages.ID_BATTERY_UNRESTRICTED)
+                                }
+                            PowerPages.ID_BACKGROUND_RESTRICTION ->
+                                StatusChip(stringResource(R.string.chip_background_restricted)) {
+                                    nav.goTo(Routes.PERMISSIONS)
+                                }
+                            PowerPages.ID_KEEP_PERMISSIONS ->
+                                StatusChip(stringResource(R.string.chip_keep_permissions)) {
+                                    nav.goTo(Routes.PERMISSIONS)
+                                }
                         }
                     }
                     if (health.usageAccessOff) {

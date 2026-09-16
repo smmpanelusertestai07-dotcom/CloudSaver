@@ -26,9 +26,15 @@ Internet permission app ke paas hai hi nahi: kuch bhi phone se bahar nahi jaata.
    dabao to us album ki latest photo gallery mein khulti hai. Neeche "Scroll to
    see all N albums" dikhe to aur albums neeche hain.
 4. **Notifications** — optional; sirf zaroori alerts ke liye.
-5. **Background / battery** — teen switch:
+5. **Background / battery** — paanch switch:
    - *Battery: no restrictions* — Android khud batata hai on hai ya off.
      Off rahe to background runs ghanton late ho sakte hain.
+   - *Background: not restricted* — App info › Battery mein "Restricted" chuna
+     ho to Android background run hone hi nahi deta. Android khud batata hai.
+   - *Keep permissions when unused* — Android 11+ un apps ki permission kuch
+     mahine baad khud hata deta hai jo kholi na jaayein; CloudSaver waisa hi
+     app hai (chalta rehta hai, kholna nahi padta). Yeh switch off rakho warna
+     ek din photos permission chali jaayegi. Android khud batata hai.
    - *Auto-launch* aur *Background activity* — yeh phone banane wale (Realme,
      Oppo, Xiaomi, Vivo) ke apne switch hain; Android app ko inka state
      padhne nahi deta, isliye app "Check" dikhata hai aur page kholta hai.
@@ -39,7 +45,17 @@ Internet permission app ke paas hai hi nahi: kuch bhi phone se bahar nahi jaata.
      management › App list › CloudSaver ke andar hota hai. App ka "Open"
      button seedha isi page par le jaata hai.
    Yeh sab baad mein bhi Settings › Permissions and battery se dikhte aur badalte
-   hain.
+   hain. Wahi screen yeh bhi dikhati hai: phone ka *Battery Saver* on hai ya nahi
+   (on ho to app ruk jaata hai jab tak off na ho ya charging na lage), Android
+   app ko kitni baar chalne deta hai, pichhli baar phone ne app ko kyun band
+   kiya, aur app ke paas kaun-kaun si permission hai (phone se padh kar, list
+   se nahi) aur kaun si kabhi maangi hi nahi jaati (Internet, Camera, Location,
+   Contacts...). *Super power saving* aur Realme ka *Sleep standby optimisation*
+   bhi background apps ko band/freeze karte hain — inhe koi app padh nahi
+   sakta, isliye Settings › Battery mein khud dekh lo.
+   Agar phone baar-baar app ko rokta rahe to app ek notification bhejta hai —
+   hafte mein ek baar se zyada nahi, kul teen baar; uske baad sirf Home ki chip
+   batati hai.
 6. **Usage access** — optional lekin recommended: isse app dekh sakta hai ki
    cloud app ne kitna data bheja, jisse upload confirm hota hai. Grant karke
    wapas aao to step khud "Done, next" dikhata hai.
@@ -74,6 +90,11 @@ trash mein 30 din rehti hain (Android 11+).
 ## Kuch gadbad lage to
 
 - Home par chips (Settings ki dot bhi) batate hain kya atka hai.
-- Settings › Permissions and battery: har permission ka live state aur exact page.
+- Settings › Permissions and battery: har permission aur battery switch ka live
+  state aur exact page, phone ne app kab aur kyun band kiya, aur app ke paas
+  kya hai / kya kabhi nahi maangta.
+- App lock on ho to: app khud jo page kholta hai (Open, gallery, share) wahan se
+  2 minute ke andar wapas aane par dobara fingerprint nahi maangta; usse zyada
+  der lagi to maangta hai.
 - Help › Logs: log share karke bhej sakte ho (isme photos nahi, sirf app ki
   apni entries).
