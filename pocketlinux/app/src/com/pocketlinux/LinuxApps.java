@@ -124,7 +124,10 @@ final class LinuxApps {
             + "APT::Sandbox::User \"root\";\n"
             + "APT::Install-Suggests \"false\";\nquiet \"1\";\n"
             + "Dpkg::Options {\"--force-confdef\";\"--force-confold\";};\n' "
-            + "> \"$PD_ETC/apt/apt.conf.d/99pocketlinux\"; "
+            // Written at source time, so it must not be the line that kills the prelude where
+            // /etc is read-only: inside the container it always succeeds, and anywhere else a
+            // missing apt tweak costs a slower fetch, not a failed set-up.
+            + "> \"$PD_ETC/apt/apt.conf.d/99pocketlinux\" 2>/dev/null || true; "
             // Phone storage is slow, and dpkg's fsync after every file was most of the wait.
             // force-unsafe-io is what container images use for the same reason; an install cut
             // off mid-way is repaired by pd_repair rather than by the filesystem. Changelogs and
@@ -136,7 +139,7 @@ final class LinuxApps {
             // The base image's own excludes file drops every man page; this line, read after it,
             // puts them back. Without it man-db and the manuals were fetched and thrown away.
             + "path-include=/usr/share/man/*\n' "
-            + "> \"$PD_ETC/dpkg/dpkg.cfg.d/99pocketlinux\"; "
+            + "> \"$PD_ETC/dpkg/dpkg.cfg.d/99pocketlinux\" 2>/dev/null || true; "
             // man-db's postinst normally builds its index with mandb, and under PRoot's traced
             // syscalls that is minutes. man <page> works without an index; only apropos and
             // man -k need one, and "sudo mandb" builds it whenever the owner wants it.
