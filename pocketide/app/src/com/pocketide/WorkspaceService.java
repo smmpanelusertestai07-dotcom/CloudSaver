@@ -79,6 +79,12 @@ public final class WorkspaceService extends Service {
     private volatile boolean updating;
     /** An editor asked for during the update: it opens the moment the update is done. */
     private volatile boolean startAfterUpdate;
+    /**
+     * Held while either side reads and writes the two flags above. Without it a start that
+     * arrived in the moment between the update finishing and its flag being read was neither
+     * queued nor refused -- lost, and the screen waited for an editor nobody was starting.
+     */
+    private final Object updateLock = new Object();
     private PowerManager.WakeLock wakeLock;
     private long startedAt;
     /** What the notification last said, so a repeated START does not talk over it. */
@@ -230,16 +236,24 @@ public final class WorkspaceService extends Service {
             // A start that arrives while the daily update is running used to be dropped
             // without a word: the screen waited for an editor nobody was starting. It is
             // queued instead -- apt is not interrupted half way -- and the screen is told.
-            if (updating && ACTION_START.equals(action)) {
-                startAfterUpdate = true;
+            boolean queued = false;
+            synchronized (updateLock) {
+                if (updating && ACTION_START.equals(action)) {
+                    startAfterUpdate = true;
+                    queued = true;
+                }
+            }
+            if (queued) {
                 announce(null, "Finishing the update first; the editor opens right after.",
                         "setting-up", -1);
             }
             return START_NOT_STICKY;
         }
         busy = true;
-        updating = ACTION_UPDATE.equals(action);
-        startAfterUpdate = false;
+        synchronized (updateLock) {
+            updating = ACTION_UPDATE.equals(action);
+            startAfterUpdate = false;
+        }
         startedAt = System.currentTimeMillis();
         // Said once, where the owner will look: a normal power-saving mode only slows a job;
         // a super or ultra mode ends every app not on its short list, this one included, and
@@ -308,15 +322,21 @@ public final class WorkspaceService extends Service {
                 record(line);
                 note(line);
             });
-            updating = false;
-            if (startAfterUpdate && busy) {
+            boolean editorWanted;
+            synchronized (updateLock) {
+                updating = false;
+                editorWanted = startAfterUpdate && busy;
                 startAfterUpdate = false;
+            }
+            if (editorWanted) {
                 runEditor();
                 return;
             }
             stopEverything(null, null);
         } catch (Throwable failure) {
-            updating = false;
+            synchronized (updateLock) {
+                updating = false;
+            }
             fail(failure);
         }
     }

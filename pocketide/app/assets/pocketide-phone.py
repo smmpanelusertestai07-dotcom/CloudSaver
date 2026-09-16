@@ -44,7 +44,9 @@ except OSError:
           "phone under Settings > The computer > Test on this phone.", file=sys.stderr)
     sys.exit(2)
 link.sendall((json.dumps(request) + "\n").encode("utf-8"))
-link.shutdown(socket.SHUT_WR)
+# The write side stays open on purpose: the bridge reads one line and then watches this
+# socket to learn when the command was stopped, so a phone log left with Ctrl-C ends the
+# logcat behind it instead of leaving it running.
 code = 1
 with link.makefile("rb") as stream:
     for raw in stream:

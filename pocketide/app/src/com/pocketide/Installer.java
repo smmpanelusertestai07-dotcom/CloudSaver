@@ -189,10 +189,18 @@ final class Installer {
         }
         expecting = "";
         if (answer == null) {
+            // Abandoned, not left open: a session that finished after this returned would
+            // have put the app on the phone with nobody told and nothing allowed. The
+            // notification goes with it, since the question it carried is no longer open.
+            try {
+                installer.abandonSession(id);
+            } catch (Throwable alreadyGone) {
+                // Answered or expired in the meantime. Either way it is not ours any more.
+            }
             cancelConfirmation(context);
-            return "Nobody answered Android's confirmation. Unlock the phone, open PocketIDE, "
-                    + "and run this again \u2014 or pull down the notification shade, where the "
-                    + "same question is waiting.";
+            return "Nobody answered Android's confirmation within three minutes, so the "
+                    + "install was cancelled. Unlock the phone, keep PocketIDE on the screen, "
+                    + "and run this again.";
         }
         return answer;
     }

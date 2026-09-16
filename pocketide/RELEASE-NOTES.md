@@ -55,6 +55,22 @@ so every PRoot the app ends is sent SIGQUIT first — including the adb server, 
 PRoot is not a security sandbox against a program that sets out to escape it, and the notes do
 not claim that. What is claimed is narrower and checkable: the workspace has no path to the
 phone except the door, and nothing the workspace can write is ever run with the key in reach.
+The line that remains is the phone's own, and Help says so: everything this app runs is one
+Android user, and a program written to read another process's memory could read the adb
+server's while it runs. That is what the Wireless debugging switch is for, and why Android
+turns it off at every restart.
+
+A second review pass, on this round, found four more gaps in the door and each is closed: a
+`phone log` left with Ctrl-C used to keep its worker, its PRoot and the phone's logcat until
+the editor restarted, and four of those made the bridge answer only "busy" — the client now
+keeps its socket open and the bridge watches it, ending the command the moment the client
+leaves; every reply and the allow-list carried a host path Linux does not have, because the
+rootfs prefix was compared uncanonicalised; the allow-list was a list of names, so an app of
+the same name installed later by the owner from a store would have been handed to the bridge
+— the signing certificate is recorded at install and checked whenever the installed package can
+be seen; and an install nobody answered within three minutes was left open, so a late tap put
+the app on the phone with nothing told and nothing allowed — it is abandoned instead, and the
+message no longer points at a notification that had been cancelled.
 
 ### One community row: bring your own model
 
@@ -205,9 +221,11 @@ read; the screen check and the action are one command; the projects directory is
 without following links; the bridge's executor is bounded; the door's close wakes its acceptor;
 SIGQUIT precedes destroy; the manifest's one query is exactly the launcher intent and no code
 lists packages; an unpaired launch checks the app is in front; a start during the update waits
-rather than being dropped; a job with no handle is still swept; the launch count is the first
-thing App.onCreate does and each step after it is caught; and the recovery screen reads
-Android's exit record. Each broken on purpose and confirmed to fail.
+rather than being dropped, under a lock so no start is lost between; a job with no handle is
+still swept; the launch count is the first thing App.onCreate does and each step after it is
+caught; the recovery screen reads Android's exit record; a client that leaves is noticed; guest
+paths are guest paths; the allow-list checks the certificate; and an unanswered install is
+abandoned. Each broken on purpose and confirmed to fail.
 
 ## 2.1.5
 

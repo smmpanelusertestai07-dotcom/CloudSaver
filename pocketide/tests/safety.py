@@ -670,6 +670,42 @@ if ("new ThreadPoolExecutor(AT_ONCE, AT_ONCE" not in broker
         or "catch (RejectedExecutionException full)" not in broker):
     problems.append("the bridge grows a thread per request instead of serving a few and "
                     "saying busy")
+serve_fn = re.search(r'private void serve\(LocalSocket client\) \{(.*?)\n    \}', broker, re.S)
+serve_body = serve_fn.group(1) if serve_fn else ""
+adb_to = re.search(r'private int adbTo\(Reply reply, String\.\.\. adbArguments\)(.*?)\n    \}', broker, re.S)
+shot = re.search(r'private int screenshot\((.*?)\n    \}', broker, re.S)
+left = re.search(r'void left\(\) \{(.*?)\n        \}', broker, re.S)
+if ("client.setSoTimeout(15_000);" not in serve_body or "reply.left();" not in serve_body
+        or not adb_to or "reply.watch(process);" not in adb_to.group(1)
+        or not shot or "reply.watch(process);" not in shot.group(1)
+        or not left or "Workspace.quit(process)" not in left.group(1)):
+    problems.append("a client that leaves mid-stream is not noticed: a phone log left with "
+                    "Ctrl-C keeps its worker, its PRoot and the phone's logcat until the "
+                    "editor restarts, and four of those are a bridge that only says busy")
+if "SHUT_WR" in cli:
+    problems.append("the phone command shuts its write side after the request, so the bridge "
+                    "cannot tell a client that has finished asking from one that has left")
+if "if (never instanceof Pending) closeQuietly(((Pending) never).client);" not in broker:
+    problems.append("requests still queued when the door closes are left waiting on nothing")
+guest_fn = re.search(r'private String guestPath\(File host\) \{(.*?)\n    \}', broker, re.S)
+if not guest_fn or "Workspace.root(service).getCanonicalPath()" not in guest_fn.group(1):
+    problems.append("guestPath() compares a canonical file against an uncanonical root, so "
+                    "every reply and the allow-list carry a host path Linux does not have")
+if ("GET_SIGNING_CERTIFICATES" not in broker or "certificates.put(pkg" not in broker
+        or "String now = installedCertificate(pkg);" not in broker):
+    problems.append("the allow-list is a list of names, so an app of the same name installed "
+                    "later by the owner is handed to the bridge")
+for_allowed = re.search(r'private int forAllowed\(List<String> args, Reply reply, boolean needsPhone,'
+                        r'(.*?)\n    \}', broker, re.S)
+checked_at = for_allowed.group(1).find("!now.equals(expected)") if for_allowed else -1
+if (not for_allowed or "forget(pkg);" not in for_allowed.group(1) or checked_at < 0
+        or checked_at > for_allowed.group(1).find("then.run(pkg)")):
+    problems.append("forAllowed() runs the operation before it has checked the installed "
+                    "package is the one the bridge installed")
+timeout_path = re.search(r'if \(answer == null\) \{(.*?)\n        \}', code(read("Installer.java")), re.S)
+if not timeout_path or "installer.abandonSession(id);" not in timeout_path.group(1):
+    problems.append("an install nobody answered is left open, so a late tap installs the app "
+                    "with nothing told and nothing allowed")
 if "android.system.Os.shutdown(bound.getFileDescriptor()" not in broker:
     problems.append("closing the bridge does not wake the thread waiting in accept(), which "
                     "keeps the old socket")
@@ -689,6 +725,9 @@ if "static boolean inFront()" not in code(read("App.java")):
 if ("if (updating && ACTION_START.equals(action))" not in service
         or "startAfterUpdate = true;" not in service):
     problems.append("a start that arrives during the daily update is dropped without a word")
+if service.count("synchronized (updateLock) {") < 4:
+    problems.append("the update's flags are read and written without a lock, so a start that "
+                    "arrives as the update finishes is neither queued nor refused")
 update_fn = re.search(r'private void runUpdate\(\) \{(.*?)\n    \}', service, re.S)
 if not update_fn or "runEditor();" not in update_fn.group(1):
     problems.append("runUpdate() does not open the editor that was asked for during the update")

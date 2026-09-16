@@ -52,6 +52,10 @@ import java.util.regex.Pattern;
  * sandbox against a program that sets out to escape it, and this class does not claim
  * otherwise; what it claims is that the workspace has no path to the phone except the one
  * below, and that nothing the workspace can write is ever executed with the key in reach.
+ * The line that remains is the phone's own: everything this app runs is one Android user,
+ * and a program written to read another process's memory can read the adb server's. That
+ * is why pairing is a switch the owner turns off when not testing, and why Android turns it
+ * off at every restart.
  *
  * WHAT THE DOOR ALLOWS. A socket bound into the editor's PRoot at /run/pocketide/phone.sock,
  * spoken to by the "phone" command the editor's start installs. Every request is one of a
@@ -114,6 +118,14 @@ final class PhoneBroker {
 
     /** Packages this bridge installed, and the APK each came from. The only ones it may touch. */
     private final Map<String, String> allowed = new LinkedHashMap<>();
+    /**
+     * And the signing certificate each was installed with. A name alone is not an identity:
+     * an owner who removes what the agent built and installs a real app of the same name
+     * from a store would otherwise have handed that app to the bridge. Checked whenever the
+     * installed package can be seen; a package this app cannot see (one with no launcher
+     * activity, such as a test package) is taken on its name, which is all there is.
+     */
+    private final Map<String, String> certificates = new LinkedHashMap<>();
 
     private PhoneBroker(WorkspaceService service) {
         this.service = service;
@@ -188,7 +200,24 @@ final class PhoneBroker {
             // Nothing to undo.
         }
         new File(bridgeDir(service), "phone.sock").delete();
-        requests.shutdownNow();
+        // The requests still queued never run; their clients are closed rather than left
+        // waiting on a bridge that is gone.
+        for (Runnable never : requests.shutdownNow()) {
+            if (never instanceof Pending) closeQuietly(((Pending) never).client);
+        }
+    }
+
+    /** A request waiting for a worker, with the socket it came in on. */
+    private final class Pending implements Runnable {
+        final LocalSocket client;
+
+        Pending(LocalSocket client) {
+            this.client = client;
+        }
+
+        @Override public void run() {
+            serve(client);
+        }
     }
 
     private void acceptLoop() {
@@ -200,7 +229,7 @@ final class PhoneBroker {
                 break;
             }
             try {
-                requests.execute(() -> serve(client));
+                requests.execute(new Pending(client));
             } catch (RejectedExecutionException full) {
                 refuse(client, "The phone bridge is busy: " + AT_ONCE + " requests are already "
                         + "running and as many are waiting. Try again in a moment.");
@@ -222,13 +251,40 @@ final class PhoneBroker {
 
     // ------------------------------------------------------------------ one request
 
-    /** Lines back to the client. A write that fails means the client has gone. */
+    /**
+     * Lines back to the client, and the client's departure.
+     *
+     * A write that fails means the client has gone; but a command that streams -- phone log
+     * on a quiet app -- may not write for minutes, and a worker blocked reading adb's pipe
+     * would never learn that its client pressed Ctrl-C. So the client's socket is watched
+     * from serve(): the client keeps its write side open after the request, and the read
+     * that returns when it closes ends whatever process is being streamed to it. Four such
+     * workers stranded used to be a bridge that answered "busy" until the editor restarted.
+     */
     private static final class Reply {
         private final OutputStream out;
-        private boolean gone;
+        private volatile boolean gone;
+        private volatile Process watched;
 
         Reply(OutputStream out) {
             this.out = out;
+        }
+
+        /** The process whose output is going to this client; ended if the client has left. */
+        void watch(Process process) {
+            watched = process;
+            if (gone) Workspace.quit(process);
+        }
+
+        void unwatch() {
+            watched = null;
+        }
+
+        /** The client has closed its socket. Called from the watcher thread. */
+        void left() {
+            gone = true;
+            Process process = watched;
+            if (process != null) Workspace.quit(process);
         }
 
         boolean line(String text) {
@@ -257,7 +313,11 @@ final class PhoneBroker {
             return;
         }
         try {
-            JSONObject request = new JSONObject(readLine(client.getInputStream(), 8192));
+            final InputStream in = client.getInputStream();
+            // A client that connects and never asks does not hold a worker for good.
+            client.setSoTimeout(15_000);
+            JSONObject request = new JSONObject(readLine(in, 8192));
+            client.setSoTimeout(0);
             String op = request.optString("op", "help");
             JSONArray array = request.optJSONArray("args");
             List<String> args = new ArrayList<>();
@@ -265,6 +325,19 @@ final class PhoneBroker {
                 for (int i = 0; i < array.length() && i < 16; i++) args.add(array.optString(i, ""));
             }
             String cwd = request.optString("cwd", "/root");
+            // From here the client sends nothing more; the next thing its socket says is that
+            // it has closed, which is the one thing a streaming command needs to know.
+            Thread watcher = new Thread(() -> {
+                try {
+                    byte[] ignored = new byte[64];
+                    while (in.read(ignored) != -1) { /* nothing is expected */ }
+                } catch (Throwable closed) {
+                    // Closed from this side when the reply ends, or by the client.
+                }
+                reply.left();
+            }, "phone-client");
+            watcher.setDaemon(true);
+            watcher.start();
             reply.exit(handle(op, args, cwd, reply));
         } catch (Throwable failed) {
             reply.line("The request could not be read: "
@@ -381,11 +454,24 @@ final class PhoneBroker {
             return 2;
         }
         String pkg = args.get(0);
+        String expected;
         synchronized (allowed) {
             if (!allowed.containsKey(pkg)) {
                 reply.line(pkg + " was not installed through this bridge, so it cannot be "
                         + "touched from here. phone install <its .apk> first; phone allowed "
                         + "lists what can be.");
+                return 3;
+            }
+            expected = certificates.get(pkg);
+        }
+        if (expected != null && !expected.isEmpty()) {
+            String now = installedCertificate(pkg);
+            if (now != null && !now.equals(expected)) {
+                forget(pkg);
+                reply.line(pkg + " on the phone is not the one this bridge installed: it was "
+                        + "replaced by an app of the same name signed by someone else. It cannot "
+                        + "be touched from here; phone install <the .apk built here> puts the "
+                        + "built one back.");
                 return 3;
             }
         }
@@ -460,12 +546,13 @@ final class PhoneBroker {
                 return 3;
             }
             String from = guestPath(apk);
+            String certificate = certificateOf(staged);
             if (connected()) {
                 int code = adbTo(reply, "install", "-r", "-t", "/stage/" + staged.getName());
                 if (code == 0) {
                     // Allowed only once it is on the phone: what this bridge may touch is
                     // what this bridge put there, not what it was asked to.
-                    allow(info.packageName, from);
+                    allow(info.packageName, from, certificate);
                     reply.line("Installed " + info.packageName + ". Next: phone launch "
                             + info.packageName);
                 }
@@ -479,7 +566,7 @@ final class PhoneBroker {
                 reply.line(failure);
                 return 1;
             }
-            allow(info.packageName, from);
+            allow(info.packageName, from, certificate);
             reply.line("Installed " + info.packageName + ". Next: phone launch "
                     + info.packageName);
             return 0;
@@ -559,6 +646,7 @@ final class PhoneBroker {
         File staged = new File(Phone.stageDir(service),
                 "shot-" + stagedFiles.incrementAndGet() + ".png");
         Process process = Phone.start(service, "exec-out", onlyOnScreen(pkg, "screencap -p"));
+        reply.watch(process);
         long bytes = 0;
         try (InputStream in = process.getInputStream();
              FileOutputStream file = new FileOutputStream(staged)) {
@@ -572,6 +660,7 @@ final class PhoneBroker {
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
         } finally {
+            reply.unwatch();
             Workspace.quit(process);
         }
         if (bytes < 8 || !isPng(staged)) {
@@ -647,15 +736,18 @@ final class PhoneBroker {
     private void loadAllowed() {
         synchronized (allowed) {
             allowed.clear();
+            certificates.clear();
             File file = allowedFile();
             if (!file.isFile()) return;
             try {
                 for (String line : new String(Files.readAllBytes(file.toPath()),
                         StandardCharsets.UTF_8).split("\n")) {
-                    int tab = line.indexOf('\t');
-                    if (tab <= 0) continue;
-                    String pkg = line.substring(0, tab).trim();
-                    if (PACKAGE.matcher(pkg).matches()) allowed.put(pkg, line.substring(tab + 1));
+                    String[] fields = line.split("\t", -1);
+                    if (fields.length < 2) continue;
+                    String pkg = fields[0].trim();
+                    if (!PACKAGE.matcher(pkg).matches()) continue;
+                    allowed.put(pkg, fields[1]);
+                    certificates.put(pkg, fields.length > 2 ? fields[2].trim() : "");
                 }
             } catch (IOException unreadable) {
                 // An unreadable list is an empty list: nothing is allowed by accident.
@@ -663,9 +755,10 @@ final class PhoneBroker {
         }
     }
 
-    private void allow(String pkg, String apk) {
+    private void allow(String pkg, String apk, String certificate) {
         synchronized (allowed) {
             allowed.put(pkg, apk);
+            certificates.put(pkg, certificate == null ? "" : certificate);
             saveAllowed();
         }
     }
@@ -673,15 +766,61 @@ final class PhoneBroker {
     private int forget(String pkg) {
         synchronized (allowed) {
             allowed.remove(pkg);
+            certificates.remove(pkg);
             saveAllowed();
         }
         return 0;
     }
 
+    /** SHA-256 of the signing certificates in an APK on disk, or "" when it has none. */
+    private String certificateOf(File apk) {
+        try {
+            return digestOf(service.getPackageManager().getPackageArchiveInfo(
+                    apk.getAbsolutePath(), android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES));
+        } catch (Throwable unreadable) {
+            return "";
+        }
+    }
+
+    /**
+     * The same digest for the package as installed, or null when this app cannot see it --
+     * which is not the same as it being absent: a package with no launcher activity is
+     * hidden from this app by Android's package visibility, whoever installed it.
+     */
+    private String installedCertificate(String pkg) {
+        try {
+            return digestOf(service.getPackageManager().getPackageInfo(pkg,
+                    android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES));
+        } catch (Throwable hiddenOrAbsent) {
+            return null;
+        }
+    }
+
+    private static String digestOf(PackageInfo info) throws java.security.NoSuchAlgorithmException {
+        if (info == null || info.signingInfo == null) return "";
+        android.content.pm.Signature[] signers = info.signingInfo.hasMultipleSigners()
+                ? info.signingInfo.getApkContentsSigners()
+                : info.signingInfo.getSigningCertificateHistory();
+        if (signers == null || signers.length == 0) return "";
+        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        // The history's oldest certificate, or every current signer: the identity that
+        // survives a key rotation is the original one.
+        if (info.signingInfo.hasMultipleSigners()) {
+            for (android.content.pm.Signature signer : signers) digest.update(signer.toByteArray());
+        } else {
+            digest.update(signers[0].toByteArray());
+        }
+        StringBuilder hex = new StringBuilder();
+        for (byte b : digest.digest()) hex.append(String.format("%02x", b));
+        return hex.toString();
+    }
+
     private void saveAllowed() {
         StringBuilder text = new StringBuilder();
         for (Map.Entry<String, String> each : allowed.entrySet()) {
-            text.append(each.getKey()).append('\t').append(each.getValue()).append('\n');
+            String certificate = certificates.get(each.getKey());
+            text.append(each.getKey()).append('\t').append(each.getValue()).append('\t')
+                    .append(certificate == null ? "" : certificate).append('\n');
         }
         try (FileOutputStream out = new FileOutputStream(allowedFile())) {
             out.write(text.toString().getBytes(StandardCharsets.UTF_8));
@@ -745,11 +884,28 @@ final class PhoneBroker {
         }
     }
 
-    /** The guest's name for a host file inside the rootfs. */
+    /**
+     * The guest's name for a host file inside the rootfs.
+     *
+     * Both sides canonical: the files here come out of projectFile() canonicalised, which on
+     * Android turns /data/user/0 into /data/data, and a prefix taken from getFilesDir() as
+     * it is would never match -- every reply and the allow-list then carried a host path
+     * that does not exist inside Linux.
+     */
     private String guestPath(File host) {
-        String root = Workspace.root(service).getAbsolutePath();
+        String root;
+        try {
+            root = Workspace.root(service).getCanonicalPath();
+        } catch (IOException unresolvable) {
+            root = Workspace.root(service).getAbsolutePath();
+        }
         String path = host.getAbsolutePath();
-        return path.startsWith(root) ? path.substring(root.length()) : path;
+        try {
+            path = host.getCanonicalPath();
+        } catch (IOException unresolvable) {
+            // The absolute path, then, and the prefix test below says whether it matched.
+        }
+        return path.startsWith(root + File.separator) ? path.substring(root.length()) : path;
     }
 
     private static boolean isPng(File file) {
@@ -768,6 +924,7 @@ final class PhoneBroker {
     /** One adb command in the app's own PRoot -- the one with the key -- streamed to the client. */
     private int adbTo(Reply reply, String... adbArguments) throws IOException {
         Process process = Phone.start(service, adbArguments);
+        reply.watch(process);
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
@@ -783,6 +940,7 @@ final class PhoneBroker {
             Thread.currentThread().interrupt();
             return 130;
         } finally {
+            reply.unwatch();
             Workspace.quit(process);
         }
     }
