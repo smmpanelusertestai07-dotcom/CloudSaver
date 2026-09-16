@@ -21,6 +21,7 @@ import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
+import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.ReclaimRules
@@ -104,7 +105,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         const val FILES_PAGE = 500
 
         /** Nothing run for this long, with work waiting, means the OS killed us. */
-        const val BACKGROUND_STALL_MS = 48 * 3_600_000L
+        const val BACKGROUND_STALL_MS = StallAlert.STALL_MS
     }
 
     private val ctx get() = getApplication<Application>()
@@ -530,6 +531,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     data class Health(
         val batteryRestricted: Boolean = false,
+        /** App info › Battery › Restricted: Android itself bans the background runs. */
+        val backgroundRestricted: Boolean = false,
+        /** Android will reset the permissions if the app is not opened for months. */
+        val permissionsAutoReset: Boolean = false,
+        /** The phone-wide Battery Saver is on; runs wait until it is off or the phone charges. */
+        val batterySaverOn: Boolean = false,
         val usageAccessOff: Boolean = false,
         val cloudMissing: Boolean = false,
         /**
@@ -633,7 +640,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // never clears.
             val waiting = runCatching { db.items().newInScopeCount(o.excludedBuckets) }
                 .getOrDefault(0)
-            val silentFor = System.currentTimeMillis() - o.lastRunAt
             val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
             val free = Storage.freeBytes(ctx)
             val access = Permissions.mediaAccess(ctx)
@@ -658,6 +664,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             health.value = Health(
                 volumeMissing = volumeGone,
                 batteryRestricted = !Permissions.isIgnoringBatteryOptimizations(ctx),
+                backgroundRestricted = Permissions.isBackgroundRestricted(ctx),
+                permissionsAutoReset = Permissions.permissionsAutoResetOn(ctx) == true,
+                batterySaverOn = power.saverOn,
                 usageAccessOff = !UsageVerifier.hasUsageAccess(ctx),
                 cloudMissing = !CloudApps.isAppInstalled(ctx, o.cloudSingle),
                 cloudNone = !CloudApps.anyInstalled(ctx),
@@ -668,8 +677,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 plugged = power.plugged,
                 freeBytes = free,
                 paused = o.pauseAll,
-                backgroundWorkStopped = !o.pauseAll && waiting > 0 && o.lastRunAt > 0 &&
-                    (silentFor > BACKGROUND_STALL_MS || Stops.isRationed(o.lastStopReason))
+                // One rule, shared with the notification the engine posts,
+                // so the chip and the alert can never disagree (StallAlert).
+                backgroundWorkStopped = !o.pauseAll && StallAlert.stalled(
+                    System.currentTimeMillis(), o.lastRunAt, waiting,
+                    Stops.isRationed(o.lastStopReason)
+                )
             )
         }
     }
@@ -1650,7 +1663,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.Default) {
             powerRequirements.value = PowerPages.requirementsFor(
                 vendor = PowerPages.vendor(),
-                ignoringBatteryOptimizations = Permissions.isIgnoringBatteryOptimizations(ctx)
+                ignoringBatteryOptimizations = Permissions.isIgnoringBatteryOptimizations(ctx),
+                backgroundRestricted = Permissions.isBackgroundRestricted(ctx),
+                permissionsAutoReset = Permissions.permissionsAutoResetOn(ctx)
             )
         }
     }
@@ -1868,6 +1883,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
         return try {
+            app.cloudsaver.util.Errand.begin()
             ctx.startActivity(view)
             true
         } catch (e: android.content.ActivityNotFoundException) {

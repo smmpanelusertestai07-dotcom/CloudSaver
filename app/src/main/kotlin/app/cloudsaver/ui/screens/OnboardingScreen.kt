@@ -976,6 +976,8 @@ fun OnboardingScreen(vm: AppViewModel) {
 private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
     val label = when (requirement.id) {
         PowerPages.ID_BATTERY_UNRESTRICTED -> stringResource(R.string.power_battery)
+        PowerPages.ID_BACKGROUND_RESTRICTION -> stringResource(R.string.power_background_restriction)
+        PowerPages.ID_KEEP_PERMISSIONS -> stringResource(R.string.power_keep_permissions)
         PowerPages.ID_AUTO_LAUNCH -> stringResource(R.string.power_auto_launch)
         PowerPages.ID_BACKGROUND_ACTIVITY -> stringResource(R.string.power_background)
         else -> requirement.id

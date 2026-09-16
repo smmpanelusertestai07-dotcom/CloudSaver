@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 
 /**
@@ -41,7 +42,7 @@ object OemPages {
         for (component in AUTO_START_COMPONENTS) {
             try {
                 val intent = Intent().setComponent(component).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(intent)
+                Errand.begin(); context.startActivity(intent)
                 return true
             } catch (e: Exception) {
                 // try next
@@ -60,14 +61,14 @@ object OemPages {
             Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
             Uri.parse("package:${context.packageName}")
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        Errand.begin(); context.startActivity(intent)
         true
     } catch (e: Exception) {
         // Some skins strip the per-app dialog; the system's own list of
         // optimised apps still exists everywhere and is one tap from the
         // switch, which app info is not.
         try {
-            context.startActivity(
+            Errand.begin(); context.startActivity(
                 Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
@@ -82,7 +83,7 @@ object OemPages {
             Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
             Uri.parse("package:${context.packageName}")
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        Errand.begin(); context.startActivity(intent)
         true
     } catch (e: Exception) {
         false
@@ -93,14 +94,66 @@ object OemPages {
         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
             .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        Errand.begin(); context.startActivity(intent)
         true
     } catch (e: Exception) {
         openAppInfo(context)
     }
 
+
+    /**
+     * The switch that lets Android take this app's permissions away for not
+     * being opened (Android 11: "Remove permissions if app isn't used";
+     * 12 and later: "Pause app activity if unused"). Android has a page for
+     * exactly this one, and app info as the fallback.
+     */
+    fun openAutoRevokeSettings(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val intent = Intent(
+                    Intent.ACTION_AUTO_REVOKE_PERMISSIONS,
+                    Uri.parse("package:${context.packageName}")
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                Errand.begin(); context.startActivity(intent)
+                return true
+            } catch (e: Exception) {
+                // Some skins do not carry the page; app info holds the same switch.
+            }
+        }
+        return openAppInfo(context)
+    }
+
+    /** The phone-wide Battery Saver page. */
+    fun openBatterySaverSettings(context: Context): Boolean = try {
+        Errand.begin(); context.startActivity(
+            Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+        true
+    } catch (e: Exception) {
+        try {
+            Errand.begin(); context.startActivity(
+                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            true
+        } catch (e2: Exception) {
+            false
+        }
+    }
+
+    /** The system page for one notification category - the Alerts one. */
+    fun openAlertsChannelSettings(context: Context): Boolean = try {
+        val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CH_ALERTS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        Errand.begin(); context.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        openNotificationSettings(context)
+    }
+
     fun openUsageAccess(context: Context): Boolean = try {
-        context.startActivity(
+        Errand.begin(); context.startActivity(
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         )
         true

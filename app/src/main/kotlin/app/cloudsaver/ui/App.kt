@@ -70,7 +70,9 @@ import app.cloudsaver.ui.screens.HelpQualityScreen
 import app.cloudsaver.ui.screens.HelpScreen
 import app.cloudsaver.core.logic.TabBadges
 import app.cloudsaver.ui.screens.HomeScreen
+import app.cloudsaver.ui.components.SecureScreen
 import app.cloudsaver.ui.screens.LockedScreen
+import app.cloudsaver.util.Errand
 import app.cloudsaver.ui.screens.OnboardingScreen
 import app.cloudsaver.ui.screens.OptionsScreen
 import app.cloudsaver.ui.screens.StorageScreen
@@ -200,7 +202,23 @@ private fun MainNav(vm: AppViewModel) {
 
     // A lock that only ever asks once is not a lock: re-arm it whenever the
     // app leaves the foreground, so returning to it authenticates again.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { unlocked = false }
+    //
+    // Except for the trips the app itself sends the person on - "Open" on
+    // the Permissions screen, the gallery viewer, a share sheet. Being asked
+    // for a fingerprint on the way back from an errand the app asked for is
+    // how a lock gets turned off. Those say so first (Errand), and the lock
+    // lets that one return through unless it took longer than an errand does.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (Errand.expecting()) Errand.left() else unlocked = false
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) {
+        if (Errand.returnedNeedsLock()) unlocked = false
+    }
+    // Android takes the recents thumbnail as the app goes to the background,
+    // before the lock is back up on the way in - so with the lock on, the
+    // whole app keeps its window out of screenshots and recents, not only
+    // the locked screen. Every app that offers a lock does the same.
+    if (options.appLock) SecureScreen()
 
     // The whole app, not a list of screens. Locking only the screens that
     // hold file lists left Home, Storage, the calculator and every Help page
@@ -258,7 +276,9 @@ private fun MainNav(vm: AppViewModel) {
                             cloudMissing = health.cloudMissing,
                             usageAccessOff = health.usageAccessOff,
                             backgroundWorkStopped = health.backgroundWorkStopped,
-                            spaceLow = health.spaceLow
+                            spaceLow = health.spaceLow,
+                            phoneWillStopIt = health.backgroundRestricted ||
+                                health.permissionsAutoReset
                         )
                     )
                 }

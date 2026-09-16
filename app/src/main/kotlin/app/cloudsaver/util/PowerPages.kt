@@ -32,6 +32,10 @@ object PowerPages {
     )
 
     const val ID_BATTERY_UNRESTRICTED = "battery_unrestricted"
+    /** App info › Battery › Restricted - Android's own per-app ban, readable. */
+    const val ID_BACKGROUND_RESTRICTION = "background_restriction"
+    /** "Remove permissions / pause app if unused" - readable from Android 11. */
+    const val ID_KEEP_PERMISSIONS = "keep_permissions"
     const val ID_AUTO_LAUNCH = "auto_launch"
     const val ID_BACKGROUND_ACTIVITY = "background_activity"
 
@@ -56,9 +60,26 @@ object PowerPages {
      * everywhere; auto-launch and background activity are not readable on any
      * of these skins, so they are listed as unverifiable checks.
      */
-    fun requirementsFor(vendor: Vendor, ignoringBatteryOptimizations: Boolean): List<Requirement> {
+    fun requirementsFor(
+        vendor: Vendor,
+        ignoringBatteryOptimizations: Boolean,
+        backgroundRestricted: Boolean = false,
+        /** Null where Android has no such switch (Android 10). */
+        permissionsAutoReset: Boolean? = null
+    ): List<Requirement> {
         val battery = Requirement(
             ID_BATTERY_UNRESTRICTED, readable = true, satisfied = ignoringBatteryOptimizations
+        )
+        // Two more Android reports itself. Restricted is the per-app ban that
+        // stops every background run outright; the permission reset is the
+        // one that takes the photos permission away from an app nobody opens
+        // for a few months - which is what this app is meant to be.
+        val readable = listOfNotNull(
+            battery,
+            Requirement(ID_BACKGROUND_RESTRICTION, readable = true, satisfied = !backgroundRestricted),
+            permissionsAutoReset?.let {
+                Requirement(ID_KEEP_PERMISSIONS, readable = true, satisfied = !it)
+            }
         )
         val unverifiable = when (vendor) {
             Vendor.COLOR_OS -> listOf(ID_BACKGROUND_ACTIVITY, ID_AUTO_LAUNCH)
@@ -67,7 +88,7 @@ object PowerPages {
             Vendor.HUAWEI -> listOf(ID_AUTO_LAUNCH)
             Vendor.PIXEL, Vendor.OTHER -> emptyList()
         }
-        return listOf(battery) + unverifiable.map {
+        return readable + unverifiable.map {
             Requirement(it, readable = false, satisfied = false)
         }
     }
@@ -108,6 +129,24 @@ object PowerPages {
             Vendor.MIUI -> "Settings › Apps › Manage apps › CloudSaver › Battery saver › No restrictions"
             Vendor.ONE_UI -> "Settings › Apps › CloudSaver › Battery › Unrestricted"
             else -> "Settings › Apps › CloudSaver › Battery › Unrestricted (or Don't optimise)"
+        }
+        // The same page on every skin: the "Restricted" choice under the
+        // app's battery entry, which must not be the one selected.
+        ID_BACKGROUND_RESTRICTION -> when (vendor) {
+            Vendor.COLOR_OS ->
+                "Settings › Battery › App battery management › CloudSaver - not \"Restricted\" " +
+                    "(some phones: App info › Battery usage)"
+            else -> "Settings › Apps › CloudSaver › Battery (App battery usage) - Unrestricted or Optimised, not Restricted"
+        }
+        // Android's own words for the switch changed with each version.
+        ID_KEEP_PERMISSIONS -> when {
+            Build.VERSION.SDK_INT >= 33 ->
+                "Settings › Apps › CloudSaver › Pause app activity if unused - off " +
+                    "(Android 13 and later: under \"Unused app settings\")"
+            Build.VERSION.SDK_INT >= 31 ->
+                "Settings › Apps › CloudSaver › Pause app activity if unused - off"
+            else ->
+                "Settings › Apps › CloudSaver › Permissions › Remove permissions if app isn't used - off"
         }
         else -> null
     }
@@ -235,6 +274,10 @@ object PowerPages {
             }
         ID_AUTO_LAUNCH -> openAutoLaunch(context)
         ID_BACKGROUND_ACTIVITY -> openBackgroundActivity(context)
+        // The Restricted choice lives on the app's battery page; the maker's
+        // per-app page is that page where there is one, app info otherwise.
+        ID_BACKGROUND_RESTRICTION -> openBackgroundActivity(context)
+        ID_KEEP_PERMISSIONS -> OemPages.openAutoRevokeSettings(context)
         else -> OemPages.openAppInfo(context)
     }
 
@@ -259,6 +302,7 @@ object PowerPages {
                     intent.putExtra("package_name", context.packageName)
                     intent.putExtra("packageName", context.packageName)
                 }
+                Errand.begin()
                 context.startActivity(intent)
                 return true
             } catch (e: Exception) {

@@ -160,7 +160,11 @@ data class Options(
     /** The one-time "I understand" tick before the first reclaim batch. */
     val reclaimUnderstood: Boolean = false,
     /** "Tell me when I can free more than X GB"; 0 = off. */
-    val reclaimReminderGb: Int = 0
+    val reclaimReminderGb: Int = 0,
+    /** How many "the phone stopped background work" alerts have been posted, ever. */
+    val stallAlerts: Int = 0,
+    /** When the last of them was posted. */
+    val stallAlertAt: Long = 0
 ) {
     val dailyCapBytes: Long get() = if (dailyCapMb < 0) -1 else dailyCapMb * Defaults.MB
     val minFreeBytes: Long get() = minFreeMb * Defaults.MB
@@ -230,6 +234,8 @@ class OptionsRepo(private val context: Context) {
         val CATCH_UP_DAY = stringPreferencesKey("catchUpDay")
         val RECLAIM_UNDERSTOOD = booleanPreferencesKey("reclaimUnderstood")
         val RECLAIM_REMINDER_GB = intPreferencesKey("reclaimReminderGb")
+        val STALL_ALERTS = intPreferencesKey("stallAlerts")
+        val STALL_ALERT_AT = longPreferencesKey("stallAlertAt")
     }
 
     val flow: Flow<Options> = context.dataStore.data.map { p ->
@@ -301,7 +307,9 @@ class OptionsRepo(private val context: Context) {
             catchUpBytes = p[K.CATCH_UP_BYTES] ?: 0,
             catchUpDay = p[K.CATCH_UP_DAY] ?: "",
             reclaimUnderstood = p[K.RECLAIM_UNDERSTOOD] ?: false,
-            reclaimReminderGb = p[K.RECLAIM_REMINDER_GB] ?: 0
+            reclaimReminderGb = p[K.RECLAIM_REMINDER_GB] ?: 0,
+            stallAlerts = p[K.STALL_ALERTS] ?: 0,
+            stallAlertAt = p[K.STALL_ALERT_AT] ?: 0
         )
     }
 

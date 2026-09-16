@@ -155,6 +155,7 @@ object CloudApps {
         val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: return false
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
+            app.cloudsaver.util.Errand.begin()
             context.startActivity(intent)
             true
         } catch (e: Exception) {

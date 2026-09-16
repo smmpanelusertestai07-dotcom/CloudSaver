@@ -208,8 +208,11 @@ class SetupFlowTest {
         )
         assertFalse("the route list it used should be gone", app.contains("val LOCKED = setOf"))
         assertTrue("the tab bar must not stay live under the lock", app.contains("if (!needsLock &&"))
-        // Still re-armed every time the app leaves the foreground.
-        assertTrue(app.contains("Lifecycle.Event.ON_STOP) { unlocked = false }"))
+        // Still re-armed every time the app leaves the foreground - except
+        // for a trip the app itself sent the person on, which comes back
+        // through within a bounded grace (Errand) and re-locks past it.
+        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else unlocked = false"))
+        assertTrue(app.contains("if (Errand.returnedNeedsLock()) unlocked = false"))
         val locked = src("ui/screens/LockedScreen.kt")
         // On RESUME, not on first composition: the screen composes while the
         // activity is only started, and a prompt asked for then can be

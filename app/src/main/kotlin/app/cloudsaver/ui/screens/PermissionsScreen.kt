@@ -1,6 +1,8 @@
 package app.cloudsaver.ui.screens
 
+import android.app.usage.UsageStatsManager
 import android.os.Build
+import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -18,9 +20,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,7 +53,9 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.util.Exits
 import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.PermissionLedger
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
 
@@ -63,6 +70,15 @@ import app.cloudsaver.util.PowerPages
  * here re-reads its state every time the screen comes to the front, says
  * plainly which states Android can report and which it cannot, and for the
  * ones it cannot, names the page in the phone's own words.
+ *
+ * Three more switches Android does report were missing until this version:
+ * the per-app "Restricted" ban under the app's battery entry, the reset that
+ * takes permissions away from an app nobody opens for months, and the
+ * phone-wide Battery Saver. Each is the kind of thing that stops the work
+ * without a word, and each was invisible here. The bottom of the screen is
+ * the ledger: every permission in the shipped manifest with what it is for
+ * and whether it is held, and the list of what is never asked for - read
+ * from the phone rather than promised in a paragraph.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -74,14 +90,25 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         tick++
         vm.refreshPowerRequirements()
+        vm.refreshHealth()
     }
     val access = remember(tick) { Permissions.mediaAccess(context) }
     val notifications = remember(tick) { Permissions.hasNotifications(context) }
+    val alertsChannelOff = remember(tick) { Permissions.alertsChannelOff(context) }
     val usage = remember(tick) { UsageVerifier.hasUsageAccess(context) }
     val battery = remember(tick) { Permissions.isIgnoringBatteryOptimizations(context) }
+    val backgroundRestricted = remember(tick) { Permissions.isBackgroundRestricted(context) }
+    val autoReset = remember(tick) { Permissions.permissionsAutoResetOn(context) }
+    val saver = remember(tick) { Permissions.batterySaverOn(context) }
+    val bucket = remember(tick) { Permissions.standbyBucket(context) }
+    val lastExit = remember(tick) { Exits.last(context) }
+    val ledger = remember(tick) { PermissionLedger.read(context) }
+    val neverAsked = remember { PermissionLedger.neverAsked(context) }
+    var ledgerOpen by remember { mutableStateOf(false) }
     val vendor = remember { PowerPages.vendor() }
-    val makerRows = remember(vendor, battery) {
-        PowerPages.requirementsFor(vendor, battery).filter { !it.readable }
+    val makerRows = remember(vendor, battery, backgroundRestricted, autoReset) {
+        PowerPages.requirementsFor(vendor, battery, backgroundRestricted, autoReset)
+            .filter { !it.readable }
     }
 
     // Asking is one tap; a refusal Android has stopped asking about goes to
@@ -149,20 +176,27 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     mediaLauncher.launch(Permissions.mediaPermissionsToRequest())
                 }
             }
+            // Three states, not two: allowed, blocked, and allowed with the
+            // one category that carries the warnings switched off on its own.
             PermissionRow(
                 title = stringResource(R.string.perm_notifications),
                 status = stringResource(
-                    if (notifications) R.string.perm_on else R.string.perm_notifications_off
+                    when {
+                        !notifications -> R.string.perm_notifications_off
+                        alertsChannelOff -> R.string.perm_alerts_channel_off
+                        else -> R.string.perm_on
+                    }
                 ),
-                state = if (notifications) State.OK else State.PROBLEM,
+                state = if (notifications && !alertsChannelOff) State.OK else State.PROBLEM,
                 actionLabel = stringResource(
                     if (notifications) R.string.perm_open else R.string.perm_allow
                 )
             ) {
-                if (!notifications && Build.VERSION.SDK_INT >= 33) {
-                    notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                } else {
-                    OemPages.openNotificationSettings(context)
+                when {
+                    !notifications && Build.VERSION.SDK_INT >= 33 ->
+                        notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    notifications && alertsChannelOff -> OemPages.openAlertsChannelSettings(context)
+                    else -> OemPages.openNotificationSettings(context)
                 }
             }
             PermissionRow(
@@ -184,6 +218,58 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     if (battery) R.string.perm_open else R.string.perm_allow
                 )
             ) { PowerPages.open(context, PowerPages.ID_BATTERY_UNRESTRICTED) }
+            PermissionRow(
+                title = stringResource(R.string.perm_background_restriction),
+                status = stringResource(
+                    if (backgroundRestricted) R.string.perm_background_restriction_on
+                    else R.string.perm_background_restriction_off
+                ),
+                state = if (backgroundRestricted) State.PROBLEM else State.OK,
+                detail = PowerPages.pathHint(vendor, PowerPages.ID_BACKGROUND_RESTRICTION),
+                actionLabel = stringResource(R.string.perm_open)
+            ) { PowerPages.open(context, PowerPages.ID_BACKGROUND_RESTRICTION) }
+            if (autoReset != null) {
+                PermissionRow(
+                    title = stringResource(R.string.perm_keep_permissions),
+                    status = stringResource(
+                        if (autoReset) R.string.perm_keep_permissions_armed
+                        else R.string.perm_keep_permissions_off
+                    ),
+                    state = if (autoReset) State.PROBLEM else State.OK,
+                    detail = PowerPages.pathHint(vendor, PowerPages.ID_KEEP_PERMISSIONS),
+                    actionLabel = stringResource(R.string.perm_open)
+                ) { PowerPages.open(context, PowerPages.ID_KEEP_PERMISSIONS) }
+            }
+            // Not a switch on this app but on the phone, and the one people
+            // forget they turned on. It is read, not guessed.
+            PermissionRow(
+                title = stringResource(R.string.perm_saver),
+                status = stringResource(if (saver) R.string.perm_saver_on else R.string.perm_saver_off),
+                state = if (saver) State.PROBLEM else State.OK,
+                detail = stringResource(R.string.perm_saver_detail),
+                actionLabel = stringResource(R.string.perm_open)
+            ) { OemPages.openBatterySaverSettings(context) }
+            if (bucket != null) {
+                PermissionRow(
+                    title = stringResource(R.string.perm_bucket),
+                    status = stringResource(
+                        when (bucket) {
+                            UsageStatsManager.STANDBY_BUCKET_ACTIVE -> R.string.perm_bucket_active
+                            UsageStatsManager.STANDBY_BUCKET_WORKING_SET -> R.string.perm_bucket_working
+                            UsageStatsManager.STANDBY_BUCKET_FREQUENT -> R.string.perm_bucket_frequent
+                            UsageStatsManager.STANDBY_BUCKET_RARE -> R.string.perm_bucket_rare
+                            UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> R.string.perm_bucket_restricted
+                            else -> R.string.perm_bucket_other
+                        }
+                    ),
+                    state = when (bucket) {
+                        UsageStatsManager.STANDBY_BUCKET_RESTRICTED -> State.PROBLEM
+                        UsageStatsManager.STANDBY_BUCKET_RARE -> State.UNKNOWN
+                        else -> State.OK
+                    },
+                    detail = stringResource(R.string.perm_bucket_detail)
+                )
+            }
             for (requirement in makerRows) {
                 PermissionRow(
                     title = stringResource(
@@ -196,6 +282,21 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     actionLabel = stringResource(R.string.perm_open)
                 ) { PowerPages.open(context, requirement.id) }
             }
+            // Why the phone last ended the app, from the phone's own record
+            // (Android 11 and later). The one fact that says whether the
+            // phone or the app is the problem.
+            if (lastExit != null) {
+                PermissionRow(
+                    title = stringResource(R.string.perm_last_exit),
+                    status = stringResource(
+                        R.string.perm_last_exit_when,
+                        Exits.words(context, lastExit),
+                        DateUtils.getRelativeTimeSpanString(lastExit.at).toString()
+                    ),
+                    state = State.UNKNOWN,
+                    detail = stringResource(R.string.perm_last_exit_detail)
+                )
+            }
 
             Text(
                 stringResource(R.string.perm_why),
@@ -203,6 +304,43 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp)
             )
+
+            // The ledger: what the app holds, from the manifest that shipped.
+            SectionHeader(stringResource(R.string.perm_group_ledger))
+            Text(
+                stringResource(R.string.perm_ledger_intro),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val applicable = ledger.filter { !it.notOnThisAndroid }
+            Text(
+                stringResource(
+                    R.string.perm_ledger_summary,
+                    applicable.count { it.held },
+                    applicable.size,
+                    applicable.count { it.held && it.runtime }
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            TextButton(onClick = { ledgerOpen = !ledgerOpen }) {
+                Text(
+                    stringResource(
+                        if (ledgerOpen) R.string.perm_ledger_hide else R.string.perm_ledger_show
+                    )
+                )
+            }
+            if (ledgerOpen) {
+                for (entry in ledger) LedgerRow(entry)
+                Text(
+                    stringResource(R.string.perm_never_asked_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 14.dp, bottom = 4.dp)
+                )
+                for (absent in neverAsked) NeverAskedRow(absent)
+            }
             TextButton(onClick = { OemPages.openAppInfo(context) }) {
                 Text(stringResource(R.string.perm_app_info))
             }
@@ -213,15 +351,20 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
 
 private enum class State { OK, PROBLEM, UNKNOWN }
 
+/**
+ * One switch: its name, its state in a colour, the path to it when Android
+ * cannot read it, and a button when there is somewhere to go. A row with no
+ * button is a fact, not a task.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PermissionRow(
     title: String,
     status: String,
     state: State,
-    actionLabel: String,
+    actionLabel: String? = null,
     detail: String? = null,
-    onAction: () -> Unit
+    onAction: (() -> Unit)? = null
 ) {
     val scheme = MaterialTheme.colorScheme
     AppCard(modifier = Modifier.padding(vertical = 5.dp)) {
@@ -271,14 +414,99 @@ private fun PermissionRow(
         }
         // Its own line, flowing: beside the text at the largest font the
         // button squeezed the words into a column one word wide.
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp)
-        ) {
-            OutlinedButton(onClick = onAction) {
-                Text(actionLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (actionLabel != null && onAction != null) {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp)
+            ) {
+                OutlinedButton(onClick = onAction) {
+                    Text(actionLabel, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
             }
+        }
+    }
+}
+
+/** One permission from the shipped manifest: name, purpose, and whether it is held. */
+@Composable
+private fun LedgerRow(entry: PermissionLedger.Entry) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Icon(
+            when {
+                entry.notOnThisAndroid -> Icons.Outlined.Info
+                entry.held -> Icons.Outlined.CheckCircle
+                else -> Icons.Outlined.RemoveCircleOutline
+            },
+            contentDescription = null,
+            tint = when {
+                entry.notOnThisAndroid -> scheme.onSurfaceVariant
+                entry.held -> scheme.primary
+                else -> scheme.onSurfaceVariant
+            },
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(entry.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+                entry.purpose,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                stringResource(
+                    when {
+                        entry.notOnThisAndroid -> R.string.perm_state_na
+                        entry.held && entry.runtime -> R.string.perm_state_on_yours
+                        entry.held -> R.string.perm_state_on
+                        else -> R.string.perm_state_off
+                    }
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (entry.held && !entry.notOnThisAndroid) scheme.primary else scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/** Something the app never asks for, and why it never needs to. */
+@Composable
+private fun NeverAskedRow(absent: PermissionLedger.NeverAsked) {
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Icon(
+            Icons.Outlined.Block,
+            contentDescription = null,
+            tint = scheme.onSurfaceVariant,
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(20.dp)
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(absent.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+                absent.why,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
     }
 }

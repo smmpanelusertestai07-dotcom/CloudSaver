@@ -1,6 +1,9 @@
 package app.cloudsaver.util
 
 import android.Manifest
+import android.app.ActivityManager
+import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -105,6 +108,74 @@ object Permissions {
     fun isIgnoringBatteryOptimizations(context: Context): Boolean = try {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         pm.isIgnoringBatteryOptimizations(context.packageName)
+    } catch (e: Exception) {
+        false
+    }
+
+    /**
+     * App info › Battery › "Restricted": Android's own per-app background
+     * ban, distinct from battery optimisation. Restricted, the scheduler
+     * never runs this app's jobs while it is in the background, so the
+     * queue simply stops - and until this was read, the Permissions screen
+     * said everything was allowed while it did.
+     */
+    fun isBackgroundRestricted(context: Context): Boolean = try {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        am.isBackgroundRestricted
+    } catch (e: Exception) {
+        false
+    }
+
+    /** The phone-wide Battery Saver. On, CloudSaver pauses until it is off or the phone charges. */
+    fun batterySaverOn(context: Context): Boolean = try {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        pm.isPowerSaveMode
+    } catch (e: Exception) {
+        false
+    }
+
+    /**
+     * Whether Android will take this app's permissions away for not being
+     * opened.
+     *
+     * From Android 11 an app that is not opened for a few months has its
+     * runtime permissions reset; from 12 it is also put to sleep. CloudSaver
+     * is exactly the app nobody opens for months - it is meant to work
+     * unattended - so without this switch off, one day the photos permission
+     * is gone and everything stops without a word. True means the reset is
+     * armed; null on Android 10, where there is no such thing.
+     */
+    fun permissionsAutoResetOn(context: Context): Boolean? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        return try {
+            !context.packageManager.isAutoRevokeWhitelisted
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Android's own rationing bucket for this app's background work, as the
+     * platform's constant, or null where it cannot be read. RESTRICTED (the
+     * strictest) allows roughly one run a day.
+     */
+    fun standbyBucket(context: Context): Int? = try {
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        usm.appStandbyBucket
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Notifications on, but the Alerts category switched off on its own.
+     * Android lets a person silence one category and keep the rest, and the
+     * app-level switch says nothing about it - so "Allowed" could sit above a
+     * category that would never show a warning.
+     */
+    fun alertsChannelOff(context: Context): Boolean = try {
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.getNotificationChannel(Notifications.CH_ALERTS)?.importance ==
+            NotificationManager.IMPORTANCE_NONE
     } catch (e: Exception) {
         false
     }
