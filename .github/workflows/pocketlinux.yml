@@ -168,7 +168,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Download signed APK
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: PocketLinux-apk
 

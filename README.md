@@ -67,7 +67,7 @@ disk or to the repository.
 
 ## How it is tested
 
-- 548 unit tests on the JVM. Many are *source-text rules*: they read the
+- 549 unit tests on the JVM. Many are *source-text rules*: they read the
   source and the strings as text and assert properties of them — that no two
   attention chips say the same words, that no button label is cut to one line,
   that the About card names every permission the manifest holds, that the app

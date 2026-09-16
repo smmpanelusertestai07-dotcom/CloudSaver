@@ -32,7 +32,7 @@ source for this release, including the rows that were already marked Done.
 
 **How it is tested**
 
-- **548 unit tests** on the JVM, covering the pure rules and auditing the
+- **549 unit tests** on the JVM, covering the pure rules and auditing the
   source for claims the code does not keep.
 - **Sixteen layout rules read off the source text**, in
   `LayoutRulesTest`. Every one of them is here because it broke
@@ -521,6 +521,14 @@ source for this release, including the rows that were already marked Done.
   it end to end, along with its refresh of settings state on resume, its
   per-maker component table for the battery pages, and a Hinglish quickstart
   that now ships beside the APK in every release.
+
+- **Whether "Allowed" is what the phone says.** Notifications were judged by
+  the Android 13 runtime permission alone, so on an Android 11 or 12 phone the
+  Permissions screen said Allowed while the owner had switched this app off in
+  system settings, and the alerts row stayed silent. The switch is read on
+  every version now and the permission still gates 13 and up. This one came
+  from the sister project in this repository, which had shipped the identical
+  mistake; PermissionsCenterTest holds it.
 
 **Not done, and why**
 

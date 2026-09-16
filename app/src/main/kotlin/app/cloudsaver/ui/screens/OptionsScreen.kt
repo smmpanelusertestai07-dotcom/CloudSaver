@@ -1206,7 +1206,10 @@ private fun CloudPickRow(
  */
 @Composable
 private fun AlertsPermissionRow(wanted: Boolean) {
-    if (!wanted || android.os.Build.VERSION.SDK_INT < 33) return
+    // Not gated on Android 13. The runtime permission is new there, but the switch in system
+    // settings that silences an app is on every version, and a phone with that switch off
+    // used to get no warning at all here below 13.
+    if (!wanted) return
     val context = androidx.compose.ui.platform.LocalContext.current
     var granted by remember { mutableStateOf(app.cloudsaver.util.Permissions.hasNotifications(context)) }
     var refused by remember { mutableStateOf(false) }
@@ -1223,14 +1226,20 @@ private fun AlertsPermissionRow(wanted: Boolean) {
     WarningText(stringResource(R.string.alerts_need_permission))
     TextButton(
         onClick = {
-            if (refused) {
+            // Below 13 there is no prompt to launch: the switch lives in settings only.
+            if (refused || android.os.Build.VERSION.SDK_INT < 33) {
                 app.cloudsaver.util.OemPages.openNotificationSettings(context)
             } else {
                 launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     ) {
-        Text(stringResource(if (refused) R.string.alerts_open_settings else R.string.alerts_allow))
+        Text(
+            stringResource(
+                if (refused || android.os.Build.VERSION.SDK_INT < 33) R.string.alerts_open_settings
+                else R.string.alerts_allow
+            )
+        )
     }
 }
 
