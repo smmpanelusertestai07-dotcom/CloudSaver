@@ -51,6 +51,7 @@ import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Storage
@@ -152,6 +153,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     init {
         viewModelScope.launch(Dispatchers.Default) {
             tampered.value = TamperCheck.isModified(ctx)
+        }
+        // A theme chosen before the mirror existed is mirrored on the first
+        // load after the update, so it holds from the next open onwards.
+        viewModelScope.launch(Dispatchers.Default) {
+            FirstFrame.remember(ctx, repo.current().theme)
         }
     }
 
@@ -1368,6 +1374,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setTheme(v: ThemeMode) {
         setStr(OptionsRepo.K.THEME, v.name)
+        // Mirrored for the next process start, so the first frame is this colour.
+        FirstFrame.remember(ctx, v)
         noteSettingChange(
             detail = ActivityWording.encode(ActivityWording.Setting.THEME, v.name)
         )
