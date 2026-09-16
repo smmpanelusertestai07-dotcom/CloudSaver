@@ -114,7 +114,6 @@ SIGNED_APK="$BUILD_DIR/.pocketlinux-signing.apk"
 JAVA_OPTS="${JAVA_OPTS:-} -Xmx256m" "$BUILD_TOOLS/apksigner" sign \
   --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
   --ks-key-alias "$KEY_ALIAS" \
-  --ks-key-alias pocketlinux \
   --min-sdk-version 29 --max-sdk-version 35 \
   --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
   --out "$SIGNED_APK" \

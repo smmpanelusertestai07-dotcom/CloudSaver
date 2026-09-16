@@ -136,6 +136,18 @@ case "$name" in
 esac
 echo "PASS VersionAgreement ($name, code $code)"
 
+# apksigner keeps only the last --ks-key-alias it is given. A second copy of the flag after
+# "$KEY_ALIAS" silently overrides the alias that was chosen above it -- harmless with the real
+# key, whose alias is the same word, and fatal for every build without one, because the
+# throwaway keystore holds no such entry. The Release APK job died on exactly that, so the
+# flag is passed once, and it is the variable.
+alias_flags=$(grep -c -- '--ks-key-alias' "$PROJECT_DIR/build.sh")
+[ "$alias_flags" = 1 ] \
+  || { echo "FAIL SignerAlias: build.sh passes --ks-key-alias $alias_flags times, apksigner honours only the last"; exit 1; }
+grep -q -- '--ks-key-alias "\$KEY_ALIAS"' "$PROJECT_DIR/build.sh" \
+  || { echo "FAIL SignerAlias: --ks-key-alias must be the KEY_ALIAS variable, not a literal"; exit 1; }
+echo "PASS SignerAlias (one --ks-key-alias, the variable)"
+
 # The desktop scripts ship as assets and only ever run on the phone, so lint them here.
 for script in "$PROJECT_DIR"/app/assets/*.sh; do
   bash -n "$script" || { echo "FAIL shell syntax: $script"; exit 1; }
