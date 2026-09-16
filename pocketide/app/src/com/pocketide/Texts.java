@@ -541,6 +541,36 @@ final class Texts {
                      + "exception either: the terminal gets a phone command that can touch only "
                      + "the apps you built here, never the phone\u2019s files."},
             {"Safety",
+             "Where is everything stored \u2014 my files, my chats with the agents?",
+             "In one place: this app\u2019s own storage, /data/data/com.pocketide/files. "
+                     + "Android encrypts it, keeps it from every other app, never backs it "
+                     + "up (this app opts out of backup), and deletes it with the app. Inside "
+                     + "it: files/linux is Ubuntu; ~/projects in there is your projects; "
+                     + "/opt/code-server and ~/.local/share/code-server are the editor, its "
+                     + "settings, the extensions and every extension\u2019s own storage, "
+                     + "sign-ins included; files/phone is the app\u2019s own adb, the pairing "
+                     + "key and the allow-list; files/last-crash.txt is the crash record. "
+                     + "Settings \u2192 Storage \u2192 What is stored where measures each of "
+                     + "these.\n\nThe agents\u2019 chats are in two places, and that is the "
+                     + "honest part. On the phone: Claude Code keeps its sessions under "
+                     + "~/.claude/projects (thirty days by default, its cleanupPeriodDays "
+                     + "setting) and its prompt history in ~/.claude/history.jsonl; Codex "
+                     + "keeps rollout files under ~/.codex/sessions and its history in "
+                     + "~/.codex/history.jsonl; Kilo Code keeps one folder per task in its "
+                     + "extension storage under the editor\u2019s; Antigravity keeps whatever "
+                     + "it keeps in its own extension storage, at a path Google does not "
+                     + "document. And with the company: every prompt and reply goes to that "
+                     + "agent\u2019s company as part of using its model and is held there "
+                     + "under that company\u2019s terms \u2014 Anthropic keeps Claude Code "
+                     + "data thirty days for a consumer account that has not opted into "
+                     + "training and five years for one that has; OpenAI, Google and the "
+                     + "providers behind Kilo Code have their own pages. This app sends "
+                     + "nothing itself.\n\nSettings \u2192 Storage \u2192 Clear agent chats "
+                     + "deletes the transcripts on the phone and nothing else; Remove "
+                     + "everything, or uninstalling, deletes all of it. Nothing is ever "
+                     + "written to Downloads, Documents or an SD card unless you turn on The "
+                     + "phone\u2019s files and save something into ~/phone yourself."},
+            {"Safety",
              "Can someone read the app\u2019s own code?",
              "Yes, and that is on purpose: the source is published, and the build that "
                      + "reaches your phone is made from it in public by the repository\u2019s "
@@ -602,7 +632,20 @@ final class Texts {
                     + "PocketIDE's own code is Apache-2.0. Every bundled component keeps its "
                     + "own licence; see Open-source notices.\n\n"
 
-                    + "9. Changes.\n"
+                    + "9. Your data, and the agents' data.\n"
+                    + "Everything this app holds is in its own storage on your phone, and Help "
+                    + "names every folder. What an agent sends to its company — your prompts, "
+                    + "its replies, the code it reads — is held by that company under its own "
+                    + "terms, not this app's; deleting it there is between you and them. "
+                    + "Settings → Storage deletes the copies on the phone.\n\n"
+
+                    + "10. Testing on this phone.\n"
+                    + "Pairing the phone with itself, and allowing installs from this app, "
+                    + "are switches you turn on, with the phone's own confirmations. What an "
+                    + "app you built here then does on your phone is that app's doing and "
+                    + "yours; this app gives the agent no way to touch any other app.\n\n"
+
+                    + "11. Changes.\n"
                     + "The terms shown here are the current ones. Anything material is noted in "
                     + "the release notes rather than changed quietly.";
 
@@ -622,7 +665,22 @@ final class Texts {
 
                     + "Where your files live.\n"
                     + "In this app's private storage. Android keeps that apart from every other "
-                    + "app on the phone. Nothing is backed up, synced or copied anywhere.\n\n"
+                    + "app on the phone, encrypts it, and deletes it with the app. Nothing is "
+                    + "backed up, synced or copied anywhere. Help lists every folder, and "
+                    + "Settings → Storage measures each.\n\n"
+
+                    + "The agents' chats.\n"
+                    + "Kept on the phone by each agent, inside Linux, in the folder that "
+                    + "agent's own documentation names; Settings → Storage → Clear agent "
+                    + "chats deletes them. And sent to that agent's company as part of using "
+                    + "its model, where they are held under that company's terms, which this "
+                    + "app cannot change and does not add to.\n\n"
+
+                    + "The phone as a test device.\n"
+                    + "Pairing gives this app, and only this app, adb access to the phone; "
+                    + "the key stays in this app's storage in a root of its own, and the "
+                    + "Linux the agent works in gets one command with a short list on it. "
+                    + "Turn Wireless debugging off when you are not testing.\n\n"
 
                     + "When the app uses the network.\n"
                     + "Four times, and only these four:\n"

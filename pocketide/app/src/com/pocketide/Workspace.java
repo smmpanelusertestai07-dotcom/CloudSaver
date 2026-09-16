@@ -568,8 +568,14 @@ final class Workspace {
         return sizeOf(root(context));
     }
 
-    private static long sizeOf(File file) {
+    /** The bytes under a path. A link is counted as itself, never as what it points at. */
+    static long sizeOf(File file) {
         if (file == null || !file.exists()) return 0;
+        try {
+            if (java.nio.file.Files.isSymbolicLink(file.toPath())) return 0;
+        } catch (Throwable unreadable) {
+            return 0;
+        }
         if (file.isFile()) return file.length();
         File[] children = file.listFiles();
         if (children == null) return 0;
@@ -639,8 +645,26 @@ final class Workspace {
                 .apply();
     }
 
-    private static void delete(File file) {
-        if (file == null || !file.exists()) return;
+    /**
+     * Deletes a tree without ever following a link.
+     *
+     * File.isDirectory() answers for what a link points AT, so the old version of this walked
+     * through any link it met. A link inside Linux can name anything the app can reach on the
+     * phone -- with The phone's files on, that includes the shared storage -- and an agent, a
+     * script or a mistake can leave one. A walk that followed it would have deleted the
+     * photos. A link is deleted as a link, and what it points at is left alone.
+     */
+    static void delete(File file) {
+        if (file == null) return;
+        try {
+            if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
+                if (!file.delete()) file.deleteOnExit();
+                return;
+            }
+        } catch (Throwable unreadable) {
+            // Treated as a plain file below: deleted by name, never walked.
+        }
+        if (!file.exists()) return;
         if (file.isDirectory()) {
             File[] children = file.listFiles();
             if (children != null) for (File child : children) delete(child);

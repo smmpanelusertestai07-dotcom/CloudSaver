@@ -139,6 +139,12 @@ clouds, as they do everywhere; your files stay on the phone and edits happen on 
 only request the app makes on its own behalf is the once-a-day question to GitHub about new
 releases — a public list, with nothing about you in the request — and Settings can turn it off.
 
+Where everything is, by folder: Help answers it, and Settings → Storage → What is stored where
+measures it. The agents' chats are the one thing in two places — on the phone, in the folder
+each agent's own documentation names (`~/.claude/projects`, `~/.codex/sessions`, Kilo Code's
+tasks under the editor's storage), and with that agent's company under its terms. Settings →
+Storage → Clear agent chats deletes the copies on the phone and nothing else.
+
 ## Build
 
 ```

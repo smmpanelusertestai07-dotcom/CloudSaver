@@ -235,19 +235,7 @@ final class Phone {
     }
 
     private static void deleteTree(File file) {
-        if (file == null || !file.exists()) return;
-        try {
-            // Never through a link: a tree is deleted, what a link points at is left alone.
-            if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
-                file.delete();
-                return;
-            }
-        } catch (Throwable unreadable) {
-            // Treated as a plain file below.
-        }
-        File[] children = file.isDirectory() ? file.listFiles() : null;
-        if (children != null) for (File child : children) deleteTree(child);
-        file.delete();
+        Workspace.delete(file);
     }
 
     /** Where an APK waits while it is being installed, and a screenshot while it is written. */

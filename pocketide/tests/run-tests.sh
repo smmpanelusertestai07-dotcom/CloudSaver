@@ -263,6 +263,14 @@ python3 "$HERE/capacity.py" "$APP" && pass "CapacityIsHonest" \
 # ---------------------------------------------------------------- compile
 
 echo
+echo "Oldest Android"
+# Every API newer than minSdk, known and guarded: compiled against the Android 10 SDK, which
+# has to be installed (CI asks setup-android for it; locally, sdkmanager "platforms;android-29").
+python3 "$HERE/min_api.py" "$APP" "${ANDROID_SDK_ROOT:-$APP/../.tooling/android-sdk}" \
+  && pass "MinSdkApis" \
+  || fail "MinSdkApis" "a newer API is used without a guard, or the minSdk platform is missing: an app that closes as it opens on an older phone"
+
+echo
 echo "Compile"
 if [ -f "$APP/build/PocketIDE-v$(python3 -c "
 import re,sys

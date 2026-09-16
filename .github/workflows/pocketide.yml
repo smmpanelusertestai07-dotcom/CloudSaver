@@ -50,11 +50,13 @@ jobs:
           # serves: sdkmanager answers "Failed to find package 'tools'" and the action fails
           # before the checkout is even built. Two runs went red on that on 2026-09-14 with
           # no change to anything here. Exactly what the build needs, nothing legacy.
-          packages: "platforms;android-35 build-tools;35.0.0"
-      - name: Android platform 35 and build-tools 35.0.0
+          # And platform 29, the minSdk, for the gate that compiles against it
+          # (tests/min_api.py): every newer API has to be known and guarded.
+          packages: "platforms;android-35 platforms;android-29 build-tools;35.0.0"
+      - name: Android platforms 35 and 29, build-tools 35.0.0
         run: |
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          sdkmanager "platforms;android-35" "platforms;android-29" "build-tools;35.0.0" >/dev/null
           echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> "$GITHUB_ENV"
 
       - name: Build

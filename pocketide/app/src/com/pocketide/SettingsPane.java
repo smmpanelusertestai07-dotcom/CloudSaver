@@ -783,6 +783,16 @@ final class SettingsPane implements Pane {
         }
         list.addView(Ui.divider(host, dark, true));
 
+        list.addView(Ui.row(host, dark, R.drawable.ic_info, "What is stored where",
+                "Every folder, measured — projects, editor, agents' chats, the phone bridge",
+                v -> showWhereThingsAre()));
+        list.addView(Ui.divider(host, dark, true));
+
+        list.addView(Ui.row(host, dark, R.drawable.ic_chat, "Clear agent chats",
+                "Deletes the transcripts on the phone; sign-ins, settings and projects stay",
+                v -> confirmClearChats()));
+        list.addView(Ui.divider(host, dark, true));
+
         list.addView(Ui.row(host, dark, R.drawable.ic_delete, "Remove everything",
                 "Deletes Linux, the editor, the extensions and your projects",
                 v -> confirmRemoveEverything()));
@@ -792,6 +802,78 @@ final class SettingsPane implements Pane {
                 "Uninstalling the app does the same thing. Nothing is kept anywhere else, "
                         + "because nothing was ever anywhere else."), Ui.wide(host, 8));
         return group;
+    }
+
+    /**
+     * Every area of the app's storage with its size, measured off the drawing thread. The
+     * numbers are the answer to "where is everything"; the words under them say what goes
+     * where and what leaves the phone.
+     */
+    private void showWhereThingsAre() {
+        if (!Workspace.installed(host)) {
+            Dialogs.message(host, "What is stored where", Stored.EXPLANATION);
+            return;
+        }
+        final Activity on = host;
+        final Dialogs.Live live = Dialogs.live(on, "Measuring", "Walking every folder…");
+        new Thread(() -> {
+            StringBuilder text = new StringBuilder();
+            try {
+                for (Stored.Area area : Stored.measure(on)) {
+                    text.append(area.name).append(": ")
+                            .append(DeviceProbe.formatBytes(area.bytes)).append('\n')
+                            .append(area.where).append("\n\n");
+                }
+            } catch (Throwable unreadable) {
+                text.append("Some folders could not be measured.\n\n");
+            }
+            text.append(Stored.EXPLANATION);
+            final String words = text.toString();
+            on.runOnUiThread(() -> {
+                live.done(true, "");
+                if (!on.isFinishing()) Dialogs.message(on, "What is stored where", words);
+            });
+        }, "measure-storage").start();
+    }
+
+    /** The agents' transcripts, gone: with Linux stopped, after a plain question. */
+    private void confirmClearChats() {
+        if (!Workspace.installed(host)) {
+            Dialogs.message(host, "Clear agent chats", "Nothing is set up yet, so there are "
+                    + "no chats on this phone.");
+            return;
+        }
+        if (WorkspaceService.busy()) {
+            Dialogs.message(host, "Still running",
+                    "Stop Linux first: the Stop button on Activity, or the one on the "
+                            + "notification. An agent in the middle of a session would be "
+                            + "writing into what this deletes.");
+            return;
+        }
+        Dialogs.confirm(host, "Clear agent chats?",
+                "This deletes the conversation transcripts the agents keep on this phone: "
+                        + "Claude Code's sessions and history, Codex's sessions and history, "
+                        + "and Kilo Code's tasks. Sign-ins, settings and your projects are not "
+                        + "touched. What each company already holds on its own servers is "
+                        + "theirs to delete, under their terms.\n\nThis cannot be undone.",
+                "Clear chats", true, () -> {
+                    final Activity on = host;
+                    final Dialogs.Live live = Dialogs.live(on, "Clearing agent chats",
+                            "Deleting the transcripts…");
+                    new Thread(() -> {
+                        long freed;
+                        try {
+                            freed = Stored.clearChats(on);
+                        } catch (Throwable failed) {
+                            freed = -1;
+                        }
+                        final long bytes = freed;
+                        on.runOnUiThread(() -> live.done(bytes >= 0, bytes >= 0
+                                ? "Cleared. " + DeviceProbe.formatBytes(bytes) + " of "
+                                        + "transcripts deleted; nothing else was touched."
+                                : "Some of the transcripts could not be deleted."));
+                    }, "clear-chats").start();
+                });
     }
 
     private void confirmRemoveEverything() {

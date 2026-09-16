@@ -1,5 +1,42 @@
 # Release notes
 
+## 2.2.5
+
+Where everything is, a delete that stops at a link, and a gate at the oldest Android.
+
+### Where everything is stored, said and measured
+
+An owner asked where the chats and the files go. Help now answers by folder: Ubuntu, the
+projects, the editor with every extension's own storage and sign-ins, the phone bridge, the
+crash record — all inside the app's own storage, which Android encrypts, keeps from every other
+app, never backs up and deletes with the app. And the agents' chats, honestly, in two places: on
+the phone, in the folder each agent's own documentation or source names (Claude Code's
+`~/.claude/projects`, thirty days by default; Codex's `~/.codex/sessions`; Kilo Code's tasks under
+the editor's storage; Antigravity's at a path Google does not document), and with that agent's
+company under its own terms — Anthropic's retention periods are quoted from its documentation.
+Settings → Storage → What is stored where measures each area, and Clear agent chats deletes the
+transcripts on the phone and nothing else: not sign-ins, not settings, not projects, and only
+with Linux stopped. The privacy text and the terms say the same, and the terms gained the two
+clauses the phone bridge needed.
+
+### A delete that stops at a link
+
+Remove everything walked the rootfs with File.isDirectory(), which answers for what a link
+points at, so it followed any symbolic link it met. A link inside Linux can name anything the
+app can reach on the phone — with The phone's files on, that includes the shared storage — and
+an agent, a script or a mistake can leave one. Deletion now treats a link as a link, and
+measuring does the same. This was found by reading, not by loss, and a gate holds it.
+
+### A gate at the oldest Android
+
+An app that closes the moment it opens is what a call to an API newer than the phone looks
+like, and nothing here checked for that: the build compiles against Android 15 and minSdk is
+Android 10. The new gate compiles every source against the Android 10 SDK and allows exactly the
+newer symbols it is told about, each with the guard that protects it — `Build.VERSION.SDK_INT`
+checks, a constant the compiler inlines, a call inside a catch of Throwable — and fails on any
+other. Run today it found none unguarded, which rules that cause out for the owner's report;
+run tomorrow it catches the next one before a phone does.
+
 ## 2.2.0
 
 The phone's key leaves Linux, and the workspace gets a door with a list on it.

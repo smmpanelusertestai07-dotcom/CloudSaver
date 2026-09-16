@@ -775,6 +775,50 @@ for method, steps in (("onStart", ("Rotation.apply(this)", "raiseLockIfNeeded()"
 if "static String recent(Context context)" not in code(read("Exits.java")):
     problems.append("Exits cannot describe the last exits for the recovery screen")
 
+# --- 19. where everything is, said and measured; a delete that stops at a link -----------------
+#
+# An owner asked where the chats and the files go. The answer has to be in Help, in the privacy
+# text, in the terms and on a screen that measures it -- and the one delete the app offers must
+# never walk through a link an agent left pointing at the phone's shared storage.
+stored = code(read("Stored.java"))
+chat_fn = re.search(r'static List<File> chatFolders\(Context context\) \{(.*?)\n    \}', stored, re.S)
+chat_body = chat_fn.group(1) if chat_fn else ""
+for path in ('".claude/projects"', '".claude/history.jsonl"', '".codex/sessions"',
+             '".codex/history.jsonl"', '"User/globalStorage/kilocode.kilo-code/tasks"'):
+    if path not in chat_body:
+        problems.append("Stored.chatFolders() does not name %s, the folder that agent's own "
+                        "documentation or source names" % path)
+for must_not in (".credentials", "auth.json", "settings.json", "projects(context)", "config.toml"):
+    if must_not in chat_body:
+        problems.append("clearChats() would delete %s, which is not a chat" % must_not)
+workspace_src = code(read("Workspace.java"))
+delete_fn = re.search(r'static void delete\(File file\) \{(.*?)\n    \}', workspace_src, re.S)
+if (not delete_fn or "isSymbolicLink(file.toPath())" not in delete_fn.group(1)
+        or delete_fn.group(1).find("isSymbolicLink") > delete_fn.group(1).find("isDirectory()")):
+    problems.append("Workspace.delete() follows links: a link inside Linux to the phone's "
+                    "shared storage would have the photos deleted with the workspace")
+size_fn = re.search(r'static long sizeOf\(File file\) \{(.*?)\n    \}', workspace_src, re.S)
+if not size_fn or "isSymbolicLink(file.toPath())" not in size_fn.group(1):
+    problems.append("Workspace.sizeOf() measures through links")
+settings_src = code(read("SettingsPane.java"))
+for row in ('"What is stored where"', '"Clear agent chats"'):
+    if not re.search(r'Ui\.row\(host, dark, R\.drawable\.\w+, ' + re.escape(row), settings_src):
+        problems.append("Settings has no %s row" % row)
+clear_fn = re.search(r'private void confirmClearChats\(\) \{(.*?)\n    \}', settings_src, re.S)
+if not clear_fn or "WorkspaceService.busy()" not in clear_fn.group(1) \
+        or "Stored.clearChats(on)" not in clear_fn.group(1):
+    problems.append("Clear agent chats runs with Linux running, or does not clear through "
+                    "Stored.clearChats")
+texts_src = code(read("Texts.java"))
+for said in ("~/.claude/projects", "~/.codex/sessions", "cleanupPeriodDays",
+             "Where is everything stored", "Clear agent chats", "The agents' chats.",
+             "9. Your data, and the agents' data.", "10. Testing on this phone."):
+    if said not in texts_src:
+        problems.append("Help, the privacy text or the terms no longer say: %s" % said)
+if 'android:allowBackup="false"' not in manifest_code:
+    problems.append("the manifest allows backup, so the app's storage would leave the phone in "
+                    "a Google backup while Help says nothing does")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

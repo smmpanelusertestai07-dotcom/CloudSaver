@@ -19,7 +19,7 @@ import java.nio.charset.StandardCharsets;
  * Nothing here is sent anywhere. The file is read by the Help screen and by nobody else.
  */
 final class Crash {
-    private static final String FILE = "last-crash.txt";
+    static final String FILE = "last-crash.txt";
     private static final int KEEP_BYTES = 24 * 1024;
 
     private Crash() {}
