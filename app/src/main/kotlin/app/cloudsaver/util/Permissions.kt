@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 object Permissions {
@@ -87,8 +88,19 @@ object Permissions {
         )
     }
 
-    fun hasNotifications(context: Context): Boolean =
-        Build.VERSION.SDK_INT < 33 || granted(context, Manifest.permission.POST_NOTIFICATIONS)
+    fun hasNotifications(context: Context): Boolean {
+        // Android 13 added a runtime permission, but the switch in system settings is older
+        // than that and exists on every version. Checking the permission alone said "Allowed"
+        // on an Android 11 phone whose owner had switched this app's notifications off, and a
+        // permissions screen has no business contradicting the system settings. The switch is
+        // read here; the permission check stays because on 13 and up it is the thing the
+        // one-tap prompt grants. The same mistake was found and fixed in the sister project.
+        val switchedOn = runCatching {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }.getOrDefault(true)
+        return switchedOn &&
+            (Build.VERSION.SDK_INT < 33 || granted(context, Manifest.permission.POST_NOTIFICATIONS))
+    }
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean = try {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
