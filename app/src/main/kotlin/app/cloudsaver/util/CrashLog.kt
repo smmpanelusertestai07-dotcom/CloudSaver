@@ -47,6 +47,17 @@ object CrashLog {
 
     private fun record(context: Context, thread: Thread, throwable: Throwable) {
         val stack = throwable.stackTraceToString()
+        // Android's own teardown race is written down, because a log that
+        // hides anything is a log nobody trusts - but it raises no card and
+        // counts towards no recovery page, because nothing in this app did it.
+        if (FrameworkRace.isRace(throwable)) {
+            AppLog.log(
+                context, "crash",
+                "Android's own teardown race, not a fault in this app " +
+                    "(${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE})\n$stack"
+            )
+            return
+        }
         AppLog.log(
             context, "crash",
             "app ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) " +
