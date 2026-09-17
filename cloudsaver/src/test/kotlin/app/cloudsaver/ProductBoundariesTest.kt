@@ -416,21 +416,29 @@ class ProductBoundariesTest {
     fun `the repository carries source, a licence, and no documents`() {
         val root = generateSequence(File(".").absoluteFile) { it.parentFile }
             .first { File(it, ".github/workflows").isDirectory }
-        val skip = setOf("build", ".git", ".gradle", ".kotlin", "artifacts")
-        val documents = root.walkTopDown()
-            .onEnter { it.name !in skip }
-            .filter { it.isFile && it.extension.lowercase() == "md" }
-            .map { it.relativeTo(root).path }
-            .toList()
+        // What the repository carries is what git carries, not what happens
+        // to be sitting in a working copy. The two differ in the one way
+        // that matters here: CI decodes the real signing keystore into the
+        // workspace before it runs these tests, and .gitignore keeps it out
+        // of the repository - so a filesystem walk failed this rule on every
+        // CI run while passing on every desk. A key that IS committed is
+        // still caught, which is the whole point.
+        val tracked = runCatching {
+            val out = ProcessBuilder("git", "ls-files", "-z")
+                .directory(root).redirectErrorStream(true).start()
+            val names = out.inputStream.bufferedReader().readText()
+            if (out.waitFor() != 0) null else names.split('\u0000').filter { it.isNotEmpty() }
+        }.getOrNull()
+        assertTrue("git must be able to list the repository", tracked != null)
+
+        val documents = tracked!!.filter { it.lowercase().endsWith(".md") }
         assertTrue("these belong inside the apps, or nowhere: $documents", documents.isEmpty())
 
         // And nothing that unlocks anything. A key in a public repository is
         // a key anyone can sign a CloudSaver with.
-        val keys = root.walkTopDown()
-            .onEnter { it.name !in skip }
-            .filter { it.isFile && it.extension.lowercase() in setOf("jks", "keystore", "p12", "pfx", "pem") }
-            .map { it.relativeTo(root).path }
-            .toList()
+        val keys = tracked.filter { name ->
+            setOf(".jks", ".keystore", ".p12", ".pfx", ".pem").any { name.lowercase().endsWith(it) }
+        }
         assertTrue("a signing key must never be committed: $keys", keys.isEmpty())
     }
 

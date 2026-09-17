@@ -152,17 +152,18 @@ tasks.withType<Test>().configureEach {
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleFiles")
-    // The rule below asserts the repository holds no documents. Its input
-    // is therefore the set of documents - empty today, and any file that
-    // breaks the rule re-runs it by existing.
+    // One rule asserts the repository holds no document and no key. It reads
+    // the git index rather than the disk, which Gradle cannot hash - so the
+    // files that would break it are the declared input instead. Empty today;
+    // anything that breaks the rule re-runs it by existing.
     inputs.files(
         rootProject.fileTree(".") {
-            include("**/*.md")
+            include("**/*.md", "**/*.jks", "**/*.keystore", "**/*.p12", "**/*.pfx", "**/*.pem")
             exclude("**/build/**", "**/.git/**", "**/.gradle/**", "**/.kotlin/**")
         }
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
-        .withPropertyName("documentsThatShouldNotExist")
+        .withPropertyName("filesThatShouldNotBeInTheRepository")
     inputs.dir(rootProject.file(".github/workflows"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleWorkflows")
