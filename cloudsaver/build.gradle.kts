@@ -20,7 +20,7 @@ android {
         // monotonic, it never collides across branches, and it leaves room
         // for 99 minors and 99 patches without ever needing a reset.
         //   3.0.0 -> 30000
-        versionName = "10.0.3"
+        versionName = "10.1.0"
         versionCode = versionName!!.split(".").let { (major, minor, patch) ->
             major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()
         }
@@ -147,12 +147,22 @@ dependencies {
 // text, that file - or its directory - belongs in this list.
 tasks.withType<Test>().configureEach {
     inputs.files(
-        rootProject.file("RELEASE_MATRIX.md"),
         rootProject.file("gradle/wrapper/gradle-wrapper.properties"),
         file("src/main/AndroidManifest.xml")
     )
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleFiles")
+    // The rule below asserts the repository holds no documents. Its input
+    // is therefore the set of documents - empty today, and any file that
+    // breaks the rule re-runs it by existing.
+    inputs.files(
+        rootProject.fileTree(".") {
+            include("**/*.md")
+            exclude("**/build/**", "**/.git/**", "**/.gradle/**", "**/.kotlin/**")
+        }
+    )
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("documentsThatShouldNotExist")
     inputs.dir(rootProject.file(".github/workflows"))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("sourceTextRuleWorkflows")

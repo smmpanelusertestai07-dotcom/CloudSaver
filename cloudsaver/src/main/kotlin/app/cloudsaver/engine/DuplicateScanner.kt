@@ -7,7 +7,6 @@ import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
-import app.cloudsaver.util.AppLog
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -51,7 +50,6 @@ class DuplicateScanner(private val context: Context) {
             db.items().update(row.copy(originalSha256 = sha, updatedAt = System.currentTimeMillis()))
             hashed++
         }
-        if (hashed > 0) AppLog.log(context, "dupes", "hashed $hashed originals")
         return hashed
     }
 
@@ -83,7 +81,6 @@ class DuplicateScanner(private val context: Context) {
                 marked++
             }
         }
-        if (marked > 0) AppLog.log(context, "dupes", "marked $marked duplicates")
         return marked
     }
 

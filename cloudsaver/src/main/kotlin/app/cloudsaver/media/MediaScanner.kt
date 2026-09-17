@@ -13,7 +13,6 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Permissions
 
 /**
@@ -45,7 +44,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         // every count and projection downstream would state it as fact. The
         // refusal lives here, at the bottom, so no caller can forget it.
         if (Permissions.mediaAccess(context) != Permissions.MediaAccess.FULL) {
-            AppLog.log(context, "scan", "refused: media access is not full")
             return 0
         }
         val found = excludeOutputFolders(queryAll())
@@ -187,12 +185,10 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             try {
                 queryCollection(MediaStore.Images.Media.getContentUri(volume), isVideo = false, out)
             } catch (e: Exception) {
-                AppLog.log(context, "scan", "images $volume failed: ${e.message}")
             }
             try {
                 queryCollection(MediaStore.Video.Media.getContentUri(volume), isVideo = true, out)
             } catch (e: Exception) {
-                AppLog.log(context, "scan", "videos $volume failed: ${e.message}")
             }
         }
         return out
@@ -306,7 +302,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                 } catch (e: Exception) {
                     // Partial numbers must never be presented as a total.
                     totals.complete = false
-                    AppLog.log(context, "calc", "totals $volume failed: ${e.message}")
                 }
             }
         }
@@ -393,7 +388,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         val volumes = try {
             MediaStore.getExternalVolumeNames(context)
         } catch (e: Exception) {
-            AppLog.log(context, "scan", "volume list failed: ${e.message}")
             return null
         }
         if (volumes.isEmpty()) return null
@@ -413,7 +407,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                         while (c.moveToNext()) keys.add(presenceKey(volume, c.getLong(iId)))
                     }
                 } catch (e: Exception) {
-                    AppLog.log(context, "scan", "presence query failed on $volume: ${e.message}")
                     return null
                 }
             }
@@ -564,7 +557,6 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                             }
                         }
                 } catch (e: Exception) {
-                    AppLog.log(context, "scan", "folder tally $volume failed: ${e.message}")
                 }
             }
         }

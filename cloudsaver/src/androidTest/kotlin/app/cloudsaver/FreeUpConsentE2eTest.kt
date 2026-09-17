@@ -10,9 +10,6 @@ import android.os.Bundle
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performScrollToNode
-import androidx.test.filters.SdkSuppress
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -22,11 +19,14 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.By
@@ -44,6 +44,8 @@ import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Storage
+import java.io.File
+import java.util.regex.Pattern
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -57,8 +59,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.util.regex.Pattern
 
 /**
  * The removal path, end to end, through Android's own consent dialog.
@@ -238,7 +238,7 @@ class FreeUpConsentE2eTest {
             "millisecond. The batching and part-refusal accounting are pinned in " +
             "ConsentBatchTest. What is NOT covered while this is quarantined is " +
             "the journey through Android's own consent sheet on a real device, " +
-            "which is stated in RELEASE_MATRIX rather than left to be assumed."
+            "which this sentence states rather than leaving to be assumed."
     )
     @Test
     // Below API 30 there is no trash and no batch request, so this is
@@ -323,7 +323,7 @@ class FreeUpConsentE2eTest {
             "millisecond. The batching and part-refusal accounting are pinned in " +
             "ConsentBatchTest. What is NOT covered while this is quarantined is " +
             "the journey through Android's own consent sheet on a real device, " +
-            "which is stated in RELEASE_MATRIX rather than left to be assumed."
+            "which this sentence states rather than leaving to be assumed."
     )
     @Test
     // Below API 30 there is no trash and no batch request, so this is
@@ -412,7 +412,7 @@ class FreeUpConsentE2eTest {
             "millisecond. The batching and part-refusal accounting are pinned in " +
             "ConsentBatchTest. What is NOT covered while this is quarantined is " +
             "the journey through Android's own consent sheet on a real device, " +
-            "which is stated in RELEASE_MATRIX rather than left to be assumed."
+            "which this sentence states rather than leaving to be assumed."
     )
     @Test
     // Below API 30 there is no trash and no batch request, so this is
@@ -519,7 +519,7 @@ class FreeUpConsentE2eTest {
             "millisecond. The batching and part-refusal accounting are pinned in " +
             "ConsentBatchTest. What is NOT covered while this is quarantined is " +
             "the journey through Android's own consent sheet on a real device, " +
-            "which is stated in RELEASE_MATRIX rather than left to be assumed."
+            "which this sentence states rather than leaving to be assumed."
     )
     @Test
     // Below API 30 there is no trash and no batch request, so this is

@@ -32,54 +32,53 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavHostController
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.TabBadges
 import app.cloudsaver.ui.components.AppBackground
+import app.cloudsaver.ui.components.HideWhileLocked
 import app.cloudsaver.ui.screens.ActivityScreen
-import app.cloudsaver.ui.screens.HelpCloudScreen
-import app.cloudsaver.ui.screens.PermissionsScreen
+import app.cloudsaver.ui.screens.BiggestFilesScreen
+import app.cloudsaver.ui.screens.CalculatorScreen
+import app.cloudsaver.ui.screens.DuplicatesScreen
 import app.cloudsaver.ui.screens.FilesScreen
 import app.cloudsaver.ui.screens.FreeSpaceHubScreen
-import app.cloudsaver.ui.screens.BiggestFilesScreen
-import app.cloudsaver.ui.screens.DuplicatesScreen
-import app.cloudsaver.ui.screens.KeptCopiesScreen
-import app.cloudsaver.ui.screens.ReclaimHistoryScreen
-import app.cloudsaver.ui.screens.ReclaimScreen
-import app.cloudsaver.ui.screens.CalculatorScreen
 import app.cloudsaver.ui.screens.HelpAboutScreen
+import app.cloudsaver.ui.screens.HelpCloudScreen
 import app.cloudsaver.ui.screens.HelpDeletedScreen
 import app.cloudsaver.ui.screens.HelpFaqScreen
 import app.cloudsaver.ui.screens.HelpLicensesScreen
-import app.cloudsaver.ui.screens.HelpLogsScreen
 import app.cloudsaver.ui.screens.HelpPrivacyScreen
 import app.cloudsaver.ui.screens.HelpQualityScreen
 import app.cloudsaver.ui.screens.HelpScreen
-import app.cloudsaver.core.logic.TabBadges
 import app.cloudsaver.ui.screens.HomeScreen
-import app.cloudsaver.ui.components.SecureScreen
+import app.cloudsaver.ui.screens.KeptCopiesScreen
 import app.cloudsaver.ui.screens.LockedScreen
-import app.cloudsaver.util.Errand
 import app.cloudsaver.ui.screens.OnboardingScreen
 import app.cloudsaver.ui.screens.OptionsScreen
+import app.cloudsaver.ui.screens.PermissionsScreen
+import app.cloudsaver.ui.screens.ReclaimHistoryScreen
+import app.cloudsaver.ui.screens.ReclaimScreen
 import app.cloudsaver.ui.screens.StorageScreen
 import app.cloudsaver.ui.theme.CloudSaverTheme
+import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.util.Errand
 
 object Routes {
     const val HOME = "home"
@@ -98,7 +97,6 @@ object Routes {
     const val HELP_FAQ = "help_faq"
     const val HELP_DELETED = "help_deleted"
     const val HELP_QUALITY = "help_quality"
-    const val HELP_LOGS = "help_logs"
     const val HELP_CLOUD = "help_cloud"
     const val HELP_PRIVACY = "help_privacy"
     const val HELP_LICENSES = "help_licenses"
@@ -122,7 +120,7 @@ object Routes {
     val ALL: Set<String> = setOf(
         HOME, FILES, STORAGE, OPTIONS, FREE_UP, FREE_SPACE_HUB, ACTIVITY,
         RECLAIM_HISTORY, DUPLICATES, BIGGEST, KEPT, CALCULATOR, HELP,
-        HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_LOGS, HELP_CLOUD,
+        HELP_FAQ, HELP_DELETED, HELP_QUALITY, HELP_CLOUD,
         HELP_PRIVACY, HELP_LICENSES, HELP_ABOUT, PERMISSIONS
     )
 
@@ -190,7 +188,9 @@ private fun MainNav(vm: AppViewModel) {
     // rule rather than from whatever each screen happens to know.
     val reclaimable by vm.reclaimableBytes.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
-    var unlocked by remember { mutableStateOf(false) }
+    // In the view model rather than this composition, so that turning the
+    // phone does not ask for a fingerprint again (AppViewModel.unlocked).
+    val unlocked by vm.unlocked.collectAsStateWithLifecycle()
     val activity = LocalActivity.current as? FragmentActivity
 
     // The Settings dot has to be right on whichever tab the app opens on, so
@@ -212,16 +212,15 @@ private fun MainNav(vm: AppViewModel) {
     // how a lock gets turned off. Those say so first (Errand), and the lock
     // lets that one return through unless it took longer than an errand does.
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        if (Errand.expecting()) Errand.left() else unlocked = false
+        if (Errand.expecting()) Errand.left() else vm.unlocked.value = false
     }
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        if (Errand.returnedNeedsLock()) unlocked = false
+        if (Errand.returnedNeedsLock()) vm.unlocked.value = false
     }
     // Android takes the recents thumbnail as the app goes to the background,
-    // before the lock is back up on the way in - so with the lock on, the
-    // whole app keeps its window out of screenshots and recents, not only
-    // the locked screen. Every app that offers a lock does the same.
-    if (options.appLock) SecureScreen()
+    // before the lock is back up on the way in, so the whole app - not only
+    // the locked screen - stays out of the switcher while the lock is on.
+    HideWhileLocked(options.appLock)
 
     // The whole app, not a list of screens. Locking only the screens that
     // hold file lists left Home, Storage, the calculator and every Help page
@@ -316,7 +315,7 @@ private fun MainNav(vm: AppViewModel) {
                     ) { outcome ->
                         lockNote = outcome
                         when (outcome) {
-                            Lock.Outcome.Unlocked -> unlocked = true
+                            Lock.Outcome.Unlocked -> vm.unlocked.value = true
                             // The phone's own lock was removed - Android has
                             // already wiped biometric enrolment with it, and
                             // removing it required knowing it. The app lock
@@ -371,7 +370,6 @@ private fun MainNav(vm: AppViewModel) {
                 composable(Routes.HELP_FAQ) { HelpFaqScreen(nav) }
                 composable(Routes.HELP_DELETED) { HelpDeletedScreen(nav) }
                 composable(Routes.HELP_QUALITY) { HelpQualityScreen(nav, vm) }
-                composable(Routes.HELP_LOGS) { HelpLogsScreen(nav) }
                 composable(Routes.HELP_CLOUD) { HelpCloudScreen(nav) }
                 composable(Routes.HELP_PRIVACY) { HelpPrivacyScreen(nav) }
                 composable(Routes.HELP_LICENSES) { HelpLicensesScreen(nav) }

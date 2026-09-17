@@ -9,14 +9,14 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.core.logic.Presets
 import app.cloudsaver.media.PhotoCompressor
+import java.io.File
+import java.io.FileOutputStream
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.io.FileOutputStream
 
 /**
  * The one promise the compressor cannot break: the copy is smaller, or there

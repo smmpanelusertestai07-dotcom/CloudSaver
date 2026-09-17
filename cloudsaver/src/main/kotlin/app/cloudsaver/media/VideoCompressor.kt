@@ -31,7 +31,6 @@ import androidx.media3.transformer.VideoEncoderSettings
 import app.cloudsaver.core.logic.BitrateCalc
 import app.cloudsaver.core.logic.PresetSpec
 import app.cloudsaver.core.logic.VideoCodec
-import app.cloudsaver.util.AppLog
 import com.google.common.collect.ImmutableList
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -167,7 +166,6 @@ object VideoCompressor {
             // the number the caller asked for.
             val leftMs = budgetEndsAt - System.currentTimeMillis()
             if (leftMs < MIN_ATTEMPT_MS) {
-                AppLog.log(context, "video", "out of time before ${attempt.label}; copying as-is")
                 outOfTime = true
                 break
             }
@@ -178,7 +176,6 @@ object VideoCompressor {
                 outFile.delete()
                 throw ce
             } catch (e: Exception) {
-                AppLog.log(context, "video", "${attempt.label} threw: ${e.message}")
                 null
             }
             if (export != null && outFile.exists()) {
@@ -203,10 +200,6 @@ object VideoCompressor {
                         outPixels = outW.toLong() * outH.toLong()
                     )
                 }
-                AppLog.log(
-                    context, "video",
-                    "${attempt.label} rejected: out=$outBytes src=$srcBytes bps=$outBps target=$targetBps"
-                )
             }
             outFile.delete()
         }

@@ -1,9 +1,9 @@
 package app.cloudsaver
 
 import java.io.File
-import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -34,18 +34,20 @@ class HelpContentTest {
             .toList()
 
     @Test
-    fun `the FAQ is exactly eighteen questions, each with an answer`() {
+    fun `the FAQ is exactly nineteen questions, each with an answer`() {
         assumeTrue("strings.xml not found", strings() != null)
         val body = text()
         val questions = Regex("""<string name="faq_q(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
         val answers = Regex("""<string name="faq_a(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
-        // Eighteen: the twelve it opened with, plus where the recommended
+        // Nineteen: the twelve it opened with, plus where the recommended
         // figures come from, what "keep it in the same album" does, what
-        // happens with no cloud app, and why Files is scoped where Free up
-        // space is not.
-        assertEquals("the FAQ must hold eighteen questions", (1..18).toList(), questions)
+        // happens with no cloud app, why Files is scoped where Free up space
+        // is not, and how to tell a genuine build from a copy of one - the
+        // last of those is what the repository's front page used to answer,
+        // to nobody, since the people who install this app read the app.
+        assertEquals("the FAQ must hold nineteen questions", (1..19).toList(), questions)
         assertEquals("every question needs its answer", questions, answers)
     }
 

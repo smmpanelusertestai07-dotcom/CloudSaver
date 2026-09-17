@@ -1,8 +1,8 @@
 package app.cloudsaver.strings
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * Keeps implementation vocabulary out of what the user reads.

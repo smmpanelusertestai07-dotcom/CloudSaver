@@ -31,14 +31,13 @@ class AlertActions : BroadcastReceiver() {
                 // to hand a failure to, so an unwritable DataStore would take
                 // the whole process down from a notification button. A write
                 // that did not happen leaves the alert exactly as it was,
-                // which is the honest outcome - so the log only claims the
-                // mute once the value is actually stored.
+                // which is the honest outcome - so the alert is only taken
+                // down once the value is actually stored.
                 val muted = runCatching {
                     OptionsRepo.get(app).setLong(OptionsRepo.K.ALERTS_MUTED_UNTIL, until)
                 }.isSuccess
                 if (muted) {
                     runCatching { NotificationManagerCompat.from(app).cancelAll() }
-                    AppLog.log(app, "alerts", "muted for 7 days")
                 }
             } finally {
                 pending.finish()

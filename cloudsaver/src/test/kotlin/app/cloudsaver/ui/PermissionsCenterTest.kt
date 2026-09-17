@@ -1,10 +1,10 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * One screen that says what the app has been allowed to do, and re-reads it
@@ -50,7 +50,6 @@ class PermissionsCenterTest {
             "Permissions.permissionsAutoResetOn(context)",
             "Permissions.batterySaverOn(context)",
             "Permissions.standbyBucket(context)",
-            "Exits.last(context)",
             "PermissionLedger.read(context)"
         )) {
             assertTrue("$read must be re-read on resume", screen.contains("remember(tick) { $read }"))
@@ -170,7 +169,7 @@ class PermissionsCenterTest {
 
     @Test
     fun `a row with nowhere to go is a fact, not a task`() {
-        // The rationing bucket and the last exit have no switch. They are
+        // The rationing bucket has no switch anywhere on the phone. It is
         // shown without a button rather than with one that opens app info
         // and changes nothing.
         val row = screen.substringAfter("private fun PermissionRow(").substringBefore("\n}\n")
@@ -178,8 +177,6 @@ class PermissionsCenterTest {
         assertTrue(row.contains("if (actionLabel != null && onAction != null) {"))
         val bucket = screen.substringAfter("if (bucket != null) {").substringBefore("for (requirement in makerRows)")
         assertFalse(bucket.contains("actionLabel"))
-        val exit = screen.substringAfter("if (lastExit != null) {").substringBefore("stringResource(R.string.perm_why)")
-        assertFalse(exit.contains("actionLabel"))
     }
 
     @Test

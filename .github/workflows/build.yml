@@ -177,11 +177,6 @@ jobs:
           Signing cert SHA-256: ${CERT_SHA256}
           ${KEYSTORE_NOTE}
           EOF
-          # AA6.1: the verification matrix ships with every release.
-          if [ -f RELEASE_MATRIX.md ]; then
-            echo "" >> RELEASE_NOTES.md
-            cat RELEASE_MATRIX.md >> RELEASE_NOTES.md
-          fi
           echo "Release notes generated."
 
       - name: Job summary
@@ -232,7 +227,6 @@ jobs:
           path: |
             CloudSaver-*.apk
             RELEASE_NOTES.md
-            QUICKSTART-HINGLISH.md
           if-no-files-found: error
 
   emulator:
@@ -407,7 +401,6 @@ jobs:
             exit 0
           fi
           gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \
-            QUICKSTART-HINGLISH.md \
             --title "CloudSaver $TAG" \
             --notes-file RELEASE_NOTES.md \
             --repo "$GITHUB_REPOSITORY"

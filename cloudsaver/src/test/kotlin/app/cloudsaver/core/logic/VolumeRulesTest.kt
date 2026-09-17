@@ -1,10 +1,10 @@
 package app.cloudsaver.core.logic
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * BB2: releases go to the chosen volume only while the probe passes, and
@@ -73,7 +73,9 @@ class VolumeRulesTest {
         )
         assertTrue(
             "a refused SD insert must retry once on the primary volume",
-            releaser.contains("retrying on internal")
+            releaser.substringAfter("if (itemUri == null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {")
+                .substringBefore("if (itemUri == null) return false")
+                .contains("getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)")
         )
     }
 

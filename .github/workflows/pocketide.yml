@@ -156,9 +156,9 @@ jobs:
             echo ""
             echo "APK SHA-256: ${SHA}"
             echo ""
-            echo "What changed: see pocketide/RELEASE-NOTES.md in this repository."
-          } > notes.md
+            echo "What changed: compare this tag with the previous pocketide-v tag in this repository."
+          } > notes.txt
           gh release create "$TAG" "$APK" \
             --title "PocketIDE ${VERSION}" \
-            --notes-file notes.md \
+            --notes-file notes.txt \
             --repo "$GITHUB_REPOSITORY"

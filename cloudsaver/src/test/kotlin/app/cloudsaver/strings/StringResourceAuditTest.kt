@@ -1,8 +1,8 @@
 package app.cloudsaver.strings
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * Reads strings.xml directly and audits what the user will actually see.

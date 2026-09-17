@@ -2,11 +2,11 @@ package app.cloudsaver.ui.theme
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 /**
  * Proves the palette is readable, rather than asserting that it is.

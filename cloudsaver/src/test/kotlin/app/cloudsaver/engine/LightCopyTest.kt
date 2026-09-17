@@ -1,11 +1,11 @@
 package app.cloudsaver.engine
 
 import app.cloudsaver.core.logic.Defaults
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * Replace-with-light must be able to keep its promise even after the cloud

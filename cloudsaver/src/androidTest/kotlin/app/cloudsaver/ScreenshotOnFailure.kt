@@ -4,9 +4,9 @@ import android.content.ContentValues
 import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import java.io.File
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
-import java.io.File
 
 /**
  * Photographs the screen the moment a test fails.

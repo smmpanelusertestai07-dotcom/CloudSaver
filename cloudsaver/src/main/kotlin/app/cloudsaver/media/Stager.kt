@@ -11,7 +11,6 @@ import app.cloudsaver.core.logic.Presets
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
@@ -119,10 +118,6 @@ class Stager(private val context: Context, private val db: AppDb) {
                     updatedAt = System.currentTimeMillis()
                 )
             )
-            AppLog.log(
-                context, "stage",
-                "${row.displayName}: ${row.sizeBytes} -> ${stageFile.length()} (${result.reason})"
-            )
             true
         } catch (ce: CancellationException) {
             throw ce
@@ -144,7 +139,6 @@ class Stager(private val context: Context, private val db: AppDb) {
                 updatedAt = System.currentTimeMillis()
             )
         )
-        AppLog.log(context, "stage", "SKIP ${row.displayName}: $reason")
     }
 
     private suspend fun fail(row: ItemRow, error: String) {
@@ -163,7 +157,6 @@ class Stager(private val context: Context, private val db: AppDb) {
         } else {
             db.items().update(row.copy(attempts = attempts, lastError = error, updatedAt = now))
         }
-        AppLog.log(context, "stage", "FAIL ${row.displayName} attempt=$attempts: $error")
     }
 
     companion object {

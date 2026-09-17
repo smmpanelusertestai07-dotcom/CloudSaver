@@ -26,10 +26,6 @@ fi
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$BUILD_DIR/gen" "$BUILD_DIR/assets"
 
-# The GPL-2.0 notice for the bundled PRoot has to reach whoever receives the APK, and the APK
-# is the only thing they receive. Help -> "Read the notices" reads this copy.
-cp "$PROJECT_DIR/OPEN_SOURCE_NOTICES.md" "$PROJECT_DIR/app/assets/open-source-notices.md"
-
 # Package only source assets, through a staging copy, so a build never modifies the source tree.
 cp -a "$PROJECT_DIR/app/assets/." "$BUILD_DIR/assets/"
 find "$BUILD_DIR/assets" -type d -name '__pycache__' -prune -exec rm -rf -- {} + 2>/dev/null || true
@@ -232,7 +228,31 @@ fi
 # signed by any other throwaway. The warning below says so at build time rather than leaving it
 # to be discovered as "App not installed" on a phone.
 KEYSTORE="${POCKETIDE_KEYSTORE:-$PROJECT_DIR/.signing/pocketide.jks}"
-STORE_PASS="${POCKETIDE_STORE_PASS:-pocketide-local}"
+STORE_PASS="${POCKETIDE_STORE_PASS:-}"
+
+# No POCKETIDE_STORE_PASS means no real key either, so what gets signed is the throwaway
+# keystore under .signing/, which git ignores. Its password is minted here, per machine, rather
+# than written into this file: a default password in a public repository is a password everyone
+# has, and it would be the password on the only key a first build produces. It is kept beside
+# the keystore it locks -- inside .signing/, never committed -- because the next build has to
+# open the same keystore, and a keystore whose password nothing records is a keystore that can
+# only be thrown away.
+SIGNING_DIR="$PROJECT_DIR/.signing"
+PASS_FILE="$SIGNING_DIR/pocketide.pass"
+if [[ -z "$STORE_PASS" ]]; then
+  if [[ -s "$PASS_FILE" ]]; then
+    STORE_PASS="$(cat "$PASS_FILE")"
+  else
+    STORE_PASS="$(openssl rand -hex 16 2>/dev/null \
+      || head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    mkdir -p "$SIGNING_DIR"
+    ( umask 077; printf '%s\n' "$STORE_PASS" >"$PASS_FILE" )
+    # Any keystore left here by an older build was locked with a password nothing records any
+    # more, so it is replaced rather than guessed at. Only ever the throwaway one: a keystore
+    # supplied through POCKETIDE_KEYSTORE is never touched.
+    if [[ -z "${POCKETIDE_KEYSTORE:-}" ]]; then rm -f "$KEYSTORE"; fi
+  fi
+fi
 KEY_PASS="${POCKETIDE_KEY_PASS:-$STORE_PASS}"
 KEY_ALIAS="${POCKETIDE_KEY_ALIAS:-pocketide}"
 

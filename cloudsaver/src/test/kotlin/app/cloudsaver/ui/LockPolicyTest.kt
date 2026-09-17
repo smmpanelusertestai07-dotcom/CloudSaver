@@ -1,9 +1,9 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The app lock fails closed, and stays that way.
@@ -80,13 +80,54 @@ class LockPolicyTest {
     }
 
     @Test
-    fun `the two screens worth hiding are hidden from screenshots`() {
-        // T3: the lock, and the one screen that lists photographs by name
-        // beside a button that removes them.
-        for (screen in listOf("LockedScreen.kt", "ReclaimScreen.kt")) {
-            val text = File("src/main/kotlin/app/cloudsaver/ui/screens/$screen").readText()
-            assertTrue("$screen must set FLAG_SECURE", text.contains("SecureScreen()"))
+    fun `the lock hides the app from recents, and takes nothing else away`() {
+        // T3. The switcher is the hole a lock leaves open: Android
+        // photographs the last frame on the way out, and that picture is
+        // readable while the app behind it is locked.
+        //
+        // What is NOT here matters as much. No screen sets the flag on its
+        // own any more. The free-up list used to, with the lock off, which
+        // bought nothing - the phone is unlocked and the photographs are the
+        // person's own - and cost them a screenshot of what they were about
+        // to delete. And screenshots stay working on the Androids that can
+        // separate the two, which is every one from 13 up.
+        val recents = File("src/main/kotlin/app/cloudsaver/ui/components/Recents.kt").readText()
+        assertTrue(
+            "Android 13 and later hide the thumbnail without touching screenshots",
+            recents.contains("Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU") &&
+                recents.contains("activity.setRecentsScreenshotEnabled(false)")
+        )
+        assertTrue(
+            "below 13 the window flag is the only switch there is",
+            recents.substringAfter("} else {").contains("FLAG_SECURE")
+        )
+        assertTrue(
+            "it must key on the setting, or the setting cannot be turned off again",
+            recents.contains("DisposableEffect(enabled)")
+        )
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        assertTrue("one owner of the window", app.contains("HideWhileLocked(options.appLock)"))
+        for (screen in File("src/main/kotlin/app/cloudsaver/ui/screens").listFiles().orEmpty()) {
+            assertFalse(
+                "${screen.name} must not hold the window flag itself",
+                screen.readText().contains("FLAG_SECURE")
+            )
         }
+    }
+
+    @Test
+    fun `an unlock survives turning the phone, and never survives the process`() {
+        // A lock that asks again on every rotation is a lock people switch
+        // off. A lock that an app restores from saved state is not a lock.
+        // A view model is exactly the lifetime in between.
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        assertTrue("held by the view model", vm.contains("val unlocked = MutableStateFlow(false)"))
+        val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        assertTrue(app.contains("val unlocked by vm.unlocked.collectAsStateWithLifecycle()"))
+        assertFalse(
+            "never from saved instance state: that would come back unlocked",
+            app.contains("rememberSaveable") && app.contains("unlocked")
+        )
     }
 
     @Test

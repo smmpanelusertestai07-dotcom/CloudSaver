@@ -1,10 +1,10 @@
 package app.cloudsaver.ui
 
 import app.cloudsaver.core.logic.ReclaimRules
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * No confirmation dialog is ever handed the whole selection.

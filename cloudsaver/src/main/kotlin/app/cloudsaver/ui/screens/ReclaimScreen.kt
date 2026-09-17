@@ -36,6 +36,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -60,35 +61,33 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
-import app.cloudsaver.ui.Routes
-import app.cloudsaver.ui.components.ListTags
-import app.cloudsaver.ui.components.SecureScreen
-import app.cloudsaver.ui.components.StackedTextScale
-import app.cloudsaver.ui.components.typeFilter
-import app.cloudsaver.ui.components.sizeFilter
-import app.cloudsaver.ui.components.albumFilter
-import app.cloudsaver.ui.components.ListSearchField
-import app.cloudsaver.ui.components.ListOption
-import app.cloudsaver.ui.components.ListFilterRow
-import app.cloudsaver.ui.components.ListFilter
-import app.cloudsaver.ui.components.RemovalWarningCard
-import app.cloudsaver.ui.components.WarningNote
-import androidx.compose.material3.Switch
+import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ListFilters
-import app.cloudsaver.data.CloudApps
+import app.cloudsaver.core.logic.ProofLine
 import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Suggestions
+import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.prefs.OptionsRepo
-import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.ReclaimViewModel
+import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.KeyValueRow
+import app.cloudsaver.ui.components.ListFilter
+import app.cloudsaver.ui.components.ListFilterRow
+import app.cloudsaver.ui.components.ListOption
+import app.cloudsaver.ui.components.ListSearchField
+import app.cloudsaver.ui.components.ListTags
+import app.cloudsaver.ui.components.RemovalWarningCard
+import app.cloudsaver.ui.components.StackedTextScale
+import app.cloudsaver.ui.components.WarningNote
+import app.cloudsaver.ui.components.albumFilter
+import app.cloudsaver.ui.components.sizeFilter
+import app.cloudsaver.ui.components.typeFilter
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
-import app.cloudsaver.core.logic.Evidence
-import app.cloudsaver.core.logic.ProofLine
 
 /**
  * Reclaim space - the only place in CloudSaver that can remove a user's photo.
@@ -113,11 +112,6 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     val suggestion by rvm.suggestion.collectAsStateWithLifecycle()
     val sort by rvm.sort.collectAsStateWithLifecycle()
     val grouping by rvm.grouping.collectAsStateWithLifecycle()
-
-    // The only screen that lists someone's photographs by name next to a
-    // button that removes them. It stays out of the recents thumbnail and out
-    // of screenshots, for the same reason the lock screen does.
-    SecureScreen()
 
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }

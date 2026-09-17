@@ -7,7 +7,6 @@ import app.cloudsaver.data.db.MediaProfileRow
 import app.cloudsaver.data.db.RatioSample
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.media.MediaScanner
-import app.cloudsaver.util.AppLog
 
 /**
  * Recomputes what this phone's media actually looks like.
@@ -91,11 +90,6 @@ class ProfileBuilder(private val context: Context) {
             updatedAt = now
         )
         db.profile().put(row)
-        AppLog.log(
-            context, "profile",
-            "rebuilt for ${options.preset.name}/${options.codec.name} " +
-                "(photos measured=$photoMeasured, videos measured=$videoMeasured)"
-        )
         return row
     }
 

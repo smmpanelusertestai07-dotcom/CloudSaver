@@ -9,14 +9,13 @@ import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import app.cloudsaver.R
 import app.cloudsaver.core.logic.DuplicateRules
 import app.cloudsaver.core.logic.Evidence
-import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.ListFilters
 import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.core.logic.ReclaimRules
-import app.cloudsaver.util.TamperCheck
-import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.core.logic.Suggestions
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
@@ -24,10 +23,13 @@ import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.ReclaimBatchRow
 import app.cloudsaver.data.db.ReclaimItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.CloudWatchdog
 import app.cloudsaver.engine.DuplicateScanner
+import app.cloudsaver.engine.ReclaimEligibility
 import app.cloudsaver.engine.ReclaimEngine
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.TamperCheck
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,8 +37,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import app.cloudsaver.R
-import app.cloudsaver.engine.ActivityLog
 
 /**
  * The one screen in the app that can destroy a user's photo.

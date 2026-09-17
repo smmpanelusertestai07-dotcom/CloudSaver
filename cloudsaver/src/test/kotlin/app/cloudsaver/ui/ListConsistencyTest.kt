@@ -1,8 +1,8 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * Keeps the five list screens behaving the same way.

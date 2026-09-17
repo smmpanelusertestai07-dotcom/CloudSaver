@@ -1,8 +1,8 @@
 package app.cloudsaver
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The workflows must keep running on GitHub's runners without anyone

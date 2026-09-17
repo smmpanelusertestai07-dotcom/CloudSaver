@@ -294,6 +294,20 @@ final class Texts {
                      + "ask it to. An app that claimed to update your Linux overnight would be "
                      + "describing something that cannot happen."},
             {"Updates",
+             "Where does a new PocketIDE come from?",
+             "From the Releases page of the repository this app is built in, "
+                     + "github.com/smmpanelusertestai07-dotcom/CloudSaver/releases. Every "
+                     + "published build is there as PocketIDE-v<version>-release.apk, under a "
+                     + "tag that starts with pocketide-v — that prefix is what tells this "
+                     + "app's releases apart from the other app published from the same "
+                     + "repository.\n\nThat is the same list this app reads once a day, and "
+                     + "the same page to open by hand on a phone whose update check is turned "
+                     + "off, or to install this app on a second phone. Every release is signed "
+                     + "with the same key, so a newer one installs straight over the copy "
+                     + "already on the phone and nothing in Linux is touched. Installing is "
+                     + "always your tap: Android does not let an app replace itself without "
+                     + "one."},
+            {"Updates",
              "How long will Ubuntu 24.04 keep getting updates?",
              "Until May 2029 for the standard security updates, which is Canonical\u2019s own "
                      + "published date for this release. Ubuntu Pro extends the same release to "
@@ -787,4 +801,152 @@ final class Texts {
                     + "PocketIDE's position: it makes the second one — IDE integration, ranked "
                     + "second overall for features and control — run on the phone itself, with "
                     + "no connected computer anywhere. That is the whole point of the app.";
+
+    // ------------------------------------------------------------------ open-source notices
+
+    static final String NOTICES_TITLE = "Open-source notices";
+
+    static final String NOTICES_SUMMARY =
+            "This app carries software written by other people, under their licences. "
+                    + "PocketIDE's own code is Apache-2.0.";
+
+    /**
+     * The licences of everything this app carries, downloads or runs -- the notice itself, not
+     * a pointer to one.
+     *
+     * The GPL-2.0 notice for the bundled PRoot, and every other licence named here, has to reach
+     * whoever receives the program, and the APK is the only thing anyone receives. A file in the
+     * repository reaches nobody who installs this app, so the text lives in the app's own source,
+     * ships inside the APK as code, and Help -> "Read the notices" shows it.
+     *
+     * Every attribution, licence name, version and URL here is legally load-bearing. Nothing may
+     * be shortened, reworded or dropped when a component changes -- only corrected to match what
+     * is actually shipped. tests/ubuntu_pin.py holds the Ubuntu point release named below to the
+     * one Workspace.java actually downloads.
+     */
+    static final String NOTICES =
+            "Open-source notices \u2014 PocketIDE\n\n"
+                    + "PocketIDE's own code is licensed under the Apache License, Version 2.0.\n\n"
+                    + "This app carries, downloads and runs software written by other people. Each "
+                    + "keeps its own licence, and those licences are reproduced or pointed to below. "
+                    + "Where a licence requires that its notice reach whoever receives the program, "
+                    + "that notice ships inside the APK \u2014 the APK being the only thing anyone "
+                    + "receives.\n\n"
+                    + "Application mark\n\n"
+                    + "app/res/mipmap-*/ic_launcher*.png, app/res/drawable-*/ic_stat_pocketide.png "
+                    + "and app/res/drawable-*/ic_splash.png are PocketIDE's own mark, drawn by "
+                    + "branding/make_icon.py in this folder, under the Apache License 2.0 with the "
+                    + "rest of this app's code.\n\n"
+                    + "Chromium, and Playwright\n\n"
+                    + "Neither ships in the APK. Both are downloaded into the workspace only if the "
+                    + "owner asks for them in Settings, and each keeps its own licence.\n\n"
+                    + "Chromium is BSD-3-Clause with a large set of third-party components under "
+                    + "their own terms; its source and the full notice are at "
+                    + "https://chromium.googlesource.com/chromium/src. The build installed here is "
+                    + "the chromium package from the ppa:xtradeb/apps archive, which is the aarch64 "
+                    + "Ubuntu Noble build. Ubuntu's own Chromium is published only as a snap, and a "
+                    + "snap cannot run inside this kind of container at all, which is why a "
+                    + "third-party archive is used and why the app says so on the screen that "
+                    + "installs it.\n\n"
+                    + "Playwright is Apache-2.0, from https://github.com/microsoft/playwright, and "
+                    + "brings its own arm64 browser build and its own ffmpeg (LGPL-2.1-or-later, "
+                    + "https://ffmpeg.org) for recording.\n\n"
+                    + "PRoot\n\n"
+                    + "app/lib/arm64-v8a/libproot.so, libproot-loader.so, libandroid-shmem.so and "
+                    + "libtallocxx.so are builds of PRoot and its supporting libraries, licensed "
+                    + "under the GNU General Public License, version 2. PRoot's source is at "
+                    + "https://github.com/proot-me/proot and the Termux packaging used for these "
+                    + "ARM64 builds is at https://github.com/termux/proot. A copy of the GPL-2.0 "
+                    + "text accompanies that source.\n\n"
+                    + "PRoot is what lets a complete Ubuntu system run on the phone's own kernel "
+                    + "without root and without a virtual machine.\n\n"
+                    + "adb, and the libraries it loads\n\n"
+                    + "app/assets/adb-root.zip, assembled by build.sh and shipped inside the APK, is "
+                    + "Ubuntu 24.04's own arm64 build of the Android Debug Bridge client with the "
+                    + "shared libraries it links against, taken unmodified from the packages below "
+                    + "(Ubuntu's release pocket, each pinned by SHA-256 in build.sh; the source of "
+                    + "every one is at https://launchpad.net/ubuntu/+source/<source>). The app "
+                    + "unpacks them into its private storage and runs adb there under PRoot; nothing "
+                    + "is linked into the app itself, and each library remains the separate file it "
+                    + "was in the package, replaceable by anyone with the APK. Ubuntu's "
+                    + "/usr/share/doc/<package>/copyright text for each is the full notice.\n\n"
+                    + "Package \u00b7 Version \u00b7 Licence \u00b7 Source\n"
+                    + "\u2022 adb, android-libbase, android-libcutils, android-liblog, "
+                    + "android-libziparchive \u00b7 34.0.4-1build3 \u00b7 Apache-2.0 (\u00a9 The Android Open "
+                    + "Source Project) \u00b7 android-platform-tools\n"
+                    + "\u2022 android-libboringssl \u00b7 14.0.0+r11-4build1 \u00b7 ISC / OpenSSL / BSD (Google, "
+                    + "OpenSSL Project) \u00b7 android-platform-external-boringssl\n"
+                    + "\u2022 libprotobuf32t64 \u00b7 3.21.12-8.2build1 \u00b7 BSD-3-Clause (\u00a9 Google) \u00b7 protobuf\n"
+                    + "\u2022 libbrotli1 \u00b7 1.1.0-2build2 \u00b7 MIT (\u00a9 Google) \u00b7 brotli\n"
+                    + "\u2022 liblz4-1 \u00b7 1.9.4-1build1 \u00b7 BSD-2-Clause \u00b7 lz4\n"
+                    + "\u2022 libzstd1 \u00b7 1.5.5+dfsg2-2build1 \u00b7 BSD-3-Clause (\u00a9 Meta Platforms) \u00b7 libzstd\n"
+                    + "\u2022 zlib1g \u00b7 1:1.3.dfsg-3.1ubuntu2 \u00b7 Zlib \u00b7 zlib\n"
+                    + "\u2022 libusb-1.0-0 \u00b7 2:1.0.27-1 \u00b7 LGPL-2.1-or-later \u00b7 libusb-1.0\n"
+                    + "\u2022 libudev1 \u00b7 255.4-1ubuntu8 \u00b7 LGPL-2.1-or-later \u00b7 systemd\n"
+                    + "\u2022 libcap2 \u00b7 1:2.66-5ubuntu2 \u00b7 BSD-3-Clause or GPL-2.0 \u00b7 libcap2\n"
+                    + "\u2022 libbsd0 \u00b7 0.12.1-1build1 \u00b7 BSD-3-Clause and others \u00b7 libbsd\n"
+                    + "\u2022 libmd0 \u00b7 1.1.0-2build1 \u00b7 BSD-3-Clause and others \u00b7 libmd\n"
+                    + "\u2022 libc6 \u00b7 2.39-0ubuntu8 \u00b7 LGPL-2.1-or-later (\u00a9 Free Software Foundation) \u00b7 "
+                    + "glibc\n"
+                    + "\u2022 libgcc-s1, libstdc++6 \u00b7 14-20240412-0ubuntu1 \u00b7 GPL-3.0-or-later with the "
+                    + "GCC Runtime Library Exception \u00b7 gcc-14\n\n"
+                    + "The LGPL libraries are used only as separate shared objects loaded at run "
+                    + "time, which is the use the LGPL permits without further obligation beyond "
+                    + "this notice and the source above.\n\n"
+                    + "Ubuntu\n\n"
+                    + "Set-up downloads ubuntu-base-24.04.5-base-arm64.tar.gz from Canonical's own "
+                    + "mirror at https://cdimage.ubuntu.com and verifies it against the SHA-256 "
+                    + "published with it. Ubuntu is a registered trademark of Canonical Ltd. This "
+                    + "app is not produced by, endorsed by or affiliated with Canonical. Every "
+                    + "package inside that image carries its own licence, readable inside the "
+                    + "workspace at /usr/share/doc/<package>/copyright.\n\n"
+                    + "code-server\n\n"
+                    + "Set-up downloads code-server-4.137.0-linux-arm64.tar.gz from Coder's own "
+                    + "releases at https://github.com/coder/code-server and verifies it against a "
+                    + "SHA-256 pinned in app/assets/pocketide-editor.sh. code-server is MIT "
+                    + "licensed, \u00a9 2019 Coder Technologies Inc. Its LICENSE and "
+                    + "ThirdPartyNotices.txt are included in that archive and are on the phone at "
+                    + "/opt/code-server/ after installation.\n\n"
+                    + "Code - OSS (Visual Studio Code)\n\n"
+                    + "code-server packages Code - OSS, the open-source source of Visual Studio "
+                    + "Code, MIT licensed, \u00a9 2015 \u2013 present Microsoft Corporation. Its source is at "
+                    + "https://github.com/microsoft/vscode.\n\n"
+                    + "This is not Microsoft's branded Visual Studio Code build, and no Microsoft "
+                    + "licence, account or activation is used or required. Microsoft's own "
+                    + "proprietary components \u2014 their marketplace, the C# and Windows C++ debuggers, "
+                    + "Remote Development and Live Share \u2014 are not included and do not work in a "
+                    + "non-Microsoft build.\n\n"
+                    + "Open VSX Registry\n\n"
+                    + "Extensions are installed from https://open-vsx.org, the extension registry "
+                    + "operated by the Eclipse Foundation. The registry software is open source at "
+                    + "https://github.com/eclipse/openvsx. Each extension carries its own licence, "
+                    + "shown on its registry page; the three recommended agent extensions are "
+                    + "proprietary software published by Google, Anthropic and OpenAI respectively.\n\n"
+                    + "Tux, the Linux mascot\n\n"
+                    + "app/res/drawable-nodpi/tux.png is Tux, created by Larry Ewing with The GIMP, "
+                    + "in the vector rendering by Larry Ewing, Simon Budig and Garrett LeSage "
+                    + "published on Wikimedia Commons (Tux.svg). Permission to use and/or modify the "
+                    + "image is granted provided Larry Ewing (lewing@isc.tamu.edu) and The GIMP are "
+                    + "acknowledged in the document or on the web page; this notice is that "
+                    + "acknowledgement.\n\n"
+                    + "Marks this app does and does not show\n\n"
+                    + "The app shows no company's product mark: not Microsoft's Visual Studio Code "
+                    + "icon, which belongs to a build this is not, and not a publisher's, which the "
+                    + "app has no need to draw when the editor's own Extensions view and each "
+                    + "extension's own panel already carry it. Names \u2014 Visual Studio Code, Code - "
+                    + "OSS, code-server, Ubuntu, Claude Code, Codex, Antigravity \u2014 are used only to "
+                    + "identify whose software is being installed or run, which is nominative use. "
+                    + "No endorsement, sponsorship or affiliation is claimed or implied, and this "
+                    + "app is not produced by any of them. The app puts no company's mark on its own "
+                    + "icon, its own splash screen or its own name either, because those would "
+                    + "suggest an association that does not exist.\n\n"
+                    + "What set-up installs inside the workspace\n\n"
+                    + "The bootstrap installs, from Ubuntu's own repositories: ca-certificates, "
+                    + "curl, wget, gnupg, git, openssh-client, xz-utils, unzip, tar, less, ripgrep, "
+                    + "jq, procps, python3, python3-pip, python3-venv, build-essential and "
+                    + "pkg-config. Each carries its own licence, readable on the phone under "
+                    + "/usr/share/doc.\n\n"
+                    + "Icons\n\n"
+                    + "The interface icons under app/res/drawable/ic_*.xml are redrawn from Google's "
+                    + "Material Symbols set, licensed under the Apache License 2.0.";
 }

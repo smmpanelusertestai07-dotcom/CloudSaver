@@ -2,6 +2,8 @@ package app.cloudsaver
 
 import android.Manifest
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
@@ -24,8 +26,6 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -42,10 +42,11 @@ import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.ListTags
-import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.Volumes
+import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -57,8 +58,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import java.util.Locale
 
 /** How long any one piece of UI is given to appear before the test fails. */
 private const val UI_TIMEOUT = 20_000L
@@ -147,7 +146,6 @@ class HomeFilesE2eTest {
         TestPipeline.stopAndWait(context)
         MediaFixtures.cleanUp(context)
         clearOutputFolder()
-        CrashLog.clearPending(context)
         runBlocking {
             db.clearAllTables()
             resetOptions()

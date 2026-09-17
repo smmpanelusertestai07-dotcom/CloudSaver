@@ -1,11 +1,10 @@
 package app.cloudsaver
 
-import app.cloudsaver.util.CrashLog
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The app has to keep working for years with nobody maintaining it.
@@ -92,7 +91,11 @@ class PermanenceTest {
             build.contains("it.outputSha256 != null || Evidence.parse(it.evidence) != Evidence.NONE")
         )
         assertTrue("evidenced rows are always written", build.contains("critical + rebuildable"))
-        assertTrue("and the trim is recorded", build.contains("trimmed"))
+        assertTrue(
+            "and what is trimmed is the newest-first tail of the replaceable rows",
+            build.contains("sortedByDescending { it.updatedAt }") &&
+                build.contains(".take(MAX_REBUILDABLE_ITEMS)")
+        )
         // The ledger itself is never capped: it is what stops a second upload.
         val ledger = store.substringAfter("val ledger = db.ledger().all()")
             .substringBefore("val access")
@@ -220,10 +223,10 @@ class PermanenceTest {
         // alphabetical and say nothing about what runs first.
         val app = File(main, "CloudSaverApp.kt").readText()
             .substringAfter("override fun onCreate()")
-        val crash = app.indexOf("CrashLog.install")
+        val theme = app.indexOf("FirstFrame.apply")
         val recovery = app.indexOf("StartupRecovery")
         val schedule = app.indexOf("Scheduler.ensure")
-        assertTrue("the crash handler must be installed first", crash in 1 until recovery)
+        assertTrue("the theme is settled before any window exists", theme in 1 until recovery)
         assertTrue(
             "state must be restored before work is scheduled against it",
             recovery in 1 until schedule
@@ -231,52 +234,52 @@ class PermanenceTest {
     }
 
     /**
-     * A launch that dies twice in a row must not be tried a third time.
+     * Nothing in this app ever shows a person a log or a stack trace.
      *
-     * With no crash reporter, an app that crashes as it opens is a dead
-     * icon whose own log nobody can reach. The launcher notes when it
-     * started before it composes anything, and two deaths inside the
-     * window put a plain recovery page in front of the app: try again,
-     * share the log, open app info. The page uses no stored theme and no
-     * dynamic colour, because reading either may be the thing that dies.
+     * An app with no internet permission has no crash reporter, and for a
+     * while that was answered the other way round: a log file on the phone,
+     * a page that printed it, a card that offered to share it, and a
+     * recovery screen after two bad launches. None of it was ever read by
+     * the person it was built for - it was a developer's console shipped to
+     * someone who wanted their photos backed up, and it cost a file append,
+     * under a global lock, on every scanned item.
+     *
+     * So the app keeps no log of its own. What the app DID is in Activity,
+     * in sentences; what the app CANNOT do right now is a chip on Home and a
+     * row in Permissions, each with the page that fixes it. A crash is a
+     * crash: Android shows its own dialog and keeps its own record, which is
+     * the one channel that survives the app being unable to start at all.
      */
     @Test
-    fun `two young crashes in a row open the recovery page instead of the app`() {
-        val activity = File(main, "MainActivity.kt").readText()
-            .substringAfter("override fun onCreate(")
-        val noted = activity.indexOf("CrashLog.noteLaunchStarted(this)")
-        val checked = activity.indexOf("CrashLog.startupCrashStreak(this) >= CrashLog.RECOVERY_AFTER")
-        val recovery = activity.indexOf("RecoveryScreen(")
-        val appIndex = activity.indexOf("App(vm)")
-        assertTrue("the launch must be noted before anything is composed", noted in 0 until checked)
-        assertTrue("the streak is checked before the app is composed", checked in 0 until recovery)
-        assertTrue("the recovery page comes before the app", recovery < appIndex)
-        assertTrue(
-            "trying again must clear the streak, or the page is a trap",
-            activity.substringAfter("RecoveryScreen(").substringBefore("return")
-                .contains("CrashLog.clearStartupStreak(this)")
+    fun `no log, no stack trace and no diagnostic page ships in this app`() {
+        val banned = listOf(
+            "AppLog", "CrashLog", "FrameworkRace", "RecoveryScreen",
+            "setDefaultUncaughtExceptionHandler", "stackTraceToString",
+            "getHistoricalProcessExitReasons", "FileProvider"
         )
-        assertTrue(
-            "a launch that lives past the window ends the streak",
-            activity.contains("CrashLog.STARTUP_WINDOW_MS") &&
-                activity.substringAfter("postDelayed").contains("clearStartupStreak")
-        )
+        val offenders = main.walkTopDown().filter { it.extension == "kt" }
+            .flatMap { file ->
+                val text = file.readText()
+                banned.filter { text.contains(it) }.map { "${file.name}: $it" }
+            }.toList()
+        assertTrue("nothing may write, read or show a log: $offenders", offenders.isEmpty())
 
-        val page = File(main, "ui/screens/RecoveryScreen.kt").readText()
-        assertTrue("try again", page.contains("R.string.recovery_try"))
-        assertTrue("share the log", page.contains("R.string.recovery_share"))
-        assertTrue("app info", page.contains("R.string.recovery_app_info"))
-        assertTrue(
-            "the page must not depend on the stored theme or dynamic colour",
-            page.contains("CloudSaverTheme(mode = ThemeMode.SYSTEM, dynamicColor = false)")
-        )
+        // The strings went with the screens. A string nothing draws is a
+        // promise the app no longer keeps, and this one promised a log page.
+        val strings = File("src/main/res/values/strings.xml").readText()
+        for (name in listOf(
+            "crash_title", "crash_body", "crash_share", "help_logs", "logs_share",
+            "logs_clear", "logs_empty", "recovery_title", "recovery_body",
+            "recovery_try", "recovery_share", "recovery_app_info",
+            "perm_last_exit", "exit_crash", "exit_anr"
+        )) {
+            assertFalse("$name belongs to a screen that is gone", strings.contains(">$name<") ||
+                strings.contains("name=\"$name\""))
+        }
 
-        // One crash is an accident; two is a pattern. A single crash must
-        // never lock someone out of the app they were using.
-        assertEquals(2, CrashLog.RECOVERY_AFTER)
-        assertTrue(
-            "the window is seconds, not minutes: a crash while working is not a failed launch",
-            CrashLog.STARTUP_WINDOW_MS in 5_000L..30_000L
-        )
+        // And nothing may hand a file of the app's own out to another app:
+        // the share sheet existed only to post that log somewhere.
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertFalse("no file of this app's is shared anywhere", manifest.contains("FileProvider"))
     }
 }

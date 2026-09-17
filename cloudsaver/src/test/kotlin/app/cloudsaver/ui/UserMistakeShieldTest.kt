@@ -1,9 +1,9 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The user-mistake shield: every warning that protects someone from their own

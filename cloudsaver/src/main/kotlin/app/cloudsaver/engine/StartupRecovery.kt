@@ -9,7 +9,6 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Permissions
 import java.io.File
 
@@ -79,10 +78,6 @@ class StartupRecovery(private val context: Context) {
             val repo = OptionsRepo.get(context)
             val current = repo.current().excludedBuckets
             repo.setStringSet(OptionsRepo.K.EXCLUDED_BUCKETS, current + excluded.keys)
-            AppLog.log(
-                context, "recovery",
-                "purged $purged queued items from ${excluded.keys.joinToString()}"
-            )
         }
         return purged
     }
@@ -118,7 +113,6 @@ class StartupRecovery(private val context: Context) {
         val imported = try {
             store.merge(snapshot, importOptions = untouched)
         } catch (e: Exception) {
-            AppLog.log(context, "recovery", "restore failed: ${e.message}")
             return 0
         }
         repo.setBool(OptionsRepo.K.RESTORE_DONE, true)
@@ -132,7 +126,6 @@ class StartupRecovery(private val context: Context) {
             ) {
                 repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
             }
-            AppLog.log(context, "recovery", "restored $imported items from a snapshot")
         }
         return imported
     }
@@ -167,9 +160,6 @@ class StartupRecovery(private val context: Context) {
                 if (runCatching { resolver.delete(uri, null, null) }.getOrDefault(0) > 0) {
                     removed++
                 }
-            }
-            if (removed > 0) {
-                AppLog.log(context, "recovery", "removed the old visible snapshot")
             }
             removed
         } catch (e: Exception) {
@@ -216,9 +206,6 @@ class StartupRecovery(private val context: Context) {
             } catch (e: Exception) {
                 // Cleanup is best effort; the next launch tries again.
             }
-        }
-        if (removed > 0) {
-            AppLog.log(context, "recovery", "removed $removed legacy placeholder(s)")
         }
         return removed
     }

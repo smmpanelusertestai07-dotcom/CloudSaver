@@ -13,8 +13,6 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.GoneReason
-import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.core.logic.ActivityWording
 import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.CapacityMath
@@ -23,17 +21,20 @@ import app.cloudsaver.core.logic.DeviceDefaults
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.EvidenceRules
 import app.cloudsaver.core.logic.Fingerprint
-import app.cloudsaver.core.logic.KeptCopies
+import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.KeptCopies
+import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
-import app.cloudsaver.core.logic.StallAlert
-import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.Preset
-import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.Projection
+import app.cloudsaver.core.logic.QualityKept
+import app.cloudsaver.core.logic.ReclaimRules
 import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
+import app.cloudsaver.core.logic.StallAlert
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
 import app.cloudsaver.data.CloudApp
@@ -46,22 +47,20 @@ import app.cloudsaver.data.db.Search
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
-import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.engine.CloudWatchdog
 import app.cloudsaver.engine.DuplicateScanner
+import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReclaimEligibility
-import app.cloudsaver.engine.MaintainEngine
 import app.cloudsaver.engine.SnapshotStore
 import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
-import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Errand
-import app.cloudsaver.util.Formats
 import app.cloudsaver.util.FirstFrame
+import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.PowerPages
 import app.cloudsaver.util.Storage
@@ -77,13 +76,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -601,10 +600,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val mediaAccess = MutableStateFlow(Permissions.MediaAccess.FULL)
 
     /**
-     * The app died last time (BB3). One card, once; dismissing clears the
-     * flag, and the trace is already in the log for the Share button.
+     * Unlocked, for this run of the app.
+     *
+     * It lives here rather than in the composition because turning the phone
+     * recreates the activity: composition state asked for a fingerprint on
+     * every rotation, which is how people turn an app lock off. A view model
+     * dies with the process, so an app the phone killed in the background is
+     * locked again when it returns - the half that saved instance state,
+     * the other obvious home for this, would have got wrong.
      */
-    val crashPending = MutableStateFlow(false)
+    val unlocked = MutableStateFlow(false)
 
     /**
      * Which cloud app holds this item's copy (Z10.1): the app recorded on the
@@ -644,11 +649,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun dismissCrashNotice() {
-        CrashLog.clearPending(ctx)
-        crashPending.value = false
-    }
-
     fun refreshHealth() {
         viewModelScope.launch(Dispatchers.Default) {
             val o = repo.current()
@@ -661,7 +661,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
             val free = Storage.freeBytes(ctx)
             val access = Permissions.mediaAccess(ctx)
-            crashPending.value = CrashLog.crashPending(ctx)
             // Anything short of full access is what the screens are waiting
             // on - a handful of picked photos and no access at all alike. The
             // old test asked only about the handful, so someone who switched
@@ -953,7 +952,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
     }
-
 
     val reclaimHistoryCount: StateFlow<Int> = db.reclaim().recentBatchesFlow(50)
         .map { it.size }

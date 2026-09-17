@@ -6,8 +6,6 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
-import app.cloudsaver.util.Locks
-import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
@@ -24,11 +22,12 @@ import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.PhotoCompressor
 import app.cloudsaver.media.VideoCompressor
-import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Locks
 import app.cloudsaver.util.Storage
 import java.io.File
 import java.io.FileInputStream
 import java.io.InputStream
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Carries out a reclaim batch.
@@ -83,7 +82,6 @@ class ReclaimEngine(private val context: Context) {
             val actual = FileInputStream(local).use { Fingerprint.sha256(it) }
             actual == recorded && local.length() > 0
         } catch (e: Exception) {
-            AppLog.log(context, "reclaim", "integrity read failed for ${row.displayName}")
             false
         }
     }
@@ -121,7 +119,6 @@ class ReclaimEngine(private val context: Context) {
 
     suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Pinned? {
         val src = pinSource(row, options) ?: run {
-            AppLog.log(context, "reclaim", "no provable light-copy source for ${row.displayName}")
             return null
         }
         return try {
@@ -185,7 +182,6 @@ class ReclaimEngine(private val context: Context) {
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             throw ce
         } catch (e: Throwable) {
-            AppLog.log(context, "reclaim", "remake failed for ${row.displayName}: ${e.message}")
             return null
         }
         if (result.file.length() <= 0) {
@@ -232,7 +228,6 @@ class ReclaimEngine(private val context: Context) {
         val target = try {
             resolver.insert(collection, values) ?: return null
         } catch (e: Exception) {
-            AppLog.log(context, "reclaim", "could not create light copy: ${e.message}")
             return null
         }
         return try {
@@ -298,7 +293,6 @@ class ReclaimEngine(private val context: Context) {
             Pinned(target, inPlace = folder != null)
         } catch (e: Exception) {
             runCatching { resolver.delete(target, null, null) }
-            AppLog.log(context, "reclaim", "light copy failed for ${row.displayName}: ${e.message}")
             null
         }
     }
@@ -673,7 +667,6 @@ class ReclaimEngine(private val context: Context) {
                 )
             )
         }
-        AppLog.log(context, "reclaim", "freed ${freed} bytes over ${done.size} items ($mode)")
         return Result(freed, done, skipped, trashed, batchId)
     }
 

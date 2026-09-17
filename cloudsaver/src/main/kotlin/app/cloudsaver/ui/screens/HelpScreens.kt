@@ -8,22 +8,37 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BatterySaver
+import androidx.compose.material.icons.outlined.Compress
+import androidx.compose.material.icons.outlined.Gavel
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Straighten
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,7 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -52,42 +66,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.BuildConfig
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Platform
-import app.cloudsaver.ui.goTo
+import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
-import app.cloudsaver.util.AppLog
+import app.cloudsaver.ui.components.SegmentedChoice
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.outlined.BatterySaver
-import androidx.compose.material.icons.outlined.Gavel
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Visibility
-import androidx.compose.material.icons.outlined.WifiOff
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Compress
-import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Movie
-import app.cloudsaver.core.logic.Preset
-import app.cloudsaver.core.logic.QualityKept
-import androidx.compose.material.icons.outlined.Straighten
-import androidx.compose.material.icons.outlined.Tune
-import app.cloudsaver.ui.components.SegmentedChoice
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 @Composable
 private fun HelpPage(
@@ -138,7 +136,6 @@ fun HelpScreen(vm: AppViewModel, nav: NavHostController) {
         HelpLink(stringResource(R.string.quality_explained_title)) {
             nav.goTo(Routes.HELP_QUALITY)
         }
-        HelpLink(stringResource(R.string.help_logs)) { nav.goTo(Routes.HELP_LOGS) }
         HelpLink(stringResource(R.string.help_cloud)) { nav.goTo(Routes.HELP_CLOUD) }
         HelpLink(stringResource(R.string.help_privacy)) { nav.goTo(Routes.HELP_PRIVACY) }
         HelpLink(stringResource(R.string.help_licenses)) { nav.goTo(Routes.HELP_LICENSES) }
@@ -200,7 +197,8 @@ private val FAQ = listOf(
     R.string.faq_q15 to R.string.faq_a15,
     R.string.faq_q16 to R.string.faq_a16,
     R.string.faq_q17 to R.string.faq_a17,
-    R.string.faq_q18 to R.string.faq_a18
+    R.string.faq_q18 to R.string.faq_a18,
+    R.string.faq_q19 to R.string.faq_a19
 )
 
 /**
@@ -625,106 +623,6 @@ private fun QualityBlock(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 6.dp)
         )
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun HelpLogsScreen(nav: NavHostController) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    // The tail of the log, already cut into blocks of lines.
-    //
-    // It used to be one string of up to forty thousand characters handed to a
-    // single Text, and one Text is one paragraph layout over the whole forty
-    // kilobytes - measured again every time the screen is measured, which is
-    // opening the page, turning the phone and every change of font size. On
-    // the old phones this app is written for that is a visible stall with
-    // nothing on screen yet. A log is lines, so it is split into blocks of a
-    // hundred lines and each block is laid out on its own. Nothing is left
-    // out and nothing is shortened: the blocks are the same characters in the
-    // same order, drawn one under the other, so the page reads exactly as it
-    // did before.
-    var blocks by remember { mutableStateOf(emptyList<String>()) }
-    val shareTitle = stringResource(R.string.logs_share)
-    // Reading the file and splitting it are both work, and LaunchedEffect runs
-    // on the main thread, so both happen on the IO dispatcher: on a slow phone
-    // this was blocking the frame that was meant to draw the screen.
-    LaunchedEffect(Unit) {
-        blocks = withContext(Dispatchers.IO) {
-            val tail = AppLog.readTail(context)
-            if (tail.isEmpty()) {
-                emptyList<String>()
-            } else {
-                tail.lineSequence().chunked(100).map { it.joinToString("\n") }.toList()
-            }
-        }
-    }
-    HelpPage(nav, stringResource(R.string.help_logs)) {
-        // Two buttons side by side is two buttons wide, and at the largest
-        // accessibility font on a 320 dp phone the second one left the screen.
-        // Wrapping puts it on the next line instead, at every width and font
-        // size, and keeps the order.
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedButton(onClick = {
-                try {
-                    val file = AppLog.file(context)
-                    if (file.exists()) {
-                        val uri = FileProvider.getUriForFile(
-                            context, "app.cloudsaver.fileprovider", file
-                        )
-                        val share = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        Errand.begin()
-                        context.startActivity(Intent.createChooser(share, shareTitle))
-                    }
-                } catch (e: Exception) {
-                    // sharing is optional
-                }
-            }) {
-                Text(shareTitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            OutlinedButton(onClick = {
-                // Deleting the two log files is disk work, and it was being
-                // done on the main thread the instant the button was pressed -
-                // a dropped frame at best, and on a phone with a slow or busy
-                // filesystem a button that visibly sticks under the finger.
-                // What is on screen clears straight away; the files go on the
-                // IO dispatcher.
-                blocks = emptyList<String>()
-                scope.launch { withContext(Dispatchers.IO) { AppLog.clear(context) } }
-            }) {
-                Text(
-                    stringResource(R.string.logs_clear),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-        AppCard(modifier = Modifier.padding(vertical = 8.dp)) {
-            if (blocks.isEmpty()) {
-                Text(
-                    stringResource(R.string.logs_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                for (block in blocks) {
-                    Text(
-                        block,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
     }
 }
 

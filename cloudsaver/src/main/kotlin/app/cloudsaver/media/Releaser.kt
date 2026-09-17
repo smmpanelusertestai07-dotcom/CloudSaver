@@ -5,29 +5,28 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import app.cloudsaver.R
-import app.cloudsaver.data.prefs.OptionsRepo
-import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.core.logic.ReleasePlanner
+import app.cloudsaver.core.logic.ReleaseVerdict
+import app.cloudsaver.core.logic.VolumeRules
 import app.cloudsaver.data.CloudApps
-import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.data.prefs.OptionsRepo
+import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.util.Formats
-import app.cloudsaver.core.logic.ReleaseVerdict
-import app.cloudsaver.core.logic.VolumeRules
-import app.cloudsaver.util.AppLog
-import app.cloudsaver.util.Volumes
-import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.util.Locks
+import app.cloudsaver.util.Volumes
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Moves staged copies into the public output folder(s) Pictures/CloudSaver via
@@ -86,12 +85,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
             selectedWritable = Volumes.probeWritable(context, chosen)
         )
         val volumeName = decision.volumeName
-        if (decision.fellBack) {
-            AppLog.log(
-                context, "release",
-                "volume $chosen is not writable; releasing to internal storage instead"
-            )
-        }
         var released = 0
         for (id in plan) {
             val row = rowsById[id] ?: continue
@@ -125,7 +118,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
         // rows are already published; this only shortens the wait.
         if (released > 0) {
             notifyGallery(options)
-            AppLog.log(context, "release", "released $released file(s) this pass")
         }
         // Z10.6: the 48-hour clock on the whole chain starts with the very
         // first copy that enters the upload folder.
@@ -152,7 +144,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 context, paths.toTypedArray(), null, null
             )
         }.onFailure {
-            AppLog.log(context, "release", "media scan request failed: ${it.message}")
         }
     }
 
@@ -168,7 +159,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
     private suspend fun alreadyDelivered(row: ItemRow): Boolean {
         val sha = row.outputSha256 ?: return false
         val seen = db.ledger().bySha(sha) ?: return false
-        AppLog.log(context, "release", "skipping ${row.displayName}: already delivered")
         db.items().update(
             row.copy(
                 state = ItemState.DONE.name,
@@ -224,17 +214,12 @@ class Releaser(private val context: Context, private val db: AppDb) {
         if (!stageFile.exists()) return false
         // Z3.4: FAT32 cards top out just under 4 GB per file. Whether this
         // card is FAT32 cannot be asked, only discovered by failing - so a
-        // file at the limit is routed to internal storage up front, with the
-        // reason in the log, instead of failing the copy halfway through.
+        // file at the limit is routed to internal storage up front instead
+        // of failing the copy halfway through.
         val effectiveVolume = if (
             volumeName != MediaStore.VOLUME_EXTERNAL_PRIMARY &&
             !VolumeRules.fitsOnFat32(stageFile.length())
         ) {
-            AppLog.log(
-                context, "release",
-                "${row.displayName} is ${stageFile.length()} bytes - too large for a " +
-                    "FAT32 card; releasing to internal storage instead"
-            )
             MediaStore.VOLUME_EXTERNAL_PRIMARY
         } else {
             volumeName
@@ -260,7 +245,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
         var itemUri = try {
             resolver.insert(collection, values)
         } catch (e: Exception) {
-            AppLog.log(context, "release", "insert failed ${row.displayName}: ${e.message}")
             null
         }
         // BB2.4: an SD insert that fails - or lands somewhere other than the
@@ -269,18 +253,10 @@ class Releaser(private val context: Context, private val db: AppDb) {
         if (itemUri != null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
             val actual = runCatching { MediaStore.getVolumeName(itemUri) }.getOrNull()
             if (actual != null && !actual.equals(effectiveVolume, ignoreCase = true)) {
-                AppLog.log(
-                    context, "release",
-                    "${row.displayName} landed on $actual, not $effectiveVolume; keeping it there"
-                )
                 landedVolume = actual
             }
         }
         if (itemUri == null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {
-            AppLog.log(
-                context, "release",
-                "${row.displayName}: $effectiveVolume refused the insert; retrying on internal"
-            )
             val primary = if (row.isVideo) {
                 MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
             } else {
@@ -289,7 +265,6 @@ class Releaser(private val context: Context, private val db: AppDb) {
             itemUri = try {
                 resolver.insert(primary, values)
             } catch (e: Exception) {
-                AppLog.log(context, "release", "primary retry failed: ${e.message}")
                 null
             }
             landedVolume = MediaStore.VOLUME_EXTERNAL_PRIMARY
@@ -352,17 +327,12 @@ class Releaser(private val context: Context, private val db: AppDb) {
                     }
                 }
             } catch (e: Exception) {
-                AppLog.log(context, "release", "verify query failed: ${e.message}")
             }
             if (!ReleaseVerdict.isVisible(verdict)) {
                 // Nothing half-done survives: the broken row goes, the item
                 // stays STAGED so the next pass tries again, and the reason
-                // reaches Activity rather than only the log.
+                // reaches Activity, where the person can read it.
                 runCatching { resolver.delete(itemUri, null, null) }
-                AppLog.log(
-                    context, "release",
-                    "${row.displayName} did not become visible ($verdict) - keeping it staged"
-                )
                 ActivityLog(context).record(
                     ActivityLog.Kind.PROBLEM,
                     detail = context.getString(R.string.problem_release_invisible, actualName)
@@ -383,11 +353,9 @@ class Releaser(private val context: Context, private val db: AppDb) {
                 )
             )
             stageFile.delete()
-            AppLog.log(context, "release", "released $actualName -> $relPath on $landedVolume")
             true
         } catch (e: Exception) {
             runCatching { resolver.delete(itemUri, null, null) }
-            AppLog.log(context, "release", "copy failed ${row.displayName}: ${e.message}")
             false
         }
     }

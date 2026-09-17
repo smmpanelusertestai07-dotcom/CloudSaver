@@ -4,7 +4,6 @@ import android.app.Application
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.engine.StartupRecovery
-import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.work.Scheduler
@@ -19,16 +18,9 @@ class CloudSaverApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        // First, before anything that could itself crash: without the
-        // internet permission a crash that writes nothing never happened as
-        // far as anyone can tell (BB3).
-        CrashLog.install(this)
         // Before any window exists: the first frame follows the theme the
         // person chose, not the phone's night setting (FirstFrame).
         FirstFrame.apply(this)
-        // How the process died last time, for the deaths that handler cannot
-        // witness: native, ANR, out-of-memory. Cheap, and off the main path.
-        appScope.launch { CrashLog.recordPreviousExit(this@CloudSaverApp) }
         Notifications.createChannels(this)
         // WorkManager persists across boots; re-enqueue defensively (KEEP/UPDATE).
         appScope.launch {

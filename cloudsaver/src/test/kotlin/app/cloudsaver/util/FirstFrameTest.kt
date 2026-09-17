@@ -2,10 +2,10 @@ package app.cloudsaver.util
 
 import androidx.appcompat.app.AppCompatDelegate
 import app.cloudsaver.core.logic.ThemeMode
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /** The first frame is the colour the person chose. */
 class FirstFrameTest {
@@ -21,11 +21,10 @@ class FirstFrameTest {
     fun `the choice is mirrored when set and applied before any window exists`() {
         val main = File("src/main/kotlin/app/cloudsaver")
         val app = File(main, "CloudSaverApp.kt").readText()
-        val installed = app.indexOf("CrashLog.install(this)")
         val applied = app.indexOf("FirstFrame.apply(this)")
         val channels = app.indexOf("Notifications.createChannels(this)")
-        assertTrue("applied at process start, after the crash recorder, before anything else",
-            installed in 0 until applied && applied < channels)
+        assertTrue("applied at process start, before anything else",
+            applied in 0 until channels)
         val vm = File(main, "ui/AppViewModel.kt").readText()
         val setter = vm.substringAfter("fun setTheme(v: ThemeMode) {").substringBefore("\n    }\n")
         assertTrue("the setter mirrors the choice", setter.contains("FirstFrame.remember(ctx, v)"))

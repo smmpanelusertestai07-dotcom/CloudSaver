@@ -7,9 +7,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Cached
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.SdCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -31,7 +43,6 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputPaths
-import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AccessNotice
@@ -39,22 +50,11 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.MeterBar
 import app.cloudsaver.ui.components.PathLine
 import app.cloudsaver.ui.components.SectionHeader
+import app.cloudsaver.ui.components.WarningNote
+import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.theme.Dimens
 import app.cloudsaver.ui.theme.TabularFigures
-import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.util.Formats
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Cached
-import androidx.compose.material.icons.outlined.Calculate
-import androidx.compose.material.icons.outlined.CleaningServices
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.SdCard
 
 /**
  * Where the space goes.

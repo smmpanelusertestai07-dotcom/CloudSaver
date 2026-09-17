@@ -19,6 +19,8 @@ import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.media.Stager
+import java.io.File
+import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -29,8 +31,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
-import kotlin.math.abs
 
 /**
  * The real end-to-end run on a device: put genuine photos and a video into the

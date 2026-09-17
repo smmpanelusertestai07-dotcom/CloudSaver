@@ -7,7 +7,6 @@ import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.CloudCapabilityRow
-import app.cloudsaver.util.AppLog
 
 /**
  * Watches the cloud app the user chose, and stops deleting anything the
@@ -145,7 +144,6 @@ class CloudWatchdog(private val context: Context) {
                 updatedAt = now
             )
         )
-        AppLog.log(context, "cloud", "learned that $cloudId frees up space")
     }
 
     /** Stored capabilities if we have them, registry defaults otherwise. */

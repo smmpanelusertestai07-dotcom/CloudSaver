@@ -7,7 +7,6 @@ import app.cloudsaver.core.logic.ReattachRules
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.OutputInventory
-import app.cloudsaver.util.AppLog
 import java.io.File
 
 /**
@@ -61,12 +60,6 @@ class ReattachEngine(private val context: Context) {
         }
 
         repo.setBool(OptionsRepo.K.COPIES_REATTACHED, true)
-        if (adopted > 0) {
-            AppLog.log(
-                context, "recovery",
-                "re-attached $adopted copies already in the output folder"
-            )
-        }
         return Result(adopted, entries.size)
     }
 }

@@ -73,11 +73,19 @@
              default launch mode Android is free to hand that intent to a second
              copy of the activity instead of the one already on screen - the
              extra then arrives in a fresh onCreate, or is dropped entirely, and
-             the alert opens whatever was last shown. -->
+             the alert opens whatever was last shown.
+
+             fullUser, not portrait: the app follows the phone's own rotation
+             lock and turns when the person turns it. Every screen here
+             scrolls and is width-capped, so sideways costs nothing, while
+             locking to portrait would fail WCAG 1.3.4 for anyone whose phone
+             is mounted and cannot be turned - and Android 16 already ignores
+             such a lock on large screens, with the opt-out gone at API 37. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
+            android:screenOrientation="fullUser"
             android:windowSoftInputMode="adjustResize">
             <meta-data
                 android:name="android.app.shortcuts"
@@ -104,17 +112,6 @@
                 <action android:name="app.cloudsaver.MUTE_ALERTS" />
             </intent-filter>
         </receiver>
-
-        <!-- Share the log file (offline share sheet). -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="app.cloudsaver.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
     </application>
 
 </manifest>

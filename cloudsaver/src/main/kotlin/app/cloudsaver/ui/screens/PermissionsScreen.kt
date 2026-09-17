@@ -3,7 +3,6 @@ package app.cloudsaver.ui.screens
 import android.Manifest
 import android.app.usage.UsageStatsManager
 import android.os.Build
-import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -54,7 +53,6 @@ import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.theme.Dimens
-import app.cloudsaver.util.Exits
 import app.cloudsaver.util.OemPages
 import app.cloudsaver.util.PermissionLedger
 import app.cloudsaver.util.Permissions
@@ -102,7 +100,6 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
     val autoReset = remember(tick) { Permissions.permissionsAutoResetOn(context) }
     val saver = remember(tick) { Permissions.batterySaverOn(context) }
     val bucket = remember(tick) { Permissions.standbyBucket(context) }
-    val lastExit = remember(tick) { Exits.last(context) }
     val ledger = remember(tick) { PermissionLedger.read(context) }
     val neverAsked = remember { PermissionLedger.neverAsked(context) }
     var ledgerOpen by remember { mutableStateOf(false) }
@@ -283,22 +280,6 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     actionLabel = stringResource(R.string.perm_open)
                 ) { PowerPages.open(context, requirement.id) }
             }
-            // Why the phone last ended the app, from the phone's own record
-            // (Android 11 and later). The one fact that says whether the
-            // phone or the app is the problem.
-            if (lastExit != null) {
-                PermissionRow(
-                    title = stringResource(R.string.perm_last_exit),
-                    status = stringResource(
-                        R.string.perm_last_exit_when,
-                        Exits.words(context, lastExit),
-                        DateUtils.getRelativeTimeSpanString(lastExit.at).toString()
-                    ),
-                    state = State.UNKNOWN,
-                    detail = stringResource(R.string.perm_last_exit_detail)
-                )
-            }
-
             Text(
                 stringResource(R.string.perm_why),
                 style = MaterialTheme.typography.bodySmall,

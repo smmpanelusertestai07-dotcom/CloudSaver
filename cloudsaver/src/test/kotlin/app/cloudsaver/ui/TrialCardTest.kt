@@ -1,8 +1,8 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The trial card shows the trial, not a list of file names.

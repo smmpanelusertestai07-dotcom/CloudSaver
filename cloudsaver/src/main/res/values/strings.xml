@@ -75,9 +75,6 @@
     <string name="no_access_action">Turn photo access back on</string>
     <string name="no_access_chip">No photo access</string>
     <string name="no_access_waiting">Waiting for photo access</string>
-    <string name="crash_title">CloudSaver stopped unexpectedly last time</string>
-    <string name="crash_body">Nothing was lost. A record of what happened is in the log.</string>
-    <string name="crash_share">Share log</string>
     <string name="double_backup_title">Already backing up your camera folder?</string>
     <string name="double_backup_body">If your cloud app already backs up your camera folder, turn that off there and keep only the CloudSaver folder. Otherwise your cloud will hold both the original and the optimised copy.</string>
     <string name="double_backup_show">Show me where</string>
@@ -627,16 +624,6 @@
     <string name="perm_bucket_restricted">Restricted \u2014 about once a day at most. Android put the app here; opening it and the switches above bring it back</string>
     <string name="perm_bucket_other">Android did not say</string>
     <string name="perm_bucket_detail">Android decides this from how often the app is opened. Nothing to set; it is shown so a slow week has an explanation.</string>
-    <string name="perm_last_exit">Last time the phone ended CloudSaver</string>
-    <string name="perm_last_exit_when">%1$s \u00b7 %2$s</string>
-    <string name="perm_last_exit_detail">From the phone\u2019s own record of why it ended the app. Ordinary closes are not listed.</string>
-    <string name="exit_resources">The phone ended it for using too much in the background</string>
-    <string name="exit_user">Force-stopped \u2014 by you, or by the phone\u2019s own app manager</string>
-    <string name="exit_memory">The phone needed the memory for something else</string>
-    <string name="exit_crash">It stopped unexpectedly \u2014 the log under Help has the details</string>
-    <string name="exit_anr">It stopped responding and Android closed it</string>
-    <string name="exit_freezer">Frozen by the phone while in the background, then ended</string>
-    <string name="exit_other">Ended by the phone (%1$s)</string>
     <string name="perm_group_ledger">What CloudSaver holds</string>
     <string name="perm_ledger_intro">Every permission in the app as installed, read from the phone itself rather than promised here, with what it is for and whether it is held right now. The only place to grant or take one back is the phone\u2019s own settings.</string>
     <string name="perm_ledger_summary">%1$d of %2$d held \u00b7 %3$d of them yours to take back</string>
@@ -698,11 +685,6 @@
     <string name="warn_stalled_text">Files have waited for days because the phone is not letting background runs happen. Open Permissions and battery to see which switch is off.</string>
     <string name="privacy_b7_title">What the phone\u2019s own settings do to it</string>
     <string name="privacy_b7">Battery Saver pauses the work until it is off or the phone is charging. \"Restricted\" under the app\u2019s battery entry stops every background run. The unused-app permission reset takes the photos permission away after a few months without opening the app. Super power saving and, on Realme, Sleep standby optimisation end or freeze background apps and cannot be read by any app. Settings › Permissions and battery shows each one that Android can report, live, with the path to the rest.</string>
-    <string name="recovery_title">CloudSaver could not open</string>
-    <string name="recovery_body">It closed unexpectedly twice in a row while starting, so this page is shown instead of trying a third time. Nothing of yours is affected: your photos, the copies and the record of what reached your cloud are all untouched. Share the log to report it, or try again.</string>
-    <string name="recovery_try">Try again</string>
-    <string name="recovery_share">Share log</string>
-    <string name="recovery_app_info">App info</string>
     <string name="alerts_need_permission">Alerts are on, but notifications are turned off for CloudSaver, so none can be shown.</string>
     <string name="alerts_allow">Allow notifications</string>
     <string name="alerts_open_settings">Open notification settings</string>
@@ -858,7 +840,6 @@
 
     <!-- help -->
     <string name="help_faq">FAQ</string>
-    <string name="help_logs">Logs</string>
     <string name="help_cloud">Cloud apps explained</string>
     <string name="cloudhelp_intro_t">Why a second app is needed at all</string>
     <string name="cloudhelp_intro_b">CloudSaver never uploads anything: it holds no internet permission, so there is no code in it that could. What it does is make a smaller copy of each photo and video and put it in one folder. Your cloud app uploads that folder. Two apps, one job each \u2014 and because the upload is not ours, your files reach your cloud exactly as that cloud normally receives them, with its own encryption and its own account.</string>
@@ -877,9 +858,6 @@
     <string name="help_privacy">Privacy &amp; Terms</string>
     <string name="help_licenses">Licenses</string>
     <string name="help_about">About</string>
-    <string name="logs_share">Share log</string>
-    <string name="logs_clear">Clear log</string>
-    <string name="logs_empty">The log is empty.</string>
     <string name="about_version_line">Version %1$s</string>
     <string name="about_requires_title">Works on your phone</string>
     <string name="about_partner">Two apps do the job: CloudSaver makes the smaller copies and puts them in one folder; the cloud app you already use uploads that folder. CloudSaver never uploads anything and never deletes an original on its own.</string>
@@ -1142,6 +1120,8 @@
     <string name="faq_q17">What happens if I have no cloud app installed?</string>
     <string name="faq_a17">CloudSaver still works, and still runs on its usual schedule: it optimises your photos and videos and puts the smaller copies in the Pictures/CloudSaver folder. What it cannot do is finish the journey, because nothing is there to collect them. So the copies stay in that folder, they count against the space you allowed the app to use, and once that space is full the app stops making more and says so on Home. No original is ever offered for removal either, because removal needs proof that a copy reached your cloud and there is no cloud to reach. Install a cloud app whenever you like and point it at that one folder \u2014 the waiting copies are picked up on its next backup, and nothing has to be redone.</string>
     <string name="faq_q18">Why does the Files list look empty when Free up space still finds things?</string>
+    <string name="faq_q19">How do I know this copy of CloudSaver is the real one?</string>
+    <string name="faq_a19">Every official build is published at github.com/smmpanelusertestai07-dotcom/CloudSaver, and each release prints two long codes: one for the file itself and one for the key it was signed with. The file\u2019s code changes with every build; the key\u2019s code is the same for every genuine CloudSaver there will ever be. Android checks that key for you - a build signed with a different one cannot install over this app at all, and if one ever did, CloudSaver would say so on Home and keep deletion switched off. Installing from a file rather than a store is also why the phone shows a Play Protect warning the first time: \u201cMore details\u201d, then \u201cInstall anyway\u201d.</string>
     <string name="faq_a18">They answer different questions. Files is the work list: it shows what CloudSaver is going to optimise and what it already has, so it only ever covers the albums you ticked. Free up space is a cleaning tool for the phone as a whole \u2014 duplicates and your largest files are found in every album, ticked or not, because a duplicate wastes space wherever it sits. If Files looks empty, the usual reason is that no album is ticked yet; the list says so, and Settings has the album picker.</string>
     <string name="about_running_full">Android %1$s \u2014 everything works.</string>
     <string name="about_running_ten">Android %1$s \u2014 removed files are deleted straight away instead of going to the gallery trash.</string>

@@ -6,10 +6,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.room.withTransaction
-import app.cloudsaver.util.Locks
-import app.cloudsaver.util.Permissions
-import java.io.File
-import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.Evidence
@@ -23,7 +19,10 @@ import app.cloudsaver.data.db.BatchRow
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.prefs.OptionsRepo
-import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Locks
+import app.cloudsaver.util.Permissions
+import java.io.File
+import kotlinx.coroutines.sync.withLock
 
 /**
  * State durability. Room is the source of truth; these snapshots exist so the
@@ -74,11 +73,6 @@ class SnapshotStore(
         val kept = if (rebuildable.size <= MAX_REBUILDABLE_ITEMS) {
             rows
         } else {
-            AppLog.log(
-                context, "snapshot",
-                "trimmed ${rebuildable.size - MAX_REBUILDABLE_ITEMS} rebuildable rows; " +
-                    "every evidenced row is kept"
-            )
             critical + rebuildable
                 .sortedByDescending { it.updatedAt }
                 .take(MAX_REBUILDABLE_ITEMS)
@@ -181,7 +175,6 @@ class SnapshotStore(
             .writeText(json, Charsets.UTF_8)
         true
     } catch (e: Exception) {
-        AppLog.log(context, "snapshot", "private write failed: ${e.message}")
         false
     }
 
@@ -219,7 +212,6 @@ class SnapshotStore(
                 // A corrupted or hand-edited copy is skipped, never trusted:
                 // it could otherwise promote evidence and put an original in
                 // front of the user for deletion.
-                AppLog.log(context, "snapshot", "ignoring $label: ${e.message}")
                 return
             }
             if (best == null || snapshot.exportedAt > best!!.exportedAt) best = snapshot
@@ -319,7 +311,6 @@ class SnapshotStore(
             } ?: return false
             true
         } catch (e: Exception) {
-            AppLog.log(context, "snapshot", "write to $relativeDir/$name failed: ${e.message}")
             false
         }
     }
@@ -339,7 +330,6 @@ class SnapshotStore(
             out.write(payload)
         } != null
     } catch (e: Exception) {
-        AppLog.log(context, "snapshot", "export failed: ${e.message}")
         false
     }
 
@@ -374,7 +364,6 @@ class SnapshotStore(
         return try {
             ImportResult.Success(merge(SnapshotCodec.decode(json)))
         } catch (e: Exception) {
-            AppLog.log(context, "snapshot", "import failed: ${e.message}")
             ImportResult.Unreadable
         }
     }
@@ -399,15 +388,8 @@ class SnapshotStore(
     ): Int {
         // BB1.5: a snapshot exported under partial access is a fragment, not
         // an inventory. Merging stays safe because it only ever adds rows or
-        // raises evidence - but the fact is logged, and the next scan (which
-        // only runs under full access) fills in what the fragment lacks.
-        if (snapshot.mediaAccess != "FULL") {
-            AppLog.log(
-                context, "snapshot",
-                "imported snapshot was taken under ${snapshot.mediaAccess} access; " +
-                    "treating as partial and rescanning"
-            )
-        }
+        // raises evidence, and the next scan - which only runs under full
+        // access - fills in what the fragment lacks.
         // Every row lands in one transaction, or none does.
         //
         // The rows used to go in one commit at a time, and the first launch
@@ -425,7 +407,6 @@ class SnapshotStore(
         if (importOptions && snapshot.options.isNotEmpty()) {
             optionsRepo.importMap(snapshot.options)
         }
-        AppLog.log(context, "snapshot", "imported $imported items")
         return imported
     }
 

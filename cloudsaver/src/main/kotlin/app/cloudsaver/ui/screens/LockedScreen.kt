@@ -2,8 +2,10 @@ package app.cloudsaver.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,7 +23,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import app.cloudsaver.R
 import app.cloudsaver.ui.Lock
-import app.cloudsaver.ui.components.SecureScreen
+import app.cloudsaver.ui.components.BrandMark
 
 @Composable
 fun LockedScreen(
@@ -29,7 +31,6 @@ fun LockedScreen(
     outcome: Lock.Outcome? = null,
     onUnlock: () -> Unit
 ) {
-    SecureScreen()
     // The prompt appears by itself, the way every locked app behaves - and
     // it appears on RESUME, not on first composition. A biometric prompt
     // asked for while the activity is only started (the lock is re-armed on
@@ -61,6 +62,11 @@ fun LockedScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // The app's own mark, the way a locked phone shows the face of the
+        // app it is holding shut. Without it this screen is a sentence on a
+        // background: correct, and indistinguishable from an error.
+        BrandMark(size = 72.dp)
+        Spacer(Modifier.height(20.dp))
         // Centred text, because at a large font every line here wraps, and a
         // wrapped line left-aligned under a centred one looks like a mistake.
         Text(
@@ -75,6 +81,7 @@ fun LockedScreen(
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 8.dp)
         )
+        Spacer(Modifier.height(8.dp))
         Button(onClick = onUnlock) {
             Text(
                 stringResource(R.string.lock_unlock),

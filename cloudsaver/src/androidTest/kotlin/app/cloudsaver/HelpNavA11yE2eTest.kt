@@ -8,19 +8,19 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.onLast
-import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -197,7 +197,6 @@ class HelpNavA11yE2eTest {
             R.string.help_faq,
             R.string.help_deleted,
             R.string.quality_explained_title,
-            R.string.help_logs,
             R.string.help_privacy,
             R.string.help_licenses,
             R.string.help_about

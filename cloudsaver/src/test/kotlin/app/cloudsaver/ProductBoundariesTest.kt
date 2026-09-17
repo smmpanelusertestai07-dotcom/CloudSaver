@@ -1,10 +1,10 @@
 package app.cloudsaver
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The two promises with no natural home in any other test: what this app will
@@ -395,6 +395,45 @@ class ProductBoundariesTest {
         assertEquals("both early exits re-arm", 2, Regex("reschedule\\(app, repo\\)").findAll(early).count())
     }
 
+    /**
+     * The repository holds the two apps' source, and nothing else.
+     *
+     * It used to hold a front page, a Hinglish quick start, a verification
+     * matrix and a frozen audit - four documents, ninety thousand words, kept
+     * in step by hand with an app that changed every day. The quick start was
+     * already describing a screen this release removes. Nobody who installs
+     * CloudSaver reads any of it: they read the app, which answers the same
+     * questions from the same source the behaviour comes from, and cannot
+     * drift from it.
+     *
+     * So what a person needs is in the app - Help, the FAQ, Privacy and
+     * Terms, About - and what a release needs is written by the release
+     * workflow at the moment it publishes. The licence stays: it is the file
+     * that gives everyone else the right to use this, and it is not a
+     * document about the app.
+     */
+    @Test
+    fun `the repository carries source, a licence, and no documents`() {
+        val root = generateSequence(File(".").absoluteFile) { it.parentFile }
+            .first { File(it, ".github/workflows").isDirectory }
+        val skip = setOf("build", ".git", ".gradle", ".kotlin", "artifacts")
+        val documents = root.walkTopDown()
+            .onEnter { it.name !in skip }
+            .filter { it.isFile && it.extension.lowercase() == "md" }
+            .map { it.relativeTo(root).path }
+            .toList()
+        assertTrue("these belong inside the apps, or nowhere: $documents", documents.isEmpty())
+
+        // And nothing that unlocks anything. A key in a public repository is
+        // a key anyone can sign a CloudSaver with.
+        val keys = root.walkTopDown()
+            .onEnter { it.name !in skip }
+            .filter { it.isFile && it.extension.lowercase() in setOf("jks", "keystore", "p12", "pfx", "pem") }
+            .map { it.relativeTo(root).path }
+            .toList()
+        assertTrue("a signing key must never be committed: $keys", keys.isEmpty())
+    }
+
     @Test
     fun `every file a source-text rule reads is a declared test input`() {
         // The build cache is on and the CI action restores it, so a test
@@ -403,7 +442,6 @@ class ProductBoundariesTest {
         val build = File("build.gradle.kts").readText()
         val block = build.substringAfter("tasks.withType<Test>().configureEach {").substringBefore("\n}")
         for (path in listOf(
-            "RELEASE_MATRIX.md",
             "gradle/wrapper/gradle-wrapper.properties",
             "src/main/AndroidManifest.xml",
             ".github/workflows",

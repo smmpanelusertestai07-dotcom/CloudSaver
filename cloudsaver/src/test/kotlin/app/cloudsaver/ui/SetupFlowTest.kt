@@ -1,10 +1,10 @@
 package app.cloudsaver.ui
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The first ten minutes of owning this app, held to what the screens promise.
@@ -211,8 +211,8 @@ class SetupFlowTest {
         // Still re-armed every time the app leaves the foreground - except
         // for a trip the app itself sent the person on, which comes back
         // through within a bounded grace (Errand) and re-locks past it.
-        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else unlocked = false"))
-        assertTrue(app.contains("if (Errand.returnedNeedsLock()) unlocked = false"))
+        assertTrue(app.contains("if (Errand.expecting()) Errand.left() else vm.unlocked.value = false"))
+        assertTrue(app.contains("if (Errand.returnedNeedsLock()) vm.unlocked.value = false"))
         val locked = src("ui/screens/LockedScreen.kt")
         // On RESUME, not on first composition: the screen composes while the
         // activity is only started, and a prompt asked for then can be
@@ -221,7 +221,7 @@ class SetupFlowTest {
         assertTrue("the prompt opens itself", locked.contains("Lifecycle.Event.ON_RESUME"))
         assertTrue(locked.substringAfter("Lifecycle.Event.ON_RESUME").take(80).contains("onUnlock()"))
         assertFalse("not from a one-shot effect", locked.contains("LaunchedEffect(Unit) { onUnlock() }"))
-        assertTrue("and the screen is not screenshotable", locked.contains("SecureScreen()"))
+        assertTrue("and it shows the app's own mark", locked.contains("BrandMark(size = 72.dp)"))
     }
 
     @Test

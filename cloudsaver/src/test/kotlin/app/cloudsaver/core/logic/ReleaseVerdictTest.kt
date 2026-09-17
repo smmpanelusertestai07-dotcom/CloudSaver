@@ -1,11 +1,11 @@
 package app.cloudsaver.core.logic
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * CC1: a copy counts as released only once the phone can actually see it.
@@ -89,8 +89,10 @@ class ReleaseVerdictTest {
             verifyAt < releasedAt
         )
         assertTrue(
-            "a failed verification must delete the row and keep the item staged",
-            releaser.contains("keeping it staged")
+            "a failed verification must delete the row it just made",
+            releaser.substringAfter("if (!ReleaseVerdict.isVisible(verdict)) {")
+                .substringBefore("}")
+                .contains("resolver.delete(itemUri, null, null)")
         )
         assertTrue(
             "a failed verification must reach Activity, not only the log",

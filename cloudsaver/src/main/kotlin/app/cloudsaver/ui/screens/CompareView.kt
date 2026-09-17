@@ -38,11 +38,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import app.cloudsaver.core.logic.QualityKept
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.Formats

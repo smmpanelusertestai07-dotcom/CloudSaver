@@ -1,9 +1,9 @@
 package app.cloudsaver.util
 
+import java.io.File
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * The ledger names every permission the shipped app holds, and what it never

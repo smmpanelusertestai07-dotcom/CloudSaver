@@ -5,21 +5,21 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.StallAlert
-import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.CloudCapability
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.DeletePlanner
 import app.cloudsaver.core.logic.Evidence
-import app.cloudsaver.core.logic.FirstChain
 import app.cloudsaver.core.logic.EvidenceRules
+import app.cloudsaver.core.logic.FirstChain
 import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Pacing
 import app.cloudsaver.core.logic.ScanSources
+import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.StateMachine
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
@@ -30,13 +30,12 @@ import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Releaser
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Locks
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Storage
 import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
-import kotlinx.coroutines.sync.withLock
 import java.io.File
+import kotlinx.coroutines.sync.withLock
 
 /**
  * MaintainWorker body (also runs on app open and on output-folder changes while
@@ -145,7 +144,6 @@ class MaintainEngine(private val context: Context) {
                     detail = context.getString(R.string.warn_volume_title)
                 )
             }
-            AppLog.log(context, "maintain", "storage volume missing - safe pause")
             return summary
         }
 
@@ -154,7 +152,6 @@ class MaintainEngine(private val context: Context) {
         // folder; skip the passes that interpret it and retry next hour.
         val entries = inventory.query()
         if (entries == null) {
-            AppLog.log(context, "maintain", "output folder unreadable - skipping this pass")
             return summary
         }
 
@@ -195,7 +192,6 @@ class MaintainEngine(private val context: Context) {
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             throw ce
         } catch (e: Throwable) {
-            AppLog.log(context, "maintain", "$name: ${e.message}")
         }
     }
 
@@ -425,7 +421,6 @@ class MaintainEngine(private val context: Context) {
             repaired++
         }
         if (repaired > 0) {
-            AppLog.log(context, "maintain", "repaired $repaired stale pending rows")
             activity.record(
                 ActivityLog.Kind.RECOVERED,
                 detail = context.getString(R.string.activity_pending_repaired),
@@ -503,10 +498,6 @@ class MaintainEngine(private val context: Context) {
         )
         releaser.recordDelivered(row, Evidence.CONFIRMED_PACED.name, now)
         noteCleanConfirmation()
-        AppLog.log(
-            context, "verify",
-            "${row.displayName}: paced confirm (tx=$tx for $fileBytes)"
-        )
     }
 
     // ---- d) VERIFIED (data-count) ------------------------------------------------
@@ -558,10 +549,6 @@ class MaintainEngine(private val context: Context) {
                     // copy must not be sent a second time.
                     releaser.recordDelivered(row, Evidence.VERIFIED.name, now)
                 }
-                AppLog.log(
-                    context, "verify",
-                    "batch ${batch.id} verified (tx=$tx covers $required cumulative)"
-                )
             }
         }
     }
@@ -654,7 +641,6 @@ class MaintainEngine(private val context: Context) {
                     ActivityLog.Kind.RESUMED,
                     detail = context.getString(R.string.activity_cloud_ok)
                 )
-                AppLog.log(context, "cloud", "health recovered")
             }
             return false
         }
@@ -673,7 +659,6 @@ class MaintainEngine(private val context: Context) {
             verdict.message ?: context.getString(R.string.warn_safety_text),
             o, dedupKey = problem, route = "activity"
         )
-        AppLog.log(context, "cloud", "problem: $problem - deletions held")
         return true
     }
 
@@ -698,7 +683,6 @@ class MaintainEngine(private val context: Context) {
         if (current.cleanConfirmStreak == 0 && current.recentPacingFailure) return
         repo.setInt(OptionsRepo.K.CLEAN_STREAK, 0)
         repo.setBool(OptionsRepo.K.RECENT_PACING_FAILURE, true)
-        AppLog.log(context, "verify", "pacing confidence reset: $reason")
     }
 
     // ---- b) paced release + a) anchor self-heal ---------------------------------
@@ -756,7 +740,6 @@ class MaintainEngine(private val context: Context) {
                 if (n > 0) {
                     summary.released += n
                     summary.healed++
-                    AppLog.log(context, "maintain", "self-heal: restored $folder")
                 }
             }
         }
@@ -808,7 +791,6 @@ class MaintainEngine(private val context: Context) {
                 )
                 repo.setLong(OptionsRepo.K.SAFETY_WARNED_AT, now)
             }
-            AppLog.log(context, "delete", "safety pause active - no deletions")
             return
         }
 
@@ -879,7 +861,6 @@ class MaintainEngine(private val context: Context) {
             )
             repo.setBool(OptionsRepo.K.AGED_WARNED, true)
         }
-        AppLog.log(context, "delete", "freed ~${Formats.bytes(plan.freedBytes)} (${plan.ids.size} copies)")
     }
 
     // ---- h) daily snapshot -------------------------------------------------------

@@ -1,8 +1,8 @@
 package app.cloudsaver
 
+import java.io.File
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * SQL LIKE has two silent failure modes, and this app hit one of them for a

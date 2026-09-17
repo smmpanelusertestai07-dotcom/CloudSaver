@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +25,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material.icons.outlined.Savings
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,21 +67,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
-import app.cloudsaver.core.logic.RunDecider
-import app.cloudsaver.data.prefs.Options
+import app.cloudsaver.core.logic.HomeAction
 import app.cloudsaver.core.logic.Projection
+import app.cloudsaver.core.logic.RunDecider
 import app.cloudsaver.data.CloudApps
-import app.cloudsaver.util.Permissions
-import app.cloudsaver.ui.goTo
+import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.AccessNotice
@@ -80,35 +97,18 @@ import app.cloudsaver.ui.components.MetricGrid
 import app.cloudsaver.ui.components.MetricTile
 import app.cloudsaver.ui.components.SectionHeader
 import app.cloudsaver.ui.components.StatusChip
-import app.cloudsaver.util.Formats
-import app.cloudsaver.util.OemPages
-import app.cloudsaver.util.PowerPages
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.outlined.HighQuality
-import androidx.compose.material.icons.outlined.Movie
-import androidx.compose.material.icons.outlined.CloudDone
-import androidx.compose.material.icons.outlined.CloudUpload
-import androidx.compose.material.icons.outlined.PhotoLibrary
-import androidx.compose.material.icons.outlined.RemoveCircleOutline
-import androidx.compose.material.icons.outlined.Savings
-import androidx.compose.material.icons.outlined.Schedule
-import app.cloudsaver.ui.theme.TabularFigures
+import app.cloudsaver.ui.components.TrialCard
+import app.cloudsaver.ui.goTo
+import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.ui.theme.MetricTextStyle
 import app.cloudsaver.ui.theme.OnBrand
 import app.cloudsaver.ui.theme.OnBrandFaint
 import app.cloudsaver.ui.theme.OnBrandMuted
-import androidx.compose.foundation.clickable
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.Bolt
-import app.cloudsaver.core.logic.HomeAction
-import app.cloudsaver.ui.components.TrialCard
-import app.cloudsaver.data.db.ItemRow
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import app.cloudsaver.ui.theme.Dimens
-import app.cloudsaver.ui.theme.MetricTextStyle
+import app.cloudsaver.ui.theme.TabularFigures
+import app.cloudsaver.util.Formats
+import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.Permissions
+import app.cloudsaver.util.PowerPages
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -131,7 +131,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val consentCopies by vm.consentCopies.collectAsStateWithLifecycle()
     val tampered by vm.tampered.collectAsStateWithLifecycle()
     val mediaAccess by vm.mediaAccess.collectAsStateWithLifecycle()
-    val crashPending by vm.crashPending.collectAsStateWithLifecycle()
     val savings by vm.savings.collectAsStateWithLifecycle()
     val budget by vm.budget.collectAsStateWithLifecycle()
     val asIs by vm.asIs.collectAsStateWithLifecycle()
@@ -308,38 +307,6 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                     }
                     TextButton(onClick = { vm.dismissFirstChainNotice() }) {
                         Text(stringResource(R.string.ok))
-                    }
-                }
-            }
-        }
-
-        // BB3.2: the app died last time. One plain card, once - "nothing was
-        // lost" is true because every state change is committed before it is
-        // reported - with the trace behind the Share button on the logs page.
-        AnimatedVisibility(
-            visible = crashPending,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            AppCard(modifier = Modifier.padding(top = 8.dp)) {
-                Text(
-                    stringResource(R.string.crash_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    stringResource(R.string.crash_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-                FlowRow {
-                    TextButton(onClick = {
-                        vm.dismissCrashNotice()
-                        nav.goTo(Routes.HELP_LOGS)
-                    }) { Text(stringResource(R.string.crash_share)) }
-                    TextButton(onClick = { vm.dismissCrashNotice() }) {
-                        Text(stringResource(R.string.dismiss))
                     }
                 }
             }

@@ -3,7 +3,6 @@ package app.cloudsaver.engine
 import android.content.Context
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Formats
 
 /**
@@ -77,7 +76,6 @@ class ActivityLog(private val context: Context) {
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
             throw ce
         } catch (e: Throwable) {
-            AppLog.log(context, "activity", "${kind.name} not recorded: ${e.message}")
         }
     }
 

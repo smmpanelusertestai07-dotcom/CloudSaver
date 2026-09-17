@@ -1,10 +1,10 @@
 package app.cloudsaver.util
 
 import app.cloudsaver.util.Permissions.MediaAccess
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * BB1: the access-level decision, and the places that must obey it.

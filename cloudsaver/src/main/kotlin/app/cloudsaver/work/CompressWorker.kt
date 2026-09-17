@@ -13,8 +13,8 @@ import app.cloudsaver.core.logic.FgsBudget
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.core.logic.RunDecider
-import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.core.logic.SpeedMode
+import app.cloudsaver.core.logic.Stops
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.Options
@@ -26,14 +26,13 @@ import app.cloudsaver.engine.ProfileBuilder
 import app.cloudsaver.engine.ReattachEngine
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.Stager
-import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.Storage
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.min
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
-import kotlin.math.min
 
 /**
  * The compression worker. WorkManager only guarantees "battery not low"; every
@@ -54,7 +53,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         // every run starts by clearing the temp directory - which would delete
         // a sibling's half-written encode out from under it. One at a time.
         if (!running.compareAndSet(false, true)) {
-            AppLog.log(applicationContext, "work", "another run is active; skipping")
             return Result.success()
         }
         return try {
@@ -83,7 +81,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         // FULL only: under partial access the gallery MediaStore shows is a
         // lie, and a run would scan, queue and release against it (BB1.2).
         if (Permissions.mediaAccess(app) != Permissions.MediaAccess.FULL) {
-            AppLog.log(app, "work", "not starting: media access is not full")
             reschedule(app, repo)
             return Result.success()
         }
@@ -98,7 +95,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         var plan = plan(options, power, dayBudget.read(startAt), manual)
         repo.setString(OptionsRepo.K.WAIT_REASON, plan.wait.name)
         if (!plan.canRun) {
-            AppLog.log(app, "work", "not starting: ${plan.wait}")
             reschedule(app, repo)
             return Result.success()
         }
@@ -110,7 +106,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         val sessions = FgsBudget.decode(options.fgsSessions)
         val fgsLeft = FgsBudget.remaining(sessions, startAt)
         if (fgsLeft < 5 * 60_000L) {
-            AppLog.log(app, "work", "foreground-service budget exhausted; next period")
             reschedule(app, repo)
             return Result.success()
         }
@@ -121,7 +116,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             foreground = true
         } catch (e: Exception) {
             // Background-start restrictions: run inside plain JobScheduler limits.
-            AppLog.log(app, "work", "no foreground: ${e.message}")
         }
 
         val deadline = startAt + min(Defaults.MAX_RUN_MIN * 60_000L, fgsLeft)
@@ -132,12 +126,10 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         var photosOnBattery = 0
         try {
             runCatching { scanner.scan() }
-                .onFailure { AppLog.log(app, "work", "scan failed: ${it.message}") }
 
             // Copies that outlived the database. Runs once, and only after a
             // scan, because it matches against rows the scan has just created.
             runCatching { ReattachEngine(app).run() }
-                .onFailure { AppLog.log(app, "work", "re-attach failed: ${it.message}") }
 
             loop@ while (System.currentTimeMillis() < deadline && !isStopped) {
                 val now = System.currentTimeMillis()
@@ -157,7 +149,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                 plan = plan(live, power, budget, manual)
                 repo.setString(OptionsRepo.K.WAIT_REASON, plan.wait.name)
                 if (!plan.canRun) {
-                    AppLog.log(app, "work", "stopping: ${plan.wait}")
                     break@loop
                 }
 
@@ -165,9 +156,8 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     app, live, Storage.totalStageBytes(app), db.items().releasedBytes()
                 )
                 if (resource != null) {
-                    AppLog.log(app, "work", "resource gate: $resource")
-                    // Home reads this; a gate that stops the run has to be
-                    // a reason on screen, not only a line in the log.
+                    // Home reads this: a gate that stops the run has to
+                    // give a reason on screen.
                     repo.setString(
                         OptionsRepo.K.WAIT_REASON, RunDecider.waitForResource(resource).name
                     )
@@ -220,7 +210,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     val midPlan = plan(live, power, midBudget, manual)
                     repo.setString(OptionsRepo.K.WAIT_REASON, midPlan.wait.name)
                     if (!midPlan.canRun) {
-                        AppLog.log(app, "work", "stopping mid-batch: ${midPlan.wait}")
                         break@loop
                     }
                 }
@@ -243,21 +232,17 @@ class CompressWorker(context: Context, params: WorkerParameters) :
             runCatching {
                 val scanner = DuplicateScanner(app)
                 if (scanner.hashSome() > 0) scanner.markDuplicates()
-            }.onFailure { AppLog.log(app, "work", "duplicate scan failed: ${it.message}") }
+            }
 
             // CC1.2: a run - manual or scheduled - chains straight into the
             // maintenance pass, which is what releases staged copies into the
-            // upload folder. Logged so "did the release step actually run?"
-            // is answerable from the log rather than by reading this file.
-            AppLog.log(app, "work", "chaining release+verify (manual=$manual)")
+            // upload folder.
             runCatching { MaintainEngine(app).run() }
-                .onFailure { AppLog.log(app, "work", "maintain failed: ${it.message}") }
 
             // The profile is what every estimate is derived from, so it is
             // rebuilt whenever there is new evidence to build it from.
             if (processed > 0) {
                 runCatching { ProfileBuilder(app).rebuild(repo.current(), endOfRunNow()) }
-                    .onFailure { AppLog.log(app, "work", "profile failed: ${it.message}") }
             }
         } finally {
             // WorkManager stopping the run cancels this coroutine, and every
@@ -300,9 +285,6 @@ class CompressWorker(context: Context, params: WorkerParameters) :
                     Stops.UNKNOWN
                 }
                 repo.setString(OptionsRepo.K.LAST_STOP_REASON, cut)
-                if (cut.isNotEmpty()) {
-                    AppLog.log(app, "work", "run ended by the system: $cut after ${endAt - startAt} ms")
-                }
                 // Never leave a "working" icon in the status bar once the run
                 // is over, whatever ended it.
                 Notifications.clearWorking(app)
