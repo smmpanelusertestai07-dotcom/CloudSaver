@@ -210,6 +210,9 @@ final class AppLock {
      * When the biometric prompt cannot run on this phone, the plain PIN screen is used instead,
      * so the lock never depends on a sensor being present or working.
      */
+    // setDeviceCredentialAllowed is the Android 10 form of the Android 11 authenticators
+    // call above it; both are needed for the range this app supports.
+    @SuppressWarnings("deprecation")
     static void prompt(Activity activity, Callback callback) {
         if (!hasScreenLock(activity)) {
             locked = false;
@@ -265,6 +268,8 @@ final class AppLock {
     }
 
     /** Android's own PIN / pattern / password screen; answers through onActivityResult. */
+    // createConfirmDeviceCredentialIntent is what Android offers below 11 for the PIN screen.
+    @SuppressWarnings("deprecation")
     private static boolean credentialScreen(Activity activity, Callback callback) {
         KeyguardManager keyguard =
                 (KeyguardManager) activity.getSystemService(Context.KEYGUARD_SERVICE);

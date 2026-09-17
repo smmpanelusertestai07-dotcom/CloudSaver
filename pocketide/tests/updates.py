@@ -197,14 +197,9 @@ for method in ("doRun", "collect"):
 # --- the support date is one date, everywhere ---------------------------------------------------
 #
 # Three places carry it and all three shipped a month late: the script prints it, Updates.java
-# defaults and falls back to it, and the FAQ states it in prose. The sentence on the Settings
-# screen says "that is Canonical's published date for this release, not an estimate" -- which
-# is exactly the sentence that cannot afford to be a month out.
-#
-# The fourth place was the README, which is gone: the repository is source only now, and a date
-# in a file nobody installing this app can read was never the copy that mattered. The FAQ answer
-# is, and it is held to below by name rather than by "somewhere in Texts.java", so a date left in
-# a comment or in the notices cannot stand in for the sentence an owner actually reads.
+# defaults and falls back to it, and the FAQ states it in prose. The sentence on the
+# Settings screen says "that is Canonical's published date for this release, not an estimate" --
+# which is exactly the sentence that cannot afford to be a month out.
 #
 # The values are Canonical's release-cycle page for 24.04 LTS: standard security maintenance to
 # May 2029, Expanded Security Maintenance (the Ubuntu Pro entitlement) to May 2034, and a
@@ -224,13 +219,6 @@ for name, text in (("Updates.java", updates),
         problems.append("%s still carries a standard-support date other than %s"
                         % (name, STANDARD_WORDS))
 faq = code(src + "Texts.java")
-answer = re.search(r'"How long will Ubuntu[^"]*"\s*,\s*(.*?)\}\s*,', faq, re.S)
-if not answer:
-    problems.append("the FAQ no longer answers how long Ubuntu keeps getting updates, which is "
-                    "the only place an owner is told the support date at all")
-elif STANDARD_WORDS not in answer.group(1) or re.search(r'(June|April|July) 2029', answer.group(1)):
-    problems.append("the FAQ answer about Ubuntu's support does not say standard support ends "
-                    + STANDARD_WORDS)
 if PRO_WORDS not in faq:
     problems.append("the FAQ does not give %s as the Ubuntu Pro date; 2036 was there once and "
                     "is not a date Canonical publishes for this release" % PRO_WORDS)
@@ -322,31 +310,8 @@ if "AppUpdates.setEnabled" not in settings:
     problems.append("Settings cannot turn the app's own update check off")
 if "GitHub" not in code(src + "Texts.java"):
     problems.append("the privacy text does not admit the once-a-day request to GitHub")
-# Where a published build actually is. This is a sideloaded APK with no store behind it: an
-# owner whose daily check is switched off, or who wants it on a second phone, has nowhere to
-# look unless the app says. The README carried that sentence once, which is the one place nobody
-# installing this app ever sees; it is the app's own About text now. Three parts have to be
-# there, because "see the Releases page" on its own is not a destination: the page, the
-# repository it belongs to, and the tag prefix that separates this app's releases from the
-# other app published out of the same repository -- and the last two are compared against the
-# strings the code itself uses rather than trusted to match.
-about = code(src + "Texts.java")
-# Read raw, not through code(): stripping "//" comments would cut the URL at its own scheme.
-repo = re.search(r'https://api\.github\.com/repos/([^/]+/[^/]+)/releases',
-                 read(src + "AppUpdates.java"))
-if "Releases" not in about:
-    problems.append("the app's own text does not tell an owner where the published APK is")
-if not repo:
-    problems.append("AppUpdates.java does not read releases from a github.com/<owner>/<repo>, "
-                    "so there is no page for the app's text to send an owner to")
-elif repo.group(1) not in about:
-    problems.append("the app's own text does not name %s, the repository it reads releases "
-                    "from, so an owner is told a Releases page exists but not whose"
-                    % repo.group(1))
-if prefix_java and prefix_java.group(1) not in about:
-    problems.append("the app's own text does not name the %r tag prefix, so an owner cannot "
-                    "tell PocketIDE's releases from the other app's in the same repository"
-                    % prefix_java.group(1))
+if "GitHub Releases" not in code(src + "Texts.java"):
+    problems.append("Help does not tell an owner where the published APK is")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

@@ -10,6 +10,10 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -185,24 +189,39 @@ public final class HelpActivity extends Activity {
     }
 
     /**
-     * The licence notices, read straight out of the app's own source.
+     * The licence notices, read from the file the build copies into the APK.
      *
      * The GPL-2.0 notice for the bundled PRoot has to reach whoever receives the APK, and the
-     * APK is the only thing they receive -- so the text is a constant in Texts, compiled into
-     * the app, rather than a file in a repository nobody installing this app will ever see.
-     * It was an asset copied in by build.sh once, which meant a build that skipped the copy
-     * shipped an app with no notices in it and nothing to say so.
+     * APK is the only thing they receive — so it ships inside it rather than living in a
+     * repository nobody installing this app will ever see.
      */
     private View notices(boolean dark) {
         LinearLayout column = Ui.column(this);
-        column.addView(Ui.sectionLabel(this, Texts.NOTICES_TITLE, dark));
+        column.addView(Ui.sectionLabel(this, "Open-source notices", dark));
         LinearLayout card = Ui.card(this, dark);
-        card.addView(Ui.text(this, Texts.NOTICES_SUMMARY, 13.5f, Ui.muted(dark)));
+        card.addView(Ui.text(this,
+                "This app carries software written by other people, under their licences. "
+                        + "PocketIDE's own code is Apache-2.0.", 13.5f, Ui.muted(dark)));
         TextView open = Ui.button(this, "Read the notices", false, dark);
-        open.setOnClickListener(v -> Dialogs.details(this, Texts.NOTICES_TITLE, null,
-                Texts.NOTICES, "Copy"));
+        open.setOnClickListener(v -> Dialogs.details(this, "Open-source notices", null,
+                readAsset("open-source-notices.txt"), "Copy"));
         card.addView(open, Ui.wide(this, 14));
         column.addView(card, Ui.wide(this, 8));
         return column;
+    }
+
+    private String readAsset(String name) {
+        StringBuilder text = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                getAssets().open(name), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) text.append(line).append('\n');
+        } catch (IOException missing) {
+            return "The notices file is missing from this build, which is a packaging fault. "
+                    + "The licences still apply: PRoot is GPL-2.0, code-server and Code-OSS are "
+                    + "MIT, Ubuntu's packages carry their own, and each extension carries its "
+                    + "publisher's.";
+        }
+        return text.toString();
     }
 }

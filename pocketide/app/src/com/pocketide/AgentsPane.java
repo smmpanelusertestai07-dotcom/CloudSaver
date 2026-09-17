@@ -356,7 +356,7 @@ final class AgentsPane implements Pane {
             } catch (IOException failure) {
                 host.runOnUiThread(() -> {
                     if (generation != searchGeneration || host.isFinishing()) return;
-                    searchState.setText("Could not reach the registry. " + failure.getMessage());
+                    searchState.setText(Network.explain(host, "The extension registry", failure));
                 });
             }
         }, "search-open-vsx").start();
@@ -488,11 +488,15 @@ final class AgentsPane implements Pane {
                             live.line(line);
                         });
                 vsix.delete();
-                if (code != 0) throw new IOException(output.toString().trim());
+                // The editor's own words, not a network failure: kept apart from the
+                // IOExceptions above so they are shown as what they are.
+                if (code != 0) throw new IllegalStateException(output.toString().trim());
                 Registry.remember(host, namespace + "." + name, true);
                 // What the editor has is different now, and so is what F5 to F7 should open.
                 Extensions.forget();
                 Extensions.writeKeybindings(host);
+            } catch (IOException unreachable) {
+                failure = Network.explain(host, "The extension registry", unreachable);
             } catch (Throwable error) {
                 failure = error.getMessage() == null
                         ? error.getClass().getSimpleName() : error.getMessage();

@@ -135,6 +135,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
+          # The commit that publishes a version is its release note; an environment variable
+          # keeps the message out of the shell's own parsing.
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -eu
           TAG="pocketide-v${VERSION}"
@@ -156,9 +159,11 @@ jobs:
             echo ""
             echo "APK SHA-256: ${SHA}"
             echo ""
-            echo "What changed: compare this tag with the previous pocketide-v tag in this repository."
-          } > notes.txt
+            echo "What changed:"
+            echo ""
+            printf '%s\n' "$HEAD_MESSAGE" | grep -v -E '^(Co-Authored-By|Claude-Session):' || true
+          } > notes.md
           gh release create "$TAG" "$APK" \
             --title "PocketIDE ${VERSION}" \
-            --notes-file notes.txt \
+            --notes-file notes.md \
             --repo "$GITHUB_REPOSITORY"

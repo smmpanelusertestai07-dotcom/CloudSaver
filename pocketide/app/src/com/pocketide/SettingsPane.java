@@ -90,7 +90,7 @@ final class SettingsPane implements Pane {
                 !canLock
                         ? "Set a PIN, pattern or fingerprint on this phone first"
                         : on
-                            ? "On · asked every time PocketIDE comes back to the front"
+                            ? "On · asked when the app comes to the front · hidden in Recents"
                             : "Off · anyone holding this phone can open the editor",
                 v -> toggleLock(canLock, on));
         if (on) lock.setState(Ui.running(dark));
@@ -921,16 +921,6 @@ final class SettingsPane implements Pane {
         list.addView(Ui.row(host, dark, R.drawable.ic_info, "Version",
                 BuildFacts.VERSION_NAME + " (" + BuildFacts.VERSION_CODE + ") · "
                         + "Android " + Build.VERSION.RELEASE, null));
-        if (Crash.exists(host)) {
-            list.addView(Ui.divider(host, dark, true));
-            Ui.Row crash = Ui.row(host, dark, R.drawable.ic_info, "Last unexpected stop",
-                    "Tap to read or copy the record",
-                    v -> Dialogs.details(host, "What was recorded",
-                            "The app itself stopped. Nothing in Linux was lost.",
-                            Crash.read(host), "Copy details"));
-            crash.setState(Ui.needsYou(dark));
-            list.addView(crash);
-        }
         group.addView(list, Ui.wide(host, 8));
         return group;
     }
@@ -1067,7 +1057,9 @@ final class SettingsPane implements Pane {
         new Thread(() -> {
             AppUpdates.Status found = AppUpdates.check(host);
             live.done(found != null, found == null
-                    ? "GitHub could not be reached."
+                    ? (Network.online(host)
+                            ? "GitHub could not be reached. Try again in a moment."
+                            : "No internet connection. Connect and try again.")
                     : found.newer()
                         ? "PocketIDE " + found.latest + " is available."
                         : "This is the newest version.");

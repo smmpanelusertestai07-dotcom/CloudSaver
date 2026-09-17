@@ -581,6 +581,8 @@ final class Ui {
             invalidateSelf();
         }
 
+        // Abstract in Drawable, so it has to exist; deprecated in the platform since Android 10.
+        @SuppressWarnings("deprecation")
         @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 

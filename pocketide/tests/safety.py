@@ -911,15 +911,7 @@ if (not row_class or "pictured = true;" not in row_class.group(1)
         or not re.search(r'void setState\(int colour\) \{\s*if \(pictured\) return;',
                          row_class.group(1))):
     problems.append("a state tint would colour an extension's own icon")
-# The notices are a String in Texts.java, not a file beside the app: a
-# notice nobody can open on the phone is not a notice. Read it the way the
-# app does - the literals joined back into one text - so a sentence that
-# happens to wrap across two lines of source still counts as said.
-notices_src = read("Texts.java")
-notices_src = notices_src[notices_src.index("static final String NOTICES ="):]
-notices = "".join(
-    re.findall(r'"((?:[^"\\]|\\.)*)"', notices_src[:notices_src.index(";\n")])
-).encode().decode("unicode_escape")
+notices = open(app + "/app/assets/open-source-notices.txt").read()
 for said in ("files.icon", "Icons.java", "draws no company's product mark"):
     if said not in notices:
         problems.append("the notices no longer say where the extension icons come from: %s" % said)
@@ -939,6 +931,54 @@ for said in ("Is this the same Visual Studio Code as on a computer?",
              "This app is the second "):
     if said not in texts_src:
         problems.append("Help no longer says: %s" % said)
+
+# --- 22. a production surface: no record on any screen, plain words for a failed connection --
+#
+# The crash note exists for one button on the recovery screen and nothing else: no row on Home
+# or in Settings shows it, the recovery screen does not print it, and a screen that has been
+# drawn deletes it. A request that fails is explained in one sentence chosen by its cause,
+# after a check for a connection at all, and the editor's own words about a failed install
+# are never mistaken for a network failure.
+for name in ("HomePane.java", "SettingsPane.java", "Stored.java"):
+    if "Crash." in code(read(name)):
+        problems.append("%s shows or measures the crash note, which is the recovery screen's "
+                        "alone" % name)
+boot_src = code(read("Boot.java"))
+show_fn = re.search(r'static void show\(final Activity activity, Throwable failure\) \{(.*?)\n    \}',
+                    boot_src, re.S)
+if not show_fn or "Ui.mono(" in show_fn.group(1) or "Copy the details" not in show_fn.group(1):
+    problems.append("the recovery screen prints the record instead of offering to copy it")
+if not re.search(r'putString\(STAGE, "drawn"\)\.apply\(\);\s*Crash\.clear\(context\);', boot_src):
+    problems.append("a drawn screen does not delete the crash note")
+network = code(read("Network.java"))
+explain = re.search(r'static String explain\(Context context, String what, Throwable failure\) \{(.*?)\n    \}',
+                    network, re.S)
+if not explain:
+    problems.append("Network.explain() is missing")
+else:
+    body = explain.group(1)
+    first = body.find("if (!online(context))")
+    if first < 0 or first > body.find("UnknownHostException"):
+        problems.append("Network.explain() does not check for a connection before guessing")
+    for kind in ("UnknownHostException", "SocketTimeoutException", "SSLException", "ConnectException"):
+        if kind not in body:
+            problems.append("Network.explain() has no sentence for " + kind)
+agents_src = code(read("AgentsPane.java"))
+if agents_src.count('Network.explain(host, "The extension registry"') < 2:
+    problems.append("a registry failure on the Agents screen is shown as a raw exception")
+if "throw new IllegalStateException(output.toString().trim())" not in agents_src:
+    problems.append("the editor's own install failure would be explained as a network failure")
+strings_xml = open(app + "/app/res/values/strings.xml").read()
+for tag in ("tagline", "tagline_short"):
+    if '<string name="%s">Agentic development on your phone' % tag not in strings_xml:
+        problems.append("the %s no longer says what the app is for" % tag)
+if "hidden in Recents" not in code(read("SettingsPane.java")):
+    problems.append("the lock row does not say the app is hidden in Recents while it is on")
+texts_src = code(read("Texts.java"))
+for said in ("If the app cannot start.", "copy the details, for a bug report",
+             "GitHub Releases page"):
+    if said not in texts_src:
+        problems.append("Help or the privacy text no longer says: %s" % said)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

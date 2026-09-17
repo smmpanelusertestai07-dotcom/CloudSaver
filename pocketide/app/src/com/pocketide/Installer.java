@@ -195,6 +195,8 @@ final class Installer {
      * owner and needs somebody to show it. That screen is started from here, and the session
      * reports again when the owner has answered it.
      */
+    // The typed getParcelableExtra exists from Android 13; this form is the one for 10 to 12.
+    @SuppressWarnings("deprecation")
     static void onStatus(Context context, Intent intent) {
         if (intent == null) return;
         String token = intent.getStringExtra(EXTRA_TOKEN);

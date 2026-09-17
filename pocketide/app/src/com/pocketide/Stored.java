@@ -109,8 +109,6 @@ final class Stored {
         areas.add(new Area("Test on this phone",
                 "files/phone — the app's own adb, the pairing key, the allow-list",
                 Workspace.sizeOf(new File(context.getFilesDir(), "phone"))));
-        areas.add(new Area("Crash record", "files/last-crash.txt",
-                new File(context.getFilesDir(), Crash.FILE).length()));
         return areas;
     }
 

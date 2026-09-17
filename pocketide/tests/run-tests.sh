@@ -271,6 +271,13 @@ python3 "$HERE/min_api.py" "$APP" "${ANDROID_SDK_ROOT:-$APP/../.tooling/android-
   || fail "MinSdkApis" "a newer API is used without a guard, or the minSdk platform is missing: an app that closes as it opens on an older phone"
 
 echo
+echo "Repository"
+# Source, the build and the checks, and nothing that only describes them: the FAQ, terms and
+# notices are screens, and nothing risky to publish is in the tree.
+python3 "$HERE/repository.py" "$APP" && pass "RepositoryHoldsSource" \
+  || fail "RepositoryHoldsSource" "a document, or a file that must not be published, is in the tree"
+
+echo
 echo "Compile"
 if [ -f "$APP/build/PocketIDE-v$(python3 -c "
 import re,sys
