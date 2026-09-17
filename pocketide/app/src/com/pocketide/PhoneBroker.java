@@ -101,7 +101,17 @@ final class PhoneBroker {
 
     /** Everything the bridge does. Anything else is refused by name. */
     static final String[] OPS = {"devices", "install", "uninstall", "launch", "stop", "clear",
-            "instrument", "log", "screenshot", "tap", "text", "key", "allowed", "help"};
+            "instrument", "log", "screenshot", "record", "tap", "text", "key", "allowed", "help"};
+
+    /** The longest recording, in seconds: enough for a flow, not enough to forget it is on. */
+    static final int LONGEST_RECORDING_S = 60;
+
+    /** Where a recording is written on the phone, in the shell user's own scratch directory. */
+    static final String RECORDING_ON_PHONE = "/data/local/tmp/pocketide-recording.mp4";
+
+    /** The shell that reads which activity is on the screen into $t. */
+    static final String FRONT = "t=$(dumpsys activity activities 2>/dev/null"
+            + " | grep -m1 -E 'topResumedActivity|mResumedActivity')";
 
     /** The character that starts the last line of every reply, followed by the exit status. */
     static final char EXIT_MARK = (char) 0x1e;
@@ -386,6 +396,8 @@ final class PhoneBroker {
                     + "phone instrument <test package> [runner]   its instrumented tests\n"
                     + "phone log <package> [-d]         its log, by process; -d dumps and returns\n"
                     + "phone screenshot <package> <out.png>   only while it is on the screen\n"
+                    + "phone record <package> <out.mp4> [seconds]   a screen recording, up to "
+                    + LONGEST_RECORDING_S + " s, that stops when it leaves the screen\n"
                     + "phone tap <package> <x> <y>      a tap, only while it is on the screen\n"
                     + "phone text <package> <text>      typed text, same rule\n"
                     + "phone key <package> <KEYCODE>    a key, same rule (KEYCODE_BACK ...)\n"
@@ -434,6 +446,8 @@ final class PhoneBroker {
                 return forAllowed(args, reply, pkg -> log(pkg, args, reply));
             case "screenshot":
                 return forAllowed(args, reply, pkg -> screenshot(pkg, args, cwd, reply));
+            case "record":
+                return forAllowed(args, reply, pkg -> record(pkg, args, cwd, reply));
             case "tap":
             case "text":
             case "key":
@@ -687,6 +701,86 @@ final class PhoneBroker {
         return 0;
     }
 
+    /**
+     * A screen recording of the package, and of nothing else.
+     *
+     * The rule is the screenshot's, held for the length of the recording: it starts only while
+     * the package is on the screen, and a loop on the phone checks once a second and stops it
+     * the moment another app comes to the front, so a notification tapped or a switch away
+     * costs at most a second of someone else's screen. The recording is written to the shell
+     * user's own scratch directory on the phone, streamed out, and deleted; nothing is left on
+     * the phone. Capped at LONGEST_RECORDING_S seconds.
+     */
+    private int record(String pkg, List<String> args, String cwd, Reply reply) throws IOException {
+        if (args.size() < 2) {
+            reply.line("Usage: phone record <package> <out.mp4> [seconds, up to "
+                    + LONGEST_RECORDING_S + "]");
+            return 2;
+        }
+        File out = projectFile(args.get(1), cwd, ".mp4");
+        if (out == null || out.getParentFile() == null || !out.getParentFile().isDirectory()) {
+            reply.line("The recording goes to an .mp4 under ~/projects, in a folder that exists.");
+            return 2;
+        }
+        int seconds = 15;
+        if (args.size() > 2) {
+            if (!NUMBER.matcher(args.get(2)).matches()) {
+                reply.line("Seconds is a number, up to " + LONGEST_RECORDING_S + ".");
+                return 2;
+            }
+            seconds = Math.max(1, Math.min(LONGEST_RECORDING_S, Integer.parseInt(args.get(2))));
+        }
+        final String onPhone = RECORDING_ON_PHONE;
+        // Started under the screenshot's rule, then watched: once a second the same check
+        // runs again, and the recording is stopped the moment the package is not in front.
+        String recording = "f=" + onPhone + "; rm -f $f; "
+                + "screenrecord --time-limit " + seconds + " $f & p=$!; "
+                + "while kill -0 $p 2>/dev/null; do sleep 1; " + FRONT + "; "
+                + "case \"$t\" in *' u0 " + pkg + "/'*) ;; *) kill -2 $p 2>/dev/null; "
+                + "echo '" + pkg + " left the screen; the recording stopped there.'; break;; esac; "
+                + "done; wait $p 2>/dev/null; "
+                + "[ -s $f ] && echo RECORDED || { echo 'Nothing was recorded.'; exit 1; }";
+        int status = adbTo(reply, "shell", onlyOnScreen(pkg, recording));
+        if (status != 0) {
+            adbLines("shell", "rm -f " + onPhone);
+            return status;
+        }
+        File staged = new File(Phone.stageDir(service),
+                "rec-" + stagedFiles.incrementAndGet() + ".mp4");
+        Process process = Phone.start(service, "exec-out", "cat " + onPhone);
+        reply.watch(process);
+        long bytes = 0;
+        try (InputStream in = process.getInputStream();
+             FileOutputStream file = new FileOutputStream(staged)) {
+            byte[] buffer = new byte[65536];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                file.write(buffer, 0, read);
+                bytes += read;
+            }
+            process.waitFor();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } finally {
+            reply.unwatch();
+            Workspace.quit(process);
+            adbLines("shell", "rm -f " + onPhone);
+        }
+        if (bytes < 1024) {
+            staged.delete();
+            reply.line("The recording could not be read back from the phone.");
+            return 1;
+        }
+        try {
+            Files.move(staged.toPath(), out.toPath(), StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException acrossDevices) {
+            Files.move(staged.toPath(), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        reply.line("Saved " + guestPath(out) + " (" + bytes + " bytes)");
+        return 0;
+    }
+
     private int input(String op, String pkg, List<String> args, Reply reply) throws IOException {
         String remote;
         switch (op) {
@@ -727,8 +821,7 @@ final class PhoneBroker {
      * is one this class wrote.
      */
     static String onlyOnScreen(String pkg, String action) {
-        return "t=$(dumpsys activity activities 2>/dev/null"
-                + " | grep -m1 -E 'topResumedActivity|mResumedActivity'); "
+        return FRONT + "; "
                 + "case \"$t\" in *' u0 " + pkg + "/'*) " + action + ";; "
                 + "*) echo 'Only while " + pkg + " is on the screen: another app is in front, "
                 + "or it is not running. phone launch " + pkg + " first.'; exit 3;; esac";

@@ -3,7 +3,17 @@ package com.pocketide;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.ColorFilter;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -435,6 +445,8 @@ final class Ui {
         final TextView value;
         final ImageView chevron;
         private final boolean dark;
+        /** True once a picture has replaced the glyph; the state tints then leave it alone. */
+        private boolean pictured;
 
         Row(Context context, boolean dark, int iconRes, CharSequence titleText,
             CharSequence valueText, boolean leadsSomewhere) {
@@ -488,10 +500,31 @@ final class Ui {
 
         /** Colours the icon to say something. Used only for states, never for decoration. */
         void setState(int colour) {
+            if (pictured) return;
             icon.setImageTintList(ColorStateList.valueOf(colour));
         }
 
+        /**
+         * A picture in the glyph's place, shown as it is: untinted, a little larger than a
+         * glyph, its corners rounded, and the words beside it left exactly where they were.
+         * Used for an extension's own icon from the registry (see Icons).
+         */
+        void setPicture(Bitmap picture) {
+            if (picture == null) return;
+            pictured = true;
+            icon.setImageTintList(null);
+            icon.setImageDrawable(new RoundedPicture(picture, dp(getContext(), 6)));
+            LayoutParams params = (LayoutParams) icon.getLayoutParams();
+            int size = dp(getContext(), 28);
+            params.width = size;
+            params.height = size;
+            params.rightMargin = dp(getContext(), 8);
+            icon.setLayoutParams(params);
+            icon.setVisibility(VISIBLE);
+        }
+
         void setMutedIcon() {
+            if (pictured) return;
             icon.setImageTintList(ColorStateList.valueOf(muted(dark)));
         }
     }
@@ -501,6 +534,54 @@ final class Ui {
         Row row = new Row(context, dark, iconRes, title, value, onClick != null);
         if (onClick != null) row.setOnClickListener(onClick);
         return row;
+    }
+
+    /**
+     * A bitmap drawn through a rounded rectangle, without AndroidX: the platform's own
+     * RoundedBitmapDrawable lives in a support library this app does not carry. The shader is
+     * made once; only its fit is redone when the bounds change.
+     */
+    static final class RoundedPicture extends Drawable {
+        private final Bitmap bitmap;
+        private final float radius;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        private final BitmapShader shader;
+        private final RectF box = new RectF();
+
+        RoundedPicture(Bitmap bitmap, float radius) {
+            this.bitmap = bitmap;
+            this.radius = radius;
+            shader = new BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+            paint.setShader(shader);
+        }
+
+        @Override protected void onBoundsChange(Rect bounds) {
+            super.onBoundsChange(bounds);
+            box.set(bounds);
+            Matrix fit = new Matrix();
+            fit.setRectToRect(new RectF(0, 0, bitmap.getWidth(), bitmap.getHeight()), box,
+                    Matrix.ScaleToFit.FILL);
+            shader.setLocalMatrix(fit);
+        }
+
+        @Override public void draw(Canvas canvas) {
+            canvas.drawRoundRect(box, radius, radius, paint);
+        }
+
+        @Override public int getIntrinsicWidth() { return bitmap.getWidth(); }
+        @Override public int getIntrinsicHeight() { return bitmap.getHeight(); }
+
+        @Override public void setAlpha(int alpha) {
+            paint.setAlpha(alpha);
+            invalidateSelf();
+        }
+
+        @Override public void setColorFilter(ColorFilter filter) {
+            paint.setColorFilter(filter);
+            invalidateSelf();
+        }
+
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
     /** A hairline between rows, inset past the icon so it separates words rather than boxes. */

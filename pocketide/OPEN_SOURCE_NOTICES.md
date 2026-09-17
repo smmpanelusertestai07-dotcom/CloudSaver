@@ -115,14 +115,22 @@ notice is that acknowledgement.
 
 ## Marks this app does and does not show
 
-The app shows no company's product mark: not Microsoft's Visual Studio Code icon, which belongs
-to a build this is not, and not a publisher's, which the app has no need to draw when the
-editor's own Extensions view and each extension's own panel already carry it. Names — Visual
-Studio Code, Code - OSS, code-server, Ubuntu, Claude Code, Codex, Antigravity — are used only to
-identify whose software is being installed or run, which is nominative use. No endorsement,
-sponsorship or affiliation is claimed or implied, and this app is not produced by any of them.
-The app puts no company's mark on its own icon, its own splash screen or its own name either,
-because those would suggest an association that does not exist.
+The app draws no company's product mark of its own: not Microsoft's Visual Studio Code icon,
+which belongs to a build this is not, and not a publisher's. What the Agents screen shows beside
+an extension is that extension's own icon exactly as the Open VSX registry serves it with the
+listing (`files.icon` in the registry's API) — the same picture the registry's website and the
+editor's Extensions view show — fetched from `open-vsx.org` at run time, cached on the phone,
+never shipped in the APK, never redrawn, and absent when the registry does not list the
+extension (`Icons.java`). The registry's terms and the Eclipse Foundation's FAQ contemplate
+exactly this — extensions consumed through third-party applications, "without fee, subject to
+the terms of the respective licenses" — and say that publishers' logos and trademarks remain
+their owners': an icon is part of the extension it belongs to, shown under that extension's own
+licence beside that extension's own listing, and nowhere else in this app. Names — Visual Studio Code, Code - OSS, code-server, Ubuntu, Claude
+Code, Codex, Antigravity, Kilo Code — are used only to identify whose software is being
+installed or run, which is nominative use. No endorsement, sponsorship or affiliation is claimed
+or implied, and this app is not produced by any of them. The app puts no company's mark on its
+own icon, its own splash screen or its own name, because those would suggest an association
+that does not exist.
 
 ## What set-up installs inside the workspace
 

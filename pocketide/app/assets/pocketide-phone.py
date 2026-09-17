@@ -10,6 +10,8 @@
   phone instrument <test package> [runner]   run its instrumented tests (am instrument -w -r)
   phone log <package> [-d]         its log, by process id; -d dumps and returns
   phone screenshot <package> <out.png>       only while that package is on the screen
+  phone record <package> <out.mp4> [seconds] a screen recording, up to 60 s, only while
+                                             that package is on the screen; stops if it leaves
   phone tap <package> <x> <y>      a tap, only while that package is on the screen
   phone text <package> <text>      typed text, same rule
   phone key <package> <KEYCODE>    a key, same rule (KEYCODE_BACK, KEYCODE_HOME ...)
@@ -21,7 +23,7 @@ There is no adb in this Linux at all; the app's own runs in a root of its own, o
 
 install and launch need no pairing at all: Android asks you to confirm each install on its
 own screen, and the app opens from there while PocketIDE is on the screen. log, screenshot,
-tap, text, key, instrument and uninstall need the phone paired -- PocketIDE: Settings > The
+record, tap, text, key, instrument and uninstall need the phone paired -- PocketIDE: Settings > The
 computer > Test on this phone. The bridge answers while the editor is running.
 """
 import json

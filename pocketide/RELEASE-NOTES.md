@@ -1,5 +1,59 @@
 # Release notes
 
+## 2.4.0
+
+What the agent can see, what the screen shows, and what the Help says this is.
+
+### A recording, under the screenshot's rule
+
+`phone record <package> <out.mp4> [seconds]` records the app's screen for up to sixty seconds
+and stops by itself the moment the app leaves the screen: the check that guards a screenshot is
+run once a second on the phone for the length of the recording, so a notification tapped or a
+switch to another app costs at most a second of it. The file is written to the shell user's own
+scratch directory on the phone, streamed out into ~/projects, and deleted; nothing stays on the
+phone. Paired only, like the screenshot.
+
+### The extensions' own icons
+
+Beside each extension on the Agents screen is now its own icon, exactly as Open VSX serves it
+with the listing and as the registry's website and the editor's Extensions view show it: fetched
+from the registry at run time, from that host and no other, capped in size, decoded small,
+cached, and never shipped in the APK or redrawn. An extension the registry does not list keeps
+the plain glyph. The notices say so. The app's own icon, splash and name are unchanged, and no
+company's mark is drawn by the app.
+
+### Help, regrouped
+
+The Help screen prints a group's heading whenever the group changes from one question to the
+next, and the questions had been added over four releases in the order they were asked, so the
+forty-four of them were in eighteen runs and "Editor" was a heading five times. They are in
+seven runs now, one per group, and a gate holds it there.
+
+### Help that says what this is
+
+Five entries, each from evidence. How signing in to an agent works — the publisher's page in
+the phone's own browser, never in this app; back to the editor by the phone's own localhost,
+which the Linux here shares; and the code to paste when a page shows one instead, in Claude
+Code's and Codex's own words (`codex login --device-auth`), read from both publishers'
+documentation. And four more: that this is the same editor as a computer's (code-server is
+Code - OSS, the source Visual Studio Code is built from) and exactly what differs — Open VSX
+rather than Microsoft's marketplace, so Microsoft's closed extensions are absent and their open
+cores present; no desktop-only features; an arm64 Linux with 4 GB; what can be built and tested
+here, by kind, and how each is tested; how the agent sees what it built, on the phone and in the
+browser; and how a file or a photo gets to the agent through the phone's own picker, which gives
+the app that one file and nothing else. The "Where this fits" text says which of the four
+surfaces this app is. Two sentences were settled by reading sources rather than memory: Flutter
+and React Native are named as not building here, because both compile C++ through Google's NDK
+(Flutter's Gradle plugin forces the NDK download; React Native's builds its C++ app modules
+through CMake) and Google publishes the NDK for x86-64 Linux, Windows and Mac only; and the
+privacy text says why the agents' chats are on the phone at all — they are not fetched back
+from an account, the copy on the phone is the one the agent resumes from. A survey of the
+twenty-odd apps in this space, their store reviews and their issue trackers produced one more
+entry — where this stands beside Termux, VSCodroid, AndroidIDE and the cloud editors, and what
+all of them have in common — and one more sentence in the battery entry: the ceiling of 32
+helper processes Android 12 and later keep across every app, with the switch Android 14 has and
+12 and 13 do not.
+
 ## 2.3.5
 
 The app that closed as it opened, found and fixed.

@@ -518,7 +518,9 @@ else:
                             "the one on it" % needs_screen)
     only = re.search(r'static String onlyOnScreen\(String pkg, String action\) \{(.*?)\n    \}',
                      broker, re.S)
-    if (not only or "topResumedActivity|mResumedActivity" not in only.group(1)
+    front = re.search(r'static final String FRONT = (.*?);', broker, re.S)
+    if (not only or not front or "topResumedActivity|mResumedActivity" not in front.group(1)
+            or 'return FRONT + "; "' not in only.group(1)
             or "case \\\"$t\\\" in *' u0 \" + pkg + \"/'*) \" + action" not in only.group(1)
             or "exit 3" not in only.group(1)):
         problems.append("the screen check and the action are not one command on the phone, so "
@@ -840,6 +842,95 @@ apply_fn = re.search(r'static void apply\(Activity activity\) \{(.*?)\n    \}', 
 if not apply_fn or not re.search(r"try \{\s*setBarIcons\(window, dark\);\s*\} catch \(Throwable",
                                  apply_fn.group(1)):
     problems.append("Theme.apply() lets a failure in the bar-icon colouring end the process")
+
+# --- 21. a recording under the screenshot's rule; an icon from the registry and nowhere else --
+#
+# phone record is a screenshot held open for up to a minute, so its rule has to be the
+# screenshot's, held for the whole minute: it starts through onlyOnScreen, and a loop on the
+# phone re-reads the front activity once a second and stops the recording the moment it is
+# another app's. The file lives in the shell user's own scratch directory and is deleted on
+# every path out. The extension icons are the registry's own, fetched over https from that one
+# host with redirects refused and a size cap, and nothing in the APK is anybody's logo.
+broker = code(read("PhoneBroker.java"))
+if not re.search(r'case "record":\s*\n\s*return forAllowed\(', broker):
+    problems.append("phone record is not restricted to packages the bridge installed")
+record_fn = re.search(r'private int record\((.*?)\n    \}', broker, re.S)
+record_body = record_fn.group(1) if record_fn else ""
+for must in ('onlyOnScreen(pkg, recording)', 'FRONT + "; "', 'kill -2 $p',
+             'screenrecord --time-limit', 'Math.min(LONGEST_RECORDING_S',
+             'reply.watch(process)', 'Workspace.quit(process)'):
+    if must not in record_body:
+        problems.append("phone record lacks: %s" % must)
+if record_body.count('adbLines("shell", "rm -f " + onPhone)') < 2:
+    problems.append("phone record leaves the recording on the phone on one of its paths")
+longest = re.search(r'static final int LONGEST_RECORDING_S = (\d+);', broker)
+if not longest or not 1 <= int(longest.group(1)) <= 180:
+    problems.append("LONGEST_RECORDING_S is missing or beyond screenrecord's own limit of 180 s")
+if not re.search(r'static final String RECORDING_ON_PHONE = "/data/local/tmp/[^"/]+\.mp4";',
+                 broker):
+    problems.append("the recording is written somewhere other than the shell user's own "
+                    "scratch directory")
+ops = re.search(r'static final String\[\] OPS = \{(.*?)\};', broker, re.S)
+if not ops or '"record"' not in ops.group(1):
+    problems.append("record is not in OPS, so the op list and the switch disagree")
+if "phone record <package> <out.mp4> [seconds]" not in broker:
+    problems.append("phone help does not describe record")
+phone_py = open(app + "/app/assets/pocketide-phone.py").read()
+tools_sh = open(app + "/app/assets/pocketide-tools.sh").read()
+if "phone record <package> <out.mp4> [seconds]" not in phone_py:
+    problems.append("the phone command's own help does not describe record")
+if "record" not in tools_sh.split("phone screenshot / ")[-1][:20]:
+    problems.append("pocketide-tools.sh's summary of the phone command leaves record out")
+
+icons = code(read("Icons.java"))
+if 'static final String HOST = "open-vsx.org";' not in icons:
+    problems.append("icons are fetched from a host other than the registry's")
+allowed_fn = re.search(r'static boolean allowed\(String url\) \{(.*?)\n    \}', icons, re.S)
+if (not allowed_fn or '"https".equals(parsed.getProtocol())' not in allowed_fn.group(1)
+        or 'HOST.equalsIgnoreCase(parsed.getHost())' not in allowed_fn.group(1)):
+    problems.append("Icons.allowed() does not insist on https and the registry's host")
+load_fn = re.search(r'static void load\((.*?)\n    \}', icons, re.S)
+if not load_fn or not re.search(r'if \(!allowed\(url\)[^\n]*return;', load_fn.group(1)):
+    problems.append("Icons.load() goes to the network before checking the URL")
+if "setInstanceFollowRedirects(false)" not in icons:
+    problems.append("an icon fetch follows redirects, which could leave the registry's host")
+if not re.search(r'if \(buffer\.size\(\) \+ read > LARGEST_BYTES\) return null;', icons):
+    problems.append("an icon fetch is not capped in size")
+if "inSampleSize" not in icons:
+    problems.append("an icon is decoded at the size the publisher uploaded, not the size a row needs")
+for folder in sorted(os.listdir(app + "/app/res")):
+    if not folder.startswith("drawable"):
+        continue
+    for name in sorted(os.listdir(app + "/app/res/" + folder)):
+        if not (name.startswith("ic_") or name.startswith("splash") or name == "tux.png"):
+            problems.append("a drawable that is not an interface icon, the app's own splash or "
+                            "Tux: %s/%s" % (folder, name))
+ui = code(read("Ui.java"))
+row_class = re.search(r'static final class Row extends LinearLayout \{(.*?)\n    \}', ui, re.S)
+if (not row_class or "pictured = true;" not in row_class.group(1)
+        or not re.search(r'void setState\(int colour\) \{\s*if \(pictured\) return;',
+                         row_class.group(1))):
+    problems.append("a state tint would colour an extension's own icon")
+notices = open(app + "/OPEN_SOURCE_NOTICES.md").read()
+for said in ("files.icon", "Icons.java", "draws no company's product mark"):
+    if said not in notices:
+        problems.append("the notices no longer say where the extension icons come from: %s" % said)
+texts_src = code(read("Texts.java"))
+for said in ("Is this the same Visual Studio Code as on a computer?",
+             "What exactly can be built and tested here?",
+             "How does the agent see what it built? Screenshots, recordings, the browser.",
+             "How do I give the agent a file or a photo from the phone?",
+             "How do I sign in to an agent, and how does the sign-in get back here?",
+             "codex login --device-auth", "Paste code here if prompted",
+             "That includes Flutter and React Native",
+             "Windows or Linux PC cannot build or install an ",
+             "Unity and Unreal are their own programs beside Visual ",
+             "the copy on the phone is the one the agent resumes from",
+             "How does this compare with Termux, VSCodroid, AndroidIDE and the cloud apps?",
+             "ceiling of 32 helper processes", "Disable child process restrictions",
+             "This app is the second "):
+    if said not in texts_src:
+        problems.append("Help no longer says: %s" % said)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)
