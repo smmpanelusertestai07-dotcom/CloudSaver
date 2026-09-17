@@ -30,6 +30,7 @@ import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.util.Storage
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlin.math.min
@@ -365,7 +366,7 @@ class CompressWorker(context: Context, params: WorkerParameters) :
 
     companion object {
         /** Guards the staging and temp directories against concurrent runs. */
-        private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+        private val running = AtomicBoolean(false)
 
         /** Anything captured this recently counts as "what the user is thinking about". */
         const val FRESH_WINDOW_MS = 30L * 86_400_000L

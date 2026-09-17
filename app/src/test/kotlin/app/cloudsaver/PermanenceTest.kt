@@ -205,9 +205,9 @@ class PermanenceTest {
         assertTrue(row.contains("Permissions.hasNotifications(context)"))
         assertTrue(
             "it must re-check on resume, because the permission is granted on another screen",
-            row.contains("LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME)")
+            row.contains("LifecycleEventEffect(Lifecycle.Event.ON_RESUME)")
         )
-        assertTrue(row.contains("launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)"))
+        assertTrue(row.contains("launcher.launch(Manifest.permission.POST_NOTIFICATIONS)"))
         assertTrue(
             "once the system stops asking, the only way back is its settings page",
             row.contains("OemPages.openNotificationSettings(context)")

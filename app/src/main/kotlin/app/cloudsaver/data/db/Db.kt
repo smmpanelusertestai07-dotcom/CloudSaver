@@ -3,6 +3,7 @@ package app.cloudsaver.data.db
 import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
@@ -325,7 +326,7 @@ interface ItemDao {
     suspend fun byState(state: String): List<ItemRow>
 
     /** Drops a row entirely; used when a folder turns out to be another pipeline's output. */
-    @androidx.room.Delete
+    @Delete
     suspend fun delete(row: ItemRow)
 
     /**

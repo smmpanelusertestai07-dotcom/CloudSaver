@@ -1,5 +1,7 @@
 package app.cloudsaver.ui.theme
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -9,13 +11,16 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.core.view.WindowCompat
 import app.cloudsaver.core.logic.ThemeMode
 
 /** True when the app is currently painting its dark palette. */
@@ -99,17 +104,17 @@ fun CloudSaverTheme(
     // app's own light background - an unreadable status bar, reported from a
     // device. Driven here, beside the palette decision, the two cannot
     // disagree in any theme: light, dark, system or wallpaper colours.
-    val view = androidx.compose.ui.platform.LocalView.current
+    val view = LocalView.current
     if (!view.isInEditMode) {
-        androidx.compose.runtime.SideEffect {
+        SideEffect {
             // The view's context can be a ContextThemeWrapper on some OEMs;
             // unwrap until the Activity appears rather than assuming.
             var ctx = view.context
-            while (ctx is android.content.ContextWrapper && ctx !is android.app.Activity) {
+            while (ctx is ContextWrapper && ctx !is Activity) {
                 ctx = ctx.baseContext
             }
-            val window = (ctx as? android.app.Activity)?.window ?: return@SideEffect
-            val controller = androidx.core.view.WindowCompat
+            val window = (ctx as? Activity)?.window ?: return@SideEffect
+            val controller = WindowCompat
                 .getInsetsController(window, view)
             controller.isAppearanceLightStatusBars = !dark
             controller.isAppearanceLightNavigationBars = !dark

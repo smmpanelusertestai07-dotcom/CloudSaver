@@ -1,6 +1,8 @@
 package app.cloudsaver.ui.screens
 
+import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Size
 import androidx.compose.foundation.Image
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import app.cloudsaver.core.logic.QualityKept
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ import app.cloudsaver.R
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.Formats
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -92,7 +96,7 @@ fun CompareSheet(
             Text(
                 row.displayName,
                 maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
+                overflow = TextOverflow.MiddleEllipsis
             )
         },
         text = {
@@ -234,21 +238,21 @@ private suspend fun loadFileThumb(path: String?): Bitmap? {
     if (path == null) return null
     return withContext(Dispatchers.IO) {
         runCatching {
-            val file = java.io.File(path)
+            val file = File(path)
             if (!file.isFile) return@runCatching null
-            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            android.graphics.BitmapFactory.decodeFile(path, bounds)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
             var sample = 1
             while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
-            android.graphics.BitmapFactory.decodeFile(
-                path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+            BitmapFactory.decodeFile(
+                path, BitmapFactory.Options().apply { inSampleSize = sample }
             )
         }.getOrNull()
     }
 }
 
 private suspend fun loadThumb(
-    context: android.content.Context,
+    context: Context,
     uriString: String?
 ): Bitmap? {
     val uri = uriString?.let { runCatching { Uri.parse(it) }.getOrNull() } ?: return null

@@ -1,4 +1,4 @@
-package app.cloudsaver
+package app.cloudsaver.util
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

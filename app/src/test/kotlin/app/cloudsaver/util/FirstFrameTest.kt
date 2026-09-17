@@ -1,8 +1,7 @@
-package app.cloudsaver
+package app.cloudsaver.util
 
 import androidx.appcompat.app.AppCompatDelegate
 import app.cloudsaver.core.logic.ThemeMode
-import app.cloudsaver.util.FirstFrame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

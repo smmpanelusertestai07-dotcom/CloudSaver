@@ -1,6 +1,7 @@
 package app.cloudsaver
 
 import android.content.Context
+import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -9,6 +10,9 @@ import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
+import app.cloudsaver.data.db.MediaProfileRow
+import app.cloudsaver.data.db.ReclaimBatchRow
+import app.cloudsaver.data.db.ReclaimItemRow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,20 +116,20 @@ class MigrationTest {
         assertNull("nothing hashed yet", carried.first().originalSha256)
         assertNull("no profile until something is processed", db.profile().get("STORAGE_SAVER", "H264"))
         db.profile().put(
-            app.cloudsaver.data.db.MediaProfileRow(
+            MediaProfileRow(
                 preset = "STORAGE_SAVER", codec = "H264", photoCount = 1, updatedAt = 1
             )
         )
         assertNotNull(db.profile().get("STORAGE_SAVER", "H264"))
         val batchId = db.reclaim().insertBatch(
-            app.cloudsaver.data.db.ReclaimBatchRow(
+            ReclaimBatchRow(
                 atMs = 1_700_000_000_000, mode = "FREE_UP_FULLY",
                 itemCount = 1, freedBytes = 2048, trashed = true
             )
         )
         db.reclaim().insertItems(
             listOf(
-                app.cloudsaver.data.db.ReclaimItemRow(
+                ReclaimItemRow(
                     batchId = batchId, fingerprint = "fp-1",
                     displayName = "e2e_before_upgrade.jpg", originalBytes = 2048,
                     optimisedBytes = 1024, trashed = true
@@ -170,7 +174,7 @@ class MigrationTest {
     private fun seedVersion2() {
         val path = context.getDatabasePath(dbName)
         path.parentFile?.mkdirs()
-        val raw = android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(path, null)
+        val raw = SQLiteDatabase.openOrCreateDatabase(path, null)
         raw.execSQL(
             "CREATE TABLE IF NOT EXISTS `items` (" +
                 "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +

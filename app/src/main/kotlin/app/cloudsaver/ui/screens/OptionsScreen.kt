@@ -1,8 +1,12 @@
 package app.cloudsaver.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,11 +28,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Block
@@ -68,6 +75,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -77,6 +86,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
@@ -88,7 +100,9 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.data.CloudApp
 import app.cloudsaver.data.CloudApps
+import app.cloudsaver.ui.Lock as AppLock
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.Routes
@@ -105,6 +119,8 @@ import app.cloudsaver.ui.components.WarningNote
 import app.cloudsaver.ui.components.WarningText
 import app.cloudsaver.ui.components.SegmentedChoice
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.OemPages
+import app.cloudsaver.util.Permissions
 
 /**
  * The most of the Folders dialog the album list may take before it scrolls.
@@ -133,7 +149,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     DisposableEffect(Unit) { onDispose { vm.dismissTransferMessage() } }
     val volumes by vm.volumes.collectAsStateWithLifecycle()
     val writableVolumes by vm.writableVolumes.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     val activityUnread by vm.activityUnread.collectAsStateWithLifecycle()
     val recommended by vm.recommended.collectAsStateWithLifecycle()
@@ -142,7 +158,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         (o.storageVolume.isEmpty() && it.isPrimary) || it.mediaVolumeName == o.storageVolume
     }?.freeBytes ?: 0L
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         vm.refreshVolumes()
         vm.refreshRecommended()
         vm.refreshStorage()
@@ -608,8 +624,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         // Enabling the lock proves identity first - turning on a gate you
         // could not open would only be discovered at the worst moment - and
         // refuses with the reason when the phone has no screen lock at all.
-        val lockActivity = androidx.activity.compose.LocalActivity.current
-            as? androidx.fragment.app.FragmentActivity
+        val lockActivity = LocalActivity.current
+            as? FragmentActivity
         var lockEnableFailed by remember { mutableStateOf(false) }
         SwitchCard(
             title = stringResource(R.string.opt_lock),
@@ -620,19 +636,19 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             if (!wanted) {
                 vm.setAppLock(false)
                 lockEnableFailed = false
-            } else if (!app.cloudsaver.ui.Lock.canEnable(context)) {
+            } else if (!AppLock.canEnable(context)) {
                 lockEnableFailed = true
             } else {
                 val act = lockActivity
                 if (act == null) {
                     lockEnableFailed = true
                 } else {
-                    app.cloudsaver.ui.Lock.authenticate(
+                    AppLock.authenticate(
                         act,
                         act.getString(R.string.lock_title),
                         act.getString(R.string.lock_subtitle)
                     ) { outcome ->
-                        if (outcome == app.cloudsaver.ui.Lock.Outcome.Unlocked) {
+                        if (outcome == AppLock.Outcome.Unlocked) {
                             vm.setAppLock(true)
                             lockEnableFailed = false
                         }
@@ -1111,11 +1127,11 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CloudPickRow(
-    app: app.cloudsaver.data.CloudApp,
+    app: CloudApp,
     current: String,
     onPick: (String) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     // Asking the package manager whether an app is installed is a call out to
     // another process. Unremembered it ran again for every row on every frame
     // of the picker's scroll, which is a dozen binder round trips per frame
@@ -1210,11 +1226,11 @@ private fun AlertsPermissionRow(wanted: Boolean) {
     // settings that silences an app is on every version, and a phone with that switch off
     // used to get no warning at all here below 13.
     if (!wanted) return
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var granted by remember { mutableStateOf(app.cloudsaver.util.Permissions.hasNotifications(context)) }
+    val context = LocalContext.current
+    var granted by remember { mutableStateOf(Permissions.hasNotifications(context)) }
     var refused by remember { mutableStateOf(false) }
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        granted = app.cloudsaver.util.Permissions.hasNotifications(context)
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        granted = Permissions.hasNotifications(context)
     }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -1227,16 +1243,16 @@ private fun AlertsPermissionRow(wanted: Boolean) {
     TextButton(
         onClick = {
             // Below 13 there is no prompt to launch: the switch lives in settings only.
-            if (refused || android.os.Build.VERSION.SDK_INT < 33) {
-                app.cloudsaver.util.OemPages.openNotificationSettings(context)
+            if (refused || Build.VERSION.SDK_INT < 33) {
+                OemPages.openNotificationSettings(context)
             } else {
-                launcher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
     ) {
         Text(
             stringResource(
-                if (refused || android.os.Build.VERSION.SDK_INT < 33) R.string.alerts_open_settings
+                if (refused || Build.VERSION.SDK_INT < 33) R.string.alerts_open_settings
                 else R.string.alerts_allow
             )
         )
@@ -1282,7 +1298,7 @@ private fun RecommendationNote(
     // manual change. Warning colour marks real drift; the note stays quiet.
     Column(Modifier.padding(top = 10.dp)) {
         if (warning) {
-            app.cloudsaver.ui.components.WarningText(text)
+            WarningText(text)
         } else {
             Text(
                 text,
@@ -1388,7 +1404,7 @@ private val InfoIcon = Icons.Outlined.Info
 private fun OptionCard(
     title: String,
     hint: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    icon: ImageVector? = null,
     value: String? = null,
     onInfo: (() -> Unit)? = null,
     content: @Composable () -> Unit
@@ -1396,7 +1412,7 @@ private fun OptionCard(
     AppCard(modifier = Modifier.padding(vertical = 5.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
-                androidx.compose.material3.Icon(
+                Icon(
                     icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1445,8 +1461,8 @@ private fun OptionCard(
                 )
             }
             if (onInfo != null) {
-                androidx.compose.material3.IconButton(onClick = onInfo) {
-                    androidx.compose.material3.Icon(
+                IconButton(onClick = onInfo) {
+                    Icon(
                         InfoIcon,
                         contentDescription = stringResource(R.string.quality_explained_title),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1466,7 +1482,7 @@ private fun OptionCard(
 private fun SwitchCard(
     title: String,
     hint: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     checked: Boolean,
     onChange: (Boolean) -> Unit
 ) {
@@ -1492,7 +1508,7 @@ private fun SwitchCard(
             .toggleable(value = checked, onValueChange = onChange, role = Role.Switch)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Icon(
+            Icon(
                 icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1540,13 +1556,13 @@ private fun SwitchCard(
 private fun NavRow(
     title: String,
     hint: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     dot: Boolean = false,
     onClick: () -> Unit
 ) {
     AppCard(modifier = Modifier.padding(vertical = 5.dp), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Icon(
+            Icon(
                 icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1568,10 +1584,10 @@ private fun NavRow(
                     )
                     if (dot) {
                         Spacer(Modifier.width(8.dp))
-                        androidx.compose.foundation.layout.Box(
+                        Box(
                             Modifier
                                 .size(8.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     }
@@ -1583,7 +1599,7 @@ private fun NavRow(
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
-            androidx.compose.material3.Icon(
+            Icon(
                 Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant

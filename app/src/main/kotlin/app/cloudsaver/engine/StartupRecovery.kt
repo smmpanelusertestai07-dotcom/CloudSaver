@@ -1,5 +1,6 @@
 package app.cloudsaver.engine
 
+import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
@@ -9,6 +10,8 @@ import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Permissions
+import java.io.File
 
 /**
  * Runs once per launch, before anything else touches the database.
@@ -66,7 +69,7 @@ class StartupRecovery(private val context: Context) {
                 val bucket = row.bucket ?: continue
                 if (bucket !in excluded) continue
                 // A staged copy has a file behind it; drop that too.
-                row.stagePath?.let { runCatching { java.io.File(it).delete() } }
+                row.stagePath?.let { runCatching { File(it).delete() } }
                 db.items().delete(row)
                 purged++
             }
@@ -124,8 +127,8 @@ class StartupRecovery(private val context: Context) {
             // skip setup when the app can actually see the gallery; otherwise
             // the restored install would land on Home unable to do anything,
             // with the one screen that asks for access already behind it.
-            if (app.cloudsaver.util.Permissions.mediaAccess(context) ==
-                app.cloudsaver.util.Permissions.MediaAccess.FULL
+            if (Permissions.mediaAccess(context) ==
+                Permissions.MediaAccess.FULL
             ) {
                 repo.setBool(OptionsRepo.K.ONBOARDING_DONE, true)
             }
@@ -160,7 +163,7 @@ class StartupRecovery(private val context: Context) {
             }
             var removed = 0
             for (id in ids) {
-                val uri = android.content.ContentUris.withAppendedId(files, id)
+                val uri = ContentUris.withAppendedId(files, id)
                 if (runCatching { resolver.delete(uri, null, null) }.getOrDefault(0) > 0) {
                     removed++
                 }
@@ -205,7 +208,7 @@ class StartupRecovery(private val context: Context) {
                     }
                 }
                 for (id in ids) {
-                    val uri = android.content.ContentUris.withAppendedId(collection, id)
+                    val uri = ContentUris.withAppendedId(collection, id)
                     if (runCatching { resolver.delete(uri, null, null) }.getOrDefault(0) > 0) {
                         removed++
                     }

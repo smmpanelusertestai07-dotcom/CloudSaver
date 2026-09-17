@@ -1,6 +1,5 @@
-package app.cloudsaver
+package app.cloudsaver.core.logic
 
-import app.cloudsaver.core.logic.StallAlert
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

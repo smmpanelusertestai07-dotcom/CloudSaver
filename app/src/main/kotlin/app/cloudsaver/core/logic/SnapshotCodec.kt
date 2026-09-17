@@ -1,5 +1,6 @@
 package app.cloudsaver.core.logic
 
+import java.security.MessageDigest
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -280,7 +281,7 @@ object SnapshotCodec {
     }
 
     fun sha256Hex(text: String): String {
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = MessageDigest.getInstance("SHA-256")
             .digest(text.toByteArray(Charsets.UTF_8))
         return buildString(digest.size * 2) {
             for (b in digest) append("%02x".format(b))

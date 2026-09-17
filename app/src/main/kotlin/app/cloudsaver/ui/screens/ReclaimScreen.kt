@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.screens
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +48,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -57,7 +60,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.ui.Routes
 import app.cloudsaver.ui.components.ListTags
+import app.cloudsaver.ui.components.SecureScreen
+import app.cloudsaver.ui.components.StackedTextScale
 import app.cloudsaver.ui.components.typeFilter
 import app.cloudsaver.ui.components.sizeFilter
 import app.cloudsaver.ui.components.albumFilter
@@ -111,7 +117,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     // The only screen that lists someone's photographs by name next to a
     // button that removes them. It stays out of the recents thumbnail and out
     // of screenshots, for the same reason the lock screen does.
-    app.cloudsaver.ui.components.SecureScreen()
+    SecureScreen()
 
     var confirmBig by remember { mutableStateOf<Boolean?>(null) }
     var compare by remember { mutableStateOf<ReclaimViewModel.Entry?>(null) }
@@ -122,13 +128,13 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
     // separately and either source counts.
     var justUnderstood by rememberSaveable { mutableStateOf(false) }
     val understood = justUnderstood || options.reclaimUnderstood
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) { rvm.load() }
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { r -> rvm.onDialogResult(r.resultCode == android.app.Activity.RESULT_OK) }
+    ) { r -> rvm.onDialogResult(r.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
         pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -771,7 +777,7 @@ fun ReclaimScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostControlle
             dismissButton = {
                 TextButton(onClick = {
                     rvm.dismissResult()
-                    nav.goTo(app.cloudsaver.ui.Routes.RECLAIM_HISTORY)
+                    nav.goTo(Routes.RECLAIM_HISTORY)
                 }) { Text(stringResource(R.string.reclaim_history_open)) }
             },
             title = { Text(stringResource(R.string.reclaim_done_title)) },
@@ -906,14 +912,14 @@ private fun InPlaceChoice(rvm: ReclaimViewModel) {
     // The switch is a fixed 52 dp whatever the text does, so past the shared
     // stacking point it goes under the words rather than taking a third of
     // the row from a sentence that by then needs all of it.
-    val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >=
-        app.cloudsaver.ui.components.StackedTextScale
+    val stacked = LocalDensity.current.fontScale >=
+        StackedTextScale
     Column(
         Modifier
             .padding(top = 8.dp)
             .toggleable(
                 value = inPlace,
-                role = androidx.compose.ui.semantics.Role.Switch,
+                role = Role.Switch,
                 onValueChange = { rvm.setKeptInPlace(it) }
             )
     ) {
@@ -965,7 +971,7 @@ private fun ReclaimRow(
                     entry.row.displayName,
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
+                    overflow = TextOverflow.MiddleEllipsis
                 )
                 Text(
                     stringResource(

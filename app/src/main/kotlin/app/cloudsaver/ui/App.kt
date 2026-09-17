@@ -1,9 +1,11 @@
 package app.cloudsaver.ui
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
@@ -24,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -188,7 +191,7 @@ private fun MainNav(vm: AppViewModel) {
     val reclaimable by vm.reclaimableBytes.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
     var unlocked by remember { mutableStateOf(false) }
-    val activity = androidx.activity.compose.LocalActivity.current as? FragmentActivity
+    val activity = LocalActivity.current as? FragmentActivity
 
     // The Settings dot has to be right on whichever tab the app opens on, so
     // health is refreshed here rather than only by Home, and again every time
@@ -237,7 +240,7 @@ private fun MainNav(vm: AppViewModel) {
     // instead of asking for a fingerprint. The link is simply held until the
     // gate opens, and then honoured.
     val deepLink by vm.deepLink.collectAsStateWithLifecycle()
-    androidx.compose.runtime.LaunchedEffect(deepLink, needsLock) {
+    LaunchedEffect(deepLink, needsLock) {
         val target = deepLink ?: return@LaunchedEffect
         if (needsLock) return@LaunchedEffect
         vm.clearDeepLink()
@@ -380,7 +383,7 @@ private fun MainNav(vm: AppViewModel) {
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.TabItem(
+private fun RowScope.TabItem(
     nav: NavHostController,
     current: String,
     route: String,

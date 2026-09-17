@@ -1,9 +1,14 @@
 package app.cloudsaver.ui.screens
 
+import android.app.Activity
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +35,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import app.cloudsaver.core.logic.DuplicateRules
+import app.cloudsaver.core.logic.Evidence
+import app.cloudsaver.core.logic.MediaProfile
+import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.components.ListTags
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -75,7 +86,7 @@ import kotlinx.coroutines.delay
 private fun Page(
     nav: NavHostController,
     title: String,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -136,7 +147,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { result -> rvm.onDialogResult(result.resultCode == android.app.Activity.RESULT_OK) }
+    ) { result -> rvm.onDialogResult(result.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
         pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -173,7 +184,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
     val albums = remember(groups) {
         ListFilters.albumCounts(groups.flatMap { it.extras }.map { it.toCandidate() })
     }
-    val legacy = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.R
+    val legacy = Build.VERSION.SDK_INT < Build.VERSION_CODES.R
 
     ListScreenScaffold(
         title = stringResource(R.string.find_duplicates),
@@ -321,7 +332,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
     // instead of it: how many, how much, where they go, and the one sentence
     // that matters - a copy of every file stays.
     if (confirming) {
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text(stringResource(R.string.dupes_confirm_title)) },
             text = {
@@ -370,7 +381,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
     }
 
     removed?.let { count ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { rvm.dismissDuplicatesResult() },
             confirmButton = {
                 TextButton(onClick = { rvm.dismissDuplicatesResult() }) {
@@ -391,7 +402,7 @@ fun DuplicatesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostContro
 }
 
 /** One duplicate entry, as the shared filters need to see it. */
-private fun app.cloudsaver.core.logic.DuplicateRules.Entry.toCandidate() =
+private fun DuplicateRules.Entry.toCandidate() =
     ListFilters.Candidate(
         id = id,
         name = displayName,
@@ -415,7 +426,7 @@ private val VIDEO_EXTENSIONS = setOf("mp4", "mov", "3gp", "mkv", "webm", "avi", 
 @Composable
 private fun DuplicateEntryRow(
     vm: AppViewModel,
-    entry: app.cloudsaver.core.logic.DuplicateRules.Entry,
+    entry: DuplicateRules.Entry,
     isKeeper: Boolean,
     selected: Boolean?,
     onToggle: (Boolean) -> Unit,
@@ -427,13 +438,13 @@ private fun DuplicateEntryRow(
     val removeExtraLabel = stringResource(R.string.dupes_remove_extra_one)
     val openLabel = stringResource(R.string.list_open)
     val cannotOpen = stringResource(R.string.detail_open_failed)
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     // The stored row, resolved off the main thread once and handed to the
     // thumbnail as well. It used to be looked up twice per row - here for the
     // Open action and again inside the thumbnail - which on a screen full of
     // duplicates is two database reads for every row on screen, exactly what
     // the comment claimed it was avoiding.
-    val stored by androidx.compose.runtime.produceState<app.cloudsaver.data.db.ItemRow?>(
+    val stored by androidx.compose.runtime.produceState<ItemRow?>(
         null, entry.id
     ) { value = vm.itemById(entry.id) }
     // CC5.1: Open first, on the keeper as well as the extras - deciding which
@@ -446,8 +457,8 @@ private fun DuplicateEntryRow(
             openLabel to {
                 val ok = stored?.let { vm.openInViewer(it) } ?: false
                 if (!ok) {
-                    android.widget.Toast
-                        .makeText(context, cannotOpen, android.widget.Toast.LENGTH_SHORT)
+                    Toast
+                        .makeText(context, cannotOpen, Toast.LENGTH_SHORT)
                         .show()
                 }
                 Unit
@@ -471,7 +482,7 @@ private fun DuplicateEntryRow(
         },
         thumbnail = {
             stored?.let { Thumbnail(it) }
-                ?: androidx.compose.foundation.layout.Box(Modifier.size(52.dp))
+                ?: Box(Modifier.size(52.dp))
         },
         actions = actions,
         selected = selected,
@@ -729,7 +740,7 @@ fun BiggestFilesScreen(vm: AppViewModel, rvm: ReclaimViewModel, nav: NavHostCont
 }
 
 /** A stored row as the shared filters need to see it. */
-private fun app.cloudsaver.data.db.ItemRow.toCandidate() = ListFilters.Candidate(
+private fun ItemRow.toCandidate() = ListFilters.Candidate(
     id = id,
     name = displayName,
     album = bucket,
@@ -757,8 +768,8 @@ private enum class DupeSort { SPACE, COPIES, OLDEST }
  * it agrees with every other screen - including when nothing is measured yet.
  */
 private fun savingFor(
-    row: app.cloudsaver.data.db.ItemRow,
-    profile: app.cloudsaver.core.logic.MediaProfile.Profile
+    row: ItemRow,
+    profile: MediaProfile.Profile
 ): Long {
     row.outputBytes?.let { return (row.sizeBytes - it).coerceAtLeast(0L) }
     val measured = if (row.isVideo) profile.videos.ratio else profile.photos.ratio
@@ -767,7 +778,7 @@ private fun savingFor(
 
 @Composable
 private fun BiggestRow(
-    row: app.cloudsaver.data.db.ItemRow,
+    row: ItemRow,
     saving: Long,
     selected: Boolean?,
     onToggle: (Boolean) -> Unit,
@@ -778,7 +789,7 @@ private fun BiggestRow(
     onAllowAgain: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val couldNotOpen = stringResource(R.string.biggest_cannot_open)
     val openLabel = stringResource(R.string.list_open)
     val optimiseLabel = stringResource(R.string.list_optimise_first)
@@ -787,13 +798,13 @@ private fun BiggestRow(
     val allowLabel = stringResource(R.string.detail_optimise_again)
     val removeLabel = stringResource(R.string.detail_remove_from_phone)
     val proofKind = ProofLine.forItem(
-        app.cloudsaver.core.logic.Evidence.parse(row.evidence),
+        Evidence.parse(row.evidence),
         isDuplicateExtra = row.duplicateOf != null
     )
     val open: () -> Unit = {
         if (!onOpen()) {
-            android.widget.Toast
-                .makeText(context, couldNotOpen, android.widget.Toast.LENGTH_SHORT)
+            Toast
+                .makeText(context, couldNotOpen, Toast.LENGTH_SHORT)
                 .show()
         }
     }
@@ -846,7 +857,7 @@ fun proofLabel(kind: ProofLine.Kind): String = stringResource(
 
 /** Kind, when it was taken, its album, and how long it runs if it runs at all. */
 @Composable
-private fun detailLine(row: app.cloudsaver.data.db.ItemRow): String {
+private fun detailLine(row: ItemRow): String {
     val kind = stringResource(if (row.isVideo) R.string.kind_video else R.string.kind_photo)
     // Seconds from MediaStore, milliseconds everywhere else in the app: the
     // fallback printed a date in January 1970 rather than the file's own.
@@ -875,7 +886,7 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { r -> rvm.onRestoreResult(r.resultCode == android.app.Activity.RESULT_OK) }
+    ) { r -> rvm.onRestoreResult(r.resultCode == Activity.RESULT_OK) }
     LaunchedEffect(pending) {
         pending?.let { launcher.launch(IntentSenderRequest.Builder(it).build()) }
     }
@@ -960,7 +971,7 @@ fun ReclaimHistoryScreen(rvm: ReclaimViewModel, nav: NavHostController) {
                         val restorable = shown.filter { it.restoredAt == null }
                         if (restorable.isEmpty()) {
                             // Nothing left to offer; everything here came back.
-                        } else if (android.os.Build.VERSION.SDK_INT >= 30) {
+                        } else if (Build.VERSION.SDK_INT >= 30) {
                             // Full width, so the label has the whole card to
                             // sit in: at a 200% font scale a button sized to
                             // its own text is wider than a 320 dp phone and

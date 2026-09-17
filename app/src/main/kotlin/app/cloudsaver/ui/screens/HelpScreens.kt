@@ -1,6 +1,7 @@
 package app.cloudsaver.ui.screens
 
 import android.content.Intent
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
@@ -42,6 +43,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -62,6 +65,7 @@ import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.BrandMark
 import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.outlined.BatterySaver
@@ -593,7 +597,7 @@ fun HelpQualityScreen(nav: NavHostController, vm: AppViewModel) {
 /** One titled block of the quality page. */
 @Composable
 private fun QualityBlock(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     body: String
 ) {
@@ -627,7 +631,7 @@ private fun QualityBlock(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HelpLogsScreen(nav: NavHostController) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // The tail of the log, already cut into blocks of lines.
     //
@@ -677,7 +681,7 @@ fun HelpLogsScreen(nav: NavHostController) {
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                        app.cloudsaver.util.Errand.begin()
+                        Errand.begin()
                         context.startActivity(Intent.createChooser(share, shareTitle))
                     }
                 } catch (e: Exception) {
@@ -770,7 +774,7 @@ fun HelpPrivacyScreen(nav: NavHostController) {
 /** One titled block of the privacy page: icon, heading, three sentences. */
 @Composable
 private fun PrivacyBlock(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     body: String
 ) {
@@ -891,8 +895,8 @@ fun HelpAboutScreen(vm: AppViewModel, nav: NavHostController) {
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-            val release = Platform.releaseName(android.os.Build.VERSION.SDK_INT)
-            val full = Platform.supportFor(android.os.Build.VERSION.SDK_INT) ==
+            val release = Platform.releaseName(Build.VERSION.SDK_INT)
+            val full = Platform.supportFor(Build.VERSION.SDK_INT) ==
                 Platform.Support.FULL
             // What the app needs, then what this particular phone gets. The
             // first is the question someone asks before installing; the

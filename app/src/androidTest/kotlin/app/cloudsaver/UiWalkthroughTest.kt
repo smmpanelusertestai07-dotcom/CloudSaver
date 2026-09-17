@@ -1,7 +1,11 @@
 package app.cloudsaver
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.provider.MediaStore
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,6 +30,7 @@ import androidx.test.uiautomator.UiDevice
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.MediaScanner
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertNotNull
@@ -102,13 +107,13 @@ class UiWalkthroughTest {
      * never interfere with it.)
      */
     private fun publish(name: String, png: ByteArray) {
-        val values = android.content.ContentValues().apply {
-            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
-            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
-            put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, SHOT_DIR)
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.png")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, SHOT_DIR)
         }
-        val collection = android.provider.MediaStore.Images.Media
-            .getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val collection = MediaStore.Images.Media
+            .getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val uri = target.contentResolver.insert(collection, values) ?: return
         target.contentResolver.openOutputStream(uri)?.use { it.write(png) }
     }
@@ -260,14 +265,14 @@ class UiWalkthroughTest {
         val sizes = listOf(192, 432)
         for (size in sizes) {
             val drawable = target.getDrawable(R.mipmap.ic_launcher)!!
-            val bitmap = android.graphics.Bitmap.createBitmap(
-                size, size, android.graphics.Bitmap.Config.ARGB_8888
+            val bitmap = Bitmap.createBitmap(
+                size, size, Bitmap.Config.ARGB_8888
             )
-            val canvas = android.graphics.Canvas(bitmap)
+            val canvas = Canvas(bitmap)
             drawable.setBounds(0, 0, size, size)
             drawable.draw(canvas)
-            val bytes = java.io.ByteArrayOutputStream().also {
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            val bytes = ByteArrayOutputStream().also {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }.toByteArray()
             publish("00-app-icon-$size", bytes)
             bitmap.recycle()

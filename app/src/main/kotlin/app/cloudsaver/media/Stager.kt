@@ -2,6 +2,7 @@ package app.cloudsaver.media
 
 import android.content.Context
 import android.net.Uri
+import android.os.Process
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.core.logic.OutFolder
@@ -57,10 +58,10 @@ class Stager(private val context: Context, private val db: AppDb) {
         // afterwards: left lowered, that thread would quietly demote whatever
         // ran on it next - including the database read a screen is waiting
         // on - for the rest of the process's life.
-        val tid = android.os.Process.myTid()
-        val priorPriority = runCatching { android.os.Process.getThreadPriority(tid) }.getOrNull()
+        val tid = Process.myTid()
+        val priorPriority = runCatching { Process.getThreadPriority(tid) }.getOrNull()
         runCatching {
-            android.os.Process.setThreadPriority(tid, android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            Process.setThreadPriority(tid, Process.THREAD_PRIORITY_BACKGROUND)
         }
         val result = try {
             if (row.isVideo) {
@@ -86,7 +87,7 @@ class Stager(private val context: Context, private val db: AppDb) {
             fail(row, "out_of_memory")
             return false
         } finally {
-            priorPriority?.let { runCatching { android.os.Process.setThreadPriority(tid, it) } }
+            priorPriority?.let { runCatching { Process.setThreadPriority(tid, it) } }
         }
 
         var stageFile: File? = null

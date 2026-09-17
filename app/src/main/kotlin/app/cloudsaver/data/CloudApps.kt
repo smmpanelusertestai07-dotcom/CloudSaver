@@ -3,7 +3,9 @@ package app.cloudsaver.data
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import app.cloudsaver.R
+import app.cloudsaver.util.Errand
 
 /**
  * Cloud backup apps (13.B). CloudSaver is built for end-to-end encrypted clouds
@@ -133,7 +135,7 @@ object CloudApps {
      * "have I got this app?" by simply being there - null means not
      * installed, and the row falls back to a neutral glyph.
      */
-    fun iconFor(context: Context, app: CloudApp): android.graphics.drawable.Drawable? {
+    fun iconFor(context: Context, app: CloudApp): Drawable? {
         val pkg = installedPackage(context, app) ?: return null
         return runCatching { context.packageManager.getApplicationIcon(pkg) }.getOrNull()
     }
@@ -155,7 +157,7 @@ object CloudApps {
         val intent = context.packageManager.getLaunchIntentForPackage(pkg) ?: return false
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
-            app.cloudsaver.util.Errand.begin()
+            Errand.begin()
             context.startActivity(intent)
             true
         } catch (e: Exception) {

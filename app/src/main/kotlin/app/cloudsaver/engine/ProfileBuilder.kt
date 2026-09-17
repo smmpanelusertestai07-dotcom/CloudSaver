@@ -4,6 +4,7 @@ import android.content.Context
 import app.cloudsaver.core.logic.MediaProfile
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.MediaProfileRow
+import app.cloudsaver.data.db.RatioSample
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.util.AppLog
@@ -46,7 +47,7 @@ class ProfileBuilder(private val context: Context) {
         val videoMeasured =
             MediaProfile.isMeasured(videoSamples.size, videoMedian, galleryVideoMedian)
 
-        fun ratio(rows: List<app.cloudsaver.data.db.RatioSample>): Double {
+        fun ratio(rows: List<RatioSample>): Double {
             val original = rows.sumOf { it.sizeBytes }
             if (original <= 0) return 0.0
             return rows.sumOf { it.outputBytes }.toDouble() / original

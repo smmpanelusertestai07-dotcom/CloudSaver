@@ -1,5 +1,6 @@
 package app.cloudsaver
 
+import android.content.Intent
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Bundle
@@ -62,7 +63,7 @@ class MainActivity : AppCompatActivity() {
      * the route arrives here rather than in onCreate. Without this the second
      * tap of the day would just bring up whatever screen was last shown.
      */
-    override fun onNewIntent(intent: android.content.Intent) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         vm.consumeDeepLink(intent.getStringExtra(Notifications.EXTRA_ROUTE))

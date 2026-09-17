@@ -28,7 +28,7 @@ class ThemePurityTest {
     private fun sourcesOutsideTheme(root: File): List<File> =
         root.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
-            .filterNot { it.parentFile.name == "theme" }
+            .filterNot { it.parentFile?.name == "theme" }
             .toList()
 
     @Test

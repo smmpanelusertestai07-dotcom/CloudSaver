@@ -1,13 +1,19 @@
 package app.cloudsaver.ui
 
 import android.app.Application
+import android.app.RecoverableSecurityException
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.GoneReason
 import app.cloudsaver.core.logic.QualityKept
 import app.cloudsaver.core.logic.ActivityWording
 import app.cloudsaver.core.logic.BackupScope
@@ -30,10 +36,12 @@ import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
+import app.cloudsaver.data.CloudApp
 import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.ActivityRow
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
+import app.cloudsaver.data.db.RatioSample
 import app.cloudsaver.data.db.Search
 import app.cloudsaver.data.prefs.Options
 import app.cloudsaver.data.prefs.OptionsRepo
@@ -50,6 +58,8 @@ import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.AccessNotice
+import app.cloudsaver.util.CrashLog
+import app.cloudsaver.util.Errand
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.FirstFrame
 import app.cloudsaver.util.Permissions
@@ -59,8 +69,10 @@ import app.cloudsaver.util.TamperCheck
 import app.cloudsaver.util.Volumes
 import app.cloudsaver.work.Gates
 import app.cloudsaver.work.Scheduler
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -249,7 +261,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * "Everything is backed up" reads as an error, not as progress. One change
      * per 800 ms is fast enough to feel live and slow enough to read.
      */
-    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    @OptIn(FlowPreview::class)
     val statusWaiting: StateFlow<Int?> = counters
         .filterNotNull()
         .map { it.waiting }
@@ -316,7 +328,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val o = repo.current()
             val photos = db.items().photoRatioSamples(o.preset.name)
             val videos = db.items().videoRatioSamples(o.preset.name, o.codec.name)
-            fun shrink(rows: List<app.cloudsaver.data.db.RatioSample>): Int {
+            fun shrink(rows: List<RatioSample>): Int {
                 val original = rows.sumOf { it.sizeBytes }
                 if (original <= 0) return 0
                 val output = rows.sumOf { it.outputBytes }
@@ -502,7 +514,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val excluded: Set<String>
     )
 
-    @OptIn(ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     val items: StateFlow<List<ItemRow>?> = combine(
         search.debounce { if (it.isEmpty()) 0L else SEARCH_DEBOUNCE_MS }.distinctUntilChanged(),
         filesState,
@@ -633,7 +645,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun dismissCrashNotice() {
-        app.cloudsaver.util.CrashLog.clearPending(ctx)
+        CrashLog.clearPending(ctx)
         crashPending.value = false
     }
 
@@ -649,7 +661,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val power = Gates.readPower(ctx, o.lastInteractiveAt, System.currentTimeMillis())
             val free = Storage.freeBytes(ctx)
             val access = Permissions.mediaAccess(ctx)
-            crashPending.value = app.cloudsaver.util.CrashLog.crashPending(ctx)
+            crashPending.value = CrashLog.crashPending(ctx)
             // Anything short of full access is what the screens are waiting
             // on - a handful of picked photos and no access at all alike. The
             // old test asked only about the handful, so someone who switched
@@ -1067,7 +1079,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun copyKeptCopiesTo(treeUri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
-            val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(ctx, treeUri)
+            val tree = DocumentFile.fromTreeUri(ctx, treeUri)
             if (tree == null) {
                 transferMessage.value = ctx.getString(R.string.transfer_failed)
                 return@launch
@@ -1519,8 +1531,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * means "Other app" and the generic checklist.
      */
     data class CloudDetection(
-        val installed: List<app.cloudsaver.data.CloudApp> = emptyList(),
-        val chosen: app.cloudsaver.data.CloudApp = CloudApps.byId("other"),
+        val installed: List<CloudApp> = emptyList(),
+        val chosen: CloudApp = CloudApps.byId("other"),
         val needsChoice: Boolean = false
     )
 
@@ -1820,7 +1832,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val current = db.items().byId(id) ?: continue
                 val path = current.stagePath
                 if (current.state != ItemState.STAGED.name || path == null) continue
-                runCatching { java.io.File(path).delete() }
+                runCatching { File(path).delete() }
                 db.items().update(
                     current.copy(
                         state = ItemState.NEW.name,
@@ -1883,20 +1895,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val uriString = row.outputUri ?: row.contentUri ?: return false
         val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return false
         val mime = row.mimeType.ifEmpty { if (row.isVideo) "video/*" else "image/*" }
-        val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+        val view = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, mime)
             addFlags(
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_ACTIVITY_NEW_TASK
             )
         }
         return try {
-            app.cloudsaver.util.Errand.begin()
+            Errand.begin()
             ctx.startActivity(view)
             true
-        } catch (e: android.content.ActivityNotFoundException) {
-            val chooser = android.content.Intent.createChooser(view, null).apply {
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        } catch (e: ActivityNotFoundException) {
+            val chooser = Intent.createChooser(view, null).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             runCatching { ctx.startActivity(chooser) }.isSuccess
         } catch (e: Exception) {
@@ -2051,7 +2063,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     legacyQueue.removeFirst()
                 } catch (se: SecurityException) {
-                    val sender = (se as? android.app.RecoverableSecurityException)
+                    val sender = (se as? RecoverableSecurityException)
                         ?.userAction?.actionIntent?.intentSender
                     if (sender != null) {
                         deleteIntent.value = sender
@@ -2135,7 +2147,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     db.items().update(
                         current.copy(
                             state = ItemState.DONE.name,
-                            goneReason = app.cloudsaver.core.logic.GoneReason.APP_DELETED.name,
+                            goneReason = GoneReason.APP_DELETED.name,
                             outputUri = null,
                             updatedAt = now
                         )
@@ -2248,15 +2260,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- tiny helpers -------------------------------------------------------
 
-    private fun setStr(key: androidx.datastore.preferences.core.Preferences.Key<String>, v: String) {
+    private fun setStr(key: Preferences.Key<String>, v: String) {
         viewModelScope.launch { repo.setString(key, v) }
     }
 
-    private fun setInt(key: androidx.datastore.preferences.core.Preferences.Key<Int>, v: Int) {
+    private fun setInt(key: Preferences.Key<Int>, v: Int) {
         viewModelScope.launch { repo.setInt(key, v) }
     }
 
-    private fun setBool(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>, v: Boolean) {
+    private fun setBool(key: Preferences.Key<Boolean>, v: Boolean) {
         viewModelScope.launch { repo.setBool(key, v) }
     }
 }

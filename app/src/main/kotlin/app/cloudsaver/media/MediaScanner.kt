@@ -2,11 +2,15 @@ package app.cloudsaver.media
 
 import android.content.ContentUris
 import android.content.Context
+import android.net.Uri
 import android.provider.MediaStore
 import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint
 import app.cloudsaver.core.logic.ItemState
+import app.cloudsaver.core.logic.KeptCopies
 import app.cloudsaver.core.logic.ScanSources
+import app.cloudsaver.data.CloudApps
 import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.util.AppLog
@@ -70,7 +74,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         for (f in found) {
             val keptRow = keptByUri[f.uri] ?: keptById[f.mediaStoreId]
             if (keptRow != null &&
-                app.cloudsaver.core.logic.KeptCopies.belongsTo(
+                KeptCopies.belongsTo(
                     f.displayName, keptRow.displayName, keptRow.fingerprint
                 )
             ) continue
@@ -166,7 +170,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             skipReason = SKIP_RETURNED_COPY,
             // The name proves a copy was made, never that a cloud collected
             // it - so no evidence, exactly like the reattach path.
-            evidence = app.cloudsaver.core.logic.Evidence.NONE.name,
+            evidence = Evidence.NONE.name,
             updatedAt = now
         )
         return db.items().insert(row) != -1L
@@ -310,7 +314,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
     }
 
     private fun queryCollection(
-        collection: android.net.Uri,
+        collection: Uri,
         isVideo: Boolean,
         out: MutableList<Found>
     ) {
@@ -431,7 +435,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
         /** The presence key for a stored row, taking the volume from its uri. */
         fun presenceKeyOf(contentUri: String?, mediaStoreId: Long): String {
             val volume = contentUri
-                ?.let { runCatching { android.net.Uri.parse(it).pathSegments.firstOrNull() }
+                ?.let { runCatching { Uri.parse(it).pathSegments.firstOrNull() }
                     .getOrNull() }
                 ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
             // A row written against the catch-all "external" volume - what an
@@ -459,7 +463,7 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             .groupBy { folderKey(it) }
             .filterValues { rows -> ScanSources.looksLikePipelineOutput(rows.map { it.displayName }) }
             .keys
-        val cloudPackages = app.cloudsaver.data.CloudApps.ALL.flatMap { it.packages }
+        val cloudPackages = CloudApps.ALL.flatMap { it.packages }
         return found.filter { f ->
             ScanSources.exclusionReason(
                 relativePath = f.relativePath,

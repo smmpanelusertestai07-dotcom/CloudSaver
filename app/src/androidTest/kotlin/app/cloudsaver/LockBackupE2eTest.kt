@@ -13,8 +13,10 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
+import androidx.test.uiautomator.UiDevice
 import app.cloudsaver.core.logic.Preset
 import app.cloudsaver.data.db.AppDb
+import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.SnapshotStore
 import kotlinx.coroutines.runBlocking
@@ -229,7 +231,7 @@ class LockBackupE2eTest {
         assertEquals("the exclusion must come back", true, excluded?.neverOptimise)
     }
 
-    private fun row(name: String) = app.cloudsaver.data.db.ItemRow(
+    private fun row(name: String) = ItemRow(
         fingerprint = "fp-$name",
         displayName = name,
         sizeBytes = 1_000,
@@ -308,8 +310,8 @@ class LockBackupE2eTest {
             // The save dialog offers Skip - save without a password - rather
             // than Cancel, and skipping would write a file, which is not what
             // abandoning means. Backing out is how a person abandons it.
-            androidx.test.uiautomator.UiDevice
-                .getInstance(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation())
+            UiDevice
+                .getInstance(InstrumentationRegistry.getInstrumentation())
                 .pressBack()
             compose.waitForIdle()
             compose.onNodeWithText(s(R.string.backup_password_label)).assertDoesNotExist()

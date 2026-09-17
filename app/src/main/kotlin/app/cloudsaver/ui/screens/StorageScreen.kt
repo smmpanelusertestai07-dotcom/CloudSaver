@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.cloudsaver.R
+import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.ui.goTo
 import app.cloudsaver.ui.AppViewModel
@@ -212,7 +214,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
                     UsageRow(
                         icon = Icons.Outlined.PhotoLibrary,
                         label = stringResource(R.string.kept_title),
-                        path = app.cloudsaver.core.logic.Defaults.KEPT_DIR,
+                        path = Defaults.KEPT_DIR,
                         bytes = keptBytes,
                         onManage = { nav.goTo(Routes.KEPT) }
                     )
@@ -350,7 +352,7 @@ fun StorageScreen(vm: AppViewModel, nav: NavHostController) {
 /** One "Find space" row: an icon, what it does in a few words, and a size. */
 @Composable
 private fun FindRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     hint: String,
     value: String?,
@@ -417,7 +419,7 @@ private fun FindRow(
  */
 @Composable
 private fun UsageRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     path: String?,
     bytes: Long,

@@ -1,6 +1,5 @@
-package app.cloudsaver
+package app.cloudsaver.util
 
-import app.cloudsaver.util.Errand
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
