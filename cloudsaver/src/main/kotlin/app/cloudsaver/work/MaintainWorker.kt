@@ -10,7 +10,6 @@ class MaintainWorker(context: Context, params: WorkerParameters) :
     CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        val started = System.currentTimeMillis()
         try {
             MaintainEngine(applicationContext).run()
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
@@ -18,7 +17,6 @@ class MaintainWorker(context: Context, params: WorkerParameters) :
             throw ce
         } catch (e: Exception) {
         }
-        val tookMs = System.currentTimeMillis() - started
         return Result.success()
     }
 }

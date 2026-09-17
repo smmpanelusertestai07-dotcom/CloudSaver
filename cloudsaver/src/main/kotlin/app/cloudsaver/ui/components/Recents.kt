@@ -43,8 +43,12 @@ import androidx.compose.ui.platform.LocalContext
 fun HideWhileLocked(enabled: Boolean) {
     val context = LocalContext.current
     DisposableEffect(enabled) {
-        val activity = context.findActivity()
-        if (!enabled || activity == null) return@DisposableEffect onDispose { }
+        if (!enabled) return@DisposableEffect onDispose { }
+        // Nothing to hide behind: not "the lock is off", but a window this
+        // composable cannot reach. It cannot happen inside this app, where
+        // the only host is MainActivity, and it is written separately so
+        // that it stays visible if one ever is added.
+        val activity = context.findActivity() ?: return@DisposableEffect onDispose { }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             activity.setRecentsScreenshotEnabled(false)
             onDispose { activity.setRecentsScreenshotEnabled(true) }

@@ -141,8 +141,8 @@ class SnapshotStore(
      * away from being no snapshot at all.
      *
      * Returns true when at least one shared copy was written. A total failure
-     * of the shared copies is a Problem the user is told about, not a log
-     * line nobody reads: it means an uninstall would lose their history.
+     * of the shared copies is a Problem the user is told about, in words:
+     * it means an uninstall would lose their history.
      */
     suspend fun writeSafetySnapshot(): Boolean {
         // CC9.1: a fresh install that never finished setup leaves nothing

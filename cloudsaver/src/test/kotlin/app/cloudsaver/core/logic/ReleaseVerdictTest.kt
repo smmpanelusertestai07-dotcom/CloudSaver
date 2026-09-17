@@ -95,7 +95,7 @@ class ReleaseVerdictTest {
                 .contains("resolver.delete(itemUri, null, null)")
         )
         assertTrue(
-            "a failed verification must reach Activity, not only the log",
+            "a failed verification must reach Activity, where the person can read it",
             releaser.contains("problem_release_invisible")
         )
     }
@@ -111,7 +111,8 @@ class ReleaseVerdictTest {
         )
         assertTrue(
             "the repair must also run straight after a release pass",
-            maintain.contains("pendingAfterRelease")
+            maintain.substringAfter("releaseDue(").substringBefore("if (!pauseDeletions)")
+                .contains("repairStalePending(now)")
         )
     }
 

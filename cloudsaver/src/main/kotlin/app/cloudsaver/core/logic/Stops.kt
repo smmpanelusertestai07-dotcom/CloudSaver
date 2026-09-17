@@ -20,7 +20,7 @@ object Stops {
 
     const val UNKNOWN = "STOPPED"
 
-    /** The platform's own constant names, so a log line says what it means. */
+    /** The platform's own constant names, so the sentence on Home says what it means. */
     fun name(reason: Int): String = when (reason) {
         -256 -> "NOT_STOPPED"
         0 -> UNKNOWN

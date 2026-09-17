@@ -118,9 +118,7 @@ class ReclaimEngine(private val context: Context) {
     data class Pinned(val uri: Uri, val inPlace: Boolean)
 
     suspend fun pinLightCopy(row: ItemRow, options: Options, now: Long): Pinned? {
-        val src = pinSource(row, options) ?: run {
-            return null
-        }
+        val src = pinSource(row, options) ?: return null
         return try {
             writeVerified(row, src, now, options.keptInPlace)
         } finally {

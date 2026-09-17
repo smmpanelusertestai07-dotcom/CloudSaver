@@ -3,7 +3,6 @@ package app.cloudsaver
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -17,8 +16,12 @@ class ClipboardRuleTest {
 
     private fun sourceRoot(): File? {
         var dir: File? = File(System.getProperty("user.dir").orEmpty()).absoluteFile
+        // Unit tests run from cloudsaver/, so the module-relative path is
+        // the first thing to try; the walk upward is for a run started
+        // from the repository root.
+        File("src/main/kotlin/app/cloudsaver").let { if (it.exists()) return it }
         while (dir != null) {
-            val candidate = File(dir, "app/src/main/kotlin/app/cloudsaver")
+            val candidate = File(dir, "cloudsaver/src/main/kotlin/app/cloudsaver")
             if (candidate.isDirectory) return candidate
             dir = dir.parentFile
         }
@@ -28,7 +31,7 @@ class ClipboardRuleTest {
     @Test
     fun `only one helper writes to the clipboard`() {
         val root = sourceRoot()
-        assumeTrue("source directory not found", root != null)
+        assertTrue("source directory not found", root != null)
         val writers = root!!.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
             .filter { it.readText().contains("setClipEntry") }
@@ -41,7 +44,7 @@ class ClipboardRuleTest {
     @Test
     fun `nothing uses the deprecated clipboard manager`() {
         val root = sourceRoot()
-        assumeTrue("source directory not found", root != null)
+        assertTrue("source directory not found", root != null)
         val offenders = root!!.walkTopDown()
             .filter { it.isFile && it.name.endsWith(".kt") }
             .filter { it.readText().contains("LocalClipboardManager") }

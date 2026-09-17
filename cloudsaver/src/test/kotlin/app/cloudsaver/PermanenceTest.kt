@@ -92,7 +92,7 @@ class PermanenceTest {
         )
         assertTrue("evidenced rows are always written", build.contains("critical + rebuildable"))
         assertTrue(
-            "and what is trimmed is the newest-first tail of the replaceable rows",
+            "and what is kept is the newest of the replaceable rows",
             build.contains("sortedByDescending { it.updatedAt }") &&
                 build.contains(".take(MAX_REBUILDABLE_ITEMS)")
         )
@@ -273,8 +273,10 @@ class PermanenceTest {
             "recovery_try", "recovery_share", "recovery_app_info",
             "perm_last_exit", "exit_crash", "exit_anr"
         )) {
-            assertFalse("$name belongs to a screen that is gone", strings.contains(">$name<") ||
-                strings.contains("name=\"$name\""))
+            assertFalse(
+                "$name belongs to a screen that is gone",
+                strings.contains("name=\"$name\"")
+            )
         }
 
         // And nothing may hand a file of the app's own out to another app:

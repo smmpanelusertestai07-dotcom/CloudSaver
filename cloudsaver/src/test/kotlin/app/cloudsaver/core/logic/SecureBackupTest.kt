@@ -1,5 +1,6 @@
 package app.cloudsaver.core.logic
 
+import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -11,6 +12,35 @@ class SecureBackupTest {
 
     private val plain = """{"app":"CloudSaver","items":[1,2,3]}""".toByteArray()
     private val password = "correct horse battery".toCharArray()
+
+    /**
+     * The password for a backup outlives the trip to the file picker.
+     *
+     * Choosing where to save is another app's screen, and coming back from it
+     * can recreate this one. A password held in the composition is null by
+     * the time the chosen file arrives, and the backup is then written
+     * readable under the name the person was told means encrypted - the one
+     * failure this whole file exists to prevent. It waits in the view model,
+     * which that trip cannot clear, and never in saved state, which is disk.
+     */
+    @Test
+    fun `the backup password is not held where the file picker can clear it`() {
+        val options = File("src/main/kotlin/app/cloudsaver/ui/screens/OptionsScreen.kt").readText()
+        assertTrue(
+            "the export must read the password from the view model",
+            options.contains("vm.exportState(uri, vm.backupPassword")
+        )
+        assertFalse(
+            "and must not keep it in composition",
+            options.contains("var exportPassword by remember")
+        )
+        val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
+        assertTrue("held by the view model", vm.contains("var backupPassword: String? = null"))
+        assertFalse(
+            "never in saved state, which is written to disk",
+            vm.contains("rememberSaveable") || options.contains("rememberSaveable { mutableStateOf<String?>")
+        )
+    }
 
     @Test
     fun roundTrip() {

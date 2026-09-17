@@ -125,6 +125,9 @@ class CompressWorker(context: Context, params: WorkerParameters) :
         var videoMsOnBattery = 0L
         var photosOnBattery = 0
         try {
+            // Each of these is wrapped because one failing step must not end
+            // the run: the next pass tries again, and anything the person
+            // needs to hear about is recorded by the step itself, in Activity.
             runCatching { scanner.scan() }
 
             // Copies that outlived the database. Runs once, and only after a

@@ -12,7 +12,7 @@ import app.cloudsaver.util.Formats
  * moment it is swiped. Everything worth telling the user lands here as well,
  * so "what has this thing actually been doing" always has an answer.
  */
-class ActivityLog(private val context: Context) {
+class ActivityLog(context: Context) {
 
     private val db = AppDb.get(context)
 

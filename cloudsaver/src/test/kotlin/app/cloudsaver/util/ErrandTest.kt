@@ -63,7 +63,14 @@ class ErrandTest {
         val launchers = main.walkTopDown()
             .filter { it.extension == "kt" && it.readText().contains("startActivity(") }
             .toList()
-        assertTrue("nothing launches anything?", launchers.size >= 5)
+        // Named, so that a regex that quietly stops matching is caught by
+        // the absence rather than by a number that happens to still hold.
+        val names = launchers.map { it.name }.toSet()
+        for (expected in listOf(
+            "OemPages.kt", "PowerPages.kt", "AlbumPicker.kt", "AppViewModel.kt", "CloudApps.kt"
+        )) {
+            assertTrue("$expected no longer appears to launch anything", expected in names)
+        }
         for (file in launchers) {
             val text = file.readText()
             // A chooser opened because the last launch threw

@@ -35,4 +35,45 @@ class SourceStyleTest {
         }.toList()
         assertTrue("$duplicated", duplicated.isEmpty())
     }
+
+    /**
+     * An import nothing uses is a line that says the file needs something it
+     * does not.
+     *
+     * Kotlin does not warn about them, so they accumulate quietly: deleting a
+     * screen leaves its imports behind, and the next reader has to work out
+     * which of them still matter. Seventy-three were left across this module
+     * before this rule existed, thirteen of them in the one file a release
+     * had just gutted.
+     *
+     * A name is "used" when it appears anywhere after the imports, comments
+     * included - a rule that under-reports rather than deleting a line the
+     * compiler wanted. The exception is the convention names: `by` needs
+     * getValue and setValue imported and never writes either word, and the
+     * operators below are the same shape.
+     */
+    @Test
+    fun `every import is used`() {
+        val convention = setOf(
+            "getValue", "setValue", "provideDelegate", "invoke", "iterator", "next",
+            "hasNext", "compareTo", "contains", "rangeTo", "get", "set", "equals",
+            "hashCode", "toString", "plus", "minus", "times", "div", "rem",
+            "unaryPlus", "unaryMinus", "inc", "dec", "not"
+        ) + (1..7).map { "component$it" }
+        val dead = sources.flatMap { file ->
+            val lines = file.readLines()
+            val last = lines.indexOfLast { it.startsWith("import ") }
+            if (last < 0) return@flatMap emptyList()
+            val body = lines.drop(last + 1).joinToString("\n")
+            lines.take(last + 1).filter { it.startsWith("import ") }.mapNotNull { line ->
+                val path = line.removePrefix("import ").trim()
+                if (path.endsWith(".*")) return@mapNotNull null
+                val name = path.substringAfter(" as ", path.substringAfterLast('.'))
+                if (name in convention) return@mapNotNull null
+                if (Regex("\\b${Regex.escape(name)}\\b").containsMatchIn(body)) null
+                else "${file.name}: $path"
+            }
+        }.toList()
+        assertTrue("nothing uses these: $dead", dead.isEmpty())
+    }
 }

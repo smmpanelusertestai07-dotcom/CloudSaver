@@ -15,7 +15,7 @@ object VolumeRules {
     data class Decision(
         /** MediaStore volume name to insert into. */
         val volumeName: String,
-        /** True when the user's choice could not be honoured. */
+        /** True when the user's choice could not be honoured, which Activity says. */
         val fellBack: Boolean
     )
 
@@ -42,7 +42,7 @@ object VolumeRules {
     /**
      * FAT32 tops out just under 4 GB per file (Z3.4). A queued file at or
      * over the limit cannot land on such a card and is copied to internal
-     * storage instead, with the reason recorded.
+     * storage instead, and Activity says so.
      */
     const val FAT32_MAX_BYTES = 4L * 1024 * 1024 * 1024 - 1
 

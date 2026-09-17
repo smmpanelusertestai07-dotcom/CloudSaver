@@ -20,14 +20,11 @@ import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -56,7 +53,6 @@ import androidx.compose.material.icons.outlined.SdCard
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -96,7 +92,6 @@ import app.cloudsaver.core.logic.BackupScope
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.OutputMode
 import app.cloudsaver.core.logic.Preset
-import app.cloudsaver.core.logic.ScanSources
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.core.logic.VideoCodec
@@ -181,8 +176,8 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
     val wrongPasswordLabel = stringResource(R.string.transfer_wrong_password)
 
     // The password is chosen before the file picker opens and used once the
-    // user has picked a destination.
-    var exportPassword by remember { mutableStateOf<String?>(null) }
+    // user has picked a destination; it waits in the view model, which the
+    // trip through the picker cannot clear (AppViewModel.backupPassword).
     var askExportPassword by remember { mutableStateOf(false) }
     val pendingImport by vm.pendingImportUri.collectAsStateWithLifecycle()
     val importWrongPassword by vm.importPasswordWrong.collectAsStateWithLifecycle()
@@ -192,9 +187,9 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri ->
         if (uri != null) {
-            vm.exportState(uri, exportPassword, exportOkLabel, failedLabel)
+            vm.exportState(uri, vm.backupPassword, exportOkLabel, failedLabel)
         }
-        exportPassword = null
+        vm.backupPassword = null
     }
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -812,7 +807,7 @@ fun OptionsScreen(vm: AppViewModel, nav: NavHostController) {
             onDismiss = { askExportPassword = false },
             onConfirm = { password ->
                 askExportPassword = false
-                exportPassword = password.ifEmpty { null }
+                vm.backupPassword = password.ifEmpty { null }
                 exportLauncher.launch(
                     if (password.isEmpty()) "cloudsaver-backup.json" else "cloudsaver-backup.csb"
                 )

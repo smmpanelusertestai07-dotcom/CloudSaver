@@ -107,6 +107,11 @@ class LockPolicyTest {
         )
         val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
         assertTrue("one owner of the window", app.contains("HideWhileLocked(options.appLock)"))
+        assertTrue(
+            "and it covers setup: a restored backup can arrive with the lock on, " +
+                "onto a phone with no photo access, which lands on onboarding",
+            app.indexOf("HideWhileLocked(options.appLock)") < app.indexOf("CloudSaverTheme(mode =")
+        )
         for (screen in File("src/main/kotlin/app/cloudsaver/ui/screens").listFiles().orEmpty()) {
             assertFalse(
                 "${screen.name} must not hold the window flag itself",
@@ -123,10 +128,14 @@ class LockPolicyTest {
         val vm = File("src/main/kotlin/app/cloudsaver/ui/AppViewModel.kt").readText()
         assertTrue("held by the view model", vm.contains("val unlocked = MutableStateFlow(false)"))
         val app = File("src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
-        assertTrue(app.contains("val unlocked by vm.unlocked.collectAsStateWithLifecycle()"))
         assertFalse(
-            "never from saved instance state: that would come back unlocked",
-            app.contains("rememberSaveable") && app.contains("unlocked")
+            "never from saved instance state: that comes back unlocked",
+            app.contains("rememberSaveable { mutableStateOf(false) }")
+        )
+        assertTrue(
+            "and read where ON_STOP's re-arm is seen, not by a collector that " +
+                "stops at ON_STOP",
+            app.contains("vm.unlocked.collectAsState()")
         )
     }
 

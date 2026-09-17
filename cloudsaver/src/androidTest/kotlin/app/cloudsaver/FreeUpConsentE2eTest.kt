@@ -1,6 +1,5 @@
 package app.cloudsaver
 
-import android.Manifest
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
@@ -31,7 +30,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.Fingerprint

@@ -91,7 +91,7 @@ class MaintainEngine(private val context: Context) {
         // Z10.6: the whole chain is proven by the first confirmation and
         // disproven by 48 hours of silence after the first release. Either
         // way it becomes exactly one card on Home.
-        step("firstChain") {
+        step {
             val confirmed = db.items().confirmedCount()
             val next = FirstChain.next(o.firstChainState, o.firstReleaseAt, confirmed, now)
             if (next != o.firstChainState) {
@@ -102,7 +102,7 @@ class MaintainEngine(private val context: Context) {
         // The phone has been stopping the compress runs: say so, once, from
         // the one run that did get through. A week apart, three times at
         // most, then the chip on Home is the only notice (StallAlert).
-        step("stall") {
+        step {
             val waiting = db.items().newInScopeCount(o.excludedBuckets)
             val stalled = !o.pauseAll && StallAlert.stalled(
                 now, o.lastRunAt, waiting, Stops.isRationed(o.lastStopReason)
@@ -128,9 +128,9 @@ class MaintainEngine(private val context: Context) {
         val volumeMissing = o.storageVolume.isNotEmpty() &&
             Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
-            step("verify") { verifyBatches(o, now) }
-            step("age") { ageEvidence(now) }
-            step("snapshot") { dailySnapshot(o, now) }
+            step { verifyBatches(o, now) }
+            step { ageEvidence(now) }
+            step { dailySnapshot(o, now) }
             if (now - o.volumeWarnedAt > 86_400_000L) {
                 Notifications.alert(
                     context, Notifications.ID_WARN_SPACE,
@@ -155,38 +155,41 @@ class MaintainEngine(private val context: Context) {
             return summary
         }
 
-        step("pending") { repairStalePending(now) }
-        step("detectGone") { detectGone(o, now, entries, summary) }
-        step("promoteGone") { promoteGone(now) }
-        step("foreign") { foreignFiles(o, entries) }
-        step("paced") { pacedEvidence(o, now) }
-        step("verify") { verifyBatches(o, now) }
-        step("age") { ageEvidence(now) }
-        step("healStage") { selfHealStage(now) }
-        step("originals") { originalsPresence(now) }
+        step { repairStalePending(now) }
+        step { detectGone(o, now, entries, summary) }
+        step { promoteGone(now) }
+        step { foreignFiles(o, entries) }
+        step { pacedEvidence(o, now) }
+        step { verifyBatches(o, now) }
+        step { ageEvidence(now) }
+        step { selfHealStage(now) }
+        step { originalsPresence(now) }
         var pauseDeletions = false
-        step("cloudHealth") { pauseDeletions = cloudHealth(o, now, entries) }
+        step { pauseDeletions = cloudHealth(o, now, entries) }
         if (!o.pauseAll) {
-            step("release") { pacedRelease(o, now, summary) }
+            step { pacedRelease(o, now, summary) }
             // Again straight after releasing: a row that failed to finalise
             // in this very pass should not wait an hour to be noticed.
-            step("pendingAfterRelease") { repairStalePending(now) }
+            step { repairStalePending(now) }
         }
         if (!pauseDeletions) {
-            step("delete") { lazyDelete(o, now, summary) }
+            step { lazyDelete(o, now, summary) }
         }
-        step("snapshot") { dailySnapshot(o, now) }
-        step("log") { logSummary(summary) }
+        step { dailySnapshot(o, now) }
+        step { logSummary(summary) }
         return summary
     }
 
     /**
-     * Runs one maintenance step, logging a failure instead of abandoning the
-     * rest of the pass. Cancellation is rethrown: runCatching would swallow it
-     * (CancellationException is an Exception in Kotlin), so a stopped worker
-     * would grind through every remaining step and then report success.
+     * Runs one maintenance step, swallowing a failure instead of abandoning
+     * the rest of the pass: one step that cannot run is not a reason for the
+     * other twenty-three not to. Anything a person needs to hear about is
+     * recorded by the step itself, in Activity. Cancellation is rethrown:
+     * runCatching would swallow it (CancellationException is an Exception in
+     * Kotlin), so a stopped worker would grind through every remaining step
+     * and then report success.
      */
-    private inline fun step(name: String, body: () -> Unit) {
+    private inline fun step(body: () -> Unit) {
         try {
             body()
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
@@ -208,10 +211,10 @@ class MaintainEngine(private val context: Context) {
         val now = System.currentTimeMillis()
         val summary = Summary()
         val entries = inventory.query() ?: return 0
-        step("pending") { repairStalePending(now) }
-        step("detectGone") { detectGone(o, now, entries, summary) }
-        step("promoteGone") { promoteGone(now) }
-        step("paced") { pacedEvidence(o, now) }
+        step { repairStalePending(now) }
+        step { detectGone(o, now, entries, summary) }
+        step { promoteGone(now) }
+        step { pacedEvidence(o, now) }
         activity.recordIfAny(ActivityLog.Kind.BACKED_UP, summary.confirmed)
         return summary.confirmed
     }

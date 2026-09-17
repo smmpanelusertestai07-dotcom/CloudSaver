@@ -612,6 +612,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val unlocked = MutableStateFlow(false)
 
     /**
+     * The password for the backup being saved right now.
+     *
+     * Here rather than in the composition because the file picker is another
+     * app's screen: coming back from it can recreate this one, and a password
+     * kept in composition would be null by the time the picked file arrives.
+     * The backup would then be written readable, under the name the person
+     * was told means encrypted. Never in saved state - that is written to
+     * disk. It lives for one save and is cleared by the caller.
+     */
+    var backupPassword: String? = null
+
+    /**
      * Which cloud app holds this item's copy (Z10.1): the app recorded on the
      * batch the file went out with, never the one selected today.
      */

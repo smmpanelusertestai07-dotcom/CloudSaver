@@ -3,7 +3,6 @@ package app.cloudsaver
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -17,8 +16,12 @@ class HelpContentTest {
 
     private fun strings(): File? {
         var dir: File? = File(System.getProperty("user.dir").orEmpty()).absoluteFile
+        // Unit tests run from cloudsaver/, so the module-relative path is
+        // the first thing to try; the walk upward is for a run started
+        // from the repository root.
+        File("src/main/res/values/strings.xml").let { if (it.exists()) return it }
         while (dir != null) {
-            val candidate = File(dir, "app/src/main/res/values/strings.xml")
+            val candidate = File(dir, "cloudsaver/src/main/res/values/strings.xml")
             if (candidate.isFile) return candidate
             dir = dir.parentFile
         }
@@ -35,13 +38,13 @@ class HelpContentTest {
 
     @Test
     fun `the FAQ is exactly nineteen questions, each with an answer`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         val body = text()
         val questions = Regex("""<string name="faq_q(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
         val answers = Regex("""<string name="faq_a(\d+)"""").findAll(body)
             .map { it.groupValues[1].toInt() }.toList().sorted()
-        // Nineteen: the twelve it opened with, plus where the recommended
+        // Nineteen: the fourteen it opened with, plus where the recommended
         // figures come from, what "keep it in the same album" does, what
         // happens with no cloud app, why Files is scoped where Free up space
         // is not, and how to tell a genuine build from a copy of one - the
@@ -51,9 +54,34 @@ class HelpContentTest {
         assertEquals("every question needs its answer", questions, answers)
     }
 
+    /**
+     * The app names one place to get CloudSaver from, and names it once.
+     *
+     * Two screens tell someone where a genuine build lives: the card that
+     * appears when the signature is not CloudSaver's, and the FAQ answer
+     * about telling a real build from a copy. An address that is right in one
+     * and stale in the other sends somebody to the wrong repository at
+     * exactly the moment they are checking whether they have been given a
+     * forgery, so they have to be the same words.
+     */
+    @Test
+    fun `every address the app gives out is the same address`() {
+        assertTrue("strings.xml not found", strings() != null)
+        val body = text()
+        val addresses = Regex("""github\.com/[A-Za-z0-9._\-]+/[A-Za-z0-9._\-]+""")
+            .findAll(body).map { it.value }.toSet()
+        assertEquals("the app must name one repository, not several", 1, addresses.size)
+        for (name in listOf("tamper_text", "faq_a19")) {
+            val entry = Regex("""<string name="$name">(.*?)</string>""", RegexOption.DOT_MATCHES_ALL)
+                .find(body)?.groupValues?.get(1).orEmpty()
+            assertTrue("$name must say where a genuine build comes from",
+                entry.contains(addresses.first()))
+        }
+    }
+
     @Test
     fun `the deleted page covers six conditions and is reachable from Help and the FAQ`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         val body = text()
         for (i in 1..6) {
             assertTrue("condition $i needs a title", body.contains("name=\"deleted_r${i}_t\""))
@@ -78,7 +106,7 @@ class HelpContentTest {
 
     @Test
     fun `no user-visible string shouts a constant`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // The bug: Activity printed "STORAGE_SAVER" straight from the enum.
         // Acronyms the user does know are allowed by name.
         val allowed = setOf(
@@ -100,7 +128,7 @@ class HelpContentTest {
 
     @Test
     fun `no two attention chips say the same words`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // Two chips with identical text appear side by side on Home, and a
         // test asking for that text finds two nodes and fails on all eight
         // emulators - which is how this was found, at the cost of a full
@@ -114,7 +142,7 @@ class HelpContentTest {
 
     @Test
     fun `a light copy is never described as living in the upload folder`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // "Light copy" is the name of one specific thing: the smaller file
         // that stays in your gallery in place of an original you removed,
         // in Pictures/Light copies. The copies waiting in Pictures/CloudSaver
@@ -135,7 +163,7 @@ class HelpContentTest {
 
     @Test
     fun `the tagline is one sentence stored once`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // It was stored twice - app_tagline for Home, onb_tagline for the
         // welcome card - with the same words in both. Nothing failed while
         // they matched, which is the problem: the next edit touches one of
@@ -151,7 +179,7 @@ class HelpContentTest {
 
     @Test
     fun `the app never says it uploads anything itself`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // The app holds no internet permission. It makes smaller copies; a
         // cloud app the user chooses uploads them. Settings said "Pause
         // CloudSaver - stops optimising and uploading", so someone trying to
@@ -193,7 +221,7 @@ class HelpContentTest {
 
     @Test
     fun `the permission card accounts for every permission the app holds`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // About is the one card a person opens specifically to audit what the
         // app can reach. It said "Your photos and videos ... Nothing else",
         // while the manifest also holds PACKAGE_USAGE_STATS - which the app
@@ -281,7 +309,7 @@ class HelpContentTest {
 
     @Test
     fun `no help sentence runs past about fifteen words`() {
-        assumeTrue("strings.xml not found", strings() != null)
+        assertTrue("strings.xml not found", strings() != null)
         // R4: short sentences, everywhere someone is being explained something.
         val prefixes = listOf("privacy_b", "quality_", "onb_ready_", "optimise_", "storage_group")
         val offenders = values()

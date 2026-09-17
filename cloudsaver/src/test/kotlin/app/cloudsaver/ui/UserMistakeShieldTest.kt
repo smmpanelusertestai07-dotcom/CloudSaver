@@ -33,7 +33,7 @@ class UserMistakeShieldTest {
 
         // Wiring: the engine counts on every pass, Home shows the chip.
         val engine = File("src/main/kotlin/app/cloudsaver/engine/MaintainEngine.kt").readText()
-        assertTrue(engine.contains("step(\"foreign\")"))
+        assertTrue(engine.contains("step { foreignFiles(o, entries) }"))
         assertTrue(engine.contains("!ScanSources.isPipelineName"))
         val foreignFn = engine.substringAfter("private suspend fun foreignFiles")
             .substringBefore("private suspend fun")

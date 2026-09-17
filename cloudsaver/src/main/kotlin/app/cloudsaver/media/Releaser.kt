@@ -76,7 +76,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val batchBytes = HashMap<OutFolder, Long>()
         // BB2.4: the chosen volume is honoured only while the probe says it
         // takes inserts; otherwise releases fall back to primary rather than
-        // failing quietly, and the reason is recorded once per run.
+        // failing quietly, and Activity says so once per run. Silence would
+        // read as an SD card that has stopped filling for no reason.
         val chosen = Volumes
             .selected(context, options.storageVolume)?.mediaVolumeName
             ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
@@ -85,6 +86,12 @@ class Releaser(private val context: Context, private val db: AppDb) {
             selectedWritable = Volumes.probeWritable(context, chosen)
         )
         val volumeName = decision.volumeName
+        if (decision.fellBack) {
+            ActivityLog(context).record(
+                ActivityLog.Kind.PROBLEM,
+                detail = context.getString(R.string.problem_volume_fallback)
+            )
+        }
         var released = 0
         for (id in plan) {
             val row = rowsById[id] ?: continue
@@ -139,6 +146,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
     private fun notifyGallery(options: Options) {
         val paths = OutputPaths.forMode(options.outputMode)
             .map { "${android.os.Environment.getExternalStorageDirectory()}/$it" }
+        // A rescan the phone refuses is not a failure worth a word: the copy
+        // is written and the cloud app finds it on its own next look.
         runCatching {
             MediaScannerConnection.scanFile(
                 context, paths.toTypedArray(), null, null

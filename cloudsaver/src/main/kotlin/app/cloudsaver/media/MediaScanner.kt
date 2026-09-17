@@ -182,6 +182,11 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
             setOf(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
         for (volume in volumes) {
+            // A volume that refuses to be read - an SD card pulled out
+            // mid-scan, a provider that throws on one collection - must not
+            // take the other volumes down with it, so each is asked on its
+            // own. Nothing is claimed about what was not read: this list is
+            // only ever added to, and the next pass asks again.
             try {
                 queryCollection(MediaStore.Images.Media.getContentUri(volume), isVideo = false, out)
             } catch (e: Exception) {
@@ -557,6 +562,9 @@ class MediaScanner(private val context: Context, private val db: AppDb) {
                             }
                         }
                 } catch (e: Exception) {
+                    // One volume's folders are missing from the tally rather
+                    // than the whole tally being lost. The tally decides what
+                    // to offer, never what to delete.
                 }
             }
         }

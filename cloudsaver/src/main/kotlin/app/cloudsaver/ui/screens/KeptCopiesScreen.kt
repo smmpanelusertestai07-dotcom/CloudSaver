@@ -1,20 +1,15 @@
 package app.cloudsaver.ui.screens
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,14 +30,12 @@ import androidx.navigation.NavHostController
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ListFilters
-import app.cloudsaver.core.logic.OutputPaths
 import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.ui.AppViewModel
 import app.cloudsaver.ui.components.AppCard
 import app.cloudsaver.ui.components.EmptyState
 import app.cloudsaver.ui.components.FileRow
 import app.cloudsaver.ui.components.FilteredEmptyState
-import app.cloudsaver.ui.components.KeyValueRow
 import app.cloudsaver.ui.components.ListActionBar
 import app.cloudsaver.ui.components.ListScreenScaffold
 import app.cloudsaver.ui.components.SearchEmptyState

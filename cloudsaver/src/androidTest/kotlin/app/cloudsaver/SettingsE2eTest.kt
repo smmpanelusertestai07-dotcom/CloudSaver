@@ -1,6 +1,5 @@
 package app.cloudsaver
 
-import android.Manifest
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.ui.semantics.Role
@@ -19,7 +18,6 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick

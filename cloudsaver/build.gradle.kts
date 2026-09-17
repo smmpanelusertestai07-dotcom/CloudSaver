@@ -132,8 +132,8 @@ dependencies {
 // Many of this project's rules are source-text rules: they open repository
 // files and assert properties of the words in them - that no chip repeats
 // another, that the About card names every permission the manifest holds,
-// that the release matrix's counts match the tree, that the CI workflow never
-// publishes a private key.
+// that the repository holds no document and no key, that the CI workflow
+// never publishes a private key.
 //
 // Gradle knew about none of those files. Editing strings.xml and re-running
 // the tests reported `testDebugUnitTest UP-TO-DATE` and replayed the previous

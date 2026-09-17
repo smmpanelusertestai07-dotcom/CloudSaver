@@ -280,6 +280,7 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
                     actionLabel = stringResource(R.string.perm_open)
                 ) { PowerPages.open(context, requirement.id) }
             }
+
             Text(
                 stringResource(R.string.perm_why),
                 style = MaterialTheme.typography.bodySmall,

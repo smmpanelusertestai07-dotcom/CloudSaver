@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -161,6 +162,13 @@ fun NavHostController.goTo(route: String) {
 fun App(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
     val loaded by vm.optionsLoaded.collectAsStateWithLifecycle()
+    // Android takes the recents thumbnail as the app goes to the background,
+    // before the lock is back up on the way in, so the whole app stays out of
+    // the switcher while the lock is on. Here rather than inside MainNav
+    // because setup is a screen too: restoring a backup that carries the lock
+    // on, onto a phone that has not granted media access yet, lands on
+    // onboarding - which was the one screen the lock never covered.
+    HideWhileLocked(options.appLock)
     CloudSaverTheme(mode = options.theme, dynamicColor = options.dynamicColor) {
         AppBackground {
             when {
@@ -190,7 +198,13 @@ private fun MainNav(vm: AppViewModel) {
     val health by vm.health.collectAsStateWithLifecycle()
     // In the view model rather than this composition, so that turning the
     // phone does not ask for a fingerprint again (AppViewModel.unlocked).
-    val unlocked by vm.unlocked.collectAsStateWithLifecycle()
+    //
+    // collectAsState, not collectAsStateWithLifecycle: the lock is re-armed
+    // on ON_STOP, which is exactly the moment a lifecycle-aware collector
+    // stops collecting. The false would sit unread until the collector
+    // restarted on the way back in, and the first frame or two of the return
+    // would draw the file list this is meant to cover.
+    val unlocked by vm.unlocked.collectAsState()
     val activity = LocalActivity.current as? FragmentActivity
 
     // The Settings dot has to be right on whichever tab the app opens on, so
@@ -217,11 +231,6 @@ private fun MainNav(vm: AppViewModel) {
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
         if (Errand.returnedNeedsLock()) vm.unlocked.value = false
     }
-    // Android takes the recents thumbnail as the app goes to the background,
-    // before the lock is back up on the way in, so the whole app - not only
-    // the locked screen - stays out of the switcher while the lock is on.
-    HideWhileLocked(options.appLock)
-
     // The whole app, not a list of screens. Locking only the screens that
     // hold file lists left Home, Storage, the calculator and every Help page
     // readable to anyone who tapped a different tab - and the tab bar stayed

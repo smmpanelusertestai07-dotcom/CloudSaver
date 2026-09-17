@@ -254,41 +254,6 @@ class LayoutRulesTest {
      * its content to a page frame in the same file that does - which is how
      * the eight Help screens and the Find space screens are written.
      */
-    /**
-     * The app turns when the phone turns.
-     *
-     * Locking to portrait is the easy answer and the wrong one three times
-     * over. Someone whose phone is fixed sideways - mounted on a chair, in a
-     * car, on a stand - cannot use an app that only draws one way up, which
-     * is what WCAG 1.3.4 is about. Android 16 already ignores an orientation
-     * lock on anything 600dp wide or more, and the opt-out for that goes
-     * away at API 37. And this app has nothing that needs one way up: every
-     * screen scrolls, nothing is measured against the window, and the one
-     * content column is capped so it does not stretch into a ribbon.
-     *
-     * `fullUser` rather than `sensor`: it follows the rotation lock in the
-     * person's own quick settings, so a phone told not to turn does not.
-     */
-    @Test
-    fun theAppTurnsWithThePhone() {
-        val manifest = File("src/main/AndroidManifest.xml").readText()
-        assertTrue(
-            "the activity must declare fullUser",
-            manifest.contains("android:screenOrientation=\"fullUser\"")
-        )
-        for (locked in listOf("portrait", "sensorPortrait", "userPortrait", "reversePortrait",
-                "landscape", "sensorLandscape", "userLandscape", "reverseLandscape", "nosensor")) {
-            assertFalse(
-                "$locked would pin the app one way up",
-                manifest.contains("android:screenOrientation=\"$locked\"")
-            )
-        }
-        val pinned = File("src/main/kotlin/app/cloudsaver").walkTopDown()
-            .filter { it.extension == "kt" && it.readText().contains("requestedOrientation") }
-            .map { it.name }.toList()
-        assertTrue("nor may anything pin it at runtime: $pinned", pinned.isEmpty())
-    }
-
     @Test
     fun everyScreenCanBeScrolledToItsEnd() {
         val scrollers = listOf("verticalScroll", "LazyColumn", "LazyVerticalGrid", "LazyRow")
@@ -351,6 +316,41 @@ class LayoutRulesTest {
      * turns round with it, and an arrow that points the wrong way is an arrow
      * people do not press.
      */
+    /**
+     * The app turns when the phone turns.
+     *
+     * Locking to portrait is the easy answer and the wrong one three times
+     * over. Someone whose phone is fixed sideways - mounted on a chair, in a
+     * car, on a stand - cannot use an app that only draws one way up, which
+     * is what WCAG 1.3.4 is about. Android 16 already ignores an orientation
+     * lock on anything 600dp wide or more, and the opt-out for that goes
+     * away at API 37. And this app has nothing that needs one way up: every
+     * screen scrolls, nothing is measured against the window, and the one
+     * content column is capped so it does not stretch into a ribbon.
+     *
+     * `fullUser` rather than `sensor`: it follows the rotation lock in the
+     * person's own quick settings, so a phone told not to turn does not.
+     */
+    @Test
+    fun theAppTurnsWithThePhone() {
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertTrue(
+            "the activity must declare fullUser",
+            manifest.contains("android:screenOrientation=\"fullUser\"")
+        )
+        for (locked in listOf("portrait", "sensorPortrait", "userPortrait", "reversePortrait",
+                "landscape", "sensorLandscape", "userLandscape", "reverseLandscape", "nosensor")) {
+            assertFalse(
+                "$locked would pin the app one way up",
+                manifest.contains("android:screenOrientation=\"$locked\"")
+            )
+        }
+        val pinned = File("src/main/kotlin/app/cloudsaver").walkTopDown()
+            .filter { it.extension == "kt" && it.readText().contains("requestedOrientation") }
+            .map { it.name }.toList()
+        assertTrue("nor may anything pin it at runtime: $pinned", pinned.isEmpty())
+    }
+
     @Test
     fun nothingIsPositionedFromTheLeftOfTheScreen() {
         val banned = listOf(

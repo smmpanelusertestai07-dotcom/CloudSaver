@@ -1,6 +1,5 @@
 package app.cloudsaver
 
-import android.Manifest
 import android.content.Context
 import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed

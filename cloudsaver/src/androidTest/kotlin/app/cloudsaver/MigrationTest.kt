@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cloudsaver.core.logic.Evidence
 import app.cloudsaver.core.logic.ItemState
 import app.cloudsaver.data.db.AppDb
-import app.cloudsaver.data.db.ItemRow
 import app.cloudsaver.data.db.LedgerRow
 import app.cloudsaver.data.db.MediaProfileRow
 import app.cloudsaver.data.db.ReclaimBatchRow

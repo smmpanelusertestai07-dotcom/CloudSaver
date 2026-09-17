@@ -72,6 +72,11 @@ class VolumeRulesTest {
             releaser.contains("MediaStore.getVolumeName(itemUri")
         )
         assertTrue(
+            "the fall-back must reach Activity, or an SD card that stopped " +
+                "filling has no explanation anywhere",
+            releaser.contains("R.string.problem_volume_fallback")
+        )
+        assertTrue(
             "a refused SD insert must retry once on the primary volume",
             releaser.substringAfter("if (itemUri == null && effectiveVolume != MediaStore.VOLUME_EXTERNAL_PRIMARY) {")
                 .substringBefore("if (itemUri == null) return false")

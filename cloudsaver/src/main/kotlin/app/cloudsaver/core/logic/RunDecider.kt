@@ -49,7 +49,7 @@ object RunDecider {
     /**
      * The storage-side stop reasons, as something Home can say.
      *
-     * The worker's resource gate stopped a run with a word in the log and
+     * The worker's resource gate stopped a run with a word only it knew and
      * nothing on any screen: Help promises that a full copies folder "says so
      * on Home", and Home said "N files in the queue" instead, forever, to
      * exactly the person Help was written for - one with no cloud app to

@@ -99,6 +99,11 @@ object SnapshotCodec {
          * "PARTIAL", and an importer must treat that one as a fragment of a
          * gallery rather than an inventory of it. Older snapshots without
          * the field decode as "FULL", which is what they were.
+         *
+         * Nothing branches on it. It is written so that a snapshot can always
+         * be read back for what it is, which a merge cannot ask after the
+         * fact; a merge is safe either way, because it only ever adds rows or
+         * raises evidence, and the next full-access scan fills in the rest.
          */
         val mediaAccess: String = "FULL"
     )

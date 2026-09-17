@@ -2,7 +2,6 @@ package app.cloudsaver
 
 import java.io.File
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /**
@@ -17,8 +16,12 @@ class ThemePurityTest {
 
     private fun sourceRoot(): File? {
         var dir: File? = File(System.getProperty("user.dir").orEmpty()).absoluteFile
+        // Unit tests run from cloudsaver/, so the module-relative path is
+        // the first thing to try; the walk upward is for a run started
+        // from the repository root.
+        File("src/main/kotlin/app/cloudsaver").let { if (it.exists()) return it }
         while (dir != null) {
-            val candidate = File(dir, "app/src/main/kotlin/app/cloudsaver")
+            val candidate = File(dir, "cloudsaver/src/main/kotlin/app/cloudsaver")
             if (candidate.isDirectory) return candidate
             dir = dir.parentFile
         }
@@ -34,7 +37,7 @@ class ThemePurityTest {
     @Test
     fun `no screen names a colour of its own`() {
         val root = sourceRoot()
-        assumeTrue("source directory not found", root != null)
+        assertTrue("source directory not found", root != null)
 
         // Color(0xFF...) and the named constants alike: both bypass the theme.
         val literal = Regex("""Color\(0x|Color\.(White|Black|Red|Green|Blue|Yellow|Gray|LightGray|DarkGray|Magenta|Cyan)\b""")
@@ -57,7 +60,7 @@ class ThemePurityTest {
     @Test
     fun `the check is actually looking at the app`() {
         val root = sourceRoot()
-        assumeTrue("source directory not found", root != null)
+        assertTrue("source directory not found", root != null)
         val scanned = sourcesOutsideTheme(root!!).size
         assertTrue("expected to scan the app's sources, scanned $scanned", scanned >= 30)
     }

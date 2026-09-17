@@ -6,7 +6,7 @@ package app.cloudsaver.core.logic
  * A badge is a claim on attention, so the rules are kept in one place and
  * tested. Two rules only: something is wrong, or there is enough space to
  * reclaim that it is worth a trip. Anything else - a finished backup, a new
- * log line, a routine scan - is news the app already shows on the screen it
+ * Activity entry, a routine scan - is news the app already shows on the screen it
  * belongs to, and does not get to interrupt.
  */
 object TabBadges {
