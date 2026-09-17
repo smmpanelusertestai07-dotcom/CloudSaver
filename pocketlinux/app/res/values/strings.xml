@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">PocketLinux</string>
-    <string name="shortcut_open_desktop">Open desktop</string>
-    <string name="shortcut_open_desktop_long">Open the Linux computer</string>
-    <!-- The notification categories are named where LinuxService creates them, so a category and
-         the words describing it cannot drift apart. The two strings that used to sit here named a
-         single category the app no longer has, and nothing ever read them. -->
-</resources>
