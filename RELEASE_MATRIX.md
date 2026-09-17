@@ -519,7 +519,7 @@ source for this release, including the rows that were already marked Done.
   of the app - try again, share the log, app info - instead of composing the
   same screen a third time and leaving a dead icon with its own log out of
   reach; PermanenceTest pins the order of the launcher and CrashLogTest the
-  count. This was adopted from the sibling PocketLinux project after reading
+  count. This was adopted from an earlier sibling project in this repository (since removed) after reading
   it end to end, along with its refresh of settings state on resume, its
   per-maker component table for the battery pages, and a Hinglish quickstart
   that now ships beside the APK in every release.
