@@ -17,7 +17,7 @@ import java.io.File
  */
 class CiRuntimeTest {
 
-    /** Unit tests run from app/; the workflows live beside it, one level up. */
+    /** Unit tests run from cloudsaver/; the workflows live beside it, one level up. */
     private fun repoRoot(): File? {
         var dir: File? = File(System.getProperty("user.dir").orEmpty()).absoluteFile
         while (dir != null) {
@@ -49,7 +49,7 @@ class CiRuntimeTest {
         // toolchain nobody verified. The value is the one services.gradle.org
         // publishes beside the distribution, confirmed against a download.
         val root = repoRoot()
-        assertTrue("repository root not found from app/", root != null)
+        assertTrue("repository root not found from cloudsaver/", root != null)
         val props = File(root, "gradle/wrapper/gradle-wrapper.properties").readLines()
         val url = props.firstOrNull { it.startsWith("distributionUrl=") }
         assertTrue("the wrapper must name its distribution", url != null)
@@ -63,7 +63,7 @@ class CiRuntimeTest {
 
     @Test
     fun `no action is pinned to a major that loses its runtime`() {
-        assertTrue("the workflows directory must be found from app/", workflows.isDirectory)
+        assertTrue("the workflows directory must be found from cloudsaver/", workflows.isDirectory)
         val uses = Regex("""uses:\s*([A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-/]+)@v(\d+)""")
         val expiring = mutableListOf<String>()
         val unknown = mutableListOf<String>()
@@ -89,5 +89,23 @@ class CiRuntimeTest {
                 "whose action.yml says `using: node24`: $unknown",
             unknown.isEmpty()
         )
+    }
+
+    @Test
+    fun `the emulator harness hides system error dialogs before the suite`() {
+        // A loaded runner can hang the emulator's launcher, and the "isn't
+        // responding" dialog Android then shows takes window focus: taps and
+        // back presses stop reaching the app under test and a leg goes red
+        // with CloudSaver untouched (run 373 lost nine API 35 tests to the
+        // Pixel Launcher's dialog). The harness turns those dialogs off
+        // before the suite starts; the crash buffer and the process checks
+        // it keeps still report every failure that is the app's.
+        val root = repoRoot()
+        assertTrue("repository root not found from cloudsaver/", root != null)
+        val script = File(root, ".github/scripts/emulator-e2e.sh").readText()
+        val hide = script.indexOf("settings put global hide_error_dialogs 1")
+        val suite = script.indexOf("connectedDebugAndroidTest")
+        assertTrue("the emulator harness must hide the system's error dialogs", hide >= 0)
+        assertTrue("and must do so before the instrumented suite starts", suite > hide)
     }
 }

@@ -23,6 +23,14 @@ adb shell "su root setprop persist.sys.timezone UTC" 2>/dev/null || true
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
+# The emulator's own apps can hang on a loaded runner, and Android then puts
+# an "isn't responding" dialog over everything. That dialog takes window
+# focus, so taps and back presses stop reaching the app under test and a
+# whole leg goes red with CloudSaver untouched (run 373, API 35: the Pixel
+# Launcher's dialog sat over nine tests). Hide those dialogs. The suite's
+# own assertions, the crash buffer collected below and the process checks
+# after the release install still report every failure that is the app's.
+adb shell settings put global hide_error_dialogs 1
 
 echo "::group::Instrumented end-to-end tests"
 tests_failed=0
