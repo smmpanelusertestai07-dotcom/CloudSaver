@@ -15,8 +15,8 @@ APP_BASENAME="PocketIDE"
 # them from here, and the screens can only take them from there. tests/version_agreement.py
 # fails the build if the two ever disagree, because an app that reports one version to the
 # package manager and shows another in Settings produces bug reports nobody can act on.
-VERSION_NAME="2.4.0"
-VERSION_CODE="240"
+VERSION_NAME="2.4.5"
+VERSION_CODE="245"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2
@@ -25,10 +25,6 @@ fi
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$BUILD_DIR/gen" "$BUILD_DIR/assets"
-
-# The GPL-2.0 notice for the bundled PRoot has to reach whoever receives the APK, and the APK
-# is the only thing they receive. Help -> "Read the notices" reads this copy.
-cp "$PROJECT_DIR/OPEN_SOURCE_NOTICES.md" "$PROJECT_DIR/app/assets/open-source-notices.md"
 
 # Package only source assets, through a staging copy, so a build never modifies the source tree.
 cp -a "$PROJECT_DIR/app/assets/." "$BUILD_DIR/assets/"

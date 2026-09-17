@@ -57,14 +57,12 @@ final class Exits {
         final String headline;
         final String explanation;
         final boolean worthShowing;
-        final String raw;
 
-        Exit(long when, String headline, String explanation, boolean worthShowing, String raw) {
+        Exit(long when, String headline, String explanation, boolean worthShowing) {
             this.when = when;
             this.headline = headline;
             this.explanation = explanation;
             this.worthShowing = worthShowing;
-            this.raw = raw;
         }
     }
 
@@ -120,10 +118,6 @@ final class Exits {
     private static Exit translate(ApplicationExitInfo info, boolean linuxWasRunning) {
         String description = info.getDescription() == null ? "" : info.getDescription();
         long when = info.getTimestamp();
-        String raw = "reason=" + info.getReason()
-                + " status=" + info.getStatus()
-                + " importance=" + info.getImportance()
-                + (description.isEmpty() ? "" : " description=" + description);
 
         // Checked before the reason, because Android reports it as REASON_OTHER and the
         // description is the only thing that distinguishes it.
@@ -137,14 +131,14 @@ final class Exits {
                             + "are what usually reaches it. Running fewer of them at once is "
                             + "the only real answer: close the browser between tasks, and on a "
                             + "4 GB phone do not leave a build running while one is open.",
-                    true, raw);
+                    true);
         }
 
         switch (info.getReason()) {
             case ApplicationExitInfo.REASON_USER_REQUESTED:
                 // Stopping an app that had nothing running is not worth a notice, and the
                 // explanation below -- "Linux had no chance to shut down" -- would be untrue.
-                if (!linuxWasRunning) return new Exit(when, "", "", false, raw);
+                if (!linuxWasRunning) return new Exit(when, "", "", false);
                 return new Exit(when, "The app was stopped from the phone's Task Manager",
                         "Android's Task Manager has a Stop button beside apps that are running "
                                 + "in the background. It stops the whole app at once, without "
@@ -152,34 +146,34 @@ final class Exits {
                                 + "down tidily.\n\n"
                                 + "Nothing was lost: files are written as they go. Anything the "
                                 + "agent was part way through will need starting again.",
-                        true, raw);
+                        true);
 
             case ApplicationExitInfo.REASON_LOW_MEMORY:
-                if (!linuxWasRunning) return new Exit(when, "", "", false, raw);
+                if (!linuxWasRunning) return new Exit(when, "", "", false);
                 return new Exit(when, "The phone ran short of memory",
                         "Something else on the phone needed the memory and Android reclaimed it "
                                 + "from here. It is likelier when several large apps are open; "
                                 + "closing them, and closing the browser when an agent is not "
                                 + "using it, makes it less likely.",
-                        true, raw);
+                        true);
 
             case ApplicationExitInfo.REASON_CRASH:
             case ApplicationExitInfo.REASON_CRASH_NATIVE:
                 return new Exit(when, "The app stopped unexpectedly",
                         "This one is this app's fault rather than the phone's. Linux and "
                                 + "its files are untouched — they live in their own storage.",
-                        true, raw);
+                        true);
 
             case ApplicationExitInfo.REASON_ANR:
                 return new Exit(when, "The app stopped responding",
                         "Something took too long on the screen's own thread and Android ended "
                                 + "it. Linux and its files are untouched.",
-                        true, raw);
+                        true);
 
             default:
                 // Swiped away, stopped normally, updated, or any of the ordinary reasons. Not
                 // worth a notice.
-                return new Exit(when, "", "", false, raw);
+                return new Exit(when, "", "", false);
         }
     }
 

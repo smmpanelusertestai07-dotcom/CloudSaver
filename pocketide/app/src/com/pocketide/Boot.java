@@ -6,7 +6,6 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.os.Build;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -92,6 +91,8 @@ final class Boot {
     static void reached(Context context) {
         SharedPreferences prefs = Prefs.of(context);
         prefs.edit().putInt(ATTEMPTS, 0).putString(STAGE, "drawn").apply();
+        // A screen has been drawn, so whatever the last failure wrote is history.
+        Crash.clear(context);
     }
 
     /** True when the last two openings died before drawing anything. */
@@ -140,16 +141,9 @@ final class Boot {
                                 + "your projects are exactly as you left them.",
                 14.5f, Ui.muted(dark)), Ui.wide(activity, 12));
 
+        // What went wrong is kept for the clipboard, for a bug report, and not put on the
+        // screen: an owner is shown one plain sentence and three buttons.
         final String record = details(activity, failure);
-        if (!record.isEmpty()) {
-            TextView block = Ui.mono(activity, record, 11.5f, Ui.muted(dark));
-            int blockPad = Ui.dp(activity, 12);
-            block.setPadding(blockPad, blockPad, blockPad, blockPad);
-            block.setBackground(Ui.fill(activity, dark ? Color.rgb(18, 18, 18)
-                    : Color.rgb(246, 244, 238), 12));
-            block.setTextIsSelectable(true);
-            column.addView(block, Ui.wide(activity, 16));
-        }
 
         TextView again = Ui.primaryButton(activity, "Try opening it again", dark);
         again.setOnClickListener(v -> {
@@ -160,7 +154,7 @@ final class Boot {
         column.addView(again, Ui.wide(activity, 20));
 
         if (!record.isEmpty()) {
-            TextView copy = Ui.button(activity, "Copy the details", false, dark);
+            TextView copy = Ui.button(activity, "Copy the details for a bug report", false, dark);
             copy.setOnClickListener(v -> {
                 ClipboardManager clipboard =
                         (ClipboardManager)

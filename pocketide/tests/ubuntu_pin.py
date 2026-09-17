@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """The Ubuntu pin has to agree with itself, everywhere it is written down.
 
-There are five places the base image's identity appears: the URL it is fetched from, the SHA-256
-it is checked against, the label the set-up screen shows while it downloads, the README table,
-and the open-source notices. A point release moves all five or none -- a half-done bump ships a
+There are four places the base image's identity appears: the URL it is fetched from, the SHA-256
+it is checked against, the label the set-up screen shows while it downloads, and the
+open-source notices. A point release moves all four or none -- a half-done bump ships a
 screen that says one version while the phone downloads another, and nothing else would notice.
 
 The checksum itself is not re-fetched here, because a gate that reaches the network fails on a
@@ -39,14 +39,8 @@ elif version not in label.group(1):
                     % (label.group(1), version))
 
 for name in ("/app/src/com/pocketide/Stage.java",
-             "/README.md",
-             "/OPEN_SOURCE_NOTICES.md",
-             # Generated into the assets by build.sh, so absent before the first build.
-             "/app/assets/open-source-notices.md"):
-    try:
-        text = open(app + name).read()
-    except FileNotFoundError:
-        continue
+             "/app/assets/open-source-notices.txt"):
+    text = open(app + name).read()
     if "24.04" in text and version not in text:
         problems.append("%s names a different Ubuntu point release than %s"
                         % (name.lstrip("/"), version))

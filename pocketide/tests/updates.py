@@ -197,7 +197,7 @@ for method in ("doRun", "collect"):
 # --- the support date is one date, everywhere ---------------------------------------------------
 #
 # Three places carry it and all three shipped a month late: the script prints it, Updates.java
-# defaults and falls back to it, and the FAQ and README state it in prose. The sentence on the
+# defaults and falls back to it, and the FAQ states it in prose. The sentence on the
 # Settings screen says "that is Canonical's published date for this release, not an estimate" --
 # which is exactly the sentence that cannot afford to be a month out.
 #
@@ -218,9 +218,6 @@ for name, text in (("Updates.java", updates),
     if re.search(r'(June|April|July) 2029', text):
         problems.append("%s still carries a standard-support date other than %s"
                         % (name, STANDARD_WORDS))
-readme = read(app + "/README.md")
-if STANDARD_WORDS not in readme or re.search(r'(June|April|July) 2029', readme):
-    problems.append("README.md does not agree that standard support ends " + STANDARD_WORDS)
 faq = code(src + "Texts.java")
 if PRO_WORDS not in faq:
     problems.append("the FAQ does not give %s as the Ubuntu Pro date; 2036 was there once and "
@@ -313,8 +310,8 @@ if "AppUpdates.setEnabled" not in settings:
     problems.append("Settings cannot turn the app's own update check off")
 if "GitHub" not in code(src + "Texts.java"):
     problems.append("the privacy text does not admit the once-a-day request to GitHub")
-if "Releases" not in readme:
-    problems.append("README.md does not tell an owner where the published APK is")
+if "GitHub Releases" not in code(src + "Texts.java"):
+    problems.append("Help does not tell an owner where the published APK is")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

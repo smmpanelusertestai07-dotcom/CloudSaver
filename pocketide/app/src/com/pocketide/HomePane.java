@@ -279,8 +279,7 @@ final class HomePane implements Pane {
                     "Linux stopped while you were away. Tap to see why.",
                     v -> {
                         Prefs.of(host).edit().putLong(Prefs.EXIT_SEEN_AT, shown.when).apply();
-                        Dialogs.details(host, shown.headline, shown.explanation, shown.raw,
-                                "Copy the record");
+                        Dialogs.message(host, shown.headline, shown.explanation);
                         MainActivity.rebuild(host);
                     }));
             any = true;
@@ -294,24 +293,6 @@ final class HomePane implements Pane {
                     v -> MainActivity.open(host, "settings")));
             any = true;
         }
-        if (Crash.exists(host)) {
-            if (any) list.addView(Ui.divider(host, dark, true));
-            list.addView(Ui.row(host, dark, R.drawable.ic_info, "The app stopped unexpectedly",
-                    "Nothing in Linux was lost. Tap to see the record.",
-                    v -> {
-                        // Read, shown, and then cleared: a record that stayed put the same
-                        // row on Home for ever, long after it had been read and copied.
-                        String record = Crash.read(host);
-                        Crash.clear(host);
-                        Dialogs.details(host, "What was recorded",
-                                "The app itself stopped. Linux and its files live in their "
-                                        + "own storage, so nothing in them was lost.",
-                                record, "Copy details");
-                        refreshEverything();
-                    }));
-            any = true;
-        }
-
         if (!any) {
             attention.setVisibility(View.GONE);
             return;

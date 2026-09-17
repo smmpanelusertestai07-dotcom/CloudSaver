@@ -204,7 +204,7 @@ public final class HelpActivity extends Activity {
                         + "PocketIDE's own code is Apache-2.0.", 13.5f, Ui.muted(dark)));
         TextView open = Ui.button(this, "Read the notices", false, dark);
         open.setOnClickListener(v -> Dialogs.details(this, "Open-source notices", null,
-                readAsset("open-source-notices.md"), "Copy"));
+                readAsset("open-source-notices.txt"), "Copy"));
         card.addView(open, Ui.wide(this, 14));
         column.addView(card, Ui.wide(this, 8));
         return column;

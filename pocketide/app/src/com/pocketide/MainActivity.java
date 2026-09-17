@@ -269,6 +269,7 @@ public final class MainActivity extends Activity {
      * Back, and only while it applies: on Home nothing is registered, so the phone's own
      * predictive animation out of the app is left alone.
      */
+    @SuppressWarnings("deprecation") // the pre-13 path, as the comment above says
     @Override public void onBackPressed() {
         if (selected != HOME) {
             select(HOME);

@@ -550,26 +550,15 @@ final class Texts {
                      + "in helps: phones relax all of this while charging."},
             {"Phone",
              "The app closes as soon as I open it.",
-             "It will not do that twice more. The app counts its own openings \u2014 the "
-                     + "count is the very first thing the process writes \u2014 and clears it "
-                     + "once a screen has actually been drawn; after two openings that never "
-                     + "got that far, the third opens a recovery screen instead. That screen "
-                     + "says how far the last opening got, shows Android\u2019s own record of "
-                     + "why the process ended (a crash, a hang, low memory, or the phone "
-                     + "maker\u2019s cleaner killing it, by name), lets you copy all of it, "
-                     + "and offers to reset what the app remembers \u2014 which does not "
-                     + "touch Linux, the editor, the extensions or your projects. Every step "
-                     + "before the first frame is caught, so a failure in any of them shows "
-                     + "that screen rather than closing the window.\n\nIf it happens once "
-                     + "and then stops, Home shows what was recorded under \u201cThe app "
-                     + "stopped unexpectedly\u201d. If it still closes with nothing shown, "
-                     + "the phone is ending the process before the app runs at all: check "
-                     + "the Battery settings the entry below names, and that the APK came "
-                     + "from the project\u2019s own release page.\n\nWhat it was, for the "
-                     + "record: 2.1.5 to 2.3.0 asked the window for its system-bar controls "
-                     + "before the window existed, which on Android 11 and later is a crash "
-                     + "inside the platform at every opening. 2.3.0\u2019s recovery screen "
-                     + "showed the exact line, and 2.3.5 fixed it."},
+             "It will not do that twice more. After two openings that never reached a "
+                     + "screen, the third opens a plain recovery screen instead, with three "
+                     + "buttons: try again; copy the details, for a bug report; and reset the "
+                     + "app\u2019s settings, which does not touch Linux, the editor, the "
+                     + "extensions or your projects. Nothing in Linux is ever lost by the app "
+                     + "closing.\n\nIf it still closes with nothing shown, the phone is "
+                     + "ending the process before the app runs at all: check the Battery "
+                     + "settings the entry below names, and that the APK came from the "
+                     + "project\u2019s own GitHub Releases page."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
@@ -632,7 +621,8 @@ final class Texts {
                      + "/opt/code-server and ~/.local/share/code-server are the editor, its "
                      + "settings, the extensions and every extension\u2019s own storage, "
                      + "sign-ins included; files/phone is the app\u2019s own adb, the pairing "
-                     + "key and the allow-list; files/last-crash.txt is the crash record. "
+                     + "key and the allow-list; files/last-crash.txt is the note the recovery "
+                     + "screen can copy. "
                      + "Settings \u2192 Storage \u2192 What is stored where measures each of "
                      + "these.\n\nThe agents\u2019 chats are in two places, and that is the "
                      + "honest part. On the phone: Claude Code keeps its sessions under "
@@ -814,10 +804,10 @@ final class Texts {
                     + "apps on the same phone from reaching the editor from inside the "
                     + "phone.\n\n"
 
-                    + "Crash records.\n"
-                    + "If the app stops unexpectedly it writes the technical details to a file "
-                    + "in its own storage so you can read or share them deliberately. That file "
-                    + "is never sent anywhere on its own.\n\n"
+                    + "If the app cannot start.\n"
+                    + "A short technical note is kept in the app's own storage for the recovery "
+                    + "screen's Copy button, so a bug report can say what happened. It is "
+                    + "deleted the next time a screen is drawn, and never sent anywhere.\n\n"
 
                     + "On uninstall.\n"
                     + "Everything is deleted with the app.";
