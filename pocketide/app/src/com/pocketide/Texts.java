@@ -67,9 +67,9 @@ final class Texts {
      * whenever the group changes -- so an array that returns to a group it already used prints
      * that heading twice, which is what this one did.
      *
-     * Twenty-five entries. It was cut from thirty-two to nineteen once, and the rule that did
-     * the cutting still applies: nothing here may restate what the screen it sits on already
-     * says. What went then was the list of agents, which Home and Agents both show by name; the
+     * Forty-odd entries in seven groups, held contiguous by a gate. It was cut from thirty-two
+     * to nineteen once, and the rule that did the cutting still applies: nothing here may
+     * restate what the screen it sits on already says. What went then was the list of agents, which Home and Agents both show by name; the
      * permission list, which is rendered directly beneath it; and "do I need a computer", which
      * the first line of the app answers.
      *
@@ -93,7 +93,65 @@ final class Texts {
                      + "in the app's own storage, so Android removes them with the app. Push "
                      + "anything you want to keep to git, or save it to the phone's own files "
                      + "first."},
-
+            {"About",
+             "Is this a computer, or an editor?",
+             "It is an editor \u2014 an IDE \u2014 that happens to carry the Linux it needs to "
+                     + "build and run what you write. That is the distinction worth being "
+                     + "clear about, because the two are judged on different things.\n\nA "
+                     + "Linux-on-Android app is judged on how complete the Linux is. This is "
+                     + "judged on whether you can actually get work done on a phone: whether "
+                     + "the editor fits a thumb, whether an agent can be signed in to and "
+                     + "watched, whether a build survives the screen going off. Those are the "
+                     + "problems solved here, and they are the ones that do not go away as "
+                     + "phones get faster.\n\nOn a desktop this would be second best; nobody "
+                     + "should give up a laptop for it. On a phone, where the alternative is a "
+                     + "terminal emulator and a text editor, there is nothing else that puts a "
+                     + "real Visual Studio Code, a real Linux and first-party coding agents "
+                     + "together in one thing you can open on a bus."},
+            {"About",
+             "How does this compare with the Linux terminal on Pixel phones?",
+             "Android 15 gave recent Pixel phones a Linux Terminal: Debian running in a "
+                     + "virtual machine, as a developer option. It is a good sign for this "
+                     + "whole idea, and it is a different thing.\n\nIt needs a phone with "
+                     + "hardware virtualisation, which is why it is Pixel-first; it is a "
+                     + "terminal, not an editor; and it comes with no coding agents. This app "
+                     + "runs Ubuntu without a virtual machine, which is why it runs on a 4 GB "
+                     + "phone from 2021 on Android 10, and it puts a real Visual Studio Code "
+                     + "(as code-server) and "
+                     + "first-party agents on top. The honest trade: a virtual machine runs "
+                     + "closer to native speed than the translation layer used here. What you "
+                     + "get in return is that it works on the phone you have."},
+            {"About",
+             "How does this compare with Termux, VSCodroid, AndroidIDE and the cloud apps?",
+             "Termux with proot-distro and code-server is the same recipe done by hand, and a "
+                     + "good one \u2014 from GitHub or F-Droid, since Termux\u2019s own "
+                     + "maintainers call its Play Store build experimental. This app is that "
+                     + "recipe as one install: every piece pinned to a checksum, a job that "
+                     + "survives the screen going off, and the agents set up in a tap. "
+                     + "VSCodroid, open source and new in 2026, runs the editor\u2019s server "
+                     + "natively with no PRoot, so it is lighter; it carries no Ubuntu, no apt "
+                     + "and no Android build tools. AndroidIDE, archived in December 2024, and "
+                     + "its successor Code on the Go build Android apps on the phone with no "
+                     + "VS Code and no agents. Replit, GitHub Codespaces, Cursor\u2019s phone "
+                     + "app and Cosyra do the work on a rented computer: nothing runs on the "
+                     + "phone, and each is metered or a subscription.\n\nNone of them that "
+                     + "could be found does all of this in one app: the editor, Android builds, "
+                     + "the coding agents and testing on the phone itself, with no account and "
+                     + "no fee of its own. And every one of them shares this app\u2019s hard "
+                     + "parts, which their reviews name: the phone\u2019s keyboard, 4 GB as "
+                     + "the floor, and Android\u2019s rules for what may run in the "
+                     + "background."},
+            {"About",
+             "Why Linux, and not Windows or macOS?",
+             "Because Linux is what the tools are built for. The servers your code will run "
+                     + "on, the systems that test it, the containers it ships in, and the "
+                     + "command-line tools behind every coding agent are all built and tested "
+                     + "on Linux first; the agents\u2019 own CLIs ship for Linux and macOS, and "
+                     + "reach Windows through a Linux layer of Microsoft\u2019s own. A "
+                     + "developer\u2019s desktop is macOS or Linux for that reason, and on a "
+                     + "phone only one of the two is possible.\n\nSo the Linux here is not a "
+                     + "curiosity bolted on \u2014 it is the part that makes the editor and "
+                     + "the agents able to do real work: build, run, test, commit, push."},
             {"Editor",
              "Is this the real Visual Studio Code?",
              "It is Code-OSS, the open-source project Microsoft builds Visual Studio Code from, "
@@ -121,7 +179,65 @@ final class Texts {
                      + "Microsoft's own marketplace is licensed for Microsoft's own products "
                      + "only, so every editor that is not Visual Studio Code itself uses Open "
                      + "VSX \u2014 including the desktop editors these agents ship in."},
-
+            {"Editor",
+             "Is this the same Visual Studio Code as on a computer?",
+             "The same editor, the same source. What runs here is code-server, which is "
+                     + "Code - OSS \u2014 the open-source code Microsoft builds Visual Studio "
+                     + "Code from \u2014 served to the app\u2019s own window. The files, the "
+                     + "terminal, the search, the git view, the settings, the keyboard "
+                     + "shortcuts, the extension model: the same. Three things differ, and "
+                     + "they are the whole list.\n\nExtensions come from Open VSX, not from "
+                     + "Microsoft\u2019s marketplace, whose terms allow only Microsoft\u2019s "
+                     + "own builds to use it. Almost everything is on both. What is not on Open "
+                     + "VSX is Microsoft\u2019s own closed extensions: Pylance (Pyright, its "
+                     + "open core, is there), the C# Dev Kit, GitHub Copilot (the agents here "
+                     + "do what it does), Remote SSH and Live Share; Pyright, clangd for C and "
+                     + "C++, and Open Collaboration Tools in Live Share\u2019s place are all "
+                     + "there. Second, a few desktop-only "
+                     + "features do not exist in any web build: window zoom, native menus, "
+                     + "the desktop debuggers that need a local process the browser cannot "
+                     + "spawn. Third, this is an arm64 Linux with 4 GB: the same toolchain as "
+                     + "a Linux laptop, and any program published only for x86-64 will not "
+                     + "run.\n\nSo what you build and test here is what you would build and "
+                     + "test on a Linux laptop, minus exactly those three lists. Of the "
+                     + "four places the industry puts its agents \u2014 an agent-first "
+                     + "desktop workspace, the IDE, the terminal, the web \u2014 this is the "
+                     + "IDE, the second in that list, on a phone, with the same agents the "
+                     + "desktop one has."},
+            {"Editor",
+             "How do I give the agent a file or a photo from the phone?",
+             "In the editor\u2019s Explorer, long-press a folder and choose Upload, or use an "
+                     + "agent\u2019s own attach button: the phone\u2019s file picker opens, "
+                     + "you choose the file, and a copy lands in that folder under ~/projects "
+                     + "where the agent can read it. That picker is Android\u2019s own: the "
+                     + "app never gets access to your storage by it, only to the one file you "
+                     + "chose, and nothing on the phone is changed. The other way round, a "
+                     + "file the agent made can be downloaded from the editor to the "
+                     + "phone\u2019s Downloads, or the whole shared storage can be switched on "
+                     + "as ~/phone in Settings."},
+            {"Editor",
+             "Can I use it sideways?",
+             "Yes. Turn the phone and the editor turns with it, keeping the session, the open "
+                     + "files and anything running in the terminal \u2014 it is not reloaded. "
+                     + "Landscape gives the editor roughly twice the width, which is enough for "
+                     + "a file tree beside the code, or a diff with both sides showing.\n\nThe "
+                     + "text size is worked out from the upright width and left alone when you "
+                     + "turn the phone, so the editor does not resize its own text under you. "
+                     + "Menu \u2192 Larger text and Smaller text change it whenever you want."},
+            {"Editor",
+             "Something is running off the side of the screen.",
+             "Menu \u2192 Smaller text. The editor is laid out at a width worked out from this "
+                     + "screen, and a phone set to a large system text size asks for more room "
+                     + "than the layout has \u2014 so the app holds the editor to a minimum "
+                     + "usable width and lets you adjust from there. You can also pinch to zoom "
+                     + "anywhere in the editor, as in a browser."},
+            {"Editor",
+             "Does copying in the editor reach the phone\u2019s clipboard?",
+             "Yes. The editor is drawn by the phone\u2019s own browser engine, which shares "
+                     + "the phone\u2019s clipboard: long-press to select, Copy, and it is in "
+                     + "Gboard or any other app. Paste works the other way round the same way. "
+                     + "The terminal is the one place to be careful \u2014 in a shell, Ctrl+V "
+                     + "is not paste; long-press and choose Paste instead."},
             {"Agents",
              "Why these three?",
              "Each of the three companies builds its own frontier AI model, ships its own "
@@ -150,227 +266,6 @@ final class Texts {
              "Yes, once you add the browser in Settings. An agent can start your site, open it, "
                      + "take a screenshot, read the page back, click through it, and record a "
                      + "video of the run."},
-
-            {"Building",
-             "What can I build today, with nothing extra installed?",
-             "Websites and web apps, and programs in Python, Node, Go, Rust, C and C++. Git, a "
-                     + "terminal and a compiler are all here from the first start."},
-            {"Building",
-             "Can it build an Android app?",
-             "Java and Kotlin projects, yes \u2014 into a real, signed, installable APK, with "
-                     + "the project\u2019s own ./gradlew, once Settings \u2192 The computer "
-                     + "\u2192 Android build tools has been installed (about 530 MB, once). "
-                     + "That installs a JDK, Google\u2019s own SDK, and aarch64 builds of the "
-                     + "four build tools Google only ships for x86-64 \u2014 each checked "
-                     + "against a checksum before it is used.\n\nApps containing C or C++ "
-                     + "cannot be built: Google publishes no Android compiler for this kind "
-                     + "of processor, which is Google\u2019s decision rather than a limit of "
-                     + "your phone."},
-            {"Building",
-             "Can I test an Android app here?",
-             "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
-                     + "agent can drive it through a door with a short list on it. Settings "
-                     + "\u2192 The computer \u2192 Test on this phone pairs the phone with "
-                     + "itself over Wireless debugging: the app finds the port the phone "
-                     + "advertises, you type the six-digit code into a notification, and the "
-                     + "app\u2019s own adb does the rest. That adb ships inside the app "
-                     + "(Ubuntu\u2019s arm64 build, assembled from packages pinned by checksum) "
-                     + "and lives, with the pairing key and the adb server, in the app\u2019s "
-                     + "own storage in a root of its own. The Linux the agent works in has no "
-                     + "adb at all and cannot reach that one: nothing it can write is ever run "
-                     + "with the key in reach. What remains is the phone\u2019s own line: "
-                     + "everything this app runs is one Android user, and a program written to "
-                     + "read another process\u2019s memory could read the adb server\u2019s while "
-                     + "it runs \u2014 which is why Wireless debugging is a switch you turn off "
-                     + "when you are not testing, and Android turns it off at every restart.\n\n"
-                     + "What the terminal gets is one command, phone. "
-                     + "It can install an APK built under ~/projects, open it, stop it, clear "
-                     + "it, uninstall it, run its instrumented tests, read its own log, and "
-                     + "\u2014 only while that app is on the screen \u2014 take a screenshot, "
-                     + "tap, type or press a key. It cannot open a shell on the phone, touch "
-                     + "another app, read the phone\u2019s files, list what is installed or "
-                     + "read the phone\u2019s details; phone help is the whole list. Install an "
-                     + "app built here hands an APK to Android\u2019s installer without any "
-                     + "of it.\n\nTwo of those need no pairing and no Developer options at "
-                     + "all: phone install and phone launch go through Android\u2019s own "
-                     + "installer, which asks you to confirm each install on its own screen, "
-                     + "and the app opens from there \u2014 while PocketIDE is on the screen; "
-                     + "if it is not, Android will not let it open another app, and a "
-                     + "notification with Open on it appears instead. So an agent can build, "
-                     + "install and run what it wrote with your phone unpaired. Pairing makes "
-                     + "those two silent and adds the rest \u2014 the log, the screenshot, "
-                     + "the taps, the tests and uninstall.\n\nWithout the phone at all: JVM "
-                     + "unit tests run in Linux "
-                     + "directly, and so does Robolectric, with two limits on this processor "
-                     + "\u2014 its graphics run in legacy mode, so views lay out and Espresso "
-                     + "checks pass but nothing is drawn to pixels or screenshots, and its "
-                     + "SQLite does not run, so tests that use a database go to the phone "
-                     + "through the bridge. Its first run downloads about 200 MB of Android "
-                     + "framework.\n\nWireless debugging lives in Developer options because "
-                     + "Android has no narrower switch for it; the app keeps its access to "
-                     + "the list above. Turn it off when you are done; Android turns it off at "
-                     + "every restart anyway.\n\nAn emulator cannot run here, and cannot be "
-                     + "downloaded or built into Linux either: Google publishes its emulator "
-                     + "for Linux only on x86-64, plain QEMU cannot boot Google\u2019s Android "
-                     + "images, and Cuttlefish, Waydroid, Anbox and redroid all need kernel "
-                     + "features or root that Android gives no app. On a 4 GB phone a "
-                     + "software-emulated Android would not fit beside the phone\u2019s own "
-                     + "either. The phone itself, behind the door above, is the test device."},
-            {"Building",
-             "Can I build an iPhone app?",
-             "Write one here, yes; build and install it, not here, and not through any trick. "
-                     + "Apple\u2019s licence allows its SDK on Apple hardware only, so the "
-                     + "Linux cross-compilers that exist (xtool, theos) need Xcode downloaded "
-                     + "with an Apple ID and break that licence on a phone; and every "
-                     + "sideloading tool \u2014 AltStore, Sideloadly, SideStore \u2014 needs a "
-                     + "Mac or a Windows PC for the signing step and gives an app that lasts "
-                     + "seven days without a paid account.\n\nWhat works, and what an agent "
-                     + "here can do end to end: write the app in Swift, React Native or "
-                     + "Flutter, push it to a free cloud Mac \u2014 GitHub Actions is free "
-                     + "and unlimited for a public repository, Codemagic gives 500 Mac minutes "
-                     + "a month, Expo EAS 15 builds a month \u2014 and ship the result as a "
-                     + "web app anyone can open, or through TestFlight and the App Store with "
-                     + "an Apple developer account ($99 a year). The phone writes and pushes; "
-                     + "the Mac in the cloud compiles."},
-            {"Building",
-             "Can I make games? Unity, Unreal, something like Free Fire?",
-             "Godot 4, yes: it publishes a Linux arm64 build (about 77 MB) that exports an "
-                     + "Android APK from the terminal with no window at all \u2014 godot "
-                     + "--headless --export-debug Android game.apk \u2014 once its export "
-                     + "templates (about 1.3 GB) are downloaded and the Android build tools "
-                     + "row is installed. An agent can write the game in GDScript, export it "
-                     + "and install it with phone install. It is not a row in Settings yet "
-                     + "because it has not been proved on a 4 GB phone; the terminal is the "
-                     + "way to try it. 2D and web games in any engine that runs on Linux "
-                     + "without a graphics card work the same way.\n\nUnity and Unreal cannot "
-                     + "run here at all, and nothing installable changes that: Unity publishes "
-                     + "its Linux editor for x86-64 only (its release list has no Linux arm64 "
-                     + "build), and Unreal supports Linux on x86-64 only. A headless Unity "
-                     + "build still needs that editor. The nearest real thing is a cloud "
-                     + "x86-64 machine \u2014 GitHub Actions again \u2014 running Unity in "
-                     + "batch mode on code written here.\n\nA game the size of Free Fire is "
-                     + "Unity, and years of work by a studio: dozens to hundreds of engineers "
-                     + "and artists, a 3D art pipeline on GPU workstations, authoritative game "
-                     + "servers, anti-cheat, a device farm. That is a hardware and headcount "
-                     + "fact, not a limit of this app or of you. What is realistic here is "
-                     + "what most studios started with: a small game, finished."},
-
-            {"Safety",
-             "How do I know an extension is safe?",
-             "Start with the publisher. Open VSX marks a publisher verified when it has proved "
-                     + "it controls the name it publishes under, so a verified Google, Anthropic "
-                     + "or OpenAI really is that company. This app shows only verified "
-                     + "publishers by default, and every counterfeit extension found on either "
-                     + "major registry through 2026 came from an unverified account imitating a "
-                     + "name it did not own.\n\nBefore installing anything, check four things: "
-                     + "the publisher is verified; the downloads and reviews look like real use "
-                     + "rather than a week-old listing; the name is spelled exactly right, since "
-                     + "imitations rely on one swapped letter; and the description says what the "
-                     + "extension does, not only what it is for.\n\nWhere a company publishes "
-                     + "no official extension, a well-established community one is a reasonable "
-                     + "choice \u2014 prefer a long history, an open repository and recent "
-                     + "updates. Turning off the verified-only filter is yours to decide, and "
-                     + "the app asks you to confirm it once."},
-            {"Safety",
-             "What can an extension actually do?",
-             "Everything you can do in the editor: read and change any file in Linux, run "
-                     + "commands, and use the network. That is true of extensions in every "
-                     + "editor, desktops included \u2014 it is not a weakness of this app. What "
-                     + "limits it here is Android: all of it happens inside this app's own "
-                     + "storage, and nothing an extension does can reach your photos, your "
-                     + "messages or your other apps."},
-            {"Safety",
-             "Can another app on my phone reach the editor?",
-             "Not from the internet \u2014 the editor cannot be reached from outside this phone "
-                     + "at all. Another app on the same phone could in principle connect to it, "
-                     + "which is why it sits behind a password the phone generates for itself "
-                     + "and never shows you. Turn on the app lock in Settings and a fingerprint "
-                     + "is needed to open the editor at all."},
-
-            {"Updates",
-             "Why only while the app is open?",
-             "Because Linux only exists while the app is open. Android does not keep another "
-                     + "operating system running behind a closed app, and there is no way to "
-                     + "ask it to. An app that claimed to update your Linux overnight would be "
-                     + "describing something that cannot happen."},
-            {"Updates",
-             "Where does a new PocketIDE come from?",
-             "From the Releases page of the repository this app is built in, "
-                     + "github.com/smmpanelusertestai07-dotcom/CloudSaver/releases. Every "
-                     + "published build is there as PocketIDE-v<version>-release.apk, under a "
-                     + "tag that starts with pocketide-v — that prefix is what tells this "
-                     + "app's releases apart from the other app published from the same "
-                     + "repository.\n\nThat is the same list this app reads once a day, and "
-                     + "the same page to open by hand on a phone whose update check is turned "
-                     + "off, or to install this app on a second phone. Every release is signed "
-                     + "with the same key, so a newer one installs straight over the copy "
-                     + "already on the phone and nothing in Linux is touched. Installing is "
-                     + "always your tap: Android does not let an app replace itself without "
-                     + "one."},
-            {"Updates",
-             "How long will Ubuntu 24.04 keep getting updates?",
-             "Until May 2029 for the standard security updates, which is Canonical\u2019s own "
-                     + "published date for this release. Ubuntu Pro extends the same release to "
-                     + "May 2034 and is free for personal use on up to five machines. There is "
-                     + "a further paid Legacy add-on to May 2039, which the free tier does not "
-                     + "include. When 26.04 LTS is worth moving to, that will be a set-up you "
-                     + "choose rather than something that happens to you."},
-
-            {"Phone",
-             "How big a project can this build?",
-             "The app\u2019s own size is not the limit \u2014 a 200 MB APK is no harder to "
-                     + "produce than a 2 MB one. What costs memory is the compiler, and that is "
-                     + "decided by how many modules and dependencies a project has, not how big "
-                     + "it ends up. Settings \u2192 The computer shows what your phone gives "
-                     + "it: cores, memory, free space, and the build heap worked out from them."},
-            {"Phone",
-             "Which phones can run it?",
-             "A 64-bit ARM phone on Android 10 or newer \u2014 any version from 10 up to the "
-                     + "current one \u2014 with 1.4 GB free to set up (about 4 GB if you add "
-                     + "the browser and the Android build tools) and ideally 6 GB of "
-                     + "memory. It runs on 4 GB with fewer things open at once: the phone this "
-                     + "app is sized for is a 4 GB realme C25s on Android 12, and every memory "
-                     + "figure inside it \u2014 the editor\u2019s heap, the build workers, the "
-                     + "text size \u2014 is worked out from what the phone actually has rather "
-                     + "than assumed. Home tells you where your phone stands before you start, "
-                     + "and refuses to begin a set-up that could not finish.\n\nIt is an "
-                     + "Android app and only an Android app. There is no iPhone version, "
-                     + "because iOS does not let an app run another operating system inside "
-                     + "itself the way Android does."},
-            {"Phone",
-             "Which battery settings can stop a long job?",
-             "A set-up, a build or an agent run keeps going with the screen off: the app holds "
-                     + "the processor awake while it works, and the notification\u2019s Stop "
-                     + "button is the only thing meant to end it. Three things can still end "
-                     + "it.\n\nSuper power saving (realme, OPPO), Ultra battery saver (Xiaomi) "
-                     + "and Samsung\u2019s \u201cLimit apps and Home screen\u201d shut down every "
-                     + "app not on their short list \u2014 turn those off while a job runs. "
-                     + "Ordinary Power saving mode is fine once Keep working with the screen "
-                     + "off is allowed in Settings; it only makes the job slower, and Activity "
-                     + "says so when a job starts with it on.\n\nThe phone\u2019s own per-app "
-                     + "switch must be on: Allow background activity on realme and OPPO, No "
-                     + "restrictions on Xiaomi, Unrestricted on Samsung. Settings \u2192 "
-                     + "Permissions shows the path in this phone\u2019s own menu words. On "
-                     + "realme and Xiaomi, locking the app in the Recents screen (its card "
-                     + "\u2192 Lock) also stops \u201cclear all\u201d from ending it.\n\nAuto-"
-                     + "launch is not one of them: this app never starts itself. Data Saver "
-                     + "and Adaptive Battery do not affect a running job. Plugging the phone "
-                     + "in helps: phones relax all of this while charging."},
-            {"About",
-             "Is this a computer, or an editor?",
-             "It is an editor \u2014 an IDE \u2014 that happens to carry the Linux it needs to "
-                     + "build and run what you write. That is the distinction worth being "
-                     + "clear about, because the two are judged on different things.\n\nA "
-                     + "Linux-on-Android app is judged on how complete the Linux is. This is "
-                     + "judged on whether you can actually get work done on a phone: whether "
-                     + "the editor fits a thumb, whether an agent can be signed in to and "
-                     + "watched, whether a build survives the screen going off. Those are the "
-                     + "problems solved here, and they are the ones that do not go away as "
-                     + "phones get faster.\n\nOn a desktop this would be second best; nobody "
-                     + "should give up a laptop for it. On a phone, where the alternative is a "
-                     + "terminal emulator and a text editor, there is nothing else that puts a "
-                     + "real Visual Studio Code, a real Linux and first-party coding agents "
-                     + "together in one thing you can open on a bus."},
             {"Agents",
              "Why only these three, and can I add another AI?",
              "Three are pre-set. Every other one is an install away, and nothing here is a "
@@ -446,6 +341,21 @@ final class Texts {
                      + "like \u2014 none of which is a coding agent, and none of which this "
                      + "app lists."},
             {"Agents",
+             "How do I sign in to an agent, and how does the sign-in get back here?",
+             "In the agent\u2019s own panel, tap Sign in. The publisher\u2019s sign-in page "
+                     + "opens in the phone\u2019s browser, never in this app: every address "
+                     + "that is not the editor\u2019s own is handed to the browser, where the "
+                     + "address bar is visible and a password manager works. Once you have "
+                     + "signed in, the page usually returns to the editor by itself \u2014 "
+                     + "through the phone\u2019s own localhost, which the Linux here shares "
+                     + "\u2014 and the agent is signed in when you switch back. If the page "
+                     + "shows a code instead, paste it where the agent asks: Claude Code says "
+                     + "\u201cPaste code here if prompted\u201d, and Codex offers \u201cSign "
+                     + "in with Device Code\u201d (in a terminal, codex login --device-auth). "
+                     + "Antigravity signs in with a Google account the same way; Kilo Code "
+                     + "takes an account with the model provider, or a key. Each extension "
+                     + "keeps its own sign-in inside Linux; this app never sees it."},
+            {"Agents",
              "I installed an agent. How do I open it?",
              "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
                      + "\u201cOpen Antigravity\u201d, and the same for any other agent that "
@@ -454,22 +364,190 @@ final class Texts {
                      + "activity bar, "
                      + "which on a phone is the row of small icons along the bottom of the "
                      + "editor itself. The menu exists because that row is easy to miss."},
-            {"Editor",
-             "Can I use it sideways?",
-             "Yes. Turn the phone and the editor turns with it, keeping the session, the open "
-                     + "files and anything running in the terminal \u2014 it is not reloaded. "
-                     + "Landscape gives the editor roughly twice the width, which is enough for "
-                     + "a file tree beside the code, or a diff with both sides showing.\n\nThe "
-                     + "text size is worked out from the upright width and left alone when you "
-                     + "turn the phone, so the editor does not resize its own text under you. "
-                     + "Menu \u2192 Larger text and Smaller text change it whenever you want."},
-            {"Editor",
-             "Something is running off the side of the screen.",
-             "Menu \u2192 Smaller text. The editor is laid out at a width worked out from this "
-                     + "screen, and a phone set to a large system text size asks for more room "
-                     + "than the layout has \u2014 so the app holds the editor to a minimum "
-                     + "usable width and lets you adjust from there. You can also pinch to zoom "
-                     + "anywhere in the editor, as in a browser."},
+            {"Building",
+             "What exactly can be built and tested here?",
+             "Built and run on the phone: websites and web apps (any framework that runs on "
+                     + "Node or Python), APIs and servers, command-line tools, scripts and "
+                     + "bots, data work in Python, programs in Go, Rust, C and C++, databases "
+                     + "such as SQLite and PostgreSQL from apt, Android apps in Java and "
+                     + "Kotlin with the Android build tools row, and small games with Godot 4 "
+                     + "or any web engine.\n\nTested how: a website with the Chromium the "
+                     + "Browser row installs and Microsoft\u2019s Playwright extension, which "
+                     + "the agent drives and screenshots; a server by calling it from the "
+                     + "terminal; a library by its own tests; an Android app on this phone "
+                     + "through phone install, launch, log, screenshot, record and its "
+                     + "instrumented tests; a game by exporting it and installing it the same "
+                     + "way.\n\nNot here, and Help says why in each case: an iPhone app, a "
+                     + "Unity or Unreal game, an Android app with C or C++ in it \u2014 which "
+                     + "includes Flutter and React Native \u2014 and anything that needs an "
+                     + "Android emulator or an x86-64 program."},
+            {"Building",
+             "How does the agent see what it built? Screenshots, recordings, the browser.",
+             "Every picture lands under ~/projects, where the agent reads it like any other "
+                     + "file \u2014 Claude Code, Codex and Kilo Code all read images. For an "
+                     + "app on this phone: phone screenshot com.example.app shot.png while "
+                     + "it is on the screen, and phone record com.example.app flow.mp4 15 for "
+                     + "a recording of up to sixty seconds "
+                     + "that stops by itself the moment the app leaves the screen, so nothing "
+                     + "else on the phone is ever filmed. For a website: Playwright\u2019s "
+                     + "screenshot and video, in the Chromium here. For anything with a log: "
+                     + "phone log, or the terminal. Nothing is sent anywhere by the app; what "
+                     + "the agent then sends to its company is the agent\u2019s doing, under "
+                     + "its terms."},
+            {"Building",
+             "What can I build today, with nothing extra installed?",
+             "Websites and web apps, and programs in Python, Node, Go, Rust, C and C++. Git, a "
+                     + "terminal and a compiler are all here from the first start."},
+            {"Building",
+             "Can it build an Android app?",
+             "Java and Kotlin projects, yes \u2014 into a real, signed, installable APK, with "
+                     + "the project\u2019s own ./gradlew, once Settings \u2192 The computer "
+                     + "\u2192 Android build tools has been installed (about 530 MB, once). "
+                     + "That installs a JDK, Google\u2019s own SDK, and aarch64 builds of the "
+                     + "four build tools Google only ships for x86-64 \u2014 each checked "
+                     + "against a checksum before it is used.\n\nApps containing C or C++ "
+                     + "cannot be built: Google publishes no Android compiler for this kind "
+                     + "of processor, which is Google\u2019s decision rather than a limit of "
+                     + "your phone. That includes Flutter and React Native: both compile C++ "
+                     + "through Google\u2019s NDK, which Google publishes for x86-64 Linux, "
+                     + "Windows and Mac only, so neither builds here today."},
+            {"Building",
+             "Can I test an Android app here?",
+             "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
+                     + "agent can drive it through a door with a short list on it. Settings "
+                     + "\u2192 The computer \u2192 Test on this phone pairs the phone with "
+                     + "itself over Wireless debugging: the app finds the port the phone "
+                     + "advertises, you type the six-digit code into a notification, and the "
+                     + "app\u2019s own adb does the rest. That adb ships inside the app "
+                     + "(Ubuntu\u2019s arm64 build, assembled from packages pinned by checksum) "
+                     + "and lives, with the pairing key and the adb server, in the app\u2019s "
+                     + "own storage in a root of its own. The Linux the agent works in has no "
+                     + "adb at all and cannot reach that one: nothing it can write is ever run "
+                     + "with the key in reach. What remains is the phone\u2019s own line: "
+                     + "everything this app runs is one Android user, and a program written to "
+                     + "read another process\u2019s memory could read the adb server\u2019s while "
+                     + "it runs \u2014 which is why Wireless debugging is a switch you turn off "
+                     + "when you are not testing, and Android turns it off at every restart.\n\n"
+                     + "What the terminal gets is one command, phone. "
+                     + "It can install an APK built under ~/projects, open it, stop it, clear "
+                     + "it, uninstall it, run its instrumented tests, read its own log, and "
+                     + "\u2014 only while that app is on the screen \u2014 take a screenshot, "
+                     + "tap, type or press a key. It cannot open a shell on the phone, touch "
+                     + "another app, read the phone\u2019s files, list what is installed or "
+                     + "read the phone\u2019s details; phone help is the whole list. Install an "
+                     + "app built here hands an APK to Android\u2019s installer without any "
+                     + "of it.\n\nTwo of those need no pairing and no Developer options at "
+                     + "all: phone install and phone launch go through Android\u2019s own "
+                     + "installer, which asks you to confirm each install on its own screen, "
+                     + "and the app opens from there \u2014 while PocketIDE is on the screen; "
+                     + "if it is not, Android will not let it open another app, and a "
+                     + "notification with Open on it appears instead. So an agent can build, "
+                     + "install and run what it wrote with your phone unpaired. Pairing makes "
+                     + "those two silent and adds the rest \u2014 the log, the screenshot, "
+                     + "the taps, the tests and uninstall.\n\nWithout the phone at all: JVM "
+                     + "unit tests run in Linux "
+                     + "directly, and so does Robolectric, with two limits on this processor "
+                     + "\u2014 its graphics run in legacy mode, so views lay out and Espresso "
+                     + "checks pass but nothing is drawn to pixels or screenshots, and its "
+                     + "SQLite does not run, so tests that use a database go to the phone "
+                     + "through the bridge. Its first run downloads about 200 MB of Android "
+                     + "framework.\n\nWireless debugging lives in Developer options because "
+                     + "Android has no narrower switch for it; the app keeps its access to "
+                     + "the list above. Turn it off when you are done; Android turns it off at "
+                     + "every restart anyway.\n\nAn emulator cannot run here, and cannot be "
+                     + "downloaded or built into Linux either: Google publishes its emulator "
+                     + "for Linux only on x86-64, plain QEMU cannot boot Google\u2019s Android "
+                     + "images, and Cuttlefish, Waydroid, Anbox and redroid all need kernel "
+                     + "features or root that Android gives no app. On a 4 GB phone a "
+                     + "software-emulated Android would not fit beside the phone\u2019s own "
+                     + "either. The phone itself, behind the door above, is the test device."},
+            {"Building",
+             "Can I build an iPhone app?",
+             "Write one here, yes; build and install it, not here, and not through any trick. "
+                     + "Apple\u2019s licence allows its SDK on Apple hardware only, so the "
+                     + "Linux cross-compilers that exist (xtool, theos) need Xcode downloaded "
+                     + "with an Apple ID and break that licence on a phone; and every "
+                     + "sideloading tool \u2014 AltStore, Sideloadly, SideStore \u2014 needs a "
+                     + "Mac or a Windows PC for the signing step and gives an app that lasts "
+                     + "seven days without a paid account. None of this is a phone limit: "
+                     + "Visual Studio Code on a Windows or Linux PC cannot build or install an "
+                     + "iPhone app either. Only a Mac with Xcode can, which is why everyone "
+                     + "else pushes to one.\n\nWhat works, and what an agent "
+                     + "here can do end to end: write the app in Swift, React Native or "
+                     + "Flutter, push it to a free cloud Mac \u2014 GitHub Actions is free "
+                     + "and unlimited for a public repository, Codemagic gives 500 Mac minutes "
+                     + "a month, Expo EAS 15 builds a month \u2014 and ship the result as a "
+                     + "web app anyone can open, or through TestFlight and the App Store with "
+                     + "an Apple developer account ($99 a year). The phone writes and pushes; "
+                     + "the Mac in the cloud compiles."},
+            {"Building",
+             "Can I make games? Unity, Unreal, something like Free Fire?",
+             "Godot 4, yes: it publishes a Linux arm64 build (about 77 MB) that exports an "
+                     + "Android APK from the terminal with no window at all \u2014 godot "
+                     + "--headless --export-debug Android game.apk \u2014 once its export "
+                     + "templates (about 1.3 GB) are downloaded and the Android build tools "
+                     + "row is installed. An agent can write the game in GDScript, export it "
+                     + "and install it with phone install. It is not a row in Settings yet "
+                     + "because it has not been proved on a 4 GB phone; the terminal is the "
+                     + "way to try it. 2D and web games in any engine that runs on Linux "
+                     + "without a graphics card work the same way.\n\nUnity and Unreal cannot "
+                     + "run here at all, and nothing installable changes that: Unity publishes "
+                     + "its Linux editor for x86-64 only (its release list has no Linux arm64 "
+                     + "build), and Unreal supports Linux on x86-64 only. A headless Unity "
+                     + "build still needs that editor. Nor are they editor features anywhere: "
+                     + "on a Windows PC, Unity and Unreal are their own programs beside Visual "
+                     + "Studio Code, which only edits their scripts. The nearest real thing is a cloud "
+                     + "x86-64 machine \u2014 GitHub Actions again \u2014 running Unity in "
+                     + "batch mode on code written here.\n\nA game the size of Free Fire is "
+                     + "Unity, and years of work by a studio: dozens to hundreds of engineers "
+                     + "and artists, a 3D art pipeline on GPU workstations, authoritative game "
+                     + "servers, anti-cheat, a device farm. That is a hardware and headcount "
+                     + "fact, not a limit of this app or of you. What is realistic here is "
+                     + "what most studios started with: a small game, finished."},
+            {"Phone",
+             "How big a project can this build?",
+             "The app\u2019s own size is not the limit \u2014 a 200 MB APK is no harder to "
+                     + "produce than a 2 MB one. What costs memory is the compiler, and that is "
+                     + "decided by how many modules and dependencies a project has, not how big "
+                     + "it ends up. Settings \u2192 The computer shows what your phone gives "
+                     + "it: cores, memory, free space, and the build heap worked out from them."},
+            {"Phone",
+             "Which phones can run it?",
+             "A 64-bit ARM phone on Android 10 or newer \u2014 any version from 10 up to the "
+                     + "current one \u2014 with 1.4 GB free to set up (about 4 GB if you add "
+                     + "the browser and the Android build tools) and ideally 6 GB of "
+                     + "memory. It runs on 4 GB with fewer things open at once: the phone this "
+                     + "app is sized for is a 4 GB realme C25s on Android 12, and every memory "
+                     + "figure inside it \u2014 the editor\u2019s heap, the build workers, the "
+                     + "text size \u2014 is worked out from what the phone actually has rather "
+                     + "than assumed. Home tells you where your phone stands before you start, "
+                     + "and refuses to begin a set-up that could not finish.\n\nIt is an "
+                     + "Android app and only an Android app. There is no iPhone version, "
+                     + "because iOS does not let an app run another operating system inside "
+                     + "itself the way Android does."},
+            {"Phone",
+             "Which battery settings can stop a long job?",
+             "A set-up, a build or an agent run keeps going with the screen off: the app holds "
+                     + "the processor awake while it works, and the notification\u2019s Stop "
+                     + "button is the only thing meant to end it. Three things can still end "
+                     + "it.\n\nSuper power saving (realme, OPPO), Ultra battery saver (Xiaomi) "
+                     + "and Samsung\u2019s \u201cLimit apps and Home screen\u201d shut down every "
+                     + "app not on their short list \u2014 turn those off while a job runs. "
+                     + "Ordinary Power saving mode is fine once Keep working with the screen "
+                     + "off is allowed in Settings; it only makes the job slower, and Activity "
+                     + "says so when a job starts with it on.\n\nThe phone\u2019s own per-app "
+                     + "switch must be on: Allow background activity on realme and OPPO, No "
+                     + "restrictions on Xiaomi, Unrestricted on Samsung. Settings \u2192 "
+                     + "Permissions shows the path in this phone\u2019s own menu words. On "
+                     + "realme and Xiaomi, locking the app in the Recents screen (its card "
+                     + "\u2192 Lock) also stops \u201cclear all\u201d from ending it.\n\nAndroid "
+                     + "12 and later also keep a ceiling of 32 helper processes across every "
+                     + "app and end the extras; an editor, a build and an agent together can "
+                     + "reach it. Android 14 has a switch for it under Developer options, "
+                     + "Disable child process restrictions; Android 12 and 13 have none.\n\nAuto-"
+                     + "launch is not one of them: this app never starts itself. Data Saver "
+                     + "and Adaptive Battery do not affect a running job. Plugging the phone "
+                     + "in helps: phones relax all of this while charging."},
             {"Phone",
              "The app closes as soon as I open it.",
              "It will not do that twice more. The app counts its own openings \u2014 the "
@@ -487,7 +565,11 @@ final class Texts {
                      + "stopped unexpectedly\u201d. If it still closes with nothing shown, "
                      + "the phone is ending the process before the app runs at all: check "
                      + "the Battery settings the entry below names, and that the APK came "
-                     + "from the project\u2019s own release page."},
+                     + "from the project\u2019s own release page.\n\nWhat it was, for the "
+                     + "record: 2.1.5 to 2.3.0 asked the window for its system-bar controls "
+                     + "before the window existed, which on Android 11 and later is a crash "
+                     + "inside the platform at every opening. 2.3.0\u2019s recovery screen "
+                     + "showed the exact line, and 2.3.5 fixed it."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
@@ -499,50 +581,37 @@ final class Texts {
                      + "once the phone has cooled. Activity says PAUSED while that lasts. That "
                      + "is instead of what a phone otherwise does on its own, which is to kill "
                      + "the most expensive thing running, mid-download or mid-build."},
-            {"Updates",
-             "What updates itself, and what waits for me?",
-             "By itself, with nothing to press: Ubuntu\u2019s security fixes, once a day on "
-                     + "Wi-Fi; the editor, once a day on Wi-Fi while it is closed, through a "
-                     + "staged and checked swap that can be rolled back; every extension, by "
-                     + "the editor itself while it is open; and a daily look at whether a newer "
-                     + "PocketIDE has been published.\n\nWaiting for you, and only these: "
-                     + "installing a new PocketIDE, because Android does not let an app replace "
-                     + "itself without your tap; installing the optional tool layers, because "
-                     + "each is hundreds of megabytes you should decide to spend; and the "
-                     + "rows in Settings \u2192 Staying current that run any of the above now "
-                     + "instead of tonight. Each switch there can also turn its automatic part "
-                     + "off, and says what happens if you do."},
-            {"About",
-             "How does this compare with the Linux terminal on Pixel phones?",
-             "Android 15 gave recent Pixel phones a Linux Terminal: Debian running in a "
-                     + "virtual machine, as a developer option. It is a good sign for this "
-                     + "whole idea, and it is a different thing.\n\nIt needs a phone with "
-                     + "hardware virtualisation, which is why it is Pixel-first; it is a "
-                     + "terminal, not an editor; and it comes with no coding agents. This app "
-                     + "runs Ubuntu without a virtual machine, which is why it runs on a 4 GB "
-                     + "phone from 2021 on Android 10, and it puts a real Visual Studio Code "
-                     + "(as code-server) and "
-                     + "first-party agents on top. The honest trade: a virtual machine runs "
-                     + "closer to native speed than the translation layer used here. What you "
-                     + "get in return is that it works on the phone you have."},
-            {"About",
-             "Why Linux, and not Windows or macOS?",
-             "Because Linux is what the tools are built for. The servers your code will run "
-                     + "on, the systems that test it, the containers it ships in, and the "
-                     + "command-line tools behind every coding agent are all built and tested "
-                     + "on Linux first; the agents\u2019 own CLIs ship for Linux and macOS, and "
-                     + "reach Windows through a Linux layer of Microsoft\u2019s own. A "
-                     + "developer\u2019s desktop is macOS or Linux for that reason, and on a "
-                     + "phone only one of the two is possible.\n\nSo the Linux here is not a "
-                     + "curiosity bolted on \u2014 it is the part that makes the editor and "
-                     + "the agents able to do real work: build, run, test, commit, push."},
-            {"Editor",
-             "Does copying in the editor reach the phone\u2019s clipboard?",
-             "Yes. The editor is drawn by the phone\u2019s own browser engine, which shares "
-                     + "the phone\u2019s clipboard: long-press to select, Copy, and it is in "
-                     + "Gboard or any other app. Paste works the other way round the same way. "
-                     + "The terminal is the one place to be careful \u2014 in a shell, Ctrl+V "
-                     + "is not paste; long-press and choose Paste instead."},
+            {"Safety",
+             "How do I know an extension is safe?",
+             "Start with the publisher. Open VSX marks a publisher verified when it has proved "
+                     + "it controls the name it publishes under, so a verified Google, Anthropic "
+                     + "or OpenAI really is that company. This app shows only verified "
+                     + "publishers by default, and every counterfeit extension found on either "
+                     + "major registry through 2026 came from an unverified account imitating a "
+                     + "name it did not own.\n\nBefore installing anything, check four things: "
+                     + "the publisher is verified; the downloads and reviews look like real use "
+                     + "rather than a week-old listing; the name is spelled exactly right, since "
+                     + "imitations rely on one swapped letter; and the description says what the "
+                     + "extension does, not only what it is for.\n\nWhere a company publishes "
+                     + "no official extension, a well-established community one is a reasonable "
+                     + "choice \u2014 prefer a long history, an open repository and recent "
+                     + "updates. Turning off the verified-only filter is yours to decide, and "
+                     + "the app asks you to confirm it once."},
+            {"Safety",
+             "What can an extension actually do?",
+             "Everything you can do in the editor: read and change any file in Linux, run "
+                     + "commands, and use the network. That is true of extensions in every "
+                     + "editor, desktops included \u2014 it is not a weakness of this app. What "
+                     + "limits it here is Android: all of it happens inside this app's own "
+                     + "storage, and nothing an extension does can reach your photos, your "
+                     + "messages or your other apps."},
+            {"Safety",
+             "Can another app on my phone reach the editor?",
+             "Not from the internet \u2014 the editor cannot be reached from outside this phone "
+                     + "at all. Another app on the same phone could in principle connect to it, "
+                     + "which is why it sits behind a password the phone generates for itself "
+                     + "and never shows you. Turn on the app lock in Settings and a fingerprint "
+                     + "is needed to open the editor at all."},
             {"Safety",
              "Does the app put anything in my phone\u2019s files?",
              "No. Linux, the editor, the extensions and your projects all live in the "
@@ -595,6 +664,47 @@ final class Texts {
                      + "secret. It depends on the code being right, which is what the "
                      + "checks that run on every build \u2014 more than fifty of them \u2014 "
                      + "are for."},
+            {"Updates",
+             "Where does a new PocketIDE come from?",
+             "From the Releases page of the repository this app is built in, "
+                     + "github.com/smmpanelusertestai07-dotcom/CloudSaver/releases. Every "
+                     + "published build is there as PocketIDE-v<version>-release.apk, under a "
+                     + "tag that starts with pocketide-v — that prefix is what tells this "
+                     + "app's releases apart from the other app published from the same "
+                     + "repository.\n\nThat is the same list this app reads once a day, and "
+                     + "the same page to open by hand on a phone whose update check is turned "
+                     + "off, or to install this app on a second phone. Every release is signed "
+                     + "with the same key, so a newer one installs straight over the copy "
+                     + "already on the phone and nothing in Linux is touched. Installing is "
+                     + "always your tap: Android does not let an app replace itself without "
+                     + "one."},
+            {"Updates",
+             "Why only while the app is open?",
+             "Because Linux only exists while the app is open. Android does not keep another "
+                     + "operating system running behind a closed app, and there is no way to "
+                     + "ask it to. An app that claimed to update your Linux overnight would be "
+                     + "describing something that cannot happen."},
+            {"Updates",
+             "How long will Ubuntu 24.04 keep getting updates?",
+             "Until May 2029 for the standard security updates, which is Canonical\u2019s own "
+                     + "published date for this release. Ubuntu Pro extends the same release to "
+                     + "May 2034 and is free for personal use on up to five machines. There is "
+                     + "a further paid Legacy add-on to May 2039, which the free tier does not "
+                     + "include. When 26.04 LTS is worth moving to, that will be a set-up you "
+                     + "choose rather than something that happens to you."},
+            {"Updates",
+             "What updates itself, and what waits for me?",
+             "By itself, with nothing to press: Ubuntu\u2019s security fixes, once a day on "
+                     + "Wi-Fi; the editor, once a day on Wi-Fi while it is closed, through a "
+                     + "staged and checked swap that can be rolled back; every extension, by "
+                     + "the editor itself while it is open; and a daily look at whether a newer "
+                     + "PocketIDE has been published.\n\nWaiting for you, and only these: "
+                     + "installing a new PocketIDE, because Android does not let an app replace "
+                     + "itself without your tap; installing the optional tool layers, because "
+                     + "each is hundreds of megabytes you should decide to spend; and the "
+                     + "rows in Settings \u2192 Staying current that run any of the above now "
+                     + "instead of tonight. Each switch there can also turn its automatic part "
+                     + "off, and says what happens if you do."},
     };
 
     // ------------------------------------------------------------------ terms
@@ -686,9 +796,11 @@ final class Texts {
                     + "The agents' chats.\n"
                     + "Kept on the phone by each agent, inside Linux, in the folder that "
                     + "agent's own documentation names; Settings → Storage → Clear agent "
-                    + "chats deletes them. And sent to that agent's company as part of using "
-                    + "its model, where they are held under that company's terms, which this "
-                    + "app cannot change and does not add to.\n\n"
+                    + "chats deletes them. They are not fetched back from your account with "
+                    + "the company: the copy on the phone is the one the agent resumes from, "
+                    + "which is why it is there. And sent to that agent's company as part of "
+                    + "using its model, where they are held under that company's terms, which "
+                    + "this app cannot change and does not add to.\n\n"
 
                     + "The phone as a test device.\n"
                     + "Pairing gives this app, and only this app, adb access to the phone; "
@@ -786,7 +898,8 @@ final class Texts {
 
     static final String SURFACES =
             "The industry calls these development interfaces, or product surfaces. There are "
-                    + "four, and all three companies support all four:\n\n"
+                    + "four, and all three companies support all four. This app is the second "
+                    + "of them, the IDE, on a phone, with the same agents as the first:\n\n"
                     + "• Agent-first desktop workspace — hand over a project and supervise. "
                     + "Desktop only; a phone can watch it through a remote companion.\n\n"
                     + "• IDE integration — the agent inside the editor, with code, terminal and "
@@ -801,7 +914,6 @@ final class Texts {
                     + "PocketIDE's position: it makes the second one — IDE integration, ranked "
                     + "second overall for features and control — run on the phone itself, with "
                     + "no connected computer anywhere. That is the whole point of the app.";
-
     // ------------------------------------------------------------------ open-source notices
 
     static final String NOTICES_TITLE = "Open-source notices";
@@ -930,16 +1042,27 @@ final class Texts {
                     + "acknowledged in the document or on the web page; this notice is that "
                     + "acknowledgement.\n\n"
                     + "Marks this app does and does not show\n\n"
-                    + "The app shows no company's product mark: not Microsoft's Visual Studio Code "
-                    + "icon, which belongs to a build this is not, and not a publisher's, which the "
-                    + "app has no need to draw when the editor's own Extensions view and each "
-                    + "extension's own panel already carry it. Names \u2014 Visual Studio Code, Code - "
-                    + "OSS, code-server, Ubuntu, Claude Code, Codex, Antigravity \u2014 are used only to "
-                    + "identify whose software is being installed or run, which is nominative use. "
-                    + "No endorsement, sponsorship or affiliation is claimed or implied, and this "
-                    + "app is not produced by any of them. The app puts no company's mark on its own "
-                    + "icon, its own splash screen or its own name either, because those would "
-                    + "suggest an association that does not exist.\n\n"
+                    + "The app draws no company's product mark of its own: not Microsoft's Visual "
+                    + "Studio Code icon, which belongs to a build this is not, and not a publisher's. "
+                    + "What the Agents screen shows beside an extension is that extension's own icon "
+                    + "exactly as the Open VSX registry serves it with the listing (files.icon in the "
+                    + "registry's API) \u2014 the same picture the registry's website and the "
+                    + "editor's Extensions view show \u2014 fetched from open-vsx.org at run time, "
+                    + "cached on the phone, never shipped in the APK, never redrawn, and absent when "
+                    + "the registry does not list the extension (Icons.java). The registry's terms "
+                    + "and the Eclipse Foundation's FAQ contemplate exactly this \u2014 extensions "
+                    + "consumed through third-party applications, \"without fee, subject to the terms "
+                    + "of the respective licenses\" \u2014 and say that publishers' logos and "
+                    + "trademarks remain their owners': an icon is part of the extension it belongs "
+                    + "to, shown under that extension's own licence beside that extension's own "
+                    + "listing, and nowhere else in this app. Names \u2014 Visual Studio Code, Code - "
+                    + "OSS, code-server, Ubuntu, Claude Code, Codex, Antigravity, Kilo Code \u2014 "
+                    + "are used only to identify whose software is being installed or run, which is "
+                    + "nominative use. No endorsement, sponsorship or affiliation is claimed or "
+                    + "implied, and this app is not produced by any of them. The app puts no "
+                    + "company's mark on its own icon, its own splash screen or its own name, because "
+                    + "those would suggest an association that does not exist."
+                    + "\n\n"
                     + "What set-up installs inside the workspace\n\n"
                     + "The bootstrap installs, from Ubuntu's own repositories: ca-certificates, "
                     + "curl, wget, gnupg, git, openssh-client, xz-utils, unzip, tar, less, ripgrep, "

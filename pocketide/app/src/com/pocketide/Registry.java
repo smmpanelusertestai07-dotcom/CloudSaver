@@ -51,10 +51,13 @@ final class Registry {
         final String engine;
         final String downloadUrl;
         final String sha256Url;
+        /** The extension's own icon as the registry serves it, or "" when it publishes none. */
+        final String iconUrl;
 
         Listing(String namespace, String name, String version, boolean verified,
                 String description, long downloads, double rating, int reviews,
-                String targetPlatform, String engine, String downloadUrl, String sha256Url) {
+                String targetPlatform, String engine, String downloadUrl, String sha256Url,
+                String iconUrl) {
             this.namespace = namespace;
             this.name = name;
             this.id = namespace + "." + name;
@@ -68,6 +71,7 @@ final class Registry {
             this.engine = engine;
             this.downloadUrl = downloadUrl;
             this.sha256Url = sha256Url;
+            this.iconUrl = iconUrl == null ? "" : iconUrl;
         }
     }
 
@@ -90,6 +94,7 @@ final class Registry {
             if (entries == null) return found;
             for (int i = 0; i < entries.length(); i++) {
                 JSONObject entry = entries.getJSONObject(i);
+                JSONObject files = entry.optJSONObject("files");
                 boolean verified = entry.optBoolean("verified", false);
                 // Search results do not always carry the verified flag; a listing that does not
                 // say it is verified is treated as not verified, which is the safe direction.
@@ -99,7 +104,8 @@ final class Registry {
                         entry.optString("version"), verified,
                         entry.optString("description"), entry.optLong("downloadCount"),
                         entry.optDouble("averageRating", -1), entry.optInt("reviewCount"),
-                        entry.optString("targetPlatform", "universal"), "", "", ""));
+                        entry.optString("targetPlatform", "universal"), "", "", "",
+                        files == null ? "" : files.optString("icon", "")));
             }
         } catch (JSONException malformed) {
             throw new IOException("The registry sent something this app could not read.", malformed);
@@ -127,7 +133,8 @@ final class Registry {
                     body.optString("targetPlatform", "universal"),
                     engines == null ? "" : engines.optString("vscode", ""),
                     files == null ? "" : files.optString("download", ""),
-                    files == null ? "" : files.optString("sha256", ""));
+                    files == null ? "" : files.optString("sha256", ""),
+                    files == null ? "" : files.optString("icon", ""));
         } catch (JSONException malformed) {
             throw new IOException("The registry's answer for " + namespace + "." + name
                     + " could not be read.", malformed);

@@ -471,7 +471,7 @@ install_phone() {
   say ""
   say "This Linux gets the phone command, a door to the phone with a short list on it:"
   say "  phone install app.apk · launch · stop · clear · uninstall · instrument · log"
-  say "  phone screenshot / tap / text / key, only while that app is on the screen"
+  say "  phone screenshot / record / tap / text / key, only while that app is on the screen"
   say "phone help lists everything. No shell on the phone, no other app, no device details."
   say ""
   say "install and launch need no pairing: Android asks you to confirm each install."

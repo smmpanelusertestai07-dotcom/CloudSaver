@@ -19,8 +19,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Extensions, in three tiers, with the reason for the tiers stated on the screen.
@@ -57,6 +59,8 @@ final class AgentsPane implements Pane {
     private EditText searchBox;
     private LinearLayout recommendedList;
     private LinearLayout communityList;
+    /** Each pre-set extension's icon URL from the registry, once looked up, by id. */
+    private final Map<String, String> iconUrls = new HashMap<>();
     private volatile int searchGeneration;
 
     // ------------------------------------------------------------------ the screen
@@ -250,7 +254,39 @@ final class AgentsPane implements Pane {
             if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
             into.addView(row);
+            showRegistryIcon(row, agent);
         }
+    }
+
+    /**
+     * The extension's own icon from the registry, in the row's glyph's place, once it is
+     * known. The listing is looked up off the main thread and its icon URL remembered for
+     * this screen's life; a registry that cannot be reached leaves the glyph, and the next
+     * build of the list asks again.
+     */
+    private void showRegistryIcon(final Ui.Row row, final Agents.Agent agent) {
+        final Activity on = host;
+        final String known;
+        synchronized (iconUrls) {
+            known = iconUrls.get(agent.id);
+        }
+        if (known != null) {
+            Icons.load(on, agent.id, known, row::setPicture);
+            return;
+        }
+        new Thread(() -> {
+            final String url;
+            try {
+                url = Registry.lookup(agent.namespace(), agent.shortName(), agent.platform).iconUrl;
+            } catch (Throwable unreachable) {
+                return; // No registry, no icon: the glyph stays.
+            }
+            synchronized (iconUrls) {
+                iconUrls.put(agent.id, url);
+            }
+            if (url.isEmpty()) return;
+            on.runOnUiThread(() -> Icons.load(on, agent.id, url, row::setPicture));
+        }, "icon-lookup").start();
     }
 
     private void onAgentTapped(Agents.Agent agent, boolean installed) {
@@ -365,6 +401,7 @@ final class AgentsPane implements Pane {
             if (here) row.setState(Ui.running(dark));
             else if (!listing.verified) row.setState(Ui.needsYou(dark));
             list.addView(row);
+            Icons.load(host, listing.id, listing.iconUrl, row::setPicture);
         }
         searchResults.addView(list);
     }

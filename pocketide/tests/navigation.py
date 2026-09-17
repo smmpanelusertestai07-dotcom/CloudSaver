@@ -709,6 +709,33 @@ if "tools.adb" in settings or "PHONE_BYTES" in settings:
     problems.append("Settings still offers to install an adb into Linux; the app's own ships "
                     "inside it and the row goes straight to pairing")
 
+# --- the Help screen prints a group heading whenever the group changes ---------------------------
+#
+# HelpActivity.faq() starts a new card and prints the group's name each time FAQ[i][0] differs
+# from the entry before, so an array that returns to a group it already used prints that
+# heading twice. Forty-four entries in eighteen runs once put "Editor" on the screen five times.
+texts = open(src + "Texts.java").read()
+faq_start = texts.index("static final String[][] FAQ = {")
+faq_body = texts[faq_start:texts.index("\n    };\n", faq_start)]
+faq_groups = re.findall(r'(?m)^            \{"([A-Za-z]+)",\n', faq_body)
+KNOWN = ("About", "Editor", "Agents", "Building", "Phone", "Safety", "Updates")
+if not faq_groups:
+    problems.append("no FAQ entries were found where the gate looks for them")
+seen_runs = []
+for g in faq_groups:
+    if not seen_runs or seen_runs[-1] != g:
+        seen_runs.append(g)
+for g in KNOWN:
+    if seen_runs.count(g) > 1:
+        problems.append("the FAQ returns to the group %r after leaving it, so Help prints that "
+                        "heading %d times" % (g, seen_runs.count(g)))
+for g in set(faq_groups) - set(KNOWN):
+    problems.append("an FAQ entry is in a group Help does not know: %r" % g)
+faq_fn = re.search(r'private View faq\(boolean dark\) \{(.*?)\n    \}', code("HelpActivity.java"), re.S)
+if not faq_fn or "if (!group.equals(currentGroup))" not in faq_fn.group(1):
+    problems.append("HelpActivity.faq() no longer groups by consecutive entries, so this gate "
+                    "checks the wrong thing")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)
