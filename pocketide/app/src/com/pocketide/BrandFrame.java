@@ -8,6 +8,7 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.os.Build;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -74,7 +75,7 @@ final class BrandFrame {
         // second one after it. On those phones this cover would have been exactly that: the
         // bare mark replaced by the tile a frame later, then the name, for most of a second.
         // The tagline lives in the top bar's subtitle; nothing is lost.
-        if (android.os.Build.VERSION.SDK_INT >= 31) return;
+        if (Build.VERSION.SDK_INT >= 31) return;
 
         LinearLayout cover = Ui.column(activity);
         cover.setGravity(Gravity.CENTER);

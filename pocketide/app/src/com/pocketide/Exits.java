@@ -3,9 +3,18 @@ package com.pocketide;
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Build;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Why the app stopped last time, in words rather than silence.
@@ -72,7 +81,7 @@ final class Exits {
      * describes the death that just happened and not one from a week ago.
      */
     static void noteStart(Context context) {
-        android.content.SharedPreferences prefs = Prefs.of(context);
+        SharedPreferences prefs = Prefs.of(context);
         linuxWasRunningAtLastExit = prefs.getBoolean(Prefs.LINUX_WAS_RUNNING, false);
         if (linuxWasRunningAtLastExit) {
             prefs.edit().putBoolean(Prefs.LINUX_WAS_RUNNING, false).apply();
@@ -198,19 +207,19 @@ final class Exits {
      * the phone for a number it already has.
      */
     static long footprintBytes(List<Running.Process> workspace) {
-        long total = kilobytesOf(new java.io.File("/proc/self/status"));
+        long total = kilobytesOf(new File("/proc/self/status"));
         for (Running.Process process : workspace) {
-            total += kilobytesOf(new java.io.File("/proc/" + process.pid + "/status"));
+            total += kilobytesOf(new File("/proc/" + process.pid + "/status"));
         }
         return total * 1024;
     }
 
     /** RssAnon + VmSwap out of one /proc/<pid>/status, in kilobytes. Zero if it is gone. */
-    private static long kilobytesOf(java.io.File status) {
+    private static long kilobytesOf(File status) {
         long anon = 0, swap = 0;
         try {
-            for (String line : new String(java.nio.file.Files.readAllBytes(status.toPath()),
-                    java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+            for (String line : new String(Files.readAllBytes(status.toPath()),
+                    StandardCharsets.UTF_8).split("\n")) {
                 if (line.startsWith("RssAnon:")) anon = kilobytes(line);
                 else if (line.startsWith("VmSwap:")) swap = kilobytes(line);
             }
@@ -254,10 +263,10 @@ final class Exits {
         }
         if (records == null || records.isEmpty()) return "";
         StringBuilder out = new StringBuilder();
-        java.text.SimpleDateFormat clock = new java.text.SimpleDateFormat("d MMM HH:mm",
-                java.util.Locale.ROOT);
+        SimpleDateFormat clock = new SimpleDateFormat("d MMM HH:mm",
+                Locale.ROOT);
         for (ApplicationExitInfo info : records) {
-            out.append("  ").append(clock.format(new java.util.Date(info.getTimestamp())))
+            out.append("  ").append(clock.format(new Date(info.getTimestamp())))
                     .append("  ").append(reasonName(info.getReason()))
                     .append(info.getStatus() != 0 ? " status " + info.getStatus() : "")
                     .append(info.getDescription() == null || info.getDescription().isEmpty()
@@ -268,7 +277,7 @@ final class Exits {
     }
 
     /** The platform's constant names, for people rather than for the compiler. */
-    private static final java.util.Map<Integer, String> REASON_NAMES = new java.util.HashMap<>();
+    private static final Map<Integer, String> REASON_NAMES = new HashMap<>();
 
     static {
         REASON_NAMES.put(ApplicationExitInfo.REASON_EXIT_SELF, "EXIT_SELF");

@@ -10,8 +10,8 @@ the only thing anyone receives.
 ## Application mark
 
 `app/res/mipmap-*/ic_launcher*.png`, `app/res/drawable-*/ic_stat_pocketide.png` and
-`app/res/drawable-*/ic_splash.png` are PocketIDE's own mark, drawn by `plan/make_icon.py` in
-this repository, under the Apache License 2.0 with the rest of this app's code.
+`app/res/drawable-*/ic_splash.png` are PocketIDE's own mark, drawn by `branding/make_icon.py` in
+this folder, under the Apache License 2.0 with the rest of this app's code.
 
 ## Chromium, and Playwright
 

@@ -12,6 +12,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -258,10 +259,10 @@ public final class SetupActivity extends Activity {
      * thing an owner watching a twenty-minute install actually needs to see.
      */
     private View progressWithEdge(boolean dark) {
-        android.widget.FrameLayout wrap = new android.widget.FrameLayout(this);
+        FrameLayout wrap = new FrameLayout(this);
         wrap.addView(progressCard(dark));
         edge = new BrandFrame.MovingEdge(this, dark, 20);
-        wrap.addView(edge, new android.widget.FrameLayout.LayoutParams(
+        wrap.addView(edge, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         edge.start();
         return wrap;

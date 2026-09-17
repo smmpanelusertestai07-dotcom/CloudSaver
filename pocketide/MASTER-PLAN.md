@@ -1,14 +1,16 @@
 # PocketIDE — master plan
 
-**Status:** shipped. PocketIDE 2.1.0 is the current build under `pocketide/`; this document is
-the record of what was decided before the first line of code and why. Where the app and this
+**Status:** shipped. PocketIDE is the app in this folder; this document is the record of what was
+decided before the first line of code and why. It moved here from the repository root on 17 Sep 2026. Where the app and this
 plan differ, the app and `pocketide/RELEASE-NOTES.md` are current.
 Last researched: 13 September 2026.
 
 **Standing rules this plan inherits (do not break):**
 
 - Never edit anything that already exists in CloudSaver. New work goes in its own top-level folder.
-- Never touch `pocketlinux/` on GitHub. It stays exactly as it is.
+- (Removed 17 Sep 2026: the rule that kept `pocketlinux/` untouched. That project and `pocketdoors/`
+  were removed from the repository at the owner's request; this repository holds CloudSaver and
+  PocketIDE only.)
 - Push to `main`. (The mirror branch this rule once named no longer exists.)
 - Every string inside the app is English. Every reply in chat is Hinglish.
 - Version names end in 0 or 5.

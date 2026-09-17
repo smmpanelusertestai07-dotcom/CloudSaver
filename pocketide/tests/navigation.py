@@ -438,7 +438,7 @@ else:
 # whether the browser was installed. The check below finds every call that has to be on a
 # background thread and confirms it is inside one.
 
-SLOW = ("Workspace.start(", "Tools.read(", "Tools.install(", "Tools.smokeTest(",
+SLOW = ("Workspace.start(", "Tools.read(", "Tools.install(",
         "Workspace.sizeBytes(", "Workspace.install(", "Registry.search(", "Registry.details(")
 
 

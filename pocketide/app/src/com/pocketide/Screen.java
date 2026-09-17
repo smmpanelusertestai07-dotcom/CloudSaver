@@ -1,6 +1,7 @@
 package com.pocketide;
 
 import android.content.Context;
+import android.graphics.Rect;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
@@ -96,7 +97,7 @@ final class Screen {
         WindowManager windows = context.getSystemService(WindowManager.class);
         if (windows != null) {
             try {
-                android.graphics.Rect bounds = windows.getMaximumWindowMetrics().getBounds();
+                Rect bounds = windows.getMaximumWindowMetrics().getBounds();
                 widthPixels = Math.min(bounds.width(), bounds.height());
             } catch (Throwable unavailable) {
                 // Some builds refuse this outside an Activity context. The metrics above are

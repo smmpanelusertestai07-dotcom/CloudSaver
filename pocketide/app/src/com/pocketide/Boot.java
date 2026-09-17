@@ -1,14 +1,20 @@
 package com.pocketide;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.view.Gravity;
-import android.view.View;
+import android.graphics.Color;
+import android.os.Build;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 /**
  * Makes it impossible for this app to disappear at startup without saying why.
@@ -139,8 +145,8 @@ final class Boot {
             TextView block = Ui.mono(activity, record, 11.5f, Ui.muted(dark));
             int blockPad = Ui.dp(activity, 12);
             block.setPadding(blockPad, blockPad, blockPad, blockPad);
-            block.setBackground(Ui.fill(activity, dark ? android.graphics.Color.rgb(18, 18, 18)
-                    : android.graphics.Color.rgb(246, 244, 238), 12));
+            block.setBackground(Ui.fill(activity, dark ? Color.rgb(18, 18, 18)
+                    : Color.rgb(246, 244, 238), 12));
             block.setTextIsSelectable(true);
             column.addView(block, Ui.wide(activity, 16));
         }
@@ -156,14 +162,14 @@ final class Boot {
         if (!record.isEmpty()) {
             TextView copy = Ui.button(activity, "Copy the details", false, dark);
             copy.setOnClickListener(v -> {
-                android.content.ClipboardManager clipboard =
-                        (android.content.ClipboardManager)
+                ClipboardManager clipboard =
+                        (ClipboardManager)
                                 activity.getSystemService(Activity.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(
-                            android.content.ClipData.newPlainText("PocketIDE", record));
-                    android.widget.Toast.makeText(activity, "Copied",
-                            android.widget.Toast.LENGTH_SHORT).show();
+                            ClipData.newPlainText("PocketIDE", record));
+                    Toast.makeText(activity, "Copied",
+                            Toast.LENGTH_SHORT).show();
                 }
             });
             column.addView(copy, Ui.wide(activity, 10));
@@ -236,9 +242,9 @@ final class Boot {
     private static String details(Context context, Throwable failure) {
         StringBuilder all = new StringBuilder();
         all.append("PocketIDE ").append(BuildFacts.VERSION_NAME)
-                .append(" · Android ").append(android.os.Build.VERSION.SDK_INT)
-                .append(" · ").append(android.os.Build.MANUFACTURER)
-                .append(' ').append(android.os.Build.MODEL).append('\n');
+                .append(" · Android ").append(Build.VERSION.SDK_INT)
+                .append(" · ").append(Build.MANUFACTURER)
+                .append(' ').append(Build.MODEL).append('\n');
         if (!previousStage.isEmpty()) {
             all.append("The last opening got as far as: ").append(previousStage)
                     .append(" (application → home → built → drawn)\n");
@@ -250,8 +256,8 @@ final class Boot {
             // Android 11 and later only, and not worth failing the screen over.
         }
         if (failure != null) {
-            java.io.StringWriter writer = new java.io.StringWriter();
-            failure.printStackTrace(new java.io.PrintWriter(writer));
+            StringWriter writer = new StringWriter();
+            failure.printStackTrace(new PrintWriter(writer));
             all.append('\n').append(writer);
         }
         try {

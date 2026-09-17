@@ -87,7 +87,7 @@ editor_is_running() {
 # landing in the gap would leave the workspace with no editor and a 450 MB tree named
 # .previous sitting beside the hole.
 #
-# The app would then see editorInstalled() as false and offer to download 224 MB again, which
+# The app would then see the editor as not installed and offer to download 224 MB again, which
 # is the worst possible answer when the working editor is already on the disk under another
 # name. So every entry point starts by looking, and a rename puts it back.
 recover_editor() {

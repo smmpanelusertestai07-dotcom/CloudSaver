@@ -1,5 +1,29 @@
 # Release notes
 
+## 2.3.0
+
+The repository holds two apps and nothing else, and the source reads the way it should.
+
+### Two apps, one repository
+
+At the owner's request the repository now contains CloudSaver, at the root, and PocketIDE, under
+`pocketide/`, and nothing else: `pocketlinux/` and `pocketdoors/` (PocketAgent) are gone with
+their workflows, and the root `plan/` folder, which was PocketIDE's own, moved in here — the icon
+generator to `branding/make_icon.py` beside the brand tokens it draws from, and the master plan to
+`MASTER-PLAN.md`. Its rendered icons are not committed any more, since the shipped copies are the
+ones under `app/res` and the generator remakes the rest. The root README names both apps.
+CloudSaver's own files were not touched, except that its workflow no longer ignores two folders
+that do not exist.
+
+### Source that reads as one hand wrote it
+
+Every inline fully-qualified name (`java.nio.file.Files.isSymbolicLink`, `android.system.Os`,
+and fifty-six more) became an import, `android.os.Process` excepted because `java.lang.Process`
+is used beside it; twelve unused imports, eleven methods nothing called, two icons nothing drew,
+two strings nothing showed and one preference key nothing read are gone. Behaviour is unchanged:
+every gate, every break-check and the minSdk compile pass on the result, and the release APK is
+built from it.
+
 ## 2.2.5
 
 Where everything is, a delete that stops at a link, and a gate at the oldest Android.

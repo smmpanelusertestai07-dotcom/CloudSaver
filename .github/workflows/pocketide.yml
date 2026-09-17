@@ -1,7 +1,7 @@
 name: pocketide
 
-# PocketIDE lives under pocketide/ and has its own Gradle-free build, separate from pocketlinux/
-# and pocketdoors/. Nothing here touches either of them.
+# PocketIDE lives under pocketide/ and has its own Gradle-free build, separate from CloudSaver at
+# the repository root. Nothing here touches CloudSaver, and its workflow ignores pocketide/.
 #
 # Two jobs. The build runs on every push and pull request and always produces an APK artifact.
 # The release runs only on main, and only when the APK was signed with the repository's own

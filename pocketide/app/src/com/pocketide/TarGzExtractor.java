@@ -4,8 +4,8 @@ import android.system.ErrnoException;
 import android.system.Os;
 import android.system.OsConstants;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -157,7 +157,7 @@ final class TarGzExtractor {
     }
 
     private static void copyFile(File source, File target) throws IOException {
-        try (java.io.FileInputStream input = new java.io.FileInputStream(source);
+        try (FileInputStream input = new FileInputStream(source);
              FileOutputStream output = new FileOutputStream(target)) {
             byte[] buffer = new byte[128 * 1024];
             int read;

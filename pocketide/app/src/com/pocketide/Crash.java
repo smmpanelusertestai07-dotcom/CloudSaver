@@ -1,12 +1,16 @@
 package com.pocketide;
 
 import android.content.Context;
+import android.os.Build;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.util.Date;
 
 /**
  * What the app writes down when it stops unexpectedly.
@@ -60,19 +64,19 @@ final class Crash {
         StringWriter buffer = new StringWriter();
         PrintWriter writer = new PrintWriter(buffer);
         writer.println("PocketIDE " + BuildFacts.VERSION_NAME + " (" + BuildFacts.VERSION_CODE + ")");
-        writer.println("When: " + new java.util.Date());
+        writer.println("When: " + new Date());
         writer.println("Thread: " + thread.getName());
-        writer.println("Phone: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
-                + " · Android " + android.os.Build.VERSION.RELEASE
-                + " · " + (android.os.Build.SUPPORTED_ABIS.length > 0
-                        ? android.os.Build.SUPPORTED_ABIS[0] : "unknown"));
+        writer.println("Phone: " + Build.MANUFACTURER + " " + Build.MODEL
+                + " · Android " + Build.VERSION.RELEASE
+                + " · " + (Build.SUPPORTED_ABIS.length > 0
+                        ? Build.SUPPORTED_ABIS[0] : "unknown"));
         writer.println();
         error.printStackTrace(writer);
         writer.flush();
         String text = buffer.toString();
         if (text.length() > KEEP_BYTES) text = text.substring(0, KEEP_BYTES);
         File file = new File(context.getFilesDir(), FILE);
-        try (java.io.FileOutputStream output = new java.io.FileOutputStream(file)) {
+        try (FileOutputStream output = new FileOutputStream(file)) {
             output.write(text.getBytes(StandardCharsets.UTF_8));
             output.getFD().sync();
         }
@@ -84,7 +88,7 @@ final class Crash {
         if (!file.isFile()) return "";
         try {
             byte[] bytes = new byte[(int) Math.min(file.length(), KEEP_BYTES)];
-            try (java.io.FileInputStream input = new java.io.FileInputStream(file)) {
+            try (FileInputStream input = new FileInputStream(file)) {
                 int read = input.read(bytes);
                 return read <= 0 ? "" : new String(bytes, 0, read, StandardCharsets.UTF_8);
             }

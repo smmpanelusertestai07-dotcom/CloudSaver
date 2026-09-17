@@ -114,11 +114,6 @@ final class Tools {
         }
     }
 
-    /** Loads a page and screenshots it, so "installed" can be proved rather than claimed. */
-    static boolean smokeTest(Context context, Workspace.Progress progress) {
-        return install(context, "smoke", progress);
-    }
-
     private static Map<String, String> run(Context context, String command) {
         Map<String, String> values = new HashMap<>();
         if (!Workspace.installed(context)) return values;

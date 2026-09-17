@@ -1,12 +1,12 @@
 package com.pocketide;
 
 import android.content.Context;
-import android.content.res.ColorStateList;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -14,6 +14,9 @@ import android.view.ViewGroup;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * The keys a touch screen cannot otherwise reach, and a trackpad for the ones a finger cannot
@@ -55,7 +58,7 @@ final class KeyBar extends LinearLayout {
      * key, so a latch left on cannot quietly turn the rest of a sentence into shortcuts.
      */
     private int latched;
-    private final java.util.Map<Integer, TextView> modifierButtons = new java.util.HashMap<>();
+    private final Map<Integer, TextView> modifierButtons = new HashMap<>();
 
     KeyBar(Context context, Target target) {
         super(context);
@@ -139,7 +142,7 @@ final class KeyBar extends LinearLayout {
         if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
             key.setOnClickListener(v -> {
                 v.performHapticFeedback(
-                        android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+                        HapticFeedbackConstants.KEYBOARD_TAP);
                 target.key(keyCode, latched | alwaysWith);
                 clearLatched();
             });
@@ -163,7 +166,7 @@ final class KeyBar extends LinearLayout {
         TextView button = addKey(label, KeyEvent.KEYCODE_UNKNOWN);
         modifierButtons.put(metaBit, button);
         button.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             latched ^= metaBit;
             styleModifiers();
         });
@@ -176,7 +179,7 @@ final class KeyBar extends LinearLayout {
     }
 
     private void styleModifiers() {
-        for (java.util.Map.Entry<Integer, TextView> entry : modifierButtons.entrySet()) {
+        for (Map.Entry<Integer, TextView> entry : modifierButtons.entrySet()) {
             boolean on = (latched & entry.getKey()) != 0;
             TextView button = entry.getValue();
             button.setTextColor(on ? Ui.onAccentContainer(dark) : Ui.text(dark));

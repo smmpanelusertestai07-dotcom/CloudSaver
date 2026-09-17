@@ -142,12 +142,6 @@ final class Agents {
         return false;
     }
 
-    static Agent byId(String id) {
-        for (Agent agent : ALL) if (agent.id.equals(id)) return agent;
-        for (Agent agent : COMMUNITY) if (agent.id.equals(id)) return agent;
-        return null;
-    }
-
     /** What "bring your own model" honestly costs, in the words the screens use. */
     static final String BRING_YOUR_OWN =
             "One row here is not a company's own extension: Kilo Code is an independent, "

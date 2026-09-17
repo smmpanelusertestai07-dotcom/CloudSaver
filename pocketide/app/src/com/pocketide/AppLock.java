@@ -5,8 +5,10 @@ import android.app.KeyguardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.CancellationSignal;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -76,11 +78,11 @@ final class AppLock {
 
     /** The app is sending the owner out on purpose and expects them straight back. */
     static void expectReturn() {
-        expectingReturnUntil = android.os.SystemClock.elapsedRealtime() + 120_000L;
+        expectingReturnUntil = SystemClock.elapsedRealtime() + 120_000L;
     }
 
     static boolean expectingReturn() {
-        return android.os.SystemClock.elapsedRealtime() < expectingReturnUntil;
+        return SystemClock.elapsedRealtime() < expectingReturnUntil;
     }
 
     /** How long an errand may take before coming back counts as coming back to a locked app. */
@@ -88,7 +90,7 @@ final class AppLock {
     private static volatile long leftForErrandAt;
 
     /** No screen is in front, and the app sent the owner out itself. */
-    static void leftForErrand() { leftForErrandAt = android.os.SystemClock.elapsedRealtime(); }
+    static void leftForErrand() { leftForErrandAt = SystemClock.elapsedRealtime(); }
 
     /**
      * A screen of this app is in front again.
@@ -100,7 +102,7 @@ final class AppLock {
      */
     static void returned() {
         long left = leftForErrandAt;
-        if (left > 0 && android.os.SystemClock.elapsedRealtime() - left > ERRAND_MS) {
+        if (left > 0 && SystemClock.elapsedRealtime() - left > ERRAND_MS) {
             locked = true;
         }
         leftForErrandAt = 0L;
@@ -216,7 +218,7 @@ final class AppLock {
         }
         boolean canBiometric = Build.VERSION.SDK_INT < 29
                 || activity.checkSelfPermission(android.Manifest.permission.USE_BIOMETRIC)
-                        == android.content.pm.PackageManager.PERMISSION_GRANTED;
+                        == PackageManager.PERMISSION_GRANTED;
         if (!canBiometric) {
             if (!credentialScreen(activity, callback)) callback.done(false);
             return;

@@ -1,3 +1,7 @@
 build/
 *.apk
 app/assets/open-source-notices.md
+# Rendered by branding/make_icon.py; the shipped copies live under app/res.
+branding/icon/
+# A throwaway signing key build.sh mints when no POCKETIDE_* secrets are set.
+.signing/

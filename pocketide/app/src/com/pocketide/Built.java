@@ -2,6 +2,7 @@ package com.pocketide;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.Cursor;
 import android.database.MatrixCursor;
 import android.net.Uri;
@@ -44,7 +45,7 @@ public final class Built extends ContentProvider {
     static final String MIME = "application/vnd.android.package-archive";
 
     /** The URI the installer is handed for a file under ~/projects, or null if it is not one. */
-    static Uri uriFor(android.content.Context context, File apk) {
+    static Uri uriFor(Context context, File apk) {
         File root = Workspace.projects(context);
         try {
             String rootPath = root.getCanonicalPath();

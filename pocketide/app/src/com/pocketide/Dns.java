@@ -7,6 +7,7 @@ import android.net.Network;
 import android.os.Handler;
 import android.os.HandlerThread;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.util.List;
 
@@ -81,6 +82,6 @@ final class Dns {
         if (servers.isEmpty()) return;
         try {
             ResolverConfig.write(Workspace.root(context), servers);
-        } catch (java.io.IOException unavailable) { /* Rootfs may still be extracting. Retry at launch. */ }
+        } catch (IOException unavailable) { /* Rootfs may still be extracting. Retry at launch. */ }
     }
 }

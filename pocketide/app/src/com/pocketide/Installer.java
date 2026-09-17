@@ -1,5 +1,7 @@
 package com.pocketide;
 
+import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -84,25 +86,6 @@ final class Installer {
             return context.getPackageManager().canRequestPackageInstalls();
         } catch (Throwable unreadable) {
             return false;
-        }
-    }
-
-    /** Android's own page for that permission, so a refusal has somewhere to go. */
-    static void openPermission(Context context) {
-        Intent page = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
-                .setData(android.net.Uri.parse("package:" + context.getPackageName()))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            context.startActivity(page);
-        } catch (Throwable noSuchPage) {
-            try {
-                context.startActivity(new Intent(
-                        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        android.net.Uri.parse("package:" + context.getPackageName()))
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            } catch (Throwable notEvenThat) {
-                // The sentence the caller prints already names the setting.
-            }
         }
     }
 
@@ -259,7 +242,7 @@ final class Installer {
      * uses, which an owner has already seen and allowed.
      */
     private static void offerConfirmation(Context context, Intent confirm, boolean alsoShown) {
-        android.app.NotificationManager manager = (android.app.NotificationManager)
+        NotificationManager manager = (NotificationManager)
                 context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
@@ -269,11 +252,11 @@ final class Installer {
             String text = alsoShown
                     ? "Android is asking on screen. This is the same question, if you missed it."
                     : "Tap to answer Android's install question for the app built here.";
-            manager.notify(NOTIFICATION, new android.app.Notification.Builder(
+            manager.notify(NOTIFICATION, new Notification.Builder(
                     context, App.CHANNEL_WORKSPACE)
                     .setContentTitle("Confirm the install")
                     .setContentText(text)
-                    .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                    .setStyle(new Notification.BigTextStyle().bigText(text))
                     .setSmallIcon(R.drawable.ic_stat_pocketide)
                     .setContentIntent(tap)
                     .setAutoCancel(true)
@@ -286,7 +269,7 @@ final class Installer {
 
     private static void cancelConfirmation(Context context) {
         try {
-            android.app.NotificationManager manager = (android.app.NotificationManager)
+            NotificationManager manager = (NotificationManager)
                     context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) manager.cancel(NOTIFICATION);
         } catch (Throwable alreadyGone) {
@@ -373,7 +356,7 @@ final class Installer {
 
     /** The launch, as something to tap, for the moment when it could not be started. */
     private static void offerOpen(Context context, Intent open, String packageName) {
-        android.app.NotificationManager manager = (android.app.NotificationManager)
+        NotificationManager manager = (NotificationManager)
                 context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
         int flags = PendingIntent.FLAG_UPDATE_CURRENT
@@ -381,11 +364,11 @@ final class Installer {
         try {
             PendingIntent tap = PendingIntent.getActivity(context, 5, open, flags);
             String text = "The agent asked to open " + packageName + ". Tap to open it.";
-            manager.notify(NOTIFICATION_OPEN, new android.app.Notification.Builder(
+            manager.notify(NOTIFICATION_OPEN, new Notification.Builder(
                     context, App.CHANNEL_WORKSPACE)
                     .setContentTitle("Open " + packageName)
                     .setContentText(text)
-                    .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                    .setStyle(new Notification.BigTextStyle().bigText(text))
                     .setSmallIcon(R.drawable.ic_stat_pocketide)
                     .setContentIntent(tap)
                     .setAutoCancel(true)

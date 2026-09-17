@@ -13,8 +13,11 @@ import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * What the computer in the phone is doing, right now.
@@ -194,8 +197,8 @@ final class ActivityPane implements Pane {
     }
 
     private volatile boolean reading;
-    private final java.util.Map<Integer, Ui.Row> rowsByPid = new java.util.HashMap<>();
-    private final List<Integer> shownPids = new java.util.ArrayList<>();
+    private final Map<Integer, Ui.Row> rowsByPid = new HashMap<>();
+    private final List<Integer> shownPids = new ArrayList<>();
 
     /**
      * Reads, then paints.
@@ -287,7 +290,7 @@ final class ActivityPane implements Pane {
      */
     private void refreshProcesses(boolean dark, List<Running.Process> processes) {
         if (processList == null) return;
-        List<Integer> pids = new java.util.ArrayList<>(processes.size());
+        List<Integer> pids = new ArrayList<>(processes.size());
         for (Running.Process process : processes) pids.add(process.pid);
         if (!pids.equals(shownPids)) {
             processList.removeAllViews();

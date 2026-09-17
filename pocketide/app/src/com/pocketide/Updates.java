@@ -1,6 +1,7 @@
 package com.pocketide;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -140,7 +141,7 @@ final class Updates {
     // ------------------------------------------------------------------ what is known
 
     static Status last(Context context) {
-        android.content.SharedPreferences prefs = Prefs.of(context);
+        SharedPreferences prefs = Prefs.of(context);
         return new Status(
                 prefs.getInt(Prefs.UPDATE_UBUNTU_SECURITY, 0),
                 prefs.getInt(Prefs.UPDATE_UBUNTU_ALL, 0),

@@ -1,5 +1,7 @@
 package com.pocketide;
 
+import java.util.Locale;
+
 /**
  * The steps set-up goes through, named, sized, and in order.
  *
@@ -64,7 +66,7 @@ enum Stage {
         long hours = seconds / 3600;
         long minutes = (seconds % 3600) / 60;
         long rest = seconds % 60;
-        if (hours > 0) return String.format(java.util.Locale.ROOT, "%d:%02d:%02d", hours, minutes, rest);
-        return String.format(java.util.Locale.ROOT, "%d:%02d", minutes, rest);
+        if (hours > 0) return String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, rest);
+        return String.format(Locale.ROOT, "%d:%02d", minutes, rest);
     }
 }

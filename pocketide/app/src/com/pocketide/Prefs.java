@@ -76,7 +76,6 @@ final class Prefs {
     // Diagnostics
     static final String LAST_FAILURE = "last_failure";
     static final String LAST_FAILURE_AT = "last_failure_at";
-    static final String SEEN_PERMISSION_INTRO = "seen_permission_intro";
 
     // ---------------------------------------------------------------- the app lock
     static final String APP_LOCK = "app_lock";

@@ -1,9 +1,12 @@
 package com.pocketide;
 
+import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.SystemClock;
 import android.system.ErrnoException;
 import android.system.Os;
+import android.system.StructStatVfs;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -15,12 +18,17 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The Linux the editor runs on: download it, unpack it, and run one command inside it.
@@ -75,10 +83,6 @@ final class Workspace {
     static boolean installed(Context context) {
         return Prefs.of(context).getBoolean(Prefs.INSTALLED, false)
                 && new File(root(context), "etc/os-release").isFile();
-    }
-
-    static boolean editorInstalled(Context context) {
-        return new File(root(context), "opt/code-server/bin/code-server").isFile();
     }
 
     /**
@@ -146,7 +150,7 @@ final class Workspace {
             StringBuilder hex = new StringBuilder(digest.length * 2);
             for (byte b : digest) hex.append(String.format("%02x", b));
             return hex.toString();
-        } catch (java.security.NoSuchAlgorithmException never) {
+        } catch (NoSuchAlgorithmException never) {
             // SHA-256 is required of every Android platform since API 1.
             throw new IllegalStateException(never);
         }
@@ -306,7 +310,7 @@ final class Workspace {
             StringBuilder hex = new StringBuilder();
             for (byte b : digest.digest()) hex.append(String.format("%02x", b));
             return hex.toString();
-        } catch (java.security.NoSuchAlgorithmException impossible) {
+        } catch (NoSuchAlgorithmException impossible) {
             throw new IOException("SHA-256 is unavailable on this phone.", impossible);
         }
     }
@@ -385,7 +389,7 @@ final class Workspace {
         args.add("TMPDIR=/tmp");
         // Nothing about adb here, on purpose: the Linux the agent works in has no adb, no key
         // and no server socket. Those live in a root of their own (startPrivate, Phone).
-        args.add("TZ=" + java.util.TimeZone.getDefault().getID());
+        args.add("TZ=" + TimeZone.getDefault().getID());
         args.add("PIDE_PORT=" + EDITOR_PORT);
         args.add("PIDE_PASSWORD=" + editorPassword(context));
         args.add("PIDE_HASHED_PASSWORD=" + editorSessionToken(context));
@@ -499,7 +503,7 @@ final class Workspace {
         try {
             if (process.isAlive()) {
                 // "Process[pid=1234, exitValue=...]" is what the platform's Process prints.
-                java.util.regex.Matcher pid = java.util.regex.Pattern.compile("pid=(\\d+)")
+                Matcher pid = Pattern.compile("pid=(\\d+)")
                         .matcher(process.toString());
                 if (pid.find()) android.os.Process.sendSignal(Integer.parseInt(pid.group(1)), 3);
             }
@@ -555,7 +559,7 @@ final class Workspace {
     /** How much room is left where Linux lives. */
     static long freeBytes(Context context) {
         try {
-            android.system.StructStatVfs stat =
+            StructStatVfs stat =
                     Os.statvfs(context.getFilesDir().getAbsolutePath());
             return stat.f_bavail * stat.f_frsize;
         } catch (ErrnoException unavailable) {
@@ -572,7 +576,7 @@ final class Workspace {
     static long sizeOf(File file) {
         if (file == null || !file.exists()) return 0;
         try {
-            if (java.nio.file.Files.isSymbolicLink(file.toPath())) return 0;
+            if (Files.isSymbolicLink(file.toPath())) return 0;
         } catch (Throwable unreadable) {
             return 0;
         }
@@ -603,9 +607,9 @@ final class Workspace {
      * Two screens asked for this, one of them every five seconds, and every ask walked tens
      * of thousands of files. The phone was warm for nothing.
      */
-    static void size(final android.app.Activity activity,
+    static void size(final Activity activity,
                      final java.util.function.LongConsumer whenKnown) {
-        long now = android.os.SystemClock.elapsedRealtime();
+        long now = SystemClock.elapsedRealtime();
         if (lastSizeBytes >= 0 && now - lastSizedAt < 60_000L) {
             whenKnown.accept(lastSizeBytes);
             return;
@@ -623,7 +627,7 @@ final class Workspace {
                 bytes = Math.max(0L, lastSizeBytes);
             }
             lastSizeBytes = bytes;
-            lastSizedAt = android.os.SystemClock.elapsedRealtime();
+            lastSizedAt = SystemClock.elapsedRealtime();
             sizing = false;
             final long known = bytes;
             activity.runOnUiThread(() -> {
@@ -657,7 +661,7 @@ final class Workspace {
     static void delete(File file) {
         if (file == null) return;
         try {
-            if (java.nio.file.Files.isSymbolicLink(file.toPath())) {
+            if (Files.isSymbolicLink(file.toPath())) {
                 if (!file.delete()) file.deleteOnExit();
                 return;
             }

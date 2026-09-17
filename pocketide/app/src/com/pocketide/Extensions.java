@@ -338,19 +338,4 @@ final class Extensions {
         }
     }
 
-    /** The name an owner would recognise, for an identifier the app has no other name for. */
-    static String readableName(String id) {
-        if (id == null || id.isEmpty()) return "";
-        int dot = id.indexOf('.');
-        String name = dot < 0 ? id : id.substring(dot + 1);
-        String[] words = name.split("[-_]");
-        StringBuilder out = new StringBuilder();
-        for (String word : words) {
-            if (word.isEmpty()) continue;
-            if (out.length() > 0) out.append(' ');
-            out.append(Character.toUpperCase(word.charAt(0)))
-                    .append(word.substring(1).toLowerCase(Locale.ROOT));
-        }
-        return out.length() == 0 ? id : out.toString();
-    }
 }

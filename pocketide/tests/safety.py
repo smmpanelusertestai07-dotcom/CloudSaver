@@ -706,7 +706,7 @@ timeout_path = re.search(r'if \(answer == null\) \{(.*?)\n        \}', code(read
 if not timeout_path or "installer.abandonSession(id);" not in timeout_path.group(1):
     problems.append("an install nobody answered is left open, so a late tap installs the app "
                     "with nothing told and nothing allowed")
-if "android.system.Os.shutdown(bound.getFileDescriptor()" not in broker:
+if "Os.shutdown(bound.getFileDescriptor()" not in broker:
     problems.append("closing the bridge does not wake the thread waiting in accept(), which "
                     "keeps the old socket")
 if "Workspace.quit(process)" not in broker or "static void quit(Process process)" not in workspace_src \

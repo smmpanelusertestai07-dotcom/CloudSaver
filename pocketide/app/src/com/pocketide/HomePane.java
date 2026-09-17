@@ -7,9 +7,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -360,7 +360,7 @@ final class HomePane implements Pane {
                         + (probe.batteryTempC > 0
                                 ? " · " + Math.round(probe.batteryTempC) + " °C" : "")
                         + " · " + DeviceProbe.thermalName(probe.thermalStatus), null);
-        if (probe.thermalStatus >= android.os.PowerManager.THERMAL_STATUS_SEVERE) {
+        if (probe.thermalStatus >= PowerManager.THERMAL_STATUS_SEVERE) {
             heat.setState(Ui.needsYou(dark));
         }
         healthList.addView(heat);

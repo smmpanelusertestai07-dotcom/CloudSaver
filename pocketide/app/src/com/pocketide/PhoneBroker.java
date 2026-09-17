@@ -2,14 +2,16 @@ package com.pocketide;
 
 import android.content.Context;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.LocalServerSocket;
 import android.net.LocalSocket;
 import android.net.LocalSocketAddress;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
+import android.system.Os;
+import android.system.OsConstants;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -21,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,6 +37,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * The workspace's door to the phone: a scoped door, not the whole key.
@@ -183,8 +190,8 @@ final class PhoneBroker {
         running = false;
         try {
             if (bound != null) {
-                android.system.Os.shutdown(bound.getFileDescriptor(),
-                        android.system.OsConstants.SHUT_RDWR);
+                Os.shutdown(bound.getFileDescriptor(),
+                        OsConstants.SHUT_RDWR);
             }
         } catch (Throwable alreadyDown) {
             // Then close() below is what there is.
@@ -350,7 +357,7 @@ final class PhoneBroker {
     }
 
     private static String readLine(InputStream in, int limit) throws IOException {
-        java.io.ByteArrayOutputStream line = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream line = new ByteArrayOutputStream();
         int c;
         while ((c = in.read()) != -1 && c != '\n') {
             if (line.size() >= limit) throw new IOException("request too long");
@@ -776,7 +783,7 @@ final class PhoneBroker {
     private String certificateOf(File apk) {
         try {
             return digestOf(service.getPackageManager().getPackageArchiveInfo(
-                    apk.getAbsolutePath(), android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES));
+                    apk.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES));
         } catch (Throwable unreadable) {
             return "";
         }
@@ -790,23 +797,23 @@ final class PhoneBroker {
     private String installedCertificate(String pkg) {
         try {
             return digestOf(service.getPackageManager().getPackageInfo(pkg,
-                    android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES));
+                    PackageManager.GET_SIGNING_CERTIFICATES));
         } catch (Throwable hiddenOrAbsent) {
             return null;
         }
     }
 
-    private static String digestOf(PackageInfo info) throws java.security.NoSuchAlgorithmException {
+    private static String digestOf(PackageInfo info) throws NoSuchAlgorithmException {
         if (info == null || info.signingInfo == null) return "";
-        android.content.pm.Signature[] signers = info.signingInfo.hasMultipleSigners()
+        Signature[] signers = info.signingInfo.hasMultipleSigners()
                 ? info.signingInfo.getApkContentsSigners()
                 : info.signingInfo.getSigningCertificateHistory();
         if (signers == null || signers.length == 0) return "";
-        java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
         // The history's oldest certificate, or every current signer: the identity that
         // survives a key rotation is the original one.
         if (info.signingInfo.hasMultipleSigners()) {
-            for (android.content.pm.Signature signer : signers) digest.update(signer.toByteArray());
+            for (Signature signer : signers) digest.update(signer.toByteArray());
         } else {
             digest.update(signers[0].toByteArray());
         }

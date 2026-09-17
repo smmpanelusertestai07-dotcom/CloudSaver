@@ -2,30 +2,46 @@ package com.pocketide;
 
 import android.app.Activity;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.RemoteInput;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.Icon;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
 import android.provider.Settings;
+import android.system.Os;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The phone as its own test device.
@@ -135,8 +151,8 @@ final class Phone {
         }
         if (ready(context) && stamp.isFile()) {
             try {
-                if (wanted.equals(new String(java.nio.file.Files.readAllBytes(stamp.toPath()),
-                        java.nio.charset.StandardCharsets.UTF_8).trim())) {
+                if (wanted.equals(new String(Files.readAllBytes(stamp.toPath()),
+                        StandardCharsets.UTF_8).trim())) {
                     return true;
                 }
             } catch (IOException unreadable) {
@@ -146,7 +162,7 @@ final class Phone {
         File fresh = new File(context.getFilesDir(), "phone/root.unpacking");
         deleteTree(fresh);
         try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
-                new java.io.BufferedInputStream(context.getAssets().open("adb-root.zip")))) {
+                new BufferedInputStream(context.getAssets().open("adb-root.zip")))) {
             String rootPath = fresh.getCanonicalPath() + File.separator;
             java.util.zip.ZipEntry entry;
             byte[] buffer = new byte[65536];
@@ -165,7 +181,7 @@ final class Phone {
                 if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
                     throw new IOException("mkdir " + parent.getName());
                 }
-                try (java.io.FileOutputStream out = new java.io.FileOutputStream(target)) {
+                try (FileOutputStream out = new FileOutputStream(target)) {
                     int read;
                     while ((read = zip.read(buffer)) != -1) out.write(buffer, 0, read);
                     out.getFD().sync();
@@ -184,18 +200,18 @@ final class Phone {
             // The links the zip could not carry: "lib usr/lib", one per line.
             File links = new File(fresh, "links.txt");
             if (links.isFile()) {
-                for (String line : new String(java.nio.file.Files.readAllBytes(links.toPath()),
-                        java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                for (String line : new String(Files.readAllBytes(links.toPath()),
+                        StandardCharsets.UTF_8).split("\n")) {
                     String[] pair = line.trim().split("\\s+");
                     if (pair.length != 2 || pair[0].contains("..") || pair[1].contains("..")) {
                         continue;
                     }
-                    android.system.Os.symlink(pair[1], new File(fresh, pair[0]).getAbsolutePath());
+                    Os.symlink(pair[1], new File(fresh, pair[0]).getAbsolutePath());
                 }
             }
-            try (java.io.FileOutputStream out = new java.io.FileOutputStream(
+            try (FileOutputStream out = new FileOutputStream(
                     new File(fresh, ".stamp"))) {
-                out.write((wanted + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                out.write((wanted + "\n").getBytes(StandardCharsets.UTF_8));
                 out.getFD().sync();
             }
         } catch (Throwable failed) {
@@ -225,12 +241,12 @@ final class Phone {
     }
 
     private static String readAsset(Context context, String name) throws IOException {
-        try (java.io.InputStream in = context.getAssets().open(name)) {
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        try (InputStream in = context.getAssets().open(name)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buffer = new byte[4096];
             int read;
             while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
-            return new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+            return new String(out.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 
@@ -263,8 +279,8 @@ final class Phone {
             File now = new File(dir, name);
             if (fresh && !now.exists() && !was.renameTo(now)) {
                 try {
-                    java.nio.file.Files.copy(was.toPath(), now.toPath());
-                } catch (java.io.IOException notCopied) {
+                    Files.copy(was.toPath(), now.toPath());
+                } catch (IOException notCopied) {
                     // Then the owner pairs again from Settings; the old key is still removed.
                 }
             }
@@ -295,8 +311,8 @@ final class Phone {
      * for anything: the ports are found by NsdManager (discover) and handed to it. ADB_LIBUSB=0
      * keeps it off the USB bus, which a phone's own app has no business on.
      */
-    static java.util.Map<String, String> environment() {
-        java.util.Map<String, String> env = new java.util.LinkedHashMap<>();
+    static Map<String, String> environment() {
+        Map<String, String> env = new LinkedHashMap<>();
         env.put("HOME", "/root");
         env.put("USER", "root");
         env.put("PATH", "/usr/bin");
@@ -315,11 +331,11 @@ final class Phone {
      * argument and nothing an agent typed can become a second command. The caller owns the
      * process and ends it with Workspace.quit.
      */
-    static Process start(Context context, String... adbArguments) throws java.io.IOException {
+    static Process start(Context context, String... adbArguments) throws IOException {
         if (!ready(context) && !prepareRoot(context)) {
-            throw new java.io.IOException("adb is not unpacked on this phone.");
+            throw new IOException("adb is not unpacked on this phone.");
         }
-        List<String> argv = new java.util.ArrayList<>();
+        List<String> argv = new ArrayList<>();
         argv.add("/usr/bin/adb");
         argv.addAll(Arrays.asList(adbArguments));
         return Workspace.startPrivate(context, root(context), argv, binds(context), environment());
@@ -455,10 +471,10 @@ final class Phone {
     static boolean serverListening(Context context) {
         File socket = serverSocket(context);
         if (!socket.exists()) return false;
-        android.net.LocalSocket client = new android.net.LocalSocket();
+        LocalSocket client = new LocalSocket();
         try {
-            client.connect(new android.net.LocalSocketAddress(socket.getAbsolutePath(),
-                    android.net.LocalSocketAddress.Namespace.FILESYSTEM));
+            client.connect(new LocalSocketAddress(socket.getAbsolutePath(),
+                    LocalSocketAddress.Namespace.FILESYSTEM));
             return true;
         } catch (Throwable nobody) {
             return false;
@@ -542,7 +558,7 @@ final class Phone {
         if (manager == null) return false;
         try {
             if (!manager.areNotificationsEnabled()) return false;
-            android.app.NotificationChannel channel =
+            NotificationChannel channel =
                     manager.getNotificationChannel(App.CHANNEL_WORKSPACE);
             return channel == null
                     || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
@@ -622,8 +638,8 @@ final class Phone {
             final CountDownLatch done = new CountDownLatch(1);
             final AtomicInteger port = new AtomicInteger(-1);
             final AtomicBoolean resolving = new AtomicBoolean(false);
-            final java.util.concurrent.atomic.AtomicLong resolvingSince =
-                    new java.util.concurrent.atomic.AtomicLong(0L);
+            final AtomicLong resolvingSince =
+                    new AtomicLong(0L);
             // Everything heard, resolved one at a time. NsdManager refuses a second resolve
             // while one runs, and it does not repeat onServiceFound for a service it has
             // already announced -- so a service dropped because another was being resolved
@@ -740,9 +756,9 @@ final class Phone {
         Process process = null;
         try {
             process = start(context, adbArguments);
-            try (java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(process.getInputStream(),
-                            java.nio.charset.StandardCharsets.UTF_8))) {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(),
+                            StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     if (out.length() < 4000) out.append(Workspace.clean(line)).append('\n');

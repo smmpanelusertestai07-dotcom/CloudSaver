@@ -2,11 +2,16 @@ package com.pocketide;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.TextView;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Settings, including a permission manager that does what the phone's own Settings will not:
@@ -43,9 +48,6 @@ final class SettingsPane implements Pane {
     private Ui.Row dataRow;
     private Ui.Row wifiRow;
     private Ui.Row sizeRow;
-
-
-
 
     @Override public String key() { return "settings"; }
 
@@ -114,7 +116,7 @@ final class SettingsPane implements Pane {
                     "The app lock was turned off because this phone no longer has a screen "
                             + "lock. Set one in the phone's own Settings and you can turn it "
                             + "back on here."), Ui.wide(host, 10));
-            android.widget.TextView setOne = Ui.button(host, "Open the phone's security settings",
+            TextView setOne = Ui.button(host, "Open the phone's security settings",
                     false, dark);
             setOne.setOnClickListener(v -> Permissions.openSecuritySettings(host));
             group.addView(setOne, Ui.wide(host, 10));
@@ -466,11 +468,11 @@ final class SettingsPane implements Pane {
         }
         final Activity on = host;
         new Thread(() -> {
-            final java.util.List<java.io.File> found = new java.util.ArrayList<>();
+            final List<File> found = new ArrayList<>();
             collectApks(Workspace.projects(on), 0, found);
-            java.util.Collections.sort(found,
+            Collections.sort(found,
                     (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
-            final java.util.List<java.io.File> shown =
+            final List<File> shown =
                     found.subList(0, Math.min(found.size(), 12));
             on.runOnUiThread(() -> {
                 if (on.isFinishing()) return;
@@ -496,11 +498,11 @@ final class SettingsPane implements Pane {
         }, "find-apks").start();
     }
 
-    private static void collectApks(java.io.File dir, int depth, java.util.List<java.io.File> into) {
+    private static void collectApks(File dir, int depth, List<File> into) {
         if (depth > 6 || dir == null) return;
-        java.io.File[] children = dir.listFiles();
+        File[] children = dir.listFiles();
         if (children == null) return;
-        for (java.io.File child : children) {
+        for (File child : children) {
             String name = child.getName();
             if (child.isDirectory()) {
                 if (name.equals("intermediates") || name.equals("node_modules")
@@ -512,8 +514,8 @@ final class SettingsPane implements Pane {
         }
     }
 
-    private void installBuilt(java.io.File apk) {
-        android.net.Uri uri = Built.uriFor(host, apk);
+    private void installBuilt(File apk) {
+        Uri uri = Built.uriFor(host, apk);
         if (uri == null) {
             Dialogs.message(host, "Not offered", "Only an .apk under ~/projects can be handed "
                     + "to the installer.");
@@ -1103,7 +1105,7 @@ final class SettingsPane implements Pane {
                 "Download", () -> {
                     try {
                         AppLock.expectReturn();
-                        host.startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(link))
+                        host.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link))
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                     } catch (Throwable noBrowser) {
                         AppLock.returned();
@@ -1201,7 +1203,7 @@ final class SettingsPane implements Pane {
     }
 
     private View note(boolean dark, String words) {
-        android.widget.TextView view = Ui.text(host, words, 12f, Ui.muted(dark));
+        TextView view = Ui.text(host, words, 12f, Ui.muted(dark));
         view.setPadding(Ui.dp(host, 4), 0, Ui.dp(host, 4), 0);
         return view;
     }

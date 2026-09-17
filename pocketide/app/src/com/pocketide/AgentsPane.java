@@ -4,13 +4,13 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.File;
@@ -20,6 +20,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Extensions, in three tiers, with the reason for the tiers stated on the screen.
@@ -57,9 +58,6 @@ final class AgentsPane implements Pane {
     private LinearLayout recommendedList;
     private LinearLayout communityList;
     private volatile int searchGeneration;
-
-
-
 
     // ------------------------------------------------------------------ the screen
 
@@ -113,7 +111,7 @@ final class AgentsPane implements Pane {
         TextView why = Ui.text(host, "Why only these three?", 13f, Ui.link(dark));
         why.setPadding(Ui.dp(host, 4), Ui.dp(host, 10), 0, 0);
         why.setMinHeight(Ui.dp(host, Ui.TOUCH_TARGET_DP));
-        why.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        why.setGravity(Gravity.CENTER_VERTICAL);
         why.setClickable(true);
         why.setFocusable(true);
         Ui.asButton(why);
@@ -133,7 +131,7 @@ final class AgentsPane implements Pane {
                 Ui.link(dark));
         costs.setPadding(Ui.dp(host, 4), Ui.dp(host, 10), 0, 0);
         costs.setMinHeight(Ui.dp(host, Ui.TOUCH_TARGET_DP));
-        costs.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        costs.setGravity(Gravity.CENTER_VERTICAL);
         costs.setClickable(true);
         costs.setFocusable(true);
         Ui.asButton(costs);
@@ -165,7 +163,7 @@ final class AgentsPane implements Pane {
                 // after the last one is both kinder to the registry and to a metered connection.
                 handler.removeCallbacksAndMessages("search");
                 handler.postAtTime(() -> runSearch(text.toString()), "search",
-                        android.os.SystemClock.uptimeMillis() + 450);
+                        SystemClock.uptimeMillis() + 450);
             }
         });
         column.addView(searchBox, Ui.wide(host, 8));
@@ -358,7 +356,7 @@ final class AgentsPane implements Pane {
                 value.append(" · ").append(shortCount(listing.downloads)).append(" downloads");
             }
             if (listing.rating >= 0) {
-                value.append(" · ").append(String.format(java.util.Locale.ROOT, "%.1f", listing.rating))
+                value.append(" · ").append(String.format(Locale.ROOT, "%.1f", listing.rating))
                         .append("★");
             }
             Ui.Row row = Ui.row(host, dark,
@@ -372,8 +370,8 @@ final class AgentsPane implements Pane {
     }
 
     private static String shortCount(long value) {
-        if (value >= 1_000_000) return String.format(java.util.Locale.ROOT, "%.1fM", value / 1e6);
-        if (value >= 1_000) return String.format(java.util.Locale.ROOT, "%.0fK", value / 1e3);
+        if (value >= 1_000_000) return String.format(Locale.ROOT, "%.1fM", value / 1e6);
+        if (value >= 1_000) return String.format(Locale.ROOT, "%.0fK", value / 1e3);
         return String.valueOf(value);
     }
 

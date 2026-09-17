@@ -6,20 +6,23 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
+import android.webkit.ValueCallback;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.webkit.ValueCallback;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -27,6 +30,10 @@ import android.widget.TextView;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * The editor, full screen, with the few controls a phone needs around it.
@@ -58,7 +65,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     private TextView waitingLine;
     private TextView retry;
     private BroadcastReceiver events;
-    private android.widget.FrameLayout lockRoot;
+    private FrameLayout lockRoot;
     private boolean shown;
     /** One typed sign-in, at most, if the cookie is ever refused. See signInWithForm(). */
     private boolean formSignInTried;
@@ -76,7 +83,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         // to keep behind a fingerprint.
         AppLock.applyWindowSecurity(this);
         try {
-            lockRoot = new android.widget.FrameLayout(this);
+            lockRoot = new FrameLayout(this);
             lockRoot.addView(build());
             addRestoreButton();
             setContentView(lockRoot);
@@ -144,7 +151,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (request == PICK_FILE) {
-            ValueCallback<android.net.Uri[]> waiting = pendingFiles;
+            ValueCallback<Uri[]> waiting = pendingFiles;
             pendingFiles = null;
             if (waiting != null) {
                 waiting.onReceiveValue(
@@ -269,8 +276,8 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         Ui.asButton(restore);
         restore.setVisibility(fullScreen ? View.VISIBLE : View.GONE);
         restore.setOnClickListener(v -> toggleFullScreen());
-        android.widget.FrameLayout.LayoutParams params =
-                new android.widget.FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams params =
+                new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         Gravity.BOTTOM | Gravity.END);
@@ -378,7 +385,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
         button.addView(words, wordParams);
 
         button.setBackground(Ui.tappable(this,
-                Ui.fill(this, android.graphics.Color.TRANSPARENT, 0), dark));
+                Ui.fill(this, Color.TRANSPARENT, 0), dark));
         button.setClickable(true);
         button.setFocusable(true);
         button.setContentDescription(description);
@@ -509,7 +516,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
              * the request, and the page is given no way to say so, so nothing happens at all.
              */
             @Override public boolean onShowFileChooser(WebView web,
-                    ValueCallback<android.net.Uri[]> callback,
+                    ValueCallback<Uri[]> callback,
                     android.webkit.WebChromeClient.FileChooserParams params) {
                 if (pendingFiles != null) pendingFiles.onReceiveValue(null);
                 pendingFiles = callback;
@@ -539,7 +546,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     }
 
     /** Where the editor's own file picker sends its answer. */
-    private ValueCallback<android.net.Uri[]> pendingFiles;
+    private ValueCallback<Uri[]> pendingFiles;
     private static final int PICK_FILE = 8814;
 
     /**
@@ -684,11 +691,11 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
      * and the palette is one row among them rather than the only door.
      */
     private void menu() {
-        final java.util.List<String> labels = new java.util.ArrayList<>();
-        final java.util.List<Integer> icons = new java.util.ArrayList<>();
+        final List<String> labels = new ArrayList<>();
+        final List<Integer> icons = new ArrayList<>();
         // keyCodes, not keys: this class already has a field called keys, and it is the key
         // row rather than a list of numbers.
-        final java.util.List<Integer> keyCodes = new java.util.ArrayList<>();
+        final List<Integer> keyCodes = new ArrayList<>();
 
         for (int i = 0; i < panels.size() && i < Extensions.PANEL_KEYS; i++) {
             labels.add("Open " + panels.get(i).title);
@@ -768,7 +775,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
      * Off the drawing thread because it opens one manifest per extension and an agent's
      * manifest runs to hundreds of kilobytes. The menu reads this field, so it opens at once.
      */
-    private volatile java.util.List<Extensions.Panel> panels = java.util.Collections.emptyList();
+    private volatile List<Extensions.Panel> panels = Collections.emptyList();
 
     /** True while this app's own toolbar is hidden and the editor has the whole screen. */
     private boolean fullScreen;
@@ -796,7 +803,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
             // rewritten here from the same list the rows are built from, so an agent
             // installed since the editor started opens its own panel and not another's.
             // The editor reloads keybindings.json when it changes; nothing restarts.
-            final java.util.List<Extensions.Panel> found = Extensions.writeKeybindings(this);
+            final List<Extensions.Panel> found = Extensions.writeKeybindings(this);
             runOnUiThread(() -> panels = found);
         }, "read-panels").start();
     }
@@ -833,7 +840,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     }
 
     private static String decimal(double value) {
-        return String.format(java.util.Locale.ROOT, "%.3f", value);
+        return String.format(Locale.ROOT, "%.3f", value);
     }
 
     /**
@@ -866,7 +873,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
     @Override public void key(int keyCode, int metaState) {
         if (web == null) return;
         web.requestFocus();
-        long now = android.os.SystemClock.uptimeMillis();
+        long now = SystemClock.uptimeMillis();
         int[] modifiers = {
                 (metaState & KeyEvent.META_CTRL_ON) != 0 ? KeyEvent.KEYCODE_CTRL_LEFT : 0,
                 (metaState & KeyEvent.META_ALT_ON) != 0 ? KeyEvent.KEYCODE_ALT_LEFT : 0,

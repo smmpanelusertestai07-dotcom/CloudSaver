@@ -1,6 +1,7 @@
 package com.pocketide;
 
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
@@ -13,6 +14,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * The one process that owns the workspace: it runs set-up, it runs the editor, and it is the
@@ -67,7 +71,7 @@ public final class WorkspaceService extends Service {
      * reads from the thread that draws.
      */
     private static final int LOG_LINES = 400;
-    private static final java.util.ArrayDeque<String> LOG = new java.util.ArrayDeque<>();
+    private static final ArrayDeque<String> LOG = new ArrayDeque<>();
 
     private Thread worker;
     private volatile Process editor;
@@ -104,15 +108,9 @@ public final class WorkspaceService extends Service {
     static long runningSince() { return editorRunning ? runningSince : 0L; }
 
     /** A copy of the recent output, oldest first. A copy, so the caller cannot see it change. */
-    static java.util.List<String> recentLog() {
+    static List<String> recentLog() {
         synchronized (LOG) {
-            return new java.util.ArrayList<>(LOG);
-        }
-    }
-
-    static void clearLog() {
-        synchronized (LOG) {
-            LOG.clear();
+            return new ArrayList<>(LOG);
         }
     }
 
@@ -690,8 +688,8 @@ public final class WorkspaceService extends Service {
 
     private void note(String text) {
         try {
-            android.app.NotificationManager manager =
-                    (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            NotificationManager manager =
+                    (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (manager != null) manager.notify(NOTIFICATION, notification(text));
         } catch (Throwable notAllowed) {
             // Notifications may be denied. The work continues; only the update is lost.

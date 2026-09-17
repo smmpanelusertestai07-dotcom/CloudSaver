@@ -58,7 +58,7 @@ final class ProcFiles {
         contents.put("/proc/loadavg", "0.32 0.28 0.24 1/512 4096\n");
         contents.put("/proc/uptime", "1234.56 4321.00\n");
         contents.put("/proc/version",
-                "Linux version 6.2.1 (pocketagent@localhost) (gcc 13.2.0) #1 SMP PREEMPT\n");
+                "Linux version 6.2.1 (pocketide@localhost) (gcc 13.2.0) #1 SMP PREEMPT\n");
         contents.put("/proc/sys/kernel/cap_last_cap", "40\n");
         contents.put("/proc/sys/fs/inotify/max_user_watches", "524288\n");
         StringBuilder stat = new StringBuilder("cpu  100000 0 50000 900000 0 0 0 0 0 0\n");

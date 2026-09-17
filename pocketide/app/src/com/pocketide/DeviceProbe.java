@@ -117,34 +117,6 @@ final class DeviceProbe {
         return bytes + " B";
     }
 
-    /** Human transfer rate, e.g. "1.4 MB/s". */
-    static String formatRate(long bytesPerSecond) {
-        if (bytesPerSecond <= 0) return "";
-        if (bytesPerSecond >= 1_000_000L) return String.format(Locale.ROOT, "%.1f MB/s", bytesPerSecond / 1e6);
-        return String.format(Locale.ROOT, "%.0f KB/s", bytesPerSecond / 1e3);
-    }
-
-    /** Remaining time in plain words, e.g. "about 4 min left". */
-    static String formatEta(long seconds) {
-        if (seconds <= 0 || seconds > 86400) return "";
-        if (seconds < 60) return "about " + seconds + " sec left";
-        long minutes = (seconds + 59) / 60;
-        if (minutes < 60) return "about " + minutes + " min left";
-        return "about " + ((minutes + 59) / 60) + " hr left";
-    }
-
-    /** True when the phone is plugged in, which relaxes the battery guards. */
-    static boolean isCharging(Context context) {
-        try {
-            Intent battery = context.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-            if (battery == null) return false;
-            int plugged = battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
-            return plugged != 0;
-        } catch (RuntimeException error) {
-            return false;
-        }
-    }
-
     static String thermalName(int value) {
         switch (value) {
             case PowerManager.THERMAL_STATUS_LIGHT: return "Light";

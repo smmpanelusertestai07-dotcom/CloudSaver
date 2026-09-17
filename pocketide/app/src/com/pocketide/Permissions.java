@@ -2,6 +2,7 @@ package com.pocketide;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -129,11 +130,6 @@ final class Permissions {
         }
     }
 
-    /** True where the maker keeps switches of its own beyond Android's battery optimisation. */
-    static boolean makerHasOwnSwitches() {
-        return skin() != Skin.OTHER;
-    }
-
     // ------------------------------------------------------------------ state
 
     static boolean notificationsAllowed(Context context) {
@@ -145,7 +141,7 @@ final class Permissions {
         // every Android version. A row that said "Allowed" while the owner had turned them
         // off on the app's page lied on Android 10 to 12, where there is no permission at all.
         try {
-            android.app.NotificationManager manager = (android.app.NotificationManager)
+            NotificationManager manager = (NotificationManager)
                     context.getSystemService(Context.NOTIFICATION_SERVICE);
             return manager == null || manager.areNotificationsEnabled();
         } catch (Throwable unreadable) {
@@ -156,11 +152,6 @@ final class Permissions {
     static boolean batteryUnrestricted(Context context) {
         PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
         return power != null && power.isIgnoringBatteryOptimizations(context.getPackageName());
-    }
-
-    /** True when something the owner should know about is still missing. */
-    static boolean anythingMissing(Context context) {
-        return !notificationsAllowed(context) || !batteryUnrestricted(context);
     }
 
     // ------------------------------------------------------------------ asking

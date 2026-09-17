@@ -2,10 +2,6 @@ package com.pocketide;
 
 import android.content.Context;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,6 +11,11 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 /**
  * The Open VSX Registry, which is where every extension in this app comes from.
@@ -136,7 +137,7 @@ final class Registry {
     /** The published SHA-256 of an extension's .vsix, as a lowercase hex string. */
     static String publishedChecksum(String sha256Url) throws IOException {
         if (sha256Url == null || sha256Url.isEmpty()) return "";
-        return get(sha256Url).trim().split("\\s+")[0].toLowerCase(java.util.Locale.ROOT);
+        return get(sha256Url).trim().split("\\s+")[0].toLowerCase(Locale.ROOT);
     }
 
     private static String get(String url) throws IOException {

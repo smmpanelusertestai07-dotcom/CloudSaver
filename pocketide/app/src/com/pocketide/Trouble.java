@@ -1,5 +1,7 @@
 package com.pocketide;
 
+import java.util.Locale;
+
 /**
  * Turns what actually went wrong into something a person can act on.
  *
@@ -16,7 +18,7 @@ final class Trouble {
     /** Plain advice for a raw failure, or null when there is nothing useful to add. */
     static String advice(String raw) {
         if (raw == null) return null;
-        String text = raw.toLowerCase(java.util.Locale.ROOT);
+        String text = raw.toLowerCase(Locale.ROOT);
 
         if (text.contains("dpkg was interrupted") || text.contains("frontend lock")) {
             return "A previous set-up was stopped part way through. Tap Try again — it repairs "

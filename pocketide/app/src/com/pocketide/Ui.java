@@ -11,8 +11,10 @@ import android.graphics.drawable.InsetDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -334,41 +336,6 @@ final class Ui {
         return button;
     }
 
-    /**
-     * Material 3's filled tonal icon button: a 40 dp container centred in a 48 dp touch target.
-     *
-     * The bare tinted glyph this replaces is what an owner reported as "the code-looking thing
-     * in the top right corner". It was a real control with a real action behind it, and it read
-     * as decoration, because nothing around it said it could be pressed. A tonal container says
-     * it -- and it is what every Google app on the same phone puts an app-bar action inside.
-     *
-     * The container is inset rather than sized, so the thing a finger has to hit stays 48 dp
-     * while the thing an eye sees is 40. An icon button that is visually 48 dp crowds a bar;
-     * one whose TARGET is 40 dp is a control people miss.
-     */
-    static ImageView iconButton(Context context, boolean dark, int iconRes, int tint,
-                                int container, CharSequence description,
-                                View.OnClickListener onClick) {
-        ImageView view = new ImageView(context);
-        view.setImageResource(iconRes);
-        view.setImageTintList(ColorStateList.valueOf(tint));
-        view.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        int inset = dp(context, 4);
-        int pad = inset + dp(context, 9);          // 40 - 2 x 9 = a 22 dp glyph
-        view.setPadding(pad, pad, pad, pad);
-        // The mask is what keeps the ripple inside the circle. Without one a RippleDrawable
-        // fills its whole bounds, so a round button flashes a 48 dp square when it is pressed.
-        view.setBackground(new RippleDrawable(
-                ColorStateList.valueOf(dark ? 0x33FFFFFF : 0x22000000),
-                new InsetDrawable(fill(context, container, 999), inset),
-                new InsetDrawable(fill(context, Color.WHITE, 999), inset)));
-        view.setClickable(true);
-        view.setFocusable(true);
-        view.setContentDescription(description);
-        view.setOnClickListener(onClick);
-        return view;
-    }
-
     /** A glass panel with the padding every card on every screen shares. */
     static LinearLayout card(Context context, boolean dark) {
         LinearLayout card = column(context);
@@ -428,7 +395,7 @@ final class Ui {
             @Override public void onInitializeAccessibilityNodeInfo(View host,
                     android.view.accessibility.AccessibilityNodeInfo info) {
                 super.onInitializeAccessibilityNodeInfo(host, info);
-                info.setClassName(android.widget.Button.class.getName());
+                info.setClassName(Button.class.getName());
             }
         });
     }
@@ -607,20 +574,20 @@ final class Ui {
      */
     static ScrollView innerScroll(Context context) {
         return new ScrollView(context) {
-            private void claim(android.view.MotionEvent event) {
+            private void claim(MotionEvent event) {
                 if (getParent() == null) return;
                 boolean can = canScrollVertically(1) || canScrollVertically(-1);
-                if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN && can) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN && can) {
                     getParent().requestDisallowInterceptTouchEvent(true);
                 }
             }
 
-            @Override public boolean onInterceptTouchEvent(android.view.MotionEvent event) {
+            @Override public boolean onInterceptTouchEvent(MotionEvent event) {
                 claim(event);
                 return super.onInterceptTouchEvent(event);
             }
 
-            @Override public boolean onTouchEvent(android.view.MotionEvent event) {
+            @Override public boolean onTouchEvent(MotionEvent event) {
                 claim(event);
                 return super.onTouchEvent(event);
             }

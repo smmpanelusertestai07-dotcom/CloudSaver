@@ -2,16 +2,16 @@ package com.pocketide;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /**
  * Dialogs that belong to this app rather than to whichever Android version is underneath.
@@ -282,14 +282,14 @@ final class Dialogs {
                 .setNegativeButton("Close", null);
         if (raw != null && !raw.isEmpty()) {
             builder.setPositiveButton(copyLabel == null ? "Copy" : copyLabel, (d, which) -> {
-                android.content.ClipboardManager clipboard =
-                        (android.content.ClipboardManager)
+                ClipboardManager clipboard =
+                        (ClipboardManager)
                                 activity.getSystemService(Activity.CLIPBOARD_SERVICE);
                 if (clipboard != null) {
                     clipboard.setPrimaryClip(
-                            android.content.ClipData.newPlainText("PocketIDE", raw));
-                    android.widget.Toast.makeText(activity, "Copied",
-                            android.widget.Toast.LENGTH_SHORT).show();
+                            ClipData.newPlainText("PocketIDE", raw));
+                    Toast.makeText(activity, "Copied",
+                            Toast.LENGTH_SHORT).show();
                 }
             });
         }
