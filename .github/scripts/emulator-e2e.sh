@@ -37,7 +37,7 @@ if [ "$tests_failed" -ne 0 ]; then
   python3 - <<'REPORT' || true
 import glob, xml.etree.ElementTree as ET
 for path in sorted(glob.glob(
-        "app/build/outputs/androidTest-results/connected/**/*.xml",
+        "cloudsaver/build/outputs/androidTest-results/connected/**/*.xml",
         recursive=True)):
     for case in ET.parse(path).getroot().iter("testcase"):
         for bad in list(case.findall("failure")) + list(case.findall("error")):
