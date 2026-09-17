@@ -1,5 +1,23 @@
 # Release notes
 
+## 2.3.5
+
+The app that closed as it opened, found and fixed.
+
+The owner's realme (Android 13) copied the recovery screen 2.3.0 finally reached, and the line
+was there: `Theme.setBarIcons` asked the window for its insets controller before the window had
+a decor view, and on Android 11 and later `PhoneWindow.getInsetsController()` dereferences null
+there. So every opening of 2.1.5, 2.2.0, 2.2.5 and 2.3.0 on every Android 11 or later phone died
+before its first frame -- and until 2.2.0 moved the launch count and the theme call inside the
+guarded path, it died before the recovery screen could count it, which is why the report read
+"closes every time, shows nothing" for four releases. Android 10, which takes the older path
+through `getDecorView()`, never saw it.
+
+The controller is asked for through the decor view now, which creates it, and hands out a pending
+controller that replays what it is told once the window is attached; the call is also inside a
+catch, because the colour of the clock is not worth the app. A gate forbids
+`Window.getInsetsController()` anywhere in the source and holds both. Help says what it was.
+
 ## 2.3.0
 
 The repository holds two apps and nothing else, and the source reads the way it should.

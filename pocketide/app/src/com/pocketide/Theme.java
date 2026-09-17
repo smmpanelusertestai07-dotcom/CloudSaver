@@ -76,7 +76,12 @@ final class Theme {
             window.setStatusBarColor(Ui.bg(dark));
             window.setNavigationBarColor(Ui.bg(dark));
         }
-        setBarIcons(window, dark);
+        try {
+            setBarIcons(window, dark);
+        } catch (Throwable cosmetic) {
+            // The colour of the clock is not worth the app. Recorded, so it is not invisible.
+            Crash.save(activity, cosmetic);
+        }
     }
 
     /**
@@ -85,10 +90,18 @@ final class Theme {
      * Without it the clock is white on cream on every light phone. The Android 11+ call is used
      * where it exists because the flags it replaces are deprecated and behave inconsistently on
      * 15; the old path stays for 10.
+     *
+     * THROUGH THE DECOR VIEW, NEVER THE WINDOW. Window.getInsetsController() reaches through
+     * the window's decor view, and the decor view does not exist until setContentView() or
+     * getDecorView() has been called: asked before that -- which is when apply() runs -- the
+     * platform's own PhoneWindow dereferences null and the app dies before its first frame,
+     * on every Android 11 and later phone, at every opening. That was 2.1.5 to 2.3.0 on the
+     * owner's realme. getDecorView() creates the decor, and the decor hands out a pending
+     * controller that replays what it is told once the window is attached.
      */
     private static void setBarIcons(Window window, boolean dark) {
         if (Build.VERSION.SDK_INT >= 30) {
-            WindowInsetsController controller = window.getInsetsController();
+            WindowInsetsController controller = window.getDecorView().getWindowInsetsController();
             if (controller != null) {
                 int appearance = dark ? 0
                         : WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS

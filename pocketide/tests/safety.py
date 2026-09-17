@@ -819,6 +819,28 @@ if 'android:allowBackup="false"' not in manifest_code:
     problems.append("the manifest allows backup, so the app's storage would leave the phone in "
                     "a Google backup while Help says nothing does")
 
+# --- 20. the app cannot close before its first frame over the colour of the clock --------------
+#
+# Window.getInsetsController() reaches through the decor view, which does not exist until
+# setContentView() or getDecorView() has run; Theme.apply() runs before either, and on Android
+# 11 and later the platform dereferenced null there at every opening of 2.1.5 to 2.3.0. The
+# controller is asked for through the decor view, and the cosmetic call is caught.
+theme_src = code(read("Theme.java"))
+for name in sorted(os.listdir(src)):
+    if name.endswith(".java") and re.search(r"\.getInsetsController\(\)", code(read(name))):
+        problems.append("%s calls Window.getInsetsController(), which is a crash before the "
+                        "first frame on Android 11 and later when no decor view exists yet; ask "
+                        "getDecorView().getWindowInsetsController() instead" % name)
+bar_icons = re.search(r'private static void setBarIcons\(Window window, boolean dark\) \{(.*?)\n    \}',
+                      theme_src, re.S)
+if not bar_icons or "window.getDecorView().getWindowInsetsController()" not in bar_icons.group(1):
+    problems.append("Theme.setBarIcons() does not go through the decor view for the insets "
+                    "controller")
+apply_fn = re.search(r'static void apply\(Activity activity\) \{(.*?)\n    \}', theme_src, re.S)
+if not apply_fn or not re.search(r"try \{\s*setBarIcons\(window, dark\);\s*\} catch \(Throwable",
+                                 apply_fn.group(1)):
+    problems.append("Theme.apply() lets a failure in the bar-icon colouring end the process")
+
 for problem in problems:
     print("  " + problem, file=sys.stderr)
 sys.exit(1 if problems else 0)

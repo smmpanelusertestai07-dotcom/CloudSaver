@@ -21,6 +21,6 @@ PhoneFiles.java|ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION|Build.VERSION.SDK_INT 
 Screen.java|getMaximumWindowMetrics|caught
 SetupActivity.java|RECEIVER_NOT_EXPORTED|inlined
 Theme.java|WindowInsetsController|Build.VERSION.SDK_INT >= 30
-Theme.java|getInsetsController|Build.VERSION.SDK_INT >= 30
+Theme.java|getWindowInsetsController|Build.VERSION.SDK_INT >= 30
 Theme.java|Type|Build.VERSION.SDK_INT >= 30
 WorkspaceActivity.java|RECEIVER_NOT_EXPORTED|inlined

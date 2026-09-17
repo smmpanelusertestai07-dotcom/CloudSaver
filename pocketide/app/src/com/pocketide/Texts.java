@@ -473,7 +473,11 @@ final class Texts {
                      + "stopped unexpectedly\u201d. If it still closes with nothing shown, "
                      + "the phone is ending the process before the app runs at all: check "
                      + "the Battery settings the entry below names, and that the APK came "
-                     + "from the project\u2019s own release page."},
+                     + "from the project\u2019s own release page.\n\nWhat it was, for the "
+                     + "record: 2.1.5 to 2.3.0 asked the window for its system-bar controls "
+                     + "before the window existed, which on Android 11 and later is a crash "
+                     + "inside the platform at every opening. 2.3.0\u2019s recovery screen "
+                     + "showed the exact line, and 2.3.5 fixed it."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
