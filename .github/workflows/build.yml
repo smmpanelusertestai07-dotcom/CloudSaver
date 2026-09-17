@@ -94,8 +94,8 @@ jobs:
           APK_NAME="CloudSaver-v$VERSION-release.apk"
           echo "APK_NAME=$APK_NAME" >> "$GITHUB_ENV"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
-          UNSIGNED=app/build/outputs/apk/release/app-release-unsigned.apk
-          [ -f "$UNSIGNED" ] || UNSIGNED=app/build/outputs/apk/release/app-release.apk
+          UNSIGNED=cloudsaver/build/outputs/apk/release/cloudsaver-release-unsigned.apk
+          [ -f "$UNSIGNED" ] || UNSIGNED=cloudsaver/build/outputs/apk/release/cloudsaver-release.apk
           # -P 16, not -p: -p is the old 4 KiB rule, and Android 16 runs an
           # app whose .so files are not 16 KiB aligned in a compatibility
           # mode with a launch-time system dialog rather than refusing to
@@ -330,8 +330,8 @@ jobs:
         with:
           name: emulator-test-report-api${{ matrix.api }}
           path: |
-            app/build/reports/androidTests/**
-            app/build/outputs/androidTest-results/**
+            cloudsaver/build/reports/androidTests/**
+            cloudsaver/build/outputs/androidTest-results/**
           if-no-files-found: warn
 
   release:
@@ -403,7 +403,7 @@ jobs:
           # re-signed the last CloudSaver release.
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::notice::$TAG is already published - leaving it exactly as it is."
-            echo "To publish a new build, raise versionName in app/build.gradle.kts."
+            echo "To publish a new build, raise versionName in cloudsaver/build.gradle.kts."
             exit 0
           fi
           gh release create "$TAG" "CloudSaver-v${VERSION}-release.apk" \

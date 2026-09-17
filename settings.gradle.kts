@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "CloudSaver"
-include(":app")
+include(":cloudsaver")

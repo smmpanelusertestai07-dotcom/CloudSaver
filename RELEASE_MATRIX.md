@@ -180,7 +180,7 @@ source for this release, including the rows that were already marked Done.
   rule could pass over text it had never seen. It was found by proving a new
   rule: the fault went in, the suite said green, and the reason was that the
   suite had not run. CI was safe only by accident, having no cache to reuse.
-  `app/build.gradle.kts` now declares the manifest, the strings, the Kotlin
+  `cloudsaver/build.gradle.kts` now declares the manifest, the strings, the Kotlin
   sources, the workflow and this file as test inputs, and the same proof now
   fails in one second.
 - **Whether one screen's number is the other screen's question.** Three found

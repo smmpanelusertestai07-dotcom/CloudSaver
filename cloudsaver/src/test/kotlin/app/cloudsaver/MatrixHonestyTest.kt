@@ -30,7 +30,7 @@ class MatrixHonestyTest {
             .map { it.groupValues[1] }
             .toSet()
         assertTrue("the matrix must cite its evidence", named.size > 20)
-        val present = File(root, "app/src").walkTopDown()
+        val present = File(root, "cloudsaver/src").walkTopDown()
             .filter { it.isFile && it.name.endsWith("Test.kt") }
             .map { it.name.removeSuffix(".kt") }
             .toSet()
@@ -114,8 +114,8 @@ class MatrixHonestyTest {
         fun check(what: String, claim: Int, actual: Int) =
             assertEquals("the matrix states the wrong number of $what", actual, claim)
 
-        val unit = File(root, "app/src/test")
-        val instrumented = File(root, "app/src/androidTest")
+        val unit = File(root, "cloudsaver/src/test")
+        val instrumented = File(root, "cloudsaver/src/androidTest")
 
         check(
             "unit tests",
@@ -134,7 +134,7 @@ class MatrixHonestyTest {
         )
 
         val layoutRules = countTests(
-            File(root, "app/src/test/kotlin/app/cloudsaver/LayoutRulesTest.kt")
+            File(root, "cloudsaver/src/test/kotlin/app/cloudsaver/LayoutRulesTest.kt")
         )
         check(
             "layout rules",
@@ -147,7 +147,7 @@ class MatrixHonestyTest {
             layoutRules
         )
 
-        val strings = File(root, "app/src/main/res/values/strings.xml").readText()
+        val strings = File(root, "cloudsaver/src/main/res/values/strings.xml").readText()
         check(
             "plurals",
             claimed("""(\d+) plurals all complete""", "its plural count"),
@@ -160,7 +160,7 @@ class MatrixHonestyTest {
             Regex("""<string name="faq_a\d+"""").findAll(strings).count()
         )
 
-        val app = File(root, "app/src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
+        val app = File(root, "cloudsaver/src/main/kotlin/app/cloudsaver/ui/App.kt").readText()
         check(
             "routes",
             claimed("""all ([a-z-]+) routes by tapping""", "its route count"),
