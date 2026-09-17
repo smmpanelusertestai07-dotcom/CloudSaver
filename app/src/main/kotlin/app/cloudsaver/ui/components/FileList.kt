@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -94,7 +95,7 @@ fun ListSearchField(
  * are not full-width buttons inside the row: two of those per row turned a
  * list of files into a wall of controls with the files squeezed between them.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileRow(
     name: String,

@@ -2,6 +2,7 @@ package app.cloudsaver.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import app.cloudsaver.ui.components.ListTags
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -113,7 +117,7 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
             // Export and Clear belong in an overflow: they are occasional, and
             // as buttons they sat above the list competing with it.
             var menuOpen by remember { mutableStateOf(false) }
-            androidx.compose.foundation.layout.Box {
+            Box {
                 // Export and Clear act on the whole log, not on what the filter
                 // is showing. Keying the menu to the visible rows alone meant
                 // that picking "Problems" on a phone with no problems logged
@@ -127,18 +131,18 @@ fun ActivityScreen(vm: AppViewModel, nav: NavHostController) {
                         contentDescription = stringResource(R.string.list_more_actions)
                     )
                 }
-                androidx.compose.material3.DropdownMenu(
+                DropdownMenu(
                     expanded = menuOpen,
                     onDismissRequest = { menuOpen = false }
                 ) {
-                    androidx.compose.material3.DropdownMenuItem(
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.activity_export)) },
                         onClick = {
                             menuOpen = false
                             exportLauncher.launch("cloudsaver-activity.txt")
                         }
                     )
-                    androidx.compose.material3.DropdownMenuItem(
+                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.activity_clear)) },
                         onClick = {
                             menuOpen = false
@@ -442,7 +446,7 @@ private fun settingValue(change: ActivityWording.Change): String {
 
 /** Every event type has a glyph, so the list can be scanned rather than read. */
 @Composable
-private fun iconFor(kind: ActivityLog.Kind?): androidx.compose.ui.graphics.vector.ImageVector =
+private fun iconFor(kind: ActivityLog.Kind?): ImageVector =
     when (kind) {
         ActivityLog.Kind.OPTIMISED -> Icons.Outlined.Bolt
         ActivityLog.Kind.RELEASED -> Icons.Outlined.CloudUpload

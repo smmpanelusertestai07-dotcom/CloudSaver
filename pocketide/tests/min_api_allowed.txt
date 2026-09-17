@@ -1,0 +1,26 @@
+# Symbols newer than minSdk (Android 10, API 29), each with the guard that protects it.
+# File | symbol | guard   -- guard is "SDK_INT >= N" (text in the 40 lines before the use),
+# "inlined" (a compile-time constant), or "caught" (inside a try that catches Throwable).
+# tests/min_api.py fails on any newer symbol not listed here, and on a listed guard that is gone.
+ActivityPane.java|RECEIVER_NOT_EXPORTED|inlined
+AppLock.java|Authenticators|Build.VERSION.SDK_INT >= 30
+Back.java|android.window|Build.VERSION.SDK_INT >= 33
+Back.java|getOnBackInvokedDispatcher|Build.VERSION.SDK_INT >= 33
+# Exits reaches ApplicationExitInfo only through last() and recent(), each of which returns
+# first on Android 10; translate() and the name table are reached from nowhere else, and the
+# table's constants are folded by the compiler.
+Exits.java|ApplicationExitInfo|anywhere:if (Build.VERSION.SDK_INT < 30) return
+Exits.java|getHistoricalProcessExitReasons|Build.VERSION.SDK_INT < 30
+HomePane.java|RECEIVER_NOT_EXPORTED|inlined
+Installer.java|FLAG_MUTABLE|inlined
+Permissions.java|POST_NOTIFICATIONS|inlined
+Phone.java|FLAG_MUTABLE|inlined
+PhoneFiles.java|isExternalStorageManager|Build.VERSION.SDK_INT >= 30
+PhoneFiles.java|ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION|Build.VERSION.SDK_INT >= 30
+PhoneFiles.java|ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION|Build.VERSION.SDK_INT >= 30
+Screen.java|getMaximumWindowMetrics|caught
+SetupActivity.java|RECEIVER_NOT_EXPORTED|inlined
+Theme.java|WindowInsetsController|Build.VERSION.SDK_INT >= 30
+Theme.java|getInsetsController|Build.VERSION.SDK_INT >= 30
+Theme.java|Type|Build.VERSION.SDK_INT >= 30
+WorkspaceActivity.java|RECEIVER_NOT_EXPORTED|inlined

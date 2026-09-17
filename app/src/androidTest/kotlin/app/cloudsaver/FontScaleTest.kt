@@ -1,7 +1,10 @@
 package app.cloudsaver
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -11,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cloudsaver.core.logic.ThemeMode
@@ -44,7 +48,7 @@ class FontScaleTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun atDoubleText(content: @androidx.compose.runtime.Composable () -> Unit) {
+    private fun atDoubleText(content: @Composable () -> Unit) {
         compose.setContent {
             val base = LocalDensity.current
             CompositionLocalProvider(
@@ -72,7 +76,7 @@ class FontScaleTest {
             "99,999" to "Skipped"
         )
         atDoubleText {
-            androidx.compose.foundation.layout.Column {
+            Column {
                 MetricGrid(
                     tiles.map { (value, label) ->
                         { m: Modifier -> MetricTile(value, label, m) }
@@ -88,10 +92,10 @@ class FontScaleTest {
     @Test
     fun aSectionHeaderAndCardSurviveDoubleTextSize() {
         atDoubleText {
-            androidx.compose.foundation.layout.Column {
+            Column {
                 SectionHeader("CloudSaver's own space")
                 AppCard {
-                    androidx.compose.material3.Text("Waiting in your upload folder")
+                    Text("Waiting in your upload folder")
                 }
             }
         }
@@ -106,11 +110,11 @@ class FontScaleTest {
      * compete for width. On a screen as wide as it likes nothing competes and
      * the bug this guards cannot appear.
      */
-    private fun onANarrowPhoneAtDoubleText(content: @androidx.compose.runtime.Composable () -> Unit) {
+    private fun onANarrowPhoneAtDoubleText(content: @Composable () -> Unit) {
         atDoubleText { Box(Modifier.width(320.dp)) { content() } }
     }
 
-    private fun assertReadable(text: String, what: String, atLeast: androidx.compose.ui.unit.Dp) {
+    private fun assertReadable(text: String, what: String, atLeast: Dp) {
         compose.onNodeWithText(text).assertIsDisplayed()
         val width = compose.onNodeWithText(text).getUnclippedBoundsInRoot()
             .let { it.right - it.left }

@@ -1,6 +1,7 @@
 package app.cloudsaver.ui
 
 import android.app.Application
+import android.app.RecoverableSecurityException
 import android.content.IntentSender
 import android.net.Uri
 import android.os.Build
@@ -528,7 +529,7 @@ class ReclaimViewModel(
                     }
                     legacyQueue.removeFirst()
                 } catch (se: SecurityException) {
-                    val sender = (se as? android.app.RecoverableSecurityException)
+                    val sender = (se as? RecoverableSecurityException)
                         ?.userAction?.actionIntent?.intentSender
                     if (sender != null) {
                         pendingIntent.value = sender

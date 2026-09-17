@@ -2,6 +2,8 @@ package app.cloudsaver
 
 import android.Manifest
 import android.content.Context
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
@@ -247,15 +249,15 @@ class PipelineE2eTest {
 
     /** True when the container at [source] (a path or a content URI) has an audio track. */
     private fun hasAudioTrack(source: String): Boolean {
-        val ex = android.media.MediaExtractor()
+        val ex = MediaExtractor()
         return try {
             if (source.startsWith("content:")) {
-                ex.setDataSource(context, android.net.Uri.parse(source), null)
+                ex.setDataSource(context, Uri.parse(source), null)
             } else {
                 ex.setDataSource(source)
             }
             (0 until ex.trackCount).any { i ->
-                ex.getTrackFormat(i).getString(android.media.MediaFormat.KEY_MIME)
+                ex.getTrackFormat(i).getString(MediaFormat.KEY_MIME)
                     ?.startsWith("audio/") == true
             }
         } finally {

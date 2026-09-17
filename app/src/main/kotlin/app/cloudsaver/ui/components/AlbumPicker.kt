@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.components
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.isFinite
 import app.cloudsaver.R
 import app.cloudsaver.media.MediaScanner
 import app.cloudsaver.ui.theme.Dimens
+import app.cloudsaver.util.Errand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -283,10 +285,10 @@ private fun peekAlbum(context: Context, coverUri: String) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         // A trip the app started: the lock lets this one return through.
-        app.cloudsaver.util.Errand.begin()
+        Errand.begin()
         try {
             context.startActivity(view)
-        } catch (e: android.content.ActivityNotFoundException) {
+        } catch (e: ActivityNotFoundException) {
             context.startActivity(Intent.createChooser(view, null))
         }
     }

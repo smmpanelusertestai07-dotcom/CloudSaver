@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +69,7 @@ import app.cloudsaver.ui.theme.TabularFigures
 import app.cloudsaver.util.Formats
 import app.cloudsaver.util.Permissions
 import app.cloudsaver.core.logic.QualityKept
+import java.util.Locale
 
 /**
  * "How much of my gallery fits in my cloud?"
@@ -523,7 +525,7 @@ fun CalculatorScreen(vm: AppViewModel, nav: NavHostController) {
  * as different precisions on the same screen and made small differences
  * vanish. Plans are sold in GB, so the calculator counts in GB.
  */
-private fun fmt(v: Double): String = String.format(java.util.Locale.US, "%.2f", v)
+private fun fmt(v: Double): String = String.format(Locale.US, "%.2f", v)
 
 /**
  * What is allowed to survive being typed into the free-space field.
@@ -565,7 +567,7 @@ private fun numericOnly(raw: String): String {
  * accessibility setting still does what it was turned on to do.
  */
 @Composable
-private fun calcHeroFigureStyle(): androidx.compose.ui.text.TextStyle {
+private fun calcHeroFigureStyle(): TextStyle {
     val cap = 1.4f
     val scale = LocalDensity.current.fontScale
     if (scale <= cap) return MetricTextStyle

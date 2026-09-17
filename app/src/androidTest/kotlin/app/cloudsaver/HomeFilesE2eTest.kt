@@ -27,6 +27,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.test.core.app.ActivityScenario
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -43,6 +44,7 @@ import app.cloudsaver.media.Stager
 import app.cloudsaver.ui.components.ListTags
 import app.cloudsaver.util.CrashLog
 import app.cloudsaver.util.Formats
+import app.cloudsaver.util.Storage
 import app.cloudsaver.util.Volumes
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -1155,7 +1157,7 @@ class HomeFilesE2eTest {
         // the time it is asserted on. This test is about the arithmetic, not
         // the keyboard, so the keyboard is put away before anything is read.
         compose.onNode(hasSetTextAction()).performTextInput("50")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        Espresso.closeSoftKeyboard()
         compose.waitForIdle()
         awaitNode(hasText(s(R.string.calc_hero_label)), "the calculator's answer")
 
@@ -1194,7 +1196,7 @@ class HomeFilesE2eTest {
         // A bigger plan must fit strictly more of the same gallery.
         compose.onNode(hasSetTextAction()).performTextClearance()
         compose.onNode(hasSetTextAction()).performTextInput("100")
-        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        Espresso.closeSoftKeyboard()
         compose.waitForIdle()
         val bigger = expectedEstimate(100.0)
         assertTrue(
@@ -1267,5 +1269,5 @@ class HomeFilesE2eTest {
     private fun fmt(v: Double): String = String.format(Locale.US, "%.2f", v)
 
     private fun sizeOfTempDir(): Long =
-        app.cloudsaver.util.Storage.totalTempBytes(context)
+        Storage.totalTempBytes(context)
 }

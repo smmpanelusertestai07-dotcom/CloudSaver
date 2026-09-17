@@ -17,15 +17,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import app.cloudsaver.R
+import app.cloudsaver.ui.Lock
+import app.cloudsaver.ui.components.SecureScreen
 
 @Composable
 fun LockedScreen(
     modifier: Modifier = Modifier,
-    outcome: app.cloudsaver.ui.Lock.Outcome? = null,
+    outcome: Lock.Outcome? = null,
     onUnlock: () -> Unit
 ) {
-    app.cloudsaver.ui.components.SecureScreen()
+    SecureScreen()
     // The prompt appears by itself, the way every locked app behaves - and
     // it appears on RESUME, not on first composition. A biometric prompt
     // asked for while the activity is only started (the lock is re-armed on
@@ -34,7 +38,7 @@ fun LockedScreen(
     // button that looks like the app forgot to ask. Resume is the moment the
     // window is in front and the prompt can attach to it. The button stays
     // for a refused or cancelled prompt.
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         onUnlock()
     }
     Column(
@@ -81,14 +85,14 @@ fun LockedScreen(
         // What the last attempt actually was. A silent re-showing of the same
         // screen after a lockout reads as a broken button.
         when (outcome) {
-            app.cloudsaver.ui.Lock.Outcome.LockedOut -> Text(
+            Lock.Outcome.LockedOut -> Text(
                 stringResource(R.string.lock_locked_out),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 10.dp)
             )
-            app.cloudsaver.ui.Lock.Outcome.NoMethod -> Text(
+            Lock.Outcome.NoMethod -> Text(
                 stringResource(R.string.lock_no_method),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

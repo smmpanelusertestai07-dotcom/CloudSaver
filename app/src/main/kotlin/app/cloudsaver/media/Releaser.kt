@@ -2,8 +2,10 @@ package app.cloudsaver.media
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.MediaScannerConnection
 import android.provider.MediaStore
 import app.cloudsaver.R
+import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.engine.ActivityLog
 import app.cloudsaver.core.logic.Defaults
 import app.cloudsaver.core.logic.ItemState
@@ -20,6 +22,7 @@ import app.cloudsaver.util.Formats
 import app.cloudsaver.core.logic.ReleaseVerdict
 import app.cloudsaver.core.logic.VolumeRules
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Volumes
 import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.util.Locks
 import java.io.File
@@ -75,12 +78,12 @@ class Releaser(private val context: Context, private val db: AppDb) {
         // BB2.4: the chosen volume is honoured only while the probe says it
         // takes inserts; otherwise releases fall back to primary rather than
         // failing quietly, and the reason is recorded once per run.
-        val chosen = app.cloudsaver.util.Volumes
+        val chosen = Volumes
             .selected(context, options.storageVolume)?.mediaVolumeName
             ?: MediaStore.VOLUME_EXTERNAL_PRIMARY
         val decision = VolumeRules.releaseVolume(
             selectedVolume = if (chosen == MediaStore.VOLUME_EXTERNAL_PRIMARY) "" else chosen,
-            selectedWritable = app.cloudsaver.util.Volumes.probeWritable(context, chosen)
+            selectedWritable = Volumes.probeWritable(context, chosen)
         )
         val volumeName = decision.volumeName
         if (decision.fellBack) {
@@ -127,8 +130,8 @@ class Releaser(private val context: Context, private val db: AppDb) {
         // Z10.6: the 48-hour clock on the whole chain starts with the very
         // first copy that enters the upload folder.
         if (released > 0 && options.firstReleaseAt == 0L) {
-            app.cloudsaver.data.prefs.OptionsRepo.get(context)
-                .setLong(app.cloudsaver.data.prefs.OptionsRepo.K.FIRST_RELEASE_AT, now)
+            OptionsRepo.get(context)
+                .setLong(OptionsRepo.K.FIRST_RELEASE_AT, now)
         }
         return@withLock released
     }
@@ -145,7 +148,7 @@ class Releaser(private val context: Context, private val db: AppDb) {
         val paths = OutputPaths.forMode(options.outputMode)
             .map { "${android.os.Environment.getExternalStorageDirectory()}/$it" }
         runCatching {
-            android.media.MediaScannerConnection.scanFile(
+            MediaScannerConnection.scanFile(
                 context, paths.toTypedArray(), null, null
             )
         }.onFailure {

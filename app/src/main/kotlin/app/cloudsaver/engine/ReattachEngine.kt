@@ -8,6 +8,7 @@ import app.cloudsaver.data.db.AppDb
 import app.cloudsaver.data.prefs.OptionsRepo
 import app.cloudsaver.media.OutputInventory
 import app.cloudsaver.util.AppLog
+import java.io.File
 
 /**
  * Reunites light copies with their originals after the database was lost.
@@ -42,7 +43,7 @@ class ReattachEngine(private val context: Context) {
 
             // A staged file on disk is redundant once the released copy is
             // found; leaving it would count twice against the space limit.
-            row.stagePath?.let { runCatching { java.io.File(it).delete() } }
+            row.stagePath?.let { runCatching { File(it).delete() } }
 
             db.items().update(
                 row.copy(

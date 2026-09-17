@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.components
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.heightIn
@@ -72,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.ListFilters
+import app.cloudsaver.core.logic.Platform
 import app.cloudsaver.ui.theme.TabularFigures
 
 /**
@@ -579,7 +582,7 @@ fun ListScreenScaffold(
     emptyContent: @Composable () -> Unit,
     actionBar: (@Composable () -> Unit)? = null,
     intro: (@Composable () -> Unit)? = null,
-    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
+    content: LazyListScope.() -> Unit
 ) {
     Box(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth()) {
@@ -688,7 +691,7 @@ fun ListScreenScaffold(
             }
         }
 
-        androidx.compose.foundation.layout.Box(
+        Box(
             Modifier.align(Alignment.BottomCenter)
         ) {
             AnimatedVisibility(
@@ -842,8 +845,8 @@ fun albumFilter(
  */
 @Composable
 fun RemovalWarningCard(modifier: Modifier = Modifier) {
-    val legacy = android.os.Build.VERSION.SDK_INT <
-        app.cloudsaver.core.logic.Platform.TRASH_SDK
+    val legacy = Build.VERSION.SDK_INT <
+        Platform.TRASH_SDK
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer,
         shape = RoundedCornerShape(16.dp),

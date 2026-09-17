@@ -1,5 +1,7 @@
 package app.cloudsaver.ui.screens
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +61,17 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import app.cloudsaver.core.logic.BackupScope
+import app.cloudsaver.core.logic.CloudCapability
+import app.cloudsaver.core.logic.CloudPromise
+import app.cloudsaver.core.logic.OutputMode
+import app.cloudsaver.core.logic.Preset
+import app.cloudsaver.core.logic.SpeedMode
+import app.cloudsaver.data.CloudApp
+import app.cloudsaver.engine.UsageVerifier
 import app.cloudsaver.ui.theme.Dimens
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -113,7 +127,7 @@ import app.cloudsaver.ui.components.TrialCard
 @Composable
 fun OnboardingScreen(vm: AppViewModel) {
     val options by vm.options.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     // The options flow starts on defaults and the stored value arrives a frame
     // or two later, so the saved step cannot simply be read at composition -
@@ -341,7 +355,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             Step.MEDIA -> {
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshHealth() }
+                LaunchedEffect(Unit) { vm.refreshHealth() }
                 val access = mediaAccess
                 StepCard(
                     title = stringResource(R.string.onb1_title),
@@ -380,7 +394,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             Step.ALBUMS -> {
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
+                LaunchedEffect(Unit) { vm.loadBuckets() }
                 val buckets by vm.buckets.collectAsStateWithLifecycle()
                 val albums by vm.albums.collectAsStateWithLifecycle()
                 val bucketsLoaded by vm.bucketsLoaded.collectAsStateWithLifecycle()
@@ -390,7 +404,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // tick, off the main thread, and simply absent until it has
                 // been measured - a zero would read as an empty gallery.
                 val ticked by vm.selectedAlbumBytes.collectAsStateWithLifecycle()
-                androidx.compose.runtime.LaunchedEffect(options.excludedBuckets, buckets) {
+                LaunchedEffect(options.excludedBuckets, buckets) {
                     vm.refreshSelectedAlbumBytes()
                 }
                 StepCard(
@@ -525,8 +539,8 @@ fun OnboardingScreen(vm: AppViewModel) {
                 text = stringResource(R.string.onb2_text),
                 buttonLabel = stringResource(R.string.onb2_grant),
                 onButton = {
-                    if (android.os.Build.VERSION.SDK_INT >= 33 && !Permissions.hasNotifications(context)) {
-                        notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    if (Build.VERSION.SDK_INT >= 33 && !Permissions.hasNotifications(context)) {
+                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     } else {
                         go(Step.BATTERY)
                     }
@@ -535,7 +549,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             )
 
             Step.BATTERY -> {
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshPowerRequirements() }
+                LaunchedEffect(Unit) { vm.refreshPowerRequirements() }
                 val requirements by vm.powerRequirements.collectAsStateWithLifecycle()
                 StepCard(
                     title = stringResource(R.string.onb3_title),
@@ -580,10 +594,10 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // the grant is the filled button and carrying on without it
                 // is an outlined one, visible as a choice.
                 var usageOn by remember {
-                    mutableStateOf(app.cloudsaver.engine.UsageVerifier.hasUsageAccess(context))
+                    mutableStateOf(UsageVerifier.hasUsageAccess(context))
                 }
                 LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-                    usageOn = app.cloudsaver.engine.UsageVerifier.hasUsageAccess(context)
+                    usageOn = UsageVerifier.hasUsageAccess(context)
                 }
                 if (usageOn) {
                     StepCard(
@@ -610,7 +624,7 @@ fun OnboardingScreen(vm: AppViewModel) {
             }
 
             Step.CLOUD -> {
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
+                LaunchedEffect(Unit) { vm.detectAndPersistCloud() }
                 val detection by vm.cloudDetection.collectAsStateWithLifecycle()
                 val link by vm.linkState.collectAsStateWithLifecycle()
                 // Saveable, not remembered: turning the phone sideways
@@ -808,7 +822,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 onButton = { vm.finishOnboarding() }
             ) {
                 val allAlbums by vm.buckets.collectAsStateWithLifecycle()
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.loadBuckets() }
+                LaunchedEffect(Unit) { vm.loadBuckets() }
                 val includedAlbums = allAlbums.count { it !in options.excludedBuckets }
                 // Correcting the albums opens the chooser here, over the
                 // summary, as a sheet. The old way walked back to step 3 and
@@ -861,7 +875,7 @@ fun OnboardingScreen(vm: AppViewModel) {
                 // it anyway is a step that teaches nothing.
                 val volumes by vm.volumes.collectAsStateWithLifecycle()
                 val writableVolumes by vm.writableVolumes.collectAsStateWithLifecycle()
-                androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshVolumes() }
+                LaunchedEffect(Unit) { vm.refreshVolumes() }
                 val offerableVolumes = volumes.filter {
                     it.isPrimary || it.mediaVolumeName in writableVolumes
                 }
@@ -1025,7 +1039,7 @@ private fun PowerRow(requirement: PowerPages.Requirement, onOpen: () -> Unit) {
 
 /** The exact folder(s) to pick in the cloud app - never paraphrased. */
 @Composable
-fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
+fun FolderPaths(mode: OutputMode) {
     val paths = OutputPaths.forMode(mode)
     Column(Modifier.padding(top = 8.dp)) {
         Text(
@@ -1040,7 +1054,7 @@ fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
                 path,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
@@ -1055,7 +1069,7 @@ fun FolderPaths(mode: app.cloudsaver.core.logic.OutputMode) {
  * looking like it worked.
  */
 @Composable
-fun CopyPathButton(mode: app.cloudsaver.core.logic.OutputMode) {
+fun CopyPathButton(mode: OutputMode) {
     val paths = OutputPaths.forMode(mode)
     val copyPath = app.cloudsaver.ui.components.rememberPathCopier()
     OutlinedButton(onClick = { copyPath(paths.joinToString("\n")) }) {
@@ -1105,7 +1119,7 @@ private fun SummaryLine(label: String, value: String) {
             value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            textAlign = TextAlign.End,
             modifier = Modifier.padding(start = 12.dp)
         )
     }
@@ -1113,15 +1127,15 @@ private fun SummaryLine(label: String, value: String) {
 
 @Composable
 private fun scopeSummary(
-    scope: app.cloudsaver.core.logic.BackupScope,
+    scope: BackupScope,
     included: Int,
     total: Int
 ): String {
     val what = stringResource(
         when (scope) {
-            app.cloudsaver.core.logic.BackupScope.ALL -> R.string.scope_all
-            app.cloudsaver.core.logic.BackupScope.PHOTOS -> R.string.scope_photos
-            app.cloudsaver.core.logic.BackupScope.VIDEOS -> R.string.scope_videos
+            BackupScope.ALL -> R.string.scope_all
+            BackupScope.PHOTOS -> R.string.scope_photos
+            BackupScope.VIDEOS -> R.string.scope_videos
         }
     )
     // Counted the same way the albums step counts them: what is included.
@@ -1135,33 +1149,33 @@ private fun scopeSummary(
 }
 
 @Composable
-private fun presetSummary(preset: app.cloudsaver.core.logic.Preset): String = stringResource(
+private fun presetSummary(preset: Preset): String = stringResource(
     when (preset) {
-        app.cloudsaver.core.logic.Preset.STORAGE_SAVER -> R.string.preset_storage
-        app.cloudsaver.core.logic.Preset.BALANCED -> R.string.preset_balanced
-        app.cloudsaver.core.logic.Preset.MAX_SAVER -> R.string.preset_max
+        Preset.STORAGE_SAVER -> R.string.preset_storage
+        Preset.BALANCED -> R.string.preset_balanced
+        Preset.MAX_SAVER -> R.string.preset_max
     }
 )
 
 @Composable
-private fun speedSummary(speed: app.cloudsaver.core.logic.SpeedMode): String = stringResource(
+private fun speedSummary(speed: SpeedMode): String = stringResource(
     when (speed) {
-        app.cloudsaver.core.logic.SpeedMode.SMART -> R.string.speed_smart
-        app.cloudsaver.core.logic.SpeedMode.CHARGING_ONLY -> R.string.speed_charging
-        app.cloudsaver.core.logic.SpeedMode.FAST -> R.string.speed_fast
+        SpeedMode.SMART -> R.string.speed_smart
+        SpeedMode.CHARGING_ONLY -> R.string.speed_charging
+        SpeedMode.FAST -> R.string.speed_fast
     }
 )
 
 /** What can honestly be promised with the chosen cloud (J1). */
 @Composable
 fun cloudPromiseLine(cloudId: String): String {
-    val caps = app.cloudsaver.core.logic.CloudCapability.defaultsFor(cloudId)
-    return when (app.cloudsaver.core.logic.CloudPromise.forCloud(cloudId, caps)) {
-        app.cloudsaver.core.logic.CloudPromise.Promise.EXACT ->
+    val caps = CloudCapability.defaultsFor(cloudId)
+    return when (CloudPromise.forCloud(cloudId, caps)) {
+        CloudPromise.Promise.EXACT ->
             stringResource(R.string.promise_exact)
-        app.cloudsaver.core.logic.CloudPromise.Promise.LEDGER_ONLY ->
+        CloudPromise.Promise.LEDGER_ONLY ->
             stringResource(R.string.promise_ledger)
-        app.cloudsaver.core.logic.CloudPromise.Promise.UNKNOWN ->
+        CloudPromise.Promise.UNKNOWN ->
             stringResource(R.string.promise_unknown)
     }
 }
@@ -1178,7 +1192,7 @@ fun linkStateLine(state: AppViewModel.LinkState): String = when (state) {
 /** The one picker, shared by setup and Settings (A3). */
 @Composable
 fun CloudPickerDialog(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
@@ -1210,11 +1224,11 @@ fun CloudPickerDialog(current: String, onPick: (String) -> Unit, onDismiss: () -
 
 @Composable
 private fun CloudPickRowSimple(
-    app: app.cloudsaver.data.CloudApp,
+    app: CloudApp,
     current: String,
     onPick: (String) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     // Whether this cloud app is on the phone, asked again every time the app
     // comes back to the foreground.
     //

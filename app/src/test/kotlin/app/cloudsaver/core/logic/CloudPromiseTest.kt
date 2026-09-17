@@ -1,5 +1,6 @@
 package app.cloudsaver.core.logic
 
+import app.cloudsaver.data.CloudApps
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -30,7 +31,7 @@ class CloudPromiseTest {
     fun `every selectable cloud has a line`() {
         // A cloud with no promise line would render an empty row, which reads
         // as "nothing to worry about" - the one impression we must not give.
-        for (app in app.cloudsaver.data.CloudApps.SELECTABLE) {
+        for (app in CloudApps.SELECTABLE) {
             promiseFor(app.id)
         }
     }

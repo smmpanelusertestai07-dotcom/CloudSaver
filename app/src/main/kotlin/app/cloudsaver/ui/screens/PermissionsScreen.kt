@@ -1,5 +1,6 @@
 package app.cloudsaver.ui.screens
 
+import android.Manifest
 import android.app.usage.UsageStatsManager
 import android.os.Build
 import android.text.format.DateUtils
@@ -194,7 +195,7 @@ fun PermissionsScreen(vm: AppViewModel, nav: NavHostController) {
             ) {
                 when {
                     !notifications && Build.VERSION.SDK_INT >= 33 ->
-                        notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     notifications && alertsChannelOff -> OemPages.openAlertsChannelSettings(context)
                     else -> OemPages.openNotificationSettings(context)
                 }

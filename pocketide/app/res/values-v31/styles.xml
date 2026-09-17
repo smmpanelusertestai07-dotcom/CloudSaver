@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Android 12 took the splash away from the app and gave it to the system. windowBackground
+        is no longer what shows: these four attributes are, and an app that does not set them
+        gets the launcher icon on a grey field with no say in it.
+
+        The app's NAME cannot be put here. The platform draws an icon, a background and
+        optionally a branding image along the very bottom edge, and nothing else — there is no
+        title slot at all. So the name is the first thing the app itself draws, in BrandFrame,
+        which continues from this rather than replacing it: same ground, same mark, same place
+        on screen, and the name fades in underneath. The join is meant to be invisible.
+
+        The icon is drawn inside a circle of 2/3 the icon's size, so a mark sized for the
+        launcher needs no second set of numbers here.
+    -->
+    <style name="Theme.PocketIDE.Splash" parent="Theme.PocketIDE">
+        <item name="android:windowSplashScreenBackground">@color/brand_tile_flat</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_mark_animated</item>
+        <item name="android:windowSplashScreenAnimationDuration">600</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/brand_tile_flat</item>
+        <!-- Restated, because a style in values-v31 REPLACES the one in values rather than
+             adding to it. Without these five the Android 12+ splash inherited the light
+             theme's dark clock and battery icons over the violet, and the frame between the
+             system splash and the app's own opening frame was cream instead of violet. -->
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/brand_tile_flat</item>
+        <item name="android:navigationBarColor">@color/brand_tile_flat</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

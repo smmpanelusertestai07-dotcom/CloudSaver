@@ -1,10 +1,14 @@
 package app.cloudsaver.engine
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.room.withTransaction
+import app.cloudsaver.util.Locks
+import app.cloudsaver.util.Permissions
+import java.io.File
 import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
@@ -121,7 +125,7 @@ class SnapshotStore(
                 confirmedAt = l.confirmedAt
             )
         }
-        val access = app.cloudsaver.util.Permissions.mediaAccess(context).name
+        val access = Permissions.mediaAccess(context).name
         return SnapshotCodec.Snapshot(
             version = SnapshotCodec.VERSION,
             exportedAt = System.currentTimeMillis(),
@@ -173,7 +177,7 @@ class SnapshotStore(
 
     /** The copy inside the app's own storage. Cheap, and always permitted. */
     private fun writePrivate(json: String): Boolean = try {
-        java.io.File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+        File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
             .writeText(json, Charsets.UTF_8)
         true
     } catch (e: Exception) {
@@ -182,7 +186,7 @@ class SnapshotStore(
     }
 
     private fun readPrivate(): String? = try {
-        val file = java.io.File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
+        val file = File(context.filesDir, Defaults.SNAPSHOT_PRIVATE_NAME)
         if (file.isFile) file.readText(Charsets.UTF_8) else null
     } catch (e: Exception) {
         null
@@ -274,7 +278,7 @@ class SnapshotStore(
                         (owned && !bestOwned) ||
                         (owned == bestOwned && modified > bestModified)
                     if (better) {
-                        best = android.content.ContentUris.withAppendedId(files, c.getLong(0))
+                        best = ContentUris.withAppendedId(files, c.getLong(0))
                         bestOwned = owned
                         bestModified = modified
                     }
@@ -387,7 +391,7 @@ class SnapshotStore(
     suspend fun merge(
         snapshot: SnapshotCodec.Snapshot,
         importOptions: Boolean = true
-    ): Int = app.cloudsaver.util.Locks.ledger.withLock { mergeLocked(snapshot, importOptions) }
+    ): Int = Locks.ledger.withLock { mergeLocked(snapshot, importOptions) }
 
     private suspend fun mergeLocked(
         snapshot: SnapshotCodec.Snapshot,

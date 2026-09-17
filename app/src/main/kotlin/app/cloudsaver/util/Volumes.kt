@@ -1,9 +1,14 @@
 package app.cloudsaver.util
 
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.StatFs
 import android.provider.MediaStore
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Storage volumes (internal + SD card). The user can pick where the stage dir
@@ -77,7 +82,7 @@ object Volumes {
 
     private data class Probe(val writable: Boolean, val atMs: Long, val osFingerprint: String)
 
-    private val probes = java.util.concurrent.ConcurrentHashMap<String, Probe>()
+    private val probes = ConcurrentHashMap<String, Probe>()
 
     /** Re-probe after this long, or immediately after an OS update. */
     private const val PROBE_TTL_MS = 6L * 60 * 60 * 1000
@@ -100,7 +105,7 @@ object Volumes {
     fun probeWritable(context: Context, mediaVolumeName: String): Boolean {
         if (mediaVolumeName == MediaStore.VOLUME_EXTERNAL_PRIMARY) return true
         val now = System.currentTimeMillis()
-        val os = android.os.Build.FINGERPRINT
+        val os = Build.FINGERPRINT
         probes[mediaVolumeName]?.let { cached ->
             if (now - cached.atMs < PROBE_TTL_MS && cached.osFingerprint == os) {
                 return cached.writable
@@ -123,22 +128,22 @@ object Volumes {
         } catch (e: Exception) {
             return false
         }
-        val values = android.content.ContentValues().apply {
+        val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "probe_${System.nanoTime()}.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
-                android.os.Environment.DIRECTORY_PICTURES + "/CloudSaver/"
+                Environment.DIRECTORY_PICTURES + "/CloudSaver/"
             )
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        var uri: android.net.Uri? = null
+        var uri: Uri? = null
         return try {
             uri = resolver.insert(collection, values) ?: return false
             resolver.openOutputStream(uri)?.use { it.write(0) } ?: return false
             resolver.update(
                 uri,
-                android.content.ContentValues().apply {
+                ContentValues().apply {
                     put(MediaStore.MediaColumns.IS_PENDING, 0)
                 },
                 null, null

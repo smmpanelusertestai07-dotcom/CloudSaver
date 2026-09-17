@@ -9,8 +9,11 @@ import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
+import androidx.annotation.OptIn
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.AudioEncoderSettings
@@ -46,7 +49,7 @@ import kotlinx.coroutines.withTimeout
  * a mandatory result check and a retry ladder: VBR -> CBR -> software encoder ->
  * copy as-is. An item is never lost.
  */
-@androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class)
 object VideoCompressor {
 
     data class Probe(
@@ -282,8 +285,8 @@ object VideoCompressor {
                 val edited = EditedMediaItem.Builder(MediaItem.fromUri(uri))
                     .setEffects(
                         Effects(
-                            emptyList<androidx.media3.common.audio.AudioProcessor>(),
-                            listOf<androidx.media3.common.Effect>(
+                            emptyList<AudioProcessor>(),
+                            listOf<Effect>(
                                 Presentation.createForWidthAndHeight(
                                     outW, outH, Presentation.LAYOUT_SCALE_TO_FIT
                                 )

@@ -1,5 +1,8 @@
 package app.cloudsaver.ui.components
 
+import android.content.ClipData
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,13 +37,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -50,6 +57,11 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -59,9 +71,11 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.cloudsaver.ui.theme.BrandIndigo
@@ -154,7 +168,7 @@ fun AppBackground(content: @Composable () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val dark = LocalIsDarkTheme.current
     val glow = if (dark) 0.20f else 0.14f
-    androidx.compose.runtime.CompositionLocalProvider(
+    CompositionLocalProvider(
         LocalContentColor provides scheme.onBackground
     ) {
     Box(
@@ -230,7 +244,7 @@ fun HeroCard(
 ) {
     // The banner keeps its colours in both themes, so it hands its own
     // content colour down rather than letting screens name white themselves.
-    androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides OnBrand) {
+    CompositionLocalProvider(LocalContentColor provides OnBrand) {
         Column(
             modifier = modifier
                 .fillMaxWidth()
@@ -247,7 +261,7 @@ fun HeroCard(
 fun AnimatedNumber(
     value: String,
     modifier: Modifier = Modifier,
-    style: androidx.compose.ui.text.TextStyle = MetricTextStyle,
+    style: TextStyle = MetricTextStyle,
     color: Color = MaterialTheme.colorScheme.onSurface
 ) {
     // Always one Text, always fully opaque, never moved.
@@ -286,7 +300,7 @@ fun MetricTile(
     modifier: Modifier = Modifier,
     highlight: Boolean = false,
     onClick: (() -> Unit)? = null,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+    icon: ImageVector? = null
 ) {
     val scheme = MaterialTheme.colorScheme
     val interaction = remember { MutableInteractionSource() }
@@ -387,7 +401,7 @@ fun MetricTile(
  * it wraps and scales in full, as everything else on the tile does.
  */
 @Composable
-private fun tileFigureStyle(): androidx.compose.ui.text.TextStyle {
+private fun tileFigureStyle(): TextStyle {
     val base = MaterialTheme.typography.headlineSmall.copy(
         // Tabular figures: every digit the same width, so 9 becoming 10
         // changes the number without moving the grid.
@@ -501,7 +515,7 @@ val TileHeight = 126.dp
  */
 @Composable
 fun SettingRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     description: String? = null,
     value: String? = null,
@@ -974,24 +988,24 @@ private const val AdaptiveIconScale = 1.5f
  * the same at 34 dp on Home as it does at 64 dp in an empty state.
  */
 @Composable
-fun BrandMark(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     Box(
         modifier
             .size(size)
             .clip(RoundedCornerShape(percent = AdaptiveIconCornerPercent))
     ) {
-        androidx.compose.foundation.Image(
+        Image(
             painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_background),
             contentDescription = null,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .matchParentSize()
                 .scale(AdaptiveIconScale)
         )
-        androidx.compose.foundation.Image(
+        Image(
             painter = painterResource(app.cloudsaver.R.mipmap.ic_launcher_foreground),
             contentDescription = null,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .matchParentSize()
                 .scale(AdaptiveIconScale)
@@ -1062,22 +1076,22 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
  */
 @Composable
 fun rememberPathCopier(): (String) -> Unit {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+    val context = LocalContext.current
+    val clipboard = LocalClipboard.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val copied = androidx.compose.ui.res.stringResource(app.cloudsaver.R.string.path_copied)
     return { path ->
         scope.launch {
             clipboard.setClipEntry(
-                androidx.compose.ui.platform.ClipEntry(
-                    android.content.ClipData.newPlainText(copied, path)
+                ClipEntry(
+                    ClipData.newPlainText(copied, path)
                 )
             )
             // Android 13 and up shows its own clipboard confirmation; a second
             // toast on top of it is noise.
-            if (android.os.Build.VERSION.SDK_INT < 33) {
-                val toast = android.widget.Toast.makeText(
-                    context, copied, android.widget.Toast.LENGTH_SHORT
+            if (Build.VERSION.SDK_INT < 33) {
+                val toast = Toast.makeText(
+                    context, copied, Toast.LENGTH_SHORT
                 )
                 toast.show()
             }
@@ -1112,7 +1126,7 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
             // height, so it simply wraps.
             modifier = Modifier.weight(1f)
         )
-        androidx.compose.material3.IconButton(
+        IconButton(
             onClick = { copyPath(path) },
             // A finger, not an icon: at 32 dp this was the smallest tap target
             // in the app, on the one control that has to work first time -
@@ -1120,7 +1134,7 @@ fun PathLine(path: String, modifier: Modifier = Modifier) {
             modifier = Modifier.size(Dimens.TouchTarget)
         ) {
             Icon(
-                androidx.compose.material.icons.Icons.Outlined.ContentCopy,
+                Icons.Outlined.ContentCopy,
                 contentDescription = copyLabel,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)

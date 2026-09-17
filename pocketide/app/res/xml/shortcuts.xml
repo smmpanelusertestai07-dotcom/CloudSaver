@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app's icon: straight to the editor. Routed through MainActivity rather
+     than at the editor directly, so the app lock is raised first exactly as it would be on any
+     other opening, and so a phone with nothing set up yet lands on Home with its Set up button
+     instead of on an editor that cannot start. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="editor"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_editor"
+        android:shortcutShortLabel="@string/shortcut_editor_short"
+        android:shortcutLongLabel="@string/shortcut_editor_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.pocketide"
+            android:targetClass="com.pocketide.MainActivity">
+            <extra android:name="com.pocketide.editor" android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

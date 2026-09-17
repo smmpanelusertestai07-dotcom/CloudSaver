@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Two rules, and the difference between them is whether the bytes ever leave the phone.
+
+    Everything this app fetches from the internet is HTTPS, and cleartext is refused outright
+    rather than merely discouraged, so a hijacked DNS answer cannot quietly downgrade a download
+    that is about to be unpacked and executed: Canonical's mirror, Coder's releases, the Open VSX
+    registry and every extension .vsix.
+
+    The editor is the exception, and it is not a weakening of that rule. code-server listens on
+    127.0.0.1 inside this app's own workspace, and the WebView reaches it over the loopback
+    interface, which the kernel never puts on a wire. There is no network path to intercept, no
+    certificate that could be presented, and nothing between the two ends but this app. Refusing
+    cleartext there makes nothing safer; it only stops the editor loading, which is precisely
+    what the first release did. ERR_CLEARTEXT_NOT_PERMITTED, on the one screen the app exists
+    for.
+
+    HTTPS on loopback would need a certificate the WebView trusts, which means either shipping a
+    private key inside the APK or installing a certificate authority on the owner's phone. Both
+    are worse than this, and avoiding both is why the exemption is scoped to two names rather
+    than granted globally.
+
+    Software inside the workspace (apt, an extension, a build) uses the workspace's own network
+    stack and certificate store, and is not governed by this file at all.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

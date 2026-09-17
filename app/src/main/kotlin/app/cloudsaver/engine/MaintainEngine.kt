@@ -1,6 +1,9 @@
 package app.cloudsaver.engine
 
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.StallAlert
 import app.cloudsaver.core.logic.Stops
@@ -30,6 +33,8 @@ import app.cloudsaver.util.Locks
 import app.cloudsaver.util.AppLog
 import app.cloudsaver.util.Notifications
 import app.cloudsaver.util.Storage
+import app.cloudsaver.util.TamperCheck
+import app.cloudsaver.util.Volumes
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 
@@ -122,7 +127,7 @@ class MaintainEngine(private val context: Context) {
         // 13.D: selected volume (SD card) gone -> pause file work safely, keep
         // verification/bookkeeping running, never lose state.
         val volumeMissing = o.storageVolume.isNotEmpty() &&
-            app.cloudsaver.util.Volumes.byName(context, o.storageVolume) == null
+            Volumes.byName(context, o.storageVolume) == null
         if (volumeMissing) {
             step("verify") { verifyBatches(o, now) }
             step("age") { ageEvidence(now) }
@@ -389,10 +394,10 @@ class MaintainEngine(private val context: Context) {
         for (row in db.items().released()) {
             val uriString = row.outputUri ?: continue
             if ((row.releasedAt ?: now) > cutoff) continue
-            val uri = runCatching { android.net.Uri.parse(uriString) }.getOrNull() ?: continue
+            val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: continue
             val pending = runCatching {
                 context.contentResolver.query(
-                    uri, arrayOf(android.provider.MediaStore.MediaColumns.IS_PENDING),
+                    uri, arrayOf(MediaStore.MediaColumns.IS_PENDING),
                     null, null, null
                 )?.use { c -> if (c.moveToFirst()) c.getInt(0) == 1 else false } ?: false
             }.getOrDefault(false)
@@ -400,8 +405,8 @@ class MaintainEngine(private val context: Context) {
             val fixed = runCatching {
                 context.contentResolver.update(
                     uri,
-                    android.content.ContentValues().apply {
-                        put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                    ContentValues().apply {
+                        put(MediaStore.MediaColumns.IS_PENDING, 0)
                     },
                     null, null
                 ) > 0
@@ -761,7 +766,7 @@ class MaintainEngine(private val context: Context) {
 
     private suspend fun lazyDelete(o: Options, now: Long, summary: Summary) {
         // 13.A: a modified (re-signed) copy must never delete anything.
-        if (app.cloudsaver.util.TamperCheck.isModified(context)) return
+        if (TamperCheck.isModified(context)) return
         val stageBytes = Storage.totalStageBytes(context)
         val outputBytes = db.items().releasedBytes()
         val extra = stageBytes + outputBytes
@@ -839,7 +844,7 @@ class MaintainEngine(private val context: Context) {
             // list Home asks about, through Android's own dialog.
             var refused = false
             val ok = try {
-                context.contentResolver.delete(android.net.Uri.parse(uriString), null, null) > 0
+                context.contentResolver.delete(Uri.parse(uriString), null, null) > 0
             } catch (e: SecurityException) {
                 refused = true
                 false

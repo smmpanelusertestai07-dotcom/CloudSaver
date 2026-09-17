@@ -2,8 +2,11 @@ package app.cloudsaver.engine
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
+import app.cloudsaver.util.Locks
 import kotlinx.coroutines.sync.withLock
 import app.cloudsaver.R
 import app.cloudsaver.core.logic.Defaults
@@ -362,19 +365,19 @@ class ReclaimEngine(private val context: Context) {
         return try {
             when {
                 !isVideo && (ext == "jpg" || ext == "jpeg") -> {
-                    val opts = android.graphics.BitmapFactory.Options()
+                    val opts = BitmapFactory.Options()
                         .apply { inJustDecodeBounds = true }
                     context.contentResolver.openInputStream(uri)?.use {
-                        android.graphics.BitmapFactory.decodeStream(it, null, opts)
+                        BitmapFactory.decodeStream(it, null, opts)
                     }
                     opts.outWidth > 0 && opts.outHeight > 0
                 }
                 isVideo && ext == "mp4" -> {
-                    val mmr = android.media.MediaMetadataRetriever()
+                    val mmr = MediaMetadataRetriever()
                     try {
                         mmr.setDataSource(context, uri)
                         mmr.extractMetadata(
-                            android.media.MediaMetadataRetriever.METADATA_KEY_DURATION
+                            MediaMetadataRetriever.METADATA_KEY_DURATION
                         ) != null
                     } finally {
                         runCatching { mmr.release() }
@@ -397,7 +400,7 @@ class ReclaimEngine(private val context: Context) {
      * never touched here, which is what makes this the zero-risk option.
      */
     suspend fun removeCopiesOnly(rows: List<ItemRow>, now: Long): Result =
-        app.cloudsaver.util.Locks.reclaim.withLock {
+        Locks.reclaim.withLock {
             removeCopiesOnlyLocked(rows, now)
         }
 
@@ -586,7 +589,7 @@ class ReclaimEngine(private val context: Context) {
         mode: ReclaimRules.Mode,
         trashed: Boolean,
         now: Long
-    ): Result = app.cloudsaver.util.Locks.reclaim.withLock {
+    ): Result = Locks.reclaim.withLock {
         finishLocked(prepared, deleted, mode, trashed, now)
     }
 

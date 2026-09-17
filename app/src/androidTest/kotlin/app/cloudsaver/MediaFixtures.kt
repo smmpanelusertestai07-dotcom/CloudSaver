@@ -16,6 +16,7 @@ import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.ByteBuffer
 import kotlin.random.Random
 
 /**
@@ -270,7 +271,7 @@ object MediaFixtures {
                             val ai = MediaCodec.BufferInfo().apply {
                                 set(0, bytes.size, timeUs, 0)
                             }
-                            muxer.writeSampleData(audioTrack, java.nio.ByteBuffer.wrap(bytes), ai)
+                            muxer.writeSampleData(audioTrack, ByteBuffer.wrap(bytes), ai)
                         }
                     }
                     outIndex >= 0 -> {

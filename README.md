@@ -84,3 +84,10 @@ test that proves it, and its counts are read off the source tree by
 ## Licence
 
 Apache License 2.0 — see [LICENSE](LICENSE).
+
+## Also in this repository
+
+[`pocketide/`](pocketide/) is **PocketIDE**, a separate Android app with its own build, tests,
+workflow (`.github/workflows/pocketide.yml`) and releases (tagged `pocketide-v<version>`): a
+real Ubuntu development environment with Visual Studio Code and coding agents, running on the
+phone. The two apps share nothing but the repository.

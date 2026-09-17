@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The splash mark, drawing itself.
+
+    Not a spin and not a bounce: the mark fades up while it settles from slightly small to its
+    size, which reads as the shape arriving rather than as an icon being decorated.
+
+    The fade is on the vector's root, because that is the only element of a vector drawable
+    that has an alpha: a group has rotation, scale and translation and nothing else, and an
+    animator aimed at a group's "alpha" is skipped without a word. The settle is on the group,
+    which is what has the pivot.
+
+    600 ms, matching windowSplashScreenAnimationDuration. Longer is a delay the owner is made to
+    wait through; the system caps what it will honour anyway.
+-->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_mark">
+    <target android:name="root">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:animation">
+            <objectAnimator
+                android:propertyName="alpha"
+                android:valueFrom="0" android:valueTo="1"
+                android:duration="300"
+                android:interpolator="@android:interpolator/decelerate_quad" />
+        </aapt:attr>
+    </target>
+    <target android:name="mark">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:animation">
+            <set>
+                <objectAnimator
+                    android:propertyName="scaleX"
+                    android:valueFrom="0.86" android:valueTo="1"
+                    android:duration="600"
+                    android:interpolator="@android:interpolator/overshoot" />
+                <objectAnimator
+                    android:propertyName="scaleY"
+                    android:valueFrom="0.86" android:valueTo="1"
+                    android:duration="600"
+                    android:interpolator="@android:interpolator/overshoot" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

@@ -2,6 +2,8 @@ package app.cloudsaver.data.prefs
 
 import android.annotation.SuppressLint
 import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -325,29 +327,29 @@ class OptionsRepo(private val context: Context) {
      * outcome of closing an app, and the write itself is milliseconds.
      */
     private suspend fun write(
-        edit: suspend (androidx.datastore.preferences.core.MutablePreferences) -> Unit
+        edit: suspend (MutablePreferences) -> Unit
     ) = withContext(NonCancellable) {
         context.dataStore.edit { edit(it) }
     }
 
-    suspend fun setString(key: androidx.datastore.preferences.core.Preferences.Key<String>, value: String) {
+    suspend fun setString(key: Preferences.Key<String>, value: String) {
         write { it[key] = value }
     }
 
-    suspend fun setInt(key: androidx.datastore.preferences.core.Preferences.Key<Int>, value: Int) {
+    suspend fun setInt(key: Preferences.Key<Int>, value: Int) {
         write { it[key] = value }
     }
 
-    suspend fun setLong(key: androidx.datastore.preferences.core.Preferences.Key<Long>, value: Long) {
+    suspend fun setLong(key: Preferences.Key<Long>, value: Long) {
         write { it[key] = value }
     }
 
-    suspend fun setBool(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>, value: Boolean) {
+    suspend fun setBool(key: Preferences.Key<Boolean>, value: Boolean) {
         write { it[key] = value }
     }
 
     suspend fun setStringSet(
-        key: androidx.datastore.preferences.core.Preferences.Key<Set<String>>,
+        key: Preferences.Key<Set<String>>,
         value: Set<String>
     ) {
         write { it[key] = value }

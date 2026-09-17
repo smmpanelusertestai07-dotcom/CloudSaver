@@ -121,7 +121,7 @@ class PowerPagesTest {
         // even a maker this table has never heard of gets a real path.
         for (vendor in PowerPages.Vendor.values()) {
             val hint = PowerPages.pathHint(vendor, PowerPages.ID_BATTERY_UNRESTRICTED)
-            assertTrue("$vendor battery path", !hint.isNullOrBlank() && hint!!.contains("Battery"))
+            assertTrue("$vendor battery path", !hint.isNullOrBlank() && hint.contains("Battery"))
         }
     }
 }

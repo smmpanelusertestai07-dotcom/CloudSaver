@@ -26,6 +26,7 @@ import app.cloudsaver.R
 import app.cloudsaver.core.logic.ThemeMode
 import app.cloudsaver.ui.theme.CloudSaverTheme
 import app.cloudsaver.util.AppLog
+import app.cloudsaver.util.Errand
 import app.cloudsaver.util.OemPages
 
 /**
@@ -82,7 +83,7 @@ fun RecoveryScreen(onTryAgain: () -> Unit) {
                                 putExtra(Intent.EXTRA_STREAM, uri)
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                            app.cloudsaver.util.Errand.begin()
+                            Errand.begin()
                             context.startActivity(
                                 Intent.createChooser(share, shareTitle)
                             )

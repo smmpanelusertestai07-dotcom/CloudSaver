@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.app.usage.NetworkStats
 import android.app.usage.NetworkStatsManager
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Process
 
 /**
@@ -50,8 +51,8 @@ object UsageVerifier {
         var total = 0L
         var anySuccess = false
         val networkTypes = intArrayOf(
-            android.net.ConnectivityManager.TYPE_WIFI,
-            android.net.ConnectivityManager.TYPE_MOBILE
+            ConnectivityManager.TYPE_WIFI,
+            ConnectivityManager.TYPE_MOBILE
         )
         for (type in networkTypes) {
             try {

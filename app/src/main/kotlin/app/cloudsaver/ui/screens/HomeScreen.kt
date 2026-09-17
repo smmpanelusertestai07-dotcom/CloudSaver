@@ -1,9 +1,11 @@
 package app.cloudsaver.ui.screens
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,7 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,9 +51,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -139,7 +146,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     var explain by remember { mutableStateOf<Int?>(null) }
     val projection by vm.projectedSavings.collectAsStateWithLifecycle()
     val detailKept by vm.detailKept.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
     // The confirmed count, held for as long as its card is on screen.
     //
@@ -164,7 +171,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     val cleanupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        vm.onDeleteDialogResult(result.resultCode == android.app.Activity.RESULT_OK)
+        vm.onDeleteDialogResult(result.resultCode == Activity.RESULT_OK)
     }
     val nextDeleteDialog by vm.deleteIntent.collectAsStateWithLifecycle()
     LaunchedEffect(nextDeleteDialog) {
@@ -234,7 +241,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         val switchedFrom = CloudApps.byId(options.cloudSwitchFrom).label
         val switchedTo = CloudApps.byId(options.cloudSingle).label
         if (options.cloudSwitchFrom.isNotEmpty() && switchedFrom != switchedTo) {
-            androidx.compose.material3.AlertDialog(
+            AlertDialog(
                 onDismissRequest = { vm.dismissCloudSwitchNotice() },
                 title = { Text(stringResource(R.string.cloud_switch_title)) },
                 text = {
@@ -519,7 +526,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            androidx.compose.animation.Crossfade(
+            Crossfade(
                 targetState = statusLine(
                     options,
                     statusWaiting,
@@ -946,7 +953,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
         when (action.visibility) {
             HomeAction.Visibility.WORKING -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.CircularProgressIndicator(
+                    CircularProgressIndicator(
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(18.dp)
                     )
@@ -1171,7 +1178,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
     // Tapping a count says what that count means, rather than sending the
     // user to the FAQ to find out.
     explain?.let { res ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { explain = null },
             confirmButton = {
                 TextButton(onClick = { explain = null }) { Text(stringResource(R.string.ok)) }
@@ -1202,7 +1209,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavHostController) {
  * screen wraps, and scales in full.
  */
 @Composable
-private fun heroFigureStyle(): androidx.compose.ui.text.TextStyle {
+private fun heroFigureStyle(): TextStyle {
     val cap = 1.4f
     val scale = LocalDensity.current.fontScale
     if (scale <= cap) return MetricTextStyle
@@ -1329,7 +1336,7 @@ private fun statusLine(
  */
 @Composable
 private fun HeroStat(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
     modifier: Modifier = Modifier

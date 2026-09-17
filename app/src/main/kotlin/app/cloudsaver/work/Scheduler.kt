@@ -8,10 +8,12 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.cloudsaver.core.logic.SpeedMode
 import app.cloudsaver.data.prefs.Options
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.Flow
 
 /**
  * WorkManager wiring (13.G). Constraints stay deliberately thin - only
@@ -134,7 +136,7 @@ object Scheduler {
      * started by taking a photo, Home offered a button whose work the running
      * one would refuse. The name is the only thing that differed.
      */
-    fun runningFlow(context: Context): kotlinx.coroutines.flow.Flow<Boolean> {
+    fun runningFlow(context: Context): Flow<Boolean> {
         val wm = WorkManager.getInstance(context)
         return kotlinx.coroutines.flow.combine(
             wm.getWorkInfosForUniqueWorkFlow(W_COMPRESS),
@@ -142,7 +144,7 @@ object Scheduler {
             wm.getWorkInfosForUniqueWorkFlow(W_TRIGGER)
         ) { periodic, manual, triggered ->
             (periodic + manual + triggered)
-                .any { it.state == androidx.work.WorkInfo.State.RUNNING }
+                .any { it.state == WorkInfo.State.RUNNING }
         }
     }
 

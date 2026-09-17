@@ -3,6 +3,7 @@ package app.cloudsaver.ui.screens
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Size
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,6 +38,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.text.style.TextOverflow
+import app.cloudsaver.core.logic.Defaults
+import app.cloudsaver.core.logic.OutFolder
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -186,7 +191,7 @@ fun FilesScreen(vm: AppViewModel) {
                     {
                         // The list below shows only what was scanned under full
                         // access; nothing new arrives until access is full again.
-                        androidx.compose.material3.AssistChip(
+                        AssistChip(
                             onClick = { OemPages.openAppInfo(appContext) },
                             label = { Text(stringResource(AccessNotice.chip(mediaAccess))) },
                             modifier = Modifier.padding(horizontal = 16.dp)
@@ -411,10 +416,10 @@ fun FilesScreen(vm: AppViewModel) {
                         // app is never a guess.
                         KeyValueRow(
                             stringResource(R.string.detail_folder),
-                            app.cloudsaver.core.logic.Defaults.outFolderRelPath(
+                            Defaults.outFolderRelPath(
                                 runCatching {
-                                    app.cloudsaver.core.logic.OutFolder.valueOf(folder)
-                                }.getOrDefault(app.cloudsaver.core.logic.OutFolder.SINGLE)
+                                    OutFolder.valueOf(folder)
+                                }.getOrDefault(OutFolder.SINGLE)
                             )
                         )
                     }
@@ -634,7 +639,7 @@ private fun ItemRow.toCandidate() = ListFilters.Candidate(
  * the gesture every list in the app uses; outside selection a tap opens the
  * details sheet.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FilesRow(
     row: ItemRow,
@@ -653,7 +658,7 @@ private fun FilesRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (selected != null) {
-                androidx.compose.material3.Checkbox(
+                Checkbox(
                     checked = selected,
                     onCheckedChange = { onToggle() }
                 )
@@ -672,7 +677,7 @@ private fun FilesRow(
                     maxLines = 1,
                     // IMG_20240517_181233.jpg cut at the right loses the date,
                     // which is the part that identifies the photo.
-                    overflow = androidx.compose.ui.text.style.TextOverflow.MiddleEllipsis
+                    overflow = TextOverflow.MiddleEllipsis
                 )
                 Text(
                     // What it was, what it is, and how much that saved - as a

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The window theme only has to do two things: paint the right ground before the first
+        frame, and get out of the way. Everything visible is built in code from Ui.java, so
+        there is no widget theme to keep in sync with a support library that would then have
+        to be upgraded every year. That is the whole reason this app has no AndroidX.
+    -->
+    <style name="Theme.PocketIDE" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <!-- Held sideways, a phone with a camera notch otherwise keeps an edge-to-edge window
+             clear of it and paints a black band down one whole side of the screen. This is the
+             attribute that lets the window use that edge; Theme.fitBars already pads the app's
+             own bars for the cutout, so nothing lands under it. Android 15 made this the
+             default and Android 10 to 14 did not, which is why it is stated. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowBackground">@color/window_light</item>
+        <item name="android:navigationBarColor">@color/window_light</item>
+        <item name="android:statusBarColor">@color/window_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <!-- The three things the platform draws in its own accent inside this app's fixed
+             palette: the text cursor, the selection handles and the selection highlight of the
+             search box and of every selectable block. Left to DeviceDefault they take the
+             wallpaper's or the maker's colour, which on a violet interface is one green
+             cursor. -->
+        <item name="android:colorAccent">@color/brand_accent</item>
+        <item name="android:colorControlActivated">@color/brand_accent</item>
+        <item name="android:textColorHighlight">#408B55E8</item>
+    </style>
+
+    <!-- The splash: the brand tile flat, with the mark centred. A window background takes a
+         colour, not a gradient, which is why tokens.json carries a flat violet at all. -->
+    <style name="Theme.PocketIDE.Splash" parent="Theme.PocketIDE">
+        <item name="android:windowBackground">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/brand_tile_flat</item>
+        <item name="android:navigationBarColor">@color/brand_tile_flat</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

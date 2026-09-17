@@ -540,7 +540,7 @@ class ProductBoundariesTest {
             .substringBefore("\n    }\n")
         for ((name, body) in listOf("peekAlbum" to peek, "openInViewer" to viewer)) {
             val plain = body.indexOf("startActivity(view)")
-            val fallback = body.indexOf("catch (e: android.content.ActivityNotFoundException)")
+            val fallback = body.indexOf("catch (e: ActivityNotFoundException)")
             val chooser = body.indexOf("createChooser(view")
             assertTrue("$name must start the view intent as it is", plain >= 0)
             assertTrue("$name must keep a fallback for a phone with no viewer", fallback > plain)
