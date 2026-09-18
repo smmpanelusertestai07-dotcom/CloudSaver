@@ -68,7 +68,7 @@ final class Workspace {
             "pocketide-companion.vsix", "pocketide-companion.stamp",
             // Workflow templates for what the phone cannot build; see Help, "the cloud".
             "cloud-flutter-android.yml", "cloud-react-native-android.yml", "cloud-ios.yml",
-            "cloud-x86-64.yml"};
+            "cloud-x86-64.yml", "cloud-android-emulator.yml"};
 
     interface Progress { void line(String message); }
 

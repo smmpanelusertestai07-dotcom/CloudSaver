@@ -1018,7 +1018,8 @@ if "package_companion" not in build_sh or "pocketide-companion.vsix" not in buil
     problems.append("the build does not package the companion")
 workspace_src = code(read("Workspace.java"))
 for asset in ("pocketide-companion.vsix", "pocketide-companion.stamp", "cloud-flutter-android.yml",
-              "cloud-react-native-android.yml", "cloud-ios.yml", "cloud-x86-64.yml"):
+              "cloud-react-native-android.yml", "cloud-ios.yml", "cloud-x86-64.yml",
+              "cloud-android-emulator.yml"):
     if '"%s"' % asset not in workspace_src:
         problems.append("Workspace.SCRIPTS does not carry %s into Linux" % asset)
     if asset.startswith("cloud-") and not os.path.isfile(app + "/app/assets/" + asset):

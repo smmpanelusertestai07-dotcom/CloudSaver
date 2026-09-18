@@ -206,10 +206,14 @@ final class Texts {
                      + "desktop one has."},
             {"Editor",
              "How do I give the agent a file or a photo from the phone?",
-             "In the editor\u2019s Explorer, long-press a folder and choose Upload, or use an "
-                     + "agent\u2019s own attach button: the phone\u2019s file picker opens, "
-                     + "you choose the file, and a copy lands in that folder under ~/projects "
-                     + "where the agent can read it. That picker is Android\u2019s own: the "
+             "Two ways, both through the phone\u2019s own picker. In an agent\u2019s own "
+                     + "panel, its attach control (Codex\u2019s image button, like the ChatGPT "
+                     + "app\u2019s; Claude Code and Kilo Code paste or attach the same way) "
+                     + "opens the picker and the picture goes straight into the message. For "
+                     + "any file, long-press a folder in the editor\u2019s Explorer and choose "
+                     + "Upload: the picker opens, you choose the file, and a copy lands in that "
+                     + "folder under ~/projects, where you name it to the agent. That picker is "
+                     + "Android\u2019s own: the "
                      + "app never gets access to your storage by it, only to the one file you "
                      + "chose, and nothing on the phone is changed. The other way round, a "
                      + "file the agent made can be downloaded from the editor to the "
@@ -308,16 +312,23 @@ final class Texts {
                      + "It is not official and the row says so. Install it if you want it, not "
                      + "because it is on the screen."},
             {"Agents",
-             "Is any model free and unlimited? What about Kimi K3?",
-             "Unlimited exists in one form only: an open-weight model running on hardware you "
-                     + "own. No provider offers unlimited free use of a capable model, and the "
-                     + "free tiers are all capped \u2014 OpenRouter\u2019s free models at "
-                     + "twenty requests a minute and fifty a day, Groq\u2019s free plan at "
-                     + "about a thousand a day, Google AI Studio\u2019s free tier with its "
-                     + "own daily limits, Kilo\u2019s free setting routing to whoever will "
-                     + "take the request, prompts possibly kept. What IS free and unlimited "
-                     + "is compute: GitHub Actions runs a public repository\u2019s builds "
-                     + "free with no minute limit.\n\nGLM and Kimi, by their own price "
+             "Which model runs where, and what is free, limited or unlimited?",
+             "Four kinds, and the honest word for each.\n\nOn this phone, unlimited and "
+                     + "weak: a one-to-three-billion-parameter open model through llama.cpp "
+                     + "(Qwen2.5-Coder 1.5B or 3B) \u2014 private, no account, a few words a "
+                     + "second, good for autocomplete and small edits, not for an agent.\n\n"
+                     + "Free with a limit, through an account: the pre-set agents\u2019 own "
+                     + "free tiers (Antigravity has one; Claude Code and Codex need a paid "
+                     + "plan), and through Kilo Code any of these \u2014 OpenRouter\u2019s "
+                     + "free models at twenty requests a minute and fifty a day, Groq at about "
+                     + "a thousand a day, Google AI Studio with its own daily limits, Z.AI\u2019s "
+                     + "GLM Flash models free and rate-limited, Kilo\u2019s own free routing "
+                     + "with prompts possibly kept. These are frontier-class or close, and the "
+                     + "limit is the price.\n\nPaid, no limit but the bill: Claude, GPT and "
+                     + "Codex, Gemini, GLM-5.3, Kimi K3 \u2014 the models the agents are built "
+                     + "on, at the publisher\u2019s price.\n\nOn GitHub\u2019s free computer: "
+                     + "no model at all, its runners have no graphics card; it is for building, "
+                     + "not thinking.\n\nGLM and Kimi, by their own price "
                      + "pages: Z.AI serves GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash "
                      + "free, rate-limited, and GLM-5.3-Flash at $0.15 in and $0.50 out per "
                      + "million tokens \u2014 Kilo Code lists Z.AI as a provider, so a key "
@@ -435,13 +446,21 @@ final class Texts {
                      + "download. Ready-made workflows for a Flutter APK, a React Native APK, "
                      + "an iPhone build and a plain x86-64 machine land in ~/templates/cloud; "
                      + "copy one into the project\u2019s .github/workflows and commit "
-                     + "it.\n\nWhat it costs: a public repository builds free with no minute "
-                     + "limit; a private one has 2,000 free minutes a month, and a Mac minute "
-                     + "counts ten. Codemagic gives 500 Mac minutes a month free. The APK that "
-                     + "comes back installs with phone install, like one built here.\n\nUnity "
-                     + "and Unreal need their own editors on that x86-64 machine and a licence "
-                     + "of their own; GameCI documents Unity on GitHub Actions. An iPhone "
-                     + "build still needs an Apple developer account to reach a phone."},
+                     + "it. A fifth template runs the app on a real Android emulator there and "
+                     + "brings back a screenshot, a recording and the test results.\n\nWhat it "
+                     + "costs: a public repository builds free with no minute limit; a private "
+                     + "one has 2,000 free minutes a month, and a Mac minute counts ten. Beyond "
+                     + "that, free too and each behind its own sign-in: GitLab gives 400 "
+                     + "minutes a month, Codemagic 500 Mac minutes, GitHub Codespaces 120 "
+                     + "core-hours of a whole x86-64 computer you can open from this phone\u2019s "
+                     + "browser. There is no free computer without a sign-in, anywhere: free "
+                     + "compute with nobody to answer for it is abused within hours, so nobody "
+                     + "offers it. A GitHub account is the one you already need to keep code "
+                     + "anywhere, and it is the safest of these. The APK that comes back "
+                     + "installs with phone install, like one built here.\n\nUnity and Unreal "
+                     + "need their own editors on that x86-64 machine and a licence of their "
+                     + "own; GameCI documents Unity on GitHub Actions. An iPhone build still "
+                     + "needs an Apple developer account to reach a phone."},
             {"Building",
              "Can the computer be x86-64 instead, so everything is possible?",
              "No, and no app can make it so. This phone\u2019s processor is arm64; an "
@@ -504,7 +523,13 @@ final class Texts {
                      + "images, and Cuttlefish, Waydroid, Anbox and redroid all need kernel "
                      + "features or root that Android gives no app. On a 4 GB phone a "
                      + "software-emulated Android would not fit beside the phone\u2019s own "
-                     + "either. The phone itself, behind the door above, is the test device."},
+                     + "either. The phone itself, behind the door above, is the test device."
+                     + "\n\nAn Android emulator cannot run on this phone, and it does not have "
+                     + "to: the cloud-android-emulator template in ~/templates/cloud runs the "
+                     + "app on a real emulator on GitHub\u2019s computer \u2014 installs the "
+                     + "APK, opens it, takes a screenshot and a fifteen-second recording, runs "
+                     + "the instrumented tests \u2014 and gh run download brings all of it "
+                     + "back. Free for a public repository."},
             {"Building",
              "Can I build an iPhone app?",
              "Write one here, yes; build and install it, not here, and not through any trick. "
