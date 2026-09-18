@@ -57,9 +57,12 @@ if [ ! -x "$CF" ]; then
 fi
 
 # 3. tunnel first (its URL is the slow part); a fresh URL on every run
-pkill -f "cloudflared tunnel --no-autoupdate --url http://localhost:$PORT" 2>/dev/null || true
+pkill -f "cloudflared tunnel --no-autoupdate" 2>/dev/null || true
 : >"$LOG/tunnel.log"
-bg nohup "$CF" tunnel --no-autoupdate --url "http://localhost:$PORT" >"$LOG/tunnel.log" 2>&1 </dev/null &
+# --http-host-header is required: the hub answers "Unauthorized Host (Localhost only)"
+# unless the Host header names localhost, and Cloudflare forwards the public hostname.
+bg nohup "$CF" tunnel --no-autoupdate --url "http://localhost:$PORT" \
+  --http-host-header "localhost:$PORT" >"$LOG/tunnel.log" 2>&1 </dev/null &
 
 # 4. hub: always our own, so it outlives window reloads. Kill every hub, including one the
 # extension started on its own ephemeral port: they share one token store
