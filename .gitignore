@@ -21,3 +21,6 @@
 
 # Android SDK fetched on demand by the Gradle-free builds; never part of the source.
 .tooling/
+
+# Written by .devcontainer/agy-up.sh on every codespace start (Antigravity panel URL); never source.
+/.vscode/settings.json
