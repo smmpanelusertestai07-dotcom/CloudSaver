@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- The long-press shortcut's icon, as an adaptive icon. A bare 24 dp glyph here is wrapped
-     by the launcher in a plain WHITE circle — Launcher3's default wrapper background, and the
-     realme UI launcher does the same — so a white glyph on it was an empty white disc next to
-     the word Editor. The brand tile behind the app's own glyph, on the 108 dp canvas. -->
-<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/brand_tile_flat" />
-    <foreground android:drawable="@drawable/ic_shortcut_editor_foreground" />
-</adaptive-icon>
