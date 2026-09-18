@@ -8,7 +8,8 @@
 # extension starts no hub of its own and loads the panel from that URL instead.
 #
 # So, on every codespace start (devcontainer.json -> postStartCommand), this script:
-#   1. installs the agy binary if it is missing (the CLI and the hub are one binary)
+#   1. installs the agy binary if it is missing (the CLI and the hub are one binary), and
+#      gives the hub its credentials (see 1b: the hub and the CLI keep separate token files)
 #   2. opens a Cloudflare quick tunnel to a fixed local port (free, no account,
 #      WebSocket works; the hostname is random and changes on every start)
 #   3. starts the hub on that port with the same environment the extension gives it
@@ -18,8 +19,8 @@
 #
 # Run by hand any time:   bash .devcontainer/agy-up.sh      (restarts hub + tunnel)
 # Logs:                   /tmp/agy-up/{hub,tunnel,install}.log
-# Sign-in URL, if the panel does not open one:
-#                         grep -o 'ANTIGRAVITY_OPEN_URL:.*' /tmp/agy-up/hub.log | tail -1
+# Never signed in here:   run `agy` once in a terminal, sign in with the code it prints,
+#                         then re-run this script; it copies that login over to the hub.
 # Close the public URL:   pkill -f 'cloudflared tunnel'
 #
 # Keep in mind: while the tunnel runs, anyone who has the random URL can use this hub.
@@ -46,6 +47,25 @@ if [ -z "$AGY" ]; then
   [ -x "$HOME/.local/bin/agy" ] && AGY="$HOME/.local/bin/agy"
 fi
 if [ -z "$AGY" ]; then say "agy did not install; see $LOG/install.log"; exit 1; fi
+
+# 1b. credentials. The hub reads ~/.gemini/jetski-standalone-oauth-token, while `agy` the
+# CLI writes ~/.gemini/antigravity/antigravity-oauth-token. Same OAuth client, same scopes,
+# different file, so a hub that was never signed in can start from a CLI login instead of
+# the localhost callback dance (which a phone cannot complete: localhost is the phone).
+HUB_TOKEN="$HOME/.gemini/jetski-standalone-oauth-token"
+CLI_TOKEN="$HOME/.gemini/antigravity/antigravity-oauth-token"
+mkdir -p "$HOME/.gemini"
+if [ ! -s "$HUB_TOKEN" ] && [ -n "${ANTIGRAVITY_OAUTH_TOKEN_B64:-}" ]; then
+  # Optional: a Codespaces secret, for a codespace rebuilt from scratch.
+  printf '%s' "$ANTIGRAVITY_OAUTH_TOKEN_B64" | base64 -d > "$HUB_TOKEN" 2>/dev/null \
+    && say "credentials restored from the codespace secret"
+fi
+if [ ! -s "$HUB_TOKEN" ] && [ -s "$CLI_TOKEN" ]; then
+  cp "$CLI_TOKEN" "$HUB_TOKEN" && say "credentials taken from the CLI login"
+fi
+# A refresh token: keep it readable only by its owner. cp does not preserve the mode.
+[ -f "$HUB_TOKEN" ] && chmod 600 "$HUB_TOKEN"
+[ -s "$HUB_TOKEN" ] || say "not signed in yet: run 'agy', sign in, then re-run this script"
 
 # 2. cloudflared: one download, kept in ~/.local/bin
 if [ ! -x "$CF" ]; then
