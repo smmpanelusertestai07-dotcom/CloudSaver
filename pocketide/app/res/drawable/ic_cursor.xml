@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- A pointer, for the button that moves the caret. The earlier hand icon read as "touch",
-     which is what every other control on the bar also is. -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="#FFFFFFFF"
-        android:pathData="M6,3L6,18.6L10.1,15.1L12.9,20.6L15.4,19.4L12.7,14L18,13.6Z" />
-</vector>
