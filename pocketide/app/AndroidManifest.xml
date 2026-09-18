@@ -139,6 +139,13 @@
             android:parentActivityName=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
 
+        <activity
+            android:name=".ChatsActivity"
+            android:exported="false"
+            android:label="@string/title_chats"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|density" />
+
         <!-- Shows one APK from ~/projects to the installer, read-only, by a URI this app hands
              out with a grant. Not exported: nothing can ask it for a file. See Built. -->
         <provider

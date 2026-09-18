@@ -186,22 +186,6 @@ if "FLAG_KEEP_SCREEN_ON" not in editor:
     problems.append("the editor screen lets the phone sleep while an agent is working; the "
                     "service's wake lock is the CPU's and does not cover the screen")
 
-# --- 11. the app cannot vanish at startup without saying why ---------------------------------
-boot = code(read("Boot.java")) if os.path.exists(src + "Boot.java") else ""
-if "starting(" not in boot or "reached(" not in boot or "failing(" not in boot:
-    problems.append("Boot does not count launches, so an app that dies before drawing has "
-                    "nothing to notice that it did")
-if ".commit()" not in boot:
-    problems.append("Boot writes its launch count with apply(); a process killed a moment "
-                    "later never gets it to disk, which is the only case it exists for")
-if "Boot.starting" not in main or "Boot.failing" not in main or "Boot.reached" not in main:
-    problems.append("MainActivity does not use the startup guard, so a launch that dies "
-                    "silently dies silently again on every later try")
-guarded = re.search(r'catch \(Throwable failure\) \{(.{0,400}?)\n        \}', main, re.S)
-if not guarded or "Boot.show" not in guarded.group(1):
-    problems.append("MainActivity does not catch a failure while building its first screen, so "
-                    "the first failure is still a window that closes with nothing said")
-
 # --- 12. stopping Linux takes the whole container with it ------------------------------------
 #
 # Process.destroy() signals PRoot and does not wait. A tracer that is killed leaves its tracees
@@ -741,26 +725,15 @@ if (service.count("synchronized (brokerLock) {") != 2
     problems.append("the bridge is opened and closed without a lock, so an editor stopping while "
                     "one starts can leave a door open with no service behind it")
 
-# --- 18. the app cannot close at startup without saying why --------------------------------------
+# --- 18. a failure before the first frame is logged and skipped, never the end of the process --
 app_src = code(read("App.java"))
-on_create = re.search(r'@Override public void onCreate\(\) \{\n        super\.onCreate\(\);'
-                      r'\n        try \{\n            Boot\.starting\(this\);', app_src)
-if not on_create:
-    problems.append("the launch count is not the first thing App.onCreate does, so a failure "
-                    "before it is one the recovery screen never sees")
-for step in ("Crash.arm(this)", "Exits.noteStart(this)", "watchForegroundState()",
-             "createNotificationChannel(channel)"):
+for step in ("Exits.noteStart(this)", "watchForegroundState()", "createNotificationChannel(channel)"):
     at = app_src.find(step)
     # Inside a try: the nearest try { before it has not been closed by a catch yet.
     opened = app_src.rfind("try {", 0, at) if at >= 0 else -1
     if at < 0 or opened < 0 or "catch (" in app_src[opened:at]:
         problems.append("App.onCreate runs %s outside a try, where a failure ends the process "
                         "with nothing said" % step)
-boot_src = code(read("Boot.java"))
-if "if (counted) return;" not in boot_src or "Exits.recent(context)" not in boot_src \
-        or 'putString(STAGE, "application")' not in boot_src:
-    problems.append("Boot does not count once per process, record how far the opening got, and "
-                    "show Android's own exit record on the recovery screen")
 main_src = code(read("MainActivity.java"))
 for method, steps in (("onStart", ("Rotation.apply(this)", "raiseLockIfNeeded()")),
                       ("onResume", ("Updates.maybeRunInBackground(this)",
@@ -772,10 +745,7 @@ for method, steps in (("onStart", ("Rotation.apply(this)", "raiseLockIfNeeded()"
         at = body.find(step + ";")
         if at < 0 or "try {" not in body[max(0, at - 200):at]:
             problems.append("MainActivity.%s runs %s before the first frame outside a try, where "
-                            "a failure closes the recovery screen as well as the app"
-                            % (method, step))
-if "static String recent(Context context)" not in code(read("Exits.java")):
-    problems.append("Exits cannot describe the last exits for the recovery screen")
+                            "a failure closes the app with nothing said" % (method, step))
 
 # --- 19. where everything is, said and measured; a delete that stops at a link -----------------
 #
@@ -803,17 +773,20 @@ size_fn = re.search(r'static long sizeOf\(File file\) \{(.*?)\n    \}', workspac
 if not size_fn or "isSymbolicLink(file.toPath())" not in size_fn.group(1):
     problems.append("Workspace.sizeOf() measures through links")
 settings_src = code(read("SettingsPane.java"))
-for row in ('"What is stored where"', '"Clear agent chats"'):
+for row in ('"What is stored where"', '"Agent chats"'):
     if not re.search(r'Ui\.row\(host, dark, R\.drawable\.\w+, ' + re.escape(row), settings_src):
         problems.append("Settings has no %s row" % row)
-clear_fn = re.search(r'private void confirmClearChats\(\) \{(.*?)\n    \}', settings_src, re.S)
-if not clear_fn or "WorkspaceService.busy()" not in clear_fn.group(1) \
-        or "Stored.clearChats(on)" not in clear_fn.group(1):
-    problems.append("Clear agent chats runs with Linux running, or does not clear through "
+chats_src = code(read("ChatsActivity.java"))
+clear_fn = re.search(r'private void confirmClearAll\(\) \{(.*?)\n    \}', chats_src, re.S)
+if not clear_fn or 'editorInTheWay(' not in clear_fn.group(1) \
+        or "Stored.clearChats(this)" not in clear_fn.group(1):
+    problems.append("Delete every chat runs with the editor open, or does not clear through "
                     "Stored.clearChats")
+if "WorkspaceService.editorRunning()" not in chats_src:
+    problems.append("the chats screen deletes while an agent in the editor may be writing")
 texts_src = code(read("Texts.java"))
 for said in ("~/.claude/projects", "~/.codex/sessions", "cleanupPeriodDays",
-             "Where is everything stored", "Clear agent chats", "The agents' chats.",
+             "Where is everything stored", "Agent chats", "The agents' chats.",
              "9. Your data, and the agents' data.", "10. Testing on this phone."):
     if said not in texts_src:
         problems.append("Help, the privacy text or the terms no longer say: %s" % said)
@@ -939,17 +912,12 @@ for said in ("Is this the same Visual Studio Code as on a computer?",
 # drawn deletes it. A request that fails is explained in one sentence chosen by its cause,
 # after a check for a connection at all, and the editor's own words about a failed install
 # are never mistaken for a network failure.
-for name in ("HomePane.java", "SettingsPane.java", "Stored.java"):
-    if "Crash." in code(read(name)):
-        problems.append("%s shows or measures the crash note, which is the recovery screen's "
-                        "alone" % name)
-boot_src = code(read("Boot.java"))
-show_fn = re.search(r'static void show\(final Activity activity, Throwable failure\) \{(.*?)\n    \}',
-                    boot_src, re.S)
-if not show_fn or "Ui.mono(" in show_fn.group(1) or "Copy the details" not in show_fn.group(1):
-    problems.append("the recovery screen prints the record instead of offering to copy it")
-if not re.search(r'putString\(STAGE, "drawn"\)\.apply\(\);\s*Crash\.clear\(context\);', boot_src):
-    problems.append("a drawn screen does not delete the crash note")
+for name in sorted(os.listdir(src)):
+    if name.endswith(".java") and re.search(r'\b(Crash|Boot)\.', code(read(name))):
+        problems.append("%s still reaches for the crash note or the recovery screen, which "
+                        "are gone: a failure is Android's own message now" % name)
+if os.path.exists(src + "Crash.java") or os.path.exists(src + "Boot.java"):
+    problems.append("the crash note or the recovery screen is back")
 network = code(read("Network.java"))
 explain = re.search(r'static String explain\(Context context, String what, Throwable failure\) \{(.*?)\n    \}',
                     network, re.S)
@@ -975,10 +943,96 @@ for tag in ("tagline", "tagline_short"):
 if "hidden in Recents" not in code(read("SettingsPane.java")):
     problems.append("the lock row does not say the app is hidden in Recents while it is on")
 texts_src = code(read("Texts.java"))
-for said in ("If the app cannot start.", "copy the details, for a bug report",
-             "GitHub Releases page"):
+for said in ("GitHub Releases page",):
     if said not in texts_src:
         problems.append("Help or the privacy text no longer says: %s" % said)
+
+# --- 23. Android's ceiling on helper processes, lifted only the documented way, only when asked --
+#
+# The change is a system setting made through the app's own adb: it exists only behind the
+# owner's tap, only on Android 12 and later, only with the phone paired, and it is read back
+# rather than believed. The same row puts it back with the exact reverse.
+settings_src = code(read("SettingsPane.java"))
+ceiling = re.search(r'if \(Build\.VERSION\.SDK_INT >= 31 && ready && Phone\.supported\(\)\) \{(.*?)\n        \}',
+                    settings_src, re.S)
+if not ceiling or '"Android\'s limit on helper processes"' not in ceiling.group(1) \
+        or "offerProcessLimit(lifted)" not in ceiling.group(1):
+    problems.append("the process-limit row is not confined to Android 12 and later with a phone "
+                    "that can pair")
+limit_fn = re.search(r'private void offerProcessLimit\(final boolean lifted\) \{(.*?)\n    \}',
+                     settings_src, re.S)
+limit_body = limit_fn.group(1) if limit_fn else ""
+for must in ("if (!Phone.paired(host))", "if (!WorkspaceService.editorRunning())",
+             "Dialogs.confirm(host,",
+             "settings put global settings_enable_monitor_phantom_procs false",
+             "device_config set_sync_disabled_for_tests persistent",
+             "device_config put activity_manager max_phantom_processes 2147483647",
+             "settings delete global settings_enable_monitor_phantom_procs",
+             "device_config delete activity_manager max_phantom_processes",
+             "device_config set_sync_disabled_for_tests none",
+             "settings get global settings_enable_monitor_phantom_procs",
+             "Prefs.PHANTOM_LIFTED"):
+    if must not in limit_body:
+        problems.append("lifting Android's process limit lacks: %s" % must)
+if 'Phone.run(host, "shell"' not in limit_body:
+    problems.append("the process limit is not changed through the app's own adb")
+broker_ops = re.search(r'static final String\[\] OPS = \{(.*?)\};', code(read("PhoneBroker.java")), re.S)
+if broker_ops and ("device_config" in broker_ops.group(1) or '"shell"' in broker_ops.group(1)):
+    problems.append("the phone bridge would let an agent change system settings")
+
+# --- 24. the chats screen, the companion it opens the editor through, and the cloud path ------
+#
+# The chats are read from each agent's own storage and deleted only with the editor closed;
+# opening one is a request file the companion extension acts on, once, in a terminal. The
+# companion is two source files packaged by the build, installed by the editor script once per
+# build. GitHub's command line is pinned like everything else the tools script downloads.
+chats_src = code(read("Chats.java"))
+for must in (".claude/projects", ".codex/sessions", "kilocode.kilo-code/tasks",
+             '"claude --resume " + id', '"codex resume " + id', "Workspace.delete(chat.path)"):
+    if must not in chats_src:
+        problems.append("Chats no longer reads or resumes the agents' own storage: %s" % must)
+if re.search(r'new (java\.io\.)?(FileOutputStream|FileWriter|PrintWriter|RandomAccessFile)\b|Files\.write', chats_src):
+    problems.append("Chats writes into the agents' storage, which it must only read")
+screen = code(read("ChatsActivity.java"))
+open_fn = re.search(r'private void open\(Chats\.Chat chat\) \{(.*?)\n    \}', screen, re.S)
+if (not open_fn or 'PhoneBroker.bridgeDir(this)' not in open_fn.group(1)
+        or '.put("action", "terminal")' not in open_fn.group(1)
+        or "WorkspaceActivity.class" not in open_fn.group(1)):
+    problems.append("opening a chat does not go through the companion's inbox in the bridge")
+companion = open(app + "/app/assets/companion/extension.js").read()
+if "const INBOX = '/run/pocketide/editor-inbox';" not in companion \
+        or "fs.unlinkSync(file)" not in companion or "if (request) act(request);" not in companion:
+    problems.append("the companion does not read its inbox in /run/pocketide, or acts before "
+                    "deleting a request")
+if "request.action !== 'terminal'" not in companion or "sendText(request.command, true)" not in companion:
+    problems.append("the companion runs something other than a terminal command")
+package = open(app + "/app/assets/companion/package.json").read()
+if '"activationEvents": ["onStartupFinished"]' not in package or '"publisher": "pocketide"' not in package:
+    problems.append("the companion's manifest no longer activates at start-up under pocketide")
+editor_sh = open(app + "/app/assets/pocketide-editor.sh").read()
+if "install_companion()" not in editor_sh or "install_companion >/dev/null 2>&1 || true" not in editor_sh \
+        or 'cmp -s "$stamp" "$installed"' not in editor_sh:
+    problems.append("the editor script does not install the companion once per build")
+build_sh = open(app + "/build.sh").read()
+if "package_companion" not in build_sh or "pocketide-companion.vsix" not in build_sh:
+    problems.append("the build does not package the companion")
+workspace_src = code(read("Workspace.java"))
+for asset in ("pocketide-companion.vsix", "pocketide-companion.stamp", "cloud-flutter-android.yml",
+              "cloud-react-native-android.yml", "cloud-ios.yml", "cloud-x86-64.yml"):
+    if '"%s"' % asset not in workspace_src:
+        problems.append("Workspace.SCRIPTS does not carry %s into Linux" % asset)
+    if asset.startswith("cloud-") and not os.path.isfile(app + "/app/assets/" + asset):
+        problems.append("the template %s is missing" % asset)
+tools_sh = open(app + "/app/assets/pocketide-tools.sh").read()
+gh = re.search(r'GH_VERSION="([\d.]+)"\nGH_URL="https://github\.com/cli/cli/releases/download/v\$\{GH_VERSION\}/gh_\$\{GH_VERSION\}_linux_arm64\.tar\.gz"\nGH_SHA256="([0-9a-f]{64})"', tools_sh)
+if not gh:
+    problems.append("GitHub's command line is not pinned to a version and a SHA-256 from GitHub's own release")
+if 'fetch_pinned "$GH_URL" "$archive" "$GH_SHA256"' not in tools_sh or "  gh)          install_gh ;;" not in tools_sh:
+    problems.append("gh is not downloaded through fetch_pinned, or the layer is not dispatched")
+if 'echo "gh=$gh"' not in tools_sh or '"yes".equals(values.get("gh"))' not in code(read("Tools.java")):
+    problems.append("the app cannot tell whether gh is installed")
+if 'offerTools("gh", "GitHub\'s command line"' not in settings_src:
+    problems.append("Settings offers no way to install GitHub's command line")
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

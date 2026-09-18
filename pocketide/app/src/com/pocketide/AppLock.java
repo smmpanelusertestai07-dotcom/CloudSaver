@@ -16,6 +16,7 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.util.Log;
 
 /**
  * The app lock: the phone's own fingerprint or PIN, asked whenever PocketIDE comes to the front.
@@ -262,7 +263,7 @@ final class AppLock {
                         }
                     });
         } catch (Throwable error) {
-            Crash.save(activity, error);
+            Log.w(App.TAG, "The biometric prompt failed; falling back to the PIN screen", error);
             if (!credentialScreen(activity, callback)) callback.done(false);
         }
     }

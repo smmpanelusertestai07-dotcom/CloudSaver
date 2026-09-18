@@ -7,6 +7,7 @@ import android.os.Build;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.graphics.Bitmap;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -405,6 +406,38 @@ final class SettingsPane implements Pane {
         list.addView(phone);
         list.addView(Ui.divider(host, dark, true));
 
+        if (Build.VERSION.SDK_INT >= 31 && ready && Phone.supported()) {
+            final boolean lifted = Prefs.of(host).getBoolean(Prefs.PHANTOM_LIFTED, false);
+            Ui.Row ceiling = Ui.row(host, dark, R.drawable.ic_memory,
+                    "Android's limit on helper processes",
+                    lifted ? "Lifted · Android no longer ends Linux's processes past 32 · tap to put it back"
+                           : "Android 12 and later end helper processes past 32 · tap to lift it",
+                    v -> offerProcessLimit(lifted));
+            ceiling.setState(lifted ? Ui.running(dark) : Ui.needsYou(dark));
+            list.addView(ceiling);
+            list.addView(Ui.divider(host, dark, true));
+        }
+
+        Ui.Row github = Ui.row(host, dark, R.drawable.ic_globe, "GitHub's command line",
+                !ready ? "Available once Linux is set up"
+                        : tools.gh ? "Installed · gh · the way to a computer this phone is not"
+                        : "Not installed · about " + DeviceProbe.formatBytes(Tools.GH_BYTES)
+                                + " · builds on GitHub's x86-64 and Mac machines",
+                v -> offerTools("gh", "GitHub's command line",
+                        "GitHub's own command line, gh, from GitHub's own release. Once you "
+                                + "sign in (gh auth login, in the terminal), an agent can push, "
+                                + "open pull requests, start a build on GitHub's x86-64 or Mac "
+                                + "machines and bring the result back with gh run download.\n\n"
+                                + "That is how Flutter, React Native, an iPhone app or anything "
+                                + "that needs an x86-64 computer gets built from this phone. "
+                                + "Ready-made workflows land in ~/templates/cloud; Help says "
+                                + "how to use them. GitHub Actions is free for a public "
+                                + "repository and gives a private one 2,000 minutes a month.",
+                        Tools.GH_BYTES, tools.gh));
+        if (tools.gh) github.setState(Ui.running(dark));
+        list.addView(github);
+        list.addView(Ui.divider(host, dark, true));
+
         list.addView(Ui.row(host, dark, R.drawable.ic_info, "What can be built here",
                 "Including the two things that cannot, and why",
                 v -> Dialogs.message(host, "What can be built here", Tools.WHAT_CAN_BE_BUILT)));
@@ -544,6 +577,71 @@ final class SettingsPane implements Pane {
      * silent otherwise: Developer options off, Wireless debugging off, the editor not
      * running, notifications denied. Each of those has a screen, and the dialog names it.
      */
+    /**
+     * Android 12's ceiling on helper processes, lifted the way Termux documents, through the
+     * app's own adb: the setting Android 12L and later keep (settings_enable_monitor_phantom_procs)
+     * and the property Android 12 reads (max_phantom_processes), with the sync that would reset
+     * the property switched off. The change is Android's own switch, the one Android 14 shows
+     * under Developer options as "Disable child process restrictions"; it applies to every app
+     * on the phone, survives a reboot, and the same row puts it back.
+     */
+    private void offerProcessLimit(final boolean lifted) {
+        final String title = "Android's limit on helper processes";
+        if (!Phone.paired(host)) {
+            Dialogs.message(host, title, "Pair the phone first: Test on this phone → Pair for "
+                    + "the first time. The change is made through the app's own adb, which "
+                    + "needs that pairing.");
+            return;
+        }
+        if (!WorkspaceService.editorRunning()) {
+            Dialogs.message(host, title, "Open the editor first — the connection to the phone "
+                    + "lives inside it — then come back here with Wireless debugging on.");
+            return;
+        }
+        Dialogs.confirm(host, lifted ? "Put Android's limit back?" : "Lift Android's limit?",
+                lifted ? "Android will again end helper processes past 32 across every app, "
+                        + "which is its default. Nothing else changes."
+                        : "Android 12 and later keep at most 32 helper processes across every "
+                        + "app and end the extras; an editor, a build and an agent together can "
+                        + "reach it. This turns that off for the whole phone, the way Android 14's "
+                        + "own Developer option does, through the app's adb. It survives a "
+                        + "reboot, and this row puts it back.",
+                lifted ? "Put it back" : "Lift it", false, () -> {
+                    final Dialogs.Live live = Dialogs.live(host, title, "Asking the phone…");
+                    new Thread(() -> {
+                        String script = lifted
+                                ? "settings delete global settings_enable_monitor_phantom_procs; "
+                                        + "/system/bin/device_config delete activity_manager max_phantom_processes; "
+                                        + "/system/bin/device_config set_sync_disabled_for_tests none"
+                                : "settings put global settings_enable_monitor_phantom_procs false; "
+                                        + "/system/bin/device_config set_sync_disabled_for_tests persistent; "
+                                        + "/system/bin/device_config put activity_manager max_phantom_processes 2147483647";
+                        String said = Phone.run(host, "shell", script).trim();
+                        // Read back rather than believed: Android 12L and later keep the setting,
+                        // Android 12 keeps only the property.
+                        String setting = Phone.run(host, "shell",
+                                "settings get global settings_enable_monitor_phantom_procs").trim();
+                        String property = Phone.run(host, "shell",
+                                "/system/bin/device_config get activity_manager max_phantom_processes").trim();
+                        boolean now = "false".equals(setting) || "2147483647".equals(property);
+                        boolean ok = now != lifted;
+                        Prefs.of(host).edit().putBoolean(Prefs.PHANTOM_LIFTED, now).apply();
+                        live.done(ok, ok
+                                ? (now ? "Lifted. Android will not end Linux's processes at 32."
+                                       : "Put back. Android's own limit applies again.")
+                                : (said.contains("no devices") || said.contains("not found")
+                                        || said.isEmpty()
+                                        ? "The phone did not answer. Turn on Wireless debugging and "
+                                                + "connect (Test on this phone → Connect now), then "
+                                                + "try again."
+                                        : "The phone refused: " + Workspace.clean(said)));
+                        host.runOnUiThread(() -> {
+                            if (!host.isFinishing()) MainActivity.rebuild(host);
+                        });
+                    }, "process-limit").start();
+                });
+    }
+
     private void offerPhone() {
         if (!Workspace.installed(host)) {
             Dialogs.message(host, "Test on this phone",
@@ -790,9 +888,9 @@ final class SettingsPane implements Pane {
                 v -> showWhereThingsAre()));
         list.addView(Ui.divider(host, dark, true));
 
-        list.addView(Ui.row(host, dark, R.drawable.ic_chat, "Clear agent chats",
-                "Deletes the transcripts on the phone; sign-ins, settings and projects stay",
-                v -> confirmClearChats()));
+        list.addView(Ui.row(host, dark, R.drawable.ic_chat, "Agent chats",
+                "Every chat by agent, with its date and size · open one, or delete",
+                v -> host.startActivity(new Intent(host, ChatsActivity.class))));
         list.addView(Ui.divider(host, dark, true));
 
         list.addView(Ui.row(host, dark, R.drawable.ic_delete, "Remove everything",
@@ -839,44 +937,6 @@ final class SettingsPane implements Pane {
     }
 
     /** The agents' transcripts, gone: with Linux stopped, after a plain question. */
-    private void confirmClearChats() {
-        if (!Workspace.installed(host)) {
-            Dialogs.message(host, "Clear agent chats", "Nothing is set up yet, so there are "
-                    + "no chats on this phone.");
-            return;
-        }
-        if (WorkspaceService.busy()) {
-            Dialogs.message(host, "Still running",
-                    "Stop Linux first: the Stop button on Activity, or the one on the "
-                            + "notification. An agent in the middle of a session would be "
-                            + "writing into what this deletes.");
-            return;
-        }
-        Dialogs.confirm(host, "Clear agent chats?",
-                "This deletes the conversation transcripts the agents keep on this phone: "
-                        + "Claude Code's sessions and history, Codex's sessions and history, "
-                        + "and Kilo Code's tasks. Sign-ins, settings and your projects are not "
-                        + "touched. What each company already holds on its own servers is "
-                        + "theirs to delete, under their terms.\n\nThis cannot be undone.",
-                "Clear chats", true, () -> {
-                    final Activity on = host;
-                    final Dialogs.Live live = Dialogs.live(on, "Clearing agent chats",
-                            "Deleting the transcripts…");
-                    new Thread(() -> {
-                        long freed;
-                        try {
-                            freed = Stored.clearChats(on);
-                        } catch (Throwable failed) {
-                            freed = -1;
-                        }
-                        final long bytes = freed;
-                        on.runOnUiThread(() -> live.done(bytes >= 0, bytes >= 0
-                                ? "Cleared. " + DeviceProbe.formatBytes(bytes) + " of "
-                                        + "transcripts deleted; nothing else was touched."
-                                : "Some of the transcripts could not be deleted."));
-                    }, "clear-chats").start();
-                });
-    }
 
     private void confirmRemoveEverything() {
         if (WorkspaceService.busy()) {
@@ -942,32 +1002,19 @@ final class SettingsPane implements Pane {
         boolean ready = Workspace.installed(host);
         Updates.Status status = Updates.last(host);
         boolean on = Updates.automatic(host);
-        boolean editorAuto = Updates.automaticEditor(host);
-
-        Ui.Row automatic = Ui.row(host, dark, R.drawable.ic_shield, "Security updates",
+        Ui.Row automatic = Ui.row(host, dark, R.drawable.ic_shield, "Automatic updates",
                 !ready ? "Available once Linux is set up"
-                        : on ? "On · Ubuntu's security fixes, on Wi-Fi, once a day"
-                             : "Off · nothing is updated unless you ask",
+                        : on ? "On · Ubuntu's security fixes, the editor, the extensions and this "
+                                + "app's version check · on Wi-Fi, once a day"
+                             : "Off · nothing changes unless you ask, from the rows below",
                 v -> {
                     Updates.setAutomatic(host, !on);
+                    Updates.setAutomaticEditor(host, !on);
+                    AppUpdates.setEnabled(host, !on);
                     MainActivity.rebuild(host);
                 });
         automatic.setState(on ? Ui.running(dark) : Ui.needsYou(dark));
         list.addView(automatic);
-        list.addView(Ui.divider(host, dark, true));
-
-        Ui.Row editorSwitch = Ui.row(host, dark, R.drawable.ic_auto_mode, "Editor updates",
-                !ready ? "Available once Linux is set up"
-                        : !on ? "Off · automatic updates are off above"
-                        : editorAuto
-                            ? "Automatic · on Wi-Fi, while the editor is closed, with a rollback"
-                            : "Only when you ask · from the row below",
-                v -> {
-                    Updates.setAutomaticEditor(host, !editorAuto);
-                    MainActivity.rebuild(host);
-                });
-        editorSwitch.setState(on && editorAuto ? Ui.running(dark) : Ui.muted(dark));
-        list.addView(editorSwitch);
         list.addView(Ui.divider(host, dark, true));
 
         Ui.Row state = Ui.row(host, dark, R.drawable.ic_download, "What is waiting",
@@ -977,14 +1024,16 @@ final class SettingsPane implements Pane {
         list.addView(state);
         list.addView(Ui.divider(host, dark, true));
 
-        list.addView(Ui.row(host, dark, R.drawable.ic_code, "The editor",
+        Ui.Row editor = Ui.row(host, dark, R.drawable.ic_code, "The editor",
                 !ready ? "Available once Linux is set up"
                         : status.editorCurrent.isEmpty()
                             ? "Version not read yet"
                             : status.editorOutOfDate()
                                 ? status.editorCurrent + " · " + status.editorLatest + " available"
                                 : status.editorCurrent + " · newest",
-                v -> { if (ready) offerEditorUpdate(status); }));
+                v -> { if (ready) offerEditorUpdate(status); });
+        list.addView(editor);
+        showEditorMark(editor);
         list.addView(Ui.divider(host, dark, true));
 
         list.addView(Ui.row(host, dark, R.drawable.ic_extension, "Extensions",
@@ -1026,17 +1075,6 @@ final class SettingsPane implements Pane {
                 });
         if (app.newer()) self.setState(Ui.needsYou(dark));
         list.addView(self);
-        list.addView(Ui.divider(host, dark, true));
-
-        Ui.Row looking = Ui.row(host, dark, R.drawable.ic_info, "Look for new versions",
-                looks ? "On · asks GitHub once a day whether a newer PocketIDE exists"
-                      : "Off · you will not be told about new versions",
-                v -> {
-                    AppUpdates.setEnabled(host, !looks);
-                    MainActivity.rebuild(host);
-                });
-        looking.setState(looks ? Ui.running(dark) : Ui.muted(dark));
-        list.addView(looking);
 
         group.addView(list, Ui.wide(host, 8));
 
@@ -1050,6 +1088,23 @@ final class SettingsPane implements Pane {
         if (!ran.isEmpty()) note = ran + ".\n\n" + note;
         group.addView(note(dark, note), Ui.wide(host, 8));
         return group;
+    }
+
+    /**
+     * The editor's own mark beside its row: code-server's icon, read from the installed
+     * editor's files. Coder's own design, not Microsoft's, which belongs to a build this is not.
+     */
+    private void showEditorMark(final Ui.Row row) {
+        final File icon = new File(Workspace.root(host),
+                "opt/code-server/src/browser/media/pwa-icon-192.png");
+        if (!icon.isFile()) return;
+        new Thread(() -> {
+            final Bitmap picture = Icons.decodeFile(icon);
+            if (picture == null) return;
+            host.runOnUiThread(() -> {
+                if (!host.isFinishing()) row.setPicture(picture);
+            });
+        }, "editor-mark").start();
     }
 
     private void checkAppNow() {

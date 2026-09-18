@@ -1,0 +1,14 @@
+{
+  "name": "pocketide-companion",
+  "displayName": "PocketIDE Companion",
+  "description": "Lets the PocketIDE app ask this editor to open a terminal: resuming an agent's chat from the app's own Chats screen.",
+  "version": "2.5.0",
+  "publisher": "pocketide",
+  "license": "Apache-2.0",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "contributes": {}
+}

@@ -27,6 +27,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.util.Log;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -91,7 +92,7 @@ public final class WorkspaceActivity extends Activity implements KeyBar.Target {
             // The same reasoning as MainActivity's guard: this screen creates a WebView, and a
             // phone that cannot give it one throws from the constructor. Closing this screen
             // leaves the app standing; not catching it closes the app.
-            Crash.save(this, failure);
+            Log.w(App.TAG, "The editor screen could not be built", failure);
             Dialogs.message(this, "The editor could not be opened",
                     "This phone would not give the app a browser window to draw the editor in. "
                             + "Nothing in Linux was touched.");

@@ -27,6 +27,16 @@ final class Network {
     }
 
     /**
+     * A failure as a sentence: the app's own message when it wrote one, the fallback when the
+     * platform threw something an owner cannot act on.
+     */
+    static String plain(Throwable failure, String fallback) {
+        String said = failure == null ? null : failure.getMessage();
+        if (said != null && said.endsWith(".") && !said.contains("Exception")) return said;
+        return fallback;
+    }
+
+    /**
      * Why {@code what} could not be reached, as a sentence to show.
      *
      * @param what the service, capitalised, for example "The extension registry"

@@ -9,6 +9,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.util.Log;
 
 /**
  * Light, dark, or whatever the phone is doing -- and where the system bars are allowed to draw.
@@ -79,8 +80,8 @@ final class Theme {
         try {
             setBarIcons(window, dark);
         } catch (Throwable cosmetic) {
-            // The colour of the clock is not worth the app. Recorded, so it is not invisible.
-            Crash.save(activity, cosmetic);
+            // The colour of the clock is not worth the app.
+            Log.w(App.TAG, "The bar icons could not be coloured", cosmetic);
         }
     }
 

@@ -320,6 +320,21 @@ list_extensions() {
 
 # --------------------------------------------------------------------------- run
 
+# The companion extension ships inside the APK and is installed into the editor once per build
+# of the app: the stamp the app copies beside it changes with the version, and the editor
+# keeps the one it installed last.
+install_companion() {
+  local vsix="/opt/pocketide/pocketide-companion.vsix" stamp="/opt/pocketide/pocketide-companion.stamp"
+  local installed="$USER_DATA/pocketide-companion.installed"
+  [ -f "$vsix" ] && [ -f "$stamp" ] || return 0
+  if [ -f "$installed" ] && cmp -s "$stamp" "$installed"; then return 0; fi
+  # A copy, because install_extension deletes the file it was handed.
+  cp -f "$vsix" /tmp/pocketide-companion.vsix
+  if install_extension pocketide.pocketide-companion /tmp/pocketide-companion.vsix; then
+    mkdir -p "$USER_DATA" && cp -f "$stamp" "$installed"
+  fi
+}
+
 start_editor() {
   # An update that was interrupted mid-swap leaves the working editor beside the hole it was
   # meant to fill, under .previous. Renaming it back costs nothing and is the difference
@@ -352,6 +367,7 @@ start_editor() {
   # command, a client for the app's bridge, written fresh at every start so it is always the
   # one this build of the app speaks. See pocketide-tools.sh, "the phone itself".
   bash /opt/pocketide/pocketide-tools.sh phone >/dev/null 2>&1 || true
+  install_companion >/dev/null 2>&1 || true
 
   say "Starting the editor on 127.0.0.1:${PORT}…"
   "$BIN" \

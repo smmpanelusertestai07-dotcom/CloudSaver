@@ -41,18 +41,21 @@ final class Tools {
         final boolean android;
         /** The SDK is there AND its aapt2 runs AND Gradle is pointed at it: the part that counts. */
         final boolean sdk;
+        /** GitHub's command line: the way to a computer this phone is not. */
+        final boolean gh;
         final String chromiumVersion;
 
         State(boolean browser, boolean playwright, boolean android, String chromiumVersion) {
-            this(browser, playwright, android, false, chromiumVersion);
+            this(browser, playwright, android, false, false, chromiumVersion);
         }
 
-        State(boolean browser, boolean playwright, boolean android, boolean sdk,
+        State(boolean browser, boolean playwright, boolean android, boolean sdk, boolean gh,
               String chromiumVersion) {
             this.browser = browser;
             this.playwright = playwright;
             this.android = android;
             this.sdk = sdk;
+            this.gh = gh;
             this.chromiumVersion = chromiumVersion;
         }
 
@@ -66,6 +69,7 @@ final class Tools {
     static final long ANDROID_BYTES = 530L * 1000 * 1000;
     /** The JDK's share of that, so a phone that already has one is asked for the rest only. */
     static final long JDK_BYTES = 200L * 1000 * 1000;
+    static final long GH_BYTES = 12L * 1000 * 1000;
 
     private Tools() {}
 
@@ -84,6 +88,7 @@ final class Tools {
                 "yes".equals(values.get("playwright")),
                 "yes".equals(values.get("android")),
                 "yes".equals(values.get("android_sdk")),
+                "yes".equals(values.get("gh")),
                 values.getOrDefault("chromium", ""));
     }
 
@@ -108,8 +113,7 @@ final class Tools {
             }
             return process.waitFor() == 0;
         } catch (Throwable failed) {
-            progress.line(failed.getMessage() == null
-                    ? failed.getClass().getSimpleName() : failed.getMessage());
+            progress.line(Network.plain(failed, "Linux could not run the installer."));
             return false;
         }
     }

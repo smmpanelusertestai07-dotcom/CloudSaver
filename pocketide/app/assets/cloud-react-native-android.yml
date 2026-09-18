@@ -1,0 +1,30 @@
+# PocketIDE cloud build: a React Native Android APK, built on GitHub's x86-64 machines.
+#
+# Why here and not on the phone: a React Native app compiles C++ through Google's NDK, which
+# Google publishes for x86-64 Linux, Windows and Mac only.
+#
+# Use: copy this file to .github/workflows/android.yml in the project, commit, push, then
+#   gh workflow run android.yml && gh run watch && gh run download -n app-release
+name: android
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: cd android && ./gradlew assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v6
+        with:
+          name: app-release
+          path: android/app/build/outputs/apk/release/*.apk

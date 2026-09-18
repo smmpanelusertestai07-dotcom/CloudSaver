@@ -35,7 +35,9 @@ in_code() { # in_code <pattern> <file...>
   local pattern="$1"; shift
   local code
   code=$(sed 's/[[:space:]]\/\/.*$//; s/^[[:space:]]*\*.*$//; s/^[[:space:]]*#[^!].*$//' "$@" 2>/dev/null) || return 1
-  printf '%s\n' "$code" | grep -qE -- "$pattern"
+  # Not grep -q: under pipefail a quiet grep that stops at the first match can leave printf
+  # with a closed pipe and a status of 141, and a gate that fails by timing is no gate.
+  printf '%s\n' "$code" | grep -E -- "$pattern" >/dev/null
 }
 
 echo
@@ -155,8 +157,8 @@ check "UbuntuPinned" $? "the Ubuntu image is not checked against its published c
 if [ -f "$APP/build/assets/adb-root.zip" ] && [ -f "$APP/build/assets/adb-root.stamp" ]; then
   [ "$(sed -n 2p "$APP/build/assets/adb-root.stamp")" = \
     "$(sha256sum "$APP/build/assets/adb-root.zip" | cut -d' ' -f1)" ] \
-    && unzip -l "$APP/build/assets/adb-root.zip" | grep -q ' usr/bin/adb$' \
-    && unzip -l "$APP/build/assets/adb-root.zip" | grep -q ' usr/lib/ld-linux-aarch64.so.1$'
+    && unzip -l "$APP/build/assets/adb-root.zip" | grep ' usr/bin/adb$' >/dev/null \
+    && unzip -l "$APP/build/assets/adb-root.zip" | grep ' usr/lib/ld-linux-aarch64.so.1$' >/dev/null
   check "AdbRootStamped" $? "the adb root the build packed does not match its stamp, or has no adb in it"
 else
   fail "AdbRootStamped" "the build produced no adb root; build.sh has to assemble one before the gates run"
@@ -278,6 +280,15 @@ python3 "$HERE/repository.py" "$APP" && pass "RepositoryHoldsSource" \
   || fail "RepositoryHoldsSource" "a document, or a file that must not be published, is in the tree"
 
 echo
+echo "Companion"
+# Two source files the build packages into the editor extension: JSON that parses, JavaScript
+# that Node accepts, and a manifest that activates at start-up.
+python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$ASSETS/companion/package.json" \
+  && { command -v node >/dev/null 2>&1 && node --check "$ASSETS/companion/extension.js" || true; } \
+  && pass "CompanionSource" \
+  || fail "CompanionSource" "the companion extension's manifest or code does not parse"
+
+echo
 echo "Compile"
 if [ -f "$APP/build/PocketIDE-v$(python3 -c "
 import re,sys
@@ -288,6 +299,13 @@ else
   ( cd "$APP" && ./build.sh >/dev/null 2>&1 )
   check "Compiles" $? "the app does not build"
 fi
+# The built APK carries the packaged companion and its stamp, or the editor has nothing to install.
+APK_OUT=$(ls "$APP"/build/PocketIDE-v*-release.apk 2>/dev/null | head -1)
+if [ -n "$APK_OUT" ] && python3 -c "
+import sys, zipfile
+names = zipfile.ZipFile(sys.argv[1]).namelist()
+sys.exit(0 if 'assets/pocketide-companion.vsix' in names and 'assets/pocketide-companion.stamp' in names else 1)
+" "$APK_OUT"; then pass "CompanionPackaged"; else fail "CompanionPackaged" "the APK does not carry the companion extension"; fi
 
 echo
 echo "──────────────────────────────────────────"

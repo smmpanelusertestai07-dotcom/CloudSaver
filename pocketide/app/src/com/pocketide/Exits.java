@@ -9,12 +9,7 @@ import android.os.Build;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 
 /**
  * Why the app stopped last time, in words rather than silence.
@@ -235,64 +230,5 @@ final class Exits {
             }
         }
         return 0;
-    }
-
-    /**
-     * Android's own record of the last three exits, one line each, for the recovery screen.
-     *
-     * Reason names rather than numbers, because the number is what the owner would have to
-     * look up and the name is what whoever helps them needs to read: CRASH, ANR, LOW_MEMORY,
-     * EXCESSIVE_RESOURCE_USAGE, OTHER with the system's own description -- which on a phone
-     * whose maker kills apps of its own accord is the one line that says so.
-     */
-    static String recent(Context context) {
-        if (Build.VERSION.SDK_INT < 30) return "";
-        ActivityManager manager = context.getSystemService(ActivityManager.class);
-        if (manager == null) return "";
-        List<ApplicationExitInfo> records;
-        try {
-            records = manager.getHistoricalProcessExitReasons(context.getPackageName(), 0, 3);
-        } catch (Throwable unavailable) {
-            return "";
-        }
-        if (records == null || records.isEmpty()) return "";
-        StringBuilder out = new StringBuilder();
-        SimpleDateFormat clock = new SimpleDateFormat("d MMM HH:mm",
-                Locale.ROOT);
-        for (ApplicationExitInfo info : records) {
-            out.append("  ").append(clock.format(new Date(info.getTimestamp())))
-                    .append("  ").append(reasonName(info.getReason()))
-                    .append(info.getStatus() != 0 ? " status " + info.getStatus() : "")
-                    .append(info.getDescription() == null || info.getDescription().isEmpty()
-                            ? "" : " — " + info.getDescription())
-                    .append('\n');
-        }
-        return out.toString();
-    }
-
-    /** The platform's constant names, for people rather than for the compiler. */
-    private static final Map<Integer, String> REASON_NAMES = new HashMap<>();
-
-    static {
-        REASON_NAMES.put(ApplicationExitInfo.REASON_EXIT_SELF, "EXIT_SELF");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_SIGNALED, "SIGNALED");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_LOW_MEMORY, "LOW_MEMORY");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_CRASH, "CRASH");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_CRASH_NATIVE, "CRASH_NATIVE");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_ANR, "ANR");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_INITIALIZATION_FAILURE,
-                "INITIALIZATION_FAILURE");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_PERMISSION_CHANGE, "PERMISSION_CHANGE");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,
-                "EXCESSIVE_RESOURCE_USAGE");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_USER_REQUESTED, "USER_REQUESTED");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_USER_STOPPED, "USER_STOPPED");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_DEPENDENCY_DIED, "DEPENDENCY_DIED");
-        REASON_NAMES.put(ApplicationExitInfo.REASON_OTHER, "OTHER");
-    }
-
-    private static String reasonName(int reason) {
-        String name = REASON_NAMES.get(reason);
-        return name == null ? "REASON_" + reason : name;
     }
 }

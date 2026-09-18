@@ -63,7 +63,12 @@ final class Workspace {
     /** The scripts copied out of the APK on every start, so an update replaces them. */
     static final String[] SCRIPTS = {
             "pocketide-bootstrap.sh", "pocketide-editor.sh", "pocketide-tools.sh",
-            "pocketide-update.sh", "pocketide-phone.py"};
+            "pocketide-update.sh", "pocketide-phone.py",
+            // The companion extension and the stamp the editor script compares it by.
+            "pocketide-companion.vsix", "pocketide-companion.stamp",
+            // Workflow templates for what the phone cannot build; see Help, "the cloud".
+            "cloud-flutter-android.yml", "cloud-react-native-android.yml", "cloud-ios.yml",
+            "cloud-x86-64.yml"};
 
     interface Progress { void line(String message); }
 

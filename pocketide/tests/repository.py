@@ -60,6 +60,16 @@ for rel in tracked():
     if lower in RISKY_NAMES or lower.endswith(RISKY_SUFFIXES):
         problems.append("a file that must never be published: " + rel)
 
+# The companion extension is two source files; the build packages them, and the packaged
+# .vsix never lives in the tree.
+for name in ("companion/package.json", "companion/extension.js"):
+    if not os.path.isfile(os.path.join(app, "app", "assets", name)):
+        problems.append("the companion extension's source is missing: app/assets/" + name)
+for here, dirs, files in os.walk(os.path.join(app, "app", "assets")):
+    for name in files:
+        if name.endswith((".vsix", ".stamp")):
+            problems.append("a packaged file is in the tree instead of being built: " + name)
+
 # The notices reach the owner through the app, not through the tree.
 notices = os.path.join(app, "app", "assets", "open-source-notices.txt")
 if not os.path.isfile(notices) or os.path.getsize(notices) < 2000:

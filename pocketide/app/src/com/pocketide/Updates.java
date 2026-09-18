@@ -323,8 +323,7 @@ final class Updates {
             return process.waitFor() == 0;
         } catch (Throwable failed) {
             if (failed instanceof InterruptedException) Thread.currentThread().interrupt();
-            progress.line(failed.getMessage() == null
-                    ? failed.getClass().getSimpleName() : failed.getMessage());
+            progress.line(Network.plain(failed, "Linux could not run the update."));
             return false;
         } finally {
             // The same finally Workspace.run() has, for the same reason. Without it a broken
@@ -359,8 +358,7 @@ final class Updates {
             return !into.isEmpty();
         } catch (Throwable unreadable) {
             if (unreadable instanceof InterruptedException) Thread.currentThread().interrupt();
-            progress.line(unreadable.getMessage() == null
-                    ? unreadable.getClass().getSimpleName() : unreadable.getMessage());
+            progress.line(Network.plain(unreadable, "The list of updates could not be read."));
             return false;
         } finally {
             if (process != null) process.destroy();

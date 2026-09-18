@@ -157,8 +157,7 @@ final class Installer {
         } catch (IOException | RuntimeException failed) {
             if (session != null) session.abandon();
             expecting = "";
-            return failed.getMessage() == null ? failed.getClass().getSimpleName()
-                    : failed.getMessage();
+            return Network.plain(failed, "Android would not start the install.");
         } finally {
             if (session != null) session.close();
         }
@@ -351,8 +350,7 @@ final class Installer {
             context.startActivity(open);
             return "";
         } catch (Throwable refused) {
-            return "Android would not open it: " + (refused.getMessage() == null
-                    ? refused.getClass().getSimpleName() : refused.getMessage());
+            return Network.plain(refused, "Android would not open it.");
         }
     }
 

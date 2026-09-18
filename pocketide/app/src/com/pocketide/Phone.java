@@ -751,7 +751,8 @@ final class Phone {
 
     // ------------------------------------------------------------------ running adb
 
-    private static String run(Context context, String... adbArguments) {
+    /** Runs adb with these arguments and returns what it printed, or one sentence on failure. */
+    static String run(Context context, String... adbArguments) {
         final StringBuilder out = new StringBuilder();
         Process process = null;
         try {
@@ -766,8 +767,7 @@ final class Phone {
             }
             process.waitFor();
         } catch (Throwable failed) {
-            out.append(failed.getMessage() == null
-                    ? failed.getClass().getSimpleName() : failed.getMessage());
+            out.append(Network.plain(failed, "adb could not be run."));
         } finally {
             Workspace.quit(process);
         }

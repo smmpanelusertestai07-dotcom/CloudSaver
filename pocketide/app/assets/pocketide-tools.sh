@@ -465,6 +465,32 @@ link_adb() {
   ln -sf /usr/local/bin/adb "$pt/adb"
 }
 
+# GitHub's own command line, from GitHub's own release, pinned. It is what lets an agent push,
+# open a pull request, start a build on GitHub's x86-64 or Mac machines and bring the result
+# back (gh run download): the computer this phone is not. Signing in is the owner's, once,
+# in the terminal: gh auth login.
+GH_VERSION="2.101.0"
+GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_arm64.tar.gz"
+GH_SHA256="b57e8063f18862647c9d22727c32e9da1b963f8bf9db648fe123a6975695640f"
+
+install_gh() {
+  local archive="/tmp/gh_linux_arm64.tar.gz"
+  fetch_pinned "$GH_URL" "$archive" "$GH_SHA256" "GitHub's command line (about 12 MB)" || return 1
+  say "Unpacking…"
+  rm -rf /tmp/gh_unpack && mkdir -p /tmp/gh_unpack
+  if ! tar -xzf "$archive" -C /tmp/gh_unpack; then
+    say "The archive could not be unpacked."; rm -f "$archive"; return 1
+  fi
+  install -m 0755 "/tmp/gh_unpack/gh_${GH_VERSION}_linux_arm64/bin/gh" /usr/local/bin/gh || {
+    say "gh could not be installed."; return 1; }
+  rm -rf /tmp/gh_unpack "$archive"
+  # The templates for what this phone cannot build, where an agent and an owner can find them.
+  mkdir -p "$HOME_DIR/templates/cloud"
+  cp -f /opt/pocketide/cloud-*.yml "$HOME_DIR/templates/cloud/" 2>/dev/null || true
+  say "Installed gh $(gh --version 2>/dev/null | head -1 | awk '{print $3}'). Sign in once with: gh auth login"
+  say "Workflow templates are in ~/templates/cloud."
+}
+
 install_phone() {
   install_phone_command
   link_adb
@@ -555,8 +581,9 @@ EOF
 # --------------------------------------------------------------------------- what is present
 
 check() {
-  local browser=no playwright=no android=no android_sdk=no
+  local browser=no playwright=no android=no android_sdk=no gh=no
   command -v chromium >/dev/null 2>&1 && browser=yes
+  command -v gh >/dev/null 2>&1 && gh=yes
   [ -d "$TOOLS_DIR/node_modules/playwright" ] && playwright=yes
   command -v javac >/dev/null 2>&1 && android=yes
   # Two repairs first, both idempotent and both silent: Gradle can re-install platform-tools
@@ -575,6 +602,7 @@ check() {
   echo "playwright=$playwright"
   echo "android=$android"
   echo "android_sdk=$android_sdk"
+  echo "gh=$gh"
   if [ "$browser" = yes ]; then
     echo "chromium=$(chromium --version 2>/dev/null | head -1)"
   fi
@@ -591,6 +619,7 @@ case "${1:-check}" in
   browser)     install_browser ;;
   playwright)  install_playwright ;;
   android)     install_android ;;
+  gh)          install_gh ;;
   phone)       install_phone ;;
   tune)        tune_gradle ;;
   smoke)       smoke_browser ;;

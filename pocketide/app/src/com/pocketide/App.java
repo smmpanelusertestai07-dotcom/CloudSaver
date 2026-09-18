@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 
 /**
  * Two things happen before any screen exists: the crash handler is armed, and the notification
@@ -17,6 +18,9 @@ import android.os.Bundle;
  * costs nothing and removes the race entirely.
  */
 public final class App extends Application {
+    /** The tag every log line from this app carries. */
+    static final String TAG = "PocketIDE";
+
     static final String CHANNEL_WORKSPACE = "Linux";
 
     /**
@@ -45,24 +49,14 @@ public final class App extends Application {
     @Override public void onCreate() {
         super.onCreate();
         try {
-            Boot.starting(this);
-        } catch (Throwable evenThat) {
-            // Preferences unreadable. The screens below still try, and say so if they cannot.
-        }
-        try {
-            Crash.arm(this);
-        } catch (Throwable notArmed) {
-            // The platform's own handler stays in place.
-        }
-        try {
             Exits.noteStart(this);
         } catch (Throwable unreadable) {
-            Crash.save(this, unreadable);
+            Log.w(TAG, "The exit record could not be read", unreadable);
         }
         try {
             watchForegroundState();
         } catch (Throwable notWatched) {
-            Crash.save(this, notWatched);
+            Log.w(TAG, "The foreground watcher could not be registered", notWatched);
         }
         try {
             if (Build.VERSION.SDK_INT >= 26) {
@@ -78,7 +72,7 @@ public final class App extends Application {
                 }
             }
         } catch (Throwable noChannel) {
-            Crash.save(this, noChannel);
+            Log.w(TAG, "The notification channel could not be created", noChannel);
         }
     }
 

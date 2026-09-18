@@ -85,6 +85,8 @@ final class Prefs {
     static final String PHONE_FILES = "phone_files";
     /** The phone has been paired with itself over Wireless debugging at least once. See Phone. */
     static final String PHONE_PAIRED = "phone_paired";
+    /** True once Android 12's ceiling on helper processes was lifted through the phone's own adb. */
+    static final String PHANTOM_LIFTED = "phantom_lifted";
     /** Timestamp of the last exit the owner has already been told about. */
     static final String EXIT_SEEN_AT = "exit_seen_at";
     /**

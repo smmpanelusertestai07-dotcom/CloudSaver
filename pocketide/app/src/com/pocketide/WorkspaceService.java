@@ -402,8 +402,7 @@ public final class WorkspaceService extends Service {
     // ------------------------------------------------------------------ plumbing
 
     private void fail(Throwable failure) {
-        String raw = failure.getMessage() == null
-                ? failure.getClass().getSimpleName() : failure.getMessage();
+        String raw = Network.plain(failure, "Linux stopped with an error the app could not name.");
         Prefs.of(this).edit()
                 .putString(Prefs.LAST_FAILURE, raw)
                 .putLong(Prefs.LAST_FAILURE_AT, System.currentTimeMillis())

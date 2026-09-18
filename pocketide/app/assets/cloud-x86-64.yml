@@ -1,0 +1,25 @@
+# PocketIDE cloud build: anything that needs an x86-64 computer, run on GitHub's.
+#
+# Unity, Unreal, an Android emulator, a program published for x86-64 only: none of these
+# run on a phone's arm64 processor, and emulating one there is fifty times slower. This
+# gives the project an x86-64 Ubuntu machine for the length of a run, free for a public
+# repository. Put the commands in the run step; anything written to out/ comes back.
+#
+# Use: copy this file to .github/workflows/x86-64.yml in the project, edit the run step,
+# commit, push, then:  gh workflow run x86-64.yml && gh run watch && gh run download -n out
+name: x86-64
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          mkdir -p out
+          uname -m > out/machine.txt
+          # Replace this with the build. For Unity, see GameCI (game.ci) and its licence step.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: out
+          path: out/

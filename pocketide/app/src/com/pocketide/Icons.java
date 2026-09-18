@@ -94,6 +94,16 @@ final class Icons {
         }, "icon-" + id).start();
     }
 
+    /** A picture from a file on this phone, decoded small; null when it is not one. */
+    static Bitmap decodeFile(File file) {
+        if (file == null || !file.isFile() || file.length() > LARGEST_BYTES) return null;
+        try {
+            return decodeSmall(Files.readAllBytes(file.toPath()));
+        } catch (Throwable unreadable) {
+            return null;
+        }
+    }
+
     private static File cacheFile(Context context, String id) {
         File dir = new File(context.getCacheDir(), "icons");
         if (!dir.isDirectory()) dir.mkdirs();

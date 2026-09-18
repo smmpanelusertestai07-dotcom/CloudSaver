@@ -317,12 +317,18 @@ final class Texts {
                      + "own daily limits, Kilo\u2019s free setting routing to whoever will "
                      + "take the request, prompts possibly kept. What IS free and unlimited "
                      + "is compute: GitHub Actions runs a public repository\u2019s builds "
-                     + "free with no minute limit.\n\nKimi K3 is real and open-weight, and "
-                     + "it is already in Kilo Code\u2019s list through OpenRouter, where new "
-                     + "models appear on their own \u2014 but it is paid there, and at about "
-                     + "2.8 trillion parameters it is not something any phone runs. A model "
-                     + "that runs here on a 4 GB phone is about a billion parameters; that "
-                     + "one is unlimited, private, and modest."},
+                     + "free with no minute limit.\n\nGLM and Kimi, by their own price "
+                     + "pages: Z.AI serves GLM-4.7-Flash, GLM-4.5-Flash and GLM-4.6V-Flash "
+                     + "free, rate-limited, and GLM-5.3-Flash at $0.15 in and $0.50 out per "
+                     + "million tokens \u2014 Kilo Code lists Z.AI as a provider, so a key "
+                     + "from open.bigmodel.cn or z.ai is all it takes. Moonshot has no free "
+                     + "tier: Kimi K3 is $3 in and $15 out per million, and Kilo Code lists "
+                     + "Moonshot too. Both are open-weight and neither runs on a phone: K3 is "
+                     + "about 2.8 trillion parameters. What runs here on a 4 GB phone is a "
+                     + "one-to-three-billion-parameter model through llama.cpp, a few words a "
+                     + "second, private and unlimited and nowhere near a frontier model; a "
+                     + "frontier model is a data centre, and nothing done to this phone "
+                     + "changes that."},
             {"Agents",
              "Browser automation, agent browsing, a cloud computer, \u201cBettergravity\u201d?",
              "Browser automation: Microsoft\u2019s own Playwright extension is on Open VSX "
@@ -380,7 +386,9 @@ final class Texts {
                      + "way.\n\nNot here, and Help says why in each case: an iPhone app, a "
                      + "Unity or Unreal game, an Android app with C or C++ in it \u2014 which "
                      + "includes Flutter and React Native \u2014 and anything that needs an "
-                     + "Android emulator or an x86-64 program."},
+                     + "Android emulator or an x86-64 program. Every one of those builds on "
+                     + "GitHub\u2019s computers from here; see the entry on building what this "
+                     + "phone cannot."},
             {"Building",
              "How does the agent see what it built? Screenshots, recordings, the browser.",
              "Every picture lands under ~/projects, where the agent reads it like any other "
@@ -410,7 +418,43 @@ final class Texts {
                      + "of processor, which is Google\u2019s decision rather than a limit of "
                      + "your phone. That includes Flutter and React Native: both compile C++ "
                      + "through Google\u2019s NDK, which Google publishes for x86-64 Linux, "
-                     + "Windows and Mac only, so neither builds here today."},
+                     + "Windows and Mac only. Community rebuilds exist \u2014 an aarch64 NDK "
+                     + "r29 (lzhiyong/termux-ndk, 344 MB) and a Flutter SDK rebuilt for arm64, "
+                     + "because Google\u2019s own arm64 Flutter bundle ships an x86-64 part "
+                     + "inside \u2014 and people have built with them in Termux. This app does "
+                     + "not install them: neither is published by its maker, and both break "
+                     + "with the next release. The reliable way is GitHub\u2019s computer, in "
+                     + "the next entry."},
+            {"Building",
+             "How do I build what this phone cannot: Flutter, React Native, an iPhone app, Unity?",
+             "On GitHub\u2019s computers, from here. Settings \u2192 The computer \u2192 "
+                     + "GitHub\u2019s command line installs gh, GitHub\u2019s own tool; sign "
+                     + "in once with gh auth login. Then an agent, or you, can push a project, "
+                     + "start a build on an x86-64 Linux machine or a Mac, watch it, and bring "
+                     + "the result back: gh workflow run android.yml, gh run watch, gh run "
+                     + "download. Ready-made workflows for a Flutter APK, a React Native APK, "
+                     + "an iPhone build and a plain x86-64 machine land in ~/templates/cloud; "
+                     + "copy one into the project\u2019s .github/workflows and commit "
+                     + "it.\n\nWhat it costs: a public repository builds free with no minute "
+                     + "limit; a private one has 2,000 free minutes a month, and a Mac minute "
+                     + "counts ten. Codemagic gives 500 Mac minutes a month free. The APK that "
+                     + "comes back installs with phone install, like one built here.\n\nUnity "
+                     + "and Unreal need their own editors on that x86-64 machine and a licence "
+                     + "of their own; GameCI documents Unity on GitHub Actions. An iPhone "
+                     + "build still needs an Apple developer account to reach a phone."},
+            {"Building",
+             "Can the computer be x86-64 instead, so everything is possible?",
+             "No, and no app can make it so. This phone\u2019s processor is arm64; an "
+                     + "x86-64 computer inside it is emulation, instruction by instruction, "
+                     + "at a tenth to a fiftieth of the speed with no hardware help \u2014 "
+                     + "and 4 GB shared with Android. A build that takes five minutes on a "
+                     + "laptop takes hours, an Android emulator inside it does not start at "
+                     + "all, and Unity\u2019s editor needs a graphics card no emulator "
+                     + "provides. The Linux here is the fastest computer this phone can be, "
+                     + "and it is a real one: it builds and runs everything published for "
+                     + "arm64, which is most things.\n\nThe x86-64 computer is GitHub\u2019s, "
+                     + "free, and it is one command away from the terminal here: the entry "
+                     + "above says how."},
             {"Building",
              "Can I test an Android app here?",
              "Yes \u2014 on this phone, which is the test device, and from Android 11 the "
@@ -497,8 +541,9 @@ final class Texts {
                      + "build still needs that editor. Nor are they editor features anywhere: "
                      + "on a Windows PC, Unity and Unreal are their own programs beside Visual "
                      + "Studio Code, which only edits their scripts. The nearest real thing is a cloud "
-                     + "x86-64 machine \u2014 GitHub Actions again \u2014 running Unity in "
-                     + "batch mode on code written here.\n\nA game the size of Free Fire is "
+                     + "x86-64 machine \u2014 GitHub Actions, one command away with GitHub\u2019s "
+                     + "command line from Settings \u2014 running Unity in batch mode on code "
+                     + "written here.\n\nA game the size of Free Fire is "
                      + "Unity, and years of work by a studio: dozens to hundreds of engineers "
                      + "and artists, a 3D art pipeline on GPU workstations, authoritative game "
                      + "servers, anti-cheat, a device farm. That is a hardware and headcount "
@@ -544,21 +589,22 @@ final class Texts {
                      + "12 and later also keep a ceiling of 32 helper processes across every "
                      + "app and end the extras; an editor, a build and an agent together can "
                      + "reach it. Android 14 has a switch for it under Developer options, "
-                     + "Disable child process restrictions; Android 12 and 13 have none.\n\nAuto-"
+                     + "Disable child process restrictions; Android 12 and 13 have none of "
+                     + "their own, so this app offers the same change through its own adb once "
+                     + "the phone is paired: Settings \u2192 The computer \u2192 Android\u2019s "
+                     + "limit on helper processes. It applies to the whole phone, survives a "
+                     + "reboot, and the same row puts it back.\n\nAuto-"
                      + "launch is not one of them: this app never starts itself. Data Saver "
                      + "and Adaptive Battery do not affect a running job. Plugging the phone "
                      + "in helps: phones relax all of this while charging."},
             {"Phone",
              "The app closes as soon as I open it.",
-             "It will not do that twice more. After two openings that never reached a "
-                     + "screen, the third opens a plain recovery screen instead, with three "
-                     + "buttons: try again; copy the details, for a bug report; and reset the "
-                     + "app\u2019s settings, which does not touch Linux, the editor, the "
-                     + "extensions or your projects. Nothing in Linux is ever lost by the app "
-                     + "closing.\n\nIf it still closes with nothing shown, the phone is "
-                     + "ending the process before the app runs at all: check the Battery "
+             "It should not, and nothing in Linux is ever lost by the app closing: Linux, "
+                     + "the editor, the extensions and your projects live in their own "
+                     + "storage. If it does, Android shows its own message; check the Battery "
                      + "settings the entry below names, and that the APK came from the "
-                     + "project\u2019s own GitHub Releases page."},
+                     + "project\u2019s own GitHub Releases page, then install it again over "
+                     + "the old one."},
             {"Phone",
              "Will my phone get hot?",
              "During set-up, yes \u2014 it unpacks and installs for twenty minutes or so. "
@@ -621,8 +667,7 @@ final class Texts {
                      + "/opt/code-server and ~/.local/share/code-server are the editor, its "
                      + "settings, the extensions and every extension\u2019s own storage, "
                      + "sign-ins included; files/phone is the app\u2019s own adb, the pairing "
-                     + "key and the allow-list; files/last-crash.txt is the note the recovery "
-                     + "screen can copy. "
+                     + "key and the allow-list. "
                      + "Settings \u2192 Storage \u2192 What is stored where measures each of "
                      + "these.\n\nThe agents\u2019 chats are in two places, and that is the "
                      + "honest part. On the phone: Claude Code keeps its sessions under "
@@ -638,8 +683,15 @@ final class Texts {
                      + "data thirty days for a consumer account that has not opted into "
                      + "training and five years for one that has; OpenAI, Google and the "
                      + "providers behind Kilo Code have their own pages. This app sends "
-                     + "nothing itself.\n\nSettings \u2192 Storage \u2192 Clear agent chats "
-                     + "deletes the transcripts on the phone and nothing else; Remove "
+                     + "nothing itself. Neither fetches a chat back from your account: Claude "
+                     + "Code\u2019s own documentation says sessions are stored locally and "
+                     + "that its desktop app, claude.ai and its VS Code extension each keep "
+                     + "their own history, and Codex\u2019s surfaces share one server on the "
+                     + "same machine, not a cloud copy. The copy here is the copy.\n\n"
+                     + "Settings \u2192 Storage \u2192 Agent chats lists every chat by agent "
+                     + "with its project, date and size; tap one and the editor opens with the "
+                     + "agent resuming it (claude --resume, codex resume; Kilo Code from its "
+                     + "own History), select to delete some, or delete every one. Remove "
                      + "everything, or uninstalling, deletes all of it. Nothing is ever "
                      + "written to Downloads, Documents or an SD card unless you turn on The "
                      + "phone\u2019s files and save something into ~/phone yourself."},
@@ -771,8 +823,8 @@ final class Texts {
 
                     + "The agents' chats.\n"
                     + "Kept on the phone by each agent, inside Linux, in the folder that "
-                    + "agent's own documentation names; Settings → Storage → Clear agent "
-                    + "chats deletes them. They are not fetched back from your account with "
+                    + "agent's own documentation names; Settings → Storage → Agent chats "
+                    + "lists them and deletes what you choose. They are not fetched back from your account with "
                     + "the company: the copy on the phone is the one the agent resumes from, "
                     + "which is why it is there. And sent to that agent's company as part of "
                     + "using its model, where they are held under that company's terms, which "
@@ -803,11 +855,6 @@ final class Texts {
                     + "Generated on this phone, kept on this phone, and used only to stop other "
                     + "apps on the same phone from reaching the editor from inside the "
                     + "phone.\n\n"
-
-                    + "If the app cannot start.\n"
-                    + "A short technical note is kept in the app's own storage for the recovery "
-                    + "screen's Copy button, so a bug report can say what happened. It is "
-                    + "deleted the next time a screen is drawn, and never sent anywhere.\n\n"
 
                     + "On uninstall.\n"
                     + "Everything is deleted with the app.";

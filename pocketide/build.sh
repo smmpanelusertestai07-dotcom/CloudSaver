@@ -15,8 +15,8 @@ APP_BASENAME="PocketIDE"
 # them from here, and the screens can only take them from there. tests/version_agreement.py
 # fails the build if the two ever disagree, because an app that reports one version to the
 # package manager and shows another in Settings produces bug reports nobody can act on.
-VERSION_NAME="2.4.5"
-VERSION_CODE="245"
+VERSION_NAME="2.5.0"
+VERSION_CODE="250"
 
 if [[ ! -f "$ANDROID_JAR" || ! -x "$BUILD_TOOLS/aapt2" ]]; then
   echo "Android SDK platform 35 and build-tools 35.0.0 are required." >&2
@@ -28,6 +28,54 @@ mkdir -p "$BUILD_DIR/classes" "$BUILD_DIR/dex" "$BUILD_DIR/gen" "$BUILD_DIR/asse
 
 # Package only source assets, through a staging copy, so a build never modifies the source tree.
 cp -a "$PROJECT_DIR/app/assets/." "$BUILD_DIR/assets/"
+
+# The companion extension, packaged from its two source files under app/assets/companion into
+# the .vsix the editor installs (a zip with the manifest a VS Code build expects). The stamp
+# beside it is what pocketide-editor.sh compares, so a new build re-installs it exactly once.
+package_companion() {
+  local src="$PROJECT_DIR/app/assets/companion" out="$BUILD_DIR/assets/pocketide-companion.vsix"
+  python3 - "$src" "$out" "$VERSION_NAME" <<'PY'
+import json, sys, zipfile, os
+src, out, version = sys.argv[1:4]
+manifest = json.load(open(os.path.join(src, "package.json")))
+manifest["version"] = version
+vsixmanifest = f"""<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="{manifest['name']}" Version="{version}" Publisher="{manifest['publisher']}"/>
+    <DisplayName>{manifest['displayName']}</DisplayName>
+    <Description xml:space="preserve">{manifest['description']}</Description>
+    <Categories>Other</Categories>
+    <Properties>
+      <Property Id="Microsoft.VisualStudio.Code.Engine" Value="{manifest['engines']['vscode']}"/>
+      <Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="workspace"/>
+    </Properties>
+  </Metadata>
+  <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation>
+  <Dependencies/>
+  <Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets>
+</PackageManifest>
+"""
+types = """<?xml version="1.0" encoding="utf-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="json" ContentType="application/json"/>
+  <Default Extension="js" ContentType="application/javascript"/>
+  <Default Extension="vsixmanifest" ContentType="text/xml"/>
+</Types>
+"""
+stamp = (2020, 1, 1, 0, 0, 0)  # a fixed time, so the same sources give the same bytes
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for name, data in (("[Content_Types].xml", types), ("extension.vsixmanifest", vsixmanifest),
+                       ("extension/package.json", json.dumps(manifest, indent=2) + "\n"),
+                       ("extension/extension.js", open(os.path.join(src, "extension.js")).read())):
+        info = zipfile.ZipInfo(name, date_time=stamp)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        z.writestr(info, data)
+open(out[:-len(".vsix")] + ".stamp", "w").write(version + "\n")
+PY
+  rm -rf "$BUILD_DIR/assets/companion"
+}
+package_companion
 find "$BUILD_DIR/assets" -type d -name '__pycache__' -prune -exec rm -rf -- {} + 2>/dev/null || true
 find "$BUILD_DIR/assets" -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete 2>/dev/null || true
 
