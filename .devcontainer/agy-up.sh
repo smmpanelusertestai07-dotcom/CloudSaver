@@ -90,6 +90,16 @@ for _ in $(seq 1 60); do
 done
 curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/" || say "hub not answering yet; see $LOG/hub.log"
 
+# Wait for the new hostname to resolve publicly before anyone opens it. A browser that looks
+# it up too early caches the failure, and Cloudflare's negative TTL keeps it failing for
+# half an hour even after the record exists.
+say "waiting for $URL to resolve"
+for _ in $(seq 1 60); do
+  curl -fsS -o /dev/null --max-time 5 "$URL/" && break
+  sleep 5
+done
+curl -fsS -o /dev/null --max-time 5 "$URL/" || say "the tunnel hostname does not resolve yet; wait a minute and reload"
+
 # 6. point the extension at the tunnel (workspace settings; keeps every other key)
 python3 - "$WS/.vscode/settings.json" "$URL" "$(( 10000 + $(date +%s) % 50000 ))" <<'PY'
 import json, re, shutil, sys
