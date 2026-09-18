@@ -61,8 +61,10 @@ pkill -f "cloudflared tunnel --no-autoupdate --url http://localhost:$PORT" 2>/de
 : >"$LOG/tunnel.log"
 bg nohup "$CF" tunnel --no-autoupdate --url "http://localhost:$PORT" >"$LOG/tunnel.log" 2>&1 </dev/null &
 
-# 4. hub: always our own, so it outlives window reloads
-pkill -f "agy --hub --hub-port=$PORT" 2>/dev/null || true
+# 4. hub: always our own, so it outlives window reloads. Kill every hub, including one the
+# extension started on its own ephemeral port: they share one token store
+# (--app_data_dir=antigravity), so two of them fight over the sign-in state.
+pkill -f "agy --hub" 2>/dev/null || true
 sleep 1
 say "starting hub on :$PORT"
 (
