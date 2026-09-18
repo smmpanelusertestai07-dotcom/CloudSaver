@@ -995,8 +995,7 @@ if re.search(r'new (java\.io\.)?(FileOutputStream|FileWriter|PrintWriter|RandomA
     problems.append("Chats writes into the agents' storage, which it must only read")
 screen = code(read("ChatsActivity.java"))
 open_fn = re.search(r'private void open\(Chats\.Chat chat\) \{(.*?)\n    \}', screen, re.S)
-if (not open_fn or 'PhoneBroker.bridgeDir(this)' not in open_fn.group(1)
-        or '.put("action", "terminal")' not in open_fn.group(1)
+if (not open_fn or 'Companion.terminal(this, chat.agent,' not in open_fn.group(1)
         or "WorkspaceActivity.class" not in open_fn.group(1)):
     problems.append("opening a chat does not go through the companion's inbox in the bridge")
 companion = open(app + "/app/assets/companion/extension.js").read()
@@ -1004,8 +1003,17 @@ if "const INBOX = '/run/pocketide/editor-inbox';" not in companion \
         or "fs.unlinkSync(file)" not in companion or "if (request) act(request);" not in companion:
     problems.append("the companion does not read its inbox in /run/pocketide, or acts before "
                     "deleting a request")
-if "request.action !== 'terminal'" not in companion or "sendText(request.command, true)" not in companion:
-    problems.append("the companion runs something other than a terminal command")
+if ("request.action === 'terminal'" not in companion or "sendText(request.command, true)" not in companion
+        or "request.action === 'command'" not in companion
+        or "vscode.commands.executeCommand(request.command)" not in companion):
+    problems.append("the companion does not confine itself to a terminal and the editor's own commands")
+if re.search(r"child_process|\beval\(|new Function\(|process\.binding", companion):
+    problems.append("the companion reaches for a shell or dynamic code of its own")
+companion_src = code(read("Companion.java"))
+if ("PhoneBroker.bridgeDir(context)" not in companion_src
+        or '.put("action", "terminal")' not in companion_src
+        or '.put("action", "command")' not in companion_src):
+    problems.append("Companion does not write its two requests into the bridge folder")
 package = open(app + "/app/assets/companion/package.json").read()
 if '"activationEvents": ["onStartupFinished"]' not in package or '"publisher": "pocketide"' not in package:
     problems.append("the companion's manifest no longer activates at start-up under pocketide")
@@ -1034,6 +1042,35 @@ if 'echo "gh=$gh"' not in tools_sh or '"yes".equals(values.get("gh"))' not in co
     problems.append("the app cannot tell whether gh is installed")
 if 'offerTools("gh", "GitHub\'s command line"' not in settings_src:
     problems.append("Settings offers no way to install GitHub's command line")
+
+# --- 25. what cannot run here is said before the download; the empty chat is hidden ------------
+#
+# Antigravity's backend aborts on a 39-bit kernel, which most phones have; the app reads its
+# own memory map to know which this phone is and says so on both lists, and the tap still
+# offers the choice. The editor's built-in chat, which nothing answers in this build, is hidden
+# by the editor's own setting. A tap on an installed agent opens its panel through the companion.
+kernel = code(read("Kernel.java"))
+if '"/proc/self/maps"' not in kernel or "1L << 39" not in kernel or "highest == 0 ? 48" not in kernel:
+    problems.append("Kernel.vaBits() does not read the process's own map, or refuses blindly when "
+                    "it cannot")
+for name in ("AgentsPane.java", "HomePane.java"):
+    text = code(read(name))
+    if "Agents.ANTIGRAVITY_ID.equals(agent.id) && Kernel.narrow()" not in text:
+        problems.append("%s does not say when Antigravity cannot run on this phone" % name)
+    if "Extensions.panelCommand(host, agent.id)" not in text or "Companion.command(host, command)" not in text:
+        problems.append("%s opens the editor without bringing the agent's panel to the front" % name)
+agents_src = code(read("Agents.java"))
+if 'static final String ANTIGRAVITY_ID = "Google.google-antigravity";' not in agents_src \
+        or "antigravity-cli issue 64" not in agents_src:
+    problems.append("Agents no longer names Antigravity's backend problem with its source")
+editor_sh = open(app + "/app/assets/pocketide-editor.sh").read()
+if editor_sh.count('"chat.disableAIFeatures": True') != 1 or editor_sh.count('"chat.disableAIFeatures": true') != 2:
+    problems.append("the editor's built-in chat is not hidden in every settings block the script writes")
+texts_src = code(read("Texts.java"))
+for said in ("Is the Antigravity extension real, and why is it so small?", "antigravity-cli, issue 64",
+             "Build with Agent"):
+    if said not in texts_src:
+        problems.append("Help no longer says: %s" % said)
 
 for problem in problems:
     print("  " + problem, file=sys.stderr)

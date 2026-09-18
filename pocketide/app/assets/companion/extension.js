@@ -51,13 +51,20 @@ function drain() {
 }
 
 function act(request) {
-  if (request.action !== 'terminal' || typeof request.command !== 'string') return;
-  const terminal = vscode.window.createTerminal({
-    name: typeof request.name === 'string' && request.name ? request.name : 'PocketIDE',
-    cwd: typeof request.cwd === 'string' && request.cwd ? request.cwd : undefined,
-  });
-  terminal.show(true);
-  terminal.sendText(request.command, true);
+  if (typeof request.command !== 'string' || !request.command) return;
+  if (request.action === 'terminal') {
+    const terminal = vscode.window.createTerminal({
+      name: typeof request.name === 'string' && request.name ? request.name : 'PocketIDE',
+      cwd: typeof request.cwd === 'string' && request.cwd ? request.cwd : undefined,
+    });
+    terminal.show(true);
+    terminal.sendText(request.command, true);
+    return;
+  }
+  if (request.action === 'command') {
+    // One of the editor's own commands, by id: bringing an agent's panel to the front.
+    vscode.commands.executeCommand(request.command).then(undefined, () => {});
+  }
 }
 
 module.exports = { activate, deactivate };

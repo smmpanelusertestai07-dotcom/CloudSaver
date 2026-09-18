@@ -10,9 +10,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -20,7 +17,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.json.JSONObject;
 
 /**
  * Every chat the agents keep on this phone: by agent, newest first, with its project, its
@@ -32,8 +28,6 @@ import org.json.JSONObject;
  * command; its chats open from its own History view, and the screen says so.
  */
 public final class ChatsActivity extends Activity {
-
-    private static final String INBOX = "editor-inbox";
 
     private boolean dark;
     private LinearLayout content;
@@ -211,23 +205,8 @@ public final class ChatsActivity extends Activity {
                     "Open the editor", () -> startActivity(new Intent(this, WorkspaceActivity.class)));
             return;
         }
-        File inbox = new File(PhoneBroker.bridgeDir(this), INBOX);
-        if (!inbox.isDirectory() && !inbox.mkdirs()) {
-            Dialogs.message(this, "Could not ask the editor",
-                    "The folder the editor reads requests from could not be created.");
-            return;
-        }
-        try {
-            JSONObject request = new JSONObject()
-                    .put("action", "terminal")
-                    .put("name", chat.agent)
-                    .put("cwd", chat.project.isEmpty() ? "/root/projects" : chat.project)
-                    .put("command", chat.resume);
-            File file = new File(inbox, System.currentTimeMillis() + ".json");
-            try (FileOutputStream out = new FileOutputStream(file)) {
-                out.write(request.toString().getBytes(StandardCharsets.UTF_8));
-            }
-        } catch (IOException | org.json.JSONException failed) {
+        if (!Companion.terminal(this, chat.agent,
+                chat.project.isEmpty() ? "/root/projects" : chat.project, chat.resume)) {
             Dialogs.message(this, "Could not ask the editor",
                     "The request to the editor could not be written.");
             return;

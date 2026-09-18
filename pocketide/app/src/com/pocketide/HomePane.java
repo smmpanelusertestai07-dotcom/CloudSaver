@@ -216,14 +216,20 @@ final class HomePane implements Pane {
         boolean first = true;
         for (Agents.Agent agent : Agents.ALL) {
             boolean here = Extensions.has(present, agent.id);
-            String value = here ? "Installed · open it from the editor's side panel" : agent.plan;
+            boolean refused = Agents.ANTIGRAVITY_ID.equals(agent.id) && Kernel.narrow();
+            String value = refused ? "Cannot run on this phone's 39-bit kernel · tap to read why"
+                    : here ? "Installed · tap to open it in the editor" : agent.plan;
             if (!first) agentList.addView(Ui.divider(host, dark, true));
             first = false;
             Ui.Row row = Ui.row(host, dark,
-                    here ? R.drawable.ic_check : R.drawable.ic_install,
+                    refused ? R.drawable.ic_info : here ? R.drawable.ic_check : R.drawable.ic_install,
                     agent.name + " · " + agent.publisher, value,
-                    v -> MainActivity.open(host, "agents"));
-            if (here) row.setState(Ui.running(dark));
+                    v -> {
+                        if (here && !refused) openPanel(agent);
+                        else MainActivity.open(host, "agents");
+                    });
+            if (refused) row.setState(Ui.needsYou(dark));
+            else if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
             agentList.addView(row);
         }
@@ -235,6 +241,17 @@ final class HomePane implements Pane {
                 installed ? "Open VSX · verified publishers by default"
                         : "Available once set-up has finished",
                 v -> MainActivity.open(host, "agents")));
+    }
+
+    /** The editor, with this agent's panel in front, through the companion extension. */
+    private void openPanel(Agents.Agent agent) {
+        new Thread(() -> {
+            String command = Extensions.panelCommand(host, agent.id);
+            if (!command.isEmpty()) Companion.command(host, command);
+            host.runOnUiThread(() -> {
+                if (!host.isFinishing()) host.startActivity(new Intent(host, WorkspaceActivity.class));
+            });
+        }, "open-panel").start();
     }
 
     private int countRecommendedInstalled(List<String> present) {

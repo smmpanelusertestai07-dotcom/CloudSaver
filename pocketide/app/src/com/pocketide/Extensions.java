@@ -222,6 +222,14 @@ final class Extensions {
         return panels;
     }
 
+    /** The editor command that brings {@code extensionId}'s panel to the front, or "". */
+    static String panelCommand(Context context, String extensionId) {
+        for (Panel panel : panels(context)) {
+            if (panel.extensionId.equalsIgnoreCase(extensionId)) return panel.command;
+        }
+        return "";
+    }
+
     private static String firstActivityBarContainer(JSONObject manifest) {
         JSONObject contributes = manifest.optJSONObject("contributes");
         if (contributes == null) return "";

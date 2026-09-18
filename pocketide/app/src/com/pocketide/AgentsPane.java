@@ -244,14 +244,19 @@ final class AgentsPane implements Pane {
             // antigravity" and the editor records it lower-cased, so equals() is false between
             // two spellings of the same extension and everything showed as not installed.
             boolean here = Extensions.has(present, agent.id);
+            boolean refused = Agents.ANTIGRAVITY_ID.equals(agent.id) && Kernel.narrow();
             String value = agent.publisher + (official ? " · official · " : " · community · ")
-                    + (here ? "Installed — tap to open it"
+                    + (refused ? (here ? "Installed, but its backend cannot run on this "
+                                    + "phone's 39-bit kernel · tap to read why"
+                                    : "Cannot run on this phone's 39-bit kernel · tap to read why")
+                            : here ? "Installed — tap to open it"
                             : "about " + DeviceProbe.formatBytes(agent.sizeBytes) + " · "
                                     + agent.plan);
             Ui.Row row = Ui.row(host, dark,
-                    here ? R.drawable.ic_check : R.drawable.ic_install,
+                    refused ? R.drawable.ic_info : here ? R.drawable.ic_check : R.drawable.ic_install,
                     agent.name, value, v -> onAgentTapped(agent, here));
-            if (here) row.setState(Ui.running(dark));
+            if (refused) row.setState(Ui.needsYou(dark));
+            else if (here) row.setState(Ui.running(dark));
             else if (agent.free) row.setState(Ui.accent(dark));
             into.addView(row);
             showRegistryIcon(row, agent);
@@ -289,11 +294,50 @@ final class AgentsPane implements Pane {
         }, "icon-lookup").start();
     }
 
+    /**
+     * Opens the editor with the agent's own panel in front: the panel's focus command is left
+     * for the companion extension, which runs it once the editor is up.
+     */
+    private void openPanel(Agents.Agent agent) {
+        new Thread(() -> {
+            String command = Extensions.panelCommand(host, agent.id);
+            if (!command.isEmpty()) Companion.command(host, command);
+            host.runOnUiThread(() -> {
+                if (!host.isFinishing()) host.startActivity(new Intent(host, WorkspaceActivity.class));
+            });
+        }, "open-panel").start();
+    }
+
     private void onAgentTapped(Agents.Agent agent, boolean installed) {
         if (!Workspace.installed(host)) {
             Dialogs.confirm(host, "Set up first",
                     "The editor has to be installed before an extension can go into it.",
                     "Set up", () -> host.startActivity(new Intent(host, SetupActivity.class)));
+            return;
+        }
+        if (Agents.ANTIGRAVITY_ID.equals(agent.id) && Kernel.narrow()) {
+            // Said before the download, not after an afternoon of trying. The choice stays:
+            // a phone with a 48-bit kernel that this check misread can still install it.
+            Dialogs.choose(host, agent.name + " cannot run on this phone",
+                    new String[]{"Why not", installed ? "Open it anyway" : "Install it anyway",
+                            installed ? "Remove it" : "Read more in Help"},
+                    new int[]{R.drawable.ic_info,
+                            installed ? R.drawable.ic_code : R.drawable.ic_install,
+                            installed ? R.drawable.ic_delete : R.drawable.ic_help}, -1, index -> {
+                        if (index == 0) {
+                            Dialogs.message(host, "Why " + agent.name + " cannot run here",
+                                    Agents.NARROW_KERNEL);
+                        } else if (index == 1 && installed) {
+                            openPanel(agent);
+                        } else if (index == 1) {
+                            install(agent.namespace(), agent.shortName(), agent.platform,
+                                    agent.name);
+                        } else if (installed) {
+                            remove(agent.id);
+                        } else {
+                            host.startActivity(new Intent(host, HelpActivity.class));
+                        }
+                    });
             return;
         }
         if (installed) {
@@ -305,7 +349,7 @@ final class AgentsPane implements Pane {
                     new String[]{"Open it in the editor", "Remove it"},
                     new int[]{R.drawable.ic_code, R.drawable.ic_delete}, -1, index -> {
                         if (index == 0) {
-                            host.startActivity(new Intent(host, WorkspaceActivity.class));
+                            openPanel(agent);
                             return;
                         }
                         Dialogs.confirm(host, "Remove " + agent.name + "?",

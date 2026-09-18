@@ -211,6 +211,7 @@ phone.update({
 })
 always = {
     "workbench.startupEditor": "none",
+    "chat.disableAIFeatures": True,
     "telemetry.telemetryLevel": "off",
     "update.mode": "none",
     "security.workspace.trust.enabled": False,
@@ -241,6 +242,7 @@ PYEOF
   "telemetry.telemetryLevel": "off",
   "update.mode": "none",
   "workbench.startupEditor": "none",
+  "chat.disableAIFeatures": true,
   "security.workspace.trust.enabled": false,
   "extensions.autoCheckUpdates": true,
   "extensions.autoUpdate": true
@@ -257,6 +259,7 @@ EOF
   "workbench.statusBar.visible": false,
   "workbench.editor.showTabs": "none",
   "workbench.startupEditor": "none",
+  "chat.disableAIFeatures": true,
   "workbench.tips.enabled": false,
   "editor.minimap.enabled": false,
   "editor.fontSize": 13,

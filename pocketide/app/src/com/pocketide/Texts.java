@@ -250,9 +250,12 @@ final class Texts {
                      + "Open VSX can be installed from the Agents screen."},
             {"Agents",
              "Which of them are free?",
-             "Antigravity has a free tier. Claude Code needs a Claude subscription or "
-                     + "pay-as-you-go; Codex is included with ChatGPT Plus and above. The "
-                     + "Agents screen shows each one's terms in the publisher's own words."},
+             "Antigravity has a free tier, but its backend runs only on a 48-bit kernel, "
+                     + "and the Agents screen says on its row whether this phone is one. Claude "
+                     + "Code needs a Claude subscription or pay-as-you-go; Codex is included "
+                     + "with ChatGPT Plus and above. Free on every phone: Kilo Code with a free "
+                     + "provider, from the community row. The Agents screen shows each "
+                     + "one\u2019s terms in the publisher\u2019s own words."},
             {"Agents",
              "Do the agents run here, or on a cloud computer?",
              "Here. Each agent's extension runs its loop on this phone: it reads your files, "
@@ -374,13 +377,30 @@ final class Texts {
                      + "keeps its own sign-in inside Linux; this app never sees it."},
             {"Agents",
              "I installed an agent. How do I open it?",
-             "Open the editor, tap Menu on the bar along the bottom, and it is named there \u2014 "
-                     + "\u201cOpen Antigravity\u201d, and the same for any other agent that "
-                     + "brings a panel with it. Tapping the row on the Agents screen opens the "
-                     + "editor, where Menu names it.\n\nInside the editor it also lives in the "
-                     + "activity bar, "
-                     + "which on a phone is the row of small icons along the bottom of the "
-                     + "editor itself. The menu exists because that row is easy to miss."},
+             "Tap its row on Home or the Agents screen: the editor opens with the agent\u2019s "
+                     + "own panel in front. Inside the editor, Menu on the bottom bar names "
+                     + "every agent that brings a panel, and the editor\u2019s own activity "
+                     + "bar \u2014 the small icons along the bottom \u2014 keeps the rest "
+                     + "under its \u2026. Antigravity also answers Ctrl+L.\n\nThe empty "
+                     + "\u201cBuild with Agent\u201d chat that Visual Studio Code carries of "
+                     + "its own is hidden here, because nothing answers it in this build: the "
+                     + "agents are the panels above, not that box."},
+            {"Agents",
+             "Is the Antigravity extension real, and why is it so small?",
+             "Real: published by Google under its verified namespace on Open VSX, the same "
+                     + "extension Google ships for Visual Studio Code since August 2026. It is "
+                     + "small (3.5 MB) because it is a thin front: at first start it downloads "
+                     + "Google\u2019s backend, agy, which does the work, and you sign in with "
+                     + "a Google account.\n\nOn most phones that backend cannot run, and the "
+                     + "app says so on its row before you spend anything: agy assumes a 48-bit "
+                     + "address space and stops at once on the 39-bit kernels most phones and "
+                     + "Chromebooks are built with \u2014 Google\u2019s own issue tracker "
+                     + "(antigravity-cli, issue 64) and reports from Chromebooks and Android "
+                     + "say the same. A community patch of the binary exists; Antigravity\u2019s "
+                     + "terms forbid third-party tooling and accounts have been suspended for "
+                     + "it, so this app does not apply one. On a 48-bit phone it runs. What "
+                     + "works on every phone: Codex, Claude Code, and Kilo Code with a free "
+                     + "provider."},
             {"Building",
              "What exactly can be built and tested here?",
              "Built and run on the phone: websites and web apps (any framework that runs on "

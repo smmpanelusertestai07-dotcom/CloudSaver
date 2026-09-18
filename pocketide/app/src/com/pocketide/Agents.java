@@ -65,6 +65,30 @@ final class Agents {
         String shortName() { return id.substring(id.indexOf('.') + 1); }
     }
 
+    /** The one pre-set agent whose backend is a program the phone's kernel may refuse. */
+    static final String ANTIGRAVITY_ID = "Google.google-antigravity";
+
+    /**
+     * Why Antigravity does not run on most phones, in the words the Agents screen and Home use.
+     *
+     * The extension is Google's, thin, and installs; at first start it downloads Google's own
+     * backend, agy, and that program's memory allocator assumes a 48-bit address space. A
+     * kernel built with 39 bits -- most phones, most Chromebooks -- makes it abort before it
+     * has done anything (antigravity-cli issue 64, and the same report from Chromebooks and
+     * Android). Community patches of the binary exist; running Antigravity through third-party
+     * tooling is against its terms and accounts have been suspended for it, so this app does
+     * not apply one.
+     */
+    static final String NARROW_KERNEL =
+            "Google's Antigravity extension installs and starts here, but the program it "
+                    + "downloads to do the work, agy, needs a 48-bit kernel, and this phone's "
+                    + "kernel gives programs 39 bits: agy stops before it has done anything. "
+                    + "That is Google's bug (antigravity-cli issue 64), not this phone's, and "
+                    + "not something this app can fix without patching Google's program, "
+                    + "which its terms forbid.\n\nWhat works here: Codex (ChatGPT Plus and "
+                    + "above), Claude Code (a Claude plan), and Kilo Code with a free "
+                    + "provider, all on the Agents screen.";
+
     /**
      * Ordered by what an owner with no subscription can actually use today: Antigravity has a
      * real free tier, the other two do not.
