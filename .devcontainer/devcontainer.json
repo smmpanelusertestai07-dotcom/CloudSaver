@@ -64,7 +64,15 @@
           "S-Down":  { "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;2B" }, "statusBar": { "alignment": "left", "text": "⇧↓",  "priority": 92 } },
           "Palette": { "command": "workbench.action.showCommands",           "statusBar": { "alignment": "left", "text": "⌘",              "priority": 91 } },
           "Term":    { "command": "workbench.action.terminal.toggleTerminal", "statusBar": { "alignment": "left", "text": "$(terminal)",    "priority": 90 } },
-          "Zen":     { "command": "workbench.action.toggleZenMode",          "statusBar": { "alignment": "left", "text": "$(screen-full)", "priority": 89 } }
+          "Zen":     { "command": "workbench.action.toggleZenMode",          "statusBar": { "alignment": "left", "text": "$(screen-full)", "priority": 89 } },
+
+          // One tap opens each agent full width in the editor area instead of the narrow
+          // sidebar. Claude Code contributes its own "open in a tab" command; Codex opens a
+          // new agent as an editor tab; Antigravity has only the sidebar view, and its full
+          // layout is the page the hub serves, so that one just focuses the panel.
+          "Claude":  { "command": "claude-vscode.editor.open",                "statusBar": { "alignment": "right", "text": "Claude",  "priority": 30 } },
+          "Codex":   { "command": "chatgpt.newCodexPanel",                    "statusBar": { "alignment": "right", "text": "Codex",   "priority": 29 } },
+          "Agy":     { "command": "antigravity.panel.focus",                  "statusBar": { "alignment": "right", "text": "Agy",     "priority": 28 } }
         }
       }
     }
