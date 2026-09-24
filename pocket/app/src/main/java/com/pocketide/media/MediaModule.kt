@@ -1,17 +1,24 @@
 package com.pocketide.media
 
-import android.net.Uri
+import androidx.core.content.FileProvider
 import com.pocketide.AppGraph
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import com.pocketide.sync.SyncStatus
+import kotlinx.coroutines.Dispatchers
 import java.io.File
 
-fun createMediaLibrary(graph: AppGraph): MediaLibrary = StubMedia().also { graph.hashCode() }
-
-private class StubMedia : MediaLibrary {
-    override fun forSession(sessionId: String): Flow<List<MediaItem>> = flowOf(emptyList())
-    override suspend fun add(sessionId: String, source: File, name: String, from: String): MediaItem = throw IllegalStateException("stub")
-    override fun kindOf(name: String, head: ByteArray) = MediaKind.OTHER
-    override suspend fun delete(item: MediaItem) = Unit
-    override fun shareUri(item: MediaItem): Uri = Uri.EMPTY
-}
+fun createMediaLibrary(graph: AppGraph): MediaLibrary = SessionMediaLibrary(
+    dirs = graph.dirs,
+    sessions = { graph.sessions.all.value },
+    backup = {
+        val sync = graph.sync
+        BackupFacts(
+            waitingSessions = sync.waiting.value.map { it.sessionId }.toSet(),
+            upToDateAt = (sync.status.value as? SyncStatus.UpToDate)?.at,
+        )
+    },
+    shrinker = AndroidWebpShrinker(),
+    clock = graph.clock,
+    io = Dispatchers.IO,
+    metaDir = File(graph.dirs.base, "media-meta"),
+    uriFor = { file -> FileProvider.getUriForFile(graph.context, "${graph.context.packageName}.files", file) },
+)
