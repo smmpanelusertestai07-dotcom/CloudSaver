@@ -49,6 +49,7 @@ import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.BrandMark
 import com.pocketide.ui.shell.CenteredTitle
+import com.pocketide.ui.shell.DeviceSignIn
 import com.pocketide.ui.shell.DriveConnectPanel
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.FinePrint
@@ -178,7 +179,7 @@ private fun GitHubDisconnected() {
         ConnectionStatus(graph)
         Gap(24.dp)
         GitHubConnectPanel(
-            auth = graph.gitHubAuth,
+            signIn = DeviceSignIn.of(graph),
             openUrl = { External.openUrl(context, it) },
             onConnected = { recheck.run() },
             startLabel = "Reconnect GitHub",

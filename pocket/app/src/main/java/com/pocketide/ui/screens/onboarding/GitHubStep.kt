@@ -15,6 +15,7 @@ import com.pocketide.github.GitHubAccount
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.shell.CheckCard
 import com.pocketide.ui.shell.CheckItem
+import com.pocketide.ui.shell.DeviceSignIn
 import com.pocketide.ui.shell.External
 import com.pocketide.ui.shell.Gap
 import com.pocketide.ui.shell.GitHubAccountCard
@@ -110,7 +111,7 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                 )
             }
             else -> GitHubConnectPanel(
-                auth = auth,
+                signIn = DeviceSignIn.of(graph),
                 openUrl = { External.openUrl(context, it) },
                 onConnected = { justConnected = it },
             )

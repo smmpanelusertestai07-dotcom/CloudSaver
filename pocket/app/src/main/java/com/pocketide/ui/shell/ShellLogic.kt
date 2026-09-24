@@ -26,14 +26,12 @@ sealed interface RootGate {
             lock: LockReason?,
             onboardingDone: Boolean,
         ): RootGate = when {
-            appLocked(appLockOn, unlocked) -> AppLocked
+            appLockOn && !unlocked -> AppLocked
             unsupportedReason != null -> Refused(unsupportedReason)
             lock != null && (onboardingDone || !setUpFixes(lock)) -> Locked(lock)
             !onboardingDone -> Onboarding
             else -> Main
         }
-
-        fun appLocked(appLockOn: Boolean, unlocked: Boolean): Boolean = appLockOn && !unlocked
 
         private fun setUpFixes(lock: LockReason): Boolean =
             lock == LockReason.GitHubDisconnected || lock == LockReason.DriveDisconnected

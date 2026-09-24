@@ -4,13 +4,11 @@ import android.app.Activity
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -19,10 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
@@ -46,10 +41,6 @@ import com.pocketide.ui.theme.PocketTheme
 /**
  * The whole UI, in order: theme → app lock → phones that cannot run it → access locks (GitHub,
  * Drive, storage, another phone) → first-run set-up → the app.
- *
- * Once unlocked, the app stays composed under a later app lock, hidden and silent: a GitHub
- * sign-in still waiting in Chrome, Google's consent sheet on its way back, or an agent's screen
- * are all still there after the fingerprint, instead of starting over.
  */
 @Composable
 fun PocketRoot(activity: FragmentActivity) {
@@ -66,57 +57,34 @@ fun PocketRoot(activity: FragmentActivity) {
             val access by graph.access.state.collectAsStateWithLifecycle()
             // Asked once: the answer depends on hardware and Android, which do not change while running.
             val unsupported = remember { runCatching { graph.limiter.unsupportedReason() }.getOrNull() }
-            val appLocked = RootGate.appLocked(settings.appLock, unlocked)
-            // What shows once past the app lock; the lock itself is drawn over it below.
             val gate = RootGate.of(
-                appLockOn = false,
-                unlocked = true,
+                appLockOn = settings.appLock,
+                unlocked = unlocked,
                 unsupportedReason = unsupported,
                 lock = access.lock,
                 onboardingDone = settings.onboardingDone,
             )
-            // Only after the owner got past the lock in this run of the app, never before.
-            var everUnlocked by remember { mutableStateOf(false) }
-            SideEffect { if (!appLocked) everUnlocked = true }
-            // The main app keeps its back stack and screen state while a lock covers it.
+            // Each part keeps its saved state (steps, ticks, back stack, pending results from
+            // Google's sheet) while the app lock replaces it; a GitHub sign-in waiting in Chrome
+            // lives in DeviceSignIn. Nothing stays composed under the lock, so no dialog can
+            // show through it.
             val navController = rememberNavController()
             val saved = rememberSaveableStateHolder()
 
-            // No keyboard stays open over the lock.
-            val focus = LocalFocusManager.current
-            LaunchedEffect(appLocked) { if (appLocked) focus.clearFocus(force = true) }
-
-            Box(Modifier.fillMaxSize()) {
-                if (!appLocked || everUnlocked) {
-                    // The same subtree whether hidden or not; only its modifier changes.
-                    Box(Modifier.fillMaxSize().hiddenWhen(appLocked)) {
-                        Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
-                            when (shown) {
-                                RootGate.AppLocked -> Unit
-                                is RootGate.Refused -> LockScreen(LockReason.Unsupported(shown.why))
-                                is RootGate.Locked -> LockScreen(shown.reason)
-                                RootGate.Onboarding -> OnboardingFlow()
-                                RootGate.Main -> saved.SaveableStateProvider("main") {
-                                    AppNav(navController = navController, banner = access.banner)
-                                }
-                            }
-                        }
-                    }
-                }
-                if (appLocked) {
-                    // An opaque surface: it takes every touch, so nothing underneath can be reached.
-                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                        AppLockGate(graph, activity)
+            Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
+                when (shown) {
+                    RootGate.AppLocked -> AppLockGate(graph, activity)
+                    is RootGate.Refused -> LockScreen(LockReason.Unsupported(shown.why))
+                    is RootGate.Locked -> saved.SaveableStateProvider("locked:${shown.reason::class.simpleName}") { LockScreen(shown.reason) }
+                    RootGate.Onboarding -> saved.SaveableStateProvider("onboarding") { OnboardingFlow() }
+                    RootGate.Main -> saved.SaveableStateProvider("main") {
+                        AppNav(navController = navController, banner = access.banner)
                     }
                 }
             }
         }
     }
 }
-
-/** Not drawn and not read by TalkBack while [hidden]. */
-private fun Modifier.hiddenWhen(hidden: Boolean): Modifier =
-    if (hidden) graphicsLayer { alpha = 0f }.clearAndSetSemantics {} else this
 
 @Composable
 private fun AppLockGate(graph: AppGraph, activity: FragmentActivity) {

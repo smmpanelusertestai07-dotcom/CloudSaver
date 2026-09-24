@@ -17,11 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,119 +28,46 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.pocketide.core.Redact
 import com.pocketide.github.DeviceCode
-import com.pocketide.github.DevicePoll
 import com.pocketide.github.GitHubAccount
-import com.pocketide.github.GitHubAuth
-import com.pocketide.github.NotConnectedException
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
-import java.io.IOException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-
-private sealed interface DeviceFlow {
-    data object Idle : DeviceFlow
-    data object Starting : DeviceFlow
-    data class Waiting(val code: DeviceCode) : DeviceFlow
-    data object Denied : DeviceFlow
-    data object Expired : DeviceFlow
-    data class Failed(val why: String) : DeviceFlow
-    /** Connected: the caller shows the account from here on. */
-    data object Done : DeviceFlow
-}
 
 /**
- * GitHub's device-code sign-in: show the code, open GitHub in Chrome, poll at the pace GitHub
- * sets until the owner approves, denies, or the code expires. Used by set-up and by the
- * "GitHub disconnected" lock.
- *
- * The flow lives in plain `remember`, not saved state, on purpose: the device code must not be
- * written into the saved-instance bundle. Rotation does not recreate the activity (it handles
- * configuration changes itself), and after a process death the owner simply gets a new code.
+ * GitHub's device-code sign-in: show the code, open GitHub in Chrome, and wait at the pace GitHub
+ * sets until the owner approves, denies, or the code expires. Used by set-up and by the "GitHub
+ * disconnected" lock. The sign-in itself lives in [DeviceSignIn], so it survives the app lock
+ * covering this screen while the owner is in Chrome.
  */
 @Composable
 fun GitHubConnectPanel(
-    auth: GitHubAuth,
+    signIn: DeviceSignIn,
     openUrl: (String) -> Unit,
     onConnected: (GitHubAccount) -> Unit,
     startLabel: String = "Connect GitHub",
 ) {
-    val scope = rememberCoroutineScope()
-    var flow by remember { mutableStateOf<DeviceFlow>(DeviceFlow.Idle) }
-    var offline by remember { mutableStateOf(false) }
-
-    fun start() {
-        flow = DeviceFlow.Starting
-        offline = false
-        scope.launch {
-            flow = try {
-                DeviceFlow.Waiting(auth.startDeviceFlow())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                DeviceFlow.Failed(explain(e))
-            }
-        }
-    }
-
-    val waiting = flow as? DeviceFlow.Waiting
-    LaunchedEffect(waiting?.code) {
-        val code = waiting?.code ?: return@LaunchedEffect
-        var pause = DeviceFlowTiming.pollDelayMs(code.intervalSeconds)
-        while (isActive) {
-            delay(pause)
-            if (DeviceFlowTiming.expired(code.expiresAtMs, System.currentTimeMillis())) {
-                flow = DeviceFlow.Expired
-                break
-            }
-            val result = try {
-                auth.poll(code)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // A dropped connection is not an answer: keep the code and keep asking.
-                offline = true
-                continue
-            }
-            offline = false
-            when (result) {
-                DevicePoll.Pending -> Unit
-                is DevicePoll.SlowDown -> pause = DeviceFlowTiming.pollDelayMs(result.intervalSeconds)
-                is DevicePoll.Connected -> {
-                    flow = DeviceFlow.Done
-                    onConnected(result.account)
-                    break
-                }
-                DevicePoll.Denied -> {
-                    flow = DeviceFlow.Denied
-                    break
-                }
-                DevicePoll.Expired -> {
-                    flow = DeviceFlow.Expired
-                    break
-                }
-                is DevicePoll.Failed -> {
-                    flow = DeviceFlow.Failed(Redact.text(result.why))
-                    break
-                }
-            }
+    val state by signIn.state.collectAsState()
+    val connected = (state as? DeviceSignIn.State.Connected)?.account
+    // Handed over once, then the sign-in is cleared for the next time.
+    LaunchedEffect(connected) {
+        if (connected != null) {
+            onConnected(connected)
+            signIn.reset()
         }
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        when (val current = flow) {
-            DeviceFlow.Idle -> PrimaryAction(startLabel, onClick = ::start)
-            DeviceFlow.Starting -> PrimaryAction("Getting a code…", onClick = {}, busy = true)
-            is DeviceFlow.Waiting -> WaitingForApproval(current.code, offline, openUrl)
-            DeviceFlow.Denied -> Retry("You pressed Cancel on GitHub. Nothing was connected.", ::start)
-            DeviceFlow.Expired -> Retry("The code expired before it was used. Get a new one.", ::start)
-            is DeviceFlow.Failed -> Retry(current.why, ::start)
-            DeviceFlow.Done -> Unit
+        when (val current = state) {
+            DeviceSignIn.State.Idle -> PrimaryAction(startLabel, onClick = signIn::start)
+            DeviceSignIn.State.Starting -> PrimaryAction("Getting a code…", onClick = {}, busy = true)
+            is DeviceSignIn.State.Waiting -> WaitingForApproval(current.code, current.offline, openUrl)
+            DeviceSignIn.State.Denied -> Retry("You pressed Cancel on GitHub. Nothing was connected.", signIn::start)
+            DeviceSignIn.State.Expired -> Retry("The code expired before it was used. Get a new one.", signIn::start)
+            is DeviceSignIn.State.Failed -> Retry(current.why, signIn::start)
+            is DeviceSignIn.State.Connected -> Unit
         }
     }
 }
@@ -221,10 +147,4 @@ fun GitHubAccountCard(account: GitHubAccount) {
 private fun codeText(userCode: String): CharSequence = SpannableString(userCode).apply {
     setSpan(TypefaceSpan("monospace"), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     setSpan(StyleSpan(Typeface.BOLD), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-}
-
-private fun explain(e: Exception): String = when (e) {
-    is NotConnectedException -> Redact.text(e.message ?: "GitHub sign-in is not available.")
-    is IOException -> "No connection to GitHub. Check the internet and try again."
-    else -> "GitHub sign-in could not start. Try again in a minute."
 }
