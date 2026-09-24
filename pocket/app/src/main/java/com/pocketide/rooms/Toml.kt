@@ -10,8 +10,11 @@ internal class TomlDocument(text: String) {
         if (it.isEmpty()) mutableListOf() else it.split('\n').toMutableList()
     }
 
-    /** One header or key/value, spanning [first]..[last] lines. [path] is the full dotted name. */
-    private data class Statement(val first: Int, val last: Int, val header: Boolean, val path: List<String>)
+    /**
+     * One header or key/value, spanning [first]..[last] lines. [path] is the full dotted name;
+     * [table] is the header it sits under (empty at the top level).
+     */
+    private data class Statement(val first: Int, val last: Int, val header: Boolean, val path: List<String>, val table: List<String>)
 
     fun text(): String = if (lines.isEmpty()) "" else lines.joinToString("\n") + "\n"
 
@@ -22,30 +25,28 @@ internal class TomlDocument(text: String) {
     fun setTopLevel(key: String, value: String) = set(emptyList(), key, value)
 
     /**
-     * Sets [key] in [table]. When the table has a header the key goes under it; otherwise it is
-     * written as a top-level dotted key, which is valid whatever other dotted keys exist.
+     * Sets [key] in [table]. An existing definition is replaced where it is; other definitions
+     * that would clash (a dotted form, an inline table holding it) are removed. A new key goes
+     * under the table's header when there is one, else it is written as a top-level dotted key,
+     * which is valid whatever other dotted keys exist.
      */
     fun set(table: List<String>, key: String, value: String) {
         val path = table + key
-        val existing = statements()
-        val header = existing.firstOrNull { it.header && it.path == table && table.isNotEmpty() }
-        remove { it.path == path || startsWith(it.path, path) }
         val statements = statements()
-        if (table.isEmpty() || header != null) {
-            val insertAt = if (table.isEmpty()) {
-                statements.firstOrNull { it.header }?.first?.let { firstHeader -> endOfBlankRun(firstHeader) } ?: lines.size
-            } else {
-                val start = statements.first { it.header && it.path == table }
-                val next = statements.firstOrNull { it.header && it.first > start.first }
-                statements.filter { !it.header && it.first > start.first && (next == null || it.first < next.first) }
-                    .maxOfOrNull { it.last + 1 } ?: (start.last + 1)
-            }
-            lines.add(insertAt, "${key(key)} = $value")
+        val target = statements.firstOrNull { !it.header && it.path == path }
+        val clashes = statements.filter { it !== target && clashesWith(it, path) }
+        rewrite(statements, clashes, target, target?.let { "${written(path.drop(it.table.size))} = $value" })
+        if (target != null) return
+        val updated = statements()
+        val header = updated.firstOrNull { it.header && it.path == table && table.isNotEmpty() }
+        val insertAt = if (header != null) {
+            val next = updated.firstOrNull { it.header && it.first > header.first }
+            updated.filter { !it.header && it.first > header.first && (next == null || it.first < next.first) }
+                .maxOfOrNull { it.last + 1 } ?: (header.last + 1)
         } else {
-            val firstHeader = statements.firstOrNull { it.header }?.first
-            val insertAt = firstHeader?.let { endOfBlankRun(it) } ?: lines.size
-            lines.add(insertAt, "${(table + key).joinToString(".") { key(it) }} = $value")
+            updated.firstOrNull { it.header }?.first?.let(::endOfBlankRun) ?: lines.size
         }
+        lines.add(insertAt, "${written(if (header != null) listOf(key) else path)} = $value")
     }
 
     /** Replaces the table at [table] (and everything defined under it) with [entries], at the end. */
@@ -53,27 +54,42 @@ internal class TomlDocument(text: String) {
         removeTable(table)
         while (lines.isNotEmpty() && lines.last().isBlank()) lines.removeAt(lines.size - 1)
         if (lines.isNotEmpty()) lines.add("")
-        lines.add("[${table.joinToString(".") { key(it) }}]")
+        lines.add("[${written(table)}]")
         entries.forEach { (name, value) -> lines.add("${key(name)} = $value") }
     }
 
-    fun removeTable(table: List<String>) = remove { it.path == table || startsWith(it.path, table) }
-
-    /** Removes matching statements; a removed header takes the keys under it along. */
-    private fun remove(matches: (Statement) -> Boolean) {
+    fun removeTable(table: List<String>) {
         val statements = statements()
-        val doomed = sortedSetOf<Int>()
-        statements.forEachIndexed { index, statement ->
-            if (!matches(statement)) return@forEachIndexed
+        rewrite(statements, statements.filter { it.path == table || startsWith(it.path, table) }, null, null)
+    }
+
+    /** A key at [path] clashes with a statement that defines it, a part of it, or holds it inline. */
+    private fun clashesWith(statement: Statement, path: List<String>): Boolean =
+        statement.path == path || startsWith(statement.path, path) || (!statement.header && startsWith(path, statement.path))
+
+    /** Removes [doomed] (a header takes the keys under it along) and puts [replacement] in place of [target]. */
+    private fun rewrite(statements: List<Statement>, doomed: List<Statement>, target: Statement?, replacement: String?) {
+        val removed = HashSet<Int>()
+        for (statement in doomed) {
             val end = if (statement.header) {
-                statements.drop(index + 1).firstOrNull { it.header }?.first?.minus(1) ?: (lines.size - 1)
+                statements.firstOrNull { it.header && it.first > statement.first }?.first?.minus(1) ?: (lines.size - 1)
             } else {
                 statement.last
             }
-            (statement.first..end).forEach { doomed += it }
+            (statement.first..end).forEach { removed += it }
         }
-        doomed.descendingSet().forEach { lines.removeAt(it) }
+        val kept = mutableListOf<String>()
+        lines.forEachIndexed { index, line ->
+            when {
+                target != null && index in target.first..target.last -> if (index == target.first) kept += replacement.orEmpty()
+                index !in removed -> kept += line
+            }
+        }
+        lines.clear()
+        lines.addAll(kept)
     }
+
+    private fun written(path: List<String>) = path.joinToString(".") { key(it) }
 
     /** Just after the last top-level line, so a table's leading comment stays with its header. */
     private fun endOfBlankRun(firstHeader: Int): Int {
@@ -94,14 +110,14 @@ internal class TomlDocument(text: String) {
                     val name = headerName(trimmed)
                     if (name != null) {
                         table = name
-                        found += Statement(i, i, header = true, path = name)
+                        found += Statement(i, i, header = true, path = name, table = emptyList())
                     }
                     i++
                 }
                 else -> {
                     val key = keyPath(trimmed)
                     val last = valueEnd(i, trimmed.substringAfter('=', ""))
-                    if (key != null) found += Statement(i, last, header = false, path = table + key)
+                    if (key != null) found += Statement(i, last, header = false, path = table + key, table = table)
                     i = last + 1
                 }
             }

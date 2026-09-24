@@ -34,6 +34,7 @@ SOCKET_PATH = os.environ.get("POCKETIDE_PHONE_SOCKET", "/run/pocketide/phone.soc
 # The app allows 10 minutes per request; a little more here so its own answer arrives first.
 CALL_TIMEOUT_S = 11 * 60
 MAX_REPLY_BYTES = 1024 * 1024
+FINISH_WAIT_S = 2
 
 INSTRUCTIONS = (
     "PocketIDE runs you on the owner's phone. Use these tools to check what the phone can take "
@@ -247,6 +248,7 @@ class Server:
         self.write_lock = threading.Lock()
         self.cancelled = set()
         self.cancel_lock = threading.Lock()
+        self.calls = []
 
     # --- output
 
@@ -303,7 +305,9 @@ class Server:
             modern = self.era(method, params)
             if method == "tools/call":
                 # A build can take minutes; other requests (ping, cancel) must not wait for it.
-                threading.Thread(target=self.call_tool, args=(request_id, params, modern), daemon=True).start()
+                call = threading.Thread(target=self.call_tool, args=(request_id, params, modern), daemon=True)
+                self.calls = [running for running in self.calls if running.is_alive()] + [call]
+                call.start()
                 return
             self.reply(request_id, self.dispatch(method, params, modern), modern)
         except RpcError as error:
@@ -388,6 +392,9 @@ class Server:
     def serve(self, source):
         for line in source:
             self.handle_line(line)
+        # The client closed its end: answers already on their way get a moment to arrive, then we exit.
+        for call in self.calls:
+            call.join(timeout=FINISH_WAIT_S)
 
 
 def main():
