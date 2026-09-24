@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** The Android side of the limiter: facts, notices, the engine service and settings pages. */
 internal interface LimiterHost {
@@ -76,6 +77,7 @@ internal class LimiterImpl(
     private val stopFlow = MutableStateFlow<RoomStop?>(null)
     override val lastStop: StateFlow<RoomStop?> = stopFlow
 
+    private val started = AtomicBoolean(false)
     private val tracker = WorkTracker(clock::now)
     private val reacting = Mutex()
     private var lastRunning: Set<String>? = null
@@ -86,7 +88,8 @@ internal class LimiterImpl(
     private val kicks = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** Starts reading the phone and reacting. Rooms are reached only from here on, never while the graph builds this. */
-    fun start() {
+    override fun start() {
+        if (!started.compareAndSet(false, true)) return
         phone.start()
         scope.launch { runCatching { host.lastExit() }.getOrNull()?.let { stop -> stopFlow.compareAndSet(null, stop) } }
         scope.launch {
@@ -146,7 +149,7 @@ internal class LimiterImpl(
         publishWork(runningKinds().keys)
     }
 
-    override suspend fun makeRoomFor(agentId: String): Decision {
+    override suspend fun makeRoomFor(agentId: String): Decision = reacting.withLock {
         val first = canStartAgent(agentId)
         if (first.allowed) return first
         val running = runningKinds()

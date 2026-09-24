@@ -48,6 +48,9 @@ interface Limiter {
     /** Meets the minimum requirements? Null when yes, else why not. */
     fun unsupportedReason(): String?
 
+    /** Starts watching the phone and reacting (idempotent); app start-up calls it once. */
+    fun start() = Unit
+
     /** Keyed by agent id, for every running room. */
     val work: StateFlow<Map<String, RoomWork>> get() = NO_WORK
 
