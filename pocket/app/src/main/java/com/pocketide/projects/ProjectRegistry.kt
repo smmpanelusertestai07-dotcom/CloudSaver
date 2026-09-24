@@ -29,35 +29,57 @@ internal class ProjectRegistry(
     private val env: ProjectEnv,
     private val dirs: AppDirs,
     file: JsonFile<List<Project>>,
+    trustFile: JsonFile<Map<String, ProjectTrust>>,
     private val clock: Clock,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
 ) : Projects {
 
     private val state = JsonState(file, emptyList(), io, normalize = ::withCloneState)
+    private val trustState = JsonState(trustFile, emptyMap(), io)
     private val cloneLocks = ConcurrentHashMap<String, Mutex>()
 
     override val all: StateFlow<List<Project>> = state.flow
 
+    override val trust: StateFlow<Map<String, ProjectTrust>> = trustState.flow
+
     init {
-        scope.launch { quietly { state.current() } }
+        scope.launch {
+            quietly {
+                state.current()
+                trustState.current()
+            }
+        }
     }
 
     override suspend fun create(name: String, description: String): Project {
-        val repoName = name.trim()
+        // GitHub itself turns spaces into hyphens; doing it here shows the real name at once.
+        val repoName = name.trim().replace(WHITESPACE, "-")
         if (!REPO_NAME.matches(repoName) || repoName == "." || repoName == "..") {
             throw ProjectException("Use letters, numbers, dots, hyphens or underscores for the name, up to 100 characters.")
         }
-        val about = description.trim().replace(Regex("\\s+"), " ").take(MAX_DESCRIPTION)
-        return add(network { env.gitHub.createPrivateRepo(repoName, about) })
+        val about = description.trim().replace(WHITESPACE, " ").take(MAX_DESCRIPTION)
+        // With a first commit the repository has a default branch, which every session starts from.
+        val project = add(network { env.gitHub.createPrivateRepo(repoName, about, autoInit = true) })
+        setTrust(project.id, ProjectTrust.YOURS)
+        return project
     }
 
     override suspend fun import(owner: String, repo: String): Project {
         val address = RepoAddress.parse(if (repo.isBlank()) owner else "${owner.trim()}/${repo.trim()}")
             ?: throw ProjectException("Check the repository: use owner/name, or paste its GitHub address.")
         val info = network { env.gitHub.repo(address.owner, address.repo) }
-            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl())
-        return add(info)
+            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), address)
+        val project = add(info)
+        trustState.update { map -> (if (project.id in map) map else map + (project.id to automaticTrust(project))) to Unit }
+        return project
+    }
+
+    override fun trustOf(projectId: String): ProjectTrust =
+        trust.value[projectId] ?: all.value.find { it.id == projectId }?.let(::automaticTrust) ?: ProjectTrust.SOMEONE_ELSES
+
+    override suspend fun setTrust(projectId: String, trust: ProjectTrust) {
+        trustState.update { it + (projectId to trust) to Unit }
     }
 
     override suspend fun ensureCloned(projectId: String) {
@@ -90,6 +112,7 @@ internal class ProjectRegistry(
         val deleted = withContext(io) { SafeFiles.delete(dirs.bareRepo(project.id)) }
         if (!deleted) throw ProjectException("Some files of this project could not be deleted. Try again.")
         state.update { list -> list.filterNot { it.id == project.id } to Unit }
+        quietly { trustState.update { it - project.id to Unit } }
     }
 
     override fun touched(projectId: String) = touched(projectId, clock.now())
@@ -121,6 +144,19 @@ internal class ProjectRegistry(
             }
             byId.values.toList() to Unit
         }
+        trustState.update { map ->
+            val unknown = projects.filter { it.id !in map }
+            (map + unknown.associate { it.id to automaticTrust(it) }) to Unit
+        }
+    }
+
+    /**
+     * Without the owner's own answer: a repository under the signed-in account is theirs. A fork
+     * under their account is not told apart here; the owner can say so on the project.
+     */
+    private fun automaticTrust(project: Project): ProjectTrust {
+        val login = env.gitHubAuth.account.value?.login
+        return if (login != null && project.owner.equals(login, ignoreCase = true)) ProjectTrust.YOURS else ProjectTrust.SOMEONE_ELSES
     }
 
     private suspend fun add(info: RepoInfo): Project {
@@ -150,7 +186,7 @@ internal class ProjectRegistry(
 
     private suspend fun clone(project: Project) {
         val info = network { env.gitHub.repo(project.owner, project.repo) }
-            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl())
+            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), RepoAddress(project.owner, project.repo))
         val bytes = info.sizeKb * 1024
         val decision = env.dataBudget.allow(bytes, "clone", big = info.sizeKb > BIG_CLONE_KB)
         if (!decision.allowed) {
@@ -221,6 +257,7 @@ internal class ProjectRegistry(
 
     private companion object {
         val REPO_NAME = Regex("[A-Za-z0-9._-]{1,100}")
+        val WHITESPACE = Regex("\\s+")
         const val MAX_DESCRIPTION = 350
         const val BIG_CLONE_KB = 50L * 1024
         const val TOUCH_STEP_MS = 60_000L

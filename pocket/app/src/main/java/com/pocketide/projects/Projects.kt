@@ -1,14 +1,28 @@
 package com.pocketide.projects
 
 import com.pocketide.model.Project
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.Serializable
 
 /** Something the owner can act on, in one plain sentence (the screens show [message] as it is). */
 open class ProjectException(message: String) : Exception(message)
 
-/** The repository is not reachable through PocketIDE's GitHub App; [installUrl] is where to add it. */
-class RepoNotReachableException(val installUrl: String) :
+/**
+ * The repository is not reachable through PocketIDE's GitHub App; [installUrl] is where to add it
+ * (an app cannot add a repository to its own installation). [address] is the repository to try
+ * again when the owner comes back.
+ */
+class RepoNotReachableException(val installUrl: String, val address: RepoAddress? = null) :
     ProjectException("Add this repository to PocketIDE's GitHub App, then try again.")
+
+/**
+ * Whose code a project is. For someone else's (a fork or a third-party repository) agents start
+ * in ask-before-running mode and the browser tools stay off until allowed: files, issues and
+ * READMEs there may carry instructions written to mislead an agent.
+ */
+@Serializable
+enum class ProjectTrust { YOURS, SOMEONE_ELSES }
 
 /** A GitHub repository, by owner and name. */
 data class RepoAddress(val owner: String, val repo: String) {
@@ -77,4 +91,15 @@ interface Projects {
      * unknown ones are added, known ones updated. Whether a clone exists is always this phone's own.
      */
     suspend fun adopt(projects: List<Project>) = Unit
+
+    /**
+     * Whose code each project is, by project id. Projects made in the app and the owner's own
+     * repositories are [ProjectTrust.YOURS]; anything else, and anything unknown, is not.
+     */
+    val trust: StateFlow<Map<String, ProjectTrust>> get() = MutableStateFlow(emptyMap())
+
+    fun trustOf(projectId: String): ProjectTrust = trust.value[projectId] ?: ProjectTrust.SOMEONE_ELSES
+
+    /** The owner's own answer to "Is this your code?", which replaces the automatic one. */
+    suspend fun setTrust(projectId: String, trust: ProjectTrust) = Unit
 }

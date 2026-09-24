@@ -26,8 +26,8 @@ import java.io.File
  * worktree is never touched and a conflict leaves nothing behind. When the push is refused the
  * local default branch goes back to GitHub's. After a merge the session loses its worktree and
  * branch, unless work arrived meanwhile: then it stays open and the next Put on main takes the
- * rest. A session branch that was pushed stays on GitHub: the git gate cannot delete remote
- * branches, and it is harmless there (its commits are on main).
+ * rest. A session branch that was pushed (autosave) is deleted on GitHub too, once everything on
+ * it is on main.
  */
 internal class MainMerger(
     private val env: SessionEnv,
@@ -92,7 +92,28 @@ internal class MainMerger(
         } catch (kept: SessionException) {
             false
         }
+        if (done) deleteRemoteBranch(session, project, token)
         return Outcome(PutOnMainResult.Merged, if (done) SessionStatus.ON_MAIN else SessionStatus.OPEN)
+    }
+
+    /**
+     * Deletes the session's branch on GitHub when all of it is on the new main. A branch that got
+     * more commits elsewhere (another phone) stays. A failure is harmless: the branch's commits
+     * are on main, and the owner can delete it on GitHub.
+     */
+    private suspend fun deleteRemoteBranch(session: SessionRecord, project: Project, token: String) {
+        val remote = ORIGIN + session.branch
+        if (!BareRefs(dirs.bareRepo(project.id)).exists(remote)) return
+        try {
+            val bare = AppDirs.guestBareRepo(project.id)
+            val merged = git.run(null, listOf("-C", bare, "merge-base", "--is-ancestor", remote, HEADS + project.defaultBranch)).ok
+            // The gate also drops its remote-tracking copy, so a chat continued later starts from main.
+            if (merged) env.git.deleteRemoteBranch(dirs.bareRepo(project.id), session.branch, token)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (kept: Exception) {
+            // See above: the branch simply stays on GitHub.
+        }
     }
 
     private suspend fun merge(session: SessionRecord, project: Project, base: String, tip: String, identity: LinuxGit.Identity): Merge {
