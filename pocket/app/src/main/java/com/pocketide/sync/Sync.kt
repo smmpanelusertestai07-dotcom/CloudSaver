@@ -1,13 +1,27 @@
 package com.pocketide.sync
 
+import android.app.PendingIntent
+import com.pocketide.model.ObjectKind
+import com.pocketide.model.Project
+import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.flow.StateFlow
 
 sealed interface SyncStatus {
     data object Idle : SyncStatus
     data class Running(val what: String) : SyncStatus
     data class UpToDate(val at: Long) : SyncStatus
-    /** New chats wait safely on the phone; [since] drives the 24-hour lock. */
-    data class Waiting(val why: String, val since: Long, val pendingBytes: Long) : SyncStatus
+    /**
+     * New chats wait safely on the phone because Drive has no room; [since] drives the 24-hour lock.
+     * [googleStorageFull] is true when the whole Google storage is full (not only PocketIDE's share),
+     * and [locks] is true once the wait passed 24 hours or 200 MB, when the app must lock.
+     */
+    data class Waiting(
+        val why: String,
+        val since: Long,
+        val pendingBytes: Long,
+        val googleStorageFull: Boolean = false,
+        val locks: Boolean = false,
+    ) : SyncStatus
     data class Error(val why: String) : SyncStatus
 }
 
@@ -29,6 +43,48 @@ enum class RestoreChoice { WIFI_ONLY, MOBILE_UP_TO_LIMIT }
 /** Monthly data usage by type, metered networks only (Wi-Fi is free). */
 data class DataUsage(val todayMeteredBytes: Long, val monthMeteredBytes: Long, val byType: Map<String, Long>)
 
+/** How full PocketIDE's share of the phone is (§6.5): a notice at 80 %, caches cleaned at 90 %. */
+enum class PhoneSpace { OK, NEARLY_FULL, FULL }
+
+/** What PocketIDE keeps in Drive and on the phone, for "Your data" and the storage limits. */
+data class StorageSummary(
+    /** Encrypted bytes in the Drive hidden folder (each stored file counted once). */
+    val driveBytes: Long = 0,
+    val driveLimitBytes: Long = 0,
+    val driveByKind: Map<ObjectKind, Long> = emptyMap(),
+    /** Encrypted bytes per session id, for "largest sessions". */
+    val driveBySession: Map<String, Long> = emptyMap(),
+    /** PocketIDE's share of Drive reached the owner's limit: "PocketIDE's space is full". */
+    val driveShareFull: Boolean = false,
+    val phoneBytes: Long = 0,
+    val phoneLimitBytes: Long = 0,
+    val phoneFreeBytes: Long = 0,
+    val phone: PhoneSpace = PhoneSpace.OK,
+)
+
+/** "Move to another Google account" (§5.5), step by step. */
+sealed interface MoveState {
+    data object Idle : MoveState
+
+    /**
+     * Google's own sheet must be approved first: launch [intent], pass its result to
+     * `DriveAuth.completeConsent`, then call [SyncEngine.moveToAccount] with the account it names.
+     */
+    data class NeedsConsent(val intent: PendingIntent) : MoveState
+
+    data class Copying(val to: String, val done: Int, val total: Int) : MoveState
+
+    /** Everything is in [to] and checked. The copy in [from] stays until the owner agrees to erase it. */
+    data class ReadyToEraseOld(val from: String, val to: String) : MoveState
+
+    data class Done(val to: String) : MoveState
+
+    data class Failed(val why: String) : MoveState
+}
+
+/** A sync action could not finish. [message] is one plain sentence the owner can act on. */
+class SyncException(message: String) : Exception(message)
+
 /**
  * Durable, append-only sync of AI data to the Drive hidden folder. New transcript bytes become
  * small compressed, encrypted pieces; images go with the chat; videos wait for Wi-Fi unless the
@@ -42,6 +98,21 @@ interface SyncEngine {
 
     /** The other phone's name when it holds the lease (this phone must lock); null when we hold it. */
     val leaseHolder: StateFlow<String?>
+
+    /**
+     * Sessions as the encrypted index in Drive knows them: sessions that are only in Drive, the
+     * Recently deleted ones with their stored `deletedAt` (so a reinstall continues the count),
+     * and conflict copies. A conflict copy's `agentSessionRef` is the path of its transcript,
+     * relative to the room's home, once it is on the phone.
+     */
+    val driveSessions: StateFlow<List<SessionRecord>>
+
+    /** Projects as the index knows them, so a new phone gets its project list back. */
+    val driveProjects: StateFlow<List<Project>>
+
+    val storage: StateFlow<StorageSummary>
+
+    val move: StateFlow<MoveState>
 
     /** Schedules a sync soon (end of a task, or every few minutes while agents run). */
     fun requestSync(reason: String)
@@ -63,6 +134,15 @@ interface SyncEngine {
     /** Moves every vault file to another Google account, one file at a time. */
     suspend fun moveToAnotherAccount()
 
+    /** Continues a move to [email] after the owner approved it in Google's sheet. */
+    suspend fun moveToAccount(email: String)
+
+    /** Erases the old account's copy once a move is finished and the owner agreed. */
+    suspend fun eraseOldAccountCopy()
+
+    /** "Delete forever": erases these sessions' files from Drive now (or at the next connection). */
+    suspend fun eraseForever(sessionIds: List<String>)
+
     /** Erases everything in Drive and on the phone ("Delete everything"). */
     suspend fun deleteEverything()
 
@@ -72,6 +152,9 @@ interface SyncEngine {
 
 /** Metered-only accounting and the daily limit, checked before every big transfer. */
 interface DataBudget {
+    /** This month's metered usage by type, for Settings → Data. */
+    val usage: StateFlow<DataUsage>
+
     /** May [bytes] of kind [kind] be transferred now? Big items wait for Wi-Fi by default. */
     fun allow(bytes: Long, kind: String, big: Boolean): com.pocketide.model.Decision
 
