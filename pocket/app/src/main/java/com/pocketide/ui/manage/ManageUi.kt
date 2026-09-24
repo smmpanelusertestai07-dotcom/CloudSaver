@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,6 +78,8 @@ fun ManagePage(
     runner: ActionRunner? = null,
     onBack: () -> Unit = nav::back,
     actions: @Composable RowScope.() -> Unit = {},
+    state: LazyListState = rememberLazyListState(),
+    header: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     Scaffold(
@@ -92,16 +96,20 @@ fun ManagePage(
         snackbarHost = { if (runner != null) SnackbarHost(runner.snackbar) },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
-        ManageList(Modifier.padding(padding), content)
+        Column(Modifier.padding(padding)) {
+            header?.invoke()
+            ManageList(Modifier.weight(1f), state, content)
+        }
     }
 }
 
 /** The centred, width-limited list every manage screen scrolls in. */
 @Composable
-fun ManageList(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
+fun ManageList(modifier: Modifier = Modifier, state: LazyListState = rememberLazyListState(), content: LazyListScope.() -> Unit) {
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         LazyColumn(
             modifier = Modifier.widthIn(max = MaxContentWidth).fillMaxSize(),
+            state = state,
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content,

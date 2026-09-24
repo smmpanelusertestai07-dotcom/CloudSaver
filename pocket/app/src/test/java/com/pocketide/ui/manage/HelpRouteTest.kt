@@ -94,6 +94,26 @@ class HelpRouteTest {
     }
 
     @Test
+    fun `index chips point at the first row of each group`() {
+        val groups = HelpIndexLayout.groups(sectionCount = 3, agentCount = 2)
+        assertEquals(listOf("Guide" to 1, "Agents" to 5, "More" to 8, "Your pages" to 10), groups.map { it.label to it.start })
+        val noAgents = HelpIndexLayout.groups(sectionCount = 3, agentCount = 0)
+        assertEquals(listOf("Guide" to 1, "More" to 5, "Your pages" to 7), noAgents.map { it.label to it.start })
+        val empty = HelpIndexLayout.groups(sectionCount = 0, agentCount = 0)
+        assertEquals(listOf("Guide" to 1, "More" to 2, "Your pages" to 4), empty.map { it.label to it.start })
+    }
+
+    @Test
+    fun `the chip in view is the last group started above the first visible row`() {
+        val groups = HelpIndexLayout.groups(sectionCount = 3, agentCount = 2)
+        assertEquals(0, HelpIndexLayout.active(groups, 0))
+        assertEquals(0, HelpIndexLayout.active(groups, 4))
+        assertEquals(1, HelpIndexLayout.active(groups, 5))
+        assertEquals(3, HelpIndexLayout.active(groups, 99))
+        assertEquals(0, HelpIndexLayout.active(emptyList(), 3))
+    }
+
+    @Test
     fun `notes carry a word label, not colour alone`() {
         assertEquals("Warning", noteLabel("warn"))
         assertEquals("Warning", noteLabel("WARN"))

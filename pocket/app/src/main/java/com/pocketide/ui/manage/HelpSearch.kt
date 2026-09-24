@@ -136,6 +136,34 @@ sealed interface HelpRoute {
     }
 }
 
+/**
+ * The groups of the Help index and the list position each starts at, for the chips above it.
+ * It mirrors the index exactly: the search field, then Guide (or its empty note), Agents when
+ * there are any, More (label and card) and Your pages.
+ */
+object HelpIndexLayout {
+    data class Group(val label: String, val start: Int)
+
+    fun groups(sectionCount: Int, agentCount: Int): List<Group> {
+        val out = mutableListOf<Group>()
+        var at = 1
+        out += Group("Guide", at)
+        at += if (sectionCount > 0) 1 + sectionCount else 1
+        if (agentCount > 0) {
+            out += Group("Agents", at)
+            at += 1 + agentCount
+        }
+        out += Group("More", at)
+        at += 2
+        out += Group("Your pages", at)
+        return out
+    }
+
+    /** The group the first visible row belongs to. */
+    fun active(groups: List<Group>, firstVisible: Int): Int =
+        groups.indexOfLast { it.start <= firstVisible }.coerceAtLeast(0)
+}
+
 /** Links to the owner's own pages, built from their account name as plain strings. */
 object PersonalLinks {
     private val login = Regex("[A-Za-z0-9][A-Za-z0-9-]{0,38}")

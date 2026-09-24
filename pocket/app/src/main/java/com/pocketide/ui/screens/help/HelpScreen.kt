@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +14,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
@@ -27,6 +31,7 @@ import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,10 +40,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,6 +67,7 @@ import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.manage.EmptyNote
 import com.pocketide.ui.manage.HelpHit
+import com.pocketide.ui.manage.HelpIndexLayout
 import com.pocketide.ui.manage.HelpRoute
 import com.pocketide.ui.manage.HelpSearch
 import com.pocketide.ui.manage.Hint
@@ -72,6 +80,7 @@ import com.pocketide.ui.manage.rememberGraph
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.vault.VaultKeyFiles
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -108,7 +117,14 @@ private fun HelpIndex(agentPages: List<DocSection>, nav: PocketNav) {
     }
     val keyring = PersonalLinks.keyring(account?.login, VaultKeyFiles.KEYRING_REPO)
     val installation = remember(graph) { runCatching { graph.gitHubAuth.installUrl() }.getOrNull() }
-    ManagePage("Help", nav) {
+    val listState = rememberLazyListState()
+    val groups = remember(sections.size, agentPages.size) { HelpIndexLayout.groups(sections.size, agentPages.size) }
+    ManagePage(
+        "Help",
+        nav,
+        state = listState,
+        header = if (query.isBlank()) ({ GroupChips(groups, listState) }) else null,
+    ) {
         item {
             OutlinedTextField(
                 value = query,
@@ -148,6 +164,30 @@ private fun HelpIndex(agentPages: List<DocSection>, nav: PocketNav) {
 }
 
 private const val DRIVE_SETTINGS = "https://drive.google.com/drive/settings"
+
+/** Chips above the index: the group in view is selected; a tap scrolls to its group. */
+@Composable
+private fun GroupChips(groups: List<HelpIndexLayout.Group>, listState: LazyListState) {
+    val scope = rememberCoroutineScope()
+    val active by remember(groups) {
+        derivedStateOf {
+            if (!listState.canScrollForward && listState.firstVisibleItemIndex > 0) groups.lastIndex
+            else HelpIndexLayout.active(groups, listState.firstVisibleItemIndex)
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        groups.forEachIndexed { index, group ->
+            FilterChip(
+                selected = index == active,
+                onClick = { scope.launch { listState.animateScrollToItem(group.start) } },
+                label = { Text(group.label) },
+            )
+        }
+    }
+}
 
 private fun LazyListScope.searchResults(hits: List<HelpHit>, nav: PocketNav) {
     if (hits.isEmpty()) {
