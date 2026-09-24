@@ -46,7 +46,9 @@ security_fixes() {
 
 step "Checking Ubuntu's security fixes…"
 repair_packages
-if ! apt_try update; then
+# Without --error-on=any a list that failed to download is only a warning, and a phone
+# that reached nothing would report "no fixes waiting".
+if ! apt_try update --error-on=any; then
   say "Could not reach Ubuntu's servers."
   exit 1
 fi

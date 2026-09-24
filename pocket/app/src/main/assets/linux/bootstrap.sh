@@ -112,7 +112,7 @@ install_packages() {
   fi
   write_sources http
   step "Updating the package list…"
-  if ! apt_try update; then
+  if ! apt_try update --error-on=any; then
     say "Could not reach Ubuntu's servers."
     return 1
   fi
