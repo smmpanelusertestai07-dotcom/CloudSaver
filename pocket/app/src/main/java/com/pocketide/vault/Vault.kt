@@ -80,6 +80,13 @@ interface VaultKeys {
      */
     suspend fun importKeyCopy(text: String)
 
+    /**
+     * After "Delete everything": drops every key from this phone (memory and sealed storage) and
+     * returns to [KeyState.None], so the next set-up makes a new vault. The Drive side is the
+     * caller's to erase; the Half G left in GitHub pairs with nothing once Half D is gone.
+     */
+    suspend fun forget() {}
+
     fun cipher(): VaultCipher
 
     /** Current key generation (bumped by every re-key). */

@@ -144,6 +144,16 @@ internal class VaultKeysImpl(
         }
     }
 
+    override suspend fun forget() {
+        mutex.withLock {
+            phone.clear()
+            keys = emptyList()
+            phoneState = PhoneState()
+            mutableNotice.value = null
+            mutableState.value = KeyState.None
+        }
+    }
+
     override fun cipher(): VaultCipher = liveCipher
 
     override fun generation(): Int = keys.firstOrNull()?.generation ?: 0
@@ -162,14 +172,15 @@ internal class VaultKeysImpl(
         val identity = AgeIdentity.parse(change.ageSecretKey)
         val newKey = change.kind != ChangeKind.RESPLIT
         val previousKey = keys.firstOrNull { it.generation < change.generation }
-        // 1. The key check and history open with the new key and the old one before any half points at the new key.
-        if (newKey) writeKeyFiles(change.generation, listOfNotNull(identity.recipient, previousKey?.identity?.recipient))
-        // 2. Half D of the new split, keeping the halves the Half G in GitHub may still pair with.
+        // Another phone's newer key wins, and its key check and history are left as they are.
         val current = readHalfDOrNull()
         if (current != null && supersedes(current, change)) {
             savePhone(phoneState.copy(change = null))
             throw VaultException(VaultText.ANOTHER_PHONE)
         }
+        // 1. The key check and history open with the new key and the old one before any half points at the new key.
+        if (newKey) writeKeyFiles(change.generation, listOfNotNull(identity.recipient, previousKey?.identity?.recipient))
+        // 2. Half D of the new split, keeping the halves the Half G in GitHub may still pair with.
         val floor = if (newKey) previousKey?.generation else change.generation
         val kept = floor?.let { f -> current?.entries()?.filter { it.generation >= f && it.half != change.halfD }?.distinct() }
         remote.writeHalfD(HalfDFile(generation = change.generation, half = change.halfD, previous = kept?.ifEmpty { null }))
@@ -429,13 +440,14 @@ internal class VaultKeysImpl(
             restoreLocked(null)
             return
         }
+        // No Half D at all means the Drive folder was emptied: its key check and history go back first.
+        verifyDrive(active, force = halfD == null)
         if (halfG == null || halfD == null || halfG.generation < active.generation || !pairHolds(active, halfD, halfG)) {
             start(resplit(active))
         } else {
             if (phoneState.savedGeneration != active.generation) savePhone(phoneState.copy(savedGeneration = active.generation))
             settle()
         }
-        verifyDriveDaily(active)
     }
 
     /** True when Drive's Half D and this Half G rebuild [active]; drops halves Drive no longer needs. */
@@ -485,9 +497,9 @@ internal class VaultKeysImpl(
         return org.bouncycastle.util.Arrays.constantTimeAreEqual(joined, secret).also { KeySplit.wipe(halfD, joined) }
     }
 
-    /** Once a day: the key check and history in Drive must open with the key in use; rewritten when not. */
-    private suspend fun verifyDriveDaily(active: VaultKey) {
-        if (clock.now() - phoneState.checkedAt < DAY_MS) return
+    /** Once a day, or when [force]d: the key check and history in Drive must open with the key in use; rewritten when not. */
+    private suspend fun verifyDrive(active: VaultKey, force: Boolean) {
+        if (!force && clock.now() - phoneState.checkedAt < DAY_MS) return
         val check = remote.readDrive(VaultKeyFiles.KEY_CHECK)
         val history = remote.readDrive(VaultKeyFiles.KEY_HISTORY)
         val fine = check != null && opensKeyCheck(check, active.identity) &&

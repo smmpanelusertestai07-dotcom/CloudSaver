@@ -4,12 +4,14 @@ import org.bouncycastle.crypto.engines.Salsa20Engine
 import org.bouncycastle.math.ec.rfc7748.X25519
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
+import java.util.Base64
 
 class SealedBoxTest {
     private val random = SecureRandom()
@@ -52,6 +54,24 @@ class SealedBoxTest {
     fun `a box sealed by PyNaCl opens`() {
         val opened = SealedBox.open(hex("public key"), hex("secret key"), hex("sealed"))
         assertArrayEquals(hex("message"), opened)
+    }
+
+    @Test
+    fun `the box this code sealed, which PyNaCl opened, still opens`() {
+        val opened = SealedBox.open(hex("public key"), hex("secret key"), hex("ours sealed"))
+        assertArrayEquals(hex("ours message"), opened)
+    }
+
+    @Test
+    fun `GitHub's form takes and gives standard base64`() {
+        val base64 = Base64.getEncoder()
+        val sealed = SealedBox.sealBase64(base64.encodeToString(hex("public key")), "ghp_example".toByteArray())
+        assertFalse(sealed.contains('\n'))
+        val raw = Base64.getDecoder().decode(sealed)
+        assertEquals(SealedBox.OVERHEAD + "ghp_example".length, raw.size)
+        assertEquals("ghp_example", SealedBox.open(hex("public key"), hex("secret key"), raw).toString(Charsets.UTF_8))
+        assertThrows(IllegalArgumentException::class.java) { SealedBox.sealBase64("not base64!", ByteArray(1)) }
+        assertThrows(IllegalArgumentException::class.java) { SealedBox.sealBase64(base64.encodeToString(ByteArray(16)), ByteArray(1)) }
     }
 
     @Test

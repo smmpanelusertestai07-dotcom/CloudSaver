@@ -483,6 +483,89 @@ class VaultKeysImplTest {
     }
 
     @Test
+    fun `a phone whose Keystore lost its key starts empty and rebuilds from the halves`() = runTest {
+        val phone = newPhone()
+        val first = phone.vault()
+        first.setUp()
+        val chat = first.seal("kept in Drive")
+        // Android dropped the Keystore key: the sealed files are still there but no longer open.
+        phone.dir.listFiles().orEmpty().forEach { it.writeBytes(byteArrayOf(9, 9, 9)) }
+        val restarted = phone.vault()
+        assertEquals(KeyState.None, restarted.state.value)
+        assertEquals(KeyState.Ready, restarted.restore())
+        assertEquals("kept in Drive", restarted.open(chat))
+        assertEquals(KeyState.Ready, phone.vault().state.value)
+    }
+
+    @Test
+    fun `an emptied Drive folder gets its key check, history and Half D back at the next check`() = runTest {
+        val first = newPhone().vault()
+        first.setUp()
+        val old = first.seal("from key 1")
+        first.rekey(RekeyReason.OWNER_ASKED)
+        val new = first.seal("from key 2")
+        accounts.drive.names().forEach { accounts.drive.remove(it) }
+
+        first.checkKeyring()
+        assertEquals(KeyState.Ready, first.state.value)
+        assertEquals(2, first.generation())
+        assertTrue(accounts.drive.names().containsAll(VaultKeyFiles.DRIVE_NAMES))
+        val second = newPhone().vault()
+        assertEquals(KeyState.Ready, second.restore())
+        assertEquals(listOf("from key 1", "from key 2"), listOf(second.open(old), second.open(new)))
+    }
+
+    @Test
+    fun `a stale change left on one phone never overwrites another phone's newer key`() = runTest {
+        val a = newPhone().vault()
+        a.setUp()
+        val b = newPhone().vault()
+        b.restore()
+        // B's re-key stops at its first Drive write and stays pending on B.
+        accounts.drive.failUploads = 1
+        failsWith<IOException> { b.rekey(RekeyReason.OWNER_ASKED) }
+        a.rekey(RekeyReason.OWNER_ASKED)
+        val chat = a.seal("written by A with key 2")
+
+        assertEquals(VaultText.ANOTHER_PHONE, failsWith<VaultException> { b.checkKeyring() }.message)
+        val fresh = newPhone().vault()
+        assertEquals("A's key check and history are intact", KeyState.Ready, fresh.restore())
+        assertEquals("written by A with key 2", fresh.open(chat))
+
+        b.checkKeyring()
+        assertEquals(2, b.generation())
+        assertEquals("written by A with key 2", b.open(chat))
+    }
+
+    @Test
+    fun `a missing key check stops a rebuild, because the key could not be trusted`() = runTest {
+        newPhone().vault().setUp()
+        accounts.drive.remove(VaultKeyFiles.KEY_CHECK)
+        assertEquals(KeyState.Lost(VaultText.CHECK_MISSING), newPhone().vault().restore())
+    }
+
+    @Test
+    fun `forgetting after Delete everything leaves no key behind, and set-up makes a new vault`() = runTest {
+        val phone = newPhone()
+        val vault = phone.vault()
+        vault.setUp()
+        val oldKey = VaultFixtures.identities(vault.exportKeyCopy()).single()
+        accounts.drive.names().forEach { accounts.drive.remove(it) }
+
+        vault.forget()
+        assertEquals(KeyState.None, vault.state.value)
+        assertEquals(0, vault.generation())
+        assertNull(vault.notice.value)
+        assertEquals(VaultText.NO_KEY, failsWith<VaultException> { vault.exportKeyCopy() }.message)
+        assertEquals(KeyState.None, phone.vault().state.value)
+
+        vault.setUp()
+        assertEquals(KeyState.Ready, vault.state.value)
+        assertNotEquals(oldKey, VaultFixtures.identities(vault.exportKeyCopy()).single())
+        assertEquals(KeyState.Ready, newPhone().vault().restore())
+    }
+
+    @Test
     fun `nothing can be changed or exported without a key`() = runTest {
         val vault = newPhone().vault()
         assertEquals(VaultText.NO_KEY, failsWith<VaultException> { vault.rekey(RekeyReason.OWNER_ASKED) }.message)

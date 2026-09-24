@@ -8,6 +8,7 @@ import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.math.ec.rfc7748.X25519
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * libsodium's `crypto_box_seal`, which GitHub requires for Actions secrets: an ephemeral X25519
@@ -34,6 +35,20 @@ object SealedBox {
         } finally {
             key.fill(0)
         }
+    }
+
+    /**
+     * The form GitHub's Actions secrets API uses: the repository's public key (the `key` of
+     * `GET …/actions/secrets/public-key`) comes in standard base64, and `encrypted_value` goes
+     * back in standard base64 without line breaks.
+     */
+    fun sealBase64(recipientPublicKeyBase64: String, message: ByteArray): String {
+        val publicKey = try {
+            Base64.getDecoder().decode(recipientPublicKeyBase64.trim())
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("GitHub's public key for this repository is not valid base64", e)
+        }
+        return Base64.getEncoder().encodeToString(seal(publicKey, message))
     }
 
     /** `crypto_box_seal_open`; the app itself never opens sealed boxes, tests do. */

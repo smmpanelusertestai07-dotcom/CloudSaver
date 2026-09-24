@@ -40,6 +40,11 @@ internal class PhoneKeys(private val store: SecureStore, private val io: Corouti
         store.putString(STATE, AppJson.encodeToString(PhoneState.serializer(), state))
     }
 
+    suspend fun clear() = withContext(io) {
+        store.delete(KEYS)
+        store.delete(STATE)
+    }
+
     private fun loadKeys(): List<VaultKey> {
         val json = store.getString(KEYS) ?: return emptyList()
         return try {

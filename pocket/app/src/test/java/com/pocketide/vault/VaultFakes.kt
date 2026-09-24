@@ -188,7 +188,7 @@ internal class Accounts(val drive: FakeDrive = FakeDrive(), val gitHub: FakeGitH
 }
 
 /** A phone: its own sealed storage, and a vault that can be made again as after a restart. */
-internal class TestPhone(private val accounts: Accounts, dir: File) {
+internal class TestPhone(private val accounts: Accounts, val dir: File) {
     val store = SecureStore(dir, TestBox())
     var passwordSetting: Boolean? = null
 
