@@ -40,6 +40,9 @@ interface DriveAuth {
 
     /** A token for a specific account the owner authorized (the move source or target). */
     suspend fun tokenFor(email: String): String
+
+    /** Drive refused [token] (HTTP 401): forget it, so the next [token] or [tokenFor] is fresh. */
+    suspend fun tokenRejected(token: String) = Unit
 }
 
 data class DriveFile(val id: String, val name: String, val size: Long, val modifiedTime: String?, val md5: String?)
@@ -61,7 +64,10 @@ sealed class DriveException(message: String) : Exception(message) {
     class RateLimited(val retryAfterMs: Long) : DriveException("Drive asked us to slow down")
     class Revoked : DriveException("Drive access was removed")
     class Offline : DriveException("No connection")
-    class Other(message: String) : DriveException(message)
+    open class Other(message: String) : DriveException(message)
+
+    /** The file is not in Drive (any more). Still an [Other], so older callers treat it the same. */
+    class NotFound : Other("That file is no longer in Google Drive")
 }
 
 /** The Drive hidden app folder (`appDataFolder`). Everything written here is already encrypted. */
