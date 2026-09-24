@@ -75,6 +75,8 @@ class WebViewHolder internal constructor() {
     internal var webView: WebView? = null
     internal var loadedUrl: String? = null
     internal var pendingFiles: ValueCallback<Array<Uri>>? = null
+    /** Windows the page opened that are not yet handed to Chrome or dropped. */
+    internal var popups = 0
     internal val callbacks = WebCallbacks()
 
     /** Bumped when a dead WebView is replaced, so the AndroidView is created afresh. */
@@ -377,6 +379,9 @@ private class AgentChrome(private val holder: WebViewHolder) : WebChromeClient()
 
     override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message?): Boolean {
         val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+        // A script opening windows in a loop gets one at a time; each tap still gets its own.
+        if (!isUserGesture && holder.popups > 0) return false
+        holder.popups++
         val popup = WebView(view.context)
         popup.webViewClient = PopupCatcher(holder, popup, isUserGesture)
         transport.webView = popup
@@ -433,6 +438,7 @@ private class PopupCatcher(
     private fun destroyPopup() {
         if (destroyed) return
         destroyed = true
+        holder.popups--
         main.removeCallbacksAndMessages(null)
         popup.stopLoading()
         popup.destroy()
