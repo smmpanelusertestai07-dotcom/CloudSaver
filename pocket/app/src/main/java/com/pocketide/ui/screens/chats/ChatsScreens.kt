@@ -444,7 +444,7 @@ fun RecentlyDeletedScreen(nav: PocketNav) {
             onConfirm = {
                 val ids = deleted.map { it.id }
                 scope.launch {
-                    val failures = ids.count { id -> finish { graph.sessions.deleteForever(id) }.isFailure }
+                    val failures = finish { ids.count { id -> attempt { graph.sessions.deleteForever(id) }.isFailure } }.getOrDefault(ids.size)
                     snackbar.showSnackbar(if (failures == 0) "Deleted forever." else "${WorkFormat.count(failures, "chat", "chats")} could not be deleted. Try again.")
                 }
             },
@@ -573,7 +573,7 @@ fun WaitingUploadsScreen(nav: PocketNav) {
             onConfirm = {
                 val ids = selected.toList()
                 scope.launch {
-                    val failures = ids.count { id -> finish { graph.sessions.setBackUp(id, false) }.isFailure }
+                    val failures = finish { ids.count { id -> attempt { graph.sessions.setBackUp(id, false) }.isFailure } }.getOrDefault(ids.size)
                     snackbar.showSnackbar(if (failures == 0) "Kept on this phone only. Marked \"Not backed up\"." else "Some chats could not be changed. Try again.")
                 }
                 chosen = emptySet()

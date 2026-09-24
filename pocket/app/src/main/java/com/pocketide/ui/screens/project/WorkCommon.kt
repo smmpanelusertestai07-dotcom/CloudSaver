@@ -32,6 +32,8 @@ import com.pocketide.model.AgentInfo
 import com.pocketide.ui.theme.Brand
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
@@ -61,9 +63,15 @@ fun plainReason(e: Throwable): String {
 
 /**
  * [attempt] for work the owner confirmed (a delete, a merge, a new session): once started it runs
- * to its end even when the screen that started it goes away, so it never stops half-way.
+ * to its end even when the screen that started it goes away, so it never stops half-way. If the
+ * caller was cancelled meanwhile, this then throws, so nothing after it (a navigation, a message)
+ * acts on a screen that is gone.
  */
-suspend fun <T> finish(block: suspend () -> T): Result<T> = withContext(NonCancellable) { attempt(block) }
+suspend fun <T> finish(block: suspend () -> T): Result<T> {
+    val result = withContext(NonCancellable) { attempt(block) }
+    currentCoroutineContext().ensureActive()
+    return result
+}
 
 /**
  * Runs an owner's action and reports it in the snackbar: [done] on success (if any),

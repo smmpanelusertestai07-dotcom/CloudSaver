@@ -8,7 +8,12 @@ import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.home.batteryLabel
 import com.pocketide.ui.screens.home.filterRepos
 import com.pocketide.ui.screens.home.heatLabel
+import com.pocketide.projects.RepoAddress
+import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.screens.home.agentLimits
 import com.pocketide.ui.screens.home.needsPackageUri
+import com.pocketide.ui.screens.home.pastedRepo
+import com.pocketide.ui.screens.home.syncDot
 import com.pocketide.ui.screens.home.repoId
 import com.pocketide.ui.screens.home.repoNameProblem
 import com.pocketide.ui.screens.home.roomLabel
@@ -70,6 +75,36 @@ class HomeLogicTest {
         assertEquals("Installing Claude Code" to Tone.WARN, roomLabel(RoomState.Starting("Installing Claude Code")))
         assertEquals("Running · 512 MB" to Tone.OK, roomLabel(RoomState.Running("u", null, 512L * 1024 * 1024)))
         assertEquals("Stopped: out of memory" to Tone.ERROR, roomLabel(RoomState.Failed("out of memory")))
+    }
+
+    @Test
+    fun pastedAddressesCanBeImportedDirectly() {
+        val listed = listOf(repo("me", "app", null))
+        assertEquals(RepoAddress("octo", "tool"), pastedRepo("https://github.com/octo/tool.git", listed))
+        assertEquals(RepoAddress("octo", "tool"), pastedRepo("git@github.com:octo/tool.git", listed))
+        assertEquals(RepoAddress("octo", "tool"), pastedRepo(" octo/tool ", listed))
+        assertNull("already in the list", pastedRepo("https://github.com/Me/App", listed))
+        assertNull("a search word", pastedRepo("tool", listed))
+        assertNull("another host", pastedRepo("https://gitlab.com/octo/tool", listed))
+        assertNull("a name GitHub refuses", pastedRepo("octo/..", listed))
+    }
+
+    @Test
+    fun agentLimitsNameThePlanAndItsUsagePage() {
+        assertEquals("https://claude.ai/settings/usage", agentLimits("claude").usageUrl)
+        assertEquals("https://chatgpt.com/codex/settings/usage", agentLimits("codex").usageUrl)
+        assertEquals("Limits come from your Google plan.", agentLimits("antigravity").text)
+        assertNull(agentLimits("antigravity").usageUrl)
+        assertNull(agentLimits("kilocode.kilo-code").usageUrl)
+    }
+
+    @Test
+    fun backupDot() {
+        assertEquals(Tone.OK, syncDot(SyncStatus.UpToDate(1)).first)
+        assertEquals(Tone.OK, syncDot(SyncStatus.Idle).first)
+        assertEquals(Tone.NEUTRAL, syncDot(SyncStatus.Running("chats")).first)
+        assertEquals(Tone.WARN, syncDot(SyncStatus.Waiting("Drive is full", 0, 10)).first)
+        assertEquals(Tone.ERROR, syncDot(SyncStatus.Error("no access")).first)
     }
 
     @Test

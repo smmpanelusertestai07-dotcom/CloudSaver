@@ -3,7 +3,9 @@ package com.pocketide.ui.work
 import com.pocketide.model.SessionStatus
 import com.pocketide.ui.screens.chats.ChatFilter
 import com.pocketide.ui.screens.chats.StatusFilter
-import com.pocketide.ui.screens.chats.backupLabel
+import com.pocketide.sessions.Sessions
+import com.pocketide.ui.components.Tone
+import com.pocketide.ui.screens.chats.backupState
 import com.pocketide.ui.screens.chats.canContinue
 import com.pocketide.ui.screens.chats.daysLeft
 import com.pocketide.ui.screens.chats.daysLeftText
@@ -12,7 +14,6 @@ import com.pocketide.ui.screens.chats.recentlyDeleted
 import com.pocketide.ui.screens.chats.sessionBytes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,6 +76,13 @@ class ChatsLogicTest {
     }
 
     @Test
+    fun chatsDeletedForeverAreNotListedWhileTheyWaitForTheErase() {
+        val list = chats + session("gone-for-good", status = SessionStatus.DELETED, deletedAt = Sessions.ERASE_NOW)
+        assertEquals(listOf("4"), recentlyDeleted(list).map { it.id })
+        assertEquals(listOf("2", "3", "1"), filterChats(list, ChatFilter(), nameOf).map { it.id })
+    }
+
+    @Test
     fun onlyLiveBranchesCanContinue() {
         assertTrue(session("a").canContinue())
         assertTrue(session("a", status = SessionStatus.CONFLICT_COPY).canContinue())
@@ -83,11 +91,11 @@ class ChatsLogicTest {
     }
 
     @Test
-    fun backupState() {
-        assertNull(backupLabel(session("a")))
-        assertEquals("Not backed up", backupLabel(session("a", backUp = false, pendingVideos = 2)))
-        assertEquals("1 video waiting for Wi-Fi", backupLabel(session("a", pendingVideos = 1, pendingBytes = 10)))
-        assertEquals("Waiting to upload", backupLabel(session("a", pendingBytes = 10)))
+    fun backupStateInWords() {
+        assertEquals("Backed up" to Tone.OK, backupState(session("a")))
+        assertEquals("Not backed up" to Tone.WARN, backupState(session("a", backUp = false, pendingVideos = 2)))
+        assertEquals("1 video waiting for Wi-Fi" to Tone.WARN, backupState(session("a", pendingVideos = 1, pendingBytes = 10)))
+        assertEquals("Waiting to upload" to Tone.WARN, backupState(session("a", pendingBytes = 10)))
         assertEquals(30L, sessionBytes(session("a", transcriptBytes = 10, mediaBytes = 20)))
     }
 }

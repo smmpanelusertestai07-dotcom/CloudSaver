@@ -3,6 +3,10 @@ package com.pocketide.ui.work
 import com.pocketide.ui.web.Modifiers
 import com.pocketide.ui.web.TermKey
 import com.pocketide.ui.web.TerminalKeys
+import com.pocketide.ui.web.WebPrefs
+import com.pocketide.ui.web.clampFont
+import com.pocketide.ui.web.clampZoom
+import com.pocketide.ui.web.nextZoom
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -96,6 +100,65 @@ class TerminalKeysTest {
         assertTrue(script.contains("window.__pocketSetMods ="))
         assertTrue(script.contains("pocketBar.postMessage('used')"))
         assertFalse("no Kotlin template leaked into the script", script.contains("$"))
+    }
+
+    @Test
+    fun agentKeysForClaudeCodeAndCodex() {
+        assertEquals("\u0003", TerminalKeys.sequence(TermKey.CTRL_C))
+        assertEquals("$esc\u0003", TerminalKeys.sequence(TermKey.CTRL_C, alt))
+        assertEquals("$esc[Z", TerminalKeys.sequence(TermKey.SHIFT_TAB))
+        assertEquals("$esc$esc[Z", TerminalKeys.sequence(TermKey.SHIFT_TAB, alt))
+        assertEquals("$esc[1;2A", TerminalKeys.sequence(TermKey.SHIFT_UP))
+        assertEquals("$esc[1;2B", TerminalKeys.sequence(TermKey.SHIFT_DOWN))
+        // xterm: 1 + Shift 1 + Alt 2 + Ctrl 4.
+        assertEquals("$esc[1;6A", TerminalKeys.sequence(TermKey.SHIFT_UP, ctrl))
+        assertEquals("$esc[1;8B", TerminalKeys.sequence(TermKey.SHIFT_DOWN, both))
+    }
+
+    @Test
+    fun everyKeyHasALabelAndADescriptionForTalkBack() {
+        TermKey.entries.forEach { key ->
+            assertTrue(key.label.isNotBlank())
+            assertTrue(key.description.isNotBlank())
+            assertTrue("$key sends something", TerminalKeys.sequence(key).isNotEmpty())
+        }
+    }
+
+    @Test
+    fun copiedTextComesBackFromJson() {
+        assertEquals("ls -la\nfile", TerminalKeys.copiedText("\"ls -la\\nfile\\n\\n\""))
+        assertEquals("quote \" and \\", TerminalKeys.copiedText("\"quote \\\" and \\\\\""))
+        assertNull(TerminalKeys.copiedText(null))
+        assertNull(TerminalKeys.copiedText("null"))
+        assertNull(TerminalKeys.copiedText("\"   \""))
+        assertNull("a page answering with a number", TerminalKeys.copiedText("42"))
+        assertNull("a page answering with an object", TerminalKeys.copiedText("{\"a\":1}"))
+        assertNull("not JSON at all", TerminalKeys.copiedText("\"unterminated"))
+        assertEquals("abc", TerminalKeys.copiedText("\"abcdef\"", max = 3))
+        // Never ends on half of a surrogate pair.
+        assertEquals("a", TerminalKeys.copiedText("\"a\uD83D\uDE00b\"", max = 2))
+        val huge = "x".repeat(TerminalKeys.MAX_COPY_CHARS + 10)
+        assertEquals(TerminalKeys.MAX_COPY_CHARS, TerminalKeys.copiedText("\"$huge\"")?.length)
+    }
+
+    @Test
+    fun fontSizeIsClampedBeforeItReachesThePage() {
+        assertEquals("window.pocketFontSize&&window.pocketFontSize(14)", TerminalKeys.fontSizeCall(14))
+        assertEquals("window.pocketFontSize&&window.pocketFontSize(10)", TerminalKeys.fontSizeCall(-400))
+        assertEquals("window.pocketFontSize&&window.pocketFontSize(24)", TerminalKeys.fontSizeCall(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun zoomCyclesThroughTheMenuSizes() {
+        assertEquals(115, nextZoom(100))
+        assertEquals(125, nextZoom(115))
+        assertEquals(150, nextZoom(125))
+        assertEquals(100, nextZoom(150))
+        assertEquals(100, nextZoom(999))
+        assertEquals(125, nextZoom(120))
+        assertEquals(100, clampZoom(10))
+        assertEquals(150, clampZoom(400))
+        assertEquals(WebPrefs.DEFAULT_FONT, clampFont(WebPrefs.DEFAULT_FONT))
     }
 
     @Test
