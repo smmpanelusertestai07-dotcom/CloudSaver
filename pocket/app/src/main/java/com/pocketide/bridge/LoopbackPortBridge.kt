@@ -54,6 +54,8 @@ internal class LoopbackPortBridge(
     private val limits: BridgeLimits = BridgeLimits(),
     parent: Job? = null,
     private val random: SecureRandom = SecureRandom(),
+    /** The second address each bridge port is held on; tests use another IPv4 loopback. */
+    private val mirrorLoopback: InetAddress = LOOPBACK_V6,
 ) : PortBridge, BridgeDirectory {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(
@@ -67,8 +69,8 @@ internal class LoopbackPortBridge(
     private val openConnections = AtomicInteger()
     private var reaper: Job? = null
     private var shutDown = false
-    private val hasIpv6Loopback: Boolean by lazy {
-        bound(LOOPBACK_V6, 0)?.also(::closeQuietly) != null
+    private val hasMirror: Boolean by lazy {
+        bound(mirrorLoopback, 0)?.also(::closeQuietly) != null
     }
 
     private class Exposure(val target: BridgeTarget, purpose: String, val servers: List<ServerSocket>) {
@@ -169,8 +171,8 @@ internal class LoopbackPortBridge(
      */
     private fun bindBothLoopbacks(): List<ServerSocket>? {
         val v4 = bound(LOOPBACK_V4, 0) ?: throw IllegalStateException("The bridge could not open a port on this phone.")
-        if (!hasIpv6Loopback) return listOf(v4)
-        val v6 = bound(LOOPBACK_V6, v4.localPort)
+        if (!hasMirror) return listOf(v4)
+        val v6 = bound(mirrorLoopback, v4.localPort)
         if (v6 != null) return listOf(v4, v6)
         closeQuietly(v4)
         return null

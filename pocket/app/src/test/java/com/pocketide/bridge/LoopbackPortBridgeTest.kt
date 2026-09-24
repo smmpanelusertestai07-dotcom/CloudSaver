@@ -390,22 +390,26 @@ class LoopbackPortBridgeTest {
         }
     }
 
-    @Test fun `the bridge port is held on the IPv6 loopback too, where localhost names resolve first`() {
-        runCatching { ServerSocket(0, 50, InetAddress.getByName("::1")).close() }
-            .onFailure { throw AssumptionViolatedException("No IPv6 loopback here.") }
-        val up = upstream { it.reply(200, "via v6") }
-        val port = bridge.expose(up.port, "editor")
+    @Test fun `the bridge port is held on the second loopback too, where localhost names resolve first`() {
+        val mirror = InetAddress.getByName("127.0.0.2")
+        val mirrored = LoopbackPortBridge(limits, mirrorLoopback = mirror)
+        try {
+            val up = upstream { it.reply(200, "via the mirror") }
+            val port = mirrored.expose(up.port, "editor")
 
-        assertThrows<IOException> { ServerSocket(port.bridgePort, 50, InetAddress.getByName("::1")).close() }
-        val response = Socket(InetAddress.getByName("::1"), port.bridgePort).use { socket ->
-            socket.soTimeout = 5_000
-            socket.getOutputStream().write(head("GET / HTTP/1.1", "Host" to "localhost:${port.bridgePort}", port.cookie).toByteArray())
-            RawResponse.parse(readUntilClosed(socket.getInputStream()))
+            assertThrows<IOException> { ServerSocket(port.bridgePort, 50, mirror).close() }
+            val response = Socket(mirror, port.bridgePort).use { socket ->
+                socket.soTimeout = 5_000
+                socket.getOutputStream().write(head("GET / HTTP/1.1", "Host" to "localhost:${port.bridgePort}", port.cookie).toByteArray())
+                RawResponse.parse(readUntilClosed(socket.getInputStream()))
+            }
+            assertEquals("via the mirror", response.bodyText)
+
+            mirrored.revoke(up.port)
+            assertRefused(port.bridgePort, mirror)
+        } finally {
+            mirrored.shutdown()
         }
-        assertEquals("via v6", response.bodyText)
-
-        bridge.revoke(up.port)
-        ServerSocket(port.bridgePort, 50, InetAddress.getByName("::1")).close()
     }
 
     @Test fun `a server's broken reply becomes a bad gateway page`() {
@@ -606,11 +610,11 @@ class LoopbackPortBridgeTest {
      * A listener closed while a thread waits in accept() leaves the kernel socket up until that
      * thread wakes, a matter of milliseconds; what connects meanwhile must never be served.
      */
-    private fun assertRefused(port: Int) {
+    private fun assertRefused(port: Int, address: InetAddress = InetAddress.getByName("127.0.0.1")) {
         val deadline = System.nanoTime() + 2_000_000_000L
         while (System.nanoTime() < deadline) {
             try {
-                Socket("127.0.0.1", port).use { socket ->
+                Socket(address, port).use { socket ->
                     socket.soTimeout = 2_000
                     socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\n\r\n".toByteArray())
                     val answer = try {
