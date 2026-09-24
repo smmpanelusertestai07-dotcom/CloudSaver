@@ -189,8 +189,18 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     }
 
     suspend fun runMaintenance(): WorkResult {
-        attempt { run ->
-            if (ports.settings.settings.value.onboardingDone) maintenance.run(run)
+        val moved = attempt { run ->
+            if (ports.settings.settings.value.onboardingDone) maintenance.run(run) else emptyList()
+        }.orEmpty()
+        // Outside the lock: deleting a session may ask this engine to upload what it had waiting.
+        for (id in moved) {
+            try {
+                ports.deleteSessionLocally(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The index already says "deleted on"; the Chats list shows it from there.
+            }
         }
         return if (retryable && flows.status.value is SyncStatus.Error) WorkResult.RETRY else WorkResult.OK
     }

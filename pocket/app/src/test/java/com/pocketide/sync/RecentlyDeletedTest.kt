@@ -117,7 +117,7 @@ class RecentlyDeletedTest {
         assertEquals(8L, pieces.sumOf { it.length })
     }
 
-    @Test
+    @Test(timeout = 30_000) // deleting a session calls back into the engine: no deadlock
     fun oldChatsGetASevenDayNoticeBeforeTheyMoveToRecentlyDeleted() = runBlocking {
         val phone = phone(settings = Settings(onboardingDone = true, keepChatsMonths = 3))
         phone.sessions += session("ancient", at = clock.now - 120 * day)
@@ -147,7 +147,7 @@ class RecentlyDeletedTest {
         assertTrue(phone.state().notices.isEmpty())
     }
 
-    @Test
+    @Test(timeout = 30_000)
     fun whenPocketIdesSpaceIsFullChatsOlderThanAYearAreTrimmedAfterANotice() = runBlocking {
         val phone = phone(settings = Settings(onboardingDone = true, driveLimitGb = 0))
         phone.sessions += session("year-old", at = clock.now - 400 * day)

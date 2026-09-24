@@ -54,7 +54,7 @@ class SafetyTest {
         val phone = TestPhone(accounts, clock)
         val outside = phone.base.resolve("outside").apply { mkdirs() }
         outside.resolve("stolen.jsonl").writeText("private\n")
-        val projects = phone.homeFile("claude", ".claude/projects/x").parentFile
+        val projects = java.io.File(phone.dirs.roomHome("claude"), ".claude/projects").apply { mkdirs() }
         java.nio.file.Files.createSymbolicLink(projects.toPath().resolve("link"), outside.toPath())
         phone.engine.syncNow()
         assertTrue(phone.remoteIndex()?.objects.orEmpty().isEmpty())

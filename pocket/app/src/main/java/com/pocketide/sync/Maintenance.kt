@@ -25,20 +25,25 @@ internal class Maintenance(
     private val ports get() = kit.ports
     private val cleaner = LocalCleaner(ports.dirs)
 
-    suspend fun run(run: Run) {
+    /**
+     * Returns the sessions a retention rule moved to Recently deleted: the index already says so,
+     * and the caller removes their phone copies once the engine's lock is released (deleting a
+     * session may ask the engine to upload what it still had waiting).
+     */
+    suspend fun run(run: Run): List<String> {
         val settings = ports.settings.settings.value
         val book = pass.book(run)
         cleanPhone(run, settings, book, force = false)
         computer(run, settings, book)
         run.save()
-        if (!ports.network.online()) return
+        if (!ports.network.online()) return emptyList()
         val drive = run.drive()
         val snapshot = kit.remote.fetch(drive, run.cipher, run.state.remote, run.index)
         val index = snapshot.index
         if (index == null || LeasePolicy.heldByOther(index, ports.device, run.now) != null) {
             run.keepIndex(snapshot)
             run.save()
-            return
+            return emptyList()
         }
         val extras = retention(run, index, settings, book)
         var latest = committer.commit(run, drive, snapshot, CommitMode.HOLDER, extras)
@@ -48,6 +53,7 @@ internal class Maintenance(
         committer.deleteUnused(run, drive)
         run.state = run.state.copy(lastMaintenanceAt = run.now)
         run.save()
+        return extras.sessions.map { it.id }
     }
 
     /** Temp files, logs, old build outputs and idle caches; at 90 % of the phone limit, more. */
@@ -140,15 +146,6 @@ internal class Maintenance(
         if (trim.noticed.isNotEmpty()) notices.retention(run, trim.noticed.size, due, trim = true)
         val moves = (keep.moveNow + trim.moveNow).distinct().filter { it !in erase }
         val changes = moves.mapNotNull { id -> inDrive.firstOrNull { it.id == id }?.let { SessionChange.Delete(Diffs.sanitized(it), now) } }
-        for (id in moves) {
-            try {
-                ports.deleteSessionLocally(id)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // The index already says "deleted on"; the phone copy follows when the Chats list adopts it.
-            }
-        }
         return CommitExtras(sessions = changes, eraseSessions = erase)
     }
 
