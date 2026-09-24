@@ -136,7 +136,7 @@ internal class SessionMediaLibrary(
         if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
             throw MediaException("Only plain files can be added to Media.")
         }
-        val head = readHead(source)
+        val head = MediaSniffer.head(source)
         val kind = MediaSniffer.kindOf(name, head)
         val size = source.length()
         val limit = MediaSniffer.limitFor(kind)
@@ -183,7 +183,7 @@ internal class SessionMediaLibrary(
         } catch (e: OutOfMemoryError) {
             false
         }
-        if (smaller && MediaSniffer.kindOf(webp.name, readHead(webp)) == MediaKind.IMAGE) return webp to "webp"
+        if (smaller && MediaSniffer.kindOf(webp.name, MediaSniffer.head(webp)) == MediaKind.IMAGE) return webp to "webp"
         webp.delete()
         return null
     }
@@ -240,7 +240,7 @@ internal class SessionMediaLibrary(
     private fun kindOfFile(file: File): MediaKind {
         val stamp = file.length() xor file.lastModified()
         kinds[file.path]?.let { (seen, kind) -> if (seen == stamp) return kind }
-        val kind = MediaSniffer.kindOf(file.name, readHead(file))
+        val kind = MediaSniffer.kindOf(file.name, MediaSniffer.head(file))
         kinds[file.path] = stamp to kind
         return kind
     }
@@ -331,17 +331,6 @@ internal class SessionMediaLibrary(
             val safe = safeName(name)
             val stem = if (safe.contains('.')) safe.substringBeforeLast('.') else safe
             return stem.trim('.', '_', '-').take(MAX_STEM).ifEmpty { "file" }
-        }
-
-        fun readHead(file: File): ByteArray = file.inputStream().use { input ->
-            val buffer = ByteArray(MediaSniffer.HEAD_BYTES)
-            var filled = 0
-            while (filled < buffer.size) {
-                val n = input.read(buffer, filled, buffer.size - filled)
-                if (n < 0) break
-                filled += n
-            }
-            buffer.copyOf(filled)
         }
 
         fun sha256(file: File): String {

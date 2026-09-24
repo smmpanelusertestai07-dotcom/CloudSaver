@@ -1,5 +1,6 @@
 package com.pocketide.media
 
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
@@ -25,6 +26,18 @@ object MediaSniffer {
 
     /** ISO-BMFF brands that are still images or QuickTime, not MP4 video. */
     private val NOT_MP4_BRANDS = setOf("heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1", "avif", "avis", "qt  ")
+
+    /** The first [HEAD_BYTES] of [file] (fewer when it is shorter). */
+    fun head(file: File): ByteArray = file.inputStream().use { input ->
+        val buffer = ByteArray(HEAD_BYTES)
+        var filled = 0
+        while (filled < buffer.size) {
+            val n = input.read(buffer, filled, buffer.size - filled)
+            if (n < 0) break
+            filled += n
+        }
+        buffer.copyOf(filled)
+    }
 
     fun kindOf(name: String, head: ByteArray): MediaKind = when {
         head.startsWith(PNG) || head.startsWith(JPEG) || isGif(head) || isWebp(head) -> MediaKind.IMAGE
