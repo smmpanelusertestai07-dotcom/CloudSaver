@@ -58,6 +58,11 @@ class ManageTextTest {
     fun `errors become one plain sentence`() {
         assertEquals("GitHub is not connected. Reconnect it in Settings.", PlainError.of(NotConnectedException("x")))
         assertTrue(PlainError.of(IOException("reset by peer")).startsWith("No connection"))
+        assertEquals(PlainError.OUT_OF_SPACE, PlainError.of(IOException("write failed: ENOSPC (No space left on device)")))
+        assertEquals(PlainError.OUT_OF_SPACE, PlainError.of(IOException("copy failed", IOException("No space left on device"))))
+        assertEquals(PlainError.OUT_OF_SPACE, PlainError.local(IOException("No space left on device"), "fallback"))
+        assertEquals("This file is too large to edit on the phone.", PlainError.local(IOException("This file is too large to edit on the phone."), "fallback"))
+        assertEquals("fallback", PlainError.local(IOException("EACCES"), "fallback"))
         assertTrue(PlainError.of(DriveException.StorageFull()).contains("full"))
         assertEquals("The phone is too hot.", PlainError.of(IllegalStateException("The phone is too hot")))
         assertEquals(PlainError.GENERIC, PlainError.of(IllegalStateException("stub")))

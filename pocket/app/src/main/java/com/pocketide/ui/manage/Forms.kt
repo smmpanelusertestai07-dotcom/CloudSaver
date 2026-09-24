@@ -109,6 +109,12 @@ object DataMath {
 
     fun mediaCount(sessions: List<SessionRecord>): Int = liveSessions(sessions).sumOf { it.mediaCount }
 
+    /** "12 MB here · 4 MB in Drive"; Drive's part is left out until the sync engine has counted it. */
+    fun places(phoneBytes: Long, driveBytes: Long?): String {
+        val here = "${ManageFormat.bytes(phoneBytes)} here"
+        return if (driveBytes == null) here else "$here · ${ManageFormat.bytes(driveBytes)} in Drive"
+    }
+
     /** "Delete everything" runs only when the owner typed the word exactly. */
     fun deleteConfirmed(typed: String) = typed.trim() == "DELETE"
 }

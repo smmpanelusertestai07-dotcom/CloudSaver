@@ -186,7 +186,7 @@ private suspend fun save(
 }
 
 /** Local file errors carry their own plain sentence; anything else gets the general one. */
-private fun localError(error: Throwable): String = PlainError.readable(error.message) ?: "Could not open or save this file."
+private fun localError(error: Throwable): String = PlainError.local(error, "Could not open or save this file.")
 
 @Composable
 private fun EditorField(label: String, value: String, onChange: (String) -> Unit) {

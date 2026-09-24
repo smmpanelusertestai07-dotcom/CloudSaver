@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.google.DriveAuthResult
 import com.pocketide.model.AgentInfo
+import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
 import com.pocketide.ui.components.InfoRow
@@ -131,6 +132,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val secrets by graph.secrets.values.collectAsStateWithLifecycle()
     val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now = graph.clock::now
     val sizes = rememberLoad(agents, now) { readSizes(graph, agents) }
     val drive = rememberLoad("drive", now) { graph.usage.google() }
@@ -147,7 +149,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
                     "Google Drive (hidden, encrypted)",
                     drive.value?.let { ManageFormat.bytes(it.appDataBytes) } ?: if (drive.loading) "…" else "Unknown",
                 )
-                InfoRow("GitHub", ManageFormat.count(projects.size, "private repository", "private repositories") + " + keyring")
+                InfoRow("GitHub", ManageFormat.count(projects.size, "repository", "repositories") + " + keyring")
                 drive.error?.let { ErrorNote(it) }
                 AsOfLine(drive.at, drive.loading || sizes.loading) {
                     drive.refresh()
@@ -156,7 +158,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
             }
         }
         item { SectionLabel("By type") }
-        item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value) }
+        item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
         item { SectionLabel("Largest sessions") }
         item { LargestCard(largest, nav) { removeMediaOf = it } }
         item { SectionLabel("Memory and instructions") }
@@ -251,27 +253,33 @@ private fun TypeRow(title: String, value: String, places: List<Place>, note: Str
 }
 
 @Composable
-private fun ByTypeCard(sessions: List<SessionRecord>, projectCount: Int, secretCount: Int, sizes: PhoneSizes?) {
+private fun ByTypeCard(
+    sessions: List<SessionRecord>,
+    projectCount: Int,
+    secretCount: Int,
+    sizes: PhoneSizes?,
+    drive: Map<ObjectKind, Long>,
+) {
     val live = DataMath.liveSessions(sessions)
     val pending = "…"
     SectionCard(null) {
         TypeRow(
             "Chats",
-            "${ManageFormat.count(live.size, "session")} · ${ManageFormat.bytes(DataMath.chatBytes(sessions))}",
+            "${ManageFormat.count(live.size, "session")} · ${DataMath.places(DataMath.chatBytes(sessions), drive[ObjectKind.CHAT_PIECE])}",
             listOf(Place.PHONE, Place.DRIVE),
             "All in Drive; the phone keeps recent ones. Never in GitHub.",
         )
         HorizontalDivider()
         TypeRow(
             "Media",
-            "${ManageFormat.count(DataMath.mediaCount(sessions), "file")} · ${ManageFormat.bytes(DataMath.mediaBytes(sessions))}",
+            "${ManageFormat.count(DataMath.mediaCount(sessions), "file")} · ${DataMath.places(DataMath.mediaBytes(sessions), drive[ObjectKind.MEDIA])}",
             listOf(Place.PHONE, Place.DRIVE),
             "Screenshots, videos and files in your chats.",
         )
         HorizontalDivider()
         TypeRow(
             "Memory and instructions",
-            sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${ManageFormat.bytes(it.memoryBytes)}" } ?: pending,
+            sizes?.let { "${ManageFormat.count(it.memoryCount, "file")} · ${DataMath.places(it.memoryBytes, drive[ObjectKind.MEMORY])}" } ?: pending,
             listOf(Place.PHONE, Place.DRIVE),
         )
         HorizontalDivider()
@@ -288,7 +296,7 @@ private fun ByTypeCard(sessions: List<SessionRecord>, projectCount: Int, secretC
         HorizontalDivider()
         TypeRow("The computer", sizes?.let { ManageFormat.bytes(it.computer) } ?: pending, listOf(Place.PHONE), "Rebuildable any time; nothing in it is the only copy.")
         HorizontalDivider()
-        TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. After a new phone or a reset you sign in to each agent again.")
+        TypeRow("Agent sign-ins", "On this phone only", listOf(Place.PHONE), "Never synced. On a new phone you sign in to each agent again.")
     }
 }
 
