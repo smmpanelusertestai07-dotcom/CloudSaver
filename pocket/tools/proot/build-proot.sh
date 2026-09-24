@@ -18,6 +18,7 @@
 # Needs: ANDROID_NDK_HOME (the NDK version named in sources.json), python3, curl, make, unzip,
 #        readelf (PRoot's loader-info step runs it on the host).
 set -euo pipefail
+shopt -s inherit_errexit
 
 readonly API=29
 readonly TARGET="aarch64-linux-android$API"

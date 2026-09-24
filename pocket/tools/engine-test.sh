@@ -15,6 +15,7 @@
 # Usage: engine-test.sh        (needs docker, shellcheck, python3 and curl; run on arm64,
 #                               or on another host with arm64 emulation registered)
 set -euo pipefail
+shopt -s inherit_errexit
 
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POCKET="$(dirname "$TOOLS")"
@@ -78,8 +79,10 @@ python_tests() {
 
 # The base image, fetched once and kept only if it matches the app's own pin.
 ubuntu_image() {
-  local url sha256 bytes file tag
-  read -r url sha256 bytes < <(python3 "$TOOLS/pins.py" --get ubuntuBase)
+  local pin url sha256 bytes file tag
+  pin=$(python3 "$TOOLS/pins.py" --get ubuntuBase) \
+    || { printf 'FAIL: the Ubuntu base pin (LinuxPins.kt ubuntuBase) could not be read\n' >&2; exit 1; }
+  read -r url sha256 bytes <<< "$pin"
   file="$CACHE/${url##*/}"
   mkdir -p "$CACHE"
   if [ ! -f "$file" ] || ! echo "$sha256  $file" | sha256sum --check --status; then
