@@ -44,17 +44,19 @@ internal class CodeServerSlot(
 
     /** True when the code-server under [guestFolder] starts and reports [version]. */
     suspend fun reports(guestFolder: String, version: String): Boolean {
-        var first: String? = null
+        var reported = false
         val code = try {
             withTimeout(CHECK_TIMEOUT_MS) {
+                // "4.138.0 <commit> with Code 1.138.0", after log lines such as the first run's
+                // "Wrote default config file".
                 runner.run(rootfs, listOf("$guestFolder/bin/code-server", "--version")) { line ->
-                    if (first == null && line.isNotBlank()) first = line.trim()
+                    if (line.trim().substringBefore(' ') == version) reported = true
                 }
             }
         } catch (tooSlow: TimeoutCancellationException) {
             return false
         }
-        return code == 0 && first?.substringBefore(' ') == version
+        return code == 0 && reported
     }
 
     /** Points /opt/code-server at [version]; returns the link's previous target, if there was one. */

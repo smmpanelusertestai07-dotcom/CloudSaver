@@ -74,6 +74,7 @@ internal class FakeGuest : GuestRunner {
                 if (argv[0].startsWith("/opt/code-server/") && !linkStarts) return 1
                 val answer = guest.readText(argv[0])?.trim() ?: return 127
                 if (!answer.startsWith("code-server ")) return 1
+                onLine("[2026-09-24T16:39:25.049Z] info  Wrote default config file to /root/.config/code-server/config.yaml")
                 onLine("${answer.removePrefix("code-server ")} 59c988c7 with Code 1.138.0")
                 0
             }
@@ -82,7 +83,7 @@ internal class FakeGuest : GuestRunner {
     }
 
     private fun bootstrap(guest: GuestRoot, onLine: (String) -> Unit): Int {
-        onLine("Preparing Ubuntu…")
+        onLine("pocketide-step Preparing Ubuntu…")
         onLine("pocketide-progress 10")
         if (bootstrapFails) {
             onLine("Could not reach Ubuntu's servers.")
@@ -91,7 +92,8 @@ internal class FakeGuest : GuestRunner {
         onLine("dlstatus:1:50.0:Retrieving file 1 of 2")
         onLine("Fetched 1.5 MB in 2s (750 kB/s)")
         onLine("pocketide-progress 30")
-        onLine("Installing tools…")
+        onLine("pocketide-step Installing tools…")
+        onLine("update-alternatives: warning: skip creation of /usr/share/man/man1/pico.1.gz because associated file is missing" + "x".repeat(100))
         onLine("pmstatus:git:60.0:Installing git (arm64)")
         onLine("pocketide-installed $missingTools")
         missingTools = 0

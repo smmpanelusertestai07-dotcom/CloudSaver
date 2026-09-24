@@ -13,7 +13,8 @@ class GuestFactsTest {
     fun scriptLines() {
         assertEquals(GuestLine.Progress(30), GuestLines.parse("pocketide-progress 30"))
         assertEquals(GuestLine.Progress(100), GuestLines.parse("pocketide-progress 250"))
-        assertEquals(GuestLine.Fixed(3), GuestLines.parse("pocketide-fixed 3"))
+        assertEquals(GuestLine.Step("Installing tools…"), GuestLines.parse("pocketide-step Installing tools…"))
+        assertEquals(GuestLine.Fixed(3),GuestLines.parse("pocketide-fixed 3"))
         assertEquals(GuestLine.Installed(13), GuestLines.parse("pocketide-installed 13"))
         assertEquals(GuestLine.Apt(false, 45.5f, "Retrieving file 3 of 9"), GuestLines.parse("dlstatus:3:45.5:Retrieving file 3 of 9"))
         assertEquals(GuestLine.Apt(true, 80f, "Installing git (arm64)"), GuestLines.parse("pmstatus:git:80:Installing git (arm64)"))

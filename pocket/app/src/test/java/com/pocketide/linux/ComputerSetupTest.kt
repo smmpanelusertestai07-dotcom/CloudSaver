@@ -62,6 +62,8 @@ class ComputerSetupTest {
         for (expected in listOf("Downloading Ubuntu 24.04.5…", "Unpacking Ubuntu…", "Preparing Ubuntu…", "Downloading code-server 4.138.0…", "Unpacking code-server…", "Checking that code-server starts…")) {
             assertTrue("missing step $expected in $steps", expected in steps)
         }
+        assertTrue("Installing tools: Installing git (arm64)" in steps)
+        assertTrue(steps.none { it.contains("update-alternatives") })
         val fractions = installing().mapNotNull { it.fraction }
         assertEquals(fractions.sorted(), fractions)
         assertTrue(fractions.all { it in 0f..1f })

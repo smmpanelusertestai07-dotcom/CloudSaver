@@ -8,6 +8,9 @@ internal sealed interface GuestLine {
     /** The script's own position, "pocketide-progress <0..100>". */
     data class Progress(val percent: Int) : GuestLine
 
+    /** The script's current step, "pocketide-step <text>", which the progress screen shows. */
+    data class Step(val text: String) : GuestLine
+
     /** apt's status (APT::Status-Fd): a download, or a package being set up. */
     data class Apt(val installing: Boolean, val percent: Float, val text: String) : GuestLine
 
@@ -26,7 +29,8 @@ internal sealed interface GuestLine {
 
 internal object GuestLines {
     private val PROGRESS = Regex("""^pocketide-progress (\d{1,3})$""")
-    private val FIXED = Regex("""^pocketide-fixed (\d{1,6})$""")
+    private val STEP = Regex("""^pocketide-step (.+)$""")
+    private val FIXED =Regex("""^pocketide-fixed (\d{1,6})$""")
     private val INSTALLED = Regex("""^pocketide-installed (\d{1,6})$""")
     private val APT = Regex("""^(dlstatus|pmstatus):[^:]*:([0-9.]+):(.*)$""")
     private val FETCHED = Regex("""^Fetched ([0-9.]+) ([kMGT]?)B in """)
@@ -37,6 +41,7 @@ internal object GuestLines {
     fun parse(raw: String): GuestLine {
         val line = clean(raw)
         PROGRESS.matchEntire(line)?.let { return GuestLine.Progress(it.groupValues[1].toInt().coerceIn(0, 100)) }
+        STEP.matchEntire(line)?.let { return GuestLine.Step(it.groupValues[1]) }
         FIXED.matchEntire(line)?.let { return GuestLine.Fixed(it.groupValues[1].toInt()) }
         INSTALLED.matchEntire(line)?.let { return GuestLine.Installed(it.groupValues[1].toInt()) }
         APT.matchEntire(line)?.let { match ->

@@ -292,7 +292,7 @@ internal class ProotComputer(
         val code = try {
             withTimeout(AGY_TIMEOUT_MS) {
                 run(LinuxCommand(listOf("/root/$AGY_PATH", "--version"), binds = listOf(Bind(home.absolutePath, "/root")))) { line ->
-                    if (first == null && line.isNotBlank()) first = line
+                    if (first == null) first = GuestFacts.version(line)
                 }
             }
         } catch (tooSlow: TimeoutCancellationException) {
@@ -302,7 +302,7 @@ internal class ProotComputer(
         } catch (failure: Exception) {
             null
         }
-        val shown = GuestFacts.version(first).takeIf { code == 0 } ?: AGY_DOES_NOT_START
+        val shown = first.takeIf { code == 0 } ?: AGY_DOES_NOT_START
         agyVersion = key to shown
         return shown
     }

@@ -526,11 +526,12 @@ internal class ComputerSetup(
                     bar.step("$label: ${line.text}")
                     bar.within(position / 100f)
                 }
-                is GuestLine.Text -> if (line.text.endsWith("…")) {
+                // Only the script's own steps name the bar: apt and dpkg print warnings too.
+                is GuestLine.Step -> {
                     label = line.text.removeSuffix("…")
                     bar.step(line.text)
                 }
-                is GuestLine.Fetched, is GuestLine.Fixed, is GuestLine.Installed -> Unit
+                is GuestLine.Text, is GuestLine.Fetched, is GuestLine.Fixed, is GuestLine.Installed -> Unit
             }
         }
     }
