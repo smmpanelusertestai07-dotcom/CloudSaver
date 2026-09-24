@@ -439,7 +439,10 @@ internal class SessionManager(
     override suspend fun autosave(sessionId: String): String? = autosaver.save(sessionId)
 
     override suspend fun refresh() {
-        refreshLock.withLock { measureAll() }
+        refreshLock.withLock {
+            active.current()
+            measureAll()
+        }
         eraseInBackground()
         saveUnpushedWork()
     }
