@@ -42,6 +42,7 @@ import com.pocketide.ui.nav.PocketNav
 import java.util.Locale
 
 private const val GITHUB_BILLING = "https://github.com/settings/billing"
+private const val GITHUB_BUDGETS = "https://github.com/settings/billing/budgets"
 private const val GOOGLE_STORAGE = "https://one.google.com/storage"
 
 /**
@@ -84,6 +85,7 @@ fun UsageScreen(nav: PocketNav) {
                     }
                 }
                 LinkRow("Billing and plans on GitHub", GITHUB_BILLING, nav)
+                LinkRow("Budgets on GitHub", GITHUB_BUDGETS, nav)
             }
         }
         item { SectionLabel("Project repositories") }
@@ -99,11 +101,19 @@ fun UsageScreen(nav: PocketNav) {
 @Composable
 private fun ActionsBlock(usage: AccountUsage, nowMs: Long) {
     val summary = ActionsUsage.summarize(usage)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("You pay GitHub this month", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Text(
+            if (summary.chargedUsd > 0) ManageFormat.usd(summary.chargedUsd) else "Nothing",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
     summary.plan?.let { InfoRow("Plan", it.replaceFirstChar { c -> c.uppercase() }) }
     val allowance = summary.allowance
     val counted = summary.countedMinutes
     if (allowance != null) {
-        InfoRow("Minutes used", "${ManageFormat.minutes(counted)} of ${ManageFormat.minutes(allowance.minutes.toDouble())}")
+        InfoRow("Minutes used", "${ManageFormat.minutes(counted)} of ${ManageFormat.minutes(allowance.minutes.toDouble())} included in your plan")
         UsageMeter(counted / allowance.minutes)
     } else {
         InfoRow("Minutes used", ManageFormat.minutes(counted))
@@ -113,7 +123,11 @@ private fun ActionsBlock(usage: AccountUsage, nowMs: Long) {
         val extra = if (os.os.multiplier > 1) " × ${os.os.multiplier} = ${ManageFormat.minutes(os.counted)}" else ""
         InfoRow(os.os.label, ManageFormat.minutes(os.minutes) + extra)
     }
-    Hint("Linux counts 1×, Windows 2× and macOS 10× against the included minutes. Public repositories are free.")
+    Hint(
+        "Linux counts 1×, Windows 2× and macOS 10× against the minutes included in your plan. Builds in a public " +
+            "repository are free (public repo).",
+    )
+    Hint("Without a payment method or a budget on GitHub, builds stop at the limit: there is no surprise bill.")
     val share = ActionsUsage.storageShare(summary.storageGbHours, allowance, nowMs)
     if (allowance != null) {
         InfoRow(
@@ -124,7 +138,6 @@ private fun ActionsBlock(usage: AccountUsage, nowMs: Long) {
     } else if (summary.storageGbHours > 0) {
         InfoRow("Artifact storage", String.format(Locale.ENGLISH, "%.1f GB-hours", summary.storageGbHours))
     }
-    InfoRow("Charged this month", if (summary.chargedUsd > 0) ManageFormat.usd(summary.chargedUsd) else "Nothing")
     InfoRow("Resets", Ist.date(ActionsUsage.resetAt(nowMs)))
     if (allowance != null) Hint("Included amounts from GitHub's plan table as of ${ActionsUsage.ALLOWANCE_AS_OF}.")
 }
