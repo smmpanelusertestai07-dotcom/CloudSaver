@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
 
 /** Puts scheduled tasks into WorkManager and takes them out. */
 internal interface TaskScheduler {
-    fun schedule(task: ScheduledTask)
+    /** [update] replaces a job already there (an edited task); otherwise an existing job is kept. */
+    fun schedule(task: ScheduledTask, update: Boolean = true)
     fun cancel(taskId: String)
     fun runOnce(taskId: String, sessionId: String)
 }
@@ -68,9 +69,10 @@ internal object ScheduleWork {
     class Manager(private val context: Context) : TaskScheduler {
         private val work get() = WorkManager.getInstance(context)
 
-        override fun schedule(task: ScheduledTask) {
+        override fun schedule(task: ScheduledTask, update: Boolean) {
             if (!task.enabled) return cancel(task.id)
-            work.enqueueUniquePeriodicWork(PERIODIC + task.id, ExistingPeriodicWorkPolicy.UPDATE, periodic(task))
+            val policy = if (update) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+            work.enqueueUniquePeriodicWork(PERIODIC + task.id, policy, periodic(task))
         }
 
         override fun cancel(taskId: String) {
@@ -89,6 +91,7 @@ class ScheduledTaskWorker(context: Context, params: WorkerParameters) : Coroutin
     override suspend fun doWork(): Result {
         val taskId = inputData.getString(ScheduleWork.KEY_TASK) ?: return Result.success()
         val schedules = applicationContext.graph.schedules as? TaskSchedules ?: return Result.success()
+        schedules.load()
         val task = schedules.find(taskId)?.takeIf { it.enabled || inputData.getString(ScheduleWork.KEY_SESSION) != null }
             ?: return Result.success()
         // Past ten minutes a job needs the foreground; when Android refuses, the run keeps the time a job has.

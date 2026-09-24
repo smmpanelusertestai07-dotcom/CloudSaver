@@ -43,7 +43,7 @@ internal class TaskSchedules(
         lock.withLock {
             if (loaded.isCompleted) return
             state.value = withContext(io) { read() }
-            state.value.forEach(scheduler::schedule)
+            state.value.forEach { scheduler.schedule(it, update = false) }
             loaded.complete(Unit)
         }
     }

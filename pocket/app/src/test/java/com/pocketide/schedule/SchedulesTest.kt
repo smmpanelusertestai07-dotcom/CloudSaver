@@ -220,7 +220,7 @@ class TaskSchedulesTest {
         val scheduled = mutableListOf<ScheduledTask>()
         val cancelled = mutableListOf<String>()
         val once = mutableListOf<Pair<String, String>>()
-        override fun schedule(task: ScheduledTask) {
+        override fun schedule(task: ScheduledTask, update: Boolean) {
             scheduled += task
         }
         override fun cancel(taskId: String) {

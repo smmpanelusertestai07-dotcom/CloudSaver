@@ -152,7 +152,7 @@ internal class GitHubBuilds(
         val stored = ArrayList<String>()
         for (file in files) {
             if (stored.size >= room) break
-            if (!worthKeeping(file)) continue
+            if (!withContext(ports.io) { worthKeeping(file) }) continue
             val relative = file.relativeTo(folder).invariantSeparatorsPath
             val name = "$label-" + relative.replace('/', '-')
             try {
