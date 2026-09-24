@@ -12,7 +12,7 @@ Two things must hold, and only the first is widely known:
 The ELF program headers are read here directly (no readelf), from the source tree's jniLibs
 or from inside a built APK, so the check sees exactly the bytes that ship.
 
-Usage: native_alignment.py [--apk PATH]
+Usage: native_alignment.py [--apk PATH | --lib-dir DIR]
 """
 from __future__ import annotations
 
@@ -106,11 +106,6 @@ def judge(name: str, loads: list[Segment], relro: tuple[int, int] | None) -> tup
                   f"this layout (the rounding covers only RELRO and padding)")
 
 
-def libraries_in_tree(root: Path) -> dict[str, bytes]:
-    directory = common.main_src(root) / "jniLibs"
-    return {str(p.relative_to(directory)): p.read_bytes() for p in common.files_under(directory, [".so"])}
-
-
 def libraries_in_apk(apk: Path) -> dict[str, bytes]:
     with zipfile.ZipFile(apk) as archive:
         return {n: archive.read(n) for n in archive.namelist() if n.startswith("lib/") and n.endswith(".so")}
@@ -137,14 +132,21 @@ def check_libraries(libraries: dict[str, bytes], where: str) -> common.Report:
     return report
 
 
-def check(root: Path = common.POCKET, apk: Path | None = None) -> common.Report:
+def libraries_in_dir(directory: Path) -> dict[str, bytes]:
+    return {str(p.relative_to(directory)): p.read_bytes() for p in common.files_under(directory, [".so"])}
+
+
+def check(root: Path = common.POCKET, apk: Path | None = None, lib_dir: Path | None = None) -> common.Report:
     if apk is not None:
         return check_libraries(libraries_in_apk(apk), apk.name)
-    return check_libraries(libraries_in_tree(root), "app/src/main/jniLibs")
+    if lib_dir is not None:
+        return check_libraries(libraries_in_dir(lib_dir), str(lib_dir))
+    return check_libraries(libraries_in_dir(common.main_src(root) / "jniLibs"), "app/src/main/jniLibs")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--apk", type=Path, help="check the libraries inside this APK instead of jniLibs")
+    parser.add_argument("--lib-dir", type=Path, help="check a jniLibs-shaped directory (<abi>/lib*.so)")
     args = parser.parse_args()
-    sys.exit(common.run_standalone("16 KB native alignment", lambda: check(apk=args.apk)))
+    sys.exit(common.run_standalone("16 KB native alignment", lambda: check(apk=args.apk, lib_dir=args.lib_dir)))
