@@ -1,9 +1,13 @@
 package com.pocketide.ui.manage
 
+import com.pocketide.core.AgentFiles
+import com.pocketide.core.FileClass
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
+import java.nio.channels.SeekableByteChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -24,18 +28,22 @@ data class MemoryFile(
     val bytes: Long,
     /** The agent's main instructions file: listed even before it exists, so it can be created. */
     val primary: Boolean,
+    /** Synced, encrypted, to Drive; otherwise it stays on this phone only. */
+    val synced: Boolean,
 )
 
 /**
  * Finds and edits the agents' user-level instructions and memory files inside each room's home.
  *
  * The room's home is written by Linux programs, so nothing here follows a symbolic link: a link
- * planted there must never make the app read or overwrite a file outside that home.
+ * planted there must never make the app read or overwrite a file outside that home. What may be
+ * shown comes from [AgentFiles]: a credential is never listed, whatever its name.
  */
 object MemoryFiles {
     /** Larger files are not opened in the phone editor (instructions stay far below this). */
     const val MAX_EDIT_BYTES = 512 * 1024L
     private const val MAX_FILES_PER_ROOM = 60
+    private const val NOT_PLAIN = "This file is not a plain file in the room."
 
     /** Relative paths per agent; `*` matches one directory level or one file name. */
     private val patterns = mapOf(
@@ -63,10 +71,13 @@ object MemoryFiles {
             for (relative in expand(home, pattern)) {
                 if (found.size >= MAX_FILES_PER_ROOM) break
                 if (relative in found) continue
+                val kind = AgentFiles.classify(relative)
+                if (kind == FileClass.SECRET || kind == FileClass.GENERATED) continue
                 val file = File(home, relative)
                 val exists = isSafe(home, file) && Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
                 if (exists || primary) {
-                    found[relative] = MemoryFile(agentId, "~/$relative", file, exists, if (exists) file.length() else 0, primary)
+                    val bytes = if (exists) file.length() else 0
+                    found[relative] = MemoryFile(agentId, "~/$relative", file, exists, bytes, primary, kind == FileClass.SYNC)
                 }
             }
         }
@@ -90,11 +101,17 @@ object MemoryFiles {
 
     @Throws(IOException::class)
     fun read(home: File, file: File): String {
-        if (!isSafe(home, file)) throw IOException("This file is not a plain file in the room.")
-        if (!Files.exists(file.toPath(), LinkOption.NOFOLLOW_LINKS)) return ""
-        if (!Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)) throw IOException("This is not a plain text file.")
-        if (file.length() > MAX_EDIT_BYTES) throw IOException("This file is too large to edit on the phone.")
-        return file.readText(Charsets.UTF_8)
+        if (!isSafe(home, file)) throw IOException(NOT_PLAIN)
+        val path = file.toPath()
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return ""
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw IOException("This is not a plain text file.")
+        // NOFOLLOW_LINKS refuses a link swapped in after the check; the folder is checked again once open.
+        val bytes = Files.newByteChannel(path, setOf(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)).use { channel ->
+            if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
+            readAtMost(channel, MAX_EDIT_BYTES)
+        }
+        if (bytes.any { it == 0.toByte() }) throw IOException("This is not a plain text file.")
+        return String(bytes, Charsets.UTF_8)
     }
 
     /**
@@ -104,10 +121,10 @@ object MemoryFiles {
      */
     @Throws(IOException::class)
     fun save(home: File, file: File, text: String) {
-        if (!isSafe(home, file)) throw IOException("This file is not a plain file in the room.")
+        if (!isSafe(home, file)) throw IOException(NOT_PLAIN)
         val parent = file.parentFile ?: throw IOException("This file has no folder.")
         if (!parent.isDirectory && !parent.mkdirs()) throw IOException("Could not create the folder for this file.")
-        if (!isSafe(home, file)) throw IOException("This file is not a plain file in the room.")
+        if (!isSafe(home, file)) throw IOException(NOT_PLAIN)
         val temp = File(parent, ".${file.name}.pocketide-save").toPath()
         try {
             // A leftover (or planted) temp name is removed as itself; CREATE_NEW then refuses
@@ -118,6 +135,8 @@ object MemoryFiles {
                 while (buffer.hasRemaining()) channel.write(buffer)
                 channel.force(true)
             }
+            // A folder on the way swapped for a link while writing would move the file elsewhere.
+            if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
             try {
                 Files.move(temp, file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } catch (_: AtomicMoveNotSupportedException) {
@@ -126,6 +145,29 @@ object MemoryFiles {
         } finally {
             Files.deleteIfExists(temp)
         }
+    }
+
+    /** The file's folder, with every link resolved, is still inside the room's real home. */
+    private fun insideHome(home: File, file: File): Boolean {
+        val parent = file.toPath().toAbsolutePath().normalize().parent ?: return false
+        return try {
+            parent.toRealPath().startsWith(home.toPath().toRealPath())
+        } catch (_: IOException) {
+            false
+        }
+    }
+
+    private fun readAtMost(channel: SeekableByteChannel, limit: Long): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteBuffer.allocate(8192)
+        while (true) {
+            buffer.clear()
+            val n = channel.read(buffer)
+            if (n < 0) break
+            if (out.size() + n > limit) throw IOException("This file is too large to edit on the phone.")
+            out.write(buffer.array(), 0, n)
+        }
+        return out.toByteArray()
     }
 
     private fun expand(home: File, pattern: String): List<String> {
@@ -191,6 +233,25 @@ data class MemoryDocument(val before: String, val managed: String?, val after: S
             return MemoryDocument(text, null, "")
         }
 
+        /**
+         * What to write when the owner saves, given the file as it is on disk [now]. The owner's
+         * parts go around the app's block as it is now (the room may have rewritten it). If the
+         * owner's parts changed on disk since [loaded] (an agent wrote to its memory), nothing is
+         * written unless [overwrite] says to replace them.
+         */
+        fun plan(loaded: MemoryDocument, now: MemoryDocument, before: String, after: String, overwrite: Boolean): SavePlan = when {
+            hasMarker(before) || hasMarker(after) -> SavePlan.Refused(
+                "Your text has a PocketIDE marker line. Remove it: those lines belong to the app's block.",
+            )
+            !overwrite && (now.before != loaded.before || now.after != loaded.after) -> SavePlan.ChangedOnDisk
+            else -> SavePlan.Write(rebuild(before, now.managed ?: loaded.managed, after))
+        }
+
+        fun hasMarker(text: String): Boolean = linesWithEnds(text).any { line ->
+            val content = line.trimEnd('\n', '\r')
+            begin.matches(content) || end.matches(content)
+        }
+
         /** Joins edited parts so the managed block still starts and ends on its own lines. */
         fun rebuild(before: String, managed: String?, after: String): String {
             if (managed == null) return before + after
@@ -211,6 +272,15 @@ data class MemoryDocument(val before: String, val managed: String?, val after: S
             return out
         }
     }
+}
+
+sealed interface SavePlan {
+    data class Write(val text: String) : SavePlan
+
+    /** The file changed since it was opened; the owner decides whether to replace it. */
+    data object ChangedOnDisk : SavePlan
+
+    data class Refused(val why: String) : SavePlan
 }
 
 /** Sizes on disk without following links (a room could link to anything). */
