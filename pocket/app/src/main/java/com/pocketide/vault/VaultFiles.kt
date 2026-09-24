@@ -107,7 +107,9 @@ internal object VaultText {
     const val DRIVE_HALF_MISSING = "The Drive half of your key is missing.$WAY_OUT"
     const val DRIVE_HALF_DAMAGED = "The Drive half of your key is damaged.$WAY_OUT"
     const val DRIVE_FILE_DAMAGED = "A key file in Drive is damaged.$WAY_OUT"
-    const val GITHUB_HALF_MISSING = "The GitHub half of your key is missing: pocketide-keyring or its key file is gone.$WAY_OUT"
+    const val GITHUB_HALF_MISSING =
+        "The GitHub half of your key is missing: pocketide-keyring or its key file is gone, " +
+            "or the PocketIDE GitHub App cannot see that repository.$WAY_OUT"
     const val GITHUB_HALF_DAMAGED = "The GitHub half of your key is damaged.$WAY_OUT"
     const val HALVES_APART = "The key halves in Drive and GitHub belong to different keys.$WAY_OUT"
     const val HALVES_WRONG = "The key halves do not rebuild your key.$WAY_OUT"
