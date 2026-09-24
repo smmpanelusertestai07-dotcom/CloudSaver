@@ -42,8 +42,23 @@ interface PortBridge {
 
     val exposed: List<BridgedPort>
 
+    /**
+     * Servers listening on this phone (the bridge's own ports left out), each with whether
+     * other devices on the same Wi-Fi can open it, for Preview's list and its warning.
+     * Where Android lets the app read the phone's socket table this is every listening port of
+     * the computer; otherwise only those of [candidates] (announced and common dev ports) that answer.
+     */
+    suspend fun listeners(candidates: Collection<Int> = emptyList()): List<PortListener>
+
     fun shutdown()
 }
+
+/** A server listening on this phone. */
+data class PortListener(
+    val port: Int,
+    /** Bound to every address (0.0.0.0 or ::), so anyone on the same Wi-Fi can open it. */
+    val onNetwork: Boolean,
+)
 
 data class BridgedPort(
     val targetPort: Int,

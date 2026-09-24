@@ -56,6 +56,7 @@ internal class LoopbackPortBridge(
     private val random: SecureRandom = SecureRandom(),
     /** The second address each bridge port is held on; tests use another IPv4 loopback. */
     private val mirrorLoopback: InetAddress = LOOPBACK_V6,
+    private val listenerScan: ListenerScan = ListenerScan(),
 ) : PortBridge, BridgeDirectory {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(
@@ -135,6 +136,11 @@ internal class LoopbackPortBridge(
             is Route.Sub -> isExposed(route.port)
             null -> false
         }
+    }
+
+    override suspend fun listeners(candidates: Collection<Int>): List<PortListener> {
+        val own = liveBridgePorts()
+        return listenerScan.scan(candidates.filter { it !in own }).filter { it.port !in own }
     }
 
     override fun shutdown() {
