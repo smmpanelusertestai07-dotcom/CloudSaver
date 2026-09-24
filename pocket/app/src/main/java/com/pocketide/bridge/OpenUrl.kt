@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Bundle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
@@ -26,17 +27,27 @@ internal fun interface BrowserLauncher {
 internal object WebAddress {
     private const val MAX_LENGTH = 16 * 1024
 
+    /** Characters java.net.URI refuses that browsers accept and percent-encode themselves. */
+    private const val LOOSE = "\"<>^`{|}"
+    private const val HEX = "0123456789ABCDEF"
+
     /**
-     * Returns [url] when the browser may open it; otherwise throws IllegalArgumentException with
-     * the reason. Other schemes (intent:, file:, content:, market:, javascript:) could reach
-     * other apps or this app's files, so they are never opened. A user name in the address is
-     * refused too: "https://bank.example@evil.example" reads as one site and opens another.
+     * Returns [url] ready to open, or throws IllegalArgumentException with the reason. Other
+     * schemes (intent:, file:, content:, market:, javascript:) could reach other apps or this
+     * app's files, so they are never opened. A user name in the address is refused too:
+     * "https://bank.example@evil.example" reads as one site and opens another. So is a
+     * backslash: browsers read it as "/", which would move where the host ends.
+     *
+     * Sign-in links open exactly as the agent printed them, except that characters a browser
+     * would percent-encode anyway ("|", "{", non-ASCII letters) are encoded here first.
      */
     fun check(url: String): String {
         require(url.length in 1..MAX_LENGTH) { "The address is empty or too long." }
         require(url.none { it.isWhitespace() || it.isISOControl() }) { "The address has spaces or control characters in it." }
+        require('\\' !in url) { "That is not a web address." }
+        val encoded = encodeLoose(url)
         val uri = try {
-            URI(url)
+            URI(encoded)
         } catch (e: URISyntaxException) {
             throw IllegalArgumentException("That is not a web address.")
         }
@@ -45,7 +56,28 @@ internal object WebAddress {
         val authority = uri.rawAuthority
         require(!authority.isNullOrEmpty() && !uri.isOpaque) { "The address has no host." }
         require('@' !in authority) { "Addresses with a user name or password are not opened." }
-        return url
+        return encoded
+    }
+
+    /** [url] with [LOOSE] and non-ASCII characters percent-encoded (as UTF-8); the rest as it is. */
+    private fun encodeLoose(url: String): String {
+        if (url.all { it.code < 0x80 && it !in LOOSE }) return url
+        val out = StringBuilder(url.length + 16)
+        var i = 0
+        while (i < url.length) {
+            val codePoint = url.codePointAt(i)
+            val count = Character.charCount(codePoint)
+            if (codePoint < 0x80 && url[i] !in LOOSE) {
+                out.append(url[i])
+            } else {
+                for (byte in url.substring(i, i + count).toByteArray(Charsets.UTF_8)) {
+                    val bits = byte.toInt() and 0xff
+                    out.append('%').append(HEX[bits shr 4]).append(HEX[bits and 0xf])
+                }
+            }
+            i += count
+        }
+        return out.toString()
     }
 }
 
@@ -77,8 +109,10 @@ internal class OpenUrlOp(
 }
 
 /**
- * Opens pages with the phone's default browser. Android lets an app start another app's screen
- * only while it is on the screen itself, so the owner always sees what opens and why.
+ * Opens pages with the phone's default browser, as a Custom Tab where the browser offers them:
+ * a sign-in page then sits over PocketIDE, and closing it comes straight back. Android lets an
+ * app start another app's screen only while it is on the screen itself, so the owner always
+ * sees what opens and why.
  */
 internal class AndroidBrowser(private val context: Context) : BrowserLauncher {
     override suspend fun open(url: String) = withContext(Dispatchers.Main) {
@@ -88,10 +122,17 @@ internal class AndroidBrowser(private val context: Context) : BrowserLauncher {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             .addCategory(Intent.CATEGORY_BROWSABLE)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // The Custom Tabs protocol without its library: a session extra, even a null one,
+            // asks for a tab. A browser without Custom Tabs ignores it and opens a normal page.
+            .putExtras(Bundle().apply { putBinder(CUSTOM_TABS_SESSION, null) })
         try {
             context.startActivity(intent)
         } catch (e: ActivityNotFoundException) {
             throw IllegalStateException("No browser on this phone can open that page.")
         }
+    }
+
+    private companion object {
+        const val CUSTOM_TABS_SESSION = "android.support.customtabs.extra.SESSION"
     }
 }
