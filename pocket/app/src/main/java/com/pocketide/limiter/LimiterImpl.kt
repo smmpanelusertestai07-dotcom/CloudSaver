@@ -9,7 +9,6 @@ import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Thermal
 import com.pocketide.rooms.RoomState
 import com.pocketide.rooms.Rooms
-import com.pocketide.sync.SyncEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
@@ -56,7 +55,8 @@ internal class LimiterImpl(
     private val phone: PhoneMonitor,
     private val settings: SettingsStore,
     private val rooms: () -> Rooms,
-    private val sync: () -> SyncEngine,
+    /** Asks the sync engine for a pass soon; never blocks. */
+    private val sync: (reason: String) -> Unit,
     private val agents: AgentKinds,
     private val host: LimiterHost,
     private val scope: CoroutineScope,
@@ -271,7 +271,7 @@ internal class LimiterImpl(
     }
 
     private fun requestSync(reason: String) {
-        runCatching { sync().requestSync(reason) }
+        runCatching { sync(reason) }
     }
 
     private fun verdict(snapshot: PhoneSnapshot, running: Map<String, RoomKind>, max: Int): GuardVerdict =
