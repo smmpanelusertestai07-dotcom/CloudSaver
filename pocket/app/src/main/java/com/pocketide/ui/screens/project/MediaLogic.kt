@@ -38,6 +38,16 @@ fun boundedSize(width: Int, height: Int, maxSide: Int): Pair<Int, Int> {
 fun certificateFingerprint(der: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(der).joinToString(":") { "%02X".format(it.toInt() and 0xff) }
 
+/**
+ * The signers an APK shows before it is installed. Android fills `signingInfo` except on API 29
+ * and the first Android 13 release, where only the legacy signature list is set; an empty
+ * result means the APK is not signed (or could not be read) and must not be installed.
+ */
+fun signerFingerprints(contentSigners: List<ByteArray>?, legacySignatures: List<ByteArray>?): List<String> {
+    val certificates = contentSigners?.takeIf { it.isNotEmpty() } ?: legacySignatures.orEmpty()
+    return certificates.filter { it.isNotEmpty() }.map(::certificateFingerprint).distinct()
+}
+
 /** The MIME type the share sheet gets for a file. */
 fun shareMime(kind: MediaKind, name: String): String {
     val ext = name.substringAfterLast('.', "").lowercase()

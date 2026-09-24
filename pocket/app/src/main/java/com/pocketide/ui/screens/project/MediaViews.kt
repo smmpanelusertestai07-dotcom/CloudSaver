@@ -598,7 +598,9 @@ private fun FactLine(label: String, value: String) {
 
 private fun readApk(context: Context, file: File): ApkFacts {
     val pm = context.packageManager
-    val flags = PackageManager.GET_SIGNING_CERTIFICATES
+    // Both flags: with the first alone, signingInfo is null on API 29 and on the first Android 13 release.
+    @Suppress("DEPRECATION")
+    val flags = PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_SIGNATURES
     val info: PackageInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         pm.getPackageArchiveInfo(file.path, PackageManager.PackageInfoFlags.of(flags.toLong()))
     } else {
@@ -606,7 +608,11 @@ private fun readApk(context: Context, file: File): ApkFacts {
         pm.getPackageArchiveInfo(file.path, flags)
     }
     requireNotNull(info) { "not an APK" }
-    val signers = info.signingInfo?.apkContentsSigners.orEmpty().map { certificateFingerprint(it.toByteArray()) }
+    @Suppress("DEPRECATION")
+    val signers = signerFingerprints(
+        info.signingInfo?.apkContentsSigners?.map { it.toByteArray() },
+        info.signatures?.map { it.toByteArray() },
+    )
     val label = info.applicationInfo?.let { app ->
         app.sourceDir = file.path
         app.publicSourceDir = file.path

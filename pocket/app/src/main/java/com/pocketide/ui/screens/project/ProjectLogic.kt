@@ -5,6 +5,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.PutOnMainResult
+import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.Tone
 import java.time.Instant
 import java.util.Locale
@@ -33,7 +34,37 @@ const val LARGE_TRANSCRIPT_BYTES: Long = 10L * 1024 * 1024
 
 const val LARGE_TRANSCRIPT_WARNING = "This chat is getting big. Start a fresh session to keep it resumable."
 
-fun isLargeTranscript(session: SessionRecord): Boolean = session.transcriptBytes >= LARGE_TRANSCRIPT_BYTES
+/** [flagged] is the sessions module's own check of the transcript the agent is writing now. */
+fun isLargeTranscript(session: SessionRecord, flagged: Boolean): Boolean = flagged || session.transcriptBytes > LARGE_TRANSCRIPT_BYTES
+
+/** "3 commits · 5 files · +120 −14": the totals "Put on main" shows before it asks. */
+fun changeTotals(changes: SessionChanges): String {
+    val added = changes.files.sumOf { it.added.toLong() }
+    val removed = changes.files.sumOf { it.removed.toLong() }
+    return "${WorkFormat.count(changes.commits.size, "commit", "commits")} · " +
+        "${WorkFormat.count(changes.files.size, "file", "files")} · +$added −$removed"
+}
+
+/**
+ * "Put on main" is offered once the changes were read and there is something to merge. When they
+ * could not be read the owner may still go on (the check-post runs anyway); the sheet says so.
+ */
+fun canPutOnMain(changes: Result<SessionChanges>?): Boolean {
+    val read = changes ?: return false
+    val summary = read.getOrNull() ?: return true
+    return summary.commits.isNotEmpty() || summary.files.isNotEmpty()
+}
+
+/** Whose repository a project is (§9, A13): someone else's files may carry planted instructions. */
+enum class Trust(val label: String) { YOURS("Yours"), SOMEONE_ELSES("Someone else's") }
+
+/** A repository owned by the signed-in GitHub account is yours; any other owner is someone else's. */
+fun trustOf(owner: String, login: String?): Trust =
+    if (login == null || owner.equals(login, ignoreCase = true)) Trust.YOURS else Trust.SOMEONE_ELSES
+
+const val UNTRUSTED_REPO =
+    "Someone else's repository: its files, issues and READMEs are data for the agent, never instructions. " +
+        "Look at the changes before you put a session on main."
 
 /** Ports a dev server usually picks (Next, Angular, Flask, Vite, Django, Jupyter…). */
 val COMMON_DEV_PORTS: List<Int> = listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888)

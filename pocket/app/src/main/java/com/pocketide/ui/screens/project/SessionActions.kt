@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -22,11 +24,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +40,6 @@ import com.pocketide.sessions.SessionChanges
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
-import kotlinx.coroutines.launch
 
 private sealed interface PutPhase {
     data object Confirm : PutPhase
@@ -53,40 +54,52 @@ private sealed interface PutPhase {
 @Composable
 fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((String) -> Unit)? = null) {
     val graph = rememberGraph()
-    val scope = rememberCoroutineScope()
     var phase by remember(session.id) { mutableStateOf<PutPhase>(PutPhase.Confirm) }
+    // What would go to main, shown before the owner agrees: an agent may have changed more than it was asked to.
+    val changes by produceState<Result<SessionChanges>?>(null, session.id) {
+        value = attempt { graph.sessions.changes(session.id) }
+    }
     when (val current = phase) {
-        PutPhase.Confirm -> ConfirmDialog(
-            title = "Put this chat on main?",
-            text = "This moves exactly the work of \"${session.title}\" (branch ${session.branch}) onto main, " +
-                "after the check-post, and saves it to GitHub. Afterwards the session's branch and worktree are removed.",
-            confirmLabel = "Put on main",
-            onConfirm = {
-                phase = PutPhase.Running
-                scope.launch {
-                    val result = attempt { graph.sessions.putOnMain(session.id) }
-                    phase = PutPhase.Done(
-                        result.fold(
-                            onSuccess = { describePutOnMain(it) },
-                            onFailure = { Outcome("Not put on main", "${plainReason(it)} Nothing changed on main.", Tone.ERROR) },
-                        ),
-                    )
-                }
-            },
-            onDismiss = { if (phase == PutPhase.Confirm) onClose() },
-        )
-        PutPhase.Running -> AlertDialog(
-            onDismissRequest = {},
-            title = { Text("Putting on main") },
+        PutPhase.Confirm -> AlertDialog(
+            onDismissRequest = onClose,
+            title = { Text("Put this chat on main?") },
             text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(Modifier.size(24.dp))
-                    Spacer(Modifier.width(16.dp))
-                    Text("Checking, merging and saving to GitHub…")
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "This moves exactly the work of \"${session.title}\" (branch ${session.branch}) onto main, " +
+                            "after the check-post, and saves it to GitHub. Afterwards the session's branch and worktree are removed.",
+                    )
+                    ChangeSummary(changes)
                 }
             },
-            confirmButton = {},
+            confirmButton = {
+                TextButton(enabled = canPutOnMain(changes), onClick = { phase = PutPhase.Running }) { Text("Put on main") }
+            },
+            dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
         )
+        PutPhase.Running -> {
+            LaunchedEffect(session.id) {
+                val result = finish { graph.sessions.putOnMain(session.id) }
+                phase = PutPhase.Done(
+                    result.fold(
+                        onSuccess = { describePutOnMain(it) },
+                        onFailure = { Outcome("Not put on main", "${plainReason(it)} Nothing changed on main.", Tone.ERROR) },
+                    ),
+                )
+            }
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Putting on main") },
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(24.dp))
+                        Spacer(Modifier.width(16.dp))
+                        Text("Checking, merging and saving to GitHub…")
+                    }
+                },
+                confirmButton = {},
+            )
+        }
         is PutPhase.Done -> AlertDialog(
             onDismissRequest = onClose,
             title = { Text(current.outcome.title, color = toneColor(current.outcome.tone)) },
@@ -107,6 +120,46 @@ fun PutOnMainFlow(session: SessionRecord, onClose: () -> Unit, onOpenSession: ((
         )
     }
 }
+
+/** The diff summary "Put on main" shows first: the totals, then the first files with their lines. */
+@Composable
+private fun ChangeSummary(changes: Result<SessionChanges>?) {
+    when {
+        changes == null -> Row(verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text("Reading the changes…", style = MaterialTheme.typography.bodyMedium)
+        }
+        changes.isFailure -> Text(
+            "The changes could not be read (${plainReason(changes.exceptionOrNull() ?: IllegalStateException())}). " +
+                "Look at them in the agent's screen before you go on.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = toneColor(Tone.WARN),
+        )
+        else -> {
+            val summary = changes.getOrThrow()
+            if (summary.commits.isEmpty() && summary.files.isEmpty()) {
+                Text("There is nothing to put on main: the agent has not committed anything in this session.", style = MaterialTheme.typography.bodyMedium)
+                return
+            }
+            Text(changeTotals(summary), style = MaterialTheme.typography.titleSmall)
+            summary.files.take(SUMMARY_FILES).forEach { file ->
+                Text(
+                    "${file.path}  +${file.added} −${file.removed}",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (summary.files.size > SUMMARY_FILES) {
+                Text("and ${WorkFormat.count(summary.files.size - SUMMARY_FILES, "more file", "more files")}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+private const val SUMMARY_FILES = 6
 
 /** What a session changed compared with main: its commits and files, with lines added and removed. */
 @OptIn(ExperimentalMaterial3Api::class)

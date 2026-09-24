@@ -1,6 +1,10 @@
 package com.pocketide.ui.screens.project
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -38,6 +43,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +63,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,11 +73,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.model.AgentInfo
@@ -82,6 +94,9 @@ import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.web.AgentWebView
+import com.pocketide.ui.web.WebPrefs
+import com.pocketide.ui.web.nextZoom
+import com.pocketide.ui.web.rememberWebPrefs
 import com.pocketide.ui.web.rememberTerminalState
 import com.pocketide.ui.web.rememberWebViewHolder
 import kotlinx.coroutines.launch
@@ -104,6 +119,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     val allSessions by graph.sessions.all.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
+    val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
     val project = projects.firstOrNull { it.id == projectId }
     val sessions = remember(allSessions, projectId) {
         allSessions.filter { it.projectId == projectId && it.status != SessionStatus.DELETED }
@@ -129,12 +145,15 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
         topBar = {
             TopAppBar(
                 title = {
+                    // Scrolls instead of cutting a long name short.
                     Column {
-                        Text(project?.repo ?: projectId.substringAfter('/'), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(project?.repo ?: projectId.substringAfter('/'), maxLines = 1, modifier = Modifier.basicMarquee())
                         Text(
                             project?.owner ?: projectId.substringBefore('/'),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.basicMarquee(),
                         )
                     }
                 },
@@ -169,7 +188,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                 )
                 return@Column
             }
-            ProjectHeader(project, sessions.size, cloneProblem) { cloneTries++ }
+            ProjectHeader(project, sessions.size, trustOf(project.owner, account?.login), cloneProblem) { cloneTries++ }
             PrimaryScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
                 ProjectTab.entries.forEach { t ->
                     Tab(
@@ -221,16 +240,24 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
 }
 
 @Composable
-private fun ProjectHeader(project: Project, sessionCount: Int, cloneProblem: String?, onRetryClone: () -> Unit) {
+private fun ProjectHeader(project: Project, sessionCount: Int, trust: Trust, cloneProblem: String?, onRetryClone: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             StatusChip(if (project.isPrivate) "Private" else "Public", if (project.isPrivate) Tone.OK else Tone.WARN)
+            if (trust == Trust.SOMEONE_ELSES) StatusChip(trust.label, Tone.WARN)
             Text(
                 "Last activity ${Ist.dateTime(project.lastActivityAt)} · ${WorkFormat.count(sessionCount, "session", "sessions")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (trust == Trust.SOMEONE_ELSES) {
+            Text(
+                UNTRUSTED_REPO,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (cloneProblem != null) {
@@ -292,6 +319,7 @@ private fun SessionsTab(
 ) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
     var deleting by remember { mutableStateOf<SessionRecord?>(null) }
@@ -325,6 +353,10 @@ private fun SessionsTab(
                         session = session,
                         running = room is RoomState.Running && room.sessionId == session.id,
                         onOpen = { nav.agent(session.id) },
+                        onPin = {
+                            val pinned = SessionShortcut.pin(context, session, agentName(agent, agentId))
+                            if (!pinned) scope.launch { snackbar.showSnackbar("This phone's home screen does not accept shortcuts.") }
+                        },
                         onChanges = { changes = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
@@ -353,6 +385,7 @@ private fun SessionCard(
     session: SessionRecord,
     running: Boolean,
     onOpen: () -> Unit,
+    onPin: () -> Unit,
     onChanges: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
@@ -367,7 +400,7 @@ private fun SessionCard(
         Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(session.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(session.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f, fill = false))
                     StatusChip(label, tone)
                 }
                 Text(
@@ -390,6 +423,7 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                        DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
@@ -463,7 +497,7 @@ fun NewSessionDialog(
                     starting = true
                     problem = null
                     scope.launch {
-                        attempt { graph.sessions.start(p, a, title.trim().ifEmpty { null }) }
+                        finish { graph.sessions.start(p, a, title.trim().ifEmpty { null }) }
                             .onSuccess { onStarted(it.id) }
                             .onFailure { problem = "Could not start: ${plainReason(it)}" }
                         starting = false
@@ -528,6 +562,11 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var bigDismissed by rememberSaveable(sessionId) { mutableStateOf(false) }
     var startingFresh by remember { mutableStateOf(false) }
     var stopping by remember { mutableStateOf(false) }
+    var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
+    val prefs = rememberWebPrefs()
+    var zoom by remember(agentId) { mutableIntStateOf(WebPrefs.DEFAULT_ZOOM) }
+    LaunchedEffect(prefs, agentId) { zoom = prefs.agentZoom(agentId) }
+    Immersive(immersive && panel == null)
 
     LaunchedEffect(sessionId, tries) {
         opened = null
@@ -538,28 +577,39 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     val terminal = rememberTerminalState("term:$sessionId")
     val preview = rememberPreviewState(sessionId)
 
-    BackHandler(enabled = panel != null) { panel = null }
+    BackHandler(enabled = panel != null || immersive) {
+        if (panel != null) panel = null else immersive = false
+    }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-                AgentBar(
-                    agent = agent,
-                    session = session,
-                    panelTitle = panel?.title,
-                    onBack = { if (panel != null) panel = null else nav.back() },
-                    onPanel = { panel = it },
-                    onChanges = { showChanges = true },
-                    onPutOnMain = { putting = true },
-                    onStop = { stopping = true },
-                )
-                if (isLargeTranscript(session) && !bigDismissed && panel == null) {
+            val barHidden = immersive && panel == null
+            Column(Modifier.fillMaxSize().then(if (barHidden) Modifier else Modifier.statusBarsPadding().navigationBarsPadding()).imePadding()) {
+                if (!barHidden) {
+                    AgentBar(
+                        agent = agent,
+                        session = session,
+                        panelTitle = panel?.title,
+                        zoom = zoom,
+                        onBack = { if (panel != null) panel = null else nav.back() },
+                        onPanel = { panel = it },
+                        onChanges = { showChanges = true },
+                        onPutOnMain = { putting = true },
+                        onZoom = { chosen ->
+                            zoom = chosen
+                            scope.launch { prefs.setAgentZoom(agentId, chosen) }
+                        },
+                        onImmersive = { immersive = true },
+                        onStop = { stopping = true },
+                    )
+                }
+                if (isLargeTranscript(session, graph.sessions.largeTranscript(sessionId)) && !bigDismissed && panel == null && !barHidden) {
                     BigChatBanner(
                         starting = startingFresh,
                         onFresh = {
                             startingFresh = true
                             scope.launch {
-                                attempt { graph.sessions.start(session.projectId, agentId, null) }
+                                finish { graph.sessions.start(session.projectId, agentId, null) }
                                     .onSuccess { nav.agent(it.id) }
                                     .onFailure { snackbar.showSnackbar("Could not start a session: ${plainReason(it)}") }
                                 startingFresh = false
@@ -582,7 +632,14 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                             onOpenExternal = nav::openExternal,
                             onNotice = { message -> scope.launch { snackbar.showSnackbar(message) } },
                             modifier = Modifier.fillMaxSize(),
+                            textZoom = zoom,
                         )
+                    }
+                    if (barHidden) {
+                        FilledTonalIconButton(
+                            onClick = { immersive = false },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(36.dp),
+                        ) { Icon(Icons.Filled.FullscreenExit, contentDescription = "Leave full screen") }
                     }
                     // Panels cover the agent without removing it, so its page and sockets stay alive.
                     panel?.let { p ->
@@ -610,7 +667,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
             destructive = true,
             onConfirm = {
                 scope.launch {
-                    attempt { graph.rooms.stop(agentId) }
+                    finish { graph.rooms.stop(agentId) }
                         .onSuccess { nav.back() }
                         .onFailure { snackbar.showSnackbar("Could not stop the agent: ${plainReason(it)}") }
                 }
@@ -625,10 +682,13 @@ private fun AgentBar(
     agent: AgentInfo?,
     session: SessionRecord,
     panelTitle: String?,
+    zoom: Int,
     onBack: () -> Unit,
     onPanel: (AgentPanel) -> Unit,
     onChanges: () -> Unit,
     onPutOnMain: () -> Unit,
+    onZoom: (Int) -> Unit,
+    onImmersive: () -> Unit,
     onStop: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
@@ -640,13 +700,8 @@ private fun AgentBar(
             AgentMark(agent, session.agentId, size = 26.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    panelTitle ?: agentName(agent, session.agentId),
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(session.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(panelTitle ?: agentName(agent, session.agentId), style = MaterialTheme.typography.titleSmall)
+                Text(session.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Session menu") }
@@ -657,6 +712,14 @@ private fun AgentBar(
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
+                    }
+                    if (panelTitle == null) {
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Text size ${nextZoom(zoom)}%") },
+                            onClick = { menu = false; onZoom(nextZoom(zoom)) },
+                        )
+                        DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text("Stop agent") }, onClick = { menu = false; onStop() })
@@ -697,10 +760,33 @@ private fun RoomContent(
         RoomView.Elsewhere -> CenterMessage("$agentName's room is open on another session now.") {
             Button(onClick = onRetry) { Text("Open this session") }
         }
-        RoomView.Stopped -> CenterMessage("$agentName stopped. It closes when idle to save memory; your session is saved.") {
-            Button(onClick = onRetry) { Text("Start again") }
+        RoomView.Stopped -> CenterMessage(
+            "$agentName stopped: it was idle, or the phone needed the memory. Nothing was lost; the session, its branch and its chat are kept.",
+        ) {
+            Button(onClick = onRetry) { Text("Resume") }
         }
     }
+}
+
+/** Hides the status and navigation bars while [on]; a swipe from the edge shows them for a moment. */
+@Composable
+private fun Immersive(on: Boolean) {
+    val view = LocalView.current
+    DisposableEffect(on, view) {
+        val window = view.context.findActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        if (on && controller != null) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose { if (on) controller?.show(WindowInsetsCompat.Type.systemBars()) }
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @Composable
