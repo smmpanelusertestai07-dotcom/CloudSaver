@@ -110,6 +110,7 @@ class SessionMediaLibraryTest {
         clock = { now },
         io = Dispatchers.Unconfined,
         metaDir = File(dirs.base, "media-meta"),
+        stagingDir = File(dirs.downloads, "staging"),
         uriFor = { Uri.EMPTY },
         pollMs = 10,
     )
@@ -183,6 +184,7 @@ class SessionMediaLibraryTest {
             assertTrue(expected.message!!.contains("50 MB"))
         }
         assertFalse(folder("s1").exists() && folder("s1").list()!!.isNotEmpty())
+        assertTrue("nothing is left in staging", File(dirs.downloads, "staging").list().orEmpty().isEmpty())
     }
 
     @Test

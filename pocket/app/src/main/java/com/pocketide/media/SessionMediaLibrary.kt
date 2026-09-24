@@ -18,9 +18,11 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -50,6 +52,8 @@ internal class SessionMediaLibrary(
     private val io: CoroutineDispatcher,
     /** Private folder for "where it came from" records, one file per session. */
     private val metaDir: File,
+    /** Private scratch folder (not visible inside Linux) where files are checked before they are stored. */
+    private val stagingDir: File,
     /** Hands a file in the share folder to other apps (a FileProvider URI on the phone). */
     private val uriFor: (File) -> Uri,
     private val pollMs: Long = POLL_MS,
@@ -132,35 +136,30 @@ internal class SessionMediaLibrary(
     }
 
     private fun store(session: SessionRecord, source: File, name: String, from: String): MediaItem {
-        val path = source.toPath()
-        if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-            throw MediaException("Only plain files can be added to Media.")
-        }
-        val head = MediaSniffer.head(source)
-        val kind = MediaSniffer.kindOf(name, head)
-        val size = source.length()
-        val limit = MediaSniffer.limitFor(kind)
-        if (size > limit) throw MediaException("${safeName(name)} is larger than ${limit / MB} MB, the most Media keeps for this kind of file.")
-
-        val sha = sha256(source)
         val folder = folderOf(session) ?: throw MediaException("The session's media folder was replaced by a link. Remove the link and try again.")
         if (!folder.isDirectory && !folder.mkdirs()) throw MediaException("Could not create the session's media folder.")
-        val metas = readMeta(session.id)
-        // An agent may have written the file straight into the media folder: it is renamed, not copied.
-        val inPlace = source.parentFile?.canonicalFile == folder.canonicalFile
-        existing(folder, sha, metas)?.let { stored ->
-            if (inPlace && stored.canonicalFile != source.canonicalFile) source.delete()
-            return itemOf(session, stored, kindOfFile(stored), metas[stored.name])
-        }
-
-        val stem = "${sha.take(HASH_PREFIX)}-${safeStem(name)}"
-        val part = File(folder, "$stem.part")
+        // Everything below works on a private copy: the source and the media folder are writable
+        // from inside Linux, so a file could be swapped for a link half-way.
+        val stage = File(stagingDir, UUID.randomUUID().toString())
         try {
-            source.copyTo(part, overwrite = true)
-            if (part.length() != size) throw MediaException("${safeName(name)} changed while it was being copied. Try again.")
-            val (content, extension) = shrunk(part, from, kind, head) ?: (part to MediaSniffer.extensionFor(kind, head, name))
+            stagingDir.mkdirs()
+            copyNoFollow(source, stage, name)
+            val head = MediaSniffer.head(stage)
+            val kind = MediaSniffer.kindOf(name, head)
+            val limit = MediaSniffer.limitFor(kind)
+            if (stage.length() > limit) throw MediaException("${safeName(name)} is larger than ${limit / MB} MB, the most Media keeps for this kind of file.")
+            val sha = sha256(stage)
+            val metas = readMeta(session.id)
+            // An agent may have written the file straight into the media folder: it is renamed, not copied.
+            val inPlace = source.parentFile?.canonicalFile == folder.canonicalFile
+            existing(folder, sha, metas)?.let { stored ->
+                if (inPlace && stored.canonicalFile != source.canonicalFile) source.delete()
+                return itemOf(session, stored, kindOfFile(stored), metas[stored.name])
+            }
+            val stem = "${sha.take(HASH_PREFIX)}-${safeStem(name)}"
+            val (content, extension) = shrunk(stage, from, kind, head) ?: (stage to MediaSniffer.extensionFor(kind, head, name))
             val target = freeName(folder, stem, extension)
-            Files.move(content.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            moveInto(content, target)
             val meta = Meta(from, clock.now(), sha)
             writeMeta(session.id, metas + (target.name to meta))
             if (inPlace) source.delete()
@@ -169,17 +168,57 @@ internal class SessionMediaLibrary(
         } catch (e: IOException) {
             throw MediaException("Could not save ${safeName(name)}: the phone may be full.")
         } finally {
-            part.delete()
-            File(folder, "$stem.webp.part").delete()
+            stage.delete()
+            File(stage.path + WEBP_SUFFIX).delete()
+        }
+    }
+
+    /** Copies [source] without following a link, and stops at the largest size Media keeps. */
+    private fun copyNoFollow(source: File, target: File, name: String) {
+        val path = source.toPath()
+        val attributes = try {
+            Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        } catch (e: IOException) {
+            throw MediaException("${safeName(name)} is not on the phone any more.")
+        }
+        if (!attributes.isRegularFile) throw MediaException("Only plain files can be added to Media.")
+        if (attributes.size() > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
+        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
+            target.outputStream().use { out ->
+                val buffer = ByteArray(COPY_BUFFER)
+                var total = 0L
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n < 0) break
+                    total += n
+                    if (total > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
+                    out.write(buffer, 0, n)
+                }
+            }
+        }
+    }
+
+    /** Moves a staged file into the media folder, in one step when the file system allows it. */
+    private fun moveInto(content: File, target: File) {
+        try {
+            Files.move(content.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: AtomicMoveNotSupportedException) {
+            val part = File(target.parentFile, ".${target.name}.part")
+            try {
+                Files.copy(content.toPath(), part.toPath(), StandardCopyOption.REPLACE_EXISTING, LinkOption.NOFOLLOW_LINKS)
+                Files.move(part.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            } finally {
+                part.delete()
+            }
         }
     }
 
     /** Screenshots from PocketIDE's own tools become WebP, when that is smaller. */
-    private fun shrunk(part: File, from: String, kind: MediaKind, head: ByteArray): Pair<File, String>? {
+    private fun shrunk(stage: File, from: String, kind: MediaKind, head: ByteArray): Pair<File, String>? {
         if (from != SOURCE_AGENT || kind != MediaKind.IMAGE || !MediaSniffer.isPngOrJpeg(head)) return null
-        val webp = File(part.parentFile, part.name.removeSuffix(".part") + ".webp.part")
+        val webp = File(stage.path + WEBP_SUFFIX)
         val smaller = try {
-            shrinker.toWebp(part, webp)
+            shrinker.toWebp(stage, webp)
         } catch (e: OutOfMemoryError) {
             false
         }
@@ -314,6 +353,8 @@ internal class SessionMediaLibrary(
         private const val KEEP_APKS = 3
         private const val MB = 1024 * 1024
         private const val MAX_STEM = 80
+        private const val COPY_BUFFER = 64 * 1024
+        private const val WEBP_SUFFIX = ".webp"
         private const val SHARE_KEEP_MS = 24 * 60 * 60 * 1000L
         private val SAFE_ID = Regex("[A-Za-z0-9._-]{1,128}")
         private val UNSAFE = Regex("[^A-Za-z0-9._-]+")

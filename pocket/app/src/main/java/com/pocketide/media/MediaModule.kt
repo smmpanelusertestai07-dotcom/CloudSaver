@@ -20,5 +20,6 @@ fun createMediaLibrary(graph: AppGraph): MediaLibrary = SessionMediaLibrary(
     clock = graph.clock,
     io = Dispatchers.IO,
     metaDir = File(graph.dirs.base, "media-meta"),
+    stagingDir = File(graph.dirs.downloads, "media-staging"),
     uriFor = { file -> FileProvider.getUriForFile(graph.context, "${graph.context.packageName}.files", file) },
 )
