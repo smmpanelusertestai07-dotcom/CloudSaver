@@ -53,6 +53,9 @@ internal object RoomEngines {
             ),
             binds = RoomLayout.binds(dirs, profile.agentId),
             env = environment + mapOf(
+                // A sign-in callback on localhost must stay on localhost: the phone's browser reaches it
+                // directly, while code-server's default /proxy/<port>/ address would need the bridge.
+                "VSCODE_PROXY_URI" to "http://localhost:{{port}}/",
                 "POCKETIDE_OPEN_COMMAND" to profile.openCommand.orEmpty(),
                 "POCKETIDE_OPEN_PLACE" to profile.place.word,
                 "POCKETIDE_VIEW_TYPES" to profile.viewTypes.joinToString(","),
