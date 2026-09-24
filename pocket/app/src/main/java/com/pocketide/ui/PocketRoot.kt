@@ -4,24 +4,31 @@ import android.app.Activity
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.rememberNavController
 import com.pocketide.AppGraph
@@ -39,6 +46,10 @@ import com.pocketide.ui.theme.PocketTheme
 /**
  * The whole UI, in order: theme → app lock → phones that cannot run it → access locks (GitHub,
  * Drive, storage, another phone) → first-run set-up → the app.
+ *
+ * Once unlocked, the app stays composed under a later app lock, hidden and silent: a GitHub
+ * sign-in still waiting in Chrome, Google's consent sheet on its way back, or an agent's screen
+ * are all still there after the fingerprint, instead of starting over.
  */
 @Composable
 fun PocketRoot(activity: FragmentActivity) {
@@ -49,28 +60,47 @@ fun PocketRoot(activity: FragmentActivity) {
     PocketTheme(settings.theme) {
         SystemBarIcons(settings.theme)
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            val unlocked by graph.appLock.unlocked.collectAsStateWithLifecycle()
+            // Not lifecycle-aware on purpose: the lock re-arms as the app stops, exactly when such a
+            // collector pauses, and the first frame back must already show the lock.
+            val unlocked by graph.appLock.unlocked.collectAsState()
             val access by graph.access.state.collectAsStateWithLifecycle()
             // Asked once: the answer depends on hardware and Android, which do not change while running.
             val unsupported = remember { runCatching { graph.limiter.unsupportedReason() }.getOrNull() }
+            val appLocked = RootGate.of(settings.appLock, unlocked, unsupported, access.lock, settings.onboardingDone) == RootGate.AppLocked
             val gate = RootGate.of(
-                appLockOn = settings.appLock,
-                unlocked = unlocked,
+                appLockOn = false,
+                unlocked = true,
                 unsupportedReason = unsupported,
                 lock = access.lock,
                 onboardingDone = settings.onboardingDone,
             )
+            // Only after the owner got past the lock in this run of the app, never before.
+            var everUnlocked by remember { mutableStateOf(false) }
+            SideEffect { if (!appLocked) everUnlocked = true }
             // The main app keeps its back stack and screen state while a lock covers it.
             val navController = rememberNavController()
             val saved = rememberSaveableStateHolder()
-            Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
-                when (shown) {
-                    RootGate.AppLocked -> AppLockGate(graph, activity)
-                    is RootGate.Refused -> LockScreen(LockReason.Unsupported(shown.why))
-                    is RootGate.Locked -> LockScreen(shown.reason)
-                    RootGate.Onboarding -> OnboardingFlow()
-                    RootGate.Main -> saved.SaveableStateProvider("main") {
-                        AppNav(navController = navController, banner = access.banner)
+
+            Box(Modifier.fillMaxSize()) {
+                if (!appLocked || everUnlocked) {
+                    Box(if (appLocked) Modifier.fillMaxSize().hiddenUnderLock() else Modifier.fillMaxSize()) {
+                        Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
+                            when (shown) {
+                                RootGate.AppLocked -> Unit
+                                is RootGate.Refused -> LockScreen(LockReason.Unsupported(shown.why))
+                                is RootGate.Locked -> LockScreen(shown.reason)
+                                RootGate.Onboarding -> OnboardingFlow()
+                                RootGate.Main -> saved.SaveableStateProvider("main") {
+                                    AppNav(navController = navController, banner = access.banner)
+                                }
+                            }
+                        }
+                    }
+                }
+                if (appLocked) {
+                    // An opaque surface: it takes every touch, so nothing underneath can be reached.
+                    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                        AppLockGate(graph, activity)
                     }
                 }
             }
@@ -78,20 +108,35 @@ fun PocketRoot(activity: FragmentActivity) {
     }
 }
 
+/** Not drawn, not read by TalkBack, and without focus, so no keyboard stays open over the lock. */
+@Composable
+private fun Modifier.hiddenUnderLock(): Modifier {
+    val focus = LocalFocusManager.current
+    LaunchedEffect(Unit) { focus.clearFocus(force = true) }
+    return graphicsLayer { alpha = 0f }.clearAndSetSemantics {}
+}
+
 @Composable
 private fun AppLockGate(graph: AppGraph, activity: FragmentActivity) {
     var message by remember { mutableStateOf<String?>(null) }
-    val secure = remember { graph.appLock.deviceSecure() }
+    // Android's prompt, or its PIN screen, is on its way or showing.
+    var prompting by remember { mutableStateOf(false) }
+    // The owner may add a screen lock in Android's settings and come back.
+    var secure by remember { mutableStateOf(graph.appLock.deviceSecure()) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { secure = graph.appLock.deviceSecure() }
     AppLockScreen(
         onUnlock = {
             message = null
+            prompting = true
             graph.appLock.authenticate(activity, "Unlock PocketIDE") { ok ->
+                prompting = false
                 if (!ok) message = "Not unlocked. Tap Unlock to try again."
             }
         },
         message = message,
         deviceSecure = secure,
         onSetScreenLock = { External.openSecuritySettings(activity) },
+        prompting = prompting,
     )
 }
 

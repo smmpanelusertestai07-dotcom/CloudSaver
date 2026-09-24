@@ -53,6 +53,7 @@ import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Formats
 import com.pocketide.ui.shell.Gap
+import com.pocketide.ui.shell.MobileSetup
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OnboardingStep
 import com.pocketide.ui.shell.OutlinedCard
@@ -70,8 +71,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-/** The plan's measured size of the first download (§2); the module reports the exact total once it starts. */
-private const val SETUP_DOWNLOAD_TEXT = "about 1.5 GB"
+/** The plan's size of all set-up downloads (§2); the installer shows the exact total of its part once it starts. */
+private const val SETUP_DOWNLOAD_TEXT = "about 1.5 GB in all"
 
 private enum class Network { WIFI, MOBILE, OFFLINE }
 
@@ -94,18 +95,25 @@ fun ComputerStepScreen(onDone: () -> Unit) {
         if (step != null && stepsSeen.lastOrNull() != step) stepsSeen += step
     }
 
-    fun install() {
+    // The owner confirmed mobile data for this set-up: the data rules allow it until set-up ends.
+    fun install(onMobileData: Boolean) {
         startError = null
         graph.scope.launch {
+            val before = graph.settings.settings.value
+            val allowed = MobileSetup.allow(before)
+            if (onMobileData) graph.settings.update { MobileSetup.allow(it) }
             try {
                 graph.computer.install()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 startError = Redact.text(e.message ?: "Set-up stopped.").take(200)
+            } finally {
+                if (onMobileData) graph.settings.update { MobileSetup.restore(it, before, allowed) }
             }
         }
     }
+    val start = { if (network == Network.MOBILE) askMobile = true else install(onMobileData = false) }
 
     ShellPage {
         StepHeader(OnboardingStep.COMPUTER)
@@ -113,8 +121,8 @@ fun ComputerStepScreen(onDone: () -> Unit) {
         ScreenTitle(
             icon = Icons.Outlined.DeveloperBoard,
             title = "Set up the computer",
-            subtitle = "A small Ubuntu computer inside PocketIDE runs the agents. It downloads once, " +
-                "$SETUP_DOWNLOAD_TEXT, and takes about 2.5 GB on the phone.",
+            subtitle = "A small Ubuntu computer inside PocketIDE runs the agents. Set-up downloads " +
+                "$SETUP_DOWNLOAD_TEXT, and the computer takes about 2.5 GB on the phone.",
         )
         SectionLabel("This phone")
         PhoneNumbers(graph, network)
@@ -124,7 +132,7 @@ fun ComputerStepScreen(onDone: () -> Unit) {
             ComputerState.NotInstalled -> NotInstalled(
                 network = network,
                 error = startError,
-                onStart = { if (network == Network.MOBILE) askMobile = true else install() },
+                onStart = start,
                 onLater = onDone,
             )
             is ComputerState.Installing -> {
@@ -138,7 +146,8 @@ fun ComputerStepScreen(onDone: () -> Unit) {
                 PrimaryAction("Continue", onClick = onDone)
             }
             ComputerState.Ready -> {
-                CheckCard(listOf(CheckItem("Your computer is ready", "Ubuntu, the engine and the three official agents")))
+                SectionLabel("Check before you go on")
+                CheckCard(listOf(CheckItem("Your computer is ready", "Ubuntu and the engine. Each agent is added the first time you open it.")))
                 Gap(16.dp)
                 PrimaryAction("Continue", onClick = onDone)
             }
@@ -146,7 +155,7 @@ fun ComputerStepScreen(onDone: () -> Unit) {
                 NoticeCard(title = current.why, text = current.fix, tone = Tone.ERROR)
                 startError?.let { Gap(8.dp); NoticeCard(it, Tone.ERROR) }
                 Gap(16.dp)
-                PrimaryAction("Try again", onClick = { if (network == Network.MOBILE) askMobile = true else install() })
+                PrimaryAction("Try again", onClick = start)
                 QuietAction("Later, on Wi-Fi", onClick = onDone)
             }
         }
@@ -160,14 +169,16 @@ fun ComputerStepScreen(onDone: () -> Unit) {
             title = { Text("Set up on mobile data?") },
             text = {
                 Text(
-                    "Set-up downloads $SETUP_DOWNLOAD_TEXT. On mobile data that can cost money or use up your plan. " +
-                        "On Wi-Fi it costs nothing.",
+                    "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
+                        "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
+                        "For this set-up only, big downloads may use mobile data, up to " +
+                        "${Formats.megabytes(MobileSetup.SETUP_LIMIT_MB)} today. Your data settings go back when it ends.",
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     askMobile = false
-                    install()
+                    install(onMobileData = true)
                 }) { Text("Use mobile data") }
             },
             dismissButton = { TextButton(onClick = { askMobile = false }) { Text("Wait for Wi-Fi") } },
@@ -317,7 +328,8 @@ private fun RestorePlanSection(graph: AppGraph, network: Network) {
 
     SectionLabel("Download over")
     Column(Modifier.selectableGroup()) {
-        RestoreOption("Wi-Fi only", "Waits for Wi-Fi if you're on mobile data.", choice == RestoreChoice.WIFI_ONLY, enabled = true) {
+        val wifiOnly = choice == RestoreChoice.WIFI_ONLY || !mobileAllowed
+        RestoreOption("Wi-Fi only", "Waits for Wi-Fi if you're on mobile data.", wifiOnly, enabled = true) {
             choiceName = RestoreChoice.WIFI_ONLY.name
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

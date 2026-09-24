@@ -1,8 +1,11 @@
 package com.pocketide.ui.screens.settings
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.graphics.Typeface
 import android.os.Build
 import android.text.SpannableString
@@ -60,7 +63,9 @@ import com.pocketide.ui.shell.SectionLabel
 import com.pocketide.update.UpdateState
 import com.pocketide.vault.KeyState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class AdvancedDialog { RESET, SET_PASSWORD, REMOVE_PASSWORD, KEY_WARNING, DIAGNOSTICS }
 
@@ -145,7 +150,7 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
     when (dialog) {
         AdvancedDialog.RESET -> ConfirmDialog(
             title = "Reset the computer?",
-            text = "Ubuntu, the engine and the agents are downloaded again (about 1.5 GB, on Wi-Fi by default). " +
+            text = "Ubuntu and the engine are downloaded again (on Wi-Fi by default), and each agent the next time you open it. " +
                 "Your projects are on GitHub and your chats in Drive, so nothing of yours is lost. Agents' sign-ins must be done again.",
             confirm = "Reset",
             onConfirm = {
@@ -184,9 +189,18 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
             confirm = "Remove",
             onConfirm = {
                 dialog = null
-                run("Extra password removed.") {
-                    graph.vault.setExtraPassword(null)
-                    graph.settings.update { it.copy(extraPassword = false) }
+                // Weakening the key's protection is itself protected by the lock.
+                if (activity == null) {
+                    notice = "The extra password can't be removed from here." to Tone.ERROR
+                } else {
+                    graph.appLock.authenticate(activity, "Remove the extra password") { ok ->
+                        if (ok) {
+                            run("Extra password removed.") {
+                                graph.vault.setExtraPassword(null)
+                                graph.settings.update { it.copy(extraPassword = false) }
+                            }
+                        }
+                    }
                 }
             },
             onDismiss = { dialog = null },
@@ -245,7 +259,7 @@ private fun ExtraPasswordDialog(onSave: (CharArray) -> Unit, onDismiss: () -> Un
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var tried by remember { mutableStateOf(false) }
-    val problem = ExtraPasswordRules.problem(password.toCharArray(), confirm.toCharArray())
+    val problem = ExtraPasswordRules.problem(password, confirm)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Extra password") },
@@ -298,14 +312,14 @@ private fun ExtraPasswordDialog(onSave: (CharArray) -> Unit, onDismiss: () -> Un
 private fun DiagnosticsDialog(graph: AppGraph, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var report by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { report = buildReport(context, graph) }
+    LaunchedEffect(Unit) { report = withContext(Dispatchers.IO) { buildReport(context, graph) } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Diagnostics") },
         text = {
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
                 Text(
-                    "Secrets are removed. Long-press to select, then Share if someone is helping you.",
+                    "Contains no tokens, keys, email addresses or chat text. Read it before you share it.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -314,7 +328,25 @@ private fun DiagnosticsDialog(graph: AppGraph, onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(enabled = report != null, onClick = { report?.let { shareReport(context, it) } }) { Text("Share") }
+        },
     )
+}
+
+/** Android's share sheet, titled so the owner sees what is (and is not) in it before choosing an app. */
+private fun shareReport(context: Context, report: String) {
+    val send = Intent(Intent.ACTION_SEND)
+        .setType("text/plain")
+        .putExtra(Intent.EXTRA_SUBJECT, "PocketIDE diagnostics")
+        .putExtra(Intent.EXTRA_TEXT, report)
+    val chooser = Intent.createChooser(send, Diagnostics.SHARE_TITLE)
+    if (context !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(chooser)
+    } catch (_: ActivityNotFoundException) {
+        // Nothing can receive text: the report stays on screen, selectable.
+    }
 }
 
 private suspend fun buildReport(context: Context, graph: AppGraph): String {

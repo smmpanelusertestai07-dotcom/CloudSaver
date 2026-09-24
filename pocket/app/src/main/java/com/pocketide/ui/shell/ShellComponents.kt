@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,11 +53,13 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pocketide.R
+import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.theme.Brand
@@ -111,7 +114,7 @@ fun BrandMark(size: Dp, modifier: Modifier = Modifier) {
     }
 }
 
-/** "Step 2 of 4 · Required" with a segmented bar: done steps green, this one violet. */
+/** "Step 2 of 4 · Required" and how long it usually takes, over a segmented bar: done steps green, this one violet. */
 @Composable
 fun StepHeader(step: OnboardingStep, modifier: Modifier = Modifier, required: Boolean = true) {
     val total = OnboardingStep.NUMBERED
@@ -128,7 +131,7 @@ fun StepHeader(step: OnboardingStep, modifier: Modifier = Modifier, required: Bo
             }
         }
         Spacer(Modifier.height(10.dp))
-        Row {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (required) {
                 Text(
@@ -138,6 +141,8 @@ fun StepHeader(step: OnboardingStep, modifier: Modifier = Modifier, required: Bo
                     fontWeight = FontWeight.SemiBold,
                 )
             }
+            Spacer(Modifier.weight(1f))
+            step.usualTime?.let { StatusChip(it, Tone.NEUTRAL) }
         }
     }
 }
@@ -209,8 +214,30 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** One row of a [CheckCard]: [good] true shows a tick, false a cross, null the given icon. */
-data class CheckItem(val title: String, val subtitle: String? = null, val good: Boolean? = true, val icon: ImageVector? = null)
+/**
+ * One row of a [CheckCard]: [good] true shows a tick, false a cross, null the given icon.
+ * [spoken] is what TalkBack says for the icon, when it carries a state.
+ */
+data class CheckItem(
+    val title: String,
+    val subtitle: String? = null,
+    val good: Boolean? = true,
+    val icon: ImageVector? = null,
+    val spoken: String? = null,
+)
+
+/** [CheckLine]s as a [CheckCard]: a tick when done, a clock while waiting, a cross for a problem. */
+@Composable
+fun CheckLinesCard(lines: List<CheckLine>, modifier: Modifier = Modifier) {
+    CheckCard(lines.map { it.toItem() }, modifier)
+}
+
+fun CheckLine.toItem(): CheckItem = when (status) {
+    CheckStatus.DONE -> CheckItem(title, detail, good = true, spoken = "Done")
+    CheckStatus.PROBLEM -> CheckItem(title, detail, good = false, spoken = "Needs attention")
+    CheckStatus.WAITING -> CheckItem(title, detail, good = null, icon = Icons.Outlined.Schedule, spoken = "Not yet")
+    CheckStatus.INFO -> CheckItem(title, detail, good = null, icon = Icons.Outlined.Info)
+}
 
 /** A rounded card of rows separated by hairlines, as in the set-up mockups. */
 @Composable
@@ -231,7 +258,10 @@ private fun CheckRow(item: CheckItem) {
         null -> null
     }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp).semantics(mergeDescendants = true) {},
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .semantics(mergeDescendants = true) { item.spoken?.let { stateDescription = it } },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val color = if (tone != null) toneColor(tone) else MaterialTheme.colorScheme.primary

@@ -79,6 +79,7 @@ fun GitHubStepScreen(onDone: () -> Unit) {
                 tone = Tone.WARN,
             )
             shown != null -> {
+                SectionLabel("Check before you go on")
                 GitHubAccountCard(shown)
                 Gap(12.dp)
                 NoticeCard(

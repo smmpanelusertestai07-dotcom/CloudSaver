@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.pocketide.ui.shell.Choice
 import com.pocketide.ui.shell.OutlinedCard
+import com.pocketide.ui.shell.SettingChoices
 
 /** A group of setting rows on one card, with hairlines between them. */
 @Composable
@@ -50,12 +51,16 @@ internal fun SettingsGroup(rows: List<@Composable () -> Unit>) {
     }
 }
 
+/** A row's title, its value or detail, and an optional smaller line saying why it matters. */
 @Composable
-private fun RowText(title: String, detail: String?, modifier: Modifier = Modifier) {
+private fun RowText(title: String, detail: String?, modifier: Modifier = Modifier, why: String? = null) {
     Column(modifier) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
         if (detail != null) {
             Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (why != null) {
+            Text(why, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -79,7 +84,14 @@ internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled
 
 /** A row that opens something: another screen, a dialog, or a page in Chrome. */
 @Composable
-internal fun ActionRow(title: String, detail: String?, onClick: () -> Unit, icon: ImageVector? = null, external: Boolean = false) {
+internal fun ActionRow(
+    title: String,
+    detail: String?,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+    external: Boolean = false,
+    why: String? = null,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -92,7 +104,7 @@ internal fun ActionRow(title: String, detail: String?, onClick: () -> Unit, icon
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(16.dp))
         }
-        RowText(title, detail, Modifier.weight(1f))
+        RowText(title, detail, Modifier.weight(1f), why)
         Spacer(Modifier.width(12.dp))
         Icon(
             if (external) Icons.AutoMirrored.Outlined.OpenInNew else Icons.AutoMirrored.Outlined.KeyboardArrowRight,
@@ -104,14 +116,21 @@ internal fun ActionRow(title: String, detail: String?, onClick: () -> Unit, icon
 }
 
 /**
- * A setting with a few named choices: the row shows the current one, a tap opens a list with
- * the plan's default marked.
+ * A setting with a few named choices: the row shows the current one and [why] it matters (what
+ * changing it costs); a tap opens a list with the plan's default marked.
  */
 @Composable
-internal fun <T> ChoiceRow(title: String, choices: List<Choice<T>>, current: T, onPick: (T) -> Unit, fallbackLabel: (T) -> String = { it.toString() }) {
+internal fun <T> ChoiceRow(
+    title: String,
+    choices: List<Choice<T>>,
+    current: T,
+    onPick: (T) -> Unit,
+    why: String? = null,
+    fallbackLabel: (T) -> String = { it.toString() },
+) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val label = choices.firstOrNull { it.value == current }?.label ?: fallbackLabel(current)
-    ActionRow(title = title, detail = label, onClick = { open = true })
+    val label = SettingChoices.labelOf(choices, current, fallbackLabel)
+    ActionRow(title = title, detail = label, onClick = { open = true }, why = why)
     if (open) {
         ChoiceDialog(
             title = title,

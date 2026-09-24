@@ -115,7 +115,7 @@ class AppNavigator(private val controller: NavHostController, private val contex
     /** Tapping the tab you are on returns to its first screen; another tab restores its stack. */
     fun tab(tab: Tab) {
         val current = controller.currentBackStackEntry?.destination?.route
-        if (Routes.tabOf(current) == tab && current != tab.route) {
+        if (controller.tabOf(current) == tab && current != tab.route) {
             if (controller.popBackStack(tab.route, inclusive = false)) return
         }
         if (current == tab.route) return
@@ -129,6 +129,10 @@ class AppNavigator(private val controller: NavHostController, private val contex
     private fun push(route: String) = controller.navigate(route) { launchSingleTop = true }
 }
 
+private fun NavHostController.tabOf(pattern: String?): Tab = Routes.tabOf(pattern) { route ->
+    runCatching { getBackStackEntry(route) }.isSuccess
+}
+
 /**
  * The main app: a title bar with Help on the four tabs, the bottom bar everywhere except the
  * full-screen agent, the access banner, and every screen of `ui/screens`.
@@ -139,7 +143,7 @@ fun AppNav(navController: NavHostController = rememberNavController(), banner: S
     val nav = remember(navController, context) { AppNavigator(navController, context) }
     val entry by navController.currentBackStackEntryAsState()
     val pattern = entry?.destination?.route
-    val tab = Routes.tabOf(pattern)
+    val tab = remember(entry) { navController.tabOf(pattern) }
 
     Scaffold(
         topBar = { if (Routes.isTab(pattern)) ShellTopBar(tab, onHelp = { nav.help(null) }) },

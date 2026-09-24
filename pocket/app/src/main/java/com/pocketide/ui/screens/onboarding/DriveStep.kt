@@ -51,9 +51,10 @@ import com.pocketide.ui.shell.StepHeader
 import com.pocketide.ui.shell.rememberGraph
 import com.pocketide.vault.KeyState
 import com.pocketide.vault.VaultKeys
+import com.pocketide.vault.WrongPasswordException
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import java.io.IOException
 
 /**
  * Step 2: Google Drive (`drive.appdata`) and the chats' key. A returning owner gets the key
@@ -127,12 +128,17 @@ fun DriveStepScreen(onDone: () -> Unit) {
             )
             FinePrint("Disconnect later and the app locks until you reconnect. Nothing is lost.")
         } else {
-            Gap(16.dp)
+            SectionLabel("Check before you go on")
             OutlinedCard {
                 StatusLine("Google Drive", email ?: authorizedEmail, "Connected", Tone.OK)
             }
             SectionLabel("Your chats' key")
-            KeySetup(graph.vault, onReady = { keyReady = true })
+            KeySetup(
+                vault = graph.vault,
+                // Opened with the extra password: this phone's settings must know it is on.
+                onPasswordUsed = { graph.settings.update { it.copy(extraPassword = true) } },
+                onReady = { keyReady = true },
+            )
             if (keyReady) {
                 Gap(24.dp)
                 PrimaryAction("Continue", onClick = onDone)
@@ -154,7 +160,7 @@ private sealed interface KeyPhase {
  * that exists but cannot be rebuilt is never silently replaced: the owner decides.
  */
 @Composable
-private fun KeySetup(vault: VaultKeys, onReady: () -> Unit) {
+private fun KeySetup(vault: VaultKeys, onPasswordUsed: () -> Unit, onReady: () -> Unit) {
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf<KeyPhase>(KeyPhase.Working) }
     var confirmNewKey by remember { mutableStateOf(false) }
@@ -178,7 +184,10 @@ private fun KeySetup(vault: VaultKeys, onReady: () -> Unit) {
     fun restore(password: CharArray?) = attempt {
         try {
             when (val result = vault.restore(password)) {
-                KeyState.Ready, KeyState.OnlyOnPhone -> KeyPhase.Ready(restored = true)
+                KeyState.Ready, KeyState.OnlyOnPhone -> {
+                    if (password != null) onPasswordUsed()
+                    KeyPhase.Ready(restored = true)
+                }
                 KeyState.NeedsPassword -> KeyPhase.NeedsPassword(wrong = password != null)
                 KeyState.None -> {
                     vault.setUp()
@@ -186,6 +195,8 @@ private fun KeySetup(vault: VaultKeys, onReady: () -> Unit) {
                 }
                 is KeyState.Lost -> KeyPhase.Lost(Redact.text(result.why))
             }
+        } catch (_: WrongPasswordException) {
+            KeyPhase.NeedsPassword(wrong = true)
         } finally {
             password?.fill('\u0000')
         }
@@ -288,9 +299,11 @@ private fun KeyCopyEntry(onSubmit: (String) -> Unit) {
         value = text,
         onValueChange = { text = it },
         label = { Text("Saved key copy") },
+        // A key copy is several lines (a comment and a key per generation), so the field keeps them.
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        singleLine = true,
+        minLines = 3,
+        maxLines = 6,
         modifier = Modifier.fillMaxWidth(),
     )
     SecondaryAction(
