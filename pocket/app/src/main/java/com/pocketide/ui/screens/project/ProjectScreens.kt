@@ -214,7 +214,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
                     } else {
                         when (tab) {
                             ProjectTab.PREVIEW -> PreviewPanel(selected.id, preview, nav, snackbar)
-                            ProjectTab.MEDIA -> MediaPanel(selected.id, selected.pendingVideos)
+                            ProjectTab.MEDIA -> MediaPanel(selected.id, selected.pendingVideos, snackbar)
                             ProjectTab.TERMINAL -> TerminalPanel(selected.id, terminal, nav, snackbar)
                             else -> Unit
                         }
@@ -646,7 +646,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                             when (p) {
                                 AgentPanel.PREVIEW -> PreviewPanel(sessionId, preview, nav, snackbar)
-                                AgentPanel.MEDIA -> MediaPanel(sessionId, session.pendingVideos)
+                                AgentPanel.MEDIA -> MediaPanel(sessionId, session.pendingVideos, snackbar)
                                 AgentPanel.TERMINAL -> TerminalPanel(sessionId, terminal, nav, snackbar)
                             }
                         }

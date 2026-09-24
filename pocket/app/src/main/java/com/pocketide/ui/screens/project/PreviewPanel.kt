@@ -1,6 +1,5 @@
 package com.pocketide.ui.screens.project
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +14,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Web
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,28 +37,30 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.bridge.BridgedPort
 import com.pocketide.bridge.PortBridge
 import com.pocketide.ui.components.SectionCard
+import com.pocketide.ui.components.StatusChip
+import com.pocketide.ui.components.Tone
+import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.web.AgentWebView
 import com.pocketide.ui.web.WebViewHolder
 import com.pocketide.ui.web.rememberWebViewHolder
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import java.io.IOException
-import java.net.InetSocketAddress
-import java.net.Socket
+import kotlinx.coroutines.withContext
 
 /** What Preview shows for one session; hoisted so tab switches keep the page. */
 @Stable
 class PreviewState internal constructor(internal val web: WebViewHolder) {
-    var probed by mutableStateOf<Set<Int>?>(null)
+    /** Dev servers found on the phone with their reach; null before the first check. */
+    var found by mutableStateOf<Map<Int, Reach>?>(null)
         internal set
-    var probing by mutableStateOf(false)
+    var scanning by mutableStateOf(false)
         internal set
     var showing by mutableStateOf<BridgedPort?>(null)
         internal set
+    /** The first dev server the agent announces opens by itself once; later ones wait for a tap. */
+    internal var autoOpened = false
 }
 
 /** Preview state for [sessionId]; its page is closed and its port un-exposed when the caller leaves. */
@@ -76,32 +77,40 @@ fun rememberPreviewState(sessionId: String): PreviewState {
 
 private const val PREVIEW_EXPLAINED =
     "Preview shows a dev server running on this phone (Vite, Next, Flask…) in the phone's own browser engine. " +
-        "It is local only: nothing is published, and nobody else can open it. GitHub builds send their results to Media instead."
+        "It is local only: nothing is published. GitHub builds send their results to Media instead."
 
-/** The Preview tab: pick a dev-server port, see the site, tap around it like a real one. */
+/** The Preview tab: the dev servers on the phone, and the chosen one's site to tap around in. */
 @Composable
 fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackbar: SnackbarHostState, modifier: Modifier = Modifier) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
     val announcedBySession by graph.rooms.previewPorts.collectAsStateWithLifecycle()
     val announced = announcedBySession[sessionId].orEmpty()
+    val ports = previewPorts(announced, state.found.orEmpty(), appPorts(graph.portBridge))
 
-    LaunchedEffect(state) {
-        if (state.probed == null) probeInto(state)
+    val open = { port: Int -> openPort(scope, graph.portBridge, state, port, snackbar) }
+    LaunchedEffect(state, announced) { scanInto(state, announced) }
+    LaunchedEffect(state, ports) {
+        if (state.autoOpened || state.showing != null) return@LaunchedEffect
+        autoOpenPort(ports)?.let { port ->
+            state.autoOpened = true
+            open(port)
+        }
     }
 
     val showing = state.showing
     if (showing != null) {
+        val reach = ports.firstOrNull { it.port == showing.targetPort }?.reach
         Column(modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Port ${showing.targetPort} on this phone", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                IconButton(onClick = { state.web.reload() }) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
-                IconButton(onClick = {
-                    graph.portBridge.revoke(showing.targetPort)
-                    state.web.destroy()
-                    state.showing = null
-                }) { Icon(Icons.Filled.Close, contentDescription = "Close preview") }
+                Text("Port ${showing.targetPort}", style = MaterialTheme.typography.titleSmall)
+                reach?.let { ReachChip(it, Modifier.padding(start = 8.dp)) }
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+                    IconButton(onClick = { state.web.reload() }) { Icon(Icons.Filled.Refresh, contentDescription = "Reload") }
+                    IconButton(onClick = { closePreview(graph.portBridge, state) }) { Icon(Icons.Filled.Close, contentDescription = "Close preview") }
+                }
             }
+            if (reach == Reach.WIFI) WifiWarning(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
             AgentWebView(
                 url = showing.entryUrl,
                 holder = state.web,
@@ -114,43 +123,75 @@ fun PreviewPanel(sessionId: String, state: PreviewState, nav: PocketNav, snackba
         return
     }
 
-    val ports = previewPorts(announced, state.probed.orEmpty(), appPorts(graph.portBridge))
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionCard(title = "Preview") {
             Text(PREVIEW_EXPLAINED, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionLabel("Dev servers", Modifier.weight(1f))
-            if (state.probing) {
+            if (state.scanning) {
                 CircularProgressIndicator(Modifier.size(20.dp))
             } else {
-                OutlinedButton(onClick = { scope.launch { probeInto(state) } }) { Text("Check again") }
+                OutlinedButton(onClick = { scope.launch { scanInto(state, announced) } }) { Text("Check again") }
             }
         }
         if (ports.isEmpty()) {
             EmptyState(
                 Icons.Filled.Web,
                 "No dev server running",
-                "Ask the agent to start one (for example \"npm run dev\"), then tap Check again.",
+                "Ask the agent to start one on 127.0.0.1 (for example \"npm run dev\"), then tap Check again.",
             )
-        } else {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ports.forEach { port ->
-                    FilterChip(
-                        selected = false,
-                        onClick = {
-                            scope.launch {
-                                attempt { graph.portBridge.expose(port, "preview") }
-                                    .onSuccess { state.showing = it }
-                                    .onFailure { snackbar.showSnackbar("Could not open port $port: ${plainReason(it)}") }
-                            }
-                        },
-                        label = { Text(if (port in announced) "$port · from the agent" else "$port") },
-                    )
-                }
-            }
         }
+        ports.forEach { port -> PortRow(port) { open(port.port) } }
     }
+}
+
+@Composable
+private fun PortRow(port: PreviewPort, onOpen: () -> Unit) {
+    SectionCard(title = null) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Port ${port.port}", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (port.fromAgent) "Started by the agent in this session" else "Found on this phone",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                port.reach?.let { ReachChip(it) }
+            }
+            FilledTonalButton(onClick = onOpen) { Text("Open") }
+        }
+        if (port.reach == Reach.WIFI) WifiWarning()
+    }
+}
+
+@Composable
+private fun ReachChip(reach: Reach, modifier: Modifier = Modifier) {
+    StatusChip(reach.label, if (reach == Reach.WIFI) Tone.WARN else Tone.OK, modifier)
+}
+
+@Composable
+private fun WifiWarning(modifier: Modifier = Modifier) {
+    Text(WIFI_WARNING, style = MaterialTheme.typography.bodySmall, color = toneColor(Tone.WARN), modifier = modifier)
+}
+
+private fun openPort(scope: CoroutineScope, bridge: PortBridge, state: PreviewState, port: Int, snackbar: SnackbarHostState) {
+    scope.launch {
+        // Exposing binds a listening socket: not on the main thread.
+        attempt { withContext(Dispatchers.IO) { bridge.expose(port, "preview") } }
+            .onSuccess { exposed ->
+                state.web.retry()
+                state.showing = exposed
+            }
+            .onFailure { snackbar.showSnackbar("Could not open port $port: ${plainReason(it)}") }
+    }
+}
+
+private fun closePreview(bridge: PortBridge, state: PreviewState) {
+    state.showing?.let { bridge.revoke(it.targetPort) }
+    state.web.destroy()
+    state.web.retry()
+    state.showing = null
 }
 
 /** Ports the app itself serves: agent screens, terminals and the bridge's own listeners. */
@@ -159,23 +200,11 @@ private fun appPorts(bridge: PortBridge): Set<Int> =
         if (port.purpose == "preview") listOf(port.bridgePort) else listOf(port.bridgePort, port.targetPort)
     }.toSet()
 
-private suspend fun probeInto(state: PreviewState) {
-    state.probing = true
+private suspend fun scanInto(state: PreviewState, announced: List<Int>) {
+    state.scanning = true
     try {
-        state.probed = listeningPorts(COMMON_DEV_PORTS)
+        state.found = PortScan.scan(COMMON_DEV_PORTS + announced)
     } finally {
-        state.probing = false
+        state.scanning = false
     }
-}
-
-/** Which of [ports] accept a connection on 127.0.0.1 (the computer shares the phone's loopback). */
-private suspend fun listeningPorts(ports: List<Int>): Set<Int> = coroutineScope {
-    ports.map { port -> async(Dispatchers.IO) { port.takeIf { isListening(it) } } }.awaitAll().filterNotNull().toSet()
-}
-
-private fun isListening(port: Int): Boolean = try {
-    Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 300) }
-    true
-} catch (_: IOException) {
-    false
 }

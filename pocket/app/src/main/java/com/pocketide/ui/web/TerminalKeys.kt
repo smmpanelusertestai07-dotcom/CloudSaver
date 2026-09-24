@@ -1,13 +1,21 @@
 package com.pocketide.ui.web
 
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
+
 /** The keys a phone keyboard buries or lacks, in the order the bar shows them. */
 enum class TermKey(val label: String, val description: String) {
     ESC("Esc", "Escape"),
+    CTRL_C("^C", "Control C, stops the running command"),
     TAB("Tab", "Tab"),
+    SHIFT_TAB("⇧Tab", "Shift Tab, switches Claude Code's mode"),
     UP("↑", "Up"),
     DOWN("↓", "Down"),
     LEFT("←", "Left"),
     RIGHT("→", "Right"),
+    SHIFT_UP("⇧↑", "Shift Up"),
+    SHIFT_DOWN("⇧↓", "Shift Down"),
     PIPE("|", "Pipe"),
     TILDE("~", "Tilde"),
     SLASH("/", "Slash"),
@@ -29,16 +37,20 @@ data class Modifiers(val ctrl: Boolean = false, val alt: Boolean = false) {
 
 /**
  * What each key sends to the shell: the byte sequences an xterm-compatible terminal expects,
- * with xterm's modifier parameter (1 + 2·Alt + 4·Ctrl) on cursor and editing keys.
+ * with xterm's modifier parameter (1 + Shift + 2·Alt + 4·Ctrl) on cursor and editing keys.
  */
 object TerminalKeys {
     private const val ESC = "\u001b"
 
     fun sequence(key: TermKey, mods: Modifiers = Modifiers.NONE): String = when (key) {
         TermKey.ESC -> if (mods.alt) ESC + ESC else ESC
+        TermKey.CTRL_C -> character('c', mods.copy(ctrl = true))
         TermKey.TAB -> if (mods.alt) ESC + "\t" else "\t"
+        TermKey.SHIFT_TAB -> if (mods.alt) "$ESC$ESC[Z" else "$ESC[Z"
         TermKey.UP -> cursor('A', mods)
         TermKey.DOWN -> cursor('B', mods)
+        TermKey.SHIFT_UP -> cursor('A', mods, shift = true)
+        TermKey.SHIFT_DOWN -> cursor('B', mods, shift = true)
         TermKey.RIGHT -> cursor('C', mods)
         TermKey.LEFT -> cursor('D', mods)
         TermKey.HOME -> cursor('H', mods)
@@ -105,13 +117,45 @@ object TerminalKeys {
         return out.append('"').toString()
     }
 
-    private fun modifierParam(mods: Modifiers): Int = 1 + (if (mods.alt) 2 else 0) + (if (mods.ctrl) 4 else 0)
+    /** Tells the page the owner's font size, when it lets the bar set one. */
+    fun fontSizeCall(px: Int): String = "window.pocketFontSize&&window.pocketFontSize(${clampFont(px)})"
 
-    private fun cursor(final: Char, mods: Modifiers): String =
-        if (mods.any) "$ESC[1;${modifierParam(mods)}$final" else "$ESC[$final"
+    /**
+     * Returns the text to copy: the page's own `window.pocketText()` when it has one, else the
+     * selection, else the terminal rows (a canvas terminal cannot be long-pressed).
+     */
+    const val COPY_SCRIPT: String =
+        "(function(){try{if(window.pocketText)return String(window.pocketText());" +
+            "var s=String(window.getSelection?window.getSelection():'');if(s)return s;" +
+            "var r=document.querySelector('.xterm-rows');return r?r.innerText:document.body.innerText;}catch(e){return '';}})()"
+
+    /**
+     * The text [COPY_SCRIPT] returned (evaluateJavascript hands back a JSON value), cut to [max]
+     * characters without splitting a surrogate pair; null when there is nothing to copy.
+     */
+    fun copiedText(jsonResult: String?, max: Int = MAX_COPY_CHARS): String? {
+        val text = try {
+            (Json.parseToJsonElement(jsonResult ?: return null) as? JsonPrimitive)?.takeIf { it.isString }?.content
+        } catch (_: SerializationException) {
+            null
+        } ?: return null
+        val trimmed = text.trimEnd()
+        if (trimmed.isEmpty()) return null
+        if (trimmed.length <= max) return trimmed
+        val end = if (trimmed[max - 1].isHighSurrogate()) max - 1 else max
+        return trimmed.substring(0, end)
+    }
+
+    const val MAX_COPY_CHARS = 512 * 1024
+
+    private fun modifierParam(mods: Modifiers, shift: Boolean): Int =
+        1 + (if (shift) 1 else 0) + (if (mods.alt) 2 else 0) + (if (mods.ctrl) 4 else 0)
+
+    private fun cursor(final: Char, mods: Modifiers, shift: Boolean = false): String =
+        if (mods.any || shift) "$ESC[1;${modifierParam(mods, shift)}$final" else "$ESC[$final"
 
     private fun tilde(code: Int, mods: Modifiers): String =
-        if (mods.any) "$ESC[$code;${modifierParam(mods)}~" else "$ESC[$code~"
+        if (mods.any) "$ESC[$code;${modifierParam(mods, shift = false)}~" else "$ESC[$code~"
 
     /**
      * Injected into the terminal page once it loads: while Ctrl or Alt is latched on the bar,

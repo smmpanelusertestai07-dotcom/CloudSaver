@@ -29,9 +29,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,17 +67,40 @@ fun BuildsPanel(
     val templates = remember { runCatching { graph.builds.templates() }.getOrDefault(emptyList()) }
     var runs by remember(projectId) { mutableStateOf<Result<List<WorkflowRun>>?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
+    // The run this phone started: followed by its id, never "the latest run" (which may be another one).
+    var followed by rememberSaveable(projectId) { mutableStateOf<Long?>(null) }
 
     suspend fun loadRuns() {
-        runs = attempt { graph.builds.recentRuns(projectId) }
+        val before = runs?.getOrNull()
+        val loaded = attempt { graph.builds.recentRuns(projectId) }
+        runs = loaded
+        // Shown from the screen's scope: the effect that called this restarts as soon as the list changes.
+        finishedRun(before, loaded.getOrNull(), followed)?.let { run ->
+            scope.launch { snackbar.showSnackbar("${run.name} on GitHub: ${runStatus(run).first}.") }
+        }
     }
     LaunchedEffect(projectId) { loadRuns() }
+    // A run GitHub gave no id for is looked for once, after GitHub had a moment to list it.
+    var lookAgain by remember { mutableIntStateOf(0) }
+    LaunchedEffect(lookAgain) {
+        if (lookAgain == 0) return@LaunchedEffect
+        delay(RUN_SETTLE_MS)
+        loadRuns()
+    }
+    // While a run is queued or running, the list follows it on its own.
+    LaunchedEffect(projectId, runs, followed) {
+        val current = runs?.getOrNull() ?: return@LaunchedEffect
+        if (!needsPolling(current, followed)) return@LaunchedEffect
+        // GitHub lists a dispatched run a moment after the request.
+        delay(if (current.none { it.id == followed }) RUN_SETTLE_MS else RUN_POLL_MS)
+        loadRuns()
+    }
 
     fun work(label: String, failed: String, block: suspend () -> String?) {
         if (busy != null) return
         busy = label
         scope.launch {
-            attempt { block() }
+            finish { block() }
                 .onSuccess { message -> message?.let { snackbar.showSnackbar(it) } }
                 .onFailure { snackbar.showSnackbar("$failed: ${plainReason(it)}") }
             busy = null
@@ -123,10 +148,14 @@ fun BuildsPanel(
                 },
                 onRun = { target ->
                     work("run", "Could not start the build") {
-                        graph.builds.run(projectId, template.id, target.branch)
-                        delay(RUN_SETTLE_MS)
-                        loadRuns()
-                        "${template.title} started on GitHub for \"${target.title}\"."
+                        val runId = graph.builds.run(projectId, template.id, target.branch)
+                        followed = runId
+                        if (runId == null) {
+                            lookAgain++
+                            "${template.title} was sent to GitHub for \"${target.title}\". It shows here once GitHub lists it."
+                        } else {
+                            "${template.title} started on GitHub for \"${target.title}\"."
+                        }
                     }
                 },
             )
@@ -150,9 +179,10 @@ fun BuildsPanel(
             result.getOrThrow().isEmpty() -> item {
                 EmptyState(Icons.Filled.Build, "No builds yet", "Runs of this project's workflows on GitHub appear here.")
             }
-            else -> items(result.getOrThrow(), key = { it.id }) { run ->
+            else -> items(followedFirst(result.getOrThrow(), followed), key = { it.id }) { run ->
                 RunCard(
                     run = run,
+                    mine = run.id == followed,
                     target = sessionForBranch(sessions, run.branch) ?: session,
                     busy = busy != null,
                     onCollect = { target ->
@@ -168,7 +198,8 @@ fun BuildsPanel(
     }
 }
 
-/** GitHub lists a dispatched run a moment after the request; wait before refreshing. */
+/** How often a queued or running build is checked while this tab is open. */
+private const val RUN_POLL_MS = 15_000L
 private const val RUN_SETTLE_MS = 3_000L
 
 @Composable
@@ -199,9 +230,10 @@ private fun TemplateCard(
 }
 
 @Composable
-private fun RunCard(run: WorkflowRun, target: SessionRecord?, busy: Boolean, onCollect: (SessionRecord) -> Unit, onOpen: () -> Unit) {
+private fun RunCard(run: WorkflowRun, mine: Boolean, target: SessionRecord?, busy: Boolean, onCollect: (SessionRecord) -> Unit, onOpen: () -> Unit) {
     val (label, tone) = runStatus(run)
     SectionCard(title = null) {
+        if (mine) Text("Started from this phone", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(run.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

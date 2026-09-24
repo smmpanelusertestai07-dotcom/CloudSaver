@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
@@ -58,8 +61,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -118,7 +124,13 @@ fun HomeScreen(nav: PocketNav) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("PocketIDE", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("PocketIDE", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(10.dp))
+                        SyncDot(sync, onClick = nav::waitingUploads)
+                    }
+                },
                 actions = {
                     IconButton(onClick = nav::settings) { Icon(Icons.Filled.Settings, contentDescription = "Settings") }
                     IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More") }
@@ -191,7 +203,7 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id]) { agentSheet = agent }
+                AgentCard(agent, rooms[agent.id], onUsage = nav::openExternal) { agentSheet = agent }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -254,6 +266,20 @@ private fun openSettings(context: Context, action: String): String? {
         } catch (_: ActivityNotFoundException) {
             "This phone has no settings page for that."
         }
+    }
+}
+
+/** The backup state at a glance; tapping it shows what is waiting. */
+@Composable
+private fun SyncDot(status: SyncStatus, onClick: () -> Unit) {
+    val (tone, meaning) = syncDot(status)
+    val color = if (tone == Tone.NEUTRAL) MaterialTheme.colorScheme.primary else toneColor(tone)
+    Box(
+        Modifier.size(28.dp).clip(CircleShape).clickable(onClickLabel = "See what's waiting", onClick = onClick)
+            .semantics { contentDescription = meaning },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(10.dp).background(color, CircleShape))
     }
 }
 
@@ -374,8 +400,9 @@ private fun ProjectCard(
 }
 
 @Composable
-private fun AgentCard(agent: AgentInfo, room: RoomState?, onClick: () -> Unit) {
+private fun AgentCard(agent: AgentInfo, room: RoomState?, onUsage: (String) -> Unit, onClick: () -> Unit) {
     val (state, tone) = roomLabel(room)
+    val limits = agentLimits(agent.id)
     Card(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -399,8 +426,14 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            val usage = limits.usageUrl
+            if (usage != null) {
+                TextButton(onClick = { onUsage(usage) }) { Text("Usage") }
+            } else {
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

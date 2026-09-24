@@ -87,9 +87,15 @@ class WebViewHolder internal constructor() {
     /** An address the page tried to open in Chrome without a tap; the owner decides. */
     internal var askToOpen by mutableStateOf<String?>(null)
 
-    /** Runs JavaScript in the page; ignored when there is no page. */
-    fun evaluate(script: String) {
-        webView?.evaluateJavascript(script, null)
+    /** Runs JavaScript in the page; ignored when there is no page. [result] gets its JSON value. */
+    fun evaluate(script: String, result: ((String?) -> Unit)? = null) {
+        webView?.evaluateJavascript(script, result?.let { callback -> ValueCallback<String> { value -> callback(value) } })
+    }
+
+    /** Clears the problem so the page is shown again; the next address given is loaded afresh. */
+    internal fun retry() {
+        problem = null
+        loadedUrl = null
     }
 
     /** Loads the page again, rebuilding the WebView when its renderer died. */
@@ -168,6 +174,8 @@ fun AgentWebView(
     modifier: Modifier = Modifier,
     /** Text size in percent (WebSettings.textZoom), for the owner's per-agent choice. */
     textZoom: Int = 100,
+    /** Replaces Reload when the address itself may be stale (a new one must be asked for). */
+    onRetry: (() -> Unit)? = null,
     onPageFinished: (WebView, String) -> Unit = { _, _ -> },
     onCreated: (WebView) -> Unit = {},
 ) {
@@ -194,7 +202,14 @@ fun AgentWebView(
         val problem = holder.problem
         when {
             !allowed -> PageProblem("This address is not allowed inside the app.", null)
-            problem != null -> PageProblem(problem) { holder.reload() }
+            problem != null -> PageProblem(problem) {
+                if (onRetry == null) {
+                    holder.reload()
+                } else {
+                    holder.retry()
+                    onRetry()
+                }
+            }
             else -> key(holder.generation) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),

@@ -69,17 +69,27 @@ const val UNTRUSTED_REPO =
 /** Ports a dev server usually picks (Next, Angular, Flask, Vite, Django, Jupyter…). */
 val COMMON_DEV_PORTS: List<Int> = listOf(3000, 3001, 4200, 5000, 5173, 8000, 8080, 8888)
 
+/** One dev server Preview offers. [reach] is null until the phone was checked. */
+data class PreviewPort(val port: Int, val fromAgent: Boolean, val reach: Reach?)
+
 /**
  * Ports Preview offers: those the agent announced for this session first (in its order), then
- * common dev ports found listening on the phone. Ports the app itself uses (the bridge's own
- * listeners, agent screens, terminals) are never offered.
+ * the dev servers found on the phone, lowest port first. Ports the app itself uses (the bridge's
+ * own listeners, agent screens, terminals) are never offered.
  */
-fun previewPorts(announced: List<Int>, probedOpen: Set<Int>, excluded: Set<Int>): List<Int> {
+fun previewPorts(announced: List<Int>, found: Map<Int, Reach>, excluded: Set<Int>): List<PreviewPort> {
     val valid = { port: Int -> port in 1..65535 && port !in excluded }
     val fromAgent = announced.filter(valid).distinct()
-    val found = COMMON_DEV_PORTS.filter { it in probedOpen && valid(it) && it !in fromAgent }
-    return fromAgent + found
+    val others = found.keys.filter { valid(it) && it !in fromAgent }.sorted()
+    return fromAgent.map { PreviewPort(it, fromAgent = true, reach = found[it]) } +
+        others.map { PreviewPort(it, fromAgent = false, reach = found[it]) }
 }
+
+/** The dev server Preview opens by itself the first time: the first one the agent announced. */
+fun autoOpenPort(ports: List<PreviewPort>): Int? = ports.firstOrNull { it.fromAgent }?.port
+
+const val WIFI_WARNING =
+    "Anyone on the same Wi-Fi can open this dev server. Ask the agent to restart it on 127.0.0.1 (for example with --host 127.0.0.1)."
 
 /** A project's live sessions grouped by agent; the most recently active group and session first. */
 fun sessionsByAgent(sessions: List<SessionRecord>, projectId: String): List<Pair<String, List<SessionRecord>>> =
@@ -160,6 +170,24 @@ fun runStatus(run: WorkflowRun): Pair<String, Tone> = when (run.status) {
     "in_progress" -> "Running" to Tone.OK
     "queued", "pending", "requested", "waiting" -> "Waiting for a runner" to Tone.WARN
     else -> run.status.replaceFirstChar { it.uppercase() } to Tone.NEUTRAL
+}
+
+/** The list keeps checking while a run is unfinished, or while the run started here is not listed yet. */
+fun needsPolling(runs: List<WorkflowRun>, followed: Long?): Boolean =
+    runs.any { it.status != "completed" } || (followed != null && runs.none { it.id == followed })
+
+/** The run this phone started, listed first; the others keep GitHub's order (newest first). */
+fun followedFirst(runs: List<WorkflowRun>, followed: Long?): List<WorkflowRun> {
+    val mine = runs.firstOrNull { it.id == followed } ?: return runs
+    return listOf(mine) + runs.filter { it !== mine }
+}
+
+/** The followed run when it finished between [before] and [after], so the owner hears about it once. */
+fun finishedRun(before: List<WorkflowRun>?, after: List<WorkflowRun>?, followed: Long?): WorkflowRun? {
+    if (followed == null || before == null || after == null) return null
+    val was = before.firstOrNull { it.id == followed }
+    val now = after.firstOrNull { it.id == followed } ?: return null
+    return now.takeIf { it.status == "completed" && (was == null || was.status != "completed") }
 }
 
 /** What the agent screen shows for its room. */
