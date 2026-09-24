@@ -18,6 +18,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,7 @@ import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.ComputerExpiry
 import com.pocketide.ui.manage.ConfirmDialog
 import com.pocketide.ui.manage.ErrorNote
 import com.pocketide.ui.manage.Hint
@@ -75,17 +77,24 @@ fun ComputerScreen(nav: PocketNav) {
     val state by graph.computer.state.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
+    val sessions by graph.sessions.all.collectAsStateWithLifecycle()
+    val projects by graph.projects.all.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val info = rememberLoad(Unit, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.info() } }
     val size = rememberLoad(state::class, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.sizeBytes() } }
     val facts = rememberLoad(snapshot.storageFreeBytes / 1_000_000_000L, graph.clock::now) {
         withContext(Dispatchers.IO) { readFacts(context, graph, snapshot) }
     }
+    val lastWork = ComputerExpiry.lastWork(sessions.map { it.lastActivityAt }, projects.map { it.lastActivityAt })
+    val daysLeft = ComputerExpiry.daysLeft(lastWork, settings.computerUnusedDays, graph.clock.now())
     var confirmReset by rememberSaveable { mutableStateOf(false) }
+    var confirmRestart by rememberSaveable { mutableStateOf(false) }
+    val working = runner.isBusy(RESET) || runner.isBusy(REPAIR) || state is ComputerState.Installing
 
     LaunchedEffect(Unit) { attempt { graph.phone.refresh() } }
 
     ManagePage("Computer", nav, runner) {
-        item { StateCard(state, size.value) }
+        item { StateCard(state, size.value, daysLeft) }
         item { PhoneCard(snapshot, info.value) }
         item { VersionsCard(info.value, info.error, agents.map { it.displayName to it.version }) }
         item {
@@ -105,34 +114,48 @@ fun ComputerScreen(nav: PocketNav) {
         facts.value?.let { phoneFacts ->
             item { RequirementsCard(PhoneRequirements.check(phoneFacts)) }
         }
+        item { NetworkPanel(runner, graph.clock::now) }
         item {
-            SectionCard("Reset computer") {
-                Hint(
-                    "Rebuilds Ubuntu and the agents from the same pinned recipe. Your projects are on GitHub and your chats, " +
-                        "memory and settings are in your Drive and outside the computer, so nothing is lost. Agents sign in again.",
-                )
-                OutlinedButton(
-                    onClick = { confirmReset = true },
-                    enabled = !runner.isBusy(RESET) && state !is ComputerState.Installing,
-                ) {
-                    Icon(Icons.Outlined.RestartAlt, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (runner.isBusy(RESET)) "Resetting…" else "Reset computer")
-                }
-            }
+            FixLadder(
+                working = working,
+                onRestart = { confirmRestart = true },
+                onRepair = {
+                    runner.run(REPAIR, outlivesScreen = true, onSuccess = { failed: List<String> ->
+                        runner.say(
+                            if (failed.isEmpty()) "Repair finished." else "Repair finished. Could not update: ${failed.joinToString()}.",
+                        )
+                    }) {
+                        graph.computer.install()
+                        agents.filter { attempt { graph.agents.ensureInstalled(it.id) }.isFailure }.map { it.displayName }
+                    }
+                },
+                onReset = { confirmReset = true },
+            )
         }
     }
 
+    if (confirmRestart) {
+        ConfirmDialog(
+            title = "Restart the computer?",
+            text = "Every room closes and its programs end. Files, sign-ins and chat history stay. Open an agent again to start it.",
+            confirmLabel = "Restart",
+            destructive = false,
+            onConfirm = { runner.run(RESTART, done = "The computer restarted. Open an agent to start it.") { graph.rooms.stopAll() } },
+            onDismiss = { confirmRestart = false },
+        )
+    }
     if (confirmReset) {
         ConfirmDialog(
             title = "Reset the computer?",
-            text = "Running agents stop. The computer is deleted and built again (a big download: Wi-Fi is best). " +
-                "Projects, chats, memory and settings are kept.",
+            text = "Goes: Ubuntu, the engine, the tools agents installed and caches. They are built again from the same " +
+                "recipe, a big download (Wi-Fi is best). Stays: your projects, chats, memory, settings, Variables, Secrets " +
+                "and agent sign-ins, because they live outside the computer.",
             confirmLabel = "Reset",
             destructive = true,
             onConfirm = {
                 runner.run(RESET, done = "The computer is being rebuilt.", outlivesScreen = true) {
                     graph.rooms.stopAll()
+                    attempt { graph.sync.requestSync("before a reset") }
                     graph.computer.reset()
                 }
             },
@@ -141,11 +164,51 @@ fun ComputerScreen(nav: PocketNav) {
     }
 }
 
+/** One level of the fix-it ladder: what it fixes and what it costs. */
+private data class Rung(val title: String, val text: String)
+
+private val ladder = listOf(
+    Rung("1. Reload the agent screen", "In the agent's menu. Takes seconds; nothing stops."),
+    Rung("2. Restart the agent", "In the agent's menu. Its engine starts again; the chat is kept."),
+    Rung("3. Restart the computer", "Every room closes. Files, sign-ins and history stay."),
+    Rung("4. Repair", "Installs what is missing and updates what is there. Safe to run again; your files are not touched."),
+    Rung("5. Reset computer", "Builds the computer again from scratch. Nothing of yours is lost, but it is a big download."),
+)
+
+/** Try each level only if the one above did not help. */
+@Composable
+private fun FixLadder(working: Boolean, onRestart: () -> Unit, onRepair: () -> Unit, onReset: () -> Unit) {
+    SectionCard("If something is wrong") {
+        Hint("Start at the top. Go down a level only if the one above did not help.")
+        ladder.forEachIndexed { index, rung ->
+            HorizontalDivider()
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(rung.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Hint(rung.text)
+                when (index) {
+                    2 -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
+                    3 -> TextButton(onClick = onRepair, enabled = !working) { Text("Repair") }
+                    4 -> OutlinedButton(onClick = onReset, enabled = !working) {
+                        Icon(Icons.Outlined.RestartAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Reset computer")
+                    }
+                }
+            }
+        }
+    }
+}
+
 private const val RESET = "reset"
+private const val REPAIR = "repair"
+private const val RESTART = "restart"
 
 @Composable
-private fun StateCard(state: ComputerState, sizeBytes: Long?) {
+private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?) {
     SectionCard("Ubuntu computer") {
+        if (daysLeft != null && state !is ComputerState.NotInstalled) {
+            StatusChip(ComputerExpiry.chip(daysLeft), if (daysLeft <= 7) Tone.WARN else Tone.NEUTRAL)
+        }
         when (state) {
             ComputerState.NotInstalled -> ToneLine(Told("Not set up yet.", Tone.NEUTRAL))
             ComputerState.Ready -> ToneLine(Told("Ready.", Tone.OK))

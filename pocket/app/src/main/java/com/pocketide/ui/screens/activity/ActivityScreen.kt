@@ -17,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,8 +71,12 @@ import kotlinx.coroutines.delay
 /** A build on GitHub Actions that has not finished, with its project. */
 private data class LiveBuild(val project: Project, val run: WorkflowRun)
 
+/** The last answer from GitHub; [reachable] is false when no project could be asked. */
+private data class LiveBuilds(val runs: List<LiveBuild>, val reachable: Boolean)
+
 private const val BUILD_POLL_MS = 30_000L
 private const val RECENT_PROJECTS = 3
+private const val STOP_ALL = "stop-all"
 
 /**
  * What is running now: agents' rooms (with Stop), sync, builds on GitHub, scheduled tasks,
@@ -195,6 +200,14 @@ private fun AgentsCard(
         }
         val failed = agents.mapNotNull { agent -> (rooms[agent.id] as? RoomState.Failed)?.let { agent to it } }
         failed.forEach { (agent, state) -> ToneLine(Told("${agent.displayName}: ${state.why}", Tone.ERROR)) }
+        if (active.size > 1) {
+            HorizontalDivider()
+            OutlinedButton(
+                onClick = { runner.run(STOP_ALL, done = "Every agent stopped. Chats and files are kept.") { graph.rooms.stopAll() } },
+                enabled = !runner.isBusy(STOP_ALL),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Stop everything") }
+        }
     }
 }
 
@@ -206,11 +219,13 @@ private inline fun <T> attemptSync(block: () -> T): T? = try {
 }
 
 @Composable
-private fun BuildsCard(builds: List<LiveBuild>?, noProjects: Boolean, nav: PocketNav) {
+private fun BuildsCard(live: LiveBuilds?, noProjects: Boolean, nav: PocketNav) {
     SectionCard(null) {
+        val builds = live?.runs.orEmpty()
         when {
             noProjects -> Hint("No projects yet.")
-            builds == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            live == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            !live.reachable && builds.isEmpty() -> ToneLine(Told("GitHub could not be reached. This is checked again every 30 seconds.", Tone.WARN))
             builds.isEmpty() -> Hint("No builds running in your recent projects.")
             else -> builds.forEachIndexed { index, build ->
                 if (index > 0) HorizontalDivider()
@@ -253,18 +268,20 @@ private fun TasksCard(tasks: List<ScheduledTask>, agents: List<AgentInfo>, now: 
 
 /** Unfinished Actions runs in the most recently used projects, refreshed while the screen is open. */
 @Composable
-private fun rememberLiveBuilds(graph: AppGraph, projects: List<Project>): List<LiveBuild>? {
+private fun rememberLiveBuilds(graph: AppGraph, projects: List<Project>): LiveBuilds? {
     val recent = remember(projects) { projects.sortedByDescending { it.lastActivityAt }.take(RECENT_PROJECTS) }
-    var builds by remember { mutableStateOf<List<LiveBuild>?>(null) }
+    var builds by remember { mutableStateOf<LiveBuilds?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(recent, lifecycle) {
         if (recent.isEmpty()) {
-            builds = emptyList()
+            builds = LiveBuilds(emptyList(), reachable = true)
             return@LaunchedEffect
         }
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
-                builds = fetchLiveBuilds(graph, recent) ?: builds.orEmpty()
+                // A failed poll keeps the builds last seen rather than showing none.
+                builds = fetchLiveBuilds(graph, recent)?.let { LiveBuilds(it, reachable = true) }
+                    ?: LiveBuilds(builds?.runs.orEmpty(), reachable = false)
                 delay(BUILD_POLL_MS)
             }
         }
