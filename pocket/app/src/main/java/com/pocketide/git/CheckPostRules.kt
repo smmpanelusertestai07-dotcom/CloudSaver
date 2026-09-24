@@ -113,8 +113,9 @@ internal object PathRules {
  * are not matched: Gradle's wrapper and Android's jniLibs are committed by design.
  */
 internal object BuildOutputs {
-    private val extensions = setOf("apk", "aab", "apks", "xapk", "ipa", "dex", "class", "o", "exe", "dmg", "msi")
+    private val extensions = setOf("apk", "aab", "apks", "xapk", "ipa", "dex", "class", "pyc", "o", "exe", "dmg", "msi")
     private val gradleOutputs = setOf("outputs", "intermediates", "tmp")
+    private val toolFolders = setOf(".gradle", ".dart_tool", "DerivedData")
 
     fun check(path: String): String? {
         val parts = path.split('/')
@@ -128,9 +129,10 @@ internal object BuildOutputs {
 
     private const val KEPT_IN_MEDIA = "Builds are kept in Media, not in git."
 
+    // Gradle writes app/build/outputs; Flutter writes build/app/outputs.
     private fun inBuildFolder(folders: List<String>): Boolean = folders.indices.any { i ->
-        val name = folders[i]
-        name == ".gradle" || name == "DerivedData" || (name == "build" && folders.getOrNull(i + 1) in gradleOutputs)
+        folders[i] in toolFolders ||
+            (folders[i] == "build" && (folders.getOrNull(i + 1) in gradleOutputs || folders.getOrNull(i + 2) in gradleOutputs))
     }
 }
 

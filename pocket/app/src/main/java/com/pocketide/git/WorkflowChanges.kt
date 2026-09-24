@@ -15,7 +15,12 @@ internal object WorkflowChanges {
     private val roots = listOf(".github/workflows/", ".github/actions/")
 
     private val secretName = Regex("""\bsecrets\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_-]*)|\[\s*['"]([^'"]+)['"]\s*])""")
-    private val allSecrets = Regex("""(?i)toJSON\(\s*secrets\s*\)|^\s*secrets\s*:\s*inherit\b""", RegexOption.MULTILINE)
+
+    // toJSON(secrets), `secrets: inherit`, or a name computed at run time (secrets[matrix.name]).
+    private val allSecrets = Regex(
+        """(?i)toJSON\(\s*secrets\s*\)|^\s*secrets\s*:\s*inherit\b|\bsecrets\s*\[\s*(?!['"])""",
+        RegexOption.MULTILINE,
+    )
     private val triggerKey = Regex("""^(?:on|"on"|'on')\s*:(.*)$""")
 
     /** Enough for any real workflow; a longer diff is cut. */
@@ -84,18 +89,35 @@ internal object WorkflowChanges {
         return block.joinToString("\n")
     }
 
-    /** The event names in the `on:` block: `on: push`, `on: [push, pull_request]` or one key per line. */
+    /**
+     * The event names in the `on:` block: `on: push`, `on: [push, pull_request]`,
+     * `on: {push: {branches: [main]}}`, or one key or item per line.
+     */
     fun events(text: String): List<String> {
         val block = triggerBlock(text)?.lines() ?: return emptyList()
         val inline = triggerKey.matchEntire(block.first())?.groupValues?.get(1).orEmpty().substringBefore('#').trim()
-        if (inline.isNotEmpty()) {
-            return inline.trim('[', ']').split(',').map { it.trim().trim('"', '\'') }.filter(String::isNotEmpty)
-        }
+        if (inline.isNotEmpty()) return namesInFlow(inline)
         val children = block.drop(1)
         val indent = children.minOfOrNull { line -> line.indexOfFirst { !it.isWhitespace() } } ?: return emptyList()
         return children
             .filter { line -> line.indexOfFirst { !it.isWhitespace() } == indent }
             .map { it.trim().removePrefix("-").trim().substringBefore(':').trim('"', '\'') }
             .filter(String::isNotEmpty)
+    }
+
+    /** The top-level names of a YAML flow value: a list, a mapping (its keys) or a single name. */
+    private fun namesInFlow(value: String): List<String> {
+        val body = value.removeSurrounding("[", "]").removeSurrounding("{", "}")
+        val names = mutableListOf(StringBuilder())
+        var depth = 0
+        for (c in body) {
+            when (c) {
+                '[', '{' -> depth++
+                ']', '}' -> depth--
+                ',' -> if (depth == 0) names += StringBuilder()
+                else -> if (depth == 0) names.last().append(c)
+            }
+        }
+        return names.map { it.toString().substringBefore(':').trim().trim('"', '\'') }.filter(String::isNotEmpty)
     }
 }

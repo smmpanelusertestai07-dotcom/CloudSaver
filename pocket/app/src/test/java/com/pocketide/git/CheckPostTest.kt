@@ -3,6 +3,7 @@ package com.pocketide.git
 import kotlinx.coroutines.CancellationException
 import org.eclipse.jgit.lib.FileMode
 import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.lib.PersonIdent
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -174,10 +175,74 @@ class CheckPostTest {
     }
 
     @Test
-    fun `a symlink carries no content`() {
+    fun `a symlink is judged by its target, not by its name`() {
         val tip = commits.commit(mapOf(".env" to "../shared/.env"), modes = mapOf(".env" to FileMode.SYMLINK))
 
         assertTrue(check(tip).ok)
+    }
+
+    @Test
+    fun `a symlink's target is text that goes to GitHub, so it is searched too`() {
+        val token = fake("gh" + "p_", 36)
+        val links = mapOf("docs/link" to token, "value-link" to "x/sup3r-s3cret-value/y")
+        val tip = commits.commit(links, modes = links.mapValues { FileMode.SYMLINK })
+
+        assertEquals(
+            listOf(
+                Finding(FindingKind.SECRET, "docs/link", short(tip), "Contains a GitHub token."),
+                Finding(FindingKind.VARIABLE_OR_SECRET_VALUE, "value-link", short(tip), KnownValues.DETAIL),
+            ),
+            check(tip, values = listOf("sup3r-s3cret-value")).findings,
+        )
+    }
+
+    @Test
+    fun `a secret or a value in a file's name blocks, and the finding hides it`() {
+        val token = fake("gh" + "p_", 36)
+        val tip = commits.commit(
+            mapOf("notes/$token.txt" to "hello\n", "sup3r-s3cret-value/readme.txt" to "x\n", "ok/readme.txt" to "x\n"),
+        )
+
+        val verdict = check(tip, values = listOf("sup3r-s3cret-value"))
+
+        assertEquals(
+            listOf(
+                Finding(FindingKind.SECRET, "notes/[hidden]", short(tip), "Contains a GitHub token."),
+                Finding(FindingKind.VARIABLE_OR_SECRET_VALUE, "[hidden]/readme.txt", short(tip), KnownValues.DETAIL),
+            ),
+            verdict.findings,
+        )
+        assertFalse(verdict.toString().contains(token))
+        assertFalse(verdict.toString().contains("sup3r-s3cret-value"))
+    }
+
+    @Test
+    fun `a submodule's name is checked, its commit ID is not content`() {
+        val sub = ObjectId.fromString("4f1c0b9e8d7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c")
+        val token = fake("gh" + "p_", 36)
+        val clean = commits.commit(mapOf("libs/sub" to sub), modes = mapOf("libs/sub" to FileMode.GITLINK))
+        assertTrue(check(clean).ok)
+
+        val named = commits.commit(mapOf("libs/$token" to sub), modes = mapOf("libs/$token" to FileMode.GITLINK))
+        assertEquals(listOf("libs/[hidden]"), check(named).findings.map(Finding::path))
+    }
+
+    @Test
+    fun `the author and committer are checked like the message`() {
+        val token = fake("gh" + "p_", 36)
+        val byToken = commits.commit(mapOf("a.txt" to "a\n"), author = PersonIdent("Bot $token", "bot@example.com"))
+        val byValue = commits.commit(
+            mapOf("a.txt" to "b\n"), byToken,
+            author = PersonIdent("Dev", "sup3r-s3cret-value@example.com"),
+        )
+
+        assertEquals(
+            listOf(
+                Finding(FindingKind.SECRET, "commit author", short(byToken), "Contains a GitHub token."),
+                Finding(FindingKind.VARIABLE_OR_SECRET_VALUE, "commit author", short(byValue), KnownValues.DETAIL),
+            ),
+            check(byValue, values = listOf("sup3r-s3cret-value")).findings,
+        )
     }
 
     @Test
@@ -277,6 +342,24 @@ class CheckPostTest {
         val mainOnGitHub = commits.commit(mapOf(WORKFLOW to "on: [push]\n"), base)
         val merge = commits.commit(mapOf(WORKFLOW to "on: [push]\n", "s.txt" to "s\n"), session, mainOnGitHub)
         assertTrue(check(merge, onGitHub = listOf(mainOnGitHub)).ok)
+    }
+
+    @Test
+    fun `a link or a submodule in the workflow folders is a workflow change`() {
+        val sub = ObjectId.fromString("4f1c0b9e8d7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c")
+        val base = commits.commit(mapOf("README.md" to "hello\n"))
+        val entries = mapOf("README.md" to "hello\n", WORKFLOW to "../../ci/build.yml", ".github/actions/build" to sub)
+        val modes = mapOf(WORKFLOW to FileMode.SYMLINK, ".github/actions/build" to FileMode.GITLINK)
+        val tip = commits.commit(entries, base, modes = modes)
+
+        val holds = check(tip, onGitHub = listOf(base)).holds
+
+        assertEquals(listOf(".github/actions/build", WORKFLOW), holds.map(Hold::path))
+        assertTrue(holds.all { it.kind == HoldKind.WORKFLOW_CHANGE && it.approvalKey != null })
+        assertTrue(holds[0].diff, holds[0].diff.contains("+Subproject commit ${sub.name}"))
+        assertTrue(holds[1].diff, holds[1].diff.contains("+../../ci/build.yml"))
+        val approved = holds.mapNotNull(Hold::approvalKey)
+        assertTrue(check(tip, onGitHub = listOf(base), approved = approved).ok)
     }
 
     @Test

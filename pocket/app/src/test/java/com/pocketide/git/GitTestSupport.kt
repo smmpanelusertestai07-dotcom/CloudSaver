@@ -45,7 +45,8 @@ internal class GitWorld(val root: File) {
         listOf(github, repos, work, home).forEach(File::mkdirs)
     }
 
-    fun gate(scanner: CheckPost = CheckPost()) = JGitGate(repos, state, LocalRemotes, scanner, Dispatchers.IO)
+    fun gate(scanner: CheckPost = CheckPost(), remotes: RemotePolicy = LocalRemotes) =
+        JGitGate(repos, state, remotes, scanner, Dispatchers.IO)
 
     fun url(remote: File) = "file://" + remote.absolutePath
 
@@ -125,12 +126,16 @@ internal class TestCommits(dir: File) : AutoCloseable {
     /** A blob of [size] zero bytes, streamed rather than held in memory. */
     fun zeros(size: Long): ObjectId = inserter.insert(Constants.OBJ_BLOB, size, Zeros(size)).also { inserter.flush() }
 
-    /** [files] maps a path to its text, its bytes or a blob ID; [modes] overrides a file's mode. */
+    /**
+     * [files] maps a path to its text, its bytes or a blob ID; [modes] overrides a file's mode (a
+     * gitlink's ID is taken as is). [author] replaces the test identity.
+     */
     fun commit(
         files: Map<String, Any>,
         vararg parents: ObjectId,
         message: String = "Change",
         modes: Map<String, FileMode> = emptyMap(),
+        author: PersonIdent? = null,
     ): ObjectId {
         val index = DirCache.newInCore()
         val builder = index.builder()
@@ -149,11 +154,11 @@ internal class TestCommits(dir: File) : AutoCloseable {
         }
         builder.finish()
         // Distinct times keep the order of commits obvious.
-        val ident = PersonIdent(PersonIdent("Test", "test@example.com"), Date(1_700_000_000_000L + 1000L * tick++))
+        val ident = PersonIdent(author ?: PersonIdent("Test", "test@example.com"), Date(1_700_000_000_000L + 1000L * tick++))
         val commit = CommitBuilder().apply {
             setTreeId(index.writeTree(inserter))
             setParentIds(*parents)
-            author = ident
+            this.author = ident
             committer = ident
             this.message = message
         }

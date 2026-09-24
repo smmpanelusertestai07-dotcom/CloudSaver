@@ -68,19 +68,24 @@ internal class BareRepos(reposRoot: File, private val states: RemoteStates) {
         .setGitDir(gitDir)
         .setBare()
         .setMustExist(true)
-        .setFS(GuardedFs(gitDir, states.privateConfig(gitDir)))
+        .setFS(GuardedFs(gitDir, states.privateConfig(gitDir), states.shadow(gitDir)))
         .build()
 
     /**
-     * A new empty bare repo in [staging] whose config is the canonical one for [url]. It reads the
-     * private config of [target], where it will be moved once complete.
+     * A new empty bare repo in [staging] whose config is the canonical one for [url]. It uses the
+     * private files of [target], where it will be moved once complete.
      */
     fun create(staging: File, target: File, url: String): Repository {
         val privateConfig = states.privateConfig(target)
+        // JGit refuses to create a repo whose config exists; the finished repo under its other
+        // name has one, rewritten before each of its own steps anyway.
+        Files.deleteIfExists(privateConfig.toPath())
+        // JGit makes its reflog folders here and needs the folder to exist.
+        val shadow = states.shadow(target).apply { mkdirs() }
         val repo = FileRepositoryBuilder()
             .setGitDir(staging)
             .setBare()
-            .setFS(GuardedFs(staging, privateConfig))
+            .setFS(GuardedFs(staging, privateConfig, shadow))
             .build()
         try {
             repo.create(true)

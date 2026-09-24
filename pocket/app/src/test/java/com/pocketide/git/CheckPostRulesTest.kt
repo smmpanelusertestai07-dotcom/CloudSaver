@@ -94,10 +94,12 @@ class CheckPostRulesTest {
             "app-release.apk", "out/app.aab", "dist/App.IPA", "classes.dex", "bin/Main.class", "obj/main.o",
             "tool.exe", "Installer.dmg", "setup.msi", "app/build/outputs/mapping/release/mapping.txt",
             "app/build/intermediates/x.json", ".gradle/8.13/fileHashes/fileHashes.bin", "ios/DerivedData/Info.plist",
+            "src/__pycache__/app.cpython-312.pyc", ".dart_tool/package_config.json",
+            "build/app/intermediates/merged_manifests/debug/AndroidManifest.xml",
         ).forEach { path -> assertTrue(path, BuildOutputs.check(path) != null) }
         listOf(
             "gradle/wrapper/gradle-wrapper.jar", "app/src/main/jniLibs/arm64-v8a/libproot.so", "lib/native.dll",
-            "src/build/Main.kt", "build.gradle.kts", "docs/build/outputs.md", "apk-notes.txt",
+            "src/build/Main.kt", "build.gradle.kts", "docs/build/outputs.md", "apk-notes.txt", "tool/build/app.py",
         ).forEach { path -> assertNull(path, BuildOutputs.check(path)) }
     }
 
@@ -135,7 +137,22 @@ class CheckPostRulesTest {
         assertEquals(listOf("push", "pull_request"), WorkflowChanges.events("on: [push, pull_request]\njobs: {}\n"))
         assertEquals(listOf("push"), WorkflowChanges.events("on: push # every push\n"))
         assertEquals(listOf("push", "release"), WorkflowChanges.events("on:\n  - push\n  - release\n"))
+        assertEquals(
+            listOf("push", "workflow_dispatch"),
+            WorkflowChanges.events("on: {push: {branches: [main, 'release/*']}, workflow_dispatch: {}}\n"),
+        )
         assertNull(WorkflowChanges.triggerBlock("runs:\n  using: composite\n"))
+    }
+
+    @Test
+    fun `a workflow that picks Secrets by a computed name can reach all of them`() {
+        val after = "on: push\njobs:\n  b:\n    steps:\n      - run: echo ${'$'}{{ secrets[matrix.name] }}\n"
+
+        assertTrue(
+            WorkflowChanges.describe(".github/workflows/b.yml", null, after)
+                .contains("It hands all of the project's Secrets to its steps."),
+        )
+        assertEquals(emptySet<String>(), WorkflowChanges.secretNames(after))
     }
 
     @Test

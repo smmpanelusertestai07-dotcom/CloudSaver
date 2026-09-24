@@ -1,5 +1,6 @@
 package com.pocketide.git
 
+import org.eclipse.jgit.errors.TransportException
 import org.eclipse.jgit.transport.CredentialItem
 import org.eclipse.jgit.transport.URIish
 import org.eclipse.jgit.util.FS
@@ -15,6 +16,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class GitSafetyTest {
     @get:Rule
@@ -79,20 +83,59 @@ class GitSafetyTest {
     }
 
     @Test
-    fun `the guarded file system reads the private config and ignores foreign alternates`() {
+    fun `the guarded file system reads the private config and leads reflogs and alternates to the shadow`() {
         val gitDir = File(temp.root, "repo.git").canonicalFile
         val privateConfig = File(temp.root, "private/config")
-        val fs = GuardedFs(gitDir, privateConfig)
+        val shadow = File(temp.root, "private/shadow")
+        val fs = GuardedFs(gitDir, privateConfig, shadow)
         val objects = File(gitDir, "objects")
 
         assertEquals(privateConfig, fs.resolve(gitDir, "config"))
         assertEquals(File(gitDir, "HEAD"), fs.resolve(gitDir, "HEAD"))
-        assertEquals(File(objects, "../objects"), fs.resolve(objects, "../objects"))
-        val foreign = fs.resolve(objects, File(temp.root, "other.git/objects").path)
-        assertTrue(foreign.path, foreign.isInside(gitDir))
-        assertFalse(foreign.exists())
+        assertEquals(File(gitDir, "refs"), fs.resolve(gitDir, "refs"))
+        assertEquals(File(shadow, "logs"), fs.resolve(gitDir, "logs"))
+        assertEquals(File(shadow, "logs/refs"), fs.resolve(gitDir, "logs/refs/"))
+        listOf("../objects", "info/chain", File(temp.root, "other.git/objects").path).forEach { alternate ->
+            assertEquals(alternate, File(shadow, "objects"), fs.resolve(objects, alternate))
+        }
         assertNull(fs.findHook(null, "pre-push"))
-        assertTrue(fs.newInstance() is GuardedFs)
+        val copy = fs.newInstance()
+        assertTrue(copy is GuardedFs)
+        assertEquals(privateConfig, copy.resolve(gitDir, "config"))
+        assertEquals(File(shadow, "logs"), copy.resolve(gitDir, "logs"))
+    }
+
+    @Test
+    fun `failures read as plain sentences`() {
+        assertEquals(GitMessages.STORAGE_FULL, plainReason(IOException("Write failed", IOException("No space left on device"))))
+        assertEquals(GitMessages.OFFLINE, plainReason(TransportException("https://github.com/o/r.git", UnknownHostException("github.com"))))
+        assertEquals(GitMessages.SLOW, plainReason(TransportException("Read timed out", SocketTimeoutException("Read timed out"))))
+        assertEquals(GitMessages.SIGN_IN, plainReason(TransportException("https://github.com/o/r.git: not authorized")))
+        assertEquals(GitMessages.FAILED, plainReason(IllegalStateException("odd")))
+    }
+
+    @Test
+    fun `GitHub's refusals are explained in plain words`() {
+        assertEquals(
+            "This branch is protected on GitHub, so the push was refused.",
+            GitMessages.refusedBecause("protected branch hook declined", "error: GH006: Protected branch update failed for refs/heads/main."),
+        )
+        assertEquals(
+            "GitHub's repository rules or secret scanning refused the push.",
+            GitMessages.refusedBecause(
+                "push declined due to repository rule violations",
+                "error: GH013: Repository rule violations found for refs/heads/main.",
+            ),
+        )
+        assertEquals(
+            "PocketIDE's GitHub App needs the Workflows permission to change files in .github/workflows.",
+            GitMessages.refusedBecause(
+                "refusing to allow a GitHub App to create or update workflow `.github/workflows/b.yml` without `workflows` permission",
+                "",
+            ),
+        )
+        assertEquals("GitHub refused the push: pre-receive hook declined", GitMessages.refusedBecause("pre-receive hook declined", ""))
+        assertEquals("GitHub refused the push.", GitMessages.refusedBecause("", ""))
     }
 
     @Test

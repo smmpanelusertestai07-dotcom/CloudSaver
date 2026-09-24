@@ -25,7 +25,7 @@ internal data class RemoteState(
  * The gate's own records, one per bare repo, kept where Linux cannot write. Linux can change
  * anything inside a bare repo, its remote-tracking refs included, so "which repository on GitHub"
  * and "what GitHub already has" come from here, never from the repo. Also home to the private
- * config JGit reads and to clones in progress.
+ * config JGit reads, to the shadow folder of each repo ([GuardedFs]) and to clones in progress.
  */
 internal class RemoteStates(private val dir: File) {
 
@@ -38,13 +38,10 @@ internal class RemoteStates(private val dir: File) {
         writeAtomically(file(gitDir, "json"), AppJson.encodeToString(RemoteState.serializer(), state))
     }
 
-    /** Drops the record and the private config, before a fresh clone. */
-    fun forget(gitDir: File) {
-        file(gitDir, "json").delete()
-        privateConfig(gitDir).delete()
-    }
-
     fun privateConfig(gitDir: File): File = file(gitDir, "config")
+
+    /** Where JGit looks for the repo's reflogs and borrowed objects; it holds neither. */
+    fun shadow(gitDir: File): File = file(gitDir, "shadow")
 
     /** Where a clone is built before it is moved into place, out of Linux's sight. */
     fun staging(gitDir: File): File = File(File(dir, "staging"), keyOf(gitDir))
