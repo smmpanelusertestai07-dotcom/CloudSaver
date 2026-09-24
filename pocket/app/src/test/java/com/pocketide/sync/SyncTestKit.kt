@@ -78,6 +78,10 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
     var quotaBytes = Long.MAX_VALUE
     /** The next N uploads reach Drive but the answer is lost, as when the phone dies mid-request. */
     var loseUploadAnswers = 0
+    /** The next N index writes fail before reaching Drive (the phone dies between upload and record). */
+    var failIndexWrites = 0
+    /** Runs before each upload with the file's name; may throw to fail it. */
+    var beforeUpload: ((String) -> Unit)? = null
     /** Runs after each index write, before the engine reads it back (another phone writing at once). */
     var afterIndexWrite: (() -> Unit)? = null
     var uploads = 0
@@ -94,18 +98,23 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
     override suspend fun upload(name: String, source: File, existingId: String?): DriveFile = uploadBytes(name, source.readBytes(), existingId)
 
     override suspend fun uploadBytes(name: String, bytes: ByteArray, existingId: String?): DriveFile {
+        beforeUpload?.invoke(name)
+        if (name == RemoteIndex.NAME && failIndexWrites > 0) {
+            failIndexWrites--
+            throw DriveException.Offline()
+        }
         val stored = online {
             val growth = bytes.size - (existingId?.let { files[it]?.bytes?.size } ?: 0)
             if (usedBytes() + growth > quotaBytes) throw DriveException.StorageFull()
             uploads++
             val id = existingId?.takeIf { it in files } ?: "id-${nextId++}"
             files[id] = Stored(name, bytes.copyOf(), clock.now)
-            id to files.getValue(id)
+            info(id, files.getValue(id))
         }
         if (name == RemoteIndex.NAME) afterIndexWrite?.invoke()
         val lose = synchronized(lock) { (loseUploadAnswers > 0).also { if (it) loseUploadAnswers-- } }
         if (lose) throw DriveException.Offline()
-        return info(stored.first, stored.second)
+        return stored
     }
 
     override suspend fun download(id: String, sink: OutputStream) = online {
@@ -218,6 +227,7 @@ internal class TestPhone(
     var roomsRunning = false
     var phone: PhoneSnapshot = PhoneSnapshot.UNKNOWN
     var newAccount: DriveAuthResult = DriveAuthResult.Failed("No account chosen")
+    var onAuthorize: () -> Unit = {}
     var rekeys = 0
     var secureStoreWiped = false
 
@@ -268,7 +278,7 @@ internal class TestPhone(
     }
     override fun phone(): PhoneSnapshot = phone
     override fun computerIdle() = true
-    override suspend fun authorizeNewAccount(): DriveAuthResult = newAccount
+    override suspend fun authorizeNewAccount(): DriveAuthResult = newAccount.also { onAuthorize() }
     override suspend fun rekeyForMove() {
         rekeys++
         cipher.generation++

@@ -102,10 +102,11 @@ internal class Notices(private val kit: SyncKit) {
 
     fun retention(run: Run, count: Int, due: Long, trim: Boolean) {
         val chats = if (count == 1) "1 chat" else "$count chats"
+        val move = if (count == 1) "moves" else "move"
         val text = if (trim) {
-            "PocketIDE's space is full, so $chats older than 12 months move to Recently deleted on ${Ist.date(due)}. Raise the limit in Settings to keep them."
+            "PocketIDE's space is full, so $chats older than 12 months $move to Recently deleted on ${Ist.date(due)}. Raise the limit in Settings to keep them."
         } else {
-            "$chats with no new messages for a long time move to Recently deleted on ${Ist.date(due)}. Change \"Keep chats\" in Your data to keep them."
+            "$chats with no new messages for a long time $move to Recently deleted on ${Ist.date(due)}. Change \"Keep chats\" in Your data to keep them."
         }
         post(run, Notice(if (trim) "trim" else "keep", "Old chats move to Recently deleted", text))
     }

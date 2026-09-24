@@ -158,6 +158,9 @@ internal class Committer(private val kit: SyncKit) {
             if (!e.conflict) tracks[e.trackKey] = Tracks.after(tracks[e.trackKey], e)
         }
         extras.removeFiles.forEach(tracks::remove)
+        // Erased is erased everywhere: a copy still on this phone goes too, so it is never sent again.
+        tracks.values.filter { it.sessionId in extras.eraseSessions }
+            .forEach { t -> kit.scanner.locate(t.kind, t.agentId, t.path)?.let(::deleteTree) }
         tracks.entries.removeAll { it.value.sessionId in extras.eraseSessions }
         // Uploaded for a session that is erased in this same write: its files go from Drive too.
         run.discard(erasedNow + run.entries().filter { it.sessionId in extras.eraseSessions })
