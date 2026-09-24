@@ -1,0 +1,137 @@
+Open-source notices for PocketIDE 3.0
+
+PocketIDE's own code is licensed under the Apache License, Version 2.0.
+
+PocketIDE carries some software written by other people inside the APK, and downloads more at
+run time. Each part keeps its own licence. The parts inside the APK are listed first. Parts that
+update themselves are named without a version, because the version on your phone changes.
+
+The source of PocketIDE, and the GPL source for each release, is published with that release at
+https://github.com/smmpanelusertestai07-dotcom/CloudSaver/releases (tags pocketide-v*).
+
+
+INSIDE THE APK
+
+PocketIDE
+  Apache License 2.0. The app icon is PocketIDE's own mark, under the same licence.
+
+PRoot (libproot.so, libproot-loader.so)
+  GNU General Public License, version 2 (GPL-2.0).
+  PRoot lets the Ubuntu computer run on the phone's own kernel without root and without a
+  virtual machine. Upstream: https://github.com/proot-me/proot. The arm64 build follows
+  Termux's packaging: https://github.com/termux/proot. The GPL source for each release is
+  published beside it, and a copy of the GPL-2.0 text accompanies that source.
+
+talloc (libtallocxx.so)
+  GNU Lesser General Public License, version 3 or later (LGPL-3.0-or-later).
+  Part of the Samba project: https://talloc.samba.org. Used by PRoot as a separate shared
+  library, loaded at run time, which you may replace.
+
+libandroid-shmem (libandroid-shmem.so)
+  BSD 3-Clause licence. Copyright (c) 2013 Sergii Pylypenko, (c) 2017 Fredrik Fornwall.
+  https://github.com/termux/libandroid-shmem
+
+AndroidX and Jetpack (Compose, Material 3, Activity, Lifecycle, Navigation, WorkManager,
+Biometric, WebKit, Core)
+  Apache License 2.0. Copyright The Android Open Source Project.
+  https://developer.android.com/jetpack/androidx
+
+Material icons (material-icons-extended)
+  Apache License 2.0. Copyright Google.
+  https://fonts.google.com/icons
+
+Kotlin standard library, kotlinx.coroutines, kotlinx.serialization
+  Apache License 2.0. Copyright JetBrains s.r.o. and Kotlin contributors.
+  https://github.com/JetBrains/kotlin, https://github.com/Kotlin/kotlinx.coroutines,
+  https://github.com/Kotlin/kotlinx.serialization
+
+OkHttp and Okio
+  Apache License 2.0. Copyright Square, Inc.
+  https://square.github.io/okhttp
+
+Bouncy Castle (bcprov-jdk18on)
+  The Bouncy Castle Licence, an adaptation of the MIT X11 licence.
+  Copyright (c) 2000-2026 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+  and associated documentation files (the "Software"), to deal in the Software without
+  restriction, including without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+  Software is furnished to do so, subject to the following conditions: The above copyright
+  notice and this permission notice shall be included in all copies or substantial portions of
+  the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+  DEALINGS IN THE SOFTWARE.
+
+Eclipse JGit
+  Eclipse Distribution License 1.0 (EDL-1.0), which is the BSD 3-Clause licence
+  (SPDX: BSD-3-Clause). Copyright the Eclipse JGit contributors.
+  https://github.com/eclipse-jgit/jgit. JGit's own dependencies: JavaEWAH (Apache License 2.0)
+  and SLF4J API (MIT).
+
+xterm.js (the >_ terminal)
+  MIT licence. Copyright (c) 2017-2019, The xterm.js authors; (c) 2014-2016, SourceLair Private
+  Company; (c) 2012-2013, Christopher Jeffrey. https://github.com/xtermjs/xterm.js
+
+Google Play services (sign-in and Drive authorization)
+  Not open source. Provided by Google under the Android Software Development Kit License and
+  the Google APIs Terms of Service: https://developers.google.com/terms
+
+
+DOWNLOADED AT RUN TIME (not inside the APK)
+
+Ubuntu
+  The computer is built from Canonical's ubuntu-base image for arm64, downloaded from
+  https://cdimage.ubuntu.com and checked against Canonical's signed SHA-256 list. Packages
+  come from Ubuntu's own archive. Each package keeps its own licence, readable on the computer
+  under /usr/share/doc/<package>/copyright. Ubuntu is a registered trademark of Canonical Ltd.
+  PocketIDE is not produced by, endorsed by or affiliated with Canonical.
+
+code-server
+  MIT licence. Copyright (c) 2019 Coder Technologies Inc. https://github.com/coder/code-server
+  Downloaded from Coder's GitHub releases and checked by SHA-256. It is the hidden engine that
+  shows the agents' extensions. Its LICENSE and ThirdPartyNotices.txt are on the computer
+  inside its install folder.
+
+Code - OSS
+  MIT licence. Copyright (c) 2015 - present Microsoft Corporation.
+  https://github.com/microsoft/vscode. code-server packages Code - OSS. This is not
+  Microsoft's branded Visual Studio Code, and no Microsoft licence or account is used.
+  code-server also carries Node.js (MIT, https://nodejs.org).
+
+Open VSX Registry
+  Extensions are downloaded from https://open-vsx.org, operated by the Eclipse Foundation, and
+  checked by SHA-256, signature and verified namespace. The registry software is open source
+  under the Eclipse Public License 2.0: https://github.com/eclipse/openvsx
+
+The agents and their extensions
+  Claude Code (Anthropic), Codex (OpenAI) and the Antigravity extension and agy program
+  (Google) are the publishers' own software, used under each publisher's terms. They are not
+  open source unless their publisher says so. Any extra agent you add is used under its
+  publisher's terms, shown on its Open VSX page. Your use of each agent is also governed by
+  your agreement with its company.
+
+Browser for agents (only when an agent needs it)
+  Chromium, as Chrome for Testing: BSD 3-Clause, with third-party components under their own
+  licences. https://chromium.googlesource.com/chromium/src
+  Playwright and Playwright MCP (Microsoft): Apache License 2.0.
+  https://github.com/microsoft/playwright, https://github.com/microsoft/playwright-mcp
+  Chrome DevTools MCP (Google): Apache License 2.0.
+  https://github.com/ChromeDevTools/chrome-devtools-mcp
+
+
+NAMES AND MARKS
+
+Claude, Claude Code, Codex, ChatGPT, Antigravity, Google Drive, GitHub, Visual Studio Code,
+Ubuntu, code-server and Open VSX belong to their owners. They are used only to say whose
+software is run or which service is used. No endorsement, sponsorship or affiliation is
+claimed. PocketIDE puts no other company's mark on its own icon or name.
+
+
+APACHE LICENSE 2.0
+
+The full text is at https://www.apache.org/licenses/LICENSE-2.0 and in the LICENSE file of
+PocketIDE's repository. Parts under this licence are distributed on an "AS IS" basis, without
+warranties or conditions of any kind.
