@@ -1,0 +1,14 @@
+# Sealed box interop fixture, made 24 Sep 2026 in the build sandbox with PyNaCl 1.6.2 (libsodium):
+# a fresh key pair, and SealedBox(public key).encrypt(message) as "sealed". Test keys only.
+# Reverse check done here: SealedBox.seal(public key, "sealed by PocketIDE") from PocketIDE's code was
+# opened by PyNaCl's SealedBox(secret key).decrypt and gave back the same text.
+# HSalsa20 check: libsodium's crypto_box_beforenm(RFC 7748 Bob public, Alice secret) is "beforenm" below.
+tool: PyNaCl 1.6.2 (libsodium crypto_box_seal)
+public key: f1dd2ad8fd682e0f07ad0d69a8d5f2492d0935b615ba969692d295f28672356f
+secret key: a3d93f79031a766555b9b15ebb32ccbab6c88ac91be198ce0976038bbfc5ab1e
+message: 506f636b6574494445207365616c656420626f7820696e7465726f703a20612047697448756220416374696f6e73207365637265742076616c75652e
+sealed: 70addefc7480f3cb4140d6aadb73be278452c328f3fcd43724d67f3339602c6f3cb3afffcaace30aa638ce0d4c32d21c33c5291692d4f79bd469e2bca45c7c3c7a4824ff19a79fb182618efaf0b56ed77086540dd6128187ed085cb73d2d999db3be30b8058ccae49d4d985a
+alice secret: 77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a
+bob public: de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f
+shared: 4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742
+beforenm: 1b27556473e985d462cd51197a9a46c76009549eac6474f206c4ee0844f68389

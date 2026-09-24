@@ -1,0 +1,16 @@
+# age interop fixtures, made 24 Sep 2026 in the build sandbox.
+# Reference tool: age 1.1.1 (Ubuntu package 1.1.1-1ubuntu0.24.04.3; its files matched the package with dpkg -V).
+# identity.txt is age-keygen output; "recipient" below is its public key.
+# The plaintext of N bytes is SHA-256("pocketide age fixture" + " " + 4-byte big-endian counter) blocks cut to N bytes.
+# ref-N.age: made by the reference tool with `age -r <recipient> -o ref-N.age plain-N`.
+# ours-N.age: made by PocketIDE's Age.encryptBytes; `age -d -i identity.txt ours-N.age` gave back the plaintext.
+# Also made by PocketIDE and opened by `age -d` here, not kept: 1 byte, 65536 bytes, 131072 bytes (two full
+# chunks, the second one final), and a 1000-byte file for two recipients, opened with each of the two identities.
+recipient: age17m8n263s7mf3m2n3rekqagsykk93pampc4c7trjyyguwrp53qdxqn8vuyd
+ref-0.age: 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ref-1.age: 1 32ebb1abcc1c601ceb9c4e3c4faba0caa5b85bb98c4f1e6612c40faa528a91c9
+ref-65536.age: 65536 de05d25304cc68b740e1314880357f722e4f90e83bdbebace48702c0190d97bd
+ref-65537.age: 65537 e28a38854cf70502279b8afa0115ce3cefd93d6cec8f40f5733bf638ff97ae38
+ref-204800.age: 204800 f76934197bd77088aba7331c58c2ddd40331bb86ca332bdce26f936a6fe0c299
+ours-0.age: 0 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+ours-70000.age: 70000 4f63b6d5c0f86ab0503248c1aac4135ded60a793a0dfa662e00ff4d2766b9fba

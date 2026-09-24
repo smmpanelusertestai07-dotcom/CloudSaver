@@ -1,5 +1,6 @@
 package com.pocketide.vault
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.InputStream
 import java.io.OutputStream
@@ -7,9 +8,12 @@ import java.io.OutputStream
 sealed interface KeyState {
     data object None : KeyState
     data object Ready : KeyState
-    /** GitHub (Half G) is missing: "Your chats' key is only on this phone" until reconnected. */
+    /**
+     * Half G of the current key is not saved (GitHub gone, or the keyring public or shared):
+     * "Your chats' key is only on this phone" until reconnected; [VaultKeys.notice] says why.
+     */
     data object OnlyOnPhone : KeyState
-    /** A new phone with the extra password on: ask for it to unwrap Half G. */
+    /** A new phone (or one that fell behind) with the extra password on: ask for it to unwrap Half G. */
     data object NeedsPassword : KeyState
     /** Neither the phone key nor both halves are available. */
     data class Lost(val why: String) : KeyState
@@ -27,32 +31,74 @@ data class KeyringCheck(val exists: Boolean, val isPrivate: Boolean, val collabo
 interface VaultKeys {
     val state: StateFlow<KeyState>
 
-    /** First phone: makes the key, stores both halves and the phone copy. */
+    /**
+     * First phone: makes the key, stores both halves and the phone copy. A Google account that
+     * already has a vault is restored instead, never replaced.
+     */
     suspend fun setUp()
 
-    /** New phone or reinstall: fetches both halves and rebuilds the key. */
+    /**
+     * New phone or reinstall: fetches both halves and rebuilds the key. Returns Ready,
+     * NeedsPassword (call again with the password), None (no vault in this Google account) or
+     * Lost with a plain sentence. A wrong password throws [WrongPasswordException]; network
+     * errors are thrown as they are. The caller clears [extraPassword] afterwards.
+     */
     suspend fun restore(extraPassword: CharArray? = null): KeyState
 
-    /** New key, re-encrypt, new halves; used on a public keyring, a collaborator, or a move. */
+    /**
+     * New key and new halves; used on a public keyring, a collaborator, or a move. Older keys stay
+     * on the phone and in Drive's key history; the sync engine re-encrypts every object whose
+     * keyGeneration is below [generation].
+     */
     suspend fun rekey(reason: RekeyReason)
 
-    /** Visibility and collaborators of the keyring repo; re-keys automatically when unsafe. */
+    /**
+     * Checks the keyring repo (exists, private, only the owner, Actions off) and keeps both halves
+     * saved: re-keys when the current Half G is exposed, makes a deleted keyring again with fresh
+     * halves, and finishes a change a restart interrupted. Call it on every sync. Throws
+     * NotConnectedException when GitHub is not connected; the state is then OnlyOnPhone.
+     */
     suspend fun checkKeyring(): KeyringCheck
 
-    /** Sets (or clears, with null) the optional extra password wrapping Half G (Argon2id). */
+    /**
+     * Sets (or clears, with null) the optional extra password wrapping Half G (Argon2id). The key
+     * is split afresh, so an older plain Half G in the keyring's git history pairs with nothing.
+     * The caller clears [password] afterwards.
+     */
     suspend fun setExtraPassword(password: CharArray?)
 
-    /** "Save a key copy": the age secret key text, shown once for the owner to keep. */
+    /**
+     * "Save a key copy": every key this phone holds, newest first, in age's identity-file format
+     * with a comment per key; shown once for the owner to keep.
+     */
     suspend fun exportKeyCopy(): String
 
-    /** Rebuilds from a saved key copy (the double-loss path). */
+    /**
+     * Rebuilds from a saved key copy (the double-loss path), checked against the key check in
+     * Drive; then saves fresh halves when GitHub is there. Throws [VaultException] when the text is
+     * not a key copy or does not open this vault.
+     */
     suspend fun importKeyCopy(text: String)
 
     fun cipher(): VaultCipher
 
     /** Current key generation (bumped by every re-key). */
     fun generation(): Int
+
+    /**
+     * One plain sentence when the key needs the owner (for example after PocketIDE changed the
+     * key because the keyring repo became public), or null when all is well.
+     */
+    val notice: StateFlow<String?> get() = NO_NOTICE
 }
+
+private val NO_NOTICE: StateFlow<String?> = MutableStateFlow(null)
+
+/** A vault problem, with a plain sentence the owner can act on. */
+open class VaultException(message: String) : Exception(message)
+
+/** The extra password did not open Half G. */
+class WrongPasswordException : VaultException("That password is not right. Check it and try again.")
 
 /** age v1 encryption to the vault's X25519 recipient. */
 interface VaultCipher {
