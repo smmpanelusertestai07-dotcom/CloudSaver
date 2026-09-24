@@ -226,12 +226,12 @@ internal class GitHubRestApi(
             GitHubText.BAD_SECRET_NAME
         }
         val key = decode(PublicKeyJson.serializer(), rest.get(repoUrl(owner, name, "actions", "secrets", "public-key")).text)
-        val publicKey = try {
-            Base64.getDecoder().decode(key.key)
+        // A key that is not base64, or not an X25519 key, is GitHub's answer gone wrong.
+        val sealed = try {
+            sealer.seal(Base64.getDecoder().decode(key.key), value)
         } catch (e: IllegalArgumentException) {
             throw GitHubException(GitHubText.UNEXPECTED, 200)
         }
-        val sealed = sealer.seal(publicKey, value)
         val body = buildJsonObject {
             put("encrypted_value", Base64.getEncoder().encodeToString(sealed))
             put("key_id", key.keyId)
@@ -251,15 +251,17 @@ internal class GitHubRestApi(
             "users", checkName(user.login), "settings", "billing", "usage",
             query = mapOf("year" to month.year.toString(), "month" to month.monthValue.toString()),
         )
-        val period = Triple(user.plan?.name, month.atDay(1).toString(), month.atEndOfMonth().toString())
+        val plan = user.plan?.name
+        val start = month.atDay(1).toString()
+        val end = month.atEndOfMonth().toString()
         return try {
             val report = decode(UsageReport.serializer(), rest.get(url).text)
-            AccountUsage(period.first, report.usageItems.map { it.line() }, period.second, period.third)
+            AccountUsage(plan, report.usageItems.map { it.line() }, start, end)
         } catch (e: GitHubRateLimitException) {
             throw e
         } catch (e: GitHubException) {
             if (e.status != 403 && e.status != 404) throw e
-            AccountUsage(period.first, emptyList(), period.second, period.third, unavailableReason = GitHubText.USAGE_UNAVAILABLE)
+            AccountUsage(plan, emptyList(), start, end, unavailableReason = GitHubText.USAGE_UNAVAILABLE)
         }
     }
 

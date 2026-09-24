@@ -70,7 +70,7 @@ internal class DeviceFlowAuth(
         return DeviceCode(
             deviceCode = deviceCode,
             userCode = userCode,
-            verificationUri = verificationUri,
+            verificationUri = verificationUri.takeIf { it.startsWith(VERIFICATION_PREFIX) } ?: DEFAULT_VERIFICATION_URI,
             expiresAtMs = clock.now() + (reply.expiresIn ?: DEFAULT_CODE_LIFETIME_S) * 1000,
             intervalSeconds = reply.interval ?: DEFAULT_INTERVAL_S,
         )
@@ -299,6 +299,9 @@ internal class DeviceFlowAuth(
         const val ACCESS_TOKEN_PATH = "login/oauth/access_token"
         const val DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
         const val INSTALLATIONS_PAGE = "https://github.com/settings/installations"
+        /** The code page is opened in the browser, so it must be GitHub's own. */
+        private const val VERIFICATION_PREFIX = "https://github.com/"
+        private const val DEFAULT_VERIFICATION_URI = "https://github.com/login/device"
         private const val DEFAULT_CODE_LIFETIME_S = 900L
         private const val DEFAULT_INTERVAL_S = 5
         private const val SLOW_DOWN_STEP_S = 5
