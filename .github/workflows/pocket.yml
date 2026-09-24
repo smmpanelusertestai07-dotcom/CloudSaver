@@ -183,7 +183,9 @@ jobs:
       - name: Verify the signature
         run: |
           set -euo pipefail
-          report=$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs "dist/$APK_NAME")
+          # For an APK whose minSdk is 28 or more, verify reports only v3 unless asked to check
+          # as an older Android would, which is what proves the v2 block is there too.
+          report=$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs --min-sdk-version 24 "dist/$APK_NAME")
           printf '%s\n' "$report"
           grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' <<< "$report"
           grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' <<< "$report"
