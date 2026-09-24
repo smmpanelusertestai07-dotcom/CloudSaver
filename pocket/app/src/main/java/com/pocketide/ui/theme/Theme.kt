@@ -1,0 +1,101 @@
+package com.pocketide.ui.theme
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import com.pocketide.core.ThemeMode
+
+/** Brand colours, mirrored from branding/tokens.json (the brand gate checks they agree). */
+object Brand {
+    val TileTop = Color(0xFF7A3CD6)
+    val TileBottom = Color(0xFF33146F)
+    val TileFlat = Color(0xFF56289F)
+    val Accent = Color(0xFF8B55E8)
+    val AccentOnDark = Color(0xFFB79BF5)
+    val Mark = Color(0xFFF7F3EB)
+    val Running = Color(0xFF129150)
+    val NeedsYou = Color(0xFFB87400)
+    val Failed = Color(0xFFC7362B)
+}
+
+/** Colours for states, beyond Material's scheme. */
+@Immutable
+data class StatusColors(val ok: Color, val warn: Color, val error: Color, val neutral: Color)
+
+val LocalStatusColors = staticCompositionLocalOf { StatusColors(Brand.Running, Brand.NeedsYou, Brand.Failed, Color.Gray) }
+
+private val Light: ColorScheme = lightColorScheme(
+    primary = Brand.TileFlat,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFEBDDFF),
+    onPrimaryContainer = Color(0xFF25005A),
+    secondary = Color(0xFF645A70),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEBDDF7),
+    onSecondaryContainer = Color(0xFF1F182A),
+    tertiary = Color(0xFF7E525E),
+    background = Color(0xFFFAF9F6),
+    onBackground = Color(0xFF1C1B1E),
+    surface = Color(0xFFFAF9F6),
+    onSurface = Color(0xFF1C1B1E),
+    surfaceVariant = Color(0xFFE8E0EB),
+    onSurfaceVariant = Color(0xFF4A4550),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF5F2F5),
+    surfaceContainer = Color(0xFFEFEBF0),
+    surfaceContainerHigh = Color(0xFFE9E5EA),
+    surfaceContainerHighest = Color(0xFFE3DFE4),
+    outline = Color(0xFF7B7581),
+    outlineVariant = Color(0xFFCCC4CF),
+    error = Brand.Failed,
+)
+
+private val Dark: ColorScheme = darkColorScheme(
+    primary = Brand.AccentOnDark,
+    onPrimary = Color(0xFF3B0F80),
+    primaryContainer = Color(0xFF532A99),
+    onPrimaryContainer = Color(0xFFEBDDFF),
+    secondary = Color(0xFFCEC2DA),
+    onSecondary = Color(0xFF352D40),
+    secondaryContainer = Color(0xFF4C4357),
+    onSecondaryContainer = Color(0xFFEBDDF7),
+    tertiary = Color(0xFFF0B8C6),
+    background = Color(0xFF171717),
+    onBackground = Color(0xFFE6E1E6),
+    surface = Color(0xFF171717),
+    onSurface = Color(0xFFE6E1E6),
+    surfaceVariant = Color(0xFF4A4550),
+    onSurfaceVariant = Color(0xFFCCC4CF),
+    surfaceContainerLowest = Color(0xFF111111),
+    surfaceContainerLow = Color(0xFF1D1C1F),
+    surfaceContainer = Color(0xFF221F25),
+    surfaceContainerHigh = Color(0xFF2C292F),
+    surfaceContainerHighest = Color(0xFF37343A),
+    outline = Color(0xFF958E99),
+    outlineVariant = Color(0xFF4A4550),
+    error = Color(0xFFFFB4AB),
+)
+
+@Composable
+fun PocketTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+    }
+    val status = if (dark) {
+        StatusColors(Color(0xFF6DD89A), Color(0xFFF2C063), Color(0xFFFFB4AB), Color(0xFF958E99))
+    } else {
+        StatusColors(Brand.Running, Brand.NeedsYou, Brand.Failed, Color(0xFF7B7581))
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalStatusColors provides status) {
+        MaterialTheme(colorScheme = if (dark) Dark else Light, typography = Typography(), content = content)
+    }
+}
