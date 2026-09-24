@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -59,6 +60,9 @@ import com.pocketide.ui.nav.PocketNav
 
 /** Readable line length on wide screens and in landscape. */
 private val MaxContentWidth = 640.dp
+
+/** The smallest height a tappable row may have. */
+private val MinTouch = 48.dp
 
 /**
  * A pushed manage screen: a title bar with back and the scrolling content. The shell's own
@@ -143,6 +147,7 @@ fun NavRow(icon: ImageVector, title: String, subtitle: String?, onClick: () -> U
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = MinTouch)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 8.dp),
@@ -164,6 +169,7 @@ fun LinkRow(label: String, url: String, nav: PocketNav, note: String? = null) {
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = MinTouch)
             .clip(RoundedCornerShape(12.dp))
             .clickable { nav.openExternal(url) }
             .padding(vertical = 8.dp),
