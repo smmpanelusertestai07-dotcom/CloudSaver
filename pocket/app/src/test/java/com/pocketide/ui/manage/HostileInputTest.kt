@@ -4,6 +4,7 @@ import com.pocketide.docs.DocBlock
 import com.pocketide.docs.DocSection
 import com.pocketide.github.AccountUsage
 import com.pocketide.github.UsageLine
+import com.pocketide.secrets.SecretKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,7 +77,7 @@ class HostileInputTest {
     fun `value names from a paste are checked, not trusted`() {
         val hostile = listOf("", " ", "A B", "1ABC", "ÄPI_KEY", "API-KEY", "API_KEY\n", "\u0000", "a".repeat(101), "API​KEY")
         for (name in hostile) {
-            assertTrue("'$name'", ValueNames.problem(name, com.pocketide.secrets.SecretKind.VARIABLE) != null || name.trim() == "API_KEY")
+            assertTrue("'$name'", ValueNames.problem(name, SecretKind.VARIABLE) != null || name.trim() == "API_KEY")
         }
     }
 }

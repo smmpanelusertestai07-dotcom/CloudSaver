@@ -164,15 +164,21 @@ fun ComputerScreen(nav: PocketNav) {
     }
 }
 
-/** One level of the fix-it ladder: what it fixes and what it costs. */
-private data class Rung(val title: String, val text: String)
+private const val RESET = "reset"
+private const val REPAIR = "repair"
+private const val RESTART = "restart"
+
+private enum class Fix { RESTART, REPAIR, RESET }
+
+/** One level of the fix-it ladder: what it fixes, what it costs, and the button this screen has for it. */
+private data class Rung(val title: String, val text: String, val fix: Fix? = null)
 
 private val ladder = listOf(
     Rung("1. Reload the agent screen", "In the agent's menu. Takes seconds; nothing stops."),
     Rung("2. Restart the agent", "In the agent's menu. Its engine starts again; the chat is kept."),
-    Rung("3. Restart the computer", "Every room closes. Files, sign-ins and history stay."),
-    Rung("4. Repair", "Installs what is missing and updates what is there. Safe to run again; your files are not touched."),
-    Rung("5. Reset computer", "Builds the computer again from scratch. Nothing of yours is lost, but it is a big download."),
+    Rung("3. Restart the computer", "Every room closes. Files, sign-ins and history stay.", Fix.RESTART),
+    Rung("4. Repair", "Installs what is missing and updates what is there. Safe to run again; your files are not touched.", Fix.REPAIR),
+    Rung("5. Reset computer", "Builds the computer again from scratch. Nothing of yours is lost, but it is a big download.", Fix.RESET),
 )
 
 /** Try each level only if the one above did not help. */
@@ -180,28 +186,25 @@ private val ladder = listOf(
 private fun FixLadder(working: Boolean, onRestart: () -> Unit, onRepair: () -> Unit, onReset: () -> Unit) {
     SectionCard("If something is wrong") {
         Hint("Start at the top. Go down a level only if the one above did not help.")
-        ladder.forEachIndexed { index, rung ->
+        ladder.forEach { rung ->
             HorizontalDivider()
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(rung.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Hint(rung.text)
-                when (index) {
-                    2 -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
-                    3 -> TextButton(onClick = onRepair, enabled = !working) { Text("Repair") }
-                    4 -> OutlinedButton(onClick = onReset, enabled = !working) {
+                when (rung.fix) {
+                    Fix.RESTART -> TextButton(onClick = onRestart, enabled = !working) { Text("Restart computer") }
+                    Fix.REPAIR -> TextButton(onClick = onRepair, enabled = !working) { Text("Repair") }
+                    Fix.RESET -> OutlinedButton(onClick = onReset, enabled = !working) {
                         Icon(Icons.Outlined.RestartAlt, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("Reset computer")
                     }
+                    null -> Unit
                 }
             }
         }
     }
 }
-
-private const val RESET = "reset"
-private const val REPAIR = "repair"
-private const val RESTART = "restart"
 
 @Composable
 private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?) {
