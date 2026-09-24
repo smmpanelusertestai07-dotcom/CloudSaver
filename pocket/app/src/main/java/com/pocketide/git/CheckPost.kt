@@ -54,7 +54,8 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
         checkActive: () -> Unit,
     ): Verdict {
         val scan = Scan(KnownValues(knownValues), Report(limits.maxFindings), checkActive)
-        repo.newObjectReader().use { reader ->
+        repo.newObjectReader().use { repoReader ->
+            val reader = FullHistory(repoReader)
             RevWalk(reader).use { walk ->
                 walk.sort(RevSort.TOPO)
                 walk.sort(RevSort.REVERSE, true)
@@ -84,6 +85,16 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
             null
         }
         commit?.let(walk::markUninteresting)
+    }
+
+    /**
+     * Reads objects without the repo's `shallow` list. Linux can write that file, and a commit
+     * listed there would look like a root, hiding every commit before it from the check.
+     */
+    private class FullHistory(private val reader: ObjectReader) : ObjectReader.Filter() {
+        override fun delegate(): ObjectReader = reader
+
+        override fun getShallowCommits(): Set<ObjectId> = emptySet()
     }
 
     /** A workflow file's first change on the branch: where, and the version before it. */

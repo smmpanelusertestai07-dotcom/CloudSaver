@@ -1,5 +1,6 @@
 package com.pocketide.git
 
+import org.eclipse.jgit.lib.ObjectId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -52,6 +53,118 @@ class CheckPostRulesTest {
             ".env", ".env.local", ".env.production", "server/.env", "app/release.jks", "debug.keystore",
             "cert.p12", "CERT.PFX", "Upload.JKS", "id_rsa", "home/.ssh/id_ed25519",
         ).forEach { path -> assertEquals(path, FindingKind.SECRET, PathRules.check(path)?.kind) }
+    }
+
+    @Test
+    fun `credential files from a home folder never pass, wherever the copy sits`() {
+        // Plan A1: the same list decides what sync uploads, what Your data shows and what is pushed.
+        mapOf(
+            "backup/.claude/.credentials.json" to FindingKind.AI_DATA,
+            "backup/.claude.json" to FindingKind.AI_DATA,
+            "backup/.claude/backups/.claude.json.backup.1" to FindingKind.AI_DATA,
+            "home/.config/anthropic/key" to FindingKind.SECRET,
+            "home/.codex/auth.json" to FindingKind.AI_DATA,
+            "home/.gemini/jetski-standalone-oauth-token" to FindingKind.AI_DATA,
+            "home/.gemini/antigravity/mcp_oauth_tokens.json" to FindingKind.AI_DATA,
+            ".config/gcloud/application_default_credentials.json" to FindingKind.SECRET,
+            "dotfiles/.git-credentials" to FindingKind.SECRET,
+            ".config/gh/hosts.yml" to FindingKind.SECRET,
+            "dotfiles/.netrc" to FindingKind.SECRET,
+            "dotfiles/.ssh/config" to FindingKind.SECRET,
+            ".gnupg/private-keys-v1.d/key" to FindingKind.SECRET,
+            ".local/share/code-server/User/globalStorage/state.vscdb" to FindingKind.SECRET,
+            ".config/tool/oauth_token.json" to FindingKind.SECRET,
+        ).forEach { (path, kind) -> assertEquals(path, kind, PathRules.check(path)?.kind) }
+    }
+
+    @Test
+    fun `an agent's synced data counts as AI data, a project's own instructions do not`() {
+        assertEquals(FindingKind.AI_DATA, PathRules.check("copy/.claude/plans/refactor.md")?.kind)
+        assertEquals(FindingKind.AI_DATA, PathRules.check(".claude/projects/-root/memory/notes.md")?.kind)
+        listOf(
+            ".claude/CLAUDE.md", ".claude/rules/style.md", ".claude/hooks/credential_check.py",
+            ".claude/skills/rotate-token/run.sh", ".github/actions/setup-credentials/action.yml",
+            ".config/nvim/init.lua", ".npmrc", "src/auth/TokenStore.kt",
+        ).forEach { path -> assertNull(path, PathRules.check(path)) }
+    }
+
+    @Test
+    fun `build outputs are recognised, vendored libraries are not`() {
+        listOf(
+            "app-release.apk", "out/app.aab", "dist/App.IPA", "classes.dex", "bin/Main.class", "obj/main.o",
+            "tool.exe", "Installer.dmg", "setup.msi", "app/build/outputs/mapping/release/mapping.txt",
+            "app/build/intermediates/x.json", ".gradle/8.13/fileHashes/fileHashes.bin", "ios/DerivedData/Info.plist",
+        ).forEach { path -> assertTrue(path, BuildOutputs.check(path) != null) }
+        listOf(
+            "gradle/wrapper/gradle-wrapper.jar", "app/src/main/jniLibs/arm64-v8a/libproot.so", "lib/native.dll",
+            "src/build/Main.kt", "build.gradle.kts", "docs/build/outputs.md", "apk-notes.txt",
+        ).forEach { path -> assertNull(path, BuildOutputs.check(path)) }
+    }
+
+    @Test
+    fun `workflow code is recognised and its approval names exact content`() {
+        assertTrue(WorkflowChanges.applies(".github/workflows/build.yml"))
+        assertTrue(WorkflowChanges.applies(".github/actions/setup/action.yml"))
+        assertFalse(WorkflowChanges.applies(".github/dependabot.yml"))
+        assertFalse(WorkflowChanges.applies("sub/.github/workflows/build.yml"))
+
+        val key = WorkflowChanges.approvalKey(".github/workflows/build.yml", ObjectId.zeroId())
+        assertTrue(WorkflowChanges.isApprovalKey(key))
+        assertFalse(WorkflowChanges.isApprovalKey("0000:.github/workflows/build.yml"))
+        assertFalse(WorkflowChanges.isApprovalKey(ObjectId.zeroId().name + ":src/App.kt"))
+        assertFalse(WorkflowChanges.isApprovalKey("anything"))
+    }
+
+    @Test
+    fun `a workflow's triggers and Secrets are read the way GitHub reads them`() {
+        val workflow = """
+            |name: Build
+            |"on":
+            |  push:
+            |    branches: [main]
+            |  # a comment
+            |  workflow_dispatch:
+            |jobs:
+            |  build:
+            |    runs-on: ubuntu-latest
+            |    steps:
+            |      - run: echo ${'$'}{{ secrets.UPLOAD_KEY }} ${'$'}{{ secrets['STORE_PASSWORD'] }}
+            |""".trimMargin()
+        assertEquals(listOf("push", "workflow_dispatch"), WorkflowChanges.events(workflow))
+        assertEquals(setOf("STORE_PASSWORD", "UPLOAD_KEY"), WorkflowChanges.secretNames(workflow))
+        assertEquals(listOf("push", "pull_request"), WorkflowChanges.events("on: [push, pull_request]\njobs: {}\n"))
+        assertEquals(listOf("push"), WorkflowChanges.events("on: push # every push\n"))
+        assertEquals(listOf("push", "release"), WorkflowChanges.events("on:\n  - push\n  - release\n"))
+        assertNull(WorkflowChanges.triggerBlock("runs:\n  using: composite\n"))
+    }
+
+    @Test
+    fun `a workflow change is described by what matters for Secrets and runs`() {
+        val before = "on: workflow_dispatch\njobs:\n  b:\n    steps:\n      - run: echo ${'$'}{{ secrets.A_KEY }}\n"
+        val after = "on: [push, workflow_dispatch]\njobs:\n  b:\n    env:\n      ALL: ${'$'}{{ toJSON(secrets) }}\n" +
+            "    steps:\n      - run: echo ${'$'}{{ secrets.A_KEY }} ${'$'}{{ secrets.B_KEY }}\n"
+
+        assertEquals(
+            "Changes GitHub Actions code in .github/workflows/b.yml. It newly uses the Secrets B_KEY. " +
+                "It hands all of the project's Secrets to its steps. It runs on: push, workflow_dispatch. " +
+                "Read the change and approve it before it goes to GitHub.",
+            WorkflowChanges.describe(".github/workflows/b.yml", before, after),
+        )
+        assertEquals(
+            "Adds GitHub Actions code in .github/workflows/c.yml. It runs on: pull_request_target. " +
+                "Read the change and approve it before it goes to GitHub.",
+            WorkflowChanges.describe(".github/workflows/c.yml", null, "on: pull_request_target\n"),
+        )
+    }
+
+    @Test
+    fun `the diff shows GitHub's version against the branch's`() {
+        val diff = WorkflowChanges.diff(".github/workflows/b.yml", "a\nb\n".toByteArray(), "a\nc\n".toByteArray())
+        assertTrue(diff, diff.startsWith("--- a/.github/workflows/b.yml\n+++ b/.github/workflows/b.yml\n@@"))
+        assertTrue(diff, diff.contains("\n-b\n+c\n"))
+        assertTrue(WorkflowChanges.diff("x.yml", null, "new\n".toByteArray()).startsWith("--- /dev/null\n+++ b/x.yml\n"))
+        val long = WorkflowChanges.diff("x.yml", null, "line\n".repeat(40_000).toByteArray())
+        assertTrue(long.endsWith("(The rest of the change is not shown.)\n"))
     }
 
     @Test

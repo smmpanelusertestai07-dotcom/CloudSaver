@@ -52,11 +52,16 @@ internal class BareRepos(reposRoot: File, private val states: RemoteStates) {
         if (linked) throw GitGateException(GitMessages.UNSAFE_COPY)
     }
 
-    /** Writes the canonical config for Linux git and the private copy JGit reads. */
+    /**
+     * Writes the canonical config for Linux git and the private copy JGit reads, and drops a
+     * `shallow` list: the gate's clones are never shallow, and one planted there would cut
+     * history short for git on both sides.
+     */
     fun resetConfig(gitDir: File, url: String) {
         val text = canonicalConfig(url)
         writeAtomically(states.privateConfig(gitDir), text)
         writeAtomically(File(gitDir, Constants.CONFIG), text)
+        Files.deleteIfExists(File(gitDir, Constants.SHALLOW).toPath())
     }
 
     fun open(gitDir: File): Repository = FileRepositoryBuilder()

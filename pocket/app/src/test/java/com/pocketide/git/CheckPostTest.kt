@@ -34,7 +34,8 @@ class CheckPostTest {
         onGitHub: List<ObjectId> = emptyList(),
         values: List<String> = emptyList(),
         limits: CheckPostLimits = CheckPostLimits(),
-    ): Verdict = CheckPost(limits).check(commits.repo, tip, onGitHub, values) {}
+        approved: List<String> = emptyList(),
+    ): Verdict = CheckPost(limits).check(commits.repo, tip, onGitHub, values, approved) {}
 
     private fun short(id: ObjectId) = id.name.take(7)
 
@@ -218,11 +219,100 @@ class CheckPostTest {
     }
 
     @Test
+    fun `a build output holds the push without being a finding`() {
+        val base = commits.commit(mapOf("README.md" to "hello\n"))
+        val tip = commits.commit(mapOf("README.md" to "hello\n", "release/app-release.apk" to byteArrayOf(0x50, 0x4b, 3, 4)), base)
+
+        val verdict = check(tip, onGitHub = listOf(base))
+
+        assertFalse(verdict.ok)
+        assertEquals(emptyList<Finding>(), verdict.findings)
+        val hold = verdict.holds.single()
+        assertEquals(HoldKind.BUILD_OUTPUT, hold.kind)
+        assertEquals("release/app-release.apk", hold.path)
+        assertEquals(short(tip), hold.commit)
+        assertEquals(null, hold.approvalKey)
+    }
+
+    @Test
+    fun `a workflow change holds the push until its exact content is approved`() {
+        val old = "on: workflow_dispatch\njobs: {}\n"
+        val base = commits.commit(mapOf(WORKFLOW to old))
+        val first = commits.commit(mapOf(WORKFLOW to "on: push\njobs: {}\n"), base)
+        val tip = commits.commit(mapOf(WORKFLOW to "on: push\njobs:\n  a: ${'$'}{{ secrets.DEPLOY }}\n", "a.txt" to "a\n"), first)
+
+        val held = check(tip, onGitHub = listOf(base))
+        assertFalse(held.ok)
+        assertEquals(emptyList<Finding>(), held.findings)
+        val hold = held.holds.single()
+        assertEquals(HoldKind.WORKFLOW_CHANGE, hold.kind)
+        assertEquals(WORKFLOW, hold.path)
+        assertEquals("the oldest commit that changes it", short(first), hold.commit)
+        assertTrue(hold.detail, hold.detail.contains("It newly uses the Secrets DEPLOY."))
+        assertTrue(hold.detail, hold.detail.contains("It runs on: push."))
+        assertTrue(hold.diff, hold.diff.contains("\n-on: workflow_dispatch\n-jobs: {}\n+on: push\n"))
+        val key = requireNotNull(hold.approvalKey)
+
+        assertEquals(Verdict(true, emptyList(), 2), check(tip, onGitHub = listOf(base), approved = listOf(key)))
+
+        // Changed again after the approval: the new content needs its own.
+        val later = commits.commit(mapOf(WORKFLOW to "on: push\njobs:\n  a: ${'$'}{{ toJSON(secrets) }}\n", "a.txt" to "a\n"), tip)
+        val again = check(later, onGitHub = listOf(base), approved = listOf(key)).holds.single()
+        assertTrue(again.approvalKey != key)
+    }
+
+    @Test
+    fun `a workflow change that is undone, or already on GitHub, holds nothing`() {
+        val workflow = "on: workflow_dispatch\n"
+        val base = commits.commit(mapOf(WORKFLOW to workflow))
+        val changed = commits.commit(mapOf(WORKFLOW to "on: push\n"), base)
+        val undone = commits.commit(mapOf(WORKFLOW to workflow, "a.txt" to "a\n"), changed)
+        assertTrue(check(undone, onGitHub = listOf(base)).ok)
+
+        val removed = commits.commit(mapOf("a.txt" to "a\n"), changed)
+        assertTrue(check(removed, onGitHub = listOf(base)).ok)
+
+        // Main changed a workflow on GitHub; the session merges main in.
+        val session = commits.commit(mapOf(WORKFLOW to workflow, "s.txt" to "s\n"), base)
+        val mainOnGitHub = commits.commit(mapOf(WORKFLOW to "on: [push]\n"), base)
+        val merge = commits.commit(mapOf(WORKFLOW to "on: [push]\n", "s.txt" to "s\n"), session, mainOnGitHub)
+        assertTrue(check(merge, onGitHub = listOf(mainOnGitHub)).ok)
+    }
+
+    @Test
+    fun `a secret in a workflow is a finding, not only a hold`() {
+        val token = fake("gh" + "p_", 36)
+        val tip = commits.commit(mapOf(WORKFLOW to "on: push\nenv:\n  T: $token\n"))
+
+        val verdict = check(tip)
+
+        assertEquals(listOf(FindingKind.SECRET), verdict.findings.map(Finding::kind))
+        assertEquals(listOf(HoldKind.WORKFLOW_CHANGE), verdict.holds.map(Hold::kind))
+    }
+
+    @Test
+    fun `a shallow list planted in the repo hides no commit`() {
+        val leak = commits.commit(mapOf(".env" to "KEY=1\n"))
+        val cleaned = commits.commit(mapOf("a.txt" to "a\n"), leak)
+        val tip = commits.commit(mapOf("a.txt" to "b\n"), cleaned)
+        File(commits.repo.directory, "shallow").writeText(cleaned.name + "\n")
+
+        val verdict = check(tip)
+
+        assertEquals(listOf(Finding(FindingKind.SECRET, ".env", short(leak), PathRules.ENV_FILE)), verdict.findings)
+        assertEquals(3, verdict.commitsScanned)
+    }
+
+    @Test
     fun `a cancelled check stops`() {
         val tip = commits.commit(mapOf("a.txt" to "a\n"))
 
         assertThrows(CancellationException::class.java) {
             CheckPost().check(commits.repo, tip, emptyList(), emptyList()) { throw CancellationException("cancelled") }
         }
+    }
+
+    private companion object {
+        const val WORKFLOW = ".github/workflows/build.yml"
     }
 }

@@ -196,6 +196,58 @@ class GitGateTest {
     }
 
     @Test
+    fun `a workflow change waits for the owner, and goes through once approved`() {
+        val (remote, bare) = cloned()
+        val work = world.worktree(bare, "s1", "pocket/claude/s1")
+        world.commit(work, mapOf(".github/workflows/leak.yml" to "on: push\njobs:\n  a:\n    env:\n      ALL: \${{ toJSON(secrets) }}\n"))
+
+        val hold = (push(bare, "pocket/claude/s1") as PushResult.Blocked).verdict.holds.single()
+        assertEquals(HoldKind.WORKFLOW_CHANGE, hold.kind)
+        assertNull(world.revParse(remote, "refs/heads/pocket/claude/s1"))
+
+        runBlocking { gate.approveWorkflowChange(bare, requireNotNull(hold.approvalKey)) }
+        // The approval is the gate's own record: fetching, or Linux rewriting the repo, keeps it.
+        runBlocking { gate.fetch(bare, TOKEN) }
+        File(bare, "config").writeText("[core]\n\tbare = true\n")
+
+        assertEquals(PushResult.Pushed, push(bare, "pocket/claude/s1"))
+        assertNotNull(world.revParse(remote, "refs/heads/pocket/claude/s1"))
+        assertEquals(
+            GitMessages.NOT_AN_APPROVAL,
+            refused { gate.approveWorkflowChange(bare, "0".repeat(40) + ":src/App.kt") }.message,
+        )
+    }
+
+    @Test
+    fun `a build output never reaches GitHub`() {
+        val (remote, bare) = cloned()
+        val work = world.worktree(bare, "s1", "pocket/claude/s1")
+        world.commit(work, mapOf("app/release/app-release.aab" to "PK\u0003\u0004"))
+
+        val hold = (push(bare, "pocket/claude/s1") as PushResult.Blocked).verdict.holds.single()
+
+        assertEquals(HoldKind.BUILD_OUTPUT, hold.kind)
+        assertNull("a build output cannot be approved", hold.approvalKey)
+        assertNull(world.revParse(remote, "refs/heads/pocket/claude/s1"))
+    }
+
+    @Test
+    fun `a clone made under the projects module's partial name is the same repo once renamed`() {
+        val remote = world.githubRepo("owner__proj")
+        world.commitToRemote(remote, "main", mapOf(".env" to "OLD=1\n"), "Long ago")
+        val partial = File(world.repos, ".owner__proj.git.partial")
+        runBlocking { gate.clone(world.url(remote), partial, TOKEN) }
+        val bare = world.bare("owner__proj")
+        Files.move(partial.toPath(), bare.toPath())
+
+        // The gate still knows what GitHub has: history already there is not checked again.
+        assertEquals(Verdict(true, emptyList(), 0), runBlocking { gate.checkPost(bare, "main") })
+        val newer = world.commitToRemote(remote, "main", mapOf("b.txt" to "b\n"), "Newer")
+        runBlocking { gate.fetch(bare, TOKEN) }
+        assertEquals(newer, world.revParse(bare, "refs/heads/main"))
+    }
+
+    @Test
     fun `a hook planted in the repo never runs`() {
         val (_, bare) = cloned()
         val work = world.worktree(bare, "s1", "pocket/claude/s1")
@@ -293,6 +345,19 @@ class GitGateTest {
 
         alternates.writeText("../objects\n")
         runBlocking { gate.fetch(bare, TOKEN) }
+    }
+
+    @Test
+    fun `a shallow list made in Linux hides nothing and is dropped`() {
+        val (_, bare) = cloned()
+        val work = world.worktree(bare, "s1", "pocket/claude/s1")
+        world.commit(work, mapOf(".env" to "API_KEY=abc\n"))
+        world.git(work, "rm", "--quiet", ".env")
+        val cleaned = world.commit(work, mapOf("a.txt" to "a\n"))
+        val shallow = File(bare, "shallow").apply { writeText(cleaned + "\n") }
+
+        assertTrue(push(bare, "pocket/claude/s1") is PushResult.Blocked)
+        assertFalse(shallow.exists())
     }
 
     @Test
