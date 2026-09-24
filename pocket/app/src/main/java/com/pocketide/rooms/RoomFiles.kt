@@ -4,9 +4,11 @@ import com.pocketide.core.AgentFiles
 import java.io.File
 import java.io.IOException
 import java.nio.file.FileAlreadyExistsException
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
@@ -65,6 +67,13 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
 
     fun write(relative: String, text: String, executable: Boolean = false): Boolean =
         write(relative, text.toByteArray(Charsets.UTF_8), executable)
+
+    /** Deletes one file (a link is removed itself, never what it points to). */
+    fun delete(relative: String) {
+        checkAllowed(relative)
+        val parent = directory(parentOf(relative), create = false) ?: return
+        Files.deleteIfExists(parent.resolve(nameOf(relative)))
+    }
 
     /** Moves a file aside (to `<name>.pocketide-broken`) so a fresh one can be written. */
     fun setAside(relative: String) {
@@ -191,6 +200,36 @@ internal class RoomFiles(val base: File, private val guardSecrets: Boolean) {
         private fun parentOf(relative: String) = components(relative).dropLast(1).joinToString("/")
 
         private fun nameOf(relative: String) = components(relative).last()
+
+        /**
+         * Deletes [root] and everything under it. Links are removed, never followed; folders are
+         * made writable first, because tools inside Linux leave read-only folders behind.
+         */
+        fun deleteTree(root: File) {
+            val start = root.toPath()
+            if (attributes(start) == null) return
+            Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    dir.toFile().setWritable(true, true)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    Files.deleteIfExists(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                    Files.deleteIfExists(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
+                    Files.deleteIfExists(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            })
+        }
 
         fun attributes(path: Path): BasicFileAttributes? = try {
             Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
