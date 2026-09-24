@@ -390,6 +390,24 @@ class LoopbackPortBridgeTest {
         }
     }
 
+    @Test fun `the bridge port is held on the IPv6 loopback too, where localhost names resolve first`() {
+        runCatching { ServerSocket(0, 50, InetAddress.getByName("::1")).close() }
+            .onFailure { throw AssumptionViolatedException("No IPv6 loopback here.") }
+        val up = upstream { it.reply(200, "via v6") }
+        val port = bridge.expose(up.port, "editor")
+
+        assertThrows<IOException> { ServerSocket(port.bridgePort, 50, InetAddress.getByName("::1")).close() }
+        val response = Socket(InetAddress.getByName("::1"), port.bridgePort).use { socket ->
+            socket.soTimeout = 5_000
+            socket.getOutputStream().write(head("GET / HTTP/1.1", "Host" to "localhost:${port.bridgePort}", port.cookie).toByteArray())
+            RawResponse.parse(readUntilClosed(socket.getInputStream()))
+        }
+        assertEquals("via v6", response.bodyText)
+
+        bridge.revoke(up.port)
+        ServerSocket(port.bridgePort, 50, InetAddress.getByName("::1")).close()
+    }
+
     @Test fun `a server's broken reply becomes a bad gateway page`() {
         val up = upstream { exchange ->
             exchange.output.write("NONSENSE\r\n\r\n".toByteArray())
