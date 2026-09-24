@@ -28,4 +28,3 @@ internal class AndroidRoomAssets(private val assets: AssetManager) : RoomAssets 
 
     override fun read(path: String): ByteArray = assets.open(path).use { it.readBytes() }
 }
-

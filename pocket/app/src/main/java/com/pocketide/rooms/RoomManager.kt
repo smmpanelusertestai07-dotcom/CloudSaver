@@ -133,7 +133,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     override suspend fun configure(agentId: String) {
         val profile = profile(agentId) ?: throw IllegalArgumentException("PocketIDE does not know the agent \"$agentId\".")
-        withContext(Dispatchers.IO) { prepare(profile) }
+        lock(agentId).withLock { withContext(Dispatchers.IO) { prepare(profile) } }
     }
 
     override suspend fun delete(agentId: String) {
@@ -497,7 +497,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         override fun phone() = env.phone()
         override fun guard() = env.guard()
         override fun maxAgents() = env.maxAgents()
-        override fun heavyWork(what: String) = env.canStartHeavyWork(what)
+        override fun ownerPresent() = env.ownerPresent()
         override suspend fun autosave(sessionId: String) = env.autosave(sessionId)
         override suspend fun putOnMain(sessionId: String) = env.putOnMain(sessionId)
         override fun templates() = env.templates()

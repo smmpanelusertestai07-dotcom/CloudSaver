@@ -62,6 +62,7 @@ internal interface RoomsEnv {
     fun phone(): PhoneSnapshot
     fun guard(): Guard
     fun maxAgents(): Int
+    fun ownerPresent(): Boolean
     suspend fun autosave(sessionId: String): String?
     suspend fun putOnMain(sessionId: String): PutOnMainResult
     fun templates(): List<BuildTemplate>

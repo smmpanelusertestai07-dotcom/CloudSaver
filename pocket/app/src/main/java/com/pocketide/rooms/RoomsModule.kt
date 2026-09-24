@@ -81,6 +81,7 @@ private class GraphRoomsEnv(private val graph: AppGraph) : RoomsEnv {
     override fun phone() = graph.phone.snapshot.value
     override fun guard() = graph.limiter.guard.value
     override fun maxAgents() = graph.limiter.maxAgents()
+    override fun ownerPresent() = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
     override suspend fun autosave(sessionId: String) = graph.sessions.autosave(sessionId)
     override suspend fun putOnMain(sessionId: String) = graph.sessions.putOnMain(sessionId)
     override fun templates() = graph.builds.templates()

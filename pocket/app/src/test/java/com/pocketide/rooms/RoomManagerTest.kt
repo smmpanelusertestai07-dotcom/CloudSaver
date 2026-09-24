@@ -356,6 +356,7 @@ http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
         override fun phone() = PhoneSnapshot.UNKNOWN
         override fun guard() = Guard.OK
         override fun maxAgents() = 2
+        override fun ownerPresent() = true
         override suspend fun autosave(sessionId: String): String? = null
         override suspend fun putOnMain(sessionId: String): PutOnMainResult = PutOnMainResult.Merged
         override fun templates() = emptyList<BuildTemplate>()

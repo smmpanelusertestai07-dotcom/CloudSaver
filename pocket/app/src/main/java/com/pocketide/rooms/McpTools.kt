@@ -6,7 +6,6 @@ import com.pocketide.core.AppDirs
 import com.pocketide.github.PullRequest
 import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaItem
-import com.pocketide.model.Decision
 import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
@@ -35,7 +34,9 @@ internal interface McpPorts {
     fun phone(): PhoneSnapshot
     fun guard(): Guard
     fun maxAgents(): Int
-    fun heavyWork(what: String): Decision
+
+    /** True while PocketIDE is on the screen, so the owner sees what the agent does. */
+    fun ownerPresent(): Boolean
     suspend fun autosave(sessionId: String): String?
     suspend fun putOnMain(sessionId: String): PutOnMainResult
     fun templates(): List<BuildTemplate>
@@ -162,7 +163,13 @@ internal class McpTools(private val dirs: AppDirs, private val ports: McpPorts) 
         return "Pull request #${pr.number} is open: ${pr.url}"
     }
 
-    private suspend fun putOnMain(session: SessionRecord): String = when (val result = ports.putOnMain(session.id)) {
+    /** Only while the owner has PocketIDE on the screen: main is never changed behind their back. */
+    private suspend fun putOnMain(session: SessionRecord): String {
+        check(ports.ownerPresent()) { "Put on main runs only while the owner has PocketIDE open. Ask them to open it and to ask you again." }
+        return putOnMainNow(session)
+    }
+
+    private suspend fun putOnMainNow(session: SessionRecord): String = when (val result = ports.putOnMain(session.id)) {
         PutOnMainResult.Merged -> "Done: this session's work is on the default branch and pushed."
         is PutOnMainResult.Conflicts -> "Merge conflicts in: ${result.files.take(MAX_LISTED).joinToString(", ")}. " +
             "Resolve them in this session's worktree, commit, then call put_on_main again."

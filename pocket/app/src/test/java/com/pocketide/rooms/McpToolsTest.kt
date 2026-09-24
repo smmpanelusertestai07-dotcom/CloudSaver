@@ -6,7 +6,6 @@ import com.pocketide.github.PullRequest
 import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
-import com.pocketide.model.Decision
 import com.pocketide.model.Guard
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
@@ -111,6 +110,8 @@ class McpToolsTest {
         assertTrue(failure { call("put_on_main") }.contains("a secret is in b.kt"))
         ports.putOnMain = PutOnMainResult.Merged
         assertTrue(call("put_on_main").startsWith("Done"))
+        ports.present = false
+        assertTrue(failure { call("put_on_main") }.contains("only while the owner has PocketIDE open"))
     }
 
     @Test fun `open_pr pushes and opens a pull request to the default branch`() {
@@ -187,6 +188,7 @@ class McpToolsTest {
         var putOnMain: PutOnMainResult = PutOnMainResult.Merged
         var autosaveProblem: String? = null
         var own = emptySet<Int>()
+        var present = true
         val calls = mutableListOf<String>()
         val media = mutableListOf<Pair<File, String>>()
         val announced = mutableMapOf<String, Int>()
@@ -197,7 +199,7 @@ class McpToolsTest {
         override fun phone() = snapshot
         override fun guard() = guard
         override fun maxAgents() = 1
-        override fun heavyWork(what: String) = Decision.YES
+        override fun ownerPresent() = present
         override suspend fun autosave(sessionId: String): String? {
             calls += "autosave $sessionId"
             return autosaveProblem
