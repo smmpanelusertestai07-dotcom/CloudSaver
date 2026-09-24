@@ -35,7 +35,7 @@ internal class AccountMove(private val kit: SyncKit) {
     }
 
     suspend fun moveTo(run: Run, fallbackFrom: String?, to: String) {
-        val job = run.state.move?.takeIf { it.to.isEmpty() || it.to == to }?.copy(to = to)
+        val job = run.state.move?.takeIf { it.stage != MoveStage.DONE && (it.to.isEmpty() || it.to == to) }?.copy(to = to)
             ?: MoveJob(from = fallbackFrom ?: run.state.account ?: ports.account() ?: throw SyncException("Connect Google Drive first."), to = to)
         if (job.from == job.to) throw SyncException("Choose a different Google account from the one PocketIDE uses now.")
         run.state = run.state.copy(move = job)
@@ -138,7 +138,8 @@ internal class AccountMove(private val kit: SyncKit) {
         run.save()
         val source = ports.drive(job.from)
         for (f in source.list()) source.delete(f.id)
-        run.state = run.state.copy(move = null)
+        // Kept as done, so a sign-in that still names the old account is not taken for a new vault.
+        run.state = run.state.copy(move = job.copy(stage = MoveStage.DONE))
         run.save()
         flows.move.value = MoveState.Done(job.to)
     }
