@@ -18,6 +18,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -29,6 +30,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** Something the owner can act on, in one plain sentence. */
 class MediaException(message: String) : Exception(message)
+
+/** Files picked on the phone: the photo picker, "Open document" or a share to PocketIDE. */
+interface PhoneFiles {
+    fun displayName(uri: Uri): String?
+    fun open(uri: Uri): InputStream?
+}
 
 /** What the sync engine knows, for the "backed up" mark (best effort). */
 data class BackupFacts(
@@ -56,6 +63,8 @@ internal class SessionMediaLibrary(
     private val stagingDir: File,
     /** Hands a file in the share folder to other apps (a FileProvider URI on the phone). */
     private val uriFor: (File) -> Uri,
+    /** Files the owner picks on the phone (content:// URIs); null where there is no phone. */
+    private val phoneFiles: PhoneFiles? = null,
     private val pollMs: Long = POLL_MS,
 ) : MediaLibrary {
 
@@ -82,7 +91,21 @@ internal class SessionMediaLibrary(
         require(from in SOURCES) { "Unknown media source." }
         val session = session(sessionId) ?: throw MediaException("This session is not on this phone.")
         return withContext(io) {
-            lock.withLock { store(session, source, name, from) }
+            lock.withLock { store(session, name, from, source) { stage -> copyNoFollow(source, stage, name) } }
+        }
+    }
+
+    override suspend fun addFromPhone(sessionId: String, uri: Uri): MediaItem {
+        val files = phoneFiles ?: throw MediaException("Adding files from the phone is not available here.")
+        val session = session(sessionId) ?: throw MediaException("This session is not on this phone.")
+        return withContext(io) {
+            val name = files.displayName(uri)?.takeIf { it.isNotBlank() } ?: "file"
+            lock.withLock {
+                store(session, name, SOURCE_YOU, inPlaceSource = null) { stage ->
+                    val input = files.open(uri) ?: throw MediaException("That file could not be opened.")
+                    input.use { copyCapped(it, stage, name) }
+                }
+            }
         }
     }
 
@@ -135,7 +158,11 @@ internal class SessionMediaLibrary(
         }.sortedByDescending { it.createdAt }
     }
 
-    private fun store(session: SessionRecord, source: File, name: String, from: String): MediaItem {
+    /**
+     * Stores a file that [fill] writes into a private staging file. [inPlaceSource] is the
+     * original when it may already sit in the media folder (it is removed once stored).
+     */
+    private fun store(session: SessionRecord, name: String, from: String, inPlaceSource: File?, fill: (File) -> Unit): MediaItem {
         val folder = folderOf(session) ?: throw MediaException("The session's media folder was replaced by a link. Remove the link and try again.")
         if (!folder.isDirectory && !folder.mkdirs()) throw MediaException("Could not create the session's media folder.")
         // Everything below works on a private copy: the source and the media folder are writable
@@ -143,7 +170,7 @@ internal class SessionMediaLibrary(
         val stage = File(stagingDir, UUID.randomUUID().toString())
         try {
             stagingDir.mkdirs()
-            copyNoFollow(source, stage, name)
+            fill(stage)
             val head = MediaSniffer.head(stage)
             val kind = MediaSniffer.kindOf(name, head)
             val limit = MediaSniffer.limitFor(kind)
@@ -151,9 +178,9 @@ internal class SessionMediaLibrary(
             val sha = sha256(stage)
             val metas = readMeta(session.id)
             // An agent may have written the file straight into the media folder: it is renamed, not copied.
-            val inPlace = source.parentFile?.canonicalFile == folder.canonicalFile
+            val inPlace = inPlaceSource?.takeIf { it.parentFile?.canonicalFile == folder.canonicalFile }
             existing(folder, sha, metas)?.let { stored ->
-                if (inPlace && stored.canonicalFile != source.canonicalFile) source.delete()
+                if (inPlace != null && stored.canonicalFile != inPlace.canonicalFile) inPlace.delete()
                 return itemOf(session, stored, kindOfFile(stored), metas[stored.name])
             }
             val stem = "${sha.take(HASH_PREFIX)}-${safeStem(name)}"
@@ -162,7 +189,7 @@ internal class SessionMediaLibrary(
             moveInto(content, target)
             val meta = Meta(from, clock.now(), sha)
             writeMeta(session.id, metas + (target.name to meta))
-            if (inPlace) source.delete()
+            inPlace?.delete()
             if (kind == MediaKind.APK) keepLastApks(session.projectId)
             return itemOf(session, target, kindOfFile(target), meta)
         } catch (e: IOException) {
@@ -183,17 +210,20 @@ internal class SessionMediaLibrary(
         }
         if (!attributes.isRegularFile) throw MediaException("Only plain files can be added to Media.")
         if (attributes.size() > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
-        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { input ->
-            target.outputStream().use { out ->
-                val buffer = ByteArray(COPY_BUFFER)
-                var total = 0L
-                while (true) {
-                    val n = input.read(buffer)
-                    if (n < 0) break
-                    total += n
-                    if (total > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
-                    out.write(buffer, 0, n)
-                }
+        Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use { copyCapped(it, target, name) }
+    }
+
+    /** Copies at most the largest size Media keeps; a longer stream is refused, not cut. */
+    private fun copyCapped(input: InputStream, target: File, name: String) {
+        target.outputStream().use { out ->
+            val buffer = ByteArray(COPY_BUFFER)
+            var total = 0L
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                total += n
+                if (total > MediaSniffer.VIDEO_LIMIT) throw MediaException("${safeName(name)} is larger than any file Media keeps.")
+                out.write(buffer, 0, n)
             }
         }
     }

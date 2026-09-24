@@ -31,6 +31,13 @@ interface MediaLibrary {
     /** Adds a file to a session's media (from an MCP tool, an Actions artifact, or the photo picker). */
     suspend fun add(sessionId: String, source: File, name: String, from: String): MediaItem
 
+    /**
+     * Adds a file the owner picked on the phone (the photo picker, "Open document", or a share to
+     * PocketIDE), under the same size limits and format checks as any other file.
+     */
+    suspend fun addFromPhone(sessionId: String, uri: android.net.Uri): MediaItem =
+        throw UnsupportedOperationException("Adding files from the phone is not available here.")
+
     fun kindOf(name: String, head: ByteArray): MediaKind
 
     suspend fun delete(item: MediaItem)

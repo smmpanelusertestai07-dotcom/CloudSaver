@@ -219,6 +219,11 @@ internal class GitHubBuilds(
         } finally {
             temp.delete()
         }
+        // A folder swapped for a link while writing: take the file back out and stop.
+        if (!target.canonicalFile.toPath().startsWith(root.canonicalFile.toPath())) {
+            target.delete()
+            throw BuildsException("$path cannot be written: a folder on the way is a link.")
+        }
     }
 
     private fun templateOf(templateId: String) =
