@@ -48,9 +48,10 @@ def root_settings_include_pocket(repo_root: Path) -> list[str]:
     return found
 
 
-def check(root: Path = common.POCKET) -> common.Report:
+def check(root: Path = common.POCKET, tracked: list[Path] | None = None) -> common.Report:
+    """tracked: the files to judge, relative to root (default: what git tracks)."""
     report = common.Report()
-    for path in common.tracked_files(root):
+    for path in common.tracked_files(root) if tracked is None else tracked:
         what = forbidden(path)
         if what:
             report.fail(f"pocket/{path.as_posix()} is tracked: {what} must not be in this repository")

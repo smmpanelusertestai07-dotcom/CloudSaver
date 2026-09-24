@@ -148,7 +148,7 @@ class _Parser:
     def _value(self, rest: str, indent: int):
         rest = _strip_comment(rest)
         if rest[:1] and rest[0] in "|>":
-            return self._block_scalar(indent, folded=rest.startswith(">"))
+            return self._block_scalar(indent, header=rest)
         if rest:
             return _scalar(rest)
         line = self._peek()
@@ -181,7 +181,8 @@ class _Parser:
                 items.append(_scalar(body))
         return items
 
-    def _block_scalar(self, indent: int, folded: bool) -> str:
+    def _block_scalar(self, indent: int, header: str) -> str:
+        """A | or > block: "-" strips the final line break, "+" keeps every trailing one."""
         collected = []
         while self.i < len(self.lines):
             line = self.lines[self.i]
@@ -189,8 +190,13 @@ class _Parser:
                 break
             collected.append(line)
             self.i += 1
+        trailing = 0
         while collected and not collected[-1].strip():
             collected.pop()
+            trailing += 1
         body_indent = min((_indent(l) for l in collected if l.strip()), default=0)
         text_lines = [l[body_indent:] for l in collected]
-        return (" " if folded else "\n").join(text_lines) + "\n"
+        body = (" " if header.startswith(">") else "\n").join(text_lines)
+        if "-" in header or not body:
+            return body
+        return body + "\n" * (1 + trailing if "+" in header else 1)

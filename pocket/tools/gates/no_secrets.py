@@ -45,9 +45,10 @@ def scan(relative: str, text: str) -> list[str]:
     return found
 
 
-def check(root: Path = common.POCKET) -> common.Report:
+def check(root: Path = common.POCKET, tracked: list[Path] | None = None) -> common.Report:
+    """tracked: the files to scan, relative to root (default: what git tracks)."""
     report = common.Report()
-    for path in common.tracked_files(root):
+    for path in common.tracked_files(root) if tracked is None else tracked:
         full = root / path
         if not full.is_file():
             continue
