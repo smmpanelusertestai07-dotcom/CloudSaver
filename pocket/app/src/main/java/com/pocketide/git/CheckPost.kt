@@ -168,7 +168,8 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
                 val after = small(reader, now)
                 val before = touch.before?.let { small(reader, it) }
                 val (detail, diff) = if (after == null) {
-                    "Changes GitHub Actions code in $path, too big to show here. Check it on GitHub's website before approving." to ""
+                    "Changes GitHub Actions code in $path. It is too big to show here; " +
+                        "read it in the session's files before approving." to ""
                 } else {
                     val beforeText = before?.toString(Charsets.UTF_8)
                     WorkflowChanges.describe(path, beforeText, after.toString(Charsets.UTF_8)) to

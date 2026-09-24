@@ -43,7 +43,7 @@ internal object WorkflowChanges {
         }
         if (triggerBlock(after) != triggerBlock(old)) {
             val events = events(after)
-            sentences += if (events.isEmpty()) "It changes when it runs." else "It runs on: ${events.joinToString(", ")}."
+            sentences += if (events.isEmpty()) "It changes when it runs." else "It runs on: ${events.joinToString()}."
         }
         sentences += "Read the change and approve it before it goes to GitHub."
         return sentences.joinToString(" ")
@@ -59,11 +59,15 @@ internal object WorkflowChanges {
             formatter.format(HistogramDiff().diff(RawTextComparator.DEFAULT, old, new), old, new)
         }
         val text = out.toString(Charsets.UTF_8.name())
-        return if (text.length <= MAX_DIFF_CHARS) text else text.take(MAX_DIFF_CHARS) + "\n(The rest of the change is not shown.)\n"
+        if (text.length <= MAX_DIFF_CHARS) return text
+        return text.take(MAX_DIFF_CHARS) + "\n(The rest of the change is not shown.)\n"
     }
 
-    fun secretNames(text: String): Set<String> =
-        secretName.findAll(text).mapNotNull { it.groupValues[1].ifEmpty { it.groupValues[2] }.ifEmpty { null } }.toSortedSet()
+    /** The names of the Secrets [text] reads, as `secrets.NAME` or `secrets['NAME']`. */
+    fun secretNames(text: String): Set<String> = secretName.findAll(text)
+        .map { it.groupValues[1].ifEmpty { it.groupValues[2] } }
+        .filter(String::isNotEmpty)
+        .toSortedSet()
 
     /** The workflow's top-level `on:` block, normalised, or null when it has none. */
     fun triggerBlock(text: String): String? {

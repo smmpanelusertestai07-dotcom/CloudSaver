@@ -62,7 +62,10 @@ interface GitGate {
 
     suspend fun fetch(bareRepo: File, token: String)
 
-    /** Commits on [branch] not yet on the remote, checked. [knownValues] are Variables/Secrets. */
+    /**
+     * Commits on [branch] not yet on GitHub, checked. [knownValues] are Variables/Secrets. The
+     * verdict lists findings, and holds for build outputs and workflow changes not yet approved.
+     */
     suspend fun checkPost(bareRepo: File, branch: String, knownValues: List<String> = emptyList()): Verdict
 
     /** Check-post, then push [branch] to the same name on origin. */

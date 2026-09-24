@@ -119,9 +119,14 @@ internal object BuildOutputs {
     fun check(path: String): String? {
         val parts = path.split('/')
         val extension = parts.last().substringAfterLast('.', "").lowercase(Locale.ROOT)
-        if (extension in extensions) return "A build output (.$extension). Builds are kept in Media, not in git."
-        return if (inBuildFolder(parts.dropLast(1))) "A file from a build folder. Builds are kept in Media, not in git." else null
+        return when {
+            extension in extensions -> "A build output (.$extension). $KEPT_IN_MEDIA"
+            inBuildFolder(parts.dropLast(1)) -> "A file from a build folder. $KEPT_IN_MEDIA"
+            else -> null
+        }
     }
+
+    private const val KEPT_IN_MEDIA = "Builds are kept in Media, not in git."
 
     private fun inBuildFolder(folders: List<String>): Boolean = folders.indices.any { i ->
         val name = folders[i]

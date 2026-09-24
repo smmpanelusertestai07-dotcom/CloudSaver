@@ -84,10 +84,8 @@ internal class JGitGate(
         val job = coroutineContext.job
         useRepo(bareRepo) { gateRepo ->
             val tip = gateRepo.repo.exactRef(ref)?.objectId ?: throw GitGateException(GitMessages.missingBranch(branch))
-            val state = gateRepo.state
-            scanner.check(gateRepo.repo, tip, state?.onGitHub().orEmpty(), knownValues, state?.approvedWorkflows.orEmpty()) {
-                job.ensureActive()
-            }
+            val state = gateRepo.recorded()
+            scanner.check(gateRepo.repo, tip, state.onGitHub(), knownValues, state.approvedWorkflows) { job.ensureActive() }
         }
     }
 
@@ -183,7 +181,7 @@ internal class JGitGate(
         return withTransport(repo, gateRepo.remote, token) { transport ->
             // What GitHub has right now; commits it has are not checked again.
             val onGitHub = transport.openFetch().use { connection -> idsOf(connection.refs) }
-            val approved = gateRepo.state?.approvedWorkflows.orEmpty()
+            val approved = gateRepo.recorded().approvedWorkflows
             val verdict = scanner.check(repo, tip, onGitHub.values, knownValues, approved) { job.ensureActive() }
             if (!verdict.ok) return PushResult.Blocked(verdict)
             val update = RemoteRefUpdate(repo, null as String?, tip, ref, false, trackingRef(ref), null)
