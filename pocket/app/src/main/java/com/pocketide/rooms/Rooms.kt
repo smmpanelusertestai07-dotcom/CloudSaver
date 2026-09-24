@@ -1,6 +1,8 @@
 package com.pocketide.rooms
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 sealed interface RoomState {
     data object Stopped : RoomState
@@ -12,6 +14,27 @@ sealed interface RoomState {
 
 /** A shell in a session's room, for the `>_` tab. [url] serves the terminal page. */
 data class TerminalHandle(val url: String, val sessionId: String)
+
+/** Why a room stopped, for the banner that says so ("Nothing was lost"). */
+enum class StopReason {
+    /** The owner stopped it (Stop, Stop everything). */
+    OWNER,
+
+    /** Nothing happened in it for the idle time. */
+    IDLE,
+
+    /** The phone's limits (battery, heat, memory) or a safe stop. */
+    LIMITS,
+
+    /** Its engine ended by itself (Android, a crash, or the engine's own exit). */
+    ENDED,
+
+    /** It restarted for another session or project. */
+    SWITCHED,
+}
+
+/** The last stop of a room: why, when (UTC epoch ms), and one sentence for the owner. */
+data class RoomStop(val reason: StopReason, val at: Long, val message: String)
 
 /**
  * Each agent runs in its own room: a separate proot session that binds only its own home,
@@ -28,6 +51,12 @@ interface Rooms {
     /** Dev-server ports agents announced (MCP `preview_port`), keyed by session id, for Preview. */
     val previewPorts: StateFlow<Map<String, List<Int>>>
 
+    /** Why each room last stopped, keyed by agent id. Cleared when the room starts again. */
+    val stops: StateFlow<Map<String, RoomStop>> get() = NO_STOPS
+
+    /** When each running room goes to sleep if nothing happens in it (UTC epoch ms), keyed by agent id. */
+    val sleepsAt: StateFlow<Map<String, Long>> get() = NO_TIMES
+
     /** Opens (starting if needed) the agent's room on this session's worktree. */
     suspend fun open(agentId: String, sessionId: String): RoomState
 
@@ -43,4 +72,19 @@ interface Rooms {
 
     /** Removes a room completely (used when a discovered agent is removed). */
     suspend fun delete(agentId: String)
+
+    /** The owner is using the agent's screen (a tap, typing): the room stays awake. */
+    fun touch(agentId: String) = Unit
+
+    /**
+     * Starts the room's engine again on the session it shows (the fix-it ladder's second step).
+     * Files, sign-ins and chats are kept.
+     */
+    suspend fun restart(agentId: String): RoomState = states.value[agentId] ?: RoomState.Stopped
+
+    /** The room's last output lines, with secrets removed, for diagnostics. */
+    fun recentOutput(agentId: String): List<String> = emptyList()
 }
+
+private val NO_STOPS: StateFlow<Map<String, RoomStop>> = MutableStateFlow<Map<String, RoomStop>>(emptyMap()).asStateFlow()
+private val NO_TIMES: StateFlow<Map<String, Long>> = MutableStateFlow<Map<String, Long>>(emptyMap()).asStateFlow()

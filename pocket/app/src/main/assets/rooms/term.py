@@ -8,7 +8,10 @@ Other apps on the phone can reach 127.0.0.1 too, so every request must carry the
 X-PocketIDE-Secret with this launch's secret. The app's port bridge adds it to what the
 terminal's WebView sends; anything that connects to this port directly gets 403 and no shell.
 
-Usage: POCKETIDE_TERM_SECRET=... term.py --port N --cwd DIR --web DIR
+The secret arrives in a file (--secret-file), which is read once and deleted: arguments and
+environment variables can be read through /proc by other programs.
+
+Usage: term.py --port N --cwd DIR --web DIR --secret-file FILE
 """
 
 import argparse
@@ -394,10 +397,23 @@ class TerminalServer(http.server.ThreadingHTTPServer):
 
 def shell_environment():
     environment = dict(os.environ)
-    environment.pop("POCKETIDE_TERM_SECRET", None)
     environment["TERM"] = "xterm-256color"
     environment["COLORTERM"] = "truecolor"
     return environment
+
+
+def take_secret(path):
+    """Reads the launch secret from its file and deletes the file, so nothing else can read it."""
+    try:
+        with open(path, encoding="ascii") as source:
+            secret = source.read().strip()
+    except (OSError, ValueError):
+        return ""
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+    return secret
 
 
 def main(argv=None):
@@ -405,15 +421,13 @@ def main(argv=None):
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--cwd", required=True)
     parser.add_argument("--web", required=True)
+    parser.add_argument("--secret-file", required=True)
     options = parser.parse_args(argv)
-    secret = os.environ.get("POCKETIDE_TERM_SECRET", "")
+    secret = take_secret(options.secret_file)
     if len(secret) < 32:
         print("No terminal secret was given; refusing to start an open shell.", file=sys.stderr)
         return 2
-    # The secret must not reach the shell or anything it starts.
-    environment = shell_environment()
-    os.environ.pop("POCKETIDE_TERM_SECRET", None)
-    server = TerminalServer(options.port, secret, options.cwd, options.web, environment)
+    server = TerminalServer(options.port, secret, options.cwd, options.web, shell_environment())
     print("PocketIDE terminal on 127.0.0.1:%d" % server.server_address[1], flush=True)
     try:
         server.serve_forever()
