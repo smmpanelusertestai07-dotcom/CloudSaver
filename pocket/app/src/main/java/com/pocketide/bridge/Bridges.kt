@@ -8,8 +8,13 @@ package com.pocketide.bridge
  * cannot pass the token check.
  */
 interface PortBridge {
-    /** Allow-lists [port] and returns the URL the WebView loads first (it sets the cookie). */
-    fun expose(port: Int, purpose: String): BridgedPort
+    /**
+     * Allow-lists [port] and returns the URL the WebView loads first (it sets the cookie).
+     * [injectHeaders] are added to every forwarded request: a server of ours inside Linux (the
+     * terminal) checks a per-launch secret there, so another app that connects to its port
+     * directly, without the bridge, is refused.
+     */
+    fun expose(port: Int, purpose: String, injectHeaders: Map<String, String> = emptyMap()): BridgedPort
 
     fun revoke(port: Int)
 

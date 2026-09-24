@@ -25,6 +25,9 @@ interface Rooms {
     /** Keyed by agent id. */
     val states: StateFlow<Map<String, RoomState>>
 
+    /** Dev-server ports agents announced (MCP `preview_port`), keyed by session id, for Preview. */
+    val previewPorts: StateFlow<Map<String, List<Int>>>
+
     /** Opens (starting if needed) the agent's room on this session's worktree. */
     suspend fun open(agentId: String, sessionId: String): RoomState
 

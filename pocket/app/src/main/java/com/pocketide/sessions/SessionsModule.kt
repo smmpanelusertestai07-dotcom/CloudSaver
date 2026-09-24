@@ -21,6 +21,7 @@ private class StubSessions : Sessions {
     override suspend fun transcript(sessionId: String): List<TranscriptEntry> = no()
     override suspend fun setBackUp(sessionId: String, backUp: Boolean) = no()
     override suspend fun removeMedia(sessionId: String) = no()
+    override suspend fun autosave(sessionId: String): String? = "stub"
     override suspend fun refresh() = Unit
     override fun activeSession(agentId: String): String? = null
 }

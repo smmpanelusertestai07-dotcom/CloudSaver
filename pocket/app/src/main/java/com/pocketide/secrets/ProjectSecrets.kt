@@ -33,4 +33,10 @@ interface ProjectSecrets {
 
     /** Writes a Secret as a GitHub Actions secret of the project (owner's tap). */
     suspend fun pushToGitHub(projectId: String, name: String)
+
+    /** Everything, serialized, for the encrypted vault (the sync engine encrypts and uploads it). */
+    suspend fun exportBlob(): ByteArray
+
+    /** Replaces the local set with the vault's copy (restore on a new phone). */
+    suspend fun importBlob(bytes: ByteArray)
 }

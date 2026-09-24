@@ -14,6 +14,7 @@ private class StubSync : SyncEngine {
     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Idle)
     override val waiting: StateFlow<List<PendingUpload>> = MutableStateFlow(emptyList())
     override val usage: StateFlow<DataUsage> = MutableStateFlow(DataUsage(0, 0, emptyMap()))
+    override val leaseHolder: StateFlow<String?> = MutableStateFlow(null)
     override fun requestSync(reason: String) = Unit
     override suspend fun syncNow() = Unit
     override suspend fun uploadNow(sessionIds: List<String>) = no()

@@ -53,6 +53,12 @@ interface Sessions {
     /** Removes media from a session but keeps the chat. */
     suspend fun removeMedia(sessionId: String)
 
+    /**
+     * Autosave: pushes the session's branch to GitHub through the check-post, so the code is
+     * never only on the phone. Returns null when saved, or a plain reason it was not.
+     */
+    suspend fun autosave(sessionId: String): String?
+
     /** Rescans transcripts and worktrees (sizes, commits, tokens, last activity). */
     suspend fun refresh()
 

@@ -20,6 +20,8 @@ private class StubDriveAuth : DriveAuth {
     override suspend fun token(): String = throw DriveException.Revoked()
     override suspend fun health() = LinkHealth.NOT_CONNECTED
     override suspend fun disconnect() = Unit
+    override suspend fun authorizeNewAccount(): DriveAuthResult = DriveAuthResult.Failed("stub")
+    override suspend fun tokenFor(email: String): String = throw DriveException.Revoked()
 }
 
 private class StubDriveStore : DriveStore {
@@ -32,4 +34,5 @@ private class StubDriveStore : DriveStore {
     override suspend fun open(id: String): InputStream = no()
     override suspend fun delete(id: String) = no()
     override suspend fun quota(): DriveQuota = no()
+    override fun withAccount(email: String): DriveStore = this
 }

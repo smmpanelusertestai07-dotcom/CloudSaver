@@ -40,6 +40,9 @@ interface SyncEngine {
     val waiting: StateFlow<List<PendingUpload>>
     val usage: StateFlow<DataUsage>
 
+    /** The other phone's name when it holds the lease (this phone must lock); null when we hold it. */
+    val leaseHolder: StateFlow<String?>
+
     /** Schedules a sync soon (end of a task, or every few minutes while agents run). */
     fun requestSync(reason: String)
 

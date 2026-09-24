@@ -8,6 +8,7 @@ fun createRooms(graph: AppGraph): Rooms = StubRooms().also { graph.hashCode() }
 
 private class StubRooms : Rooms {
     override val states: StateFlow<Map<String, RoomState>> = MutableStateFlow(emptyMap())
+    override val previewPorts: StateFlow<Map<String, List<Int>>> = MutableStateFlow(emptyMap())
     override suspend fun open(agentId: String, sessionId: String): RoomState = RoomState.Failed("stub")
     override suspend fun stop(agentId: String) = Unit
     override suspend fun stopAll() = Unit

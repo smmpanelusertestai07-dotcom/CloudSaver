@@ -34,6 +34,12 @@ interface DriveAuth {
     suspend fun health(): LinkHealth
 
     suspend fun disconnect()
+
+    /** Lets the owner pick another Google account ("Move to another Google account"). */
+    suspend fun authorizeNewAccount(): DriveAuthResult
+
+    /** A token for a specific account the owner authorized (the move source or target). */
+    suspend fun tokenFor(email: String): String
 }
 
 data class DriveFile(val id: String, val name: String, val size: Long, val modifiedTime: String?, val md5: String?)
@@ -70,4 +76,7 @@ interface DriveStore {
     /** Permanent delete (not Drive's Trash). */
     suspend fun delete(id: String)
     suspend fun quota(): DriveQuota
+
+    /** The same store, acting as another authorized account (used only by the move). */
+    fun withAccount(email: String): DriveStore
 }

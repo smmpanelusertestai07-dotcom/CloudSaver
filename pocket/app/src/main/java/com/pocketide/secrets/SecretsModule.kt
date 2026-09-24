@@ -14,4 +14,6 @@ private class StubSecrets : ProjectSecrets {
     override suspend fun variablesFor(projectId: String): Map<String, String> = emptyMap()
     override suspend fun allValues(): List<String> = emptyList()
     override suspend fun pushToGitHub(projectId: String, name: String) = Unit
+    override suspend fun exportBlob(): ByteArray = ByteArray(0)
+    override suspend fun importBlob(bytes: ByteArray) = Unit
 }

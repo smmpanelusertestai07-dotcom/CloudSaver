@@ -9,7 +9,7 @@ fun createPortBridge(graph: AppGraph): PortBridge = StubPortBridge().also { grap
 fun createPhoneBridge(graph: AppGraph): PhoneBridge = StubPhoneBridge().also { graph.hashCode() }
 
 private class StubPortBridge : PortBridge {
-    override fun expose(port: Int, purpose: String): BridgedPort = throw UnsupportedOperationException("stub")
+    override fun expose(port: Int, purpose: String, injectHeaders: Map<String, String>): BridgedPort = throw UnsupportedOperationException("stub")
     override fun revoke(port: Int) = Unit
     override fun isInternal(url: String) = false
     override val exposed: List<BridgedPort> = emptyList()
