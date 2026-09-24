@@ -83,10 +83,13 @@ object HelpSearch {
     fun snippet(text: String, words: List<String>, radius: Int = SNIPPET_RADIUS): String {
         val flat = text.replace(Regex("\\s+"), " ").trim()
         if (flat.isEmpty()) return ""
-        val lower = flat.lowercase(Locale.ROOT)
-        val hit = words.map { lower.indexOf(it) }.filter { it >= 0 }.minOrNull() ?: 0
-        val start = (hit - radius).coerceAtLeast(0).let { wordStart(flat, it) }
-        val end = (hit + radius).coerceAtMost(flat.length).let { wordEnd(flat, it) }
+        // Searched in the text itself: lower-casing can change a string's length ("İ").
+        val match = words.map { it to flat.indexOf(it, ignoreCase = true) }.filter { it.second >= 0 }.minByOrNull { it.second }
+        val hit = match?.second ?: 0
+        val hitEnd = (hit + (match?.first?.length ?: 0)).coerceAtMost(flat.length)
+        val reach = radius.coerceAtLeast(0)
+        val start = wordStart(flat, (hit - reach).coerceAtLeast(0), hit)
+        val end = wordEnd(flat, (hit + reach).coerceIn(hitEnd, flat.length), hitEnd)
         val prefix = if (start > 0) "…" else ""
         val suffix = if (end < flat.length) "…" else ""
         return prefix + flat.substring(start, end).trim() + suffix
@@ -95,16 +98,18 @@ object HelpSearch {
     private fun bodyOf(section: DocSection): String =
         listOf(section.summary, DocText.of(section.blocks)).filter { it.isNotBlank() }.joinToString("\n")
 
-    private fun wordStart(text: String, index: Int): Int {
+    /** Moves [index] forward to the next word, never past [hit]. */
+    private fun wordStart(text: String, index: Int, hit: Int): Int {
         if (index == 0) return 0
         val space = text.indexOf(' ', index)
-        return if (space in index until index + 15) space + 1 else index
+        return if (space >= 0 && space < minOf(index + 15, hit)) space + 1 else index
     }
 
-    private fun wordEnd(text: String, index: Int): Int {
+    /** Moves [index] back to the end of the previous word, never before [matchEnd]. */
+    private fun wordEnd(text: String, index: Int, matchEnd: Int): Int {
         if (index >= text.length) return text.length
         val space = text.lastIndexOf(' ', index)
-        return if (space > index - 15 && space > 0) space else index
+        return if (space > maxOf(index - 15, matchEnd - 1)) space else index
     }
 }
 
