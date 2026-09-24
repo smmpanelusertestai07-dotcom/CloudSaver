@@ -1,0 +1,111 @@
+package com.pocketide.linux
+
+import java.io.File
+
+/** Where proot and its loader are installed, and where proot keeps its own temporary files. */
+internal class ProotHost(val nativeLibraryDir: File, val tmpDir: File) {
+    val proot: File get() = File(nativeLibraryDir, "libproot.so")
+    val loader: File get() = File(nativeLibraryDir, "libproot-loader.so")
+}
+
+/** One proot run, ready for ProcessBuilder: its arguments and its whole environment. */
+internal data class ProotCall(val argv: List<String>, val environment: Map<String, String>)
+
+/**
+ * Builds the proot command line. The flags are 2.6.0's, each proven on a real phone:
+ *  - `--link2symlink`: Android refuses hard links in app storage, and dpkg relies on them.
+ *  - `--kill-on-exit`: nothing keeps running untraced after the command ends.
+ *  - `-0`: packages expect root; proot fakes it.
+ *  - /dev, /proc and /sys come from the phone, then stand-ins for the /proc files Android hides
+ *    (they must come after /proc to win), then the command's own folders.
+ *
+ * The program runs under `env -i` with a fixed set of basics plus the command's variables, so
+ * nothing of Android's environment (or anything secret the app holds) reaches Linux.
+ */
+internal object ProotCommand {
+    const val GUEST_PATH = "/opt/pocketide/bin:/opt/code-server/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+    private val VARIABLE_NAME = Regex("[A-Z_][A-Z0-9_]*")
+
+    fun build(host: ProotHost, root: File, procStandIns: Map<String, String>, timeZone: String, command: LinuxCommand): ProotCall {
+        validate(command)
+        val argv = buildList {
+            add(host.proot.absolutePath)
+            add("--link2symlink")
+            add("--kill-on-exit")
+            add("-0")
+            add("-r")
+            add(root.absolutePath)
+            for (system in listOf("/dev", "/proc", "/sys")) {
+                add("-b")
+                add(system)
+            }
+            for ((guest, file) in procStandIns) {
+                add("-b")
+                add("$file:$guest")
+            }
+            for (bind in command.binds) {
+                add("-b")
+                add("${bind.hostPath}:${bind.guestPath}")
+            }
+            add("-w")
+            add(command.workDir)
+            add("/usr/bin/env")
+            add("-i")
+            environment(timeZone, command.env).forEach { (name, value) -> add("$name=$value") }
+            addAll(command.argv)
+        }
+        return ProotCall(argv, prootEnvironment(host))
+    }
+
+    /** The guest's whole environment: the basics, then the command's variables (sorted, a repeat replaces a basic). */
+    fun environment(timeZone: String, variables: Map<String, String>): Map<String, String> {
+        val environment = linkedMapOf(
+            "HOME" to "/root",
+            "USER" to "root",
+            "LOGNAME" to "root",
+            "SHELL" to "/bin/bash",
+            "PATH" to GUEST_PATH,
+            "TERM" to "xterm-256color",
+            "LANG" to "C.UTF-8",
+            "TZ" to timeZone,
+            "TMPDIR" to "/tmp",
+        )
+        variables.toSortedMap().forEach { (name, value) -> environment[name] = value }
+        return environment
+    }
+
+    /** proot's own environment: exactly this, never the app's. */
+    private fun prootEnvironment(host: ProotHost) = linkedMapOf(
+        "PROOT_TMP_DIR" to host.tmpDir.absolutePath,
+        "PROOT_LOADER" to host.loader.absolutePath,
+        // Slower without the seccomp accelerator, but it always starts, and a failed start
+        // costs far more than the speed. 2.6.0 also ran every phone without the mountinfo rewrite.
+        "PROOT_NO_SECCOMP" to "1",
+        "PROOT_NO_MOUNTINFO" to "1",
+        "LD_LIBRARY_PATH" to host.nativeLibraryDir.absolutePath,
+    )
+
+    private fun validate(command: LinuxCommand) {
+        val program = command.argv.firstOrNull()
+        require(!program.isNullOrBlank()) { "A command needs a program to run." }
+        // env would read a first word with "=" as a variable, and one starting with "-" as an option.
+        require(!program.startsWith("-") && !program.contains('=')) { "Not a program name: $program" }
+        require(command.argv.none { it.contains('\u0000') }) { "A command argument contains a NUL character." }
+        require(isGuestPath(command.workDir)) { "The working folder must be an absolute path: ${command.workDir}" }
+        for ((name, value) in command.env) {
+            require(VARIABLE_NAME.matches(name)) { "Not a variable name: $name" }
+            require(!value.contains('\u0000')) { "The value of $name contains a NUL character." }
+        }
+        for (bind in command.binds) {
+            require(!bind.readOnly) { "proot cannot make ${bind.guestPath} read-only." }
+            // proot splits "-b host:guest" at the first colon.
+            require(isGuestPath(bind.hostPath) && !bind.hostPath.contains(':')) { "Not a usable folder: ${bind.hostPath}" }
+            require(isGuestPath(bind.guestPath) && !bind.guestPath.contains(':')) { "Not a usable Linux path: ${bind.guestPath}" }
+            require(GuestRoot.components(bind.guestPath).isNotEmpty()) { "A folder cannot replace the whole of Linux." }
+        }
+    }
+
+    private fun isGuestPath(path: String) =
+        path.startsWith("/") && !path.contains('\u0000') && GuestRoot.components(path).none { it == ".." }
+}

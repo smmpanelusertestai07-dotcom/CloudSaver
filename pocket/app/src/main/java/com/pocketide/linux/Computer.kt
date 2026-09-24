@@ -13,12 +13,19 @@ sealed interface ComputerState {
     data class Broken(val why: String, val fix: String) : ComputerState
 }
 
-/** A directory made visible inside one proot session. */
+/**
+ * A directory made visible inside one proot session.
+ *
+ * proot has no read-only binds, so [readOnly] cannot be honoured: a command that asks for one
+ * is refused rather than started with a folder it could write to after all.
+ */
 data class Bind(val hostPath: String, val guestPath: String, val readOnly: Boolean = false)
 
 /**
  * One program to run inside Linux. The environment is exactly [env] plus the fixed basics
- * (HOME, PATH, LANG, TERM, TZ, TMPDIR): proot runs `env -i`, so nothing from Android leaks in.
+ * (HOME, USER, LOGNAME, SHELL, PATH, TERM, LANG, TZ, TMPDIR): proot runs `env -i`, so nothing
+ * from Android leaks in. [env] names must look like `[A-Z_][A-Z0-9_]*`; a name that repeats a
+ * basic replaces it.
  */
 data class LinuxCommand(
     val argv: List<String>,
@@ -41,6 +48,18 @@ data class ComputerInfo(
     val rootfsBytes: Long,
     val vaBits: Int?,
 )
+
+/** A code-server release for linux-arm64, used only when its SHA-256 matches. */
+data class CodeServerPin(val version: String, val url: String, val sha256: String, val bytes: Long)
+
+/** What an update of one part of the computer did, in words the owner can read. */
+sealed interface UpdateOutcome {
+    data object UpToDate : UpdateOutcome
+    data class Updated(val detail: String) : UpdateOutcome
+    /** Not now (Wi-Fi, agents still running, not set up yet); it is tried again later. */
+    data class Waiting(val why: String) : UpdateOutcome
+    data class Failed(val why: String) : UpdateOutcome
+}
 
 /**
  * The Ubuntu computer inside the app (proot, no root, no VM). Ported from PocketIDE 2.6.0's
@@ -67,6 +86,24 @@ interface Computer {
 
     suspend fun info(): ComputerInfo
 
-    /** Size on disk of the rootfs, for "Your data". */
+    /** Size on disk of the rootfs, for "Your data". Walks the tree: call it off the main thread. */
     fun sizeBytes(): Long
+
+    /**
+     * Ubuntu's security fixes, and a set-up script changed by an app update. Needs Wi-Fi by
+     * default; the daily job calls it.
+     */
+    suspend fun updateBase(): UpdateOutcome = UpdateOutcome.UpToDate
+
+    /**
+     * Moves code-server to [pin]: unpacked beside the current one, checked, switched over, and
+     * switched back if it does not start. Waits while any room is running.
+     */
+    suspend fun updateCodeServer(pin: CodeServerPin): UpdateOutcome = UpdateOutcome.UpToDate
+
+    /** Linux processes this app runs right now (proot and everything under it). */
+    fun liveProcesses(): Int = 0
+
+    /** Deletes the computer without setting it up again (the unused-computer rule). */
+    suspend fun remove() = Unit
 }
