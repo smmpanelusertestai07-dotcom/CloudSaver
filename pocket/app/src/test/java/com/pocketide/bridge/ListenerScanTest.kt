@@ -95,6 +95,18 @@ class ListenerScanTest {
         )
     }
 
+    @Test fun `a candidate missing from a filtered table is still probed`() {
+        val dir = Files.createTempDirectory("procnet").toFile()
+        try {
+            File(dir, "tcp").writeText(header + "\n")
+            val server = listen("127.0.0.1")
+            val found = runBlocking { ListenerScan(procNet = dir, networkAddresses = { listOf(wifi) }).scan(listOf(server)) }
+            assertEquals(listOf(PortListener(server, onNetwork = false)), found)
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     @Test fun `this machine's own table agrees with a probe`() {
         assumeTrue("No readable /proc/net/tcp here.", File("/proc/net/tcp").canRead())
         val loopbackOnly = listen("127.0.0.1")

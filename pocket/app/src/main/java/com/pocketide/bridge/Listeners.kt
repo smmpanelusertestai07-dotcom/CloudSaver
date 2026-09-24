@@ -20,7 +20,7 @@ import java.net.SocketException
  * on the same network; one on 127.0.0.1 only from this phone.
  *
  * The kernel's socket table (/proc/net/tcp and tcp6) answers both questions for every port at
- * once, but Android may not let apps read it. Without it, [candidates][scan] are tried one by
+ * once, but Android may not let apps read it. Candidates it does not show are tried one by
  * one: a connection to the loopback shows the server is there, and one to the phone's own
  * network address shows the Wi-Fi can reach it too.
  */
@@ -32,9 +32,10 @@ internal class ListenerScan(
     private val probeTimeoutMs: Int = 300,
 ) {
     suspend fun scan(candidates: Collection<Int>): List<PortListener> = withContext(Dispatchers.IO) {
-        val table = readSocketTable()
-        val found = table ?: probe(candidates.filter { it in 1..65535 }.distinct())
-        found.map { (port, onNetwork) -> PortListener(port, onNetwork) }.sortedBy { it.port }
+        val table = readSocketTable().orEmpty()
+        // Candidates the table does not show are still tried: a table can be readable yet filtered.
+        val probed = probe(candidates.filter { it in 1..65535 && it !in table }.distinct())
+        (table + probed).map { (port, onNetwork) -> PortListener(port, onNetwork) }.sortedBy { it.port }
     }
 
     /** Port to "open to the network", from the kernel; null when the table cannot be read. */
