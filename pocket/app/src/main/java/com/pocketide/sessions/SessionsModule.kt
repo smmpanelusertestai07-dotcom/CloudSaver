@@ -1,27 +1,36 @@
 package com.pocketide.sessions
 
 import com.pocketide.AppGraph
-import com.pocketide.model.SessionRecord
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import com.pocketide.core.Device
+import com.pocketide.git.GitGate
+import com.pocketide.github.GitHubAuth
+import com.pocketide.linux.Computer
+import com.pocketide.media.MediaLibrary
+import com.pocketide.projects.Projects
+import com.pocketide.rooms.Rooms
+import com.pocketide.secrets.ProjectSecrets
+import com.pocketide.sync.SyncEngine
+import kotlinx.coroutines.Dispatchers
 
-fun createSessions(graph: AppGraph): Sessions = StubSessions().also { graph.hashCode() }
+fun createSessions(graph: AppGraph): Sessions = SessionManager(
+    env = GraphSessionEnv(graph),
+    dirs = graph.dirs,
+    clock = graph.clock,
+    scope = graph.scope,
+    io = Dispatchers.IO,
+)
 
-private class StubSessions : Sessions {
-    private fun no(): Nothing = throw IllegalStateException("stub")
-    override val all: StateFlow<List<SessionRecord>> = MutableStateFlow(emptyList())
-    override suspend fun start(projectId: String, agentId: String, title: String?): SessionRecord = no()
-    override suspend fun rename(sessionId: String, title: String) = no()
-    override suspend fun continueSession(sessionId: String) = no()
-    override suspend fun delete(sessionId: String) = no()
-    override suspend fun restore(sessionId: String) = no()
-    override suspend fun deleteForever(sessionId: String) = no()
-    override suspend fun putOnMain(sessionId: String): PutOnMainResult = no()
-    override suspend fun changes(sessionId: String): SessionChanges = no()
-    override suspend fun transcript(sessionId: String): List<TranscriptEntry> = no()
-    override suspend fun setBackUp(sessionId: String, backUp: Boolean) = no()
-    override suspend fun removeMedia(sessionId: String) = no()
-    override suspend fun autosave(sessionId: String): String? = "stub"
-    override suspend fun refresh() = Unit
-    override fun activeSession(agentId: String): String? = null
+/** Other modules are looked up when used, so creating this module never creates theirs. */
+private class GraphSessionEnv(private val graph: AppGraph) : SessionEnv {
+    override val projects: Projects get() = graph.projects
+    override val computer: Computer get() = graph.computer
+    override val git: GitGate get() = graph.git
+    override val gitHubAuth: GitHubAuth get() = graph.gitHubAuth
+    override val secrets: ProjectSecrets get() = graph.secrets
+    override val rooms: Rooms get() = graph.rooms
+    override val sync: SyncEngine get() = graph.sync
+    override val media: MediaLibrary get() = graph.media
+    override val deviceId: String by lazy { Device.id(graph.context) }
+
+    override fun agentName(agentId: String): String = graph.agents.find(agentId)?.displayName ?: agentId
 }
