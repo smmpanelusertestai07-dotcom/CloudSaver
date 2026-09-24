@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""xdg-open for a PocketIDE room: hands a web address to the phone, which opens it in the
+phone's browser. Agents open their sign-in pages this way, and the page's localhost callback
+comes back to the agent on this same phone. Only http and https addresses are opened.
+
+Exit codes follow xdg-open: 0 opened, 1 bad arguments, 4 the phone could not open it.
+"""
+
+import json
+import os
+import socket
+import sys
+
+SOCKET_PATH = os.environ.get("POCKETIDE_PHONE_SOCKET", "/run/pocketide/phone.sock")
+TIMEOUT_S = 30
+
+
+def main(argv):
+    if len(argv) != 1:
+        print("usage: xdg-open <http or https address>", file=sys.stderr)
+        return 1
+    url = argv[0]
+    if not url.lower().startswith(("http://", "https://")):
+        print("xdg-open: only web addresses open on the phone.", file=sys.stderr)
+        return 1
+    request = {"id": 1, "op": "open_url", "args": {"url": url}}
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as phone:
+            phone.settimeout(TIMEOUT_S)
+            phone.connect(SOCKET_PATH)
+            phone.sendall(json.dumps(request).encode("utf-8") + b"\n")
+            reply = phone.makefile("rb").readline(1024 * 1024)
+        answer = json.loads(reply.decode("utf-8"))
+    except (OSError, ValueError):
+        print("xdg-open: the phone could not be reached. Open this address yourself: " + url, file=sys.stderr)
+        return 4
+    if isinstance(answer, dict) and answer.get("ok"):
+        return 0
+    error = answer.get("error") if isinstance(answer, dict) else None
+    print("xdg-open: %s" % (error or "the phone did not open it."), file=sys.stderr)
+    return 4
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
