@@ -185,7 +185,7 @@ internal class RecordingScheduler : SyncScheduling {
 /** One phone: its own folders, device, settings and key, sharing Google accounts with other phones. */
 internal class TestPhone(
     val accounts: FakeAccounts,
-    val clock: FakeClock,
+    clock: FakeClock,
     deviceId: String = "phone-a",
     deviceName: String = "Phone A",
     var account: String = OWNER,
@@ -194,7 +194,7 @@ internal class TestPhone(
 ) : SyncPorts {
     val base: File = Files.createTempDirectory("pocket-sync-").toFile()
     override val dirs = AppDirs(File(base, "files"), File(base, "cache"))
-    override val clock: Clock get() = this@TestPhone.clock
+    override val clock: FakeClock = clock
     override val device = DeviceIdentity(deviceId, deviceName)
     override val settings = FakeSettings(settings)
     override val network = FakeNetwork()

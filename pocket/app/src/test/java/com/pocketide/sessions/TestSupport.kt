@@ -154,6 +154,9 @@ open class FakeGitGate : GitGate {
         return pushResult
     }
     override suspend fun stats(bareRepo: File, branch: String, base: String): Pair<Int, Int> = statsResult
+    override suspend fun deleteRemoteBranch(bareRepo: File, branch: String, token: String): PushResult = PushResult.Pushed
+    override suspend fun <T> withRepository(bareRepo: File, block: (org.eclipse.jgit.lib.Repository) -> T): T =
+        org.eclipse.jgit.storage.file.FileRepositoryBuilder().setGitDir(bareRepo).setBare().build().use(block)
 }
 
 /** A git gate that really fetches from and pushes to a local "GitHub" repository with host git. */
@@ -261,6 +264,13 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     override val waiting: StateFlow<List<PendingUpload>> = MutableStateFlow(emptyList())
     override val usage: StateFlow<DataUsage> = MutableStateFlow(DataUsage(0, 0, emptyMap()))
     override val leaseHolder: StateFlow<String?> = MutableStateFlow(null)
+    override val driveSessions: StateFlow<List<com.pocketide.model.SessionRecord>> = MutableStateFlow(emptyList())
+    override val driveProjects: StateFlow<List<Project>> = MutableStateFlow(emptyList())
+    override val storage: StateFlow<com.pocketide.sync.StorageSummary> = MutableStateFlow(com.pocketide.sync.StorageSummary())
+    override val move: StateFlow<com.pocketide.sync.MoveState> = MutableStateFlow(com.pocketide.sync.MoveState.Idle)
+    override suspend fun moveToAccount(email: String) = Unit
+    override suspend fun eraseOldAccountCopy() = Unit
+    override suspend fun eraseForever(sessionIds: List<String>) = Unit
     override fun requestSync(reason: String) {
         requests += reason
     }
