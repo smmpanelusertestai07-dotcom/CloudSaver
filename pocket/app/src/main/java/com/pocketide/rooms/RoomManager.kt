@@ -7,6 +7,7 @@ import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -84,27 +85,34 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         }
     }
 
-    override suspend fun open(agentId: String, sessionId: String): RoomState = lock(agentId).withLock {
-        val profile = profile(agentId) ?: return@withLock fail(agentId, "PocketIDE does not know this agent. Add it from More agents first.")
+    /**
+     * Engines start detached from the screen that asked: leaving the screen while a room starts
+     * stops the waiting, not the start.
+     */
+    override suspend fun open(agentId: String, sessionId: String): RoomState =
+        env.scope.async { lock(agentId).withLock { openLocked(agentId, sessionId) } }.await()
+
+    private suspend fun openLocked(agentId: String, sessionId: String): RoomState {
+        val profile = profile(agentId) ?: return fail(agentId, "PocketIDE does not know this agent. Add it from More agents first.")
         val session = env.sessions().firstOrNull { it.id == sessionId }
-            ?: return@withLock fail(agentId, "This session is not on this phone yet.")
-        if (session.agentId != agentId) return@withLock fail(agentId, "This session belongs to another agent.")
+            ?: return fail(agentId, "This session is not on this phone yet.")
+        if (session.agentId != agentId) return fail(agentId, "This session belongs to another agent.")
         // An engine that ended but was not cleaned up yet gives its port back first.
         live[agentId]?.takeIf { !it.process.isAlive }?.let { shutDown(agentId, it) }
         val current = live[agentId]
         if (current != null) {
             current.activity.touch(env.now())
-            if (current.sessionId == sessionId) return@withLock running(current)
+            if (current.sessionId == sessionId) return running(current)
             val sameVariables = current.variables == env.variables(session.projectId)
-            if (profile.engine == Engine.CODE_SERVER && sameVariables) return@withLock showSession(current, session)
+            if (profile.engine == Engine.CODE_SERVER && sameVariables) return showSession(current, session)
             // Switching needs a new engine; a turn in progress is never cut off for it.
             if (current.activity.busyWithin(env.now(), BUSY_WINDOW_MS)) {
-                return@withLock RoomState.Failed("${profile.name} is still working in another session. Wait until it finishes, or stop it first.")
+                return RoomState.Failed("${profile.name} is still working in another session. Wait until it finishes, or stop it first.")
             }
             shutDown(agentId, current)
             recordStop(agentId, StopReason.SWITCHED, "${profile.name} restarted to open another session.")
         }
-        start(profile, session)
+        return start(profile, session)
     }
 
     override suspend fun stop(agentId: String) = stopWith(agentId, StopReason.OWNER, "Stopped. Nothing was lost; open it again to continue.")
@@ -145,16 +153,18 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         live[agentId]?.activity?.touch(env.now())
     }
 
-    override suspend fun restart(agentId: String): RoomState = lock(agentId).withLock {
-        val current = live[agentId] ?: return@withLock mutableStates.value[agentId] ?: RoomState.Stopped
-        val session = env.sessions().firstOrNull { it.id == current.sessionId }
-        shutDown(agentId, current)
-        if (session == null) {
-            publish(agentId, RoomState.Stopped)
-            return@withLock RoomState.Stopped
+    override suspend fun restart(agentId: String): RoomState = env.scope.async {
+        lock(agentId).withLock {
+            val current = live[agentId] ?: return@withLock mutableStates.value[agentId] ?: RoomState.Stopped
+            val session = env.sessions().firstOrNull { it.id == current.sessionId }
+            shutDown(agentId, current)
+            if (session == null) {
+                publish(agentId, RoomState.Stopped)
+                return@withLock RoomState.Stopped
+            }
+            start(current.profile, session)
         }
-        start(current.profile, session)
-    }
+    }.await()
 
     override fun recentOutput(agentId: String): List<String> = rings[agentId]?.last(DIAGNOSTIC_LINES).orEmpty()
 
@@ -174,7 +184,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         try {
             withContext(Dispatchers.IO) { prepare(profile) }
         } catch (failed: IOException) {
-            return fail(agentId, "The room could not be prepared: ${failed.message ?: "a file could not be written"}.")
+            return fail(agentId, "The room could not be prepared: ${reason(failed)}")
+        } catch (failed: IllegalArgumentException) {
+            return fail(agentId, "The room could not be prepared: ${reason(failed)}")
+        } catch (failed: IllegalStateException) {
+            return fail(agentId, "The room could not be prepared: ${reason(failed)}")
         }
         engineProblem(profile)?.let { return fail(agentId, it) }
 
@@ -197,9 +211,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         env.phoneBridge.start(agentId)
         val process = try {
             withContext(Dispatchers.IO) { env.computer.start(command) }
-        } catch (failed: Exception) {
-            withContext(Dispatchers.IO) { bridgeFiles.delete(secretFile) }
-            return fail(agentId, "${profile.name} could not start: ${reason(failed)}")
+        } catch (failed: IOException) {
+            return couldNotStart(profile, bridgeFiles, secretFile, failed)
+        } catch (failed: IllegalStateException) {
+            return couldNotStart(profile, bridgeFiles, secretFile, failed)
+        } catch (failed: IllegalArgumentException) {
+            return couldNotStart(profile, bridgeFiles, secretFile, failed)
         }
         val room = LiveRoom(profile, process, chosenPort, variables, ActivityClock(env.now(), IDLE_MS), session.id)
         live[agentId] = room
@@ -215,7 +232,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         if (!ready) {
             val alive = process.isAlive
             shutDown(agentId, room)
-            val lastWords = ring(agentId).last(1).firstOrNull()?.let { " Its last words: $it" }.orEmpty()
+            val lastWords = ring(agentId).last(LAST_WORDS).takeIf { it.isNotEmpty() }
+                ?.let { " Its last words: ${it.joinToString(" / ")}" }.orEmpty()
             val why = if (alive) "did not answer within ${READY_MS / 1000} seconds." else "stopped while starting."
             return fail(agentId, "${profile.name} $why$lastWords")
         }
@@ -235,6 +253,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         room.watcher = env.scope.launch { watch(agentId, room) }
         ensureMonitor()
         return running(room).also { publish(agentId, it) }
+    }
+
+    private suspend fun couldNotStart(profile: RoomProfile, bridgeFiles: RoomFiles, secretFile: String, failed: Exception): RoomState {
+        withContext(Dispatchers.IO) { bridgeFiles.delete(secretFile) }
+        return fail(profile.agentId, "${profile.name} could not start: ${reason(failed)}")
     }
 
     /** Folders, PocketIDE's tools inside the computer, and the room's configuration. */
@@ -385,7 +408,16 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 }
             }
             val now = env.now()
-            for ((agentId, room) in live) sample(agentId, room, now)
+            for ((agentId, room) in live) {
+                try {
+                    sample(agentId, room, now)
+                } catch (failed: IOException) {
+                    // One unreadable sample must not end the watch over every room.
+                    ring(agentId).add("[PocketIDE] Activity could not be read: ${failed.message}")
+                } catch (failed: IllegalStateException) {
+                    ring(agentId).add("[PocketIDE] Activity could not be read: ${failed.message}")
+                }
+            }
             terminals.sample(now, procs)
             mutableSleeps.value = live.mapValues { (_, room) -> room.activity.sleepsAt() }
         }
@@ -523,6 +555,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         const val POLL_MS = 500L
         const val MEMORY_STEP_BYTES = 16L * 1024 * 1024
         const val DIAGNOSTIC_LINES = 50
+        const val LAST_WORDS = 3
         const val MAX_PREVIEW_PORTS = 10
         const val SECRET_BYTES = 32
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
