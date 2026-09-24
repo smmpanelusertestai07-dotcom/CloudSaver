@@ -33,9 +33,18 @@ interface VaultKeys {
 
     /**
      * First phone: makes the key, stores both halves and the phone copy. A Google account that
-     * already has a vault is restored instead, never replaced.
+     * already has a vault is restored instead, never replaced: when that vault cannot be opened
+     * this throws [VaultException] with the reason (the extra password is needed, or the key is
+     * lost), and the owner may then choose [startOver].
      */
     suspend fun setUp()
+
+    /**
+     * "Start with a new key", after the owner confirmed that the old key is gone for good: makes a
+     * new key for this Google account although its old vault cannot be opened. Chats saved with
+     * the old key stay unreadable. Does nothing when this phone holds a key.
+     */
+    suspend fun startOver()
 
     /**
      * New phone or reinstall: fetches both halves and rebuilds the key. Returns Ready,
@@ -85,7 +94,7 @@ interface VaultKeys {
      * returns to [KeyState.None], so the next set-up makes a new vault. The Drive side is the
      * caller's to erase; the Half G left in GitHub pairs with nothing once Half D is gone.
      */
-    suspend fun forget() {}
+    suspend fun forget()
 
     fun cipher(): VaultCipher
 
@@ -102,7 +111,7 @@ interface VaultKeys {
 private val NO_NOTICE: StateFlow<String?> = MutableStateFlow(null)
 
 /** A vault problem, with a plain sentence the owner can act on. */
-open class VaultException(message: String) : Exception(message)
+open class VaultException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 /** The extra password did not open Half G. */
 class WrongPasswordException : VaultException("That password is not right. Check it and try again.")

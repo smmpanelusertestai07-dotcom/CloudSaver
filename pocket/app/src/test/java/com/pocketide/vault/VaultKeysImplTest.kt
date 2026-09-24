@@ -526,15 +526,17 @@ class VaultKeysImplTest {
         failsWith<IOException> { b.rekey(RekeyReason.OWNER_ASKED) }
         a.rekey(RekeyReason.OWNER_ASKED)
         val chat = a.seal("written by A with key 2")
+        val aKey = VaultFixtures.identities(a.exportKeyCopy()).first()
 
-        assertEquals(VaultText.ANOTHER_PHONE, failsWith<VaultException> { b.checkKeyring() }.message)
+        // B drops its stale change and takes A's key in the same check.
+        b.checkKeyring()
+        assertEquals(2, b.generation())
+        assertEquals(aKey, VaultFixtures.identities(b.exportKeyCopy()).first())
+        assertEquals("written by A with key 2", b.open(chat))
+        assertEquals(KeyState.Ready, b.state.value)
         val fresh = newPhone().vault()
         assertEquals("A's key check and history are intact", KeyState.Ready, fresh.restore())
         assertEquals("written by A with key 2", fresh.open(chat))
-
-        b.checkKeyring()
-        assertEquals(2, b.generation())
-        assertEquals("written by A with key 2", b.open(chat))
     }
 
     @Test

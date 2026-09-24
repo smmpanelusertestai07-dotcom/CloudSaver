@@ -17,6 +17,7 @@ import com.pocketide.github.WorkflowRun
 import com.pocketide.google.DriveFile
 import com.pocketide.google.DriveQuota
 import com.pocketide.google.DriveStore
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.ByteArrayInputStream
@@ -36,6 +37,15 @@ class FakeDrive : DriveStore {
 
     /** Uploads still to fail, for interrupted-change tests. */
     var failUploads = 0
+
+    /** Bytes a download sends beyond the listed size, as when a file changes between listing and reading. */
+    var padDownloads = 0
+
+    /** When set, every upload waits for it first, so a test can cancel a change in the middle. */
+    var uploadGate: CompletableDeferred<Unit>? = null
+
+    /** Uploads that reached the gate, so a test knows when to cancel. */
+    val uploadsWaiting = MutableStateFlow(0)
 
     fun bytes(name: String): ByteArray? = files.values.firstOrNull { it.name == name }?.bytes
 
@@ -57,6 +67,10 @@ class FakeDrive : DriveStore {
     override suspend fun upload(name: String, source: File, existingId: String?): DriveFile = uploadBytes(name, source.readBytes(), existingId)
 
     override suspend fun uploadBytes(name: String, bytes: ByteArray, existingId: String?): DriveFile {
+        uploadGate?.let {
+            uploadsWaiting.value++
+            it.await()
+        }
         if (failUploads > 0) {
             failUploads--
             throw IOException("connection reset")
@@ -66,7 +80,7 @@ class FakeDrive : DriveStore {
         return DriveFile(id, name, bytes.size.toLong(), null, null)
     }
 
-    override suspend fun download(id: String, sink: OutputStream) = sink.write(files.getValue(id).bytes)
+    override suspend fun download(id: String, sink: OutputStream) = sink.write(files.getValue(id).bytes + ByteArray(padDownloads))
 
     override suspend fun open(id: String): InputStream = ByteArrayInputStream(files.getValue(id).bytes)
 
@@ -92,6 +106,9 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
     val repos = LinkedHashMap<String, Repo>()
     var connected = true
 
+    /** The keyring exists but the GitHub App cannot see it (left out of the installation's repositories). */
+    var keyringHidden = false
+
     /** File writes still to fail, for interrupted-change tests. */
     var failWrites = 0
 
@@ -103,9 +120,12 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
 
     private fun info(name: String, repo: Repo) = RepoInfo(owner, name, repo.isPrivate, "main", 0, "", "", null)
 
+    /** What the App can see: GitHub answers 404 for a repository outside its installation. */
+    private fun visible(name: String): Repo? = repos[name]?.takeUnless { keyringHidden && name == VaultKeyFiles.KEYRING_REPO }
+
     override suspend fun repo(owner: String, name: String): RepoInfo? {
         ensureConnected()
-        return repos[name]?.let { info(name, it) }
+        return visible(name)?.let { info(name, it) }
     }
 
     override suspend fun createPrivateRepo(name: String, description: String, autoInit: Boolean): RepoInfo {
@@ -128,7 +148,7 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
 
     override suspend fun readFile(owner: String, name: String, path: String): RepoFile? {
         ensureConnected()
-        return repos[name]?.files?.get(path)
+        return visible(name)?.files?.get(path)
     }
 
     override suspend fun writeFile(owner: String, name: String, path: String, bytes: ByteArray, message: String, sha: String?) {
@@ -167,9 +187,16 @@ class FakeGitHub(private val owner: String = OWNER) : GitHubApi {
 
 /** Stands in for the Keystore: reversible, and never stores the plain bytes as they are. */
 class TestBox : SecretBox {
+    /** Opens still to fail, as the Keystore sometimes does for a moment after the phone starts. */
+    var failOpens = 0
+
     override fun seal(plain: ByteArray) = byteArrayOf(7) + plain.map { (it.toInt() xor 0x5a).toByte() }
 
     override fun open(sealed: ByteArray): ByteArray {
+        if (failOpens > 0) {
+            failOpens--
+            throw IllegalStateException("Keystore is not ready")
+        }
         require(sealed.isNotEmpty() && sealed[0].toInt() == 7) { "Unknown sealed format" }
         return sealed.copyOfRange(1, sealed.size).map { (it.toInt() xor 0x5a).toByte() }.toByteArray()
     }
@@ -189,7 +216,8 @@ internal class Accounts(val drive: FakeDrive = FakeDrive(), val gitHub: FakeGitH
 
 /** A phone: its own sealed storage, and a vault that can be made again as after a restart. */
 internal class TestPhone(private val accounts: Accounts, val dir: File) {
-    val store = SecureStore(dir, TestBox())
+    val box = TestBox()
+    val store = SecureStore(dir, box)
     var passwordSetting: Boolean? = null
 
     fun vault(): VaultKeysImpl = VaultKeysImpl(

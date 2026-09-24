@@ -22,9 +22,14 @@ object VaultKeyFiles {
 
 internal const val KEY_FILE_FORMAT = 1
 
+/** Far above any real number of key changes; a larger generation in a key file means it is damaged. */
+internal const val MAX_GENERATION = 1_000_000
+
 /** One key on the phone ("vault.keys" is a JSON list of these, newest first). */
 @Serializable
-internal data class StoredKey(val generation: Int, val ageSecretKey: String)
+internal data class StoredKey(val generation: Int, val ageSecretKey: String) {
+    override fun toString() = "StoredKey(generation=$generation)"
+}
 
 @Serializable
 internal data class HalfEntry(val generation: Int, val half: String)
@@ -58,7 +63,9 @@ internal data class PasswordRecord(
     val parallelism: Int,
     val salt: String,
     val key: String,
-)
+) {
+    override fun toString() = "PasswordRecord(memoryKiB=$memoryKiB, iterations=$iterations, parallelism=$parallelism)"
+}
 
 @Serializable
 internal enum class ChangeKind {
@@ -80,7 +87,9 @@ internal data class KeyChange(
     val ageSecretKey: String,
     val halfD: String,
     val reason: String? = null,
-)
+) {
+    override fun toString() = "KeyChange(kind=$kind, generation=$generation, reason=$reason)"
+}
 
 /** What this phone knows about its key beyond the key itself ("vault.state"). */
 @Serializable
@@ -115,7 +124,13 @@ internal object VaultText {
     const val HALVES_WRONG = "The key halves do not rebuild your key.$WAY_OUT"
     const val CHECK_MISSING = "The key check in Drive is missing, so a rebuilt key cannot be trusted.$WAY_OUT"
     const val NEWER_APP = "Your key was saved by a newer PocketIDE. Update the app first."
-    const val ANOTHER_PHONE = "Another phone changed the key. Open your chats' key again on this phone."
+    const val ANOTHER_PHONE = "Another phone changed your chats' key. Try again after this phone has synced."
+    const val ANOTHER_VAULT =
+        "Your Google Drive now holds a key made on another phone, so this phone's key is no longer saved there."
+    const val PASSWORD_NEEDED = "Your key has an extra password. Enter it to open your chats."
+    const val KEYRING_NOT_MADE =
+        "PocketIDE could not make your private pocketide-keyring repository on GitHub. If it already exists, " +
+            "give the PocketIDE GitHub App access to it: on GitHub, Settings, Applications, PocketIDE, Configure."
     const val HISTORY_UNREADABLE = "Chats saved before the last key change may not open on this phone."
     const val KEYRING_PUBLIC =
         "Your pocketide-keyring repository is public, so PocketIDE changed your chats' key. " +
