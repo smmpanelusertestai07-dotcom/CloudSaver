@@ -36,7 +36,7 @@ def _strip_comment(value: str) -> str:
 
 def _split_key(content: str) -> tuple[str, str] | None:
     """("key", "rest") for "key: rest" or "key:", honouring a quoted key; None otherwise."""
-    if content[:1] in "'\"":
+    if content[:1] and content[0] in "'\"":
         end = content.find(content[0], 1)
         if end < 0 or content[end + 1:end + 2] != ":":
             return None
@@ -147,7 +147,7 @@ class _Parser:
 
     def _value(self, rest: str, indent: int):
         rest = _strip_comment(rest)
-        if rest[:1] in "|>":
+        if rest[:1] and rest[0] in "|>":
             return self._block_scalar(indent, folded=rest.startswith(">"))
         if rest:
             return _scalar(rest)
