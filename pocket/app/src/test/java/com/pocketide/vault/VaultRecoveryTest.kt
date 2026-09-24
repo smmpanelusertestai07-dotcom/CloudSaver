@@ -258,6 +258,26 @@ class VaultRecoveryTest {
     }
 
     @Test
+    fun `the extra password can be set while a lost phone's half-saved key sits in Drive`() = runTest {
+        val lost = newPhone().vault()
+        lost.setUp()
+        val phone = newPhone().vault()
+        phone.restore()
+        val chat = phone.seal("written before the password")
+        accounts.gitHub.failWrites = 1
+        failsWith<IOException> { lost.rekey(RekeyReason.OWNER_ASKED) }
+
+        phone.setExtraPassword("pw".toCharArray())
+        assertEquals(KeyState.Ready, phone.state.value)
+        assertEquals(3, phone.generation())
+        assertNotNull(halfG().wrapped)
+        val fresh = newPhone().vault()
+        assertEquals(KeyState.NeedsPassword, fresh.restore())
+        assertEquals(KeyState.Ready, fresh.restore("pw".toCharArray()))
+        assertEquals("written before the password", fresh.open(chat))
+    }
+
+    @Test
     fun `another phone's key change on its way is never rolled back or re-keyed over`() = runTest {
         val a = newPhone().vault()
         a.setUp()

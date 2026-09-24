@@ -132,13 +132,14 @@ internal class VaultKeysImpl(
             resumePending()
             val repo = remote.keyring(login)
             if (repo != null && !isSafe(repo, remote.otherCollaborators(login))) throw VaultException(VaultText.MAKE_PRIVATE_FIRST)
-            // Fresh halves of an older key would be refused: this phone first takes the newer key at its next sync.
-            if ((readHalfDOrNull()?.generation ?: 0) > generation()) throw VaultException(VaultText.ANOTHER_PHONE)
+            val behind = (readHalfDOrNull()?.generation ?: 0) > generation()
+            if (behind && anotherKeyOwnsDrive()) throw VaultException(VaultText.ANOTHER_PHONE)
             val record = password?.let { withContext(cpu) { HalfPassword.derive(it, passwordCost, random) }.toRecord() }
             savePhone(phoneState.copy(password = record, passwordOn = record != null))
             onPasswordChanged(record != null)
-            // Fresh halves: the unwrapped Half G stays in the keyring's git history, and it must not pair with the new Half D.
-            start(resplit(keys.first()))
+            // Fresh halves: the unwrapped Half G stays in the keyring's git history, and it must not pair with the new
+            // Half D. Over a newer key a lost phone left half saved, fresh halves of this key would be refused.
+            if (behind) rekeyLocked(RekeyReason.OWNER_ASKED) else start(resplit(keys.first()))
         }
     }
 
@@ -459,13 +460,13 @@ internal class VaultKeysImpl(
         // A new key that was already on its way is the one asked for.
         if (pending?.kind == ChangeKind.REKEY && generation() == pending.generation) return
         val drive = readHalfDOrNull()?.generation ?: 0
-        // Ahead of this phone with a key check its keys do not open: another phone's newer key, taken at the next sync.
-        if (drive > generation() && readDriveOrNull(VaultKeyFiles.KEY_CHECK)?.let { opensWithNone(it) } == true) {
-            throw VaultException(VaultText.ANOTHER_PHONE)
-        }
+        if (drive > generation() && anotherKeyOwnsDrive()) throw VaultException(VaultText.ANOTHER_PHONE)
         // Numbered above a newer key another phone left half saved, so this one is never taken for an old change.
         start(changeTo(ChangeKind.REKEY, maxOf(generation(), drive) + 1, AgeIdentity.generate(random), reason))
     }
+
+    /** Drive's key check opens with none of this phone's keys: another phone's newer key, which this phone takes at its next sync. */
+    private suspend fun anotherKeyOwnsDrive(): Boolean = readDriveOrNull(VaultKeyFiles.KEY_CHECK)?.let { opensWithNone(it) } == true
 
     private suspend fun checkLocked(login: String): KeyringCheck {
         mutableNotice.value = null
