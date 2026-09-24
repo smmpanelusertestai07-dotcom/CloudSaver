@@ -1,0 +1,56 @@
+# PocketIDE build: a Windows program, on GitHub's Windows machine. It builds a .NET solution
+# (`dotnet build` and `dotnet test`), a Rust crate (`cargo build --release`) or a Node project
+# (`npm ci` and `npm run build`), whichever the repository has, and sends the log and the
+# build output back into the session's Media.
+#
+# Cost: a Windows minute counts as two minutes of a private repository's allowance (a public
+# repository is free).
+name: PocketIDE Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          solution=$(find . -maxdepth 2 \( -name '*.sln' -o -name '*.slnx' \) -not -path '*/.*' | head -n 1)
+          if [ -n "$solution" ]; then
+            dotnet build "$solution" -c Release 2>&1 | tee out/build.txt
+            dotnet test "$solution" -c Release --no-build 2>&1 | tee out/tests.txt
+            dotnet publish "$solution" -c Release -o out/publish 2>&1 | tee -a out/build.txt
+          elif [ -f Cargo.toml ]; then
+            cargo build --release 2>&1 | tee out/build.txt
+            find target/release -maxdepth 1 -name '*.exe' -exec cp {} out/ \;
+          elif [ -f package.json ]; then
+            npm ci 2>&1 | tee out/build.txt
+            npm run build --if-present 2>&1 | tee -a out/build.txt
+          else
+            echo "No .sln, Cargo.toml or package.json found." >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pocketide-windows
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 7
