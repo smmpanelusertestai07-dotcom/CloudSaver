@@ -7,6 +7,7 @@ import android.text.style.StyleSpan
 import android.text.style.TypefaceSpan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,11 +38,11 @@ import com.pocketide.github.NotConnectedException
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.IOException
 
 private sealed interface DeviceFlow {
     data object Idle : DeviceFlow
@@ -164,12 +165,15 @@ private fun WaitingForApproval(code: DeviceCode, offline: Boolean, openUrl: (Str
                     .padding(vertical = 6.dp)
                     .semantics { contentDescription = "Code ${code.userCode.toList().joinToString(" ")}" },
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
                 StatusChip(
                     if (offline) "No connection, still trying" else "Waiting for you on GitHub",
                     if (offline) Tone.WARN else Tone.NEUTRAL,
                 )
-                Spacer(Modifier.width(8.dp))
                 Text(
                     "Expires in ${Formats.countdown(code.expiresAtMs - now)}",
                     style = MaterialTheme.typography.bodySmall,

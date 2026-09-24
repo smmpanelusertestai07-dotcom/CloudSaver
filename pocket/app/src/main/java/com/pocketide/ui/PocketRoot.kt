@@ -66,7 +66,8 @@ fun PocketRoot(activity: FragmentActivity) {
             val access by graph.access.state.collectAsStateWithLifecycle()
             // Asked once: the answer depends on hardware and Android, which do not change while running.
             val unsupported = remember { runCatching { graph.limiter.unsupportedReason() }.getOrNull() }
-            val appLocked = RootGate.of(settings.appLock, unlocked, unsupported, access.lock, settings.onboardingDone) == RootGate.AppLocked
+            val appLocked = RootGate.appLocked(settings.appLock, unlocked)
+            // What shows once past the app lock; the lock itself is drawn over it below.
             val gate = RootGate.of(
                 appLockOn = false,
                 unlocked = true,
@@ -81,9 +82,14 @@ fun PocketRoot(activity: FragmentActivity) {
             val navController = rememberNavController()
             val saved = rememberSaveableStateHolder()
 
+            // No keyboard stays open over the lock.
+            val focus = LocalFocusManager.current
+            LaunchedEffect(appLocked) { if (appLocked) focus.clearFocus(force = true) }
+
             Box(Modifier.fillMaxSize()) {
                 if (!appLocked || everUnlocked) {
-                    Box(if (appLocked) Modifier.fillMaxSize().hiddenUnderLock() else Modifier.fillMaxSize()) {
+                    // The same subtree whether hidden or not; only its modifier changes.
+                    Box(Modifier.fillMaxSize().hiddenWhen(appLocked)) {
                         Crossfade(targetState = gate, animationSpec = tween(220), label = "root") { shown ->
                             when (shown) {
                                 RootGate.AppLocked -> Unit
@@ -108,13 +114,9 @@ fun PocketRoot(activity: FragmentActivity) {
     }
 }
 
-/** Not drawn, not read by TalkBack, and without focus, so no keyboard stays open over the lock. */
-@Composable
-private fun Modifier.hiddenUnderLock(): Modifier {
-    val focus = LocalFocusManager.current
-    LaunchedEffect(Unit) { focus.clearFocus(force = true) }
-    return graphicsLayer { alpha = 0f }.clearAndSetSemantics {}
-}
+/** Not drawn and not read by TalkBack while [hidden]. */
+private fun Modifier.hiddenWhen(hidden: Boolean): Modifier =
+    if (hidden) graphicsLayer { alpha = 0f }.clearAndSetSemantics {} else this
 
 @Composable
 private fun AppLockGate(graph: AppGraph, activity: FragmentActivity) {

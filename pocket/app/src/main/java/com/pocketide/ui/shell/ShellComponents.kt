@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -54,8 +55,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.pocketide.R
@@ -131,17 +135,22 @@ fun StepHeader(step: OnboardingStep, modifier: Modifier = Modifier, required: Bo
             }
         }
         Spacer(Modifier.height(10.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (required) {
-                Text(
-                    " · Required",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = toneColor(Tone.WARN),
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            Spacer(Modifier.weight(1f))
+        // Wraps instead of squeezing the time chip away at the largest font sizes.
+        FlowRow(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            val warn = toneColor(Tone.WARN)
+            Text(
+                buildAnnotatedString {
+                    append(label)
+                    if (required) withStyle(SpanStyle(color = warn, fontWeight = FontWeight.SemiBold)) { append(" · Required") }
+                },
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             step.usualTime?.let { StatusChip(it, Tone.NEUTRAL) }
         }
     }

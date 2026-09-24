@@ -20,10 +20,20 @@ class ShellLogicTest {
     @Test
     fun gatesFollowThePlannedOrder() {
         assertEquals(RootGate.Refused("old"), RootGate.of(true, true, "old", LockReason.DriveDisconnected, true))
-        assertEquals(RootGate.Locked(LockReason.GitHubDisconnected), RootGate.of(true, true, null, LockReason.GitHubDisconnected, false))
+        assertEquals(RootGate.Locked(LockReason.GitHubDisconnected), RootGate.of(true, true, null, LockReason.GitHubDisconnected, true))
         assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, null, false))
         assertEquals(RootGate.Main, RootGate.of(false, false, null, null, true))
         assertEquals(RootGate.Main, RootGate.of(true, true, null, null, true))
+    }
+
+    @Test
+    fun setUpIsNotLockedForWhatSetUpItselfConnects() {
+        assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, LockReason.GitHubDisconnected, false))
+        assertEquals(RootGate.Onboarding, RootGate.of(false, false, null, LockReason.DriveDisconnected, false))
+        // A returning owner's old phone still holds the vault: "Use here?" comes during set-up too.
+        assertEquals(RootGate.Locked(LockReason.OtherPhone("Pixel 7")), RootGate.of(false, false, null, LockReason.OtherPhone("Pixel 7"), false))
+        assertEquals(RootGate.Locked(LockReason.StorageFull(true)), RootGate.of(false, false, null, LockReason.StorageFull(true), false))
+        assertEquals(RootGate.Refused("32-bit"), RootGate.of(false, false, "32-bit", LockReason.GitHubDisconnected, false))
     }
 
     @Test

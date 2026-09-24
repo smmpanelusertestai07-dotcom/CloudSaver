@@ -16,6 +16,8 @@ sealed interface RootGate {
         /**
          * The app lock comes first: nothing, not even why the app is locked, shows to someone
          * who has not passed it. An unsupported phone is refused before any account screen.
+         * Before set-up is finished, a missing GitHub or Drive is what set-up itself fixes, so
+         * it is not a lock; another phone or a full Drive still are.
          */
         fun of(
             appLockOn: Boolean,
@@ -24,12 +26,17 @@ sealed interface RootGate {
             lock: LockReason?,
             onboardingDone: Boolean,
         ): RootGate = when {
-            appLockOn && !unlocked -> AppLocked
+            appLocked(appLockOn, unlocked) -> AppLocked
             unsupportedReason != null -> Refused(unsupportedReason)
-            lock != null -> Locked(lock)
+            lock != null && (onboardingDone || !setUpFixes(lock)) -> Locked(lock)
             !onboardingDone -> Onboarding
             else -> Main
         }
+
+        fun appLocked(appLockOn: Boolean, unlocked: Boolean): Boolean = appLockOn && !unlocked
+
+        private fun setUpFixes(lock: LockReason): Boolean =
+            lock == LockReason.GitHubDisconnected || lock == LockReason.DriveDisconnected
     }
 }
 
