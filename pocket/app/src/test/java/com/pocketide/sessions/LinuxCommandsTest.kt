@@ -36,7 +36,7 @@ class LinuxCommandsTest {
     }
 
     @Test
-    fun `a session's worktree is added and locked by git inside linux, in the agent's room`() = runBlocking {
+    fun `a session's worktree is added and locked by git inside linux, in the agent's room`() = runBlocking<Unit> {
         val computer = ScriptedComputer { 0 to emptyList() }
         val session = manager(computer).start(PROJECT_ID, "claude", "Login fix")
 
@@ -57,14 +57,14 @@ class LinuxCommandsTest {
     }
 
     @Test
-    fun `a name taken on github is skipped`() = runBlocking {
+    fun `a name taken on github is skipped`() = runBlocking<Unit> {
         val computer = ScriptedComputer { 0 to emptyList() }
         val session = manager(computer, branchTaken = true).start(PROJECT_ID, "claude", "Login fix")
         assertEquals("pocket/claude/2026-09-24-login-fix-2", session.branch)
     }
 
     @Test
-    fun `a name git refuses as taken is retried with the next number`() = runBlocking {
+    fun `a name git refuses as taken is retried with the next number`() = runBlocking<Unit> {
         var first = true
         val computer = ScriptedComputer {
             if (first) {
@@ -80,7 +80,7 @@ class LinuxCommandsTest {
     }
 
     @Test
-    fun `git's own failure reaches the owner in one plain sentence`() = runBlocking {
+    fun `git's own failure reaches the owner in one plain sentence`() = runBlocking<Unit> {
         val computer = ScriptedComputer { 128 to listOf("fatal: invalid reference: refs/remotes/origin/main") }
         try {
             manager(computer).start(PROJECT_ID, "claude", "x")
@@ -91,7 +91,7 @@ class LinuxCommandsTest {
     }
 
     @Test
-    fun `without a computer nothing runs, and the owner is told what to do`() = runBlocking {
+    fun `without a computer nothing runs, and the owner is told what to do`() = runBlocking<Unit> {
         val computer = ScriptedComputer { 0 to emptyList() }
         computer.state.value = ComputerState.NotInstalled
         try {

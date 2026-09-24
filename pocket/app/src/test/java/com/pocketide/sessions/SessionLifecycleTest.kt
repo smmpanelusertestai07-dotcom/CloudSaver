@@ -56,7 +56,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `start makes a branch named after the chat and a locked worktree inside linux`() = runBlocking {
+    fun `start makes a branch named after the chat and a locked worktree inside linux`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         rig.now = java.time.Instant.parse("2026-09-24T20:00:00Z").toEpochMilli() // 25 Sep in India
 
@@ -81,7 +81,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `names already taken get -2 and -3, and a missing title reads as session`() = runBlocking {
+    fun `names already taken get -2 and -3, and a missing title reads as session`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val first = sessions.start(PROJECT_ID, "claude", "Dark theme")
         val second = sessions.start(PROJECT_ID, "claude", "dark THEME!")
@@ -97,14 +97,14 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `public repositories get neutral branch names`() = runBlocking {
+    fun `public repositories get neutral branch names`() = runBlocking<Unit> {
         val rig = GitRig(temp.newFolder("public"), isPrivate = false)
         val session = rig.manager(scope).start(PROJECT_ID, "claude", "Secret acquisition plan")
         assertEquals("pocket/claude/2026-09-24-${session.id.replace("-", "").take(8)}", session.branch)
     }
 
     @Test
-    fun `records survive a restart, and rename and backup choices are kept`() = runBlocking {
+    fun `records survive a restart, and rename and backup choices are kept`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login")
         sessions.rename(session.id, "  Login\nfix  ")
@@ -126,7 +126,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `delete moves to recently deleted, removes the phone copy and keeps the branch`() = runBlocking {
+    fun `delete moves to recently deleted, removes the phone copy and keeps the branch`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login fix")
         rig.agentCommits(session, "app/Login.kt", "class Login\n")
@@ -154,7 +154,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `a chat whose bytes did not reach drive keeps its phone copy until they do`() = runBlocking {
+    fun `a chat whose bytes did not reach drive keeps its phone copy until they do`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login fix")
         val transcript = claudeTranscript(session)
@@ -170,7 +170,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `a deleted chat without commits leaves no branch or worktree behind`() = runBlocking {
+    fun `a deleted chat without commits leaves no branch or worktree behind`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Just a question")
 
@@ -185,7 +185,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `delete forever drops the chat here and hands it to the sync engine to erase`() = runBlocking {
+    fun `delete forever drops the chat here and hands it to the sync engine to erase`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val kept = sessions.start(PROJECT_ID, "claude", "Keep me")
         val session = sessions.start(PROJECT_ID, "claude", "Erase me")
@@ -216,7 +216,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `conflict copies from sync are listed, read-only, and cannot go on main`() = runBlocking {
+    fun `conflict copies from sync are listed, read-only, and cannot go on main`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login fix")
         val copy = session.copy(id = UUID.randomUUID().toString(), status = SessionStatus.CONFLICT_COPY, conflictOf = session.id)
@@ -234,7 +234,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `continue opens the room on the session and makes it the room's active one`() = runBlocking {
+    fun `continue opens the room on the session and makes it the room's active one`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val first = sessions.start(PROJECT_ID, "claude", "One")
         sessions.start(PROJECT_ID, "claude", "Two")
@@ -249,7 +249,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `refresh measures transcripts, tokens, commits and the large transcript warning`() = runBlocking {
+    fun `refresh measures transcripts, tokens, commits and the large transcript warning`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", null)
         claudeTranscript(session)
@@ -275,7 +275,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `the view reads the session's transcript, and sync gets only files it may carry`() = runBlocking {
+    fun `the view reads the session's transcript, and sync gets only files it may carry`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Login")
         val transcript = claudeTranscript(session)
@@ -289,7 +289,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `hand-off starts a session in another room from this session's last commit`() = runBlocking {
+    fun `hand-off starts a session in another room from this session's last commit`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val source = sessions.start(PROJECT_ID, "claude", "Dark theme")
         claudeTranscript(source)
@@ -311,7 +311,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `a branch is renamed until it is on github`() = runBlocking {
+    fun `a branch is renamed until it is on github`() = runBlocking<Unit> {
         val rig = GitRig(temp.newFolder("public"), isPrivate = false)
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Anything")
@@ -332,7 +332,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `files are added to the project folder under a safe new name, or to media`() = runBlocking {
+    fun `files are added to the project folder under a safe new name, or to media`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Files")
 
@@ -378,7 +378,7 @@ class SessionLifecycleTest {
     }
 
     @Test
-    fun `removing a project waits for uncommitted and unpushed work`() = runBlocking {
+    fun `removing a project waits for uncommitted and unpushed work`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Work")
         File(rig.worktree(session), "draft.txt").writeText("draft")

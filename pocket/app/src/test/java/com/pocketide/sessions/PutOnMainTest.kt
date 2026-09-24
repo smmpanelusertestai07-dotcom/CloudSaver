@@ -41,7 +41,7 @@ class PutOnMainTest {
         File(rig.dirs.roomWork("claude"), "alice__demo").listFiles().orEmpty().filter { it.name.startsWith(".merge-") }
 
     @Test
-    fun `merges exactly this session, pushes main and cleans the session up`() = runBlocking {
+    fun `merges exactly this session, pushes main and cleans the session up`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Dark theme")
         val other = sessions.start(PROJECT_ID, "claude", "Something else")
@@ -73,7 +73,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `a branch never pushed is only removed here`() = runBlocking {
+    fun `a branch never pushed is only removed here`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Quick fix")
         rig.agentCommits(session, "fix.txt", "fixed\n")
@@ -85,7 +85,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `conflicts are reported for the agent to resolve, and nothing moves`() = runBlocking {
+    fun `conflicts are reported for the agent to resolve, and nothing moves`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Dark theme")
         rig.agentCommits(session, "app/Settings.kt", "val theme = \"dark\"\n")
@@ -104,7 +104,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `a blocked push says why in plain words and puts the local main back`() = runBlocking {
+    fun `a blocked push says why in plain words and puts the local main back`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Config")
         rig.agentCommits(session, "config.env", "TOKEN=ghp_example\n")
@@ -127,7 +127,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `uncommitted work is refused before anything happens`() = runBlocking {
+    fun `uncommitted work is refused before anything happens`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Draft")
         rig.agentCommits(session, "a.txt", "a\n")
@@ -142,7 +142,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `a session without commits has nothing to put on main`() = runBlocking {
+    fun `a session without commits has nothing to put on main`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Question")
 
@@ -155,7 +155,7 @@ class PutOnMainTest {
     }
 
     @Test
-    fun `a merged chat that goes on starts again from main under the same name`() = runBlocking {
+    fun `a merged chat that goes on starts again from main under the same name`() = runBlocking<Unit> {
         val sessions = rig.manager(scope)
         val session = sessions.start(PROJECT_ID, "claude", "Dark theme")
         rig.agentCommits(session, "app/Settings.kt", "val theme = \"dark\"\n")

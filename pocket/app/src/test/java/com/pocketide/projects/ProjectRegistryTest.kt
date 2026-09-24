@@ -56,7 +56,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `create makes a private repository with a first commit and it is the owner's`() = runBlocking {
+    fun `create makes a private repository with a first commit and it is the owner's`() = runBlocking<Unit> {
         val projects = registry()
 
         val project = projects.create("  My App ", " A small\n app ")
@@ -70,7 +70,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `import takes any pasted form and says when the app cannot reach the repository`() = runBlocking {
+    fun `import takes any pasted form and says when the app cannot reach the repository`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/tool"] = repoInfo("bob", "tool", isPrivate = false, defaultBranch = "trunk")
 
@@ -93,7 +93,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `the owner's own repositories are theirs, and the owner can say otherwise`() = runBlocking {
+    fun `the owner's own repositories are theirs, and the owner can say otherwise`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["alice/site"] = repoInfo("alice", "site")
         val site = projects.import("alice/site", "")
@@ -106,7 +106,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `the first open clones, a big clone asks the data rules first, later opens fetch`() = runBlocking {
+    fun `the first open clones, a big clone asks the data rules first, later opens fetch`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/big"] = repoInfo("bob", "big", sizeKb = 60 * 1024)
         val project = projects.import("bob/big", "")
@@ -130,7 +130,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `a small clone is not big, and an interrupted clone leaves nothing that looks finished`() = runBlocking {
+    fun `a small clone is not big, and an interrupted clone leaves nothing that looks finished`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/small"] = repoInfo("bob", "small", sizeKb = 50 * 1024)
         val project = projects.import("bob/small", "")
@@ -145,7 +145,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `remove refuses while work is not on github, and never touches the repository there`() = runBlocking {
+    fun `remove refuses while work is not on github, and never touches the repository there`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/tool"] = repoInfo("bob", "tool")
         val project = projects.import("bob/tool", "")
@@ -165,7 +165,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `projects are kept across restarts and touched only forward`() = runBlocking {
+    fun `projects are kept across restarts and touched only forward`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/tool"] = repoInfo("bob", "tool")
         val project = projects.import("bob/tool", "")
@@ -183,7 +183,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `a stored list that no longer parses is set aside, never overwritten`() = runBlocking {
+    fun `a stored list that no longer parses is set aside, never overwritten`() = runBlocking<Unit> {
         File(dirs.vault, "projects.json").apply { parentFile?.mkdirs(); writeText("{not json") }
         val projects = registry()
         projects.adopt(emptyList())
@@ -192,7 +192,7 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `adopt takes projects from the vault index and keeps the newest activity`() = runBlocking {
+    fun `adopt takes projects from the vault index and keeps the newest activity`() = runBlocking<Unit> {
         val projects = registry()
         val incoming = Project("dave/lib", "dave", "lib", addedAt = 5, lastActivityAt = 50, cloned = true)
         projects.adopt(listOf(incoming))
