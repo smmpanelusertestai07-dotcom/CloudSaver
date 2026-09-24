@@ -121,11 +121,15 @@ internal class TarGzExtractor {
             Files.createSymbolicLink(path, Paths.get(target))
         }
 
+        /** A hard link names a file earlier in the same archive; anything else is a damaged archive. */
         private fun copyHardLink(path: Path, header: TarHeader) {
             val sourceNames = inside(header.linkName) ?: return
-            val source = guest.existing(sourceNames.joinToString("/")) ?: return
-            val attributes = GuestRoot.attributesOf(source)
-            if (attributes == null || !attributes.isRegularFile || source == path) return
+            val source = guest.existing(sourceNames.joinToString("/"))
+            val attributes = source?.let(GuestRoot::attributesOf)
+            if (source == null || attributes == null || !attributes.isRegularFile) {
+                throw IOException("A hard link to a file that is not in the archive: ${header.name}")
+            }
+            if (source == path) return
             clearForEntry(path, header.name)
             Files.copy(source, path)
             FileModes.set(path, FileModes.forFile(header.mode.ifZero(FileModes.PLAIN)))
