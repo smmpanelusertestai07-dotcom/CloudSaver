@@ -1,11 +1,17 @@
 package com.pocketide.git
 
+import com.pocketide.core.AgentFiles
 import com.pocketide.core.AppJson
+import com.pocketide.core.FileClass
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.Locale
 
-/** What a path alone says, whatever the file holds. Project instruction files are never matched. */
+/**
+ * What a path alone says, whatever the file holds. Project instruction files are never matched.
+ * A copy of a home folder in the repo (dotfiles, or a backup of a room) is judged by
+ * [AgentFiles], the list that also decides what sync uploads and what Your data shows.
+ */
 internal object PathRules {
     class Hit(val kind: FindingKind, val detail: String)
 
@@ -25,6 +31,15 @@ internal object PathRules {
     private val sshKeys = setOf("id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ecdsa_sk", "id_ed25519_sk")
     private val envTemplates = setOf("example", "sample", "template")
 
+    // Where a home's credentials sit. The project folders .claude, .github and the like are left
+    // out: AgentFiles' name patterns (…credential…, …token) are meant for a home and would catch
+    // a project's own hooks and scripts.
+    private val credentialHomes = setOf(".config", ".ssh", ".gnupg", ".local", ".git-credentials", ".netrc")
+    private val agentHomes = setOf(".claude", ".codex", ".gemini")
+
+    // Claude Code reads a project's own instructions from these too.
+    private val projectInstructions = listOf(Regex("^\\.claude/CLAUDE\\.md$"), Regex("^\\.claude/rules/[^/]+\\.md$"))
+
     const val CLAUDE_DATA =
         "Claude Code's own data (chats, history or snapshots). It is kept in your Drive, never on GitHub."
     const val CLAUDE_SIGN_IN = "Claude Code sign-in data. It never leaves the phone."
@@ -35,13 +50,29 @@ internal object PathRules {
     const val ENV_FILE = "A .env file, which holds secrets. Keep it out of git (list it in .gitignore)."
     const val KEYSTORE = "A signing keystore. Keep it out of git; builds get it from GitHub Secrets."
     const val SSH_KEY = "An SSH private key."
+    const val HOME_CREDENTIAL = "A sign-in or key file from a home folder. It never leaves the phone."
+    const val AGENT_DATA = "An AI agent's own data (chats or memory). It is kept in your Drive, never on GitHub."
 
     fun check(path: String): Hit? {
         val parts = path.split('/')
         aiData(parts)?.let { return Hit(FindingKind.AI_DATA, it) }
+        if (isSyncedAgentData(parts)) return Hit(FindingKind.AI_DATA, AGENT_DATA)
         secretFile(parts.last())?.let { return Hit(FindingKind.SECRET, it) }
+        if (isHomeCredential(parts)) return Hit(FindingKind.SECRET, HOME_CREDENTIAL)
         return null
     }
+
+    /** The path from each dot folder on, as if that folder sat in a home. */
+    private fun homeSuffixes(parts: List<String>, roots: Set<String>): Sequence<String> =
+        parts.indices.asSequence().filter { parts[it] in roots }.map { parts.subList(it, parts.size).joinToString("/") }
+
+    private fun isSyncedAgentData(parts: List<String>): Boolean =
+        homeSuffixes(parts, agentHomes).any { suffix ->
+            AgentFiles.classify(suffix) == FileClass.SYNC && projectInstructions.none { it.matches(suffix) }
+        }
+
+    private fun isHomeCredential(parts: List<String>): Boolean =
+        homeSuffixes(parts, credentialHomes).any(AgentFiles::isSecret)
 
     private fun aiData(parts: List<String>): String? {
         val name = parts.last()
@@ -73,6 +104,28 @@ internal object PathRules {
             lower in sshKeys -> SSH_KEY
             else -> null
         }
+    }
+}
+
+/**
+ * Build outputs: they are kept in the session's Media, and builds come from GitHub Actions or
+ * the phone, never from files in git. Libraries a project vendors on purpose (.jar, .so, .dll)
+ * are not matched: Gradle's wrapper and Android's jniLibs are committed by design.
+ */
+internal object BuildOutputs {
+    private val extensions = setOf("apk", "aab", "apks", "xapk", "ipa", "dex", "class", "o", "exe", "dmg", "msi")
+    private val gradleOutputs = setOf("outputs", "intermediates", "tmp")
+
+    fun check(path: String): String? {
+        val parts = path.split('/')
+        val extension = parts.last().substringAfterLast('.', "").lowercase(Locale.ROOT)
+        if (extension in extensions) return "A build output (.$extension). Builds are kept in Media, not in git."
+        return if (inBuildFolder(parts.dropLast(1))) "A file from a build folder. Builds are kept in Media, not in git." else null
+    }
+
+    private fun inBuildFolder(folders: List<String>): Boolean = folders.indices.any { i ->
+        val name = folders[i]
+        name == ".gradle" || name == "DerivedData" || (name == "build" && folders.getOrNull(i + 1) in gradleOutputs)
     }
 }
 

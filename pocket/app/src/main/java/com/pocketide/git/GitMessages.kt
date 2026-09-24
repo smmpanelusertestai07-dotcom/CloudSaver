@@ -35,6 +35,7 @@ internal object GitMessages {
     const val SIGN_IN = "GitHub did not accept the sign-in. Connect GitHub again."
     const val NOT_PERMITTED = "PocketIDE's GitHub App is not allowed to do this in this repository."
     const val FAILED = "Git could not finish this step. Try again."
+    const val NOT_AN_APPROVAL = "This approval does not name a workflow change. Run the check-post again."
 
     fun missingBranch(name: String) = "The branch $name is not on the phone."
 

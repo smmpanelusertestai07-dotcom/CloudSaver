@@ -13,6 +13,8 @@ internal data class RemoteState(
     val defaultBranch: String? = null,
     /** Every ref GitHub showed at the last clone, fetch or push: full ref name to object id. */
     val refs: Map<String, String> = emptyMap(),
+    /** Workflow contents the owner approved, as [WorkflowChanges.approvalKey]s, newest last. */
+    val approvedWorkflows: List<String> = emptyList(),
 ) {
     fun onGitHub(): List<ObjectId> = refs.values.mapNotNull { id ->
         if (ObjectId.isId(id)) ObjectId.fromString(id) else null
@@ -49,8 +51,10 @@ internal class RemoteStates(private val dir: File) {
 
     private fun file(gitDir: File, extension: String) = File(dir, "${keyOf(gitDir)}.$extension")
 
+    // A clone in progress and the finished repo share one record (see [repoName]).
     private fun keyOf(gitDir: File): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(gitDir.path.toByteArray(Charsets.UTF_8))
+        val path = File(gitDir.parentOrRoot(), repoName(gitDir.name) ?: gitDir.name).path
+        val digest = MessageDigest.getInstance("SHA-256").digest(path.toByteArray(Charsets.UTF_8))
         return digest.take(KEY_BYTES).joinToString("") { "%02x".format(it) }
     }
 

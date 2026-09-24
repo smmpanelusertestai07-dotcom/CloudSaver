@@ -32,38 +32,46 @@ internal data class CheckPostLimits(
  * changes is checked: its path, its size, and, for text, the lines it adds. Commit messages are
  * checked too. One finding blocks the push.
  *
+ * Build outputs and changed GitHub Actions code hold the push instead ([Hold]); a workflow
+ * change stops holding it once the owner approved the content the branch ends with.
+ *
  * A merge only answers for the files that differ from every parent, as `git show --cc` does: the
  * rest came from a parent, which is either on GitHub already or checked as a commit of its own.
  */
 internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()) {
 
     /**
-     * Checks the commits reachable from [tip] and not from [onGitHub]. [checkActive] runs between
-     * commits and files and throws to stop (on cancellation).
+     * Checks the commits reachable from [tip] and not from [onGitHub]. [approvedWorkflows] holds
+     * [WorkflowChanges.approvalKey]s. [checkActive] runs between commits and files and throws to
+     * stop (on cancellation).
      */
     fun check(
         repo: Repository,
         tip: ObjectId,
         onGitHub: Collection<ObjectId>,
         knownValues: List<String>,
+        approvedWorkflows: Collection<String> = emptyList(),
         checkActive: () -> Unit,
     ): Verdict {
-        val scan = Scan(KnownValues(knownValues), Findings(limits.maxFindings), checkActive)
+        val scan = Scan(KnownValues(knownValues), Report(limits.maxFindings), checkActive)
         repo.newObjectReader().use { reader ->
             RevWalk(reader).use { walk ->
                 walk.sort(RevSort.TOPO)
                 walk.sort(RevSort.REVERSE, true)
-                walk.markStart(walk.parseCommit(tip))
+                val tipCommit = walk.parseCommit(tip)
+                walk.markStart(tipCommit)
                 onGitHub.forEach { markOnGitHub(walk, reader, it) }
                 for (commit in walk) {
                     checkActive()
                     scan.commits++
                     scan.commit(reader, walk, commit)
-                    if (scan.findings.full) break
+                    if (scan.report.full) break
                 }
+                scan.workflowHolds(reader, tipCommit, approvedWorkflows.toSet())
             }
         }
-        return Verdict(scan.findings.isEmpty, scan.findings.all, scan.commits)
+        val report = scan.report
+        return Verdict(report.isEmpty, report.findings, scan.commits, report.holds)
     }
 
     private fun markOnGitHub(walk: RevWalk, reader: ObjectReader, id: ObjectId) {
@@ -78,8 +86,12 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
         commit?.let(walk::markUninteresting)
     }
 
-    private inner class Scan(val values: KnownValues, val findings: Findings, val checkActive: () -> Unit) {
+    /** A workflow file's first change on the branch: where, and the version before it. */
+    private class Touch(val commit: String, val before: ObjectId?)
+
+    private inner class Scan(val values: KnownValues, val report: Report, val checkActive: () -> Unit) {
         var commits = 0
+        private val workflows = LinkedHashMap<String, Touch>()
 
         fun commit(reader: ObjectReader, walk: RevWalk, commit: RevCommit) {
             val sha = commit.name().take(SHORT_SHA)
@@ -87,7 +99,7 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
             for (change in changes(reader, walk, commit)) {
                 checkActive()
                 file(reader, sha, change)
-                if (findings.full) return
+                if (report.full) return
             }
         }
 
@@ -99,33 +111,60 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
 
         // Each commit's message is its own, so the same problem is reported for every commit.
         private fun inMessage(kind: FindingKind, sha: String, detail: String) =
-            findings.add(kind, COMMIT_MESSAGE, sha, detail, perCommit = true)
+            report.add(kind, COMMIT_MESSAGE, sha, detail, perCommit = true)
 
         private fun file(reader: ObjectReader, sha: String, change: Change) {
             val path = change.path
-            PathRules.check(path)?.let { findings.add(it.kind, path, sha, it.detail); return }
+            if (WorkflowChanges.applies(path)) workflows.getOrPut(path) { Touch(sha, change.oldId) }
+            PathRules.check(path)?.let { report.add(it.kind, path, sha, it.detail); return }
             if (Transcripts.applies(path) && Transcripts.found(head(reader, change.newId))) {
-                findings.add(FindingKind.AI_DATA, path, sha, Transcripts.DETAIL)
+                report.add(FindingKind.AI_DATA, path, sha, Transcripts.DETAIL)
                 return
             }
+            BuildOutputs.check(path)?.let { report.hold(Hold(HoldKind.BUILD_OUTPUT, path, sha, it)); return }
             val size = reader.getObjectSize(change.newId, Constants.OBJ_BLOB)
             if (size > limits.maxFileBytes) {
-                findings.add(FindingKind.TOO_LARGE, path, sha, tooLarge(size))
+                report.add(FindingKind.TOO_LARGE, path, sha, tooLarge(size))
                 return
             }
             val content = small(reader, change.newId) ?: return
             val previous by lazy { change.oldId?.let { small(reader, it) } }
             if (isBinary(content)) {
                 if (values.newIn(content, previous)) {
-                    findings.add(FindingKind.VARIABLE_OR_SECRET_VALUE, path, sha, KnownValues.DETAIL)
+                    report.add(FindingKind.VARIABLE_OR_SECRET_VALUE, path, sha, KnownValues.DETAIL)
                 }
                 return
             }
             val added = addedLines(content, previous)
             for (detail in SecretPatterns.find(path.substringAfterLast('/'), added)) {
-                findings.add(FindingKind.SECRET, path, sha, detail)
+                report.add(FindingKind.SECRET, path, sha, detail)
             }
-            if (values.foundIn(added)) findings.add(FindingKind.VARIABLE_OR_SECRET_VALUE, path, sha, KnownValues.DETAIL)
+            if (values.foundIn(added)) report.add(FindingKind.VARIABLE_OR_SECRET_VALUE, path, sha, KnownValues.DETAIL)
+        }
+
+        /**
+         * One hold per workflow file the branch changes, unless the owner approved the content it
+         * ends with. Only that content can run: GitHub runs the workflows of the commit a branch
+         * points at, and the gate pushes nothing else.
+         */
+        fun workflowHolds(reader: ObjectReader, tip: RevCommit, approved: Set<String>) {
+            for ((path, touch) in workflows) {
+                checkActive()
+                val now = fileAt(reader, tip, path) ?: continue
+                if (now == touch.before) continue
+                val key = WorkflowChanges.approvalKey(path, now)
+                if (key in approved) continue
+                val after = small(reader, now)
+                val before = touch.before?.let { small(reader, it) }
+                val (detail, diff) = if (after == null) {
+                    "Changes GitHub Actions code in $path, too big to show here. Check it on GitHub's website before approving." to ""
+                } else {
+                    val beforeText = before?.toString(Charsets.UTF_8)
+                    WorkflowChanges.describe(path, beforeText, after.toString(Charsets.UTF_8)) to
+                        WorkflowChanges.diff(path, before, after)
+                }
+                report.hold(Hold(HoldKind.WORKFLOW_CHANGE, path, touch.commit, detail, key, diff))
+            }
         }
 
         private fun small(reader: ObjectReader, id: ObjectId): ByteArray? {
@@ -164,18 +203,29 @@ internal class CheckPost(private val limits: CheckPostLimits = CheckPostLimits()
         }
     }
 
-    /** One finding per path and problem, at the oldest commit that has it; the list is capped. */
-    private class Findings(private val max: Int) {
-        val all = mutableListOf<Finding>()
+    /** The regular file at [path] in [commit], or null. */
+    private fun fileAt(reader: ObjectReader, commit: RevCommit, path: String): ObjectId? =
+        TreeWalk.forPath(reader, path, commit.tree)?.use { tree ->
+            tree.getObjectId(0).takeIf { tree.getFileMode(0).isFile() }
+        }
+
+    /** One finding or hold per path and problem, at the oldest commit that has it; the list is capped. */
+    private class Report(private val max: Int) {
+        val findings = mutableListOf<Finding>()
+        val holds = mutableListOf<Hold>()
         private val seen = HashSet<List<Any>>()
 
-        val isEmpty get() = all.isEmpty()
-        val full get() = all.size >= max
+        val isEmpty get() = findings.isEmpty() && holds.isEmpty()
+        val full get() = findings.size + holds.size >= max
 
         fun add(kind: FindingKind, path: String, commit: String, detail: String, perCommit: Boolean = false) {
             if (full) return
             val key = if (perCommit) listOf(kind, path, detail, commit) else listOf(kind, path, detail)
-            if (seen.add(key)) all += Finding(kind, path, commit, detail)
+            if (seen.add(key)) findings += Finding(kind, path, commit, detail)
+        }
+
+        fun hold(hold: Hold) {
+            if (!full && seen.add(listOf(hold.kind, hold.path))) holds += hold
         }
     }
 

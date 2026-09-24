@@ -84,7 +84,10 @@ internal class JGitGate(
         val job = coroutineContext.job
         useRepo(bareRepo) { gateRepo ->
             val tip = gateRepo.repo.exactRef(ref)?.objectId ?: throw GitGateException(GitMessages.missingBranch(branch))
-            scanner.check(gateRepo.repo, tip, gateRepo.state?.onGitHub().orEmpty(), knownValues) { job.ensureActive() }
+            val state = gateRepo.state
+            scanner.check(gateRepo.repo, tip, state?.onGitHub().orEmpty(), knownValues, state?.approvedWorkflows.orEmpty()) {
+                job.ensureActive()
+            }
         }
     }
 
@@ -105,6 +108,17 @@ internal class JGitGate(
         if (!ref.startsWith(SESSION_BRANCHES)) return@pushStep PushResult.Failed(GitMessages.ONLY_SESSION_BRANCHES)
         val job = coroutineContext.job
         useRepo(bareRepo) { deleteBranch(it, ref, token, job) }
+    }
+
+    override suspend fun approveWorkflowChange(bareRepo: File, approvalKey: String) = step {
+        if (!WorkflowChanges.isApprovalKey(approvalKey)) throw GitGateException(GitMessages.NOT_AN_APPROVAL)
+        val gitDir = repos.existing(bareRepo)
+        lockFor(gitDir).withLock {
+            val state = states.read(gitDir)
+                ?: RemoteState(remotes.remoteFor(gitDir) ?: throw GitGateException(GitMessages.UNKNOWN_REMOTE))
+            val approved = (state.approvedWorkflows - approvalKey + approvalKey).takeLast(MAX_APPROVALS)
+            states.write(gitDir, state.copy(approvedWorkflows = approved))
+        }
     }
 
     override suspend fun <T> withRepository(bareRepo: File, block: (Repository) -> T): T =
@@ -151,7 +165,7 @@ internal class JGitGate(
             transport.fetch(Progress(job), TRACKING_SPECS)
         }
         val branch = defaultBranch(result, gateRepo.state?.defaultBranch)
-        states.write(gateRepo.gitDir, RemoteState(gateRepo.url, branch, refsOf(result)))
+        states.write(gateRepo.gitDir, gateRepo.recorded().copy(defaultBranch = branch, refs = refsOf(result)))
         branch?.let { fastForward(gateRepo, it) }
     }
 
@@ -169,14 +183,15 @@ internal class JGitGate(
         return withTransport(repo, gateRepo.remote, token) { transport ->
             // What GitHub has right now; commits it has are not checked again.
             val onGitHub = transport.openFetch().use { connection -> idsOf(connection.refs) }
-            val verdict = scanner.check(repo, tip, onGitHub.values, knownValues) { job.ensureActive() }
+            val approved = gateRepo.state?.approvedWorkflows.orEmpty()
+            val verdict = scanner.check(repo, tip, onGitHub.values, knownValues, approved) { job.ensureActive() }
             if (!verdict.ok) return PushResult.Blocked(verdict)
             val update = RemoteRefUpdate(repo, null as String?, tip, ref, false, trackingRef(ref), null)
             val result = transport.push(Progress(job), listOf(update))
             val outcome = outcomeOf(result.getRemoteUpdate(ref) ?: update, result.messages)
             if (outcome == PushResult.Pushed) {
                 val refs = onGitHub.mapValues { it.value.name } + (ref to tip.name)
-                states.write(gateRepo.gitDir, RemoteState(gateRepo.url, gateRepo.state?.defaultBranch, refs))
+                states.write(gateRepo.gitDir, gateRepo.recorded().copy(refs = refs))
             }
             outcome
         }
@@ -321,7 +336,10 @@ internal class JGitGate(
         val url: String,
         val remote: URIish,
         val state: RemoteState?,
-    )
+    ) {
+        /** The gate's record, or a new one for a repo it has none of. */
+        fun recorded(): RemoteState = state?.copy(url = url) ?: RemoteState(url)
+    }
 
     private suspend fun <T> useRepo(bareRepo: File, block: (GateRepo) -> T): T {
         val gitDir = repos.existing(bareRepo)
@@ -344,7 +362,7 @@ internal class JGitGate(
         return repo.use { block(GateRepo(gitDir, it, url, remote, state)) }
     }
 
-    private fun lockFor(gitDir: File): Mutex = locks.getOrPut(gitDir) { Mutex() }
+    private fun lockFor(gitDir: File): Mutex = locks.getOrPut(repos.identity(gitDir)) { Mutex() }
 
     /** A transport to [remote] only, with the token in memory for this one use. */
     private inline fun <T> withTransport(repo: Repository, remote: URIish, token: String, block: (Transport) -> T): T {
@@ -404,6 +422,9 @@ internal class JGitGate(
         }
 
         const val MAX_HEAD_BYTES = 4096L
+
+        /** Older approvals are dropped; their content is long replaced on any active branch. */
+        const val MAX_APPROVALS = 500
     }
 }
 
