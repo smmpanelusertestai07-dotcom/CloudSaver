@@ -23,7 +23,7 @@ internal object GuideData {
         ),
         p(
             "Sizes. A project's source is usually a few MB; web dependencies add a few hundred. A long, heavy " +
-                "chat can reach a few hundred MB, and shrinks several times when compressed.",
+                "chat can reach a few hundred MB, and much less once compressed.",
         ),
         p(
             "The Your data screen lists everything by type and size, largest sessions first. Secrets are " +
@@ -37,7 +37,7 @@ internal object GuideData {
         ),
         p(
             "Mobile data. Sync sends only new parts, compressed. Big downloads wait for Wi-Fi or ask first. " +
-                "The daily limit in Settings → Data counts only metered networks.",
+                "The daily limit in Settings → Mobile data counts only metered networks.",
         ),
     )
 
@@ -61,7 +61,7 @@ internal object GuideData {
             ),
             row("Remove Google access", "myaccount.google.com → Security → Third-party connections → PocketIDE."),
         ),
-        info("The Drive Android app has no Manage apps. Use the Drive website."),
+        info("The Drive Android app has no Manage apps; use the Drive website. $LABELS_NOTE"),
         link("Drive settings", DocLinks.DRIVE_SETTINGS),
         link("Google's help on disconnecting apps", DocLinks.DRIVE_DISCONNECT_HELP),
         link("GitHub: installed apps", DocLinks.GITHUB_INSTALLATIONS),
@@ -134,9 +134,9 @@ internal object GuideData {
         "Split in two halves, nothing to remember, and why sharing is risky.",
         p(
             "The app makes a random key (age, an open standard) that encrypts every file in Drive, and splits " +
-                "it into two random halves. Half D lives in Drive's hidden folder, Half G in your private GitHub " +
-                "repo pocketide-keyring. Either half alone is useless. The full key stays in this phone's " +
-                "Keystore, which other apps and the computer cannot read.",
+                "it into two random halves: Half D in Drive's hidden folder, Half G in your private GitHub repo " +
+                "pocketide-keyring. Either half alone is useless. The full key stays in this phone's Keystore, " +
+                "which other apps and the computer cannot read. Android erases it on uninstall; the halves rebuild it.",
         ),
         p(
             "Why two places: a new phone rebuilds the key with nothing to remember, and neither Google nor " +
@@ -158,9 +158,9 @@ internal object GuideData {
                 "read the chats. It is asked only on a new phone. Forget it and the chats are lost.",
         ),
         p(
-            "Save a key copy (Advanced) shows the key as text, once, for you to keep somewhere safe, such as " +
-                "a password manager. It covers the one loss the halves cannot: the phone and GitHub gone " +
-                "together. Anyone who has it can read your chats.",
+            "Save a key copy (Advanced) shows the key as text, once, for a password manager. It covers the one " +
+                "loss the halves cannot: the phone and GitHub gone together. Anyone with the copy and your Drive " +
+                "can read your chats.",
         ),
     )
 

@@ -1,5 +1,6 @@
 package com.pocketide.docs
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -15,16 +16,51 @@ class DocsContentTest {
 
     @Test
     fun `guide body stays within the word budget`() {
-        val words = DocsContent.guide.sumOf { wordCount(sectionText(it)) }
-        assertTrue("guide is $words words; the budget is 2,500 to 3,600", words in 2_500..3_600)
+        val perSection = DocsContent.guide.associate { it.id to wordCount(sectionText(it)) }
+        val words = perSection.values.sum()
+        assertTrue("guide is $words words $perSection; the budget is 2,500 to 3,600", words in 2_500..3_600)
     }
 
     @Test
     fun `every FAQ question from the plan is answered`() {
         val asked = DocsContent.faq.map { it.question }.toSet()
-        val missing = PLAN_FAQ.filterNot { it in asked }
+        val missing = (PLAN_FAQ + LATER_FAQ).filterNot { it in asked }
         assertTrue("missing FAQ questions: $missing", missing.isEmpty())
-        assertEquals("FAQ has questions the plan does not list", PLAN_FAQ.size, DocsContent.faq.size)
+        val unlisted = asked - (PLAN_FAQ + LATER_FAQ).toSet()
+        assertTrue("FAQ questions no list names: $unlisted", unlisted.isEmpty())
+    }
+
+    @Test
+    fun `Help's own page ids never clash with a section or a question`() {
+        val ids = DocsContent.sections.map { it.id } + DocsContent.faq.map { it.id }
+        val clashes = ids.filter { it in HELP_PAGE_IDS || it.startsWith(AgentPages.pageId("")) }
+        assertTrue("ids Help uses for other pages: $clashes", clashes.isEmpty())
+    }
+
+    @Test
+    fun `paths through other companies' screens say their labels can move`() {
+        for (id in listOf("without-the-app", "privacy", "conditions")) {
+            assertTrue(id, sectionText(requireSection(id)).contains("if a label moved, the path is still right"))
+        }
+    }
+
+    @Test
+    fun `what is still being tested on phones says so`() {
+        val marked = DocsContent.guide.filter { sectionText(it).contains(BEING_TESTED) }.map { it.id }
+        assertTrue("sections marked: $marked", marked.containsAll(listOf("requirements", "security", "conditions")))
+    }
+
+    @Test
+    fun `security says what a compromised agent can and cannot reach`() {
+        val security = requireSection("security")
+        val reach = security.blocks.filterIsInstance<DocBlock.Table>().first { it.header.first().contains("reach") }
+        val answers = reach.rows.map { it.first() to it.last() }
+        assertTrue(answers.any { (what, answer) -> what.contains("room's home") && answer.startsWith("Yes") })
+        assertTrue(answers.any { (what, answer) -> what.contains("Other rooms") && answer.startsWith("No") })
+        assertTrue(answers.any { (what, answer) -> what.contains("GitHub token") && answer.startsWith("No") })
+        val text = sectionText(security)
+        assertTrue(text.contains("prompt injection"))
+        assertTrue(text.contains("PRoot is not a sandbox"))
     }
 
     @Test
@@ -128,10 +164,15 @@ class DocsContentTest {
     }
 
     @Test
-    fun `permissions section explains every manifest permission`() {
-        val text = sectionText(requireSection("permissions"))
-        val missing = MANIFEST_PERMISSIONS.filterNot { Regex("\\b$it\\b").containsMatchIn(text) }
-        assertTrue("permissions not explained: $missing", missing.isEmpty())
+    fun `permissions section explains exactly the manifest's permissions`() {
+        val declared = manifestPermissions()
+        assertTrue("no permissions read from the manifest", declared.size >= MANIFEST_PERMISSIONS.size)
+        assertTrue(declared.containsAll(MANIFEST_PERMISSIONS))
+        val table = requireSection("permissions").blocks.filterIsInstance<DocBlock.Table>().single()
+        val explained = table.rows.map { it.first() }
+        assertEquals("explained twice", explained.size, explained.toSet().size)
+        assertEquals("permissions and their explanations differ", declared, explained.toSet())
+        assertTrue(table.rows.all { it.last().isNotBlank() })
     }
 
     @Test
@@ -163,6 +204,15 @@ class DocsContentTest {
     }
 
     private fun requireSection(id: String) = checkNotNull(DocsContent.section(id)) { "no section $id" }
+
+    /** The permissions the app's own manifest declares, short names like "INTERNET". */
+    private fun manifestPermissions(): Set<String> {
+        val manifest = listOf(File("src/main/AndroidManifest.xml"), File("app/src/main/AndroidManifest.xml"))
+            .firstOrNull { it.isFile }
+        return USES_PERMISSION.findAll(checkNotNull(manifest) { "manifest not found" }.readText())
+            .map { it.groupValues[1].substringAfterLast('.') }
+            .toSet()
+    }
 
     private fun sectionText(section: DocSection) =
         (listOf(section.summary) + section.blocks.flatMap(::blockLines)).joinToString(" ")
@@ -203,8 +253,13 @@ class DocsContentTest {
         val GUIDE_IDS = listOf(
             "what-it-is", "requirements", "how-it-works", "agents", "no-third-party", "your-data",
             "without-the-app", "deleting", "recovery", "the-key", "security", "privacy", "safety",
-            "github-actions", "conditions", "limits", "permissions",
+            "github-actions", "conditions", "limits", "if-something-breaks", "permissions",
         )
+
+        /** Pages Help shows that are not doc sections. */
+        val HELP_PAGE_IDS = setOf("faq", "glossary")
+
+        val USES_PERMISSION = Regex("""<uses-permission[^>]*android:name="([^"]+)"""")
         val LEGAL_IDS = listOf("terms", "privacy-policy", "open-source")
 
         val APP_WORDS = listOf(
@@ -261,6 +316,17 @@ class DocsContentTest {
             "Can an agent download a virus onto my phone?",
             "How many free build minutes do I have left?",
             "Why are there agents from other companies in \"More agents\"?",
+        )
+
+        /** Questions added after the plan, from the research round on the owner's guides. */
+        val LATER_FAQ = listOf(
+            "Would a faster phone make the agents faster?",
+            "Can this get my account suspended?",
+            "Does PocketIDE add files to my repo?",
+            "Does it work for a team?",
+            "Is this VS Code, and can I add Pylance?",
+            "What if the network drops mid-answer?",
+            "How do I get a file from my phone into a project?",
         )
     }
 }

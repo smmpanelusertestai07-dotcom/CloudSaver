@@ -6,7 +6,7 @@ internal object GuideSafety {
     val security = section(
         "security",
         "Security",
-        "The locks that protect your accounts, your code and your chats.",
+        "The locks that protect your accounts, your code and your chats, and what a harmful agent could reach.",
         p(
             "GitHub. PocketIDE is a GitHub App signed in with a device code, so it holds no client secret. It " +
                 "works only on the repos you choose, can create repos but never deletes one, and reads your " +
@@ -19,12 +19,31 @@ internal object GuideSafety {
         ),
         p(
             "The app never takes a token, key or setting from inside the computer, and only Variables enter a " +
-                "room. The agents' screens listen only on this phone, with a new secret each launch. Other " +
-                "links open in Chrome.",
+                "room. Settings that can run code, such as hooks and MCP servers, are rewritten by PocketIDE at " +
+                "each room start; a change an agent makes is kept only after you approve it.",
         ),
         p(
-            "App lock uses your fingerprint or PIN. PocketIDE's screen is hidden in Recents and screenshots " +
-                "(FLAG_SECURE).",
+            "The agents' screens listen only on this phone, with a new secret each launch. Other links open in " +
+                "Chrome. App lock uses your fingerprint or PIN, and PocketIDE's screen is hidden in Recents and " +
+                "screenshots (FLAG_SECURE).",
+        ),
+        warn(
+            "Text an agent reads (a file, an issue, a web page, a download) can try to give it orders. This is " +
+                "prompt injection. Each room's rules say such text is data, never instructions, but no rule is " +
+                "perfect: review the changes before Put on main, and approve only commands you understand.",
+        ),
+        table(
+            listOf("If an agent is tricked or harmful, can it reach", "Answer"),
+            row("Its room's home and its sessions' folders", "Yes"),
+            row("Its own sign-in, and the ports it opens", "Yes"),
+            row("Other rooms", "No: they are not placed in its room"),
+            row("Your GitHub token, Drive access, the key and your Secrets", "No: they never enter the computer"),
+            row("Your phone's files, photos and other apps", "No: Android keeps the app apart from them"),
+        ),
+        p(
+            "PRoot is not a sandbox, so rooms stop accidental reading, not a determined attack. Codex's own " +
+                "sandbox needs Linux features PRoot may lack, so inside its room it can run without one " +
+                "($BEING_TESTED). That is why only checked agents run here.",
         ),
         table(
             listOf("Risk", "Safeguard"),
@@ -68,13 +87,13 @@ internal object GuideSafety {
         ),
         bullets(
             "Anthropic: on Free, Pro and Max, chats are kept 30 days with \"Help improve Claude\" off, and up " +
-                "to 5 years with it on (as of ${DocLinks.CHECKED_ON}).",
+                "to 5 years with it on.",
             "OpenAI: ChatGPT and Codex content may be used for training unless you turn off \"Improve the " +
-                "model for everyone\". Codex has a separate switch for full environments (as of " +
-                "${DocLinks.CHECKED_ON}).",
+                "model for everyone\". Codex has a separate switch for full environments.",
             "Google: Antigravity may use your interactions to improve its models, and people may review them. " +
-                "Turn off Settings → Account → Enable Telemetry (as of ${DocLinks.CHECKED_ON}).",
+                "Turn off Settings → Account → Enable Telemetry.",
         ),
+        info("Policies as of ${DocLinks.CHECKED_ON}. $LABELS_NOTE"),
         link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
         link("Claude Code data usage", DocLinks.CLAUDE_DATA_USAGE),
         link("ChatGPT data controls", DocLinks.CHATGPT_DATA_CONTROLS),
@@ -83,11 +102,7 @@ internal object GuideSafety {
         link("Antigravity terms", DocLinks.ANTIGRAVITY_TERMS),
         warn(
             "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → " +
-                "Secrets.",
-        ),
-        p(
-            "Variables are settings the agent may see, such as a test URL. Secrets never reach an agent: only " +
-                "set-up steps and your Actions builds get them. Both are encrypted and kept out of git.",
+                "Secrets. Secrets never reach an agent; only set-up steps and your Actions builds get them.",
         ),
     )
 
@@ -108,16 +123,11 @@ internal object GuideSafety {
         ),
         p(
             "The limiter watches memory, heat, battery, storage and Android's process cap. It queues or pauses " +
-                "work, closes idle agents first, and never stops one mid-write. You see \"Phone limit reached\" " +
-                "with the reason.",
-        ),
-        warn(
-            "Text an agent reads (a file, an issue, a web page) can try to give it orders. Review the changes " +
-                "before Put on main, and approve only commands you understand.",
+                "work, closes idle agents first, never stops one mid-write, and tells you why.",
         ),
         p(
             "Scheduled tasks run a saved prompt only while the phone is charging on Wi-Fi. The result becomes " +
-                "a session for you to review.",
+                "a session for you to review ($BEING_TESTED).",
         ),
     )
 
