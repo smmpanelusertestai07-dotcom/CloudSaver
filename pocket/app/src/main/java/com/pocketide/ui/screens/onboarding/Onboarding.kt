@@ -1,6 +1,12 @@
 package com.pocketide.ui.screens.onboarding
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -42,6 +48,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.linux.ComputerState
@@ -239,6 +246,13 @@ fun PrivacyChecklistScreen(onDone: () -> Unit) {
     val context = LocalContext.current
     var ticked by rememberSaveable { mutableStateOf("") }
     val done = ticked.split(',').filter { it.isNotEmpty() }.toSet()
+    fun finish() {
+        val allDone = PrivacyChecklist.complete(done)
+        graph.settings.update { it.copy(onboardingDone = true, privacyChecklistDone = allDone) }
+        onDone()
+    }
+    // Asked once, here, at the end of set-up; either answer finishes it.
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { finish() }
 
     ShellPage {
         StepHeader(OnboardingStep.PRIVACY, required = false)
@@ -262,13 +276,18 @@ fun PrivacyChecklistScreen(onDone: () -> Unit) {
         SetUpSummary(graph)
 
         Gap(24.dp)
+        if (needsNotificationPermission(context)) {
+            Text(
+                "PocketIDE shows a notice while agents work, and tells you when a build finishes or access is removed. " +
+                    "Android asks once whether it may.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Gap(12.dp)
+        }
         PrimaryAction(
             text = "Finish set-up",
-            onClick = {
-                val allDone = PrivacyChecklist.complete(done)
-                graph.settings.update { it.copy(onboardingDone = true, privacyChecklistDone = allDone) }
-                onDone()
-            },
+            onClick = { if (needsNotificationPermission(context)) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS) else finish() },
         )
         FinePrint("These links stay in Settings, under Privacy checklist and Manage your data.")
     }
@@ -294,3 +313,8 @@ private fun SetUpSummary(graph: AppGraph) {
     }
     CheckLinesCard(SetupChecklist.lines(account?.login, email, key, computer, engine))
 }
+
+/** Android 13 and newer ask before an app may show notifications. */
+private fun needsNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
