@@ -423,6 +423,8 @@ def main(argv=None):
     parser.add_argument("--web", required=True)
     parser.add_argument("--secret-file", required=True)
     options = parser.parse_args(argv)
+    # Files the shell creates are private to the room, as the engines' are (room.py).
+    os.umask(0o077)
     secret = take_secret(options.secret_file)
     if len(secret) < 32:
         print("No terminal secret was given; refusing to start an open shell.", file=sys.stderr)
