@@ -1,19 +1,29 @@
 package com.pocketide.projects
 
 import com.pocketide.AppGraph
+import com.pocketide.git.GitGate
+import com.pocketide.github.GitHubApi
+import com.pocketide.github.GitHubAuth
 import com.pocketide.model.Project
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import com.pocketide.sync.DataBudget
+import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.builtins.ListSerializer
+import java.io.File
 
-fun createProjects(graph: AppGraph): Projects = StubProjects().also { graph.hashCode() }
+fun createProjects(graph: AppGraph): Projects = ProjectRegistry(
+    env = GraphProjectEnv(graph),
+    dirs = graph.dirs,
+    file = JsonFile(File(graph.dirs.vault, "projects.json"), ListSerializer(Project.serializer())),
+    clock = graph.clock,
+    scope = graph.scope,
+    io = Dispatchers.IO,
+)
 
-private class StubProjects : Projects {
-    private fun no(): Nothing = throw IllegalStateException("stub")
-    override val all: StateFlow<List<Project>> = MutableStateFlow(emptyList())
-    override suspend fun create(name: String, description: String): Project = no()
-    override suspend fun import(owner: String, repo: String): Project = no()
-    override suspend fun ensureCloned(projectId: String) = no()
-    override suspend fun fetch(projectId: String) = no()
-    override suspend fun remove(projectId: String) = no()
-    override fun touched(projectId: String) = Unit
+/** Other modules are looked up when used, so creating this module never creates theirs. */
+private class GraphProjectEnv(private val graph: AppGraph) : ProjectEnv {
+    override val gitHub: GitHubApi get() = graph.gitHub
+    override val gitHubAuth: GitHubAuth get() = graph.gitHubAuth
+    override val git: GitGate get() = graph.git
+    override val dataBudget: DataBudget get() = graph.dataBudget
+    override val work: ProjectWork? get() = graph.sessions as? ProjectWork
 }
