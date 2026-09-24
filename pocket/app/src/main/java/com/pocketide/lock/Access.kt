@@ -25,4 +25,10 @@ interface AppLock {
     fun authenticate(activity: FragmentActivity, title: String, onDone: (Boolean) -> Unit)
     /** True when the phone has a screen lock (required). */
     fun deviceSecure(): Boolean
+
+    /**
+     * The app is sending the owner out on purpose (a settings page, a sign-in in Chrome) and
+     * expects them back: the lock waits a little longer than usual before it closes again.
+     */
+    fun leavingOnErrand() = Unit
 }
