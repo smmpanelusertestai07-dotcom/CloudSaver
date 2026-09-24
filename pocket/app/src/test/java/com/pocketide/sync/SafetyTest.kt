@@ -91,6 +91,29 @@ class SafetyTest {
     }
 
     @Test
+    fun aHistoryLineStillBeingWrittenWaitsSoASecretIsNeverSplit() = runBlocking {
+        val phone = TestPhone(accounts, clock)
+        val history = phone.homeFile("codex", ".codex/history.jsonl")
+        val key = "ghp_" + "Z9y8X7w6".repeat(5)
+        val first = "{\"text\":\"hello\"}\n"
+        history.writeText(first + "{\"text\":\"" + key.take(12))
+        phone.engine.syncNow()
+        val early = phone.remoteIndex()!!.objects.filter { it.path == ".codex/history.jsonl" }
+        assertEquals(listOf(first.length.toLong()), early.map { it.length })
+
+        history.appendText(key.drop(12) + "\"}\n")
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+        val pieces = phone.remoteIndex()!!.objects.filter { it.path == ".codex/history.jsonl" }.sortedBy { it.offset }
+        assertEquals(history.length(), pieces.sumOf { it.length })
+        val sent = pieces.joinToString("") { p ->
+            Codec.gunzip(phone.cipher.decryptBytes(phone.drive.files.values.single { it.name == p.name }.bytes)).toString(Charsets.UTF_8)
+        }
+        assertFalse(sent.contains(key.take(12)))
+        assertFalse(sent.contains(key.drop(12)))
+    }
+
+    @Test
     fun theMaskKeepsLengthsAndLeavesOrdinaryTextAlone() {
         val text = "ghp_" + "x".repeat(36) + " and \"api_key\": \"abcdef123456\" and tokens: 12\n"
         val masked = SecretMask.mask(text.toByteArray()).toString(Charsets.UTF_8)
