@@ -34,7 +34,7 @@ object Formats {
 
     /** "12:05" for a countdown; never negative. */
     fun countdown(remainingMs: Long): String {
-        val totalSeconds = (remainingMs.coerceAtLeast(0) + 999) / 1000
+        val totalSeconds = (remainingMs.coerceIn(0, Long.MAX_VALUE - 999) + 999) / 1000
         return String.format(Locale.ENGLISH, "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 

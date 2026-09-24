@@ -99,16 +99,18 @@ object Diagnostics {
 
     private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
     private val keyValue = Regex("(?i)\\b([a-z_]*key|authorization)(\\s*[=:]\\s*)([^\\s&,;]+)")
+    private val whitespace = Regex("\\s+")
     private val bearer = Regex("(?i)\\bbearer\\s+[A-Za-z0-9._~+/=-]+")
 
     fun report(facts: List<Pair<String, String>>, errors: List<String>): String = buildString {
         for ((label, value) in facts) append(label).append(": ").append(clean(value)).append('\n')
-        append('\n')
+        if (facts.isNotEmpty()) append('\n')
         if (errors.isEmpty()) {
             append("No recent errors.")
         } else {
             append("Recent errors:\n")
-            errors.forEach { append("• ").append(clean(it).trim()).append('\n') }
+            // One line each: text from inside Linux cannot start lines of its own.
+            errors.forEach { append("• ").append(clean(it).replace(whitespace, " ").trim()).append('\n') }
         }
     }.trimEnd()
 

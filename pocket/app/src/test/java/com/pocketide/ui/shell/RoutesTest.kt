@@ -38,16 +38,29 @@ class RoutesTest {
     }
 
     @Test
-    fun everyPatternBelongsToATab() {
-        assertEquals(Tab.HOME, Routes.tabOf(Routes.PROJECT))
-        assertEquals(Tab.HOME, Routes.tabOf(Routes.AGENT))
-        assertEquals(Tab.CHATS, Routes.tabOf(Routes.TRANSCRIPT))
-        assertEquals(Tab.CHATS, Routes.tabOf(Routes.WAITING_UPLOADS))
-        assertEquals(Tab.ACTIVITY, Routes.tabOf(Routes.USAGE))
-        assertEquals(Tab.SETTINGS, Routes.tabOf(Routes.YOUR_DATA))
-        assertEquals(Tab.SETTINGS, Routes.tabOf(Routes.HELP))
-        assertEquals(Tab.HOME, Routes.tabOf(null))
-        Tab.entries.forEach { assertEquals(it, Routes.tabOf(it.route)) }
+    fun theBarShowsTheTabAPushedScreenWasOpenedFrom() {
+        val onlyHome: (String) -> Boolean = { it == Routes.HOME }
+        Tab.entries.forEach { assertEquals(it, Routes.tabOf(it.route, onlyHome)) }
+        // Help opened from Home's title bar stays under Home; from Settings, under Settings.
+        assertEquals(Tab.HOME, Routes.tabOf(Routes.HELP, onlyHome))
+        assertEquals(Tab.SETTINGS, Routes.tabOf(Routes.HELP) { it == Routes.HOME || it == Routes.SETTINGS })
+        assertEquals(Tab.CHATS, Routes.tabOf(Routes.TRANSCRIPT) { it == Routes.HOME || it == Routes.CHATS })
+        assertEquals(Tab.ACTIVITY, Routes.tabOf(Routes.AGENT) { it == Routes.HOME || it == Routes.ACTIVITY })
+        assertEquals(Tab.HOME, Routes.tabOf(Routes.PROJECT, onlyHome))
+        assertEquals(Tab.HOME, Routes.tabOf(null) { false })
+    }
+
+    @Test
+    fun theTabItselfWinsOverWhatIsBelowIt() {
+        assertEquals(Tab.CHATS, Routes.tabOf(Routes.CHATS) { true })
+        assertEquals(Tab.HOME, Routes.tabOf(Routes.HOME) { true })
+    }
+
+    @Test
+    fun blankIdsNeverBecomeRoutes() {
+        assertFalse(Routes.isUsableId(""))
+        assertFalse(Routes.isUsableId("   "))
+        assertTrue(Routes.isUsableId("octo/app"))
     }
 
     @Test

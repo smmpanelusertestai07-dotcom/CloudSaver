@@ -98,9 +98,9 @@ class AppNavigator(private val controller: NavHostController, private val contex
     override fun chats() = tab(Tab.CHATS)
     override fun activity() = tab(Tab.ACTIVITY)
     override fun settings() = tab(Tab.SETTINGS)
-    override fun project(projectId: String) = push(Routes.project(projectId))
-    override fun agent(sessionId: String) = push(Routes.agent(sessionId))
-    override fun transcript(sessionId: String) = push(Routes.transcript(sessionId))
+    override fun project(projectId: String) = pushFor(projectId, Routes::project)
+    override fun agent(sessionId: String) = pushFor(sessionId, Routes::agent)
+    override fun transcript(sessionId: String) = pushFor(sessionId, Routes::transcript)
     override fun yourData() = push(Routes.YOUR_DATA)
     override fun computer() = push(Routes.COMPUTER)
     override fun usage() = push(Routes.USAGE)
@@ -127,6 +127,11 @@ class AppNavigator(private val controller: NavHostController, private val contex
     }
 
     private fun push(route: String) = controller.navigate(route) { launchSingleTop = true }
+
+    /** A screen that needs an id; a blank one (a record not loaded yet) opens nothing rather than crashing. */
+    private fun pushFor(id: String, route: (String) -> String) {
+        if (Routes.isUsableId(id)) push(route(id))
+    }
 }
 
 private fun NavHostController.tabOf(pattern: String?): Tab = Routes.tabOf(pattern) { route ->

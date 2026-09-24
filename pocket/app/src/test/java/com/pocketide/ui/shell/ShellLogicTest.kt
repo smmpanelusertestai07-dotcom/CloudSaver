@@ -45,11 +45,13 @@ class ShellLogicTest {
 
     @Test
     fun extraPasswordMustBeLongAndTypedTwice() {
-        assertNotNull(ExtraPasswordRules.problem(CharArray(0), CharArray(0)))
-        assertNotNull(ExtraPasswordRules.problem("short".toCharArray(), "short".toCharArray()))
-        assertNotNull(ExtraPasswordRules.problem("          ".toCharArray(), "          ".toCharArray()))
-        assertNotNull(ExtraPasswordRules.problem("long enough pass".toCharArray(), "long enough pasS".toCharArray()))
-        assertNull(ExtraPasswordRules.problem("long enough pass".toCharArray(), "long enough pass".toCharArray()))
+        assertNotNull(ExtraPasswordRules.problem("", ""))
+        assertNotNull(ExtraPasswordRules.problem("short", "short"))
+        assertNotNull(ExtraPasswordRules.problem("          ", "          "))
+        assertNotNull(ExtraPasswordRules.problem("long enough pass", "long enough pasS"))
+        assertNotNull(ExtraPasswordRules.problem("long enough pass", "long enough pass "))
+        assertNull(ExtraPasswordRules.problem("long enough pass", "long enough pass"))
+        assertNull(ExtraPasswordRules.problem("पासवर्ड बहुत लंबा", StringBuilder("पासवर्ड बहुत लंबा")))
     }
 
     @Test
@@ -130,7 +132,14 @@ class ShellLogicTest {
     @Test
     fun onlyHttpsPagesLeaveTheApp() {
         assertTrue(Links.isOpenable("https://github.com/login/device"))
+        assertTrue(Links.isOpenable("  HTTPS://GitHub.com/login/device  "))
         assertFalse(Links.isOpenable("http://github.com"))
+        assertFalse(Links.isOpenable("javascript:alert(1)"))
+        assertFalse(Links.isOpenable("https://github.com\\@evil.example"))
+        assertFalse(Links.isOpenable("https://github.com%40@evil.example/"))
+        assertFalse(Links.isOpenable("https://github.com\n.evil.example"))
+        assertFalse(Links.isOpenable("https://github.com/\u0000"))
+        assertFalse(Links.isOpenable("https://a b.example"))
         assertFalse(Links.isOpenable("intent://x#Intent;end"))
         assertFalse(Links.isOpenable("file:///data/data/com.pocketide"))
         assertFalse(Links.isOpenable("https://user@evil.example"))

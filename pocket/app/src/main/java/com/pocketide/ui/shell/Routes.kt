@@ -53,6 +53,9 @@ object Routes {
             ?: Tab.entries.firstOrNull { it != Tab.HOME && inBackStack(it.route) }
             ?: Tab.HOME
 
+    /** An id a destination can be opened with: a blank one matches no route and would crash navigation. */
+    fun isUsableId(id: String): Boolean = id.isNotBlank()
+
     /** Top-level screens get the shell's title bar (with Help); pushed screens draw their own. */
     fun isTab(pattern: String?): Boolean = Tab.entries.any { it.route == pattern }
 
