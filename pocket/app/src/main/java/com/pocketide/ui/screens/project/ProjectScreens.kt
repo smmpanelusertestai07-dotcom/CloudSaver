@@ -716,7 +716,7 @@ private fun AgentBar(
                     if (panelTitle == null) {
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("Text size ${nextZoom(zoom)}%") },
+                            text = { Text("Text size $zoom% → ${nextZoom(zoom)}%") },
                             onClick = { menu = false; onZoom(nextZoom(zoom)) },
                         )
                         DropdownMenuItem(text = { Text("Full screen") }, onClick = { menu = false; onImmersive() })
