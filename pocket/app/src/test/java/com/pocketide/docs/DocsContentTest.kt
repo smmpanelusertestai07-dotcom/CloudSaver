@@ -55,11 +55,11 @@ class DocsContentTest {
         val security = requireSection("security")
         val reach = security.blocks.filterIsInstance<DocBlock.Table>().first { it.header.first().contains("reach") }
         val answers = reach.rows.map { it.first() to it.last() }
-        assertTrue(answers.any { (what, answer) -> what.contains("room's home") && answer.startsWith("Yes") })
+        assertTrue(answers.any { (what, answer) -> what.startsWith("Its room") && answer.startsWith("Yes") })
         assertTrue(answers.any { (what, answer) -> what.contains("Other rooms") && answer.startsWith("No") })
         assertTrue(answers.any { (what, answer) -> what.contains("GitHub token") && answer.startsWith("No") })
         val text = sectionText(security)
-        assertTrue(text.contains("prompt injection"))
+        assertTrue(text.contains("prompt injection", ignoreCase = true))
         assertTrue(text.contains("PRoot is not a sandbox"))
     }
 

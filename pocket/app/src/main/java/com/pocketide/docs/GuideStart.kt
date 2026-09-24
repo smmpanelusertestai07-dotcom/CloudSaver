@@ -37,10 +37,7 @@ internal object GuideStart {
             row("Internet", "Wi-Fi for set-up (about 1.5 GB)", "Wi-Fi or good 4G/5G"),
             row("Accounts", "GitHub, Google, and each agent's own plan", "2-step sign-in on Google and GitHub"),
         ),
-        p(
-            "Phones that are 32-bit only, have no Play services, run Android 9 or older, or have less than 4 GB " +
-                "of RAM are refused with a clear message, rather than left to crash.",
-        ),
+        p("Phones below the minimum are refused with a clear message, rather than left to crash."),
         info(
             "$BEING_TESTED: the memory each agent needs and the size of the set-up. The " +
                 "Computer screen shows your phone's real numbers.",
@@ -52,8 +49,8 @@ internal object GuideStart {
         "How it works",
         "Rooms, sessions and branches, and where each thing goes.",
         p(
-            "The computer is Ubuntu for arm64, run through PRoot, with no root and no virtual machine. Reset " +
-                "computer rebuilds it from the same recipe; nothing on it is the only copy.",
+            "The computer is Ubuntu for arm64, run through PRoot, with no root and no virtual machine. Nothing " +
+                "on it is the only copy.",
         ),
         p(
             "Rooms. Each agent runs in its own room, with its own home folder. Other rooms' folders are not " +
@@ -90,33 +87,23 @@ internal object GuideStart {
             row("Antigravity", "Google", "A Google account"),
         ),
         p(
-            "These three are Official. They update themselves; each update is checked, tested on this phone and " +
-                "rolled back if it fails. Each agent's help page is written from its own details.",
+            "These three are Official. Each update is checked, tested on this phone and rolled back if it fails. " +
+                "They skip the download and age checks below because their makers publish them; Antigravity's " +
+                "room runs Google's own agy program, whose extension had about 14,400 downloads (as of 18 Sep 2026).",
         ),
         p(
-            "New agents. Once a week the app searches Open VSX for AI and chat extensions. It offers one under " +
-                "More agents → New only if it has a verified publisher, is not a look-alike, has an arm64 or " +
-                "universal build, at least 50,000 downloads, is at least 14 days old, and has an agent screen.",
+            "New agents. A weekly Open VSX search offers an agent under More agents → New only if it has a " +
+                "verified publisher, is no look-alike, has an arm64 build, 50,000 downloads, is 14 days old, and " +
+                "has an agent screen. Adding it takes your tap and gives it its own room.",
         ),
         p(
-            "Adding one takes your tap, after a card that says your prompts and code will go to that publisher. " +
-                "It is tested on this phone and gets its own room. Removing it deletes its room.",
+            "Official vs Verified publisher. Open VSX proves who owns a publisher name, not who makes the model, " +
+                "so agents found later show Verified publisher. Community ones warn that your code also goes to " +
+                "the model service they use. Settings → Only official agents hides them all.",
         ),
         p(
-            "The official three skip the download and age checks: their makers publish them, and Antigravity's " +
-                "room runs Google's own agy program. Its Open VSX extension had about 14,400 downloads (as of " +
-                "18 Sep 2026).",
-        ),
-        p(
-            "Official vs Verified publisher. Open VSX proves who owns a publisher name, not who makes the model. " +
-                "So agents found later show Verified publisher. Community ones add a note: that company is not " +
-                "the model maker, and your code also goes to the model service it uses. Settings → Only official " +
-                "agents hides them all.",
-        ),
-        p(
-            "Your claude.ai and ChatGPT chats do not appear here. Each agent keeps its own sessions; Codex can " +
-                "show your Codex cloud tasks. Each company's app memory is separate from the agent's project " +
-                "memory (CLAUDE.md, AGENTS.md, GEMINI.md).",
+            "Your claude.ai and ChatGPT chats do not appear here; Codex can show your Codex cloud tasks. Each " +
+                "company's app memory is separate from the agent's memory (CLAUDE.md, AGENTS.md, GEMINI.md).",
         ),
     )
 
@@ -125,9 +112,8 @@ internal object GuideStart {
         "Why only checked agents",
         "Why agents are checked, why there are no local models, and why Open VSX instead of the Marketplace.",
         p(
-            "An agent reads your code and runs commands. Every extra agent costs memory and storage and sends " +
-                "your code to one more company. So PocketIDE ships the model makers' own agents, and adds others " +
-                "only when they pass the checks and you tap.",
+            "An agent reads your code and runs commands. Each extra one costs memory and sends your code to one " +
+                "more company, so others are added only when they pass the checks and you tap.",
         ),
         p(
             "No local models. Models small enough for a phone cannot do agent work across many files; good " +

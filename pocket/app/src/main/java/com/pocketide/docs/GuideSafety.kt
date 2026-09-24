@@ -6,62 +6,48 @@ internal object GuideSafety {
     val security = section(
         "security",
         "Security",
-        "The locks that protect your accounts, your code and your chats, and what a harmful agent could reach.",
+        "The locks on your accounts, code and chats, and what a harmful agent could reach.",
         p(
-            "GitHub. PocketIDE is a GitHub App signed in with a device code, so it holds no client secret. It " +
-                "works only on the repos you choose, can create repos but never deletes one, and reads your " +
-                "plan to show real Actions usage. Its token stays in the Android Keystore, never in the computer.",
+            "PocketIDE is a GitHub App signed in with a device code. It works only on the repos you choose, " +
+                "never deletes a repo, and keeps its token in the Android Keystore. In Drive it can use only its " +
+                "own hidden folder.",
         ),
-        p("Google. PocketIDE can use only its own hidden app folder in Drive, not your other files."),
         p(
             "The check-post runs before every push. If it finds secrets, AI data or very large files, nothing " +
                 "is pushed and you see what it found.",
         ),
         p(
-            "The app never takes a token, key or setting from inside the computer, and only Variables enter a " +
-                "room. Settings that can run code, such as hooks and MCP servers, are rewritten by PocketIDE at " +
-                "each room start; a change an agent makes is kept only after you approve it.",
+            "The app never takes a token, key or setting from the computer; only Variables enter a room. " +
+                "Settings that can run code, such as hooks, are rewritten at each room start, and an agent's " +
+                "change to them is kept only after you approve it.",
         ),
         p(
-            "The agents' screens listen only on this phone, with a new secret each launch. Other links open in " +
-                "Chrome. App lock uses your fingerprint or PIN, and PocketIDE's screen is hidden in Recents and " +
-                "screenshots (FLAG_SECURE).",
+            "The agents' screens listen only on this phone, with a new secret each launch. App lock uses your " +
+                "fingerprint or PIN, and FLAG_SECURE hides PocketIDE in Recents and screenshots.",
         ),
         warn(
-            "Text an agent reads (a file, an issue, a web page, a download) can try to give it orders. This is " +
-                "prompt injection. Each room's rules say such text is data, never instructions, but no rule is " +
-                "perfect: review the changes before Put on main, and approve only commands you understand.",
+            "Prompt injection: a file, issue or web page an agent reads can try to give it orders. Room rules " +
+                "treat such text as data, but review changes before Put on main and approve only commands you " +
+                "understand.",
         ),
         table(
-            listOf("If an agent is tricked or harmful, can it reach", "Answer"),
-            row("Its room's home and its sessions' folders", "Yes"),
-            row("Its own sign-in, and the ports it opens", "Yes"),
+            listOf("A tricked or harmful agent can reach", "Answer"),
+            row("Its room, its sessions' folders, its sign-in and ports", "Yes"),
             row("Other rooms", "No: they are not placed in its room"),
-            row("Your GitHub token, Drive access, the key and your Secrets", "No: they never enter the computer"),
-            row("Your phone's files, photos and other apps", "No: Android keeps the app apart from them"),
+            row("Your GitHub token, Drive access, the key, Secrets", "No: they never enter the computer"),
+            row("Your phone's files, photos and apps", "No: Android keeps the app apart"),
         ),
         p(
-            "PRoot is not a sandbox, so rooms stop accidental reading, not a determined attack. Codex's own " +
-                "sandbox needs Linux features PRoot may lack, so inside its room it can run without one " +
-                "($BEING_TESTED). That is why only checked agents run here.",
+            "PRoot is not a sandbox: rooms stop accidental reading, not a determined attack. Codex may run " +
+                "without its own sandbox inside its room ($BEING_TESTED). That is why only checked agents run.",
         ),
         table(
             listOf("Risk", "Safeguard"),
-            row(
-                "Harmful files an agent downloads",
-                "They stay in the app's private computer, away from other apps, your photos and your files.",
-            ),
-            row(
-                "Showing media",
-                "Only PNG, JPEG, WebP, GIF, MP4 and WebM are shown; other files appear as plain files.",
-            ),
+            row("Showing media", "Only PNG, JPEG, WebP, GIF, MP4 and WebM; other files show as plain files."),
             row("HTML or PDF from agents", "Opened with JavaScript off and no file or network access."),
-            row("Built APKs", "Installed only on your tap, after showing the package name and signer."),
+            row("Built APKs", "Installed only on your tap, after showing the package and signer."),
             row("Saving or sharing", "Only through Android's share sheet, when you tap."),
-        ),
-        info(
-            "There is no reliable antivirus for Linux files on a phone, so PocketIDE contains files instead of " +
-                "pretending to scan.",
+            row("Viruses", "No phone antivirus scans Linux files reliably, so files are contained instead."),
         ),
     )
 
@@ -71,27 +57,26 @@ internal object GuideSafety {
         "Who sees what, what each AI company keeps, and the switches that stop training on your chats.",
         table(
             listOf("Who", "What they can see"),
-            row("You", "Everything, through the app"),
             row(
                 "The company whose agent you use",
                 "Your prompts, its replies, and the code and images the agent reads",
             ),
-            row("An extra agent's publisher", "The same, plus the model service it uses"),
+            row("An extra agent's publisher", "The same, and so does its model service"),
             row("GitHub", "Your code and build logs, and Half G"),
             row("Google", "Encrypted files and their sizes, and Half D"),
             row("PocketIDE's developer", "Nothing: no server, no analytics"),
         ),
         p(
-            "Each company keeps what you send under its own policy. Deleting a chat in PocketIDE does not " +
-                "delete the company's copy. The history you reopen comes from your phone and Drive, not from them.",
+            "Each company keeps what you send under its own policy; deleting a chat in PocketIDE does not " +
+                "delete its copy.",
         ),
         bullets(
             "Anthropic: on Free, Pro and Max, chats are kept 30 days with \"Help improve Claude\" off, and up " +
                 "to 5 years with it on.",
             "OpenAI: ChatGPT and Codex content may be used for training unless you turn off \"Improve the " +
                 "model for everyone\". Codex has a separate switch for full environments.",
-            "Google: Antigravity may use your interactions to improve its models, and people may review them. " +
-                "Turn off Settings → Account → Enable Telemetry.",
+            "Google: Antigravity may use your interactions to improve its models, and people may review them, " +
+                "unless you turn off Settings → Account → Enable Telemetry.",
         ),
         info("Policies as of ${DocLinks.CHECKED_ON}. $LABELS_NOTE"),
         link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
@@ -102,7 +87,7 @@ internal object GuideSafety {
         link("Antigravity terms", DocLinks.ANTIGRAVITY_TERMS),
         warn(
             "Never paste passwords or keys into a chat: they go to the AI company. Put them in Project → " +
-                "Secrets. Secrets never reach an agent; only set-up steps and your Actions builds get them.",
+                "Secrets, which only set-up steps and your Actions builds get.",
         ),
     )
 
@@ -111,13 +96,12 @@ internal object GuideSafety {
         "Safety",
         "How agents are kept from harming your project or your phone.",
         p(
-            "Agents work on their own, but only inside a session's branch. Main changes only when you tap Put " +
-                "on main or ask for it, so read the session's Changes first.",
+            "Agents work on their own, but only on a session's branch. Main changes only when you tap Put on " +
+                "main or ask, so read the session's Changes first.",
         ),
         bullets(
-            "Small, quick work runs on the phone; heavy work goes to GitHub Actions, and the agent checks the " +
-                "result and retries.",
-            "An agent never declines work that can be done somewhere. It picks the place and says so in one line.",
+            "Small work runs on the phone; heavy work goes to GitHub Actions, and the agent checks the result.",
+            "An agent never declines work that can be done somewhere; it names the place in one line.",
             "It asks you only for real decisions: money, accounts, deleting.",
             "It never reads outside its room, never pushes secrets, and touches main only when asked.",
         ),
