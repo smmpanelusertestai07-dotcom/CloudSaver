@@ -32,9 +32,10 @@ internal data class ScriptResult(val exitCode: Int, val lastWords: String?)
  */
 internal class GuestScripts(private val assets: LinuxAssets, private val runner: GuestRunner) {
 
-    fun install(rootfs: File) {
+    /** Copies the scripts in; returns how many were missing or different. */
+    fun install(rootfs: File): Int {
         val guest = GuestRoot(rootfs)
-        for (name in assets.names()) {
+        return assets.names().count { name ->
             val mode = if (name.endsWith(".sh") || name.endsWith(".pl")) FileModes.EXECUTABLE else FileModes.PLAIN
             guest.write("$FOLDER/$name", assets.read(name), mode)
         }
@@ -57,5 +58,8 @@ internal class GuestScripts(private val assets: LinuxAssets, private val runner:
         const val FOLDER = "/opt/pocketide"
         const val BOOTSTRAP = "bootstrap.sh"
         const val UPDATE = "update.sh"
+
+        /** Written by bootstrap.sh as its last step. */
+        const val STAMP = "$FOLDER/bootstrap.stamp"
     }
 }

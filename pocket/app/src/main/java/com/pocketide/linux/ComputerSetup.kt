@@ -69,25 +69,138 @@ internal class ComputerSetup(
 
     fun codeServerVersion(): String? = records.load().codeServer
 
-    suspend fun install() = withContext(Dispatchers.IO) {
-        try {
+    /** Sets up what is missing; returns (and has published) where the computer ended up. */
+    suspend fun install(): ComputerState = withContext(Dispatchers.IO) {
+        val end = try {
             Trees.sweep(places.rootfs)
             val record = records.load()
             if (record.readyAt != null && healthy(record)) {
                 refreshGuest(places.rootfs)
-                publish(ComputerState.Ready)
             } else {
                 build(record.copy(readyAt = null))
             }
+            ComputerState.Ready
         } catch (cancelled: CancellationException) {
             publish(stateOnDisk())
             throw cancelled
         } catch (stop: SetupStop) {
-            publish(ComputerState.Broken(stop.why, stop.fix))
+            ComputerState.Broken(stop.why, stop.fix)
         } catch (failure: Exception) {
-            publish(broken(failure))
+            broken(failure)
+        }
+        publish(end)
+        end
+    }
+
+    /**
+     * Fix-it level 4. A computer that is not whole is set up again from where it stopped; a
+     * whole one has each part checked and, where it can be, put right. Files the owner may
+     * have changed are only ever written when missing.
+     */
+    suspend fun repair(): List<RepairItem> = withContext(Dispatchers.IO) {
+        val record = records.load()
+        if (record.readyAt == null || !healthy(record)) {
+            return@withContext when (val end = install()) {
+                ComputerState.Ready -> listOf(RepairItem(WHOLE, RepairStatus.NEW, "The parts that were missing are set up again."))
+                is ComputerState.Broken -> listOf(RepairItem(WHOLE, RepairStatus.WARN, "${end.why} ${end.fix}"))
+                else -> listOf(RepairItem(WHOLE, RepairStatus.WARN, "Set-up did not finish. Try again."))
+            }
+        }
+        publish(ComputerState.Updating("Repair"))
+        try {
+            guestFiles() + listOf(tools(), securityFixes(), codeServerItem(record))
+        } finally {
+            publish(stateOnDisk())
         }
     }
+
+    private fun guestFiles(): List<RepairItem> {
+        val guest = GuestRoot(places.rootfs)
+        val restored = GuestConfig.writeBasics(guest, onlyMissing = true)
+        val basics = if (restored.isEmpty()) {
+            RepairItem(NETWORK_FILES, RepairStatus.OK, "Present; left as they are.")
+        } else {
+            RepairItem(NETWORK_FILES, RepairStatus.NEW, "Written again: ${restored.joinToString()}.")
+        }
+        val resolver = if (GuestConfig.writeResolver(guest, host.dnsServers())) {
+            RepairItem("DNS", RepairStatus.OK, "Linux uses the phone's DNS servers.")
+        } else {
+            RepairItem("DNS", RepairStatus.WARN, "The phone reported no DNS servers. Check the connection, then repair again.")
+        }
+        val replaced = scripts.install(places.rootfs)
+        val own = if (replaced == 0) {
+            RepairItem(SCRIPTS, RepairStatus.OK, "Up to date.")
+        } else {
+            RepairItem(SCRIPTS, RepairStatus.NEW, "Replaced $replaced with the app's own copies.")
+        }
+        return listOf(basics, resolver, own)
+    }
+
+    /** bootstrap.sh again: it installs only the tools that are missing and resets the settings it owns. */
+    private suspend fun tools(): RepairItem {
+        val decision = host.allow(APT_BYTES, KIND_UPDATE)
+        if (!decision.allowed) {
+            return RepairItem(TOOLS, RepairStatus.NOTE, "Skipped, because it may download packages. ${decision.reason ?: WAITING_FOR_WIFI}")
+        }
+        var installed = 0
+        val result = scripts.run(places.rootfs, GuestScripts.BOOTSTRAP) { line ->
+            countFetched(line, KIND_UPDATE)
+            if (line is GuestLine.Installed) installed = line.count
+        }
+        if (result.exitCode != 0) {
+            return RepairItem(TOOLS, RepairStatus.WARN, "Stopped: ${stoppedBecause(result)}. Try again on a steady connection.")
+        }
+        records.save(records.load().copy(bootstrap = scripts.bootstrapVersion()))
+        return when (installed) {
+            0 -> RepairItem(TOOLS, RepairStatus.OK, "Everything is installed.")
+            1 -> RepairItem(TOOLS, RepairStatus.NEW, "Installed 1 missing tool.")
+            else -> RepairItem(TOOLS, RepairStatus.NEW, "Installed $installed missing tools.")
+        }
+    }
+
+    private suspend fun securityFixes(): RepairItem {
+        val decision = host.allow(UPDATE_BYTES, KIND_UPDATE)
+        if (!decision.allowed) return RepairItem(FIXES, RepairStatus.NOTE, "Skipped. ${decision.reason ?: WAITING_FOR_WIFI}")
+        var fixed = 0
+        val result = scripts.run(places.rootfs, GuestScripts.UPDATE) { line ->
+            countFetched(line, KIND_UPDATE)
+            if (line is GuestLine.Fixed) fixed = line.count
+        }
+        return when {
+            result.exitCode != 0 -> RepairItem(FIXES, RepairStatus.WARN, "Stopped: ${stoppedBecause(result)}. They are tried again every day.")
+            fixed == 0 -> RepairItem(FIXES, RepairStatus.OK, "None were waiting.")
+            else -> RepairItem(FIXES, RepairStatus.NEW, "Installed ${fixesText(fixed)}.")
+        }
+    }
+
+    /** code-server is checked by starting it; one that does not start is unpacked again from the pinned release. */
+    private suspend fun codeServerItem(record: SetupRecord): RepairItem {
+        val version = record.codeServer ?: codeServer.version
+        if (slot.current() == version && slot.reports(CodeServerSlot.LINK, version)) {
+            return RepairItem(CODE_SERVER, RepairStatus.OK, "Version $version starts.")
+        }
+        val pin = codeServer
+        val missing = remaining(pin.download())
+        if (missing > 0) {
+            val decision = host.allow(missing, KIND_UPDATE)
+            if (!decision.allowed) {
+                return RepairItem(CODE_SERVER, RepairStatus.WARN, "It does not start. It is downloaded again when allowed. ${decision.reason ?: WAITING_FOR_WIFI}")
+            }
+        }
+        val archive = fetcher.fetch(pin.download(), File(places.downloads, pin.download().fileName), KIND_UPDATE) {}
+        slot.unpack(pin.version, archive) {}
+        val previous = slot.switchTo(pin.version)
+        if (!slot.reports(CodeServerSlot.LINK, pin.version)) {
+            previous?.takeIf { it != CodeServerSlot.folder(pin.version) }?.let(slot::switchBack)
+            return RepairItem(CODE_SERVER, RepairStatus.WARN, "It does not start, even unpacked again. $FIX_RESET")
+        }
+        records.save(records.load().copy(codeServer = pin.version, codeServerSha256 = pin.sha256))
+        slot.prune(keep = pin.version)
+        Files.deleteIfExists(archive.toPath())
+        return RepairItem(CODE_SERVER, RepairStatus.NEW, "Unpacked version ${pin.version} again; it starts.")
+    }
+
+    private fun stoppedBecause(result: ScriptResult) = result.lastWords?.removeSuffix(".") ?: "exit code ${result.exitCode}"
 
     /** Deletes the computer and what set-up downloaded; the record goes first, so a kill never leaves "ready". */
     suspend fun remove() = withContext(Dispatchers.IO) {
@@ -204,8 +317,10 @@ internal class ComputerSetup(
         records.save(start)
         var record = start
         val baseInPlace = record.base != null && GuestRoot(places.rootfs).existing("/etc/os-release") != null
-        val toolsDone = baseInPlace && record.bootstrap == scripts.bootstrapVersion()
-        val codeServerDone = baseInPlace && record.codeServer != null && slot.installed()
+        val toolsDone = baseInPlace && record.bootstrap == scripts.bootstrapVersion() &&
+            GuestRoot(places.rootfs).existing(GuestScripts.STAMP) != null
+        val codeServerDone = baseInPlace && record.codeServer != null && slot.installed() &&
+            slot.current() == record.codeServer
         checkRoom(baseInPlace, toolsDone, codeServerDone)
         val bar = Bar(
             stages = buildSet {
@@ -317,8 +432,10 @@ internal class ComputerSetup(
         if (line is GuestLine.Fetched) host.transferred(line.bytes, kind)
     }
 
+    private fun fixesText(fixed: Int) = if (fixed == 1) "1 security fix" else "$fixed security fixes"
+
     private fun baseOutcome(refreshed: Boolean, fixed: Int): UpdateOutcome {
-        val fixes = if (fixed == 1) "1 security fix" else "$fixed security fixes"
+        val fixes = fixesText(fixed)
         return when {
             refreshed && fixed > 0 -> UpdateOutcome.Updated("Refreshed Ubuntu's set-up and installed $fixes.")
             refreshed -> UpdateOutcome.Updated("Refreshed Ubuntu's set-up.")
@@ -413,7 +530,7 @@ internal class ComputerSetup(
                     label = line.text.removeSuffix("…")
                     bar.step(line.text)
                 }
-                is GuestLine.Fetched, is GuestLine.Fixed -> Unit
+                is GuestLine.Fetched, is GuestLine.Fixed, is GuestLine.Installed -> Unit
             }
         }
     }
@@ -437,6 +554,14 @@ internal class ComputerSetup(
         const val SPARE_SPACE = 500_000_000L
 
         const val WAITING_FOR_WIFI = "Waiting for Wi-Fi…"
+
+        /** The items of a Repair report. */
+        const val WHOLE = "The computer"
+        const val NETWORK_FILES = "Host name and network files"
+        const val SCRIPTS = "PocketIDE's scripts"
+        const val TOOLS = "Tools and settings"
+        const val FIXES = "Ubuntu's security fixes"
+        const val CODE_SERVER = "code-server"
         const val NOT_SET_UP = "The computer is not set up yet."
         const val FIX_WIFI = "Connect to Wi-Fi and tap Set up. It continues where it stopped."
         const val FIX_CONNECTION = "Check the connection and try again. It continues where it stopped."

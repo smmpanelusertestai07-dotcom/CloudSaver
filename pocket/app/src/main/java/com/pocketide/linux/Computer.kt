@@ -25,7 +25,9 @@ data class Bind(val hostPath: String, val guestPath: String, val readOnly: Boole
  * One program to run inside Linux. The environment is exactly [env] plus the fixed basics
  * (HOME, USER, LOGNAME, SHELL, PATH, TERM, LANG, TZ, TMPDIR): proot runs `env -i`, so nothing
  * from Android leaks in. [env] names must look like `[A-Z_][A-Z0-9_]*`; a name that repeats a
- * basic replaces it.
+ * basic replaces it. [env] never appears on a command line (other processes can read those):
+ * it reaches the program through a private file that is deleted once read. [argv] is visible
+ * to every process inside Linux, so a launch token belongs in [env] or in a file, never there.
  */
 data class LinuxCommand(
     val argv: List<String>,
@@ -60,6 +62,60 @@ sealed interface UpdateOutcome {
     data class Waiting(val why: String) : UpdateOutcome
     data class Failed(val why: String) : UpdateOutcome
 }
+
+/** How one item of a Repair turned out. */
+enum class RepairStatus {
+    /** Already right; nothing changed. */
+    OK,
+
+    /** Was missing or broken, and is now in place. */
+    NEW,
+
+    /** Could not be put right; [RepairItem.detail] says what to do. */
+    WARN,
+
+    /** Worth knowing; nothing to do. */
+    NOTE,
+}
+
+/** One line of the Repair report. */
+data class RepairItem(val what: String, val status: RepairStatus, val detail: String)
+
+/**
+ * What "Reset computer" deletes and what it keeps, in the words of its confirm sheet. The
+ * computer's reset deletes exactly [removes]; a test holds the two together.
+ */
+data class ResetPlan(val removes: List<String>, val keeps: List<String>) {
+    companion object {
+        val STANDARD = ResetPlan(
+            removes = listOf(
+                "Ubuntu and everything installed into it: code-server, apt packages, tools agents added",
+                "Downloads kept for set-up",
+            ),
+            keeps = listOf(
+                "Each agent's sign-in, settings, instructions and chat history (they live in the room's home)",
+                "Your projects, sessions and their unfinished work",
+                "Variables, Secrets and Your data",
+            ),
+        )
+    }
+}
+
+/** One host the app or the agents need, and whether the phone reached it. */
+data class HostCheck(val host: String, val purpose: String, val ok: Boolean, val detail: String)
+
+/**
+ * The network check (Computer → Check network): each host the app and agents need, a name
+ * lookup from inside Linux, and what on the phone stands in the way, in plain sentences.
+ */
+data class NetworkReport(
+    val checkedAt: Long,
+    val hosts: List<HostCheck>,
+    /** Looking up a name from inside Linux; null when the computer is not set up. */
+    val linuxDns: HostCheck?,
+    /** What blocks or slows the connection (Private DNS, VPN, a sign-in page, Data Saver), with the fix. */
+    val blockers: List<String>,
+)
 
 /**
  * The Ubuntu computer inside the app (proot, no root, no VM). Ported from PocketIDE 2.6.0's
@@ -104,6 +160,27 @@ interface Computer {
     /** Linux processes this app runs right now (proot and everything under it). */
     fun liveProcesses(): Int = 0
 
+    /** Processes of one program started with [start]: its proot and everything under it; 0 once it ended. */
+    fun liveProcesses(process: Process): Int = 0
+
     /** Deletes the computer without setting it up again (the unused-computer rule). */
     suspend fun remove() = Unit
+
+    /**
+     * Fix-it level 3, "Restart the computer": every Linux program ends (each exactly, by its
+     * process tree, never by name); files, sign-ins and chat history stay.
+     */
+    suspend fun restart() = Unit
+
+    /**
+     * Fix-it level 4, "Repair": the set-up again, safe to repeat. It installs what is missing,
+     * updates what is there, never overwrites a file the owner changed, and reports each item.
+     */
+    suspend fun repair(): List<RepairItem> = emptyList()
+
+    /** What [reset] deletes and keeps, for its confirm sheet. */
+    fun resetPlan(): ResetPlan = ResetPlan.STANDARD
+
+    /** Reaches every host the app and agents need, and names what blocks them. */
+    suspend fun checkNetwork(): NetworkReport = NetworkReport(0, emptyList(), null, emptyList())
 }

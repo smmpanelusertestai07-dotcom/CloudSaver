@@ -6,8 +6,9 @@
 # again: every step checks before it acts, and the app runs it again when an app update
 # changes it.
 #
-# Lines starting with "pocketide-progress" move the app's progress bar, and apt's own status
-# lines (APT::Status-Fd) say which package is being fetched or set up.
+# Lines starting with "pocketide-progress" move the app's progress bar, apt's own status
+# lines (APT::Status-Fd) say which package is being fetched or set up, and
+# "pocketide-installed <count>" says how many missing tools were installed (for Repair).
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
@@ -102,6 +103,7 @@ install_packages() {
   mapfile -t missing < <(missing_packages)
   if [ "${#missing[@]}" -eq 0 ]; then
     say "The tools are already installed."
+    printf 'pocketide-installed 0\n'
     return 0
   fi
   write_sources http
@@ -116,6 +118,7 @@ install_packages() {
     say "Could not install the tools."
     return 1
   fi
+  printf 'pocketide-installed %s\n' "${#missing[@]}"
 }
 
 configure_git() {

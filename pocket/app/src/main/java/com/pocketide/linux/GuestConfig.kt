@@ -38,12 +38,15 @@ internal object GuestConfig {
         return true
     }
 
-    /** Host name, hosts and address preference; written at set-up and restored if missing. */
-    fun writeBasics(guest: GuestRoot, onlyMissing: Boolean) {
-        if (guest.directory("/etc") == null) return
-        for ((path, text) in basics()) {
-            if (onlyMissing && guest.existing(path) != null) continue
-            guest.write(path, text.toByteArray(Charsets.US_ASCII))
+    /**
+     * Host name, hosts and address preference; written at set-up, and afterwards only when
+     * missing, so a file the owner changed stays as it is. Returns the paths it wrote.
+     */
+    fun writeBasics(guest: GuestRoot, onlyMissing: Boolean): List<String> {
+        if (guest.directory("/etc") == null) return emptyList()
+        return basics().mapNotNull { (path, text) ->
+            if (onlyMissing && guest.existing(path) != null) return@mapNotNull null
+            path.takeIf { guest.write(path, text.toByteArray(Charsets.US_ASCII)) }
         }
     }
 

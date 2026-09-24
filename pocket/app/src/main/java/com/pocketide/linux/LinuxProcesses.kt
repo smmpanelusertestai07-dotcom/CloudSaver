@@ -6,6 +6,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -109,7 +110,24 @@ internal class ProcessKeeper(
 
     fun stopAll() = live.toList().forEach(::stop)
 
+    /** Stops every program and waits until each has ended, or until [waitMs] has passed. */
+    suspend fun stopAllAndWait(waitMs: Long = graceMs + 2_000) {
+        val all = live.toList()
+        all.forEach(::stop)
+        withTimeoutOrNull(waitMs) {
+            while (all.any { it.isAlive }) delay(POLL_MS)
+        }
+    }
+
+    /** [process] and everything under it, counted from /proc; 0 once it has ended. */
+    fun count(process: Process): Int {
+        if (!process.isAlive) return 0
+        val pid = pidOf(process) ?: return 1
+        return 1 + table.descendants(pid).size
+    }
+
     companion object {
+        private const val POLL_MS = 100L
         private val PID = Regex("""pid=(\d+)""")
 
         /** Android's Process has no pid(); both Android's and the JDK's toString() carry it. */
