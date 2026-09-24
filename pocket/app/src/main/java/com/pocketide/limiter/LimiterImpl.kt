@@ -32,8 +32,9 @@ internal interface LimiterHost {
     fun phoneFacts(): PhoneFacts
     /** Called whenever the set of running rooms changes: keeps the foreground service and the trace in step. */
     fun roomsRunning(agentIds: Set<String>)
-    /** Why the rooms stopped when this process's predecessor ended, if they were running then. */
+    /** Why the rooms stopped when an earlier process ended, if they were running then and the owner has not dismissed it. */
     fun lastExit(): RoomStop?
+    fun forgetExit()
     /** A notification that says what stopped and why (safe stop). */
     fun notifyStopped(stop: RoomStop)
     fun openFix(context: Context, conditionId: String): Boolean
@@ -130,6 +131,7 @@ internal class LimiterImpl(
 
     override fun dismissStop() {
         stopFlow.value = null
+        runCatching { host.forgetExit() }
     }
 
     override fun setBusy(agentId: String, what: String, busy: Boolean) {

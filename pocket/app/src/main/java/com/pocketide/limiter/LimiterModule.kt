@@ -72,6 +72,8 @@ private class AndroidLimiterHost(private val graph: AppGraph) : LimiterHost {
 
     override fun lastExit(): RoomStop? = record.lastStop()
 
+    override fun forgetExit() = record.dismiss()
+
     override fun notifyStopped(stop: RoomStop) = EngineNotices.stopped(context, stop)
 
     override fun openFix(context: Context, conditionId: String): Boolean {

@@ -44,14 +44,19 @@ internal object ExitReasons {
 }
 
 /**
- * Keeps the engine's trace in private preferences. One per process ([of]), so the limiter and
- * the engine service agree on what the last process left behind before this one overwrites it.
+ * Keeps the engine's trace in private preferences: which rooms run, and the boot they run in.
+ * One per process ([of]). The last process's trace is taken over when this one starts; once
+ * explained, the stop is kept until the owner dismisses its banner, so a start that shows no
+ * screen (a background job) does not swallow it.
  */
 internal class EngineRecord private constructor(private val context: Context) {
     private val prefs = context.getSharedPreferences("pocketide.engine", Context.MODE_PRIVATE)
+    /** The last process's trace until it is explained. */
+    private var previous: EngineTrace? = read()
 
-    /** The last process's trace, read before this process writes its own. */
-    private val previous: EngineTrace? = read()
+    init {
+        if (previous != null) prefs.edit().remove(KEY_AGENTS).remove(KEY_BOOT).apply()
+    }
 
     fun running(agentIds: Collection<String>) {
         prefs.edit().putString(KEY_AGENTS, agentIds.sorted().joinToString(",")).putInt(KEY_BOOT, bootCount() ?: -1).apply()
@@ -61,9 +66,20 @@ internal class EngineRecord private constructor(private val context: Context) {
         prefs.edit().remove(KEY_AGENTS).remove(KEY_BOOT).apply()
     }
 
-    /** The stop to explain on this start, if the rooms were running when the last process ended. */
+    /** The stop to explain, if the rooms were running when an earlier process ended and the owner has not dismissed it. */
+    @Synchronized
     fun lastStop(): RoomStop? {
-        val trace = previous ?: return null
+        val trace = previous ?: return stored()
+        previous = null
+        return explain(trace)?.also(::store) ?: stored()
+    }
+
+    @Synchronized
+    fun dismiss() {
+        prefs.edit().remove(KEY_STOP_AGENTS).remove(KEY_STOP_CAUSE).remove(KEY_STOP_MESSAGE).remove(KEY_STOP_AT).apply()
+    }
+
+    private fun explain(trace: EngineTrace): RoomStop? {
         val record = if (Build.VERSION.SDK_INT >= 30) {
             runCatching {
                 context.getSystemService(ActivityManager::class.java)
@@ -74,6 +90,22 @@ internal class EngineRecord private constructor(private val context: Context) {
         }
         val at = record?.timestamp ?: System.currentTimeMillis()
         return ExitReasons.explain(trace, bootCount(), record?.reason, record?.description, at)
+    }
+
+    private fun store(stop: RoomStop) {
+        prefs.edit()
+            .putString(KEY_STOP_AGENTS, stop.agentIds.joinToString(","))
+            .putString(KEY_STOP_CAUSE, stop.cause.name)
+            .putString(KEY_STOP_MESSAGE, stop.message)
+            .putLong(KEY_STOP_AT, stop.at)
+            .apply()
+    }
+
+    private fun stored(): RoomStop? {
+        val message = prefs.getString(KEY_STOP_MESSAGE, null) ?: return null
+        val cause = StopCause.entries.firstOrNull { it.name == prefs.getString(KEY_STOP_CAUSE, null) } ?: return null
+        val agents = prefs.getString(KEY_STOP_AGENTS, null)?.split(',')?.filter { it.isNotBlank() }.orEmpty()
+        return RoomStop(agents, cause, message, prefs.getLong(KEY_STOP_AT, 0))
     }
 
     private fun read(): EngineTrace? {
@@ -88,6 +120,10 @@ internal class EngineRecord private constructor(private val context: Context) {
     companion object {
         private const val KEY_AGENTS = "running.agents"
         private const val KEY_BOOT = "running.boot"
+        private const val KEY_STOP_AGENTS = "stop.agents"
+        private const val KEY_STOP_CAUSE = "stop.cause"
+        private const val KEY_STOP_MESSAGE = "stop.message"
+        private const val KEY_STOP_AT = "stop.at"
 
         @Volatile private var instance: EngineRecord? = null
 

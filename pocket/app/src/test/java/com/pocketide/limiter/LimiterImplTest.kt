@@ -69,7 +69,11 @@ class LimiterImplTest {
         override fun roomsRunning(agentIds: Set<String>) {
             running += agentIds
         }
-        override fun lastExit(): RoomStop? = null
+        var exit: RoomStop? = null
+        override fun lastExit(): RoomStop? = exit
+        override fun forgetExit() {
+            exit = null
+        }
         override fun notifyStopped(stop: RoomStop) {
             notified += stop
         }
@@ -139,6 +143,19 @@ class LimiterImplTest {
 
         advanceTimeBy(120_000)
         assertEquals(1, rig.host.notified.size)
+    }
+
+    @Test
+    fun `a kill of the last process shows until the owner dismisses it`() = runTest {
+        val rig = Rig(this, phone())
+        val killed = RoomStop(listOf("claude"), StopCause.ANDROID, "Android closed PocketIDE. Nothing was lost.", 5)
+        rig.host.exit = killed
+        rig.limiter.start()
+        runCurrent()
+        assertEquals(killed, rig.limiter.lastStop.value)
+        rig.limiter.dismissStop()
+        assertEquals(null, rig.limiter.lastStop.value)
+        assertEquals(null, rig.host.exit)
     }
 
     @Test
