@@ -55,6 +55,7 @@ object MemoryFiles {
             ".gemini/config/GEMINI.md",
             ".gemini/config/AGENTS.md",
             ".gemini/config/rules/*.md",
+            ".gemini/antigravity-cli/rules/*.md",
         ),
     )
 
@@ -131,6 +132,8 @@ object MemoryFiles {
             // anything that reappears there, so the write can never go through a link.
             Files.deleteIfExists(temp)
             FileChannel.open(temp, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { channel ->
+                // Checked before any byte is written, so a swapped folder never receives the text.
+                if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
                 val buffer = ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8))
                 while (buffer.hasRemaining()) channel.write(buffer)
                 channel.force(true)

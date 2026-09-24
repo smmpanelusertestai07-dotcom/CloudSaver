@@ -10,6 +10,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** What a Linux program in the room could plant, and what the editor must do about it. */
 class MemoryFilesHostileTest {
@@ -99,6 +100,47 @@ class MemoryFilesHostileTest {
         val inside = File(real, ".codex/AGENTS.md")
         MemoryFiles.save(real, inside, "ok")
         assertEquals("ok", MemoryFiles.read(real, inside))
+    }
+
+    @Test
+    fun `a folder swapped for a link while saving never changes a file outside the home`() {
+        val home = temp.newFolder("home")
+        val outside = temp.newFolder("outside")
+        val victim = write(outside, "AGENTS.md", "outside")
+        val real = File(home, ".codex").apply { mkdirs() }
+        val parked = File(home, "parked")
+        val stop = AtomicBoolean(false)
+        val swapper = Thread {
+            while (!stop.get()) {
+                runCatching {
+                    Files.move(real.toPath(), parked.toPath())
+                    Files.createSymbolicLink(real.toPath(), outside.toPath())
+                    Thread.yield()
+                    Files.delete(real.toPath())
+                    Files.move(parked.toPath(), real.toPath())
+                }
+            }
+        }
+        swapper.start()
+        try {
+            repeat(300) { i ->
+                try {
+                    MemoryFiles.save(home, File(home, ".codex/AGENTS.md"), "mine $i")
+                } catch (_: IOException) {
+                }
+                try {
+                    val text = MemoryFiles.read(home, File(home, ".codex/AGENTS.md"))
+                    assertFalse("read through the link", text == "outside")
+                } catch (_: IOException) {
+                }
+            }
+        } finally {
+            stop.set(true)
+            swapper.join()
+        }
+        assertEquals("outside", victim.readText())
+        // Only a new temp name could ever appear there (CREATE_NEW); no file outside is replaced.
+        assertTrue(outside.list()!!.all { it == "AGENTS.md" || it.endsWith(".pocketide-save") })
     }
 
     @Test
