@@ -114,10 +114,10 @@ internal class ResumableUpload(private val calls: DriveCalls) {
         put(ByteArray(0).toRequestBody())
     }
 
-    private suspend fun put(uri: String, build: Request.Builder.() -> Unit): Step = try {
+    private suspend fun put(uri: String, configure: Request.Builder.() -> Unit): Step = try {
         calls.authorized(http.uploadClient) {
             url(uri)
-            build()
+            configure()
         }.use(::read)
     } catch (e: DriveException.Offline) {
         Step.Broken(e, null)

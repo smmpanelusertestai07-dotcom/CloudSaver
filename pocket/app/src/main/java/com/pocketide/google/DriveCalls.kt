@@ -81,14 +81,14 @@ internal class DriveCalls(val http: DriveHttp, val tokens: TokenSource) {
      * Sends a request with a token. A 401 gets one fresh token and one more try; a second 401
      * means access is gone. Returns the response whatever its status (the caller closes it).
      */
-    suspend fun authorized(client: OkHttpClient = http.client, build: Request.Builder.() -> Unit): Response {
+    suspend fun authorized(client: OkHttpClient = http.client, configure: Request.Builder.() -> Unit): Response {
         var token = tokens.token()
-        var response = execute(client, request(token, build))
+        var response = execute(client, request(token, configure))
         if (response.code != HTTP_UNAUTHORIZED) return response
         response.close()
         tokens.rejected(token)
         token = tokens.token()
-        response = execute(client, request(token, build))
+        response = execute(client, request(token, configure))
         if (response.code == HTTP_UNAUTHORIZED) {
             response.close()
             throw DriveException.Revoked()
@@ -97,10 +97,10 @@ internal class DriveCalls(val http: DriveHttp, val tokens: TokenSource) {
     }
 
     /** Like [authorized], but only a success comes back; slow-downs are retried within bounds. */
-    suspend fun exchange(build: Request.Builder.() -> Unit): Response {
+    suspend fun exchange(configure: Request.Builder.() -> Unit): Response {
         var retry = 0
         while (true) {
-            val response = authorized(build = build)
+            val response = authorized(configure = configure)
             if (response.isSuccessful) return response
             val verdict = response.use { judge(it) }
             when (verdict) {
@@ -119,8 +119,8 @@ internal class DriveCalls(val http: DriveHttp, val tokens: TokenSource) {
     suspend fun <T> json(url: HttpUrl, strategy: DeserializationStrategy<T>): T =
         exchange { url(url) }.use { decode(it, strategy) }
 
-    private fun request(token: String, build: Request.Builder.() -> Unit): Request =
-        Request.Builder().apply(build).header("Authorization", "Bearer $token").build()
+    private fun request(token: String, configure: Request.Builder.() -> Unit): Request =
+        Request.Builder().apply(configure).header("Authorization", "Bearer $token").build()
 
     private suspend fun execute(client: OkHttpClient, request: Request): Response = try {
         client.newCall(request).await()
