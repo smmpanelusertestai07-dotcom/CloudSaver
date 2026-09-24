@@ -87,7 +87,7 @@ internal object IndexMerge {
         )
     }
 
-    /** The earliest deletion date is kept, so the 30-day count never restarts. */
+    /** The newer activity wins ([a] on a tie); the earliest deletion date is kept, so the 30-day count never restarts. */
     fun mergeSession(a: SessionRecord, b: SessionRecord): SessionRecord {
         val newer = if (b.lastActivityAt > a.lastActivityAt) b else a
         val deletions = listOfNotNull(a.deletedAt, b.deletedAt)
@@ -116,10 +116,11 @@ internal object IndexMerge {
 
     private fun applySession(sessions: List<SessionRecord>, change: SessionChange): List<SessionRecord> {
         val old = sessions.firstOrNull { it.id == change.id }
+        // This phone's own edit (a rename, say) wins a tie; a record with newer activity wins otherwise.
         val next = when (change) {
-            is SessionChange.Upsert -> if (old == null) change.record else mergeSession(old, change.record)
+            is SessionChange.Upsert -> if (old == null) change.record else mergeSession(change.record, old)
             is SessionChange.Delete -> {
-                val merged = if (old == null) change.record else mergeSession(old, change.record)
+                val merged = if (old == null) change.record else mergeSession(change.record, old)
                 merged.copy(deletedAt = listOfNotNull(old?.deletedAt, change.record.deletedAt, change.at).min(), status = SessionStatus.DELETED)
             }
             is SessionChange.Restore -> {

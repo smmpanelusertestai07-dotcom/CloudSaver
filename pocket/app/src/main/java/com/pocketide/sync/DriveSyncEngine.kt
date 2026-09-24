@@ -284,6 +284,11 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         retryable = e is DriveException.RateLimited || e is DriveException.Other || e is java.io.IOException
         // In the background Google may need the owner to approve again; only the app can ask (R13).
         if (e is DriveException.Revoked) notices.driveRevoked(run)
+        // Even the index could not be written: the wait (and its 24-hour lock) starts now.
+        if (e is DriveException.StorageFull && run.state.waiting == null) {
+            run.state = run.state.copy(waiting = WaitingMark(run.now, googleFull = true))
+            notices.storageFull(run, googleFull = true)
+        }
         val waiting = run.state.waiting
         flows.status.value = if (waiting != null && e !is SyncException) Views.waitingStatus(run, waiting) else SyncStatus.Error(Plain.of(e))
         try {

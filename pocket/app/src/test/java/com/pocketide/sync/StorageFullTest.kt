@@ -58,6 +58,21 @@ class StorageFullTest {
     }
 
     @Test
+    fun aFullDriveThatRefusesEvenTheIndexStartsTheWaitToo() = runBlocking {
+        val phone = phone()
+        phone.homeFile("claude", path).writeText("start\n")
+        phone.engine.syncNow()
+        phone.drive.quotaBytes = phone.drive.usedBytes()
+        phone.sessions += session("s2", at = clock.now).copy(title = "A new chat with a long title that makes the index grow")
+        clock.advance(Durations.MINUTE)
+        phone.engine.syncNow()
+        val waiting = phone.engine.status.value as SyncStatus.Waiting
+        assertTrue(waiting.googleStorageFull)
+        assertEquals(clock.now, waiting.since)
+        assertEquals(clock.now, phone.state().waiting?.since)
+    }
+
+    @Test
     fun twoHundredMegabytesWaitingLocksAtOnce() {
         val mark = WaitingMark(since = clock.now, googleFull = true)
         assertFalse(Limits.locks(mark, 200 * MeteredDataBudget.MB - 1, clock.now))

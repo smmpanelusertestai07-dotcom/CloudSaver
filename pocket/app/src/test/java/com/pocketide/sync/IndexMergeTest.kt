@@ -71,6 +71,34 @@ class IndexMergeTest {
     }
 
     @Test
+    fun anotherPhonesChangesArriveUnlessThisPhoneChangedTheSameChat() = runBlocking {
+        val accounts = FakeAccounts(clock)
+        val a = TestPhone(accounts, clock).apply {
+            sessions += session("s1", at = clock.now)
+            sessions += session("s2", at = clock.now)
+        }
+        a.engine.syncNow()
+        val b = TestPhone(accounts, clock, deviceId = "phone-b", deviceName = "Phone B")
+        b.engine.restore(RestoreChoice.WIFI_ONLY)
+        assertEquals(setOf("s1", "s2"), b.sessions.map { it.id }.toSet())
+
+        clock.advance(LeasePolicy.TTL_MS + 1)
+        b.sessions[b.sessions.indexOfFirst { it.id == "s1" }] = b.sessions.first { it.id == "s1" }.copy(title = "Named on B")
+        b.settings.update { it.copy(phoneChatDays = 90) }
+        b.engine.syncNow()
+        a.sessions[a.sessions.indexOfFirst { it.id == "s2" }] = a.sessions.first { it.id == "s2" }.copy(title = "Named on A")
+
+        clock.advance(LeasePolicy.TTL_MS + 1)
+        a.engine.syncNow()
+        assertEquals("Named on B", a.sessions.first { it.id == "s1" }.title)
+        assertEquals("Named on A", a.sessions.first { it.id == "s2" }.title)
+        assertEquals(90, a.settings.settings.value.phoneChatDays)
+        val index = a.remoteIndex()!!
+        assertEquals("Named on B", index.sessions.first { it.id == "s1" }.title)
+        assertEquals("Named on A", index.sessions.first { it.id == "s2" }.title)
+    }
+
+    @Test
     fun aWriteThatRacesAnotherPhoneIsAppliedOnTopOfTheirs() = runBlocking {
         val accounts = FakeAccounts(clock)
         val phone = TestPhone(accounts, clock).apply { sessions += session("s1", at = clock.now) }
