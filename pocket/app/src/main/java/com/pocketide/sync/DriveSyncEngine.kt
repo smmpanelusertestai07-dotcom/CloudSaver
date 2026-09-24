@@ -40,6 +40,9 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     override val driveProjects: StateFlow<List<Project>> = flows.driveProjects
     override val storage: StateFlow<StorageSummary> = flows.storage
     override val move: StateFlow<MoveState> = flows.move
+    override val backups: StateFlow<Map<String, SessionBackup>> = flows.backups
+    override val computerRemovalAt: StateFlow<Long?> = flows.computerRemovalAt
+    override val backgroundLimit: StateFlow<String?> = flows.backgroundLimit
 
     /** Shows what Drive held at the last sync, so the app starts offline with it. */
     suspend fun warmUp() {
@@ -49,6 +52,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             LeasePolicy.heldByOther(index, ports.device, run.now)?.let { flows.leaseHolder.value = it.deviceName }
             run.state.waiting?.let { flows.status.value = Views.waitingStatus(run, it) }
             run.state.move?.let { job -> if (job.stage == MoveStage.VERIFIED) flows.move.value = MoveState.ReadyToEraseOld(job.from, job.to) }
+            flows.computerRemovalAt.value = run.state.computerNoticeDue
             flows.storage.value = Views.storage(run, index, ports.settings.settings.value, flows.storage.value)
             Views.publishWaiting(run, pass.book(run))
         }
@@ -150,7 +154,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
                 throw SyncException(Plain.of(e))
             }
             val dirs = ports.dirs
-            listOf(dirs.rooms, dirs.work, dirs.repos, dirs.vault, dirs.queue).forEach { deleteTree(it) }
+            listOf(dirs.rooms, dirs.work, dirs.repos, dirs.vault, dirs.queue, dirs.builds, dirs.downloads, dirs.share, dirs.apk)
+                .forEach { deleteTree(it) }
             ports.wipeSecureStore()
             ports.settings.update { it.copy(onboardingDone = false) }
             flows.status.value = SyncStatus.Idle
@@ -160,6 +165,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
             flows.driveProjects.value = emptyList()
             flows.storage.value = StorageSummary()
             flows.move.value = MoveState.Idle
+            flows.backups.value = emptyMap()
+            flows.computerRemovalAt.value = null
         }
     }
 
@@ -222,6 +229,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     /** A background run: failures become the status, never an exception. */
     private suspend fun <T> attempt(block: suspend (Run) -> T): T? = withContext(Dispatchers.IO) {
         lock.withLock {
+            observe()
             val cipher = ports.cipher()
             if (cipher == null) {
                 flows.status.value = SyncStatus.Idle
@@ -242,6 +250,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
     /** An action the owner asked for: failures also come back as a [SyncException] to show. */
     private suspend fun <T> act(block: suspend (Run) -> T): T = withContext(Dispatchers.IO) {
         lock.withLock {
+            observe()
             val cipher = ports.cipher() ?: throw SyncException(Plain.KEY_NOT_READY)
             val run = Run(kit, cipher)
             try {
@@ -255,8 +264,16 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         }
     }
 
+    /** What Android allows in the background, and a new day's data counters, as of this run. */
+    private fun observe() {
+        flows.backgroundLimit.value = ports.backgroundLimit()
+        ports.budget.refresh()
+    }
+
     private fun fail(run: Run, e: Exception) {
         retryable = e is DriveException.RateLimited || e is DriveException.Other || e is java.io.IOException
+        // In the background Google may need the owner to approve again; only the app can ask (R13).
+        if (e is DriveException.Revoked) notices.driveRevoked(run)
         val waiting = run.state.waiting
         flows.status.value = if (waiting != null && e !is SyncException) Views.waitingStatus(run, waiting) else SyncStatus.Error(Plain.of(e))
         try {

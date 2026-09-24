@@ -119,6 +119,10 @@ internal data class SyncState(
     val move: MoveJob? = null,
     val lastSyncAt: Long = 0,
     val lastMaintenanceAt: Long = 0,
+    /** When Drive last confirmed new data of each session, for its "Backed up" chip. */
+    val backedUpAt: Map<String, Long> = emptyMap(),
+    /** The day-before notice for the computer's removal was posted. */
+    val computerDayBeforeSent: Boolean = false,
     /** When each kind of notification was last posted, so each is shown at most once a day. */
     val alerts: Map<String, Long> = emptyMap(),
 )

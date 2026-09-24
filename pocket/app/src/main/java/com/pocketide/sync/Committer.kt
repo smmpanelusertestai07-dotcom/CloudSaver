@@ -76,6 +76,7 @@ internal class Committer(private val kit: SyncKit) {
             emptyIndex = { VaultIndex(updatedAt = now) },
         )
         settle(run, start.index, result, ready, Pushed(sessions, projects, settingsJson, conflicts), extras, mode)
+        if (extras.eraseSessions.isNotEmpty()) ports.sessionsErased(extras.eraseSessions.sorted())
         deleteUnused(run, drive)
         return result
     }
@@ -84,9 +85,11 @@ internal class Committer(private val kit: SyncKit) {
     suspend fun deleteUnused(run: Run, drive: DriveStore) {
         if (run.state.driveDeletes.isEmpty()) return
         val left = LinkedHashMap(run.state.driveDeletes)
+        // Identical content is stored once, so a file another entry still names is never deleted.
+        val named = run.index?.objects.orEmpty().map { it.name }.toSet() + run.entries().map { it.name }
         try {
             for ((name, knownId) in run.state.driveDeletes) {
-                if (!name.startsWith(OBJECT_PREFIX)) {
+                if (!name.startsWith(OBJECT_PREFIX) || name in named) {
                     left.remove(name)
                     continue
                 }
@@ -149,12 +152,15 @@ internal class Committer(private val kit: SyncKit) {
         val after = result.index ?: return
         val now = run.now
         val tracks = run.state.tracks.toMutableMap()
-        for (e in ready) {
+        val (erasedNow, recorded) = ready.partition { it.sessionId in extras.eraseSessions }
+        for (e in recorded) {
             kit.queue.remove(e.id)
             if (!e.conflict) tracks[e.trackKey] = Tracks.after(tracks[e.trackKey], e)
         }
         extras.removeFiles.forEach(tracks::remove)
         tracks.entries.removeAll { it.value.sessionId in extras.eraseSessions }
+        // Uploaded for a session that is erased in this same write: its files go from Drive too.
+        run.discard(erasedNow + run.entries().filter { it.sessionId in extras.eraseSessions })
         val remaining = run.entries()
         val keep = after.objects.map { it.name }.toSet() + remaining.map { it.name }
         val gone = before?.objects.orEmpty()
@@ -172,6 +178,7 @@ internal class Committer(private val kit: SyncKit) {
             eraseQueue = state.eraseQueue - extras.eraseSessions,
             erased = state.erased + extras.eraseSessions.associateWith { now },
             driveDeletes = state.driveDeletes + gone,
+            backedUpAt = state.backedUpAt + recorded.mapNotNull { it.sessionId }.associateWith { now } - extras.eraseSessions,
         )
         run.keepIndex(result)
         run.save()

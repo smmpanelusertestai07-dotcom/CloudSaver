@@ -1,8 +1,11 @@
 package com.pocketide.sync
 
+import android.app.ActivityManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import com.pocketide.AppGraph
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
@@ -19,14 +22,38 @@ import com.pocketide.vault.KeyState
 import com.pocketide.vault.RekeyReason
 import com.pocketide.vault.VaultCipher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 
 fun createSyncEngine(graph: AppGraph): SyncEngine {
     val engine = DriveSyncEngine(GraphPorts(graph))
     graph.scope.launch(Dispatchers.IO) { engine.warmUp() }
+    graph.scope.launch { syncWhileAgentsRun(graph, engine) }
     return engine
 }
+
+/**
+ * While any agent runs, new transcript bytes are batched into a sync every few minutes (never per
+ * keystroke); the end of a task asks for one on its own. The rooms run in the engine's foreground
+ * service, so this process is alive for as long as it matters.
+ */
+private suspend fun syncWhileAgentsRun(graph: AppGraph, engine: SyncEngine) {
+    graph.rooms.states
+        .map { states -> states.values.any { it !is RoomState.Stopped && it !is RoomState.Failed } }
+        .distinctUntilChanged()
+        .collectLatest { running ->
+            while (running) {
+                delay(AGENT_SYNC_EVERY_MS)
+                engine.requestSync("agents running")
+            }
+        }
+}
+
+private const val AGENT_SYNC_EVERY_MS = 5 * Durations.MINUTE
 
 fun createDataBudget(graph: AppGraph): DataBudget = meteredBudget(graph)
 
@@ -92,12 +119,28 @@ private class GraphPorts(private val graph: AppGraph) : SyncPorts {
         return agents.distinct().mapNotNull { graph.sessions.activeSession(it) }.toSet()
     }
 
-    override fun roomsRunning(): Boolean =
-        graph.rooms.states.value.values.any { it !is RoomState.Stopped && it !is RoomState.Failed }
+    override fun roomsRunning(): Boolean = graph.rooms.states.value.values.any(::isRunning)
+
+    override fun roomRunning(agentId: String): Boolean = graph.rooms.states.value[agentId]?.let(::isRunning) == true
+
+    private fun isRunning(state: RoomState) = state !is RoomState.Stopped && state !is RoomState.Failed
 
     override suspend fun stopRooms() = graph.rooms.stopAll()
 
     override suspend fun deleteSessionLocally(sessionId: String) = graph.sessions.delete(sessionId)
+
+    override suspend fun adoptSessions(records: List<SessionRecord>) = graph.sessions.adopt(records)
+
+    override suspend fun sessionsErased(sessionIds: List<String>) = graph.sessions.erased(sessionIds)
+
+    override suspend fun adoptProjects(projects: List<Project>) = graph.projects.adopt(projects)
+
+    override fun backgroundLimit(): String? {
+        val context = graph.context
+        if (context.getSystemService(ActivityManager::class.java)?.isBackgroundRestricted == true) return Plain.BACKGROUND_OFF
+        val bucket = context.getSystemService(UsageStatsManager::class.java)?.appStandbyBucket ?: return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && bucket == UsageStatsManager.STANDBY_BUCKET_RESTRICTED) Plain.BACKGROUND_RESTRICTED else null
+    }
 
     override suspend fun exportSecrets(): ByteArray? = try {
         graph.secrets.exportBlob()

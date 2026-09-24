@@ -154,6 +154,6 @@ internal class AndroidSyncNotifier(private val context: Context) : SyncNotifier 
 
     private companion object {
         const val ID_BASE = 4101
-        val KEYS = listOf("lease", "google-full", "share-full", "keep", "trim", "phone-80", "phone-90", "computer")
+        val KEYS = listOf("lease", "google-full", "share-full", "keep", "trim", "phone-80", "phone-90", "computer", "drive")
     }
 }

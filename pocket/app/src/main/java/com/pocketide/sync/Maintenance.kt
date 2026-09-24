@@ -99,18 +99,23 @@ internal class Maintenance(
         val unused = days > 0 && isRealDirectory(rootfs) && run.now - lastActivity >= Durations.days(days)
         val due = run.state.computerNoticeDue
         when {
-            !unused -> run.state = run.state.copy(computerNoticeDue = null)
+            !unused -> run.state = run.state.copy(computerNoticeDue = null, computerDayBeforeSent = false)
             due == null -> {
                 val at = run.now + Durations.days(Retention.NOTICE_DAYS)
-                run.state = run.state.copy(computerNoticeDue = at)
+                run.state = run.state.copy(computerNoticeDue = at, computerDayBeforeSent = false)
                 notices.computerNotice(run, days, at)
             }
             run.now >= due && everythingSynced(run) && !ports.roomsRunning() && ports.computerIdle() -> {
                 deleteTree(rootfs)
-                run.state = run.state.copy(computerNoticeDue = null)
+                run.state = run.state.copy(computerNoticeDue = null, computerDayBeforeSent = false)
                 notices.computerRemoved(run)
             }
+            run.now >= due - Durations.DAY && !run.state.computerDayBeforeSent -> {
+                notices.computerTomorrow(run, due)
+                run.state = run.state.copy(computerDayBeforeSent = true)
+            }
         }
+        kit.flows.computerRemovalAt.value = run.state.computerNoticeDue
     }
 
     private fun everythingSynced(run: Run): Boolean =

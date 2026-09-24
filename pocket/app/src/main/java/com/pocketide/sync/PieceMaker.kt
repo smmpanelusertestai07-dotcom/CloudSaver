@@ -93,8 +93,8 @@ internal class PieceMaker(
             val id = Codec.objectName()
             val entry = queue.addBlob(cipher, id) { out ->
                 val piece = Codec.newDigest()
-                val counted = BoundedInputStream(DigestInputStream(prefixed, piece), Long.MAX_VALUE)
-                encrypt(counted, out)
+                val counted = BoundedInputStream(prefixed, Long.MAX_VALUE)
+                encrypt(DigestInputStream(masked(counted, c.path), piece), out)
                 if (known.end + counted.count != facts.size) {
                     null
                 } else {
@@ -114,14 +114,16 @@ internal class PieceMaker(
         val id = Codec.objectName()
         val entry = queue.addBlob(cipher, id) { out ->
             FileInputStream(c.file).use { raw ->
-                val digest = Codec.newDigest()
+                val local = Codec.newDigest()
+                val sent = Codec.newDigest()
                 val bounded = BoundedInputStream(raw, c.facts.size)
-                encrypt(DigestInputStream(bounded, digest), out)
+                encrypt(DigestInputStream(masked(DigestInputStream(bounded, local), c.path), sent), out)
                 if (bounded.count != c.facts.size) {
                     null
                 } else {
-                    val sha = Codec.hex(digest.digest())
-                    draft(c, known, id, offset = 0, length = bounded.count).copy(sha256 = sha, prefixSha256 = sha, base = true)
+                    // The piece is checked by what was sent; the file on the phone by its own bytes.
+                    draft(c, known, id, offset = 0, length = bounded.count)
+                        .copy(sha256 = Codec.hex(sent.digest()), prefixSha256 = Codec.hex(local.digest()), base = true)
                 }
             }
         }
@@ -182,7 +184,7 @@ internal class PieceMaker(
             FileInputStream(c.file).use { raw ->
                 val digest = Codec.newDigest()
                 val bounded = BoundedInputStream(raw, c.facts.size)
-                encrypt(DigestInputStream(bounded, digest), out)
+                encrypt(DigestInputStream(masked(bounded, c.path), digest), out)
                 val sha = Codec.hex(digest.digest())
                 QueueEntry(
                     id = id, name = id, kind = c.kind, agentId = c.agentId, sessionId = sessionId, path = path,
@@ -213,6 +215,9 @@ internal class PieceMaker(
         fileSize = c.facts.size,
         fileModifiedAt = c.facts.modifiedAt,
     )
+
+    private fun masked(input: InputStream, path: String): InputStream =
+        if (TrackRules.needsSecretScan(path)) SecretMaskingInputStream(input) else input
 
     /** gzip, then age: what every object in Drive is. */
     private fun encrypt(plain: InputStream, out: OutputStream) {

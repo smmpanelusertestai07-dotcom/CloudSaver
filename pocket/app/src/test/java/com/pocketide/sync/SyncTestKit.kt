@@ -12,6 +12,7 @@ import com.pocketide.google.DriveStore
 import com.pocketide.model.PhoneSnapshot
 import com.pocketide.model.Project
 import com.pocketide.model.SessionRecord
+import com.pocketide.model.SessionStatus
 import com.pocketide.vault.VaultCipher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -210,6 +211,10 @@ internal class TestPhone(
     var secrets: ByteArray? = null
     var imported: ByteArray? = null
     val deletedLocally = ArrayList<String>()
+    val adopted = ArrayList<SessionRecord>()
+    val erasedSessions = ArrayList<String>()
+    val runningRooms = HashSet<String>()
+    var backgroundLimit: String? = null
     var roomsRunning = false
     var phone: PhoneSnapshot = PhoneSnapshot.UNKNOWN
     var newAccount: DriveAuthResult = DriveAuthResult.Failed("No account chosen")
@@ -228,13 +233,35 @@ internal class TestPhone(
     override fun localSessions(): List<SessionRecord> = sessions.toList()
     override fun localProjects(): List<Project> = projects.toList()
     override fun activeSessionIds(): Set<String> = active.toSet()
-    override fun roomsRunning() = roomsRunning
+    override fun roomsRunning() = roomsRunning || runningRooms.isNotEmpty()
+    override fun roomRunning(agentId: String) = agentId in runningRooms
     override suspend fun stopRooms() {
         roomsRunning = false
+        runningRooms.clear()
     }
     override suspend fun deleteSessionLocally(sessionId: String) {
         deletedLocally += sessionId
+        val i = sessions.indexOfFirst { it.id == sessionId }
+        if (i >= 0) sessions[i] = sessions[i].copy(status = SessionStatus.DELETED, deletedAt = clock.now())
     }
+    override suspend fun adoptSessions(records: List<SessionRecord>) {
+        adopted += records
+        for (r in records) {
+            val i = sessions.indexOfFirst { it.id == r.id }
+            if (i >= 0) sessions[i] = r else sessions += r
+        }
+    }
+    override suspend fun sessionsErased(sessionIds: List<String>) {
+        erasedSessions += sessionIds
+        sessions.removeAll { it.id in sessionIds }
+    }
+    override suspend fun adoptProjects(projects: List<Project>) {
+        for (p in projects) {
+            val i = this.projects.indexOfFirst { it.id == p.id }
+            if (i >= 0) this.projects[i] = p else this.projects += p
+        }
+    }
+    override fun backgroundLimit(): String? = backgroundLimit
     override suspend fun exportSecrets(): ByteArray? = secrets?.copyOf()
     override suspend fun importSecrets(bytes: ByteArray) {
         imported = bytes.copyOf()
