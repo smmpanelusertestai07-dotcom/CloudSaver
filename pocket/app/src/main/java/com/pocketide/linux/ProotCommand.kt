@@ -19,16 +19,33 @@ internal data class ProotCall(val argv: List<String>, val environment: Map<Strin
  *  - /dev, /proc and /sys come from the phone, then stand-ins for the /proc files Android hides
  *    (they must come after /proc to win), then the command's own folders.
  *
- * The program runs under `env -i` with a fixed set of basics plus the command's variables, so
- * nothing of Android's environment (or anything secret the app holds) reaches Linux.
+ * The program runs under `env -i` with a fixed set of basics, so nothing of Android's
+ * environment (and nothing secret the app holds) reaches Linux. The command's own variables
+ * stay off the command line, where any process could read them in /proc/<pid>/cmdline: they
+ * travel in a private file bound in for this one run, which launch.pl reads, deletes and turns
+ * into the program's environment.
  */
 internal object ProotCommand {
     const val GUEST_PATH = "/opt/pocketide/bin:/opt/code-server/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+    /** Where a command's variables file appears inside Linux, and the script that reads it. */
+    const val GUEST_VARIABLES = "/run/pocketide-variables"
+    const val LAUNCHER = "/opt/pocketide/launch.pl"
+
     private val VARIABLE_NAME = Regex("[A-Z_][A-Z0-9_]*")
 
-    fun build(host: ProotHost, root: File, procStandIns: Map<String, String>, timeZone: String, command: LinuxCommand): ProotCall {
+    /** [variablesFile] holds [variables] of [command]; it is given exactly when the command has variables. */
+    fun build(
+        host: ProotHost,
+        root: File,
+        procStandIns: Map<String, String>,
+        timeZone: String,
+        command: LinuxCommand,
+        variablesFile: File? = null,
+    ): ProotCall {
         validate(command)
+        require((variablesFile != null) == command.env.isNotEmpty()) { "A variables file goes with variables, and only with them." }
+        require(variablesFile == null || !variablesFile.absolutePath.contains(':')) { "Not a usable file: $variablesFile" }
         val argv = buildList {
             add(host.proot.absolutePath)
             add("--link2symlink")
@@ -48,32 +65,49 @@ internal object ProotCommand {
                 add("-b")
                 add("${bind.hostPath}:${bind.guestPath}")
             }
+            if (variablesFile != null) {
+                add("-b")
+                add("${variablesFile.absolutePath}:$GUEST_VARIABLES")
+            }
             add("-w")
             add(command.workDir)
             add("/usr/bin/env")
             add("-i")
-            environment(timeZone, command.env).forEach { (name, value) -> add("$name=$value") }
+            basics(timeZone).forEach { (name, value) -> add("$name=$value") }
+            if (variablesFile != null) {
+                add("/usr/bin/perl")
+                add(LAUNCHER)
+                add(GUEST_VARIABLES)
+            }
             addAll(command.argv)
         }
         return ProotCall(argv, prootEnvironment(host))
     }
 
-    /** The guest's whole environment: the basics, then the command's variables (sorted, a repeat replaces a basic). */
-    fun environment(timeZone: String, variables: Map<String, String>): Map<String, String> {
-        val environment = linkedMapOf(
-            "HOME" to "/root",
-            "USER" to "root",
-            "LOGNAME" to "root",
-            "SHELL" to "/bin/bash",
-            "PATH" to GUEST_PATH,
-            "TERM" to "xterm-256color",
-            "LANG" to "C.UTF-8",
-            "TZ" to timeZone,
-            "TMPDIR" to "/tmp",
-        )
-        variables.toSortedMap().forEach { (name, value) -> environment[name] = value }
-        return environment
-    }
+    /**
+     * The variables file: "NAME=value" pairs sorted by name, each ended by a NUL, so a value may
+     * hold any other character, newlines included. launch.pl sets them over the basics, so a
+     * name that repeats a basic replaces it.
+     */
+    fun variables(command: LinuxCommand): ByteArray = buildString {
+        command.env.toSortedMap().forEach { (name, value) -> append(name).append('=').append(value).append('\u0000') }
+    }.toByteArray(Charsets.UTF_8)
+
+    /** The environment the program starts with: the basics, then the command's variables. */
+    fun environment(timeZone: String, variables: Map<String, String>): Map<String, String> =
+        basics(timeZone).apply { variables.toSortedMap().forEach { (name, value) -> put(name, value) } }
+
+    private fun basics(timeZone: String) = linkedMapOf(
+        "HOME" to "/root",
+        "USER" to "root",
+        "LOGNAME" to "root",
+        "SHELL" to "/bin/bash",
+        "PATH" to GUEST_PATH,
+        "TERM" to "xterm-256color",
+        "LANG" to "C.UTF-8",
+        "TZ" to timeZone,
+        "TMPDIR" to "/tmp",
+    )
 
     /** proot's own environment: exactly this, never the app's. */
     private fun prootEnvironment(host: ProotHost) = linkedMapOf(
@@ -103,6 +137,7 @@ internal object ProotCommand {
             require(isGuestPath(bind.hostPath) && !bind.hostPath.contains(':')) { "Not a usable folder: ${bind.hostPath}" }
             require(isGuestPath(bind.guestPath) && !bind.guestPath.contains(':')) { "Not a usable Linux path: ${bind.guestPath}" }
             require(GuestRoot.components(bind.guestPath).isNotEmpty()) { "A folder cannot replace the whole of Linux." }
+            require(bind.guestPath != GUEST_VARIABLES) { "$GUEST_VARIABLES is kept for the command's variables." }
         }
     }
 

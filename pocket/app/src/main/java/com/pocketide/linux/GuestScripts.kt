@@ -35,7 +35,7 @@ internal class GuestScripts(private val assets: LinuxAssets, private val runner:
     fun install(rootfs: File) {
         val guest = GuestRoot(rootfs)
         for (name in assets.names()) {
-            val mode = if (name.endsWith(".sh")) FileModes.EXECUTABLE else FileModes.PLAIN
+            val mode = if (name.endsWith(".sh") || name.endsWith(".pl")) FileModes.EXECUTABLE else FileModes.PLAIN
             guest.write("$FOLDER/$name", assets.read(name), mode)
         }
     }
