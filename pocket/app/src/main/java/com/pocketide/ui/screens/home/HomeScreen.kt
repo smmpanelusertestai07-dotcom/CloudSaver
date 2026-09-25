@@ -52,7 +52,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,6 +72,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.limiter.Condition
@@ -105,6 +109,7 @@ import com.pocketide.ui.screens.project.NewSessionDialog
 import com.pocketide.ui.screens.project.SectionLabel
 import com.pocketide.ui.screens.project.WorkFormat
 import com.pocketide.ui.screens.project.act
+import com.pocketide.ui.screens.project.attempt
 import com.pocketide.ui.screens.project.rememberGraph
 import com.pocketide.ui.screens.project.rememberTicker
 import kotlinx.coroutines.launch
@@ -133,6 +138,7 @@ fun HomeScreen(nav: PocketNav) {
     val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
     val restorePending by rememberRestoreOffer().pending.collectAsStateWithLifecycle()
+    val signIns = rememberSignIns(agents.map { it.id }, rooms)
     var restorePlanOpen by rememberSaveable { mutableStateOf(false) }
 
     // Open dialogs are saved: the app lock re-arming replaces the whole screen while the owner is away.
@@ -251,7 +257,13 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheetId = agent.id }
+                AgentCard(
+                    agent = agent,
+                    room = rooms[agent.id],
+                    signedIn = signIns[agent.id],
+                    chips = WorkText.chips(agent.displayName, work[agent.id], now),
+                    onUsage = nav::openExternal,
+                ) { agentSheetId = agent.id }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -470,8 +482,36 @@ private fun ProjectCard(
     }
 }
 
+/**
+ * Whether each agent is signed in, looked at again when a room starts or stops and when the owner
+ * comes back to the app (a sign-in happens inside the agent's own screen).
+ */
 @Composable
-private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onUsage: (String) -> Unit, onClick: () -> Unit) {
+private fun rememberSignIns(agentIds: List<String>, rooms: Map<String, RoomState>): Map<String, Boolean?> {
+    val graph = rememberGraph()
+    var signIns by remember { mutableStateOf<Map<String, Boolean?>>(emptyMap()) }
+    var looks by remember { mutableIntStateOf(0) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { looks++ }
+    val roomKinds = rooms.mapValues { it.value::class }
+    LaunchedEffect(agentIds, roomKinds, looks) {
+        signIns = agentIds.associateWith { id -> attempt { graph.rooms.signedIn(id) }.getOrNull() }
+    }
+    return signIns
+}
+
+/**
+ * An agent on Home: who publishes it, its room, whether it is signed in (with the way to sign in
+ * when it is not), its limits and what it is working on. Tapping it opens its session.
+ */
+@Composable
+private fun AgentCard(
+    agent: AgentInfo,
+    room: RoomState?,
+    signedIn: Boolean?,
+    chips: List<Told>,
+    onUsage: (String) -> Unit,
+    onClick: () -> Unit,
+) {
     val (state, tone) = roomLabel(room)
     val limits = agentLimits(agent.id)
     Card(
@@ -498,6 +538,12 @@ private fun AgentCard(agent: AgentInfo, room: RoomState?, chips: List<Told>, onU
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(limits.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                signInLabel(signedIn)?.let { (label, tone) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        StatusChip(label, tone)
+                        if (signedIn == false) TextButton(onClick = onClick) { Text("Sign in") }
+                    }
+                }
                 chips.forEach { StatusChip(it.text, it.tone) }
             }
             val usage = limits.usageUrl

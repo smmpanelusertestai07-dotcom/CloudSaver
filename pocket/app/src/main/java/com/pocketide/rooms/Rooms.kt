@@ -120,6 +120,12 @@ interface Rooms {
     ): Int = throw IllegalStateException("The agent's room cannot run programs yet.")
 
     /**
+     * Whether [agentId] is signed in in its room: its sign-in file is there. The file is only
+     * looked at, never read. Null for an agent whose sign-in PocketIDE cannot see.
+     */
+    suspend fun signedIn(agentId: String): Boolean? = null
+
+    /**
      * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */

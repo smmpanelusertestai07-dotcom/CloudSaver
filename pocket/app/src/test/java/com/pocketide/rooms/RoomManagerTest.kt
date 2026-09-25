@@ -52,6 +52,7 @@ import org.junit.rules.Timeout
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -356,6 +357,22 @@ class RoomManagerTest {
         assertTrue(signOut.argv.first().endsWith("/anthropic.claude-code-2.1.281-linux-arm64/resources/native-binary/claude"))
         assertEquals(listOf("auth", "logout"), signOut.argv.drop(1))
         assertEquals(RoomLayout.binds(dirs, "claude"), signOut.binds)
+    }
+
+    @Test fun `each official agent's sign-in is seen by its file alone, and a link is not a sign-in`() = runBlocking {
+        assertEquals(false, rooms.signedIn("claude"))
+        File(dirs.roomHome("claude"), ".claude").mkdirs()
+        File(dirs.roomHome("claude"), ".claude/.credentials.json").writeText("{}")
+        assertEquals(true, rooms.signedIn("claude"))
+
+        File(dirs.roomHome("antigravity"), ".gemini").mkdirs()
+        File(dirs.roomHome("antigravity"), ".gemini/jetski-standalone-oauth-token").writeText("t")
+        assertEquals(true, rooms.signedIn("antigravity"))
+
+        File(dirs.roomHome("codex"), ".codex").mkdirs()
+        Files.createSymbolicLink(File(dirs.roomHome("codex"), ".codex/auth.json").toPath(), File(dirs.roomHome("claude"), ".claude/.credentials.json").toPath())
+        assertEquals(false, rooms.signedIn("codex"))
+        assertEquals(null, rooms.signedIn("someone.else"))
     }
 
     @Test fun `a scheduled run goes through the room with its launcher, binds, Variables rules and tools`() = runBlocking {
