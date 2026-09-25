@@ -90,9 +90,17 @@ internal class Run(val kit: SyncKit, val cipher: VaultCipher) {
         return if (account != null) ports.drive(account) else ports.drive()
     }
 
-    /** Signed in to another account (not by a move): its vault is a different one. */
+    /**
+     * Signed in to another account (not by a move): its vault is a different one. Queued entries
+     * were made against the old vault (pieces continuing its chains, files reused from it, uploads
+     * with its ids), so they go and the next scan sends the phone's files to the new vault whole.
+     * Conflict copies are complete on their own and exist nowhere else: they are sent there.
+     */
     private fun startOverWith(account: String) {
-        state = SyncState(account = account, erased = state.erased, alerts = state.alerts)
+        val (copies, rest) = entries().partition { it.conflict }
+        rest.forEach { kit.queue.remove(it.id) }
+        copies.forEach { kit.queue.update(cipher, it.copy(driveId = null, attempted = false)) }
+        state = SyncState(account = account, erased = state.erased, alerts = state.alerts, pendingConflicts = state.pendingConflicts)
         index = null
         kit.flows.driveSessions.value = emptyList()
         kit.flows.driveProjects.value = emptyList()
