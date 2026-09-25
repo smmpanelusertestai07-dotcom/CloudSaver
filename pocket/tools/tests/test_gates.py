@@ -330,6 +330,34 @@ class LeastPrivilegeGate(unittest.TestCase):
         self.assertTrue(self.scan('post("repos/$o/$n/transfer", body)'))
         self.assertTrue(self.scan('val q = "mutation { deleteRepository(input: {repositoryId: $id}) { clientMutationId } }"'))
 
+    # The app's own idiom: rest.send(Verb.X, repoUrl(owner, name, ...segments)).
+    def test_the_apps_own_idiom_for_a_delete_a_visibility_change_and_a_transfer_fails(self):
+        cases = {
+            "rest.send(Verb.DELETE, repoUrl(owner, name))": "never deletes a repository",
+            'rest.send(Verb.PATCH, repoUrl(owner, name), buildJsonObject { put("private", false) })': "visibility",
+            'rest.send(Verb.POST, repoUrl(owner, name, "transfer"), body)': "transfers a repository",
+            'rest.send(Verb.DELETE, rest.url("repos", owner, name))': "never deletes a repository",
+            'rest.send(\n    Verb.DELETE,\n    repoUrl(owner, name),\n)': "never deletes a repository",
+        }
+        for code, why in cases.items():
+            with self.subTest(code=code):
+                self.assertTrue(any(why in p for p in self.scan(code)), self.scan(code))
+
+    def test_the_apps_own_idiom_inside_a_repository_passes(self):
+        code = ('suspend fun forget(owner: String, name: String, secret: String) =\n'
+                '    rest.send(Verb.DELETE, repoUrl(owner, name, "actions", "secrets", secret))\n'
+                'suspend fun info(owner: String, name: String) = rest.getOrNull(repoUrl(owner, name))\n'
+                'suspend fun rename(o: String, n: String) =\n'
+                '    rest.send(Verb.PATCH, repoUrl(o, n), buildJsonObject { put("description", "x") })\n')
+        self.assertEqual([], self.scan(code))
+
+    def test_a_delete_or_patch_verb_in_the_client_fails(self):
+        for verbs in ("GET, POST, PUT, DELETE", "GET, POST, PATCH, PUT", "GET,\n    DELETE,\n"):
+            with self.subTest(verbs=verbs):
+                problems = self.scan(f"internal enum class Verb {{ {verbs} }}")
+                self.assertTrue(any("gained" in p for p in problems), problems)
+        self.assertEqual([], self.scan("internal enum class Verb { GET, POST, PUT }"))
+
     def test_comments_and_reviewed_exceptions_are_skipped(self):
         line = 'call(Request.Builder().url("$API/repos/$o/$n").delete().build())'
         self.assertEqual([], self.scan("// " + line))
