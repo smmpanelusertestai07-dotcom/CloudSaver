@@ -174,6 +174,7 @@ interface GitHubApi {
     suspend fun runs(owner: String, name: String, branch: String?, runners: Boolean): List<WorkflowRun> = runs(owner, name, branch)
     suspend fun artifacts(owner: String, name: String, runId: Long): List<RunArtifact>
     suspend fun downloadArtifact(artifact: RunArtifact, dest: File)
+
     /** Encrypts with the repository's public key (libsodium sealed box) and stores the secret. */
     suspend fun setActionsSecret(owner: String, name: String, secretName: String, value: ByteArray)
     suspend fun accountUsage(): AccountUsage

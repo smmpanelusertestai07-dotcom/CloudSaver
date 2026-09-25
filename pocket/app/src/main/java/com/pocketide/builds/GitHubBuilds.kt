@@ -261,15 +261,14 @@ internal class GitHubBuilds(
     }
 
     /** What the Media strip is for: pictures, videos, APKs, report pages and short logs. */
-    private fun worthKeeping(file: File): Boolean {
-        return when (ports.media.kindOf(file.name, MediaSniffer.head(file))) {
+    private fun worthKeeping(file: File): Boolean =
+        when (ports.media.kindOf(file.name, MediaSniffer.head(file))) {
             MediaKind.IMAGE, MediaKind.VIDEO, MediaKind.APK, MediaKind.PDF -> true
             // A report is a folder of pages; its entry page is enough.
             MediaKind.HTML -> file.name.equals("index.html", ignoreCase = true)
             MediaKind.TEXT -> file.length() <= MAX_LOG_BYTES
             MediaKind.OTHER -> false
         }
-    }
 
     /**
      * The run this dispatch started. GitHub lists it a moment after the request; only a run of

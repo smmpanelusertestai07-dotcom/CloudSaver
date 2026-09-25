@@ -138,11 +138,11 @@ internal class SelfUpdater(
         val current = SemVer.parse(env.currentVersion)?.core() ?: return
         val release = try {
             withContext(Dispatchers.IO) { releases.newest(current) }
+        } catch (moved: ReleasesMovedException) {
+            mutable.value = UpdateState.Failed(moved.message.orEmpty(), retry = false)
+            return
         } catch (failed: IOException) {
-            mutable.value = UpdateState.Failed(
-                failed.message ?: "PocketIDE could not check for updates. Try again later.",
-                retry = failed !is ReleasesMovedException,
-            )
+            mutable.value = UpdateState.Failed(failed.message ?: "PocketIDE could not check for updates. Try again later.")
             return
         }
         val offered = release?.takeUnless { it.tag == env.passedOver }
@@ -165,10 +165,13 @@ internal class SelfUpdater(
         val self = env.self()
         val problem = UpdateRules.problem(candidate, self, env.pinnedSigner) ?: return UpdateState.Ready(release)
         file.delete()
-        if (!UpdateRules.notNewer(candidate, self)) return UpdateState.Failed(problem)
-        env.passedOver = release.tag
-        pending = null
-        return UpdateState.UpToDate
+        return if (UpdateRules.notNewer(candidate, self)) {
+            env.passedOver = release.tag
+            pending = null
+            UpdateState.UpToDate
+        } else {
+            UpdateState.Failed(problem)
+        }
     }
 
     private fun finished(ready: UpdateState.Ready, result: InstallResult) {

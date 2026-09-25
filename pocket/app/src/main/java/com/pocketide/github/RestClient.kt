@@ -154,8 +154,8 @@ internal class RestClient(
         var renewed = false
         var retries = 0
         while (true) {
-            val versioned = !apiVersion.retired
-            val response = http.newCall(request(verb, url, body, accept, token, versioned)).await()
+            val response = http.newCall(request(verb, url, body, accept, token)).await()
+            val versioned = response.request.header(API_VERSION_HEADER) != null
             val limited = isRateLimited(response)
             val wait = if (retries < MAX_RETRIES) retryDelay(verb, response, limited, retries) else null
             when {
@@ -188,13 +188,13 @@ internal class RestClient(
         }
     }
 
-    private fun request(verb: Verb, url: HttpUrl, body: JsonElement?, accept: String, token: String, versioned: Boolean): Request {
+    private fun request(verb: Verb, url: HttpUrl, body: JsonElement?, accept: String, token: String): Request {
         check(isOurs(url)) { "GitHub requests go to the API host only" }
         val payload = body?.let { AppJson.encodeToString(JsonElement.serializer(), it).toRequestBody(JSON) }
         return Request.Builder()
             .url(url)
             .header("Accept", accept)
-            .apply { if (versioned) header(API_VERSION_HEADER, API_VERSION) }
+            .apply { if (!apiVersion.retired) header(API_VERSION_HEADER, API_VERSION) }
             .header("Authorization", "Bearer $token")
             .method(verb.name, payload ?: if (verb == Verb.GET) null else EMPTY_BODY)
             .build()
@@ -242,6 +242,7 @@ internal class RestClient(
         const val PER_PAGE = 100
         const val MAX_PAGES = 50
         const val MAX_RETRIES = 2
+
         /** Longest wait worth holding a screen for; longer limits become a message with a time. */
         const val MAX_WAIT_MS = 30_000L
         private const val SERVER_BACKOFF_MS = 1_000L

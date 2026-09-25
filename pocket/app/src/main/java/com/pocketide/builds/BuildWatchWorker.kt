@@ -57,6 +57,7 @@ class BuildWatchWorker(context: Context, params: WorkerParameters) : CoroutineWo
         private const val KEY_TITLE = "title"
         private const val KEY_CHECK = "check"
         private const val CHECK_EVERY_MINUTES = 2L
+
         /** Two minutes apart: four hours, longer than any template's time limit. */
         private const val MAX_CHECKS = 120
 

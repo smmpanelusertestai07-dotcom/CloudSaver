@@ -39,8 +39,8 @@ class DeviceFlowAuthTest {
         oauth: HttpUrl = server.url("/"),
     ) = authFor({ GitHubApp(clientId, slug) }, oauth)
 
-    private fun authFor(app: () -> GitHubApp, oauth: HttpUrl = server.url("/")) =
-        DeviceFlowAuth(app, TokenStore(store), testHttp, oauth, server.url("/"), clock, Dispatchers.IO, pause = {})
+    private fun authFor(app: () -> GitHubApp, oauth: HttpUrl = server.url("/"), api: HttpUrl = server.url("/")) =
+        DeviceFlowAuth(app, TokenStore(store), testHttp, oauth, api, clock, Dispatchers.IO, pause = {})
 
     private fun signedIn(expiresInMs: Long? = 8 * 3_600_000L, refresh: String? = "ghr_old") {
         TokenStore(store).save(
@@ -246,7 +246,7 @@ class DeviceFlowAuthTest {
         assertEquals("Octo Renamed", auth.account.value?.name)
 
         val closed = MockWebServer().apply { start() }
-        val offlineAuth = DeviceFlowAuth({ GitHubApp("Iv23li", "") }, TokenStore(store), testHttp, closed.url("/"), closed.url("/"), clock, Dispatchers.IO, pause = {})
+        val offlineAuth = authFor({ GitHubApp("Iv23li", "") }, oauth = closed.url("/"), api = closed.url("/"))
         closed.close()
         assertEquals(LinkHealth.OFFLINE, offlineAuth.health())
     }

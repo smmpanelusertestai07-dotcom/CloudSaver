@@ -329,6 +329,7 @@ internal class GitHubRestApi(
 
     private companion object {
         const val RECENT_RUNS = 20
+
         /** Each lookup is one more call against the owner's 5,000 an hour, so only the newest runs get one. */
         const val RUNNER_LOOKUPS = 3
         const val MAX_INPUTS = 25

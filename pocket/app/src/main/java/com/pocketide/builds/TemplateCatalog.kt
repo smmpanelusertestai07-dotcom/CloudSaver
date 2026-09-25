@@ -32,8 +32,7 @@ object TemplateCatalog {
             ANDROID_RELEASE, "Android release APK", "PocketIDE Android release", LINUX, 1,
             "Builds the release APK with Gradle. Signs it when the project has the signing Secrets; " +
                 "otherwise it stays unsigned.",
-            usesSecrets = true,
-        ),
+        ).copy(usesSecrets = true),
         template(
             ANDROID_EMULATOR, "Android emulator tests", "PocketIDE Android emulator tests", LINUX, 1,
             "Installs the debug APK on an Android emulator, records the screen, takes a screenshot, saves the " +
@@ -132,15 +131,7 @@ object TemplateCatalog {
 
     private fun plainFile(file: File) = Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS)
 
-    private fun template(
-        id: String,
-        title: String,
-        workflowName: String,
-        runner: String,
-        multiplier: Int,
-        description: String,
-        usesSecrets: Boolean = false,
-    ) =
+    private fun template(id: String, title: String, workflowName: String, runner: String, multiplier: Int, description: String) =
         BuildTemplate(
             id = id,
             title = title,
@@ -149,6 +140,5 @@ object TemplateCatalog {
             runner = runner,
             workflowName = workflowName,
             minutesMultiplier = multiplier,
-            usesSecrets = usesSecrets,
         )
 }

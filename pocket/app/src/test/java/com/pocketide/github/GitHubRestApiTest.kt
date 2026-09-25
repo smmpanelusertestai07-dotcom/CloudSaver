@@ -168,7 +168,8 @@ class GitHubRestApiTest {
         assertTrue(sent["private"]!!.jsonPrimitive.boolean)
         assertTrue(sent["auto_init"]!!.jsonPrimitive.boolean)
 
-        server.enqueue(json("""{"message":"Repository creation failed.","errors":[{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}]}""", 422))
+        val nameTaken = """{"resource":"Repository","code":"custom","field":"name","message":"name already exists on this account"}"""
+        server.enqueue(json("""{"message":"Repository creation failed.","errors":[$nameTaken]}""", 422))
         val taken = failsWith<GitHubException> { runBlocking { api.createPrivateRepo("fresh", "") } }
         assertEquals(GitHubText.NAME_TAKEN, taken.message)
     }
@@ -186,7 +187,9 @@ class GitHubRestApiTest {
     @Test
     fun `files are read and written through the contents API in base64`() = runBlocking {
         val content = Base64.getMimeEncoder().encodeToString("hello keyring".toByteArray())
-        server.enqueue(json("""{"type":"file","encoding":"base64","size":13,"name":"half-g.json","path":"keys/half-g.json","content":"${content.replace("\r\n", "\\n")}","sha":"abc123"}"""))
+        val encoded = content.replace("\r\n", "\\n")
+        val named = """"name":"half-g.json","path":"keys/half-g.json""""
+        server.enqueue(json("""{"type":"file","encoding":"base64","size":13,$named,"content":"$encoded","sha":"abc123"}"""))
         val file = api.readFile("octo", "pocketide-keyring", "keys/half-g.json")!!
         assertEquals("hello keyring", file.bytes.toString(Charsets.UTF_8))
         assertEquals("abc123", file.sha)
@@ -344,7 +347,9 @@ class GitHubRestApiTest {
 
     @Test
     fun `a dispatch returns the exact run it started`() = runBlocking {
-        server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"https://api.github.com/repos/octo/demo/actions/runs/30433642","html_url":"https://github.com/octo/demo/actions/runs/30433642"}"""))
+        val runUrl = "https://api.github.com/repos/octo/demo/actions/runs/30433642"
+        val htmlUrl = "https://github.com/octo/demo/actions/runs/30433642"
+        server.enqueue(json("""{"workflow_run_id":30433642,"run_url":"$runUrl","html_url":"$htmlUrl"}"""))
         val run = api.dispatchWorkflowRun("octo", "demo", "android.yml", "session-1", mapOf("variant" to "release"))!!
         assertEquals(30433642L, run.runId)
         val request = server.next()
