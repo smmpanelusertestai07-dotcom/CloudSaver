@@ -160,14 +160,18 @@ internal fun SetUpComputer(state: ComputerState, onLater: (() -> Unit)?) {
     }
 }
 
+/** What the set-up card says about the connection. Nothing starts by itself when it changes: the owner taps. */
+internal fun setUpAdvice(network: Network): Pair<String, Tone> = when (network) {
+    Network.WIFI -> "You're on Wi-Fi: a good time to set up." to Tone.OK
+    Network.MOBILE -> "You're on mobile data. Wi-Fi is better for a download this size." to Tone.WARN
+    Network.OFFLINE -> "No internet connection. Connect to Wi-Fi, then tap Set up now." to Tone.WARN
+}
+
 @Composable
 private fun NotInstalled(network: Network, error: String?, onStart: () -> Unit, onLater: (() -> Unit)?) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        when (network) {
-            Network.WIFI -> NoticeCard("You're on Wi-Fi: a good time to set up.", Tone.OK)
-            Network.MOBILE -> NoticeCard("You're on mobile data. Wi-Fi is better for a download this size.", Tone.WARN)
-            Network.OFFLINE -> NoticeCard("No internet connection. Set-up starts when you're online.", Tone.WARN)
-        }
+        val (advice, tone) = setUpAdvice(network)
+        NoticeCard(advice, tone)
         if (error != null) NoticeCard(error, Tone.ERROR)
         PrimaryAction(
             text = if (network == Network.MOBILE) "Set up on mobile data" else "Set up now",
