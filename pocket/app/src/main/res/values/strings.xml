@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PocketIDE</string>
-    <string name="tagline">Claude Code, Codex and Antigravity on your phone, with your code on GitHub.</string>
     <string name="engine_channel_name">Computer running</string>
     <string name="engine_channel_description">Shown while the Linux computer and your agents are running.</string>
     <string name="sync_channel_name">Sync and storage</string>

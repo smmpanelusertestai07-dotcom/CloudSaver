@@ -1,6 +1,7 @@
 package com.pocketide.core
 
 import android.content.Context
+import androidx.core.content.edit
 import com.pocketide.AppGraph
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +21,7 @@ private class PrefsSettingsStore(context: Context) : SettingsStore {
     override fun update(change: (Settings) -> Settings) {
         flow.update { current ->
             val next = change(current)
-            if (next != current) prefs.edit().putString(KEY, AppJson.encodeToString(Settings.serializer(), next)).apply()
+            if (next != current) prefs.edit { putString(KEY, AppJson.encodeToString(Settings.serializer(), next)) }
             next
         }
     }

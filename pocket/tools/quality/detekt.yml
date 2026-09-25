@@ -1,0 +1,26 @@
+# PocketIDE's detekt settings, on top of detekt's defaults (buildUponDefaultConfig).
+# Composable functions are named like types and take their state and callbacks as parameters,
+# so the rules that assume ordinary functions skip them.
+
+complexity:
+  LongMethod:
+    ignoreAnnotated: ['Composable']
+  LongParameterList:
+    ignoreAnnotated: ['Composable']
+    ignoreDefaultParameters: true
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Z][A-Za-z0-9]*'
+
+style:
+  MagicNumber:
+    ignoreAnnotated: ['Composable']
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+  MaxLineLength:
+    maxLineLength: 160
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']

@@ -43,7 +43,7 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
 
     override fun self(): ApkFacts {
         val info = context.packageManager.getPackageInfo(context.packageName, SIGNERS)
-        return facts(info) ?: error("Android did not describe this app.")
+        return facts(info)
     }
 
     /**
@@ -60,11 +60,11 @@ private class GraphUpdaterEnv(private val graph: AppGraph) : UpdaterEnv {
     override fun schedule() = AppUpdateWorker.schedule(context)
 
     @Suppress("DEPRECATION")
-    private fun facts(info: PackageInfo): ApkFacts? {
+    private fun facts(info: PackageInfo): ApkFacts {
         // The certificates that signed the contents now, not the ones a rotation proved it may replace.
         val certificates = info.signingInfo?.apkContentsSigners ?: info.signatures
         val signers = certificates.orEmpty().map { sha256(it.toByteArray()) }.toSet()
-        return ApkFacts(info.packageName ?: return null, info.longVersionCode, info.versionName, signers)
+        return ApkFacts(info.packageName, info.longVersionCode, info.versionName, signers)
     }
 
     private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

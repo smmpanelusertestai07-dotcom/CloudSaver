@@ -3,8 +3,8 @@ package com.pocketide.bridge
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
@@ -119,7 +119,7 @@ internal class AndroidBrowser(private val context: Context) : BrowserLauncher {
         check(ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             "PocketIDE is not on the screen, so the page cannot open now. Open PocketIDE and ask again."
         }
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
             .addCategory(Intent.CATEGORY_BROWSABLE)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             // The Custom Tabs protocol without its library: a session extra, even a null one,

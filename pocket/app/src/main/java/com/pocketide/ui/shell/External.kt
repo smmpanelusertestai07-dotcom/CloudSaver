@@ -4,9 +4,9 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.core.net.toUri
 import com.pocketide.graph
 
 /** Leaving the app: web pages go to Chrome (or the default browser), settings to Android's own. */
@@ -22,7 +22,7 @@ object External {
             toast(context, "That link can't be opened.")
             return
         }
-        val view = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).addCategory(Intent.CATEGORY_BROWSABLE)
+        val view = Intent(Intent.ACTION_VIEW, url.trim().toUri()).addCategory(Intent.CATEGORY_BROWSABLE)
         leaving(context)
         if (context !is Activity) view.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val started = start(context, Intent(view).setPackage(CHROME)) || start(context, view)

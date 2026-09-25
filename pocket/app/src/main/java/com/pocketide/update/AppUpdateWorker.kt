@@ -3,6 +3,7 @@ package com.pocketide.update
 import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
@@ -91,7 +92,7 @@ internal object UpdateNotices {
             .build()
         try {
             manager.notify(NOTIFICATION_ID, notification)
-            prefs.edit().putString(NOTIFIED, release.version).apply()
+            prefs.edit { putString(NOTIFIED, release.version) }
         } catch (denied: SecurityException) {
             // Notifications were turned off in the meantime; Settings still offers the update.
         }

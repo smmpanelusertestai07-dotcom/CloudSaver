@@ -109,7 +109,7 @@ class RoomFilesTest {
     @Test fun `folders lists real folders only`() {
         val (home, files) = home()
         File(home, "ext/a-1").mkdirs()
-        File(home, "ext/file").apply { parentFile.mkdirs(); writeText("x") }
+        File(home, "ext/file").apply { parentFile?.mkdirs(); writeText("x") }
         Files.createSymbolicLink(File(home, "ext/b-1").toPath(), temp.newFolder("b").toPath())
         assertEquals(listOf("a-1"), files.folders("ext"))
         assertEquals(emptyList<String>(), files.folders("missing"))

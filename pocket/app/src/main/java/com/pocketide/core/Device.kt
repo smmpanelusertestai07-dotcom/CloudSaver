@@ -2,6 +2,7 @@ package com.pocketide.core
 
 import android.content.Context
 import android.os.Build
+import androidx.core.content.edit
 import java.util.UUID
 
 /** This install's identity for the vault lease and conflict copies. Not a hardware id. */
@@ -13,7 +14,7 @@ object Device {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         prefs.getString(KEY_ID, null)?.let { return it }
         val id = UUID.randomUUID().toString()
-        prefs.edit().putString(KEY_ID, id).apply()
+        prefs.edit { putString(KEY_ID, id) }
         return id
     }
 

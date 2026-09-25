@@ -1,6 +1,7 @@
 package com.pocketide.sync
 
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.pocketide.core.Clock
 import com.pocketide.core.Settings
 import com.pocketide.model.Decision
@@ -23,13 +24,13 @@ internal class PrefsCounterStore(private val prefs: SharedPreferences) : Counter
 
     @Synchronized
     override fun add(key: String, delta: Long) {
-        prefs.edit().putLong(key, prefs.getLong(key, 0) + delta).apply()
+        prefs.edit { putLong(key, prefs.getLong(key, 0) + delta) }
     }
 
     @Synchronized
     override fun remove(keys: Collection<String>) {
         if (keys.isEmpty()) return
-        prefs.edit().apply { keys.forEach(::remove) }.apply()
+        prefs.edit { keys.forEach(::remove) }
     }
 }
 

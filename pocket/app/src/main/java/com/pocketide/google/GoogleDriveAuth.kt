@@ -2,6 +2,7 @@ package com.pocketide.google
 
 import android.content.Intent
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import com.pocketide.core.Clock
 import com.pocketide.model.LinkHealth
 import kotlinx.coroutines.CancellationException
@@ -21,7 +22,7 @@ internal class PrefsAccountMemory(private val prefs: SharedPreferences) : Accoun
     override fun load(): String? = prefs.getString(KEY, null)
 
     override fun save(email: String?) {
-        prefs.edit().apply { if (email == null) remove(KEY) else putString(KEY, email) }.apply()
+        prefs.edit { if (email == null) remove(KEY) else putString(KEY, email) }
     }
 
     private companion object {

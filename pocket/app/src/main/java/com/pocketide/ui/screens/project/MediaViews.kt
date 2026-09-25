@@ -97,6 +97,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.core.Ist
 import com.pocketide.media.MediaItem
@@ -295,7 +297,7 @@ private class PdfDocument(file: File) : Closeable {
         renderer.openPage(index).use { page ->
             val width = widthPx.coerceIn(1, MediaLimits.VIEW_SIDE_PX)
             val height = (page.height.toLong() * width / page.width.coerceAtLeast(1)).toInt().coerceIn(1, MediaLimits.VIEW_SIDE_PX * 2)
-            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            createBitmap(width, height).also { bitmap ->
                 bitmap.eraseColor(AndroidColor.WHITE)
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             }
@@ -652,7 +654,7 @@ private fun readApk(context: Context, file: File): ApkFacts {
 private fun install(context: Context, uri: Uri): String? {
     if (uri == Uri.EMPTY) return "This file is not ready to install yet."
     if (!context.packageManager.canRequestPackageInstalls()) {
-        val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+        val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${context.packageName}".toUri())
         return try {
             External.leaving(context)
             context.startActivity(settings)

@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.detekt)
+    alias(libs.plugins.ktlint)
 }
 
 // Owner configuration comes from Gradle properties or the environment, never from the source.
@@ -90,7 +92,10 @@ android {
 
     lint {
         abortOnError = true
+        warningsAsErrors = true
         checkReleaseBuilds = true
+        // The reviewed false positives, each with its reason.
+        lintConfig = file("lint.xml")
         disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
     }
 
@@ -104,7 +109,49 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         freeCompilerArgs.addAll("-opt-in=kotlin.RequiresOptIn")
+        allWarningsAsErrors.set(true)
     }
+}
+
+// Style and code-smell gates (plan §15). Their settings and baselines live in tools/quality/: the
+// baselines hold what the code had when the gates arrived, so any new finding fails the build.
+val quality = rootProject.layout.projectDirectory.dir("tools/quality")
+
+detekt {
+    buildUponDefaultConfig = true
+    parallel = true
+    config.setFrom(quality.file("detekt.yml"))
+    baseline = quality.file("detekt-baseline.xml").asFile
+    source.setFrom("src/main/java", "src/test/java", "src/androidTest/java")
+}
+
+// detekt 1.23 runs on the Kotlin compiler it was built with, not the one this build uses.
+configurations.matching { it.name == "detekt" }.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") {
+            useVersion(io.gitlab.arturbosch.detekt.getSupportedKotlinVersion())
+        }
+    }
+}
+
+ktlint {
+    version.set(libs.versions.ktlint)
+    baseline.set(quality.file("ktlint-baseline.xml"))
+    // The house style: IntelliJ's Kotlin style (kotlin.code.style=official) with the compact
+    // one-line signatures, calls and when branches the code base is written in.
+    additionalEditorconfig.set(
+        mapOf(
+            "ktlint_code_style" to "intellij_idea",
+            "max_line_length" to "160",
+            "ktlint_function_naming_ignore_when_annotated_with" to "Composable",
+            "ktlint_standard_argument-list-wrapping" to "disabled",
+            "ktlint_standard_function-signature" to "disabled",
+            "ktlint_standard_class-signature" to "disabled",
+            "ktlint_standard_blank-line-between-when-conditions" to "disabled",
+            "ktlint_standard_statement-wrapping" to "disabled",
+        ),
+    )
+    filter { exclude { it.file.path.contains("/build/") } }
 }
 
 dependencies {
@@ -140,6 +187,9 @@ dependencies {
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
 
 tasks.register("printVersionName") {
