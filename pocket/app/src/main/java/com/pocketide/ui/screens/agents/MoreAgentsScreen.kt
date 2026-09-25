@@ -153,7 +153,9 @@ fun MoreAgentsScreen(nav: PocketNav) {
     removing?.let { agent ->
         ConfirmDialog(
             title = "Remove ${agent.displayName}?",
-            text = "Its room on this phone is deleted, with its sign-in. Its chats stay in your Drive until you delete them.",
+            text = "First its sessions' work is pushed to GitHub and its chats are backed up to Drive. If something cannot be " +
+                "saved, nothing is removed. Then its room on this phone is deleted, with its sign-in. Its chats stay in " +
+                "your Drive until you delete them.",
             confirmLabel = "Remove",
             destructive = true,
             onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.") { graph.agents.remove(agent.id) } },

@@ -313,9 +313,30 @@ class CatalogTest {
 
         catalog.remove(cline.id)
 
+        assertEquals(listOf(cline.id), env.savedFirst)
         assertEquals(listOf(cline.id), env.deleted)
         assertNull(catalog.find(cline.id))
         assertTrue(packages(cline.id).isEmpty())
+    }
+
+    @Test
+    fun anAgentWithWorkOnlyOnThisPhoneIsNotRemoved() = runBlocking<Unit> {
+        val cline = community()
+        catalog.discover()
+        catalog.add(catalog.candidates.value.single())
+        val kept = packages(cline.id)
+        env.unsaved = listOf("\"Login fix\" has work that is not on GitHub yet")
+
+        val refused = assertThrows(IllegalStateException::class.java) { runBlocking { catalog.remove(cline.id) } }
+
+        assertTrue(refused.message, refused.message!!.contains("was not removed: \"Login fix\" has work that is not on GitHub yet"))
+        assertTrue("the room was deleted", env.deleted.isEmpty())
+        assertNotNull(catalog.find(cline.id))
+        assertEquals(kept, packages(cline.id))
+
+        env.unsaved = emptyList()
+        catalog.remove(cline.id)
+        assertEquals(listOf(cline.id), env.deleted)
     }
 
     @Test
