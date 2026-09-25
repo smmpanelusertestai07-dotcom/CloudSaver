@@ -54,6 +54,7 @@ import com.pocketide.linux.ComputerState
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.SelectableText
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.screens.computer.ResetComputerDialogs
 import com.pocketide.ui.shell.Diagnostics
 import com.pocketide.ui.shell.ExtraPasswordRules
 import com.pocketide.ui.shell.FinePrint
@@ -148,27 +149,7 @@ internal fun AdvancedSection(graph: AppGraph, settings: Settings) {
     }
 
     when (dialog) {
-        AdvancedDialog.RESET -> ConfirmDialog(
-            title = "Reset the computer?",
-            text = "Ubuntu and the engine are downloaded again (on Wi-Fi by default), and each agent the next time you open it. " +
-                "Your projects are on GitHub and your chats in Drive, so nothing of yours is lost. Agents' sign-ins must be done again.",
-            confirm = "Reset",
-            onConfirm = {
-                dialog = null
-                // The rebuild outlives this screen, so it runs in the app's scope.
-                graph.scope.launch {
-                    try {
-                        graph.computer.reset()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        notice = Redact.text(e.message ?: "The reset could not start.").take(200) to Tone.ERROR
-                    }
-                }
-                notice = "Resetting. You can follow it on the Computer screen." to Tone.OK
-            },
-            onDismiss = { dialog = null },
-        )
+        AdvancedDialog.RESET -> ResetComputerDialogs(graph, onClose = { dialog = null }, onNotice = { text, tone -> notice = text to tone })
         AdvancedDialog.SET_PASSWORD -> ExtraPasswordDialog(
             onSave = { password ->
                 dialog = null

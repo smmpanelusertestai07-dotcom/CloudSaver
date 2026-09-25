@@ -1,8 +1,5 @@
 package com.pocketide.ui.screens.computer
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,39 +18,31 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.pocketide.core.Http
 import com.pocketide.core.Ist
+import com.pocketide.linux.HostCheck
+import com.pocketide.linux.NetworkReport
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
+import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.ActionRunner
 import com.pocketide.ui.manage.Hint
-import com.pocketide.ui.manage.HostResult
-import com.pocketide.ui.manage.NetworkCheck
-import com.pocketide.ui.manage.NetworkFacts
 import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.Told
+import com.pocketide.ui.manage.rememberGraph
 
 private const val CHECK = "check-network"
 
-private data class CheckReport(val at: Long, val told: List<Told>, val results: List<HostResult>)
-
-/** Computer → Check network: every site PocketIDE needs, and what blocks the ones that fail. */
+/** Computer → Check network: every site PocketIDE needs, a lookup from inside Linux, and what blocks them. */
 @Composable
-fun NetworkPanel(runner: ActionRunner, now: () -> Long) {
-    val context = LocalContext.current.applicationContext
-    var report by remember { mutableStateOf<CheckReport?>(null) }
+fun NetworkPanel(runner: ActionRunner) {
+    val graph = rememberGraph()
+    var report by remember { mutableStateOf<NetworkReport?>(null) }
     val busy = runner.isBusy(CHECK)
     SectionCard("Network") {
         Hint("Checks every site PocketIDE and the agents need. The computer uses this phone's own connection.")
         OutlinedButton(
-            onClick = {
-                runner.run(CHECK, onSuccess = { r: CheckReport -> report = r }) {
-                    val results = NetworkCheck.run(Http.client)
-                    CheckReport(now(), NetworkCheck.blockers(readNetworkFacts(context), results), results)
-                }
-            },
+            onClick = { runner.run(CHECK, onSuccess = { r: NetworkReport -> report = r }) { graph.computer.checkNetwork() } },
             enabled = !busy,
         ) {
             Icon(Icons.Outlined.NetworkCheck, contentDescription = null)
@@ -62,36 +51,26 @@ fun NetworkPanel(runner: ActionRunner, now: () -> Long) {
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         report?.let { r ->
-            r.told.forEach { ToneLine(it) }
+            if (r.blockers.isEmpty() && r.hosts.all { it.ok } && r.linuxDns?.ok != false) {
+                ToneLine(Told("Every site answered.", Tone.OK))
+            }
+            r.blockers.forEach { ToneLine(Told(it, Tone.WARN)) }
             HorizontalDivider()
             Column {
-                r.results.sortedBy { it.ok }.forEach { result ->
-                    InfoRow(result.host.forWhat, NetworkCheck.describe(result))
-                    Text(
-                        result.host.host,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                r.hosts.sortedBy { it.ok }.forEach { HostLine(it) }
+                r.linuxDns?.let { HostLine(it) }
             }
-            Hint("Checked ${Ist.dateTime(r.at)}.")
+            if (r.checkedAt > 0) Hint("Checked ${Ist.dateTime(r.checkedAt)}.")
         }
     }
 }
 
-/** What Android says about the network now; everything used here exists on Android 10. */
-private fun readNetworkFacts(context: Context): NetworkFacts {
-    val manager = context.getSystemService(ConnectivityManager::class.java)
-        ?: return NetworkFacts(connected = true, validated = true, captivePortal = false, vpn = false, privateDnsServer = null, dataSaver = false)
-    val network = manager.activeNetwork
-    val caps = network?.let { manager.getNetworkCapabilities(it) }
-    val link = network?.let { manager.getLinkProperties(it) }
-    return NetworkFacts(
-        connected = caps != null,
-        validated = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true,
-        captivePortal = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true,
-        vpn = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true,
-        privateDnsServer = link?.takeIf { it.isPrivateDnsActive }?.privateDnsServerName,
-        dataSaver = manager.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED,
+@Composable
+private fun HostLine(check: HostCheck) {
+    InfoRow(check.purpose, if (check.ok) "Reached" else "Not reached")
+    Text(
+        if (check.detail.isBlank()) check.host else "${check.host} · ${check.detail}",
+        style = MaterialTheme.typography.bodySmall,
+        color = if (check.ok) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
     )
 }
