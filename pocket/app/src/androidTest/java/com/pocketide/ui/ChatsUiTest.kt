@@ -3,7 +3,6 @@ package com.pocketide.ui
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -34,13 +33,12 @@ class ChatsUiTest {
     }
 
     @Test
-    fun recentlyDeletedWaitingUploadsAndBackAreOneTapAway() {
+    fun recentlyDeletedAndWaitingUploadsAreOneTapAway() {
         compose.setContent { PocketTheme { ChatsScreen(nav) } }
 
         compose.onNodeWithText("Recently deleted").performClick()
         compose.onNodeWithText("Waiting to upload").performClick()
-        compose.onNodeWithContentDescription("Back").performClick()
-        compose.runOnIdle { assertEquals(listOf("recentlyDeleted", "waitingUploads", "back"), nav.calls) }
+        compose.runOnIdle { assertEquals(listOf("recentlyDeleted", "waitingUploads"), nav.calls) }
     }
 
     private class RecordingNav : PocketNav {

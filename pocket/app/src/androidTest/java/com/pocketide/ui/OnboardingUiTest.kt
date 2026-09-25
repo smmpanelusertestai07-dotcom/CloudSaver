@@ -27,7 +27,8 @@ class OnboardingUiTest {
 
         compose.onNodeWithText("Claude Code, Codex and Antigravity, full screen on your phone.").assertIsDisplayed()
         compose.onNodeWithText("Runs in this app, on your phone. No server of ours in between.").assertIsDisplayed()
-        compose.onNodeWithText("This phone").performScrollTo().assertIsDisplayed()
+        // Section labels are drawn in capitals, so match the words, not the case.
+        compose.onNodeWithText("This phone", ignoreCase = true).performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithText("Get started").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(1, continued) }
