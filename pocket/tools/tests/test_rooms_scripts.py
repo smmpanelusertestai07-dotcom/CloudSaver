@@ -126,7 +126,13 @@ class BrowserInstallerTest(unittest.TestCase):
     def setUpClass(cls):
         spec = importlib.util.spec_from_file_location("install", script(os.path.join("browser", "install.py")))
         cls.install = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.install)
+        # No __pycache__ beside the asset: the build would ship it into the computer.
+        writes_bytecode = sys.dont_write_bytecode
+        sys.dont_write_bytecode = True
+        try:
+            spec.loader.exec_module(cls.install)
+        finally:
+            sys.dont_write_bytecode = writes_bytecode
 
     def write_lock(self, packages):
         folder = tempfile.mkdtemp(prefix="lock-")
