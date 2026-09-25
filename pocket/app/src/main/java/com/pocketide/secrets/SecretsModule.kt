@@ -1,19 +1,29 @@
 package com.pocketide.secrets
 
 import com.pocketide.AppGraph
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
-fun createProjectSecrets(graph: AppGraph): ProjectSecrets = StubSecrets().also { graph.hashCode() }
-
-private class StubSecrets : ProjectSecrets {
-    override val values: StateFlow<List<ProjectValue>> = MutableStateFlow(emptyList())
-    override suspend fun set(projectId: String?, name: String, kind: SecretKind, value: CharArray) = Unit
-    override suspend fun reveal(projectId: String?, name: String): CharArray? = null
-    override suspend fun remove(projectId: String?, name: String) = Unit
-    override suspend fun variablesFor(projectId: String): Map<String, String> = emptyMap()
-    override suspend fun allValues(): List<String> = emptyList()
-    override suspend fun pushToGitHub(projectId: String, name: String) = Unit
-    override suspend fun exportBlob(): ByteArray = ByteArray(0)
-    override suspend fun importBlob(bytes: ByteArray) = Unit
+fun createProjectSecrets(graph: AppGraph): ProjectSecrets {
+    val secrets = SealedProjectSecrets(
+        store = graph.secureStore,
+        clock = graph.clock,
+        io = Dispatchers.IO,
+        pushSecret = { projectId, name, value ->
+            val project = graph.projects.all.value.firstOrNull { it.id == projectId }
+                ?: throw SecretsException("This project is not on this phone any more.")
+            graph.gitHub.setActionsSecret(project.owner, project.repo, name, value)
+        },
+    )
+    graph.scope.launch {
+        try {
+            secrets.preload()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The screens show the same problem when they ask for a value.
+        }
+    }
+    return secrets
 }

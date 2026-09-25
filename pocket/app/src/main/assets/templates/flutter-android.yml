@@ -1,0 +1,46 @@
+# PocketIDE build: a Flutter app's Android APK, on GitHub's Linux machine. Flutter's Android
+# build needs Google's NDK, which is published for x86-64 computers only. It runs
+# `flutter test` when the project has tests, then `flutter build apk --release`; the APK comes
+# back into the session's Media.
+name: PocketIDE Flutter Android
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-flutter-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+      - name: Test and build
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          flutter pub get
+          if [ -d test ]; then flutter test 2>&1 | tee out/tests.txt; fi
+          flutter build apk --release 2>&1 | tee out/build.txt
+          cp build/app/outputs/flutter-apk/app-release.apk out/
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pocketide-flutter-android
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 7

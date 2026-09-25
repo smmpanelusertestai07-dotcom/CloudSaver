@@ -1,0 +1,75 @@
+# PocketIDE build: an Android release APK, made on GitHub's Linux machine.
+#
+# It runs `./gradlew assembleRelease` at the top of the repository. When the repository has
+# the Secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
+# ANDROID_KEY_PASSWORD (add them in PocketIDE: Project, Variables and Secrets, Send to GitHub),
+# the APK is signed with that key; otherwise it stays unsigned. The APK and the build reports
+# come back into the session's Media. Runs only when you start it.
+name: PocketIDE Android release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-android-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Build the release APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+      - name: Sign it when the signing Secrets exist
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
+          find . -path '*/build/outputs/apk/release/*.apk' -not -path './out/*' > "$RUNNER_TEMP/apks.txt"
+          while IFS= read -r apk; do
+            name=$(basename "$apk" .apk)
+            name=${name%-unsigned}
+            if [ -n "$KEYSTORE_BASE64" ]; then
+              printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+              "$tools/zipalign" -P 16 -f 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+              "$tools/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KEYSTORE_PASSWORD \
+                --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+                --out "out/$name.apk" "$RUNNER_TEMP/aligned.apk"
+              rm -f "$RUNNER_TEMP/release.jks"
+            else
+              cp "$apk" "out/$name-unsigned.apk"
+            fi
+          done < "$RUNNER_TEMP/apks.txt"
+          ls -l out
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pocketide-android-release
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pocketide-android-release-reports
+          path: '**/build/reports/'
+          if-no-files-found: ignore
+          retention-days: 7

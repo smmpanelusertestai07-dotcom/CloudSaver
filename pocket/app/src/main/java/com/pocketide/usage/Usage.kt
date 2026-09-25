@@ -5,7 +5,17 @@ import com.pocketide.github.RepoUsage
 import com.pocketide.google.DriveQuota
 
 /** "About N Android / iOS builds left this month", from the owner's own averages. */
-data class BuildEstimate(val androidLeft: Int?, val iosLeft: Int?, val basis: String)
+data class BuildEstimate(
+    val androidLeft: Int?,
+    val iosLeft: Int?,
+    val basis: String,
+    /** Included minutes left this month, as GitHub counts them (macOS 10×, Windows 2×). */
+    val minutesLeft: Int? = null,
+    /** The owner's average Android build, in counted minutes. */
+    val androidMinutesEach: Int? = null,
+    /** The owner's average iOS build, in counted minutes (already 10×). */
+    val iosMinutesEach: Int? = null,
+)
 
 /** Live usage for the Usage screen: never frozen numbers. */
 interface UsageReporter {

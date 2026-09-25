@@ -1,0 +1,81 @@
+# PocketIDE build: an iPhone app for the iOS Simulator, on GitHub's Mac machine (Apple's
+# tools run only on Apple hardware). It reads the scheme from `xcodebuild -list` (never from
+# the folder name), builds for the simulator, opens the app on a simulated iPhone, and sends
+# a screenshot and a short recording back into the session's Media.
+#
+# Cost: a macOS minute counts as ten minutes of a private repository's allowance (a public
+# repository is free). The build is unsigned: installing on a real iPhone needs an Apple
+# Developer account.
+name: PocketIDE iOS simulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      scheme:
+        description: Scheme to build (empty = the first one xcodebuild lists)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pocketide-ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      SCHEME: ${{ inputs.scheme }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Find the project and scheme
+        run: |
+          set -euo pipefail
+          workspace=$(find . -maxdepth 2 -name '*.xcworkspace' -not -path '*/.*' -not -path '*.xcodeproj/*' | head -n 1)
+          project=$(find . -maxdepth 2 -name '*.xcodeproj' -not -path '*/.*' | head -n 1)
+          if [ -f Podfile ] && [ -z "$workspace" ]; then pod install; workspace=$(find . -maxdepth 1 -name '*.xcworkspace' | head -n 1); fi
+          if [ -n "$workspace" ]; then target=(-workspace "$workspace"); elif [ -n "$project" ]; then target=(-project "$project"); else echo "No Xcode project or workspace found." >&2; exit 1; fi
+          if [ -z "$SCHEME" ]; then
+            SCHEME=$(xcodebuild "${target[@]}" -list -json | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("workspace") or d.get("project"))["schemes"][0])')
+          fi
+          echo "XCODE_TARGET=${target[*]}" >> "$GITHUB_ENV"
+          echo "SCHEME=$SCHEME" >> "$GITHUB_ENV"
+          echo "Building scheme $SCHEME"
+      - name: Build for the simulator (unsigned)
+        run: |
+          set -euo pipefail
+          read -r -a target <<< "$XCODE_TARGET"
+          xcodebuild "${target[@]}" -scheme "$SCHEME" -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -configuration Debug \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log
+      - name: Open it on a simulated iPhone
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp build.log out/build.txt
+          app=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -n 1)
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r in sorted(d, reverse=True) if "iOS" in r for x in d[r] if x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+          xcrun simctl io "$device" recordVideo --codec h264 out/recording.mp4 &
+          recorder=$!
+          sleep 2
+          xcrun simctl launch "$device" "$bundle"
+          sleep 10
+          xcrun simctl io "$device" screenshot out/screenshot.png
+          kill -INT "$recorder"
+          wait "$recorder" || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pocketide-ios-simulator
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 7
