@@ -184,12 +184,15 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         ports.scheduler.requestSoon()
     }
 
-    /** A background sync; runs again at once when more was requested meanwhile. */
-    suspend fun runScheduled(onLargeUpload: suspend () -> Unit): WorkResult {
+    /**
+     * A background sync; runs again at once when more was requested meanwhile. A [periodic] run
+     * stops before the network when there is nothing to do (see [SyncPass.idle]).
+     */
+    suspend fun runScheduled(onLargeUpload: suspend () -> Unit, periodic: Boolean = false): WorkResult {
         var result = WorkResult.OK
-        repeat(MAX_ROUNDS) {
+        repeat(MAX_ROUNDS) { round ->
             again.set(false)
-            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS)
+            val options = PassOptions(onLargeUpload = onLargeUpload, deadline = ports.clock.now() + PASS_BUDGET_MS, quietWhenIdle = periodic && round == 0)
             val outcome = attempt { run -> jobsThenPass(run, options) }
             result = if (outcome == null && flows.status.value is SyncStatus.Error && retryable) WorkResult.RETRY else WorkResult.OK
             if (!again.get() || outcome != PassOutcome.DONE) return result
@@ -231,6 +234,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         if (!ports.settings.settings.value.onboardingDone) return null
         if (flows.status.value !is SyncStatus.Waiting) flows.status.value = SyncStatus.Running(Plain.SYNCING)
         val outcome = pass.run(run, options)
+        // Kept safely on the phone while offline: it goes up as soon as a network is back.
+        if (outcome == PassOutcome.OFFLINE && run.entries().isNotEmpty()) ports.scheduler.requestWhenOnline()
         if (flows.storage.value.phone == PhoneSpace.FULL && run.now - run.state.lastMaintenanceAt > MAINTENANCE_GAP_MS) {
             ports.scheduler.requestMaintenance()
         }

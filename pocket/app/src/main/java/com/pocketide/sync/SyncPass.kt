@@ -16,6 +16,8 @@ internal data class PassOptions(
     val onLargeUpload: suspend () -> Unit = {},
     /** No new upload starts after this time; the rest waits for the next run. */
     val deadline: Long = Long.MAX_VALUE,
+    /** A periodic run: it stops before the network when there is nothing to do ([SyncPass.idle]). */
+    val quietWhenIdle: Boolean = false,
 )
 
 internal enum class PassOutcome { DONE, OFFLINE, LOCKED, WAITING, BLOCKED }
@@ -44,9 +46,13 @@ internal class SyncPass(
 
     suspend fun run(run: Run, opts: PassOptions): PassOutcome {
         kit.queue.recover()
+        run.account()
+        return if (opts.quietWhenIdle && idle(run)) quiet(run) else sync(run, opts)
+    }
+
+    private suspend fun sync(run: Run, opts: PassOptions): PassOutcome {
         val online = ports.network.online()
         if (online) checkKeyring()
-        run.account()
         val book = book(run)
         val drive = run.drive()
         val snapshot = if (online) fetchOrNull(run, drive) else null
@@ -68,6 +74,56 @@ internal class SyncPass(
         }
         committer.deleteUnused(run, drive)
         return settle(run, book, committed, report)
+    }
+
+    /**
+     * Nothing to send, record or bring in, and Drive was asked a short while ago: nothing is queued
+     * or waiting, no file on the phone changed size or time since it was recorded, and this phone's
+     * records, settings, Variables and Secrets are as it last sent them. A periodic run stops here,
+     * before the keyring check and the network, so an idle phone wakes cheaply.
+     */
+    suspend fun idle(run: Run): Boolean {
+        val state = run.state
+        val book = book(run)
+        val nothingWaits = run.entries().isEmpty() && state.pendingConflicts.isEmpty() && state.eraseQueue.isEmpty() &&
+            state.waiting == null && book.erasingNow().isEmpty()
+        return nothingWaits && run.now - state.lastSyncAt < IDLE_PULL_MS && !recordsChanged(run) && !filesChanged(run, book) && !secretsChanged(run)
+    }
+
+    /** Sessions, projects or synced settings changed on this phone since it last sent them. */
+    private fun recordsChanged(run: Run): Boolean {
+        val state = run.state
+        return Diffs.sessions(ports.localSessions(), state.sessionMarks).isNotEmpty() ||
+            Diffs.projects(ports.localProjects(), state.projectMarks).isNotEmpty() ||
+            SyncedSettings.of(ports.settings.settings.value).json() != state.settingsPushed
+    }
+
+    /** A file that is new, changed size or time, or went missing, or one that waits for Drive's version. */
+    private fun filesChanged(run: Run, book: SessionBook): Boolean {
+        val tracks = run.state.tracks
+        if (tracks.values.any { it.behindDrive }) return true
+        val found = kit.scanner.scan(book.matcher, tracks, ports::roomRunning)
+        val changed = found.any { c ->
+            val t = tracks[c.key]
+            book.uploadable(c.sessionId) && (t == null || t.size != c.facts.size || t.modifiedAt != c.facts.modifiedAt)
+        }
+        val seen = found.map { it.key }.toSet()
+        return changed || tracks.any { (key, t) -> key != SECRETS_KEY && t.onPhone && key !in seen }
+    }
+
+    private suspend fun secretsChanged(run: Run): Boolean {
+        val bytes = localSecrets() ?: return false
+        return try {
+            Codec.sha256(bytes) != knownSecrets(run, run.index, emptyList())
+        } finally {
+            bytes.fill(0)
+        }
+    }
+
+    /** An idle periodic run: the status says when Drive was last asked. */
+    private fun quiet(run: Run): PassOutcome {
+        kit.flows.status.value = SyncStatus.UpToDate(run.state.lastSyncAt)
+        return PassOutcome.DONE
     }
 
     /**
@@ -245,14 +301,17 @@ internal class SyncPass(
         val bytes = localSecrets() ?: return
         try {
             val queued = run.entries().filter { it.kind == ObjectKind.SECRETS }
-            val known = queued.maxByOrNull { it.createdAt }?.sha256
-                ?: run.state.tracks[SECRETS_KEY]?.prefixSha256
-                ?: index?.objects?.filter { it.kind == ObjectKind.SECRETS }?.maxByOrNull { it.createdAt }?.sha256
-            if (run.maker().secrets(bytes, known) != null) run.discard(queued)
+            if (run.maker().secrets(bytes, knownSecrets(run, index, queued)) != null) run.discard(queued)
         } finally {
             bytes.fill(0)
         }
     }
+
+    /** The SHA-256 of the Variables and Secrets Drive has or will have: the newest queued, recorded here, or in [index]. */
+    private fun knownSecrets(run: Run, index: VaultIndex?, queued: List<QueueEntry>): String? =
+        queued.maxByOrNull { it.createdAt }?.sha256
+            ?: run.state.tracks[SECRETS_KEY]?.prefixSha256
+            ?: index?.objects?.filter { it.kind == ObjectKind.SECRETS }?.maxByOrNull { it.createdAt }?.sha256
 
     /**
      * Brings in what another phone wrote since this phone's files last matched Drive: its changes
@@ -485,5 +544,8 @@ internal class SyncPass(
         const val LARGE_UPLOAD = 8L * 1024 * 1024
         const val QUIET_MS = 60_000L
         const val REMOVAL_GRACE_MS = Durations.HOUR
+
+        /** An idle phone's periodic run still asks Drive after this long, for other phones' changes. */
+        const val IDLE_PULL_MS = 6 * Durations.HOUR
     }
 }

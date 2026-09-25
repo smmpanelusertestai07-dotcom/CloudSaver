@@ -217,11 +217,15 @@ internal class RecordingNotifier : SyncNotifier {
 
 internal class RecordingScheduler : SyncScheduling {
     var soon = 0
+    var whenOnline = 0
     var maintenance = 0
     var periodic = 0
     var cancelled = 0
     override fun requestSoon() {
         soon++
+    }
+    override fun requestWhenOnline() {
+        whenOnline++
     }
     override fun requestMaintenance() {
         maintenance++

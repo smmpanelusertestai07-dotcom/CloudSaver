@@ -22,6 +22,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.pocketide.R
 import com.pocketide.core.Channels
 import com.pocketide.core.NotificationIds
@@ -29,14 +30,15 @@ import com.pocketide.graph
 import java.util.concurrent.TimeUnit
 
 /**
- * The sync job: every 15 minutes on any network, and soon after a task ends. It is a durable
- * WorkManager job, so it finishes after a reboot or a kill; a large upload moves it to the
- * foreground so it is not cut off.
+ * The sync job: soon after a task ends (and every few minutes while agents run), as soon as a
+ * network is back when something waits on the phone, and once an hour as a safety net, when an
+ * idle phone stops before the network. It is a durable WorkManager job, so it finishes after a
+ * reboot or a kill; a large upload moves it to the foreground so it is not cut off.
  */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val engine = applicationContext.graph.sync as? DriveSyncEngine ?: return Result.success()
-        return when (engine.runScheduled(::promote)) {
+        return when (engine.runScheduled(::promote, periodic = inputData.getBoolean(PERIODIC_KEY, false))) {
             WorkResult.OK -> Result.success()
             WorkResult.RETRY -> Result.retry()
         }
@@ -51,6 +53,11 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         } catch (_: IllegalStateException) {
             // Android refused a foreground start from the background; the upload resumes next run.
         }
+    }
+
+    internal companion object {
+        /** Marks the hourly run, which stops early when there is nothing to do. */
+        const val PERIODIC_KEY = "periodic"
     }
 }
 
@@ -95,21 +102,35 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
     override fun requestSoon() {
         val request = OneTimeWorkRequestBuilder<SyncWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
             .build()
         work.enqueueUniqueWork(SOON, ExistingWorkPolicy.KEEP, request)
+    }
+
+    override fun requestWhenOnline() {
+        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(online())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .build()
+        work.enqueueUniqueWork(ONLINE, ExistingWorkPolicy.KEEP, request)
     }
 
     override fun requestMaintenance() {
         work.enqueueUniqueWork(MAINTAIN_NOW, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<MaintenanceWorker>().build())
     }
 
+    /**
+     * Real work asks for its own sync (see [requestSoon] and [requestWhenOnline]), so the periodic
+     * run is a safety net: hourly, and stopping before the network when there is nothing to do.
+     */
     override fun schedulePeriodic() {
-        val sync = PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+        val sync = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS)
+            .setConstraints(online())
+            .setInputData(workDataOf(SyncWorker.PERIODIC_KEY to true))
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, BACKOFF_SECONDS, TimeUnit.SECONDS)
             .build()
-        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, sync)
+        // UPDATE, so a request made by an older version takes this period and input.
+        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, sync)
         val daily = PeriodicWorkRequestBuilder<MaintenanceWorker>(1, TimeUnit.DAYS)
             .setConstraints(Constraints.Builder().setRequiresBatteryNotLow(true).build())
             .build()
@@ -117,14 +138,18 @@ internal class WorkScheduler(private val context: Context) : SyncScheduling {
     }
 
     override fun cancelAll() {
-        listOf(SOON, MAINTAIN_NOW, PERIODIC, DAILY).forEach(work::cancelUniqueWork)
+        listOf(SOON, ONLINE, MAINTAIN_NOW, PERIODIC, DAILY).forEach(work::cancelUniqueWork)
     }
+
+    private fun online() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
     private companion object {
         const val SOON = "pocketide.sync.soon"
+        const val ONLINE = "pocketide.sync.online"
         const val MAINTAIN_NOW = "pocketide.maintenance.now"
         const val PERIODIC = "pocketide.sync.periodic"
         const val DAILY = "pocketide.maintenance.daily"
+        const val BACKOFF_SECONDS = 30L
     }
 }
 

@@ -64,8 +64,7 @@ internal class Committer(private val kit: SyncKit) {
             settingsJson = settingsJson,
             lease = if (additive) null else LeasePolicy.lease(ports.device, now),
         )
-        val renew = mode == CommitMode.TAKEOVER || (mode == CommitMode.HOLDER && LeasePolicy.needsRenewal(start.index, ports.device, now))
-        if (delta.copy(lease = null).isEmpty && !renew) return start
+        if (delta.copy(lease = null).isEmpty && !renews(mode, run, start.index, entries)) return start
         val keyGeneration = ports.keyGeneration()
         // The index the change was last applied to: what it removed from there leaves Drive.
         var appliedTo: VaultIndex? = null
@@ -85,6 +84,17 @@ internal class Committer(private val kit: SyncKit) {
         if (erased.isNotEmpty()) ports.sessionsErased(erased.sorted())
         deleteUnused(run, drive)
         return result
+    }
+
+    /**
+     * Whether a write that changes nothing else is still due for the lease: always for a takeover;
+     * for the normal sync only while this phone works (a room runs, or something waits to go up),
+     * so an idle phone lets its lease lapse instead of rewriting the whole index twice an hour.
+     */
+    private fun renews(mode: CommitMode, run: Run, index: VaultIndex?, entries: List<QueueEntry>): Boolean = when (mode) {
+        CommitMode.TAKEOVER -> true
+        CommitMode.ADDITIVE -> false
+        CommitMode.HOLDER -> (kit.ports.roomsRunning() || entries.any { !it.conflict }) && LeasePolicy.needsRenewal(index, kit.ports.device, run.now)
     }
 
     /**

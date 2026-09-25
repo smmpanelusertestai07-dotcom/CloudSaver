@@ -30,10 +30,36 @@ class LeaseTest {
         assertEquals("Phone A", b.engine.leaseHolder.value)
         assertEquals("phone-a", b.remoteIndex()!!.lease!!.deviceId)
 
+        // While its agent works, the holder renews the lease as it syncs.
+        a.runningRooms += "claude"
         clock.advance(30 * Durations.MINUTE)
         a.engine.syncNow()
-        assertEquals("a heartbeat on each sync", clock.now + LeasePolicy.TTL_MS, a.remoteIndex()!!.lease!!.expiresAt)
+        assertEquals("a heartbeat while it works", clock.now + LeasePolicy.TTL_MS, a.remoteIndex()!!.lease!!.expiresAt)
         assertNull(a.engine.leaseHolder.value)
+    }
+
+    @Test
+    fun anIdlePhoneLetsItsLeaseLapseAndAnotherPhoneTakesItWithoutAsking() = runBlocking {
+        val a = phoneA()
+        a.homeFile("claude", path).writeText("hi\n")
+        a.engine.syncNow()
+        val lease = a.remoteIndex()!!.lease!!
+        val uploads = a.drive.uploads
+
+        clock.advance(30 * Durations.MINUTE)
+        a.engine.syncNow()
+        assertEquals("nothing is written only to renew the lease", uploads, a.drive.uploads)
+        assertEquals(lease, a.remoteIndex()!!.lease)
+
+        clock.advance(LeasePolicy.TTL_MS)
+        val b = phoneB().apply { sessions += session("s2", at = clock.now, ref = "d00dfeed-2222") }
+        b.homeFile("claude", claudeTranscript("owner/app", "s2", "d00dfeed-2222")).writeText("on B\n")
+        b.engine.syncNow()
+        assertNull(b.engine.leaseHolder.value)
+        assertEquals("phone-b", b.remoteIndex()!!.lease!!.deviceId)
+
+        a.engine.syncNow()
+        assertEquals("Phone B", a.engine.leaseHolder.value)
     }
 
     @Test

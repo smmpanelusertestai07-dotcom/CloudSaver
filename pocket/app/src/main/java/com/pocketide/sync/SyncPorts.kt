@@ -34,6 +34,9 @@ internal interface SyncNotifier {
 internal interface SyncScheduling {
     fun requestSoon()
 
+    /** A sync as soon as a network is back, for what waits on the phone meanwhile. */
+    fun requestWhenOnline()
+
     fun requestMaintenance()
     fun schedulePeriodic()
     fun cancelAll()
