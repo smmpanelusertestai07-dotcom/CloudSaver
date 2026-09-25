@@ -188,7 +188,7 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
      * A background sync; runs again at once when more was requested meanwhile. A [periodic] run
      * stops before the network when there is nothing to do (see [SyncPass.idle]).
      */
-    suspend fun runScheduled(onLargeUpload: suspend () -> Unit, periodic: Boolean = false): WorkResult {
+    suspend fun runScheduled(periodic: Boolean = false, onLargeUpload: suspend () -> Unit): WorkResult {
         var result = WorkResult.OK
         repeat(MAX_ROUNDS) { round ->
             again.set(false)

@@ -63,12 +63,20 @@ class LeaseTest {
     }
 
     @Test
-    fun anExpiredLeaseIsTakenWithoutAsking() = runBlocking {
+    fun anExpiredLeaseIsTakenWithoutAskingByThePhoneThatHasSomethingToWrite() = runBlocking {
         val a = phoneA()
         a.homeFile("claude", path).writeText("hi\n")
         a.engine.syncNow()
         clock.advance(LeasePolicy.TTL_MS + 1)
+
+        // With nothing to send, phone B is not locked out, and writes nothing only to hold the lease.
         val b = phoneB()
+        b.engine.syncNow()
+        assertNull(b.engine.leaseHolder.value)
+        assertEquals("phone-a", b.remoteIndex()!!.lease!!.deviceId)
+
+        b.sessions += session("s2", at = clock.now, ref = "d00dfeed-2222")
+        b.homeFile("claude", claudeTranscript("owner/app", "s2", "d00dfeed-2222")).writeText("on B\n")
         b.engine.syncNow()
         assertNull(b.engine.leaseHolder.value)
         assertEquals("phone-b", b.remoteIndex()!!.lease!!.deviceId)
@@ -169,7 +177,9 @@ class LeaseTest {
         b.engine.syncNow()
         clock.advance(LeasePolicy.TTL_MS + 1)
 
-        // A write that does not reconcile first, as the daily job's once did, takes the expired lease.
+        // A write that does not reconcile first, as the daily job's once did, takes the expired lease:
+        // here the record of a chat started on phone A meanwhile.
+        a.sessions += session("s3", at = clock.now)
         val kit = SyncKit(a)
         val run = Run(kit, a.cipher)
         val drive = run.drive()

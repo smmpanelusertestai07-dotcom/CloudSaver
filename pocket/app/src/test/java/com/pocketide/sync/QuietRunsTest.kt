@@ -17,7 +17,7 @@ class QuietRunsTest {
         return phone
     }
 
-    private suspend fun TestPhone.periodicRun() = engine.runScheduled(onLargeUpload = {}, periodic = true)
+    private suspend fun TestPhone.periodicRun() = engine.runScheduled(periodic = true) {}
 
     @Test
     fun anIdlePhonesPeriodicRunStopsBeforeGitHubAndDrive() = runBlocking {

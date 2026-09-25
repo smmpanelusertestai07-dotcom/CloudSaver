@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val engine = applicationContext.graph.sync as? DriveSyncEngine ?: return Result.success()
-        return when (engine.runScheduled(::promote, periodic = inputData.getBoolean(PERIODIC_KEY, false))) {
+        return when (engine.runScheduled(periodic = inputData.getBoolean(PERIODIC_KEY, false), onLargeUpload = ::promote)) {
             WorkResult.OK -> Result.success()
             WorkResult.RETRY -> Result.retry()
         }
