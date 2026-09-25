@@ -378,6 +378,8 @@ internal class SyncPass(
      * (or tapped "Upload now"); the daily mobile limit and PocketIDE's Drive share are respected.
      */
     suspend fun upload(run: Run, drive: DriveStore, opts: PassOptions, book: SessionBook, onlyConflicts: Boolean): UploadReport {
+        // An upload whose file is gone meanwhile is sent again below, not recorded with a dead id.
+        committer.confirmUploads(run, drive)
         val settings = ports.settings.settings.value
         val metered = ports.network.metered()
         val limit = Limits.gb(settings.driveLimitGb)
@@ -416,14 +418,14 @@ internal class SyncPass(
         if (e.attempted) {
             val arrived = drive.find(e.name)
             if (arrived != null && (arrived.size == e.storedBytes || arrived.size <= 0)) {
-                kit.queue.update(run.cipher, e.copy(driveId = arrived.id))
+                kit.queue.update(run.cipher, e.copy(driveId = arrived.id, uploadedAt = run.now))
                 return
             }
         } else {
             kit.queue.update(run.cipher, e.copy(attempted = true))
         }
         val file = drive.upload(e.name, kit.queue.blobFile(e.id))
-        kit.queue.update(run.cipher, e.copy(attempted = true, driveId = file.id))
+        kit.queue.update(run.cipher, e.copy(attempted = true, driveId = file.id, uploadedAt = run.now))
     }
 
     /** Another phone holds the lease: keep what this phone had as conflict copies, then stop. */

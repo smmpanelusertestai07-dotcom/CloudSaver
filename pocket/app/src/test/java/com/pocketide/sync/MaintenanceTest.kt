@@ -205,8 +205,10 @@ class MaintenanceTest {
         phone.drive.uploadBytes("keyhistory", byteArrayOf(4))
 
         phone.engine.runMaintenance()
-        assertTrue("a day's grace first", "o-orphanorphanorphanorphan00" in phone.drive.objectNames())
-        clock.advance(day + Durations.MINUTE)
+        clock.advance(Maintenance.ORPHAN_GRACE_MS - Durations.MINUTE)
+        phone.engine.runMaintenance()
+        assertTrue("a week's grace first", "o-orphanorphanorphanorphan00" in phone.drive.objectNames())
+        clock.advance(2 * Durations.MINUTE)
         phone.engine.runMaintenance()
         assertFalse("o-orphanorphanorphanorphan00" in phone.drive.objectNames())
         assertEquals(1, phone.drive.named("keyhalf-d").size)

@@ -285,6 +285,44 @@ class LeaseTest {
     }
 
     @Test
+    fun aConflictCopyWhoseFilesWereSweptWhileItsPhoneWasOffIsSentAgainNotRecordedMissing() = runBlocking {
+        val a = phoneA()
+        val file = a.homeFile("claude", path)
+        file.writeText("shared start\n")
+        a.engine.syncNow()
+        val b = phoneB()
+        b.engine.fetchSession("s1")
+        b.engine.takeOver()
+
+        // Phone B keeps working offline while phone A takes the lease back.
+        b.network.online = false
+        b.homeFile("claude", path).appendText("written on B offline\n")
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        a.engine.takeOver()
+
+        // Back online, B uploads its work as a conflict copy, but dies before recording it.
+        b.network.online = true
+        b.drive.failIndexWrites = 1
+        clock.advance(Durations.MINUTE)
+        b.engine.syncNow()
+        assertTrue(b.queued().any { it.conflict && it.driveId != null })
+
+        // B stays off longer than the sweep's grace; A's daily job removes files no index names.
+        clock.advance(Maintenance.ORPHAN_GRACE_MS + Durations.DAY)
+        a.engine.runMaintenance()
+        repeat(2) { b.engine.syncNow() }
+
+        val index = a.remoteIndex()!!
+        val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
+        val reader = TestPhone(accounts, clock, deviceId = "reader", deviceName = "Reader")
+        reader.engine.fetchSession(copy.id)
+        val copied = index.objects.single { it.sessionId == copy.id }
+        assertEquals("shared start\nwritten on B offline\n", reader.homeFile("claude", copied.path).readText())
+        assertTrue(b.queued().isEmpty())
+    }
+
+    @Test
     fun aPhoneThatTakesTheLeaseBackContinuesFromDrive() = runBlocking {
         val a = phoneA()
         val file = a.homeFile("claude", path)

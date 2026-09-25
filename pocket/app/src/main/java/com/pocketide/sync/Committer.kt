@@ -43,6 +43,7 @@ internal class Committer(private val kit: SyncKit) {
     ): RemoteSnapshot {
         val ports = kit.ports
         val now = run.now
+        confirmUploads(run, drive)
         val entries = run.entries()
         val ready = ready(entries, start.index, mode)
         val readyIds = ready.map { it.id }.toSet()
@@ -84,6 +85,21 @@ internal class Committer(private val kit: SyncKit) {
         if (erased.isNotEmpty()) ports.sessionsErased(erased.sorted())
         deleteUnused(run, drive)
         return result
+    }
+
+    /**
+     * Uploads that waited long for their record are looked for in Drive again: another phone's
+     * daily sweep cannot know they wait here and may have removed them. One that is gone is sent
+     * again, never recorded with an id that no longer exists.
+     */
+    suspend fun confirmUploads(run: Run, drive: DriveStore) {
+        val now = run.now
+        for (e in run.entries()) {
+            if (!e.blob || e.driveId == null || now - e.uploadedAt < CONFIRM_AFTER_MS) continue
+            val found = drive.find(e.name)?.takeIf { it.size == e.storedBytes || it.size <= 0 }
+            val next = if (found != null) e.copy(driveId = found.id, uploadedAt = now) else e.copy(driveId = null, attempted = false, uploadedAt = -1)
+            kit.queue.update(run.cipher, next)
+        }
     }
 
     /** Deletes Drive files the index no longer names. Stops quietly when Drive cannot be reached. */
@@ -207,6 +223,9 @@ internal class Committer(private val kit: SyncKit) {
 
     companion object {
         const val OBJECT_PREFIX = "o-"
+
+        /** Uploads older than this are confirmed in Drive before they are recorded. */
+        const val CONFIRM_AFTER_MS = 6 * Durations.HOUR
     }
 }
 

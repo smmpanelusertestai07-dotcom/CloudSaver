@@ -255,7 +255,10 @@ internal class Maintenance(
 
     /**
      * Drive files named like ours that no index entry names (an upload whose record was lost, a
-     * failed delete) are removed after a day; the vault's own files are never touched.
+     * failed delete) are removed after a week; the vault's own files are never touched. Another
+     * phone's upload that still waits for its record looks just the same, so the grace outlasts
+     * ordinary time offline, and that phone checks an old upload is still there before recording
+     * it ([Committer.confirmUploads]).
      */
     private suspend fun sweep(run: Run, drive: DriveStore, index: VaultIndex) {
         val files = drive.list()
@@ -304,7 +307,7 @@ internal class Maintenance(
 
     companion object {
         const val TEMP_DAYS = 7
-        const val ORPHAN_GRACE_MS = Durations.DAY
+        const val ORPHAN_GRACE_MS = 7 * Durations.DAY
         const val REENCRYPT_PER_RUN = 200L * 1024 * 1024
     }
 }

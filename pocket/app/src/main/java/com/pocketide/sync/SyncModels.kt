@@ -164,6 +164,11 @@ internal data class QueueEntry(
     /** An upload was started, so after a crash Drive is asked whether the file already arrived. */
     val attempted: Boolean = false,
     val driveId: String? = null,
+    /**
+     * When Drive last confirmed [driveId] (-1: not known). An upload that waited long for its
+     * record is looked for again before it is recorded, in case another phone's sweep removed it.
+     */
+    val uploadedAt: Long = -1,
     val trackKey: String,
     val fileSize: Long = -1,
     val fileModifiedAt: Long = -1,
