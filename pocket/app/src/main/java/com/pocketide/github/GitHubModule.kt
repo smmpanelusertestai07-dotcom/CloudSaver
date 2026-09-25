@@ -31,6 +31,9 @@ fun createGitHubApi(graph: AppGraph): GitHubApi = GitHubRestApi(
     clock = graph.clock,
 )
 
+/** Public releases, read without the owner's token (the app's own updater). */
+fun createPublicReleases(): PublicReleases = PublicReleases(Http.client, API_BASE)
+
 /** The real auth renews and revokes on a 401; any other [GitHubAuth] (a test fake) just supplies tokens. */
 private fun GitHubAuth.asUserTokens(): UserTokens = this as? UserTokens ?: object : UserTokens {
     override suspend fun token() = this@asUserTokens.token()

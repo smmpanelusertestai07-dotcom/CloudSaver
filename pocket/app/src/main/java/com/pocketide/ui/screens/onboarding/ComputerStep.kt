@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Redact
+import com.pocketide.linux.ComputerSetup
 import com.pocketide.linux.ComputerState
 import com.pocketide.sync.RestoreChoice
 import com.pocketide.sync.RestorePlan
@@ -53,7 +54,6 @@ import com.pocketide.ui.shell.CheckItem
 import com.pocketide.ui.shell.FinePrint
 import com.pocketide.ui.shell.Formats
 import com.pocketide.ui.shell.Gap
-import com.pocketide.ui.shell.MobileSetup
 import com.pocketide.ui.shell.NoticeCard
 import com.pocketide.ui.shell.OnboardingStep
 import com.pocketide.ui.shell.OutlinedCard
@@ -95,21 +95,18 @@ fun ComputerStepScreen(onDone: () -> Unit) {
         if (step != null && stepsSeen.lastOrNull() != step) stepsSeen += step
     }
 
-    // The owner confirmed mobile data for this set-up: the data rules allow it until set-up ends.
+    // The owner confirmed the set-up's size on mobile data: the data rules let exactly that
+    // much through today, and the owner's own data settings stay as they are.
     fun install(onMobileData: Boolean) {
         startError = null
+        if (onMobileData) ComputerSetup.setupDownloads().forEach { (kind, bytes) -> graph.dataBudget.allowOnce(kind, bytes) }
         graph.scope.launch {
-            val before = graph.settings.settings.value
-            val allowed = MobileSetup.allow(before)
-            if (onMobileData) graph.settings.update { MobileSetup.allow(it) }
             try {
                 graph.computer.install()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 startError = Redact.text(e.message ?: "Set-up stopped.").take(200)
-            } finally {
-                if (onMobileData) graph.settings.update { MobileSetup.restore(it, before, allowed) }
             }
         }
     }
@@ -171,8 +168,8 @@ fun ComputerStepScreen(onDone: () -> Unit) {
                 Text(
                     "Set-up downloads $SETUP_DOWNLOAD_TEXT: the computer now, each agent the first time you open it. " +
                         "On mobile data that can cost money or use up your plan; on Wi-Fi it costs nothing.\n\n" +
-                        "For this set-up only, big downloads may use mobile data, up to " +
-                        "${Formats.megabytes(MobileSetup.SETUP_LIMIT_MB)} today. Your data settings go back when it ends.",
+                        "For this set-up only, its downloads may use mobile data today, up to " +
+                        "${Formats.bytes(ComputerSetup.setupDownloads().values.sum())}. Your data settings do not change.",
                 )
             },
             confirmButton = {

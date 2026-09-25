@@ -1,7 +1,6 @@
 package com.pocketide.ui.shell
 
 import com.pocketide.core.Redact
-import com.pocketide.core.Settings
 import com.pocketide.model.LockReason
 
 /** What the root shows, in order of precedence (PocketRoot). */
@@ -123,31 +122,4 @@ object Diagnostics {
         val redacted = Redact.text(text).replace(email, "[email]").replace(bearer, "Bearer [hidden]")
         return keyValue.replace(redacted) { m -> "${m.groupValues[1]}${m.groupValues[2]}[hidden]" }
     }
-}
-
-/**
- * "Set up on mobile data" after the owner confirmed the size: big downloads are allowed on
- * mobile data and today's limit is raised far enough for set-up, then both go back to what
- * they were. The data rules stay the only gate the computer's installer asks.
- */
-object MobileSetup {
-    /** Enough for the computer's own downloads plus what the day already used. */
-    const val SETUP_LIMIT_MB = 2000
-
-    fun allow(settings: Settings): Settings =
-        settings.copy(wifiOnlyBigDownloads = false, mobileDailyLimitMb = maxOf(settings.mobileDailyLimitMb, SETUP_LIMIT_MB))
-
-    /** Puts back what [allow] changed, leaving alone anything the owner changed in the meantime. */
-    fun restore(current: Settings, before: Settings, allowed: Settings): Settings = current.copy(
-        wifiOnlyBigDownloads = if (current.wifiOnlyBigDownloads == allowed.wifiOnlyBigDownloads) {
-            before.wifiOnlyBigDownloads
-        } else {
-            current.wifiOnlyBigDownloads
-        },
-        mobileDailyLimitMb = if (current.mobileDailyLimitMb == allowed.mobileDailyLimitMb) {
-            before.mobileDailyLimitMb
-        } else {
-            current.mobileDailyLimitMb
-        },
-    )
 }

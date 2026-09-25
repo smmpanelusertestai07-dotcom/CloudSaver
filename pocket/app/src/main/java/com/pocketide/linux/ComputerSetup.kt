@@ -536,7 +536,7 @@ internal class ComputerSetup(
         }
     }
 
-    private companion object {
+    internal companion object {
         const val KIND_SETUP = "setup"
         const val KIND_UPDATE = "update"
 
@@ -546,28 +546,37 @@ internal class ComputerSetup(
         /** The package lists a daily update fetches, and a typical day's fixes. */
         const val UPDATE_BYTES = 40_000_000L
 
+        /**
+         * What a whole set-up asks the data rules for, by kind: the owner confirms this size once
+         * for set-up on mobile data (§6.7), and each kind is then allowed up to it for the day.
+         */
+        fun setupDownloads(): Map<String, Long> = mapOf(
+            KIND_SETUP to LinuxPins.ubuntuBase.bytes + APT_BYTES + LinuxPins.codeServer.bytes,
+            KIND_UPDATE to APT_BYTES + UPDATE_BYTES,
+        )
+
         /** Unpacked sizes, with the archive still on disk while it unpacks. */
-        const val UBUNTU_SPACE = 150_000_000L
-        const val TOOLS_SPACE = 300_000_000L
-        const val CODE_SERVER_SPACE = 1_000_000_000L
+        private const val UBUNTU_SPACE = 150_000_000L
+        private const val TOOLS_SPACE = 300_000_000L
+        private const val CODE_SERVER_SPACE = 1_000_000_000L
 
         /** Left free for the rest of the phone. */
-        const val SPARE_SPACE = 500_000_000L
+        private const val SPARE_SPACE = 500_000_000L
 
-        const val WAITING_FOR_WIFI = "Waiting for Wi-Fi…"
+        private const val WAITING_FOR_WIFI = "Waiting for Wi-Fi…"
 
         /** The items of a Repair report. */
-        const val WHOLE = "The computer"
-        const val NETWORK_FILES = "Host name and network files"
-        const val SCRIPTS = "PocketIDE's scripts"
-        const val TOOLS = "Tools and settings"
-        const val FIXES = "Ubuntu's security fixes"
-        const val CODE_SERVER = "code-server"
-        const val NOT_SET_UP = "The computer is not set up yet."
-        const val FIX_WIFI = "Connect to Wi-Fi and tap Set up. It continues where it stopped."
-        const val FIX_CONNECTION = "Check the connection and try again. It continues where it stopped."
-        const val FIX_TRY_AGAIN = "Try again. If it keeps stopping, reset the computer."
-        const val FIX_RESET = "Reset the computer. Projects and chats are not affected."
-        const val FIX_SET_UP_AGAIN = "Set it up again. Projects and chats are not affected."
+        private const val WHOLE = "The computer"
+        private const val NETWORK_FILES = "Host name and network files"
+        private const val SCRIPTS = "PocketIDE's scripts"
+        private const val TOOLS = "Tools and settings"
+        private const val FIXES = "Ubuntu's security fixes"
+        private const val CODE_SERVER = "code-server"
+        private const val NOT_SET_UP = "The computer is not set up yet."
+        private const val FIX_WIFI = "Connect to Wi-Fi and tap Set up. It continues where it stopped."
+        private const val FIX_CONNECTION = "Check the connection and try again. It continues where it stopped."
+        private const val FIX_TRY_AGAIN = "Try again. If it keeps stopping, reset the computer."
+        private const val FIX_RESET = "Reset the computer. Projects and chats are not affected."
+        private const val FIX_SET_UP_AGAIN = "Set it up again. Projects and chats are not affected."
     }
 }

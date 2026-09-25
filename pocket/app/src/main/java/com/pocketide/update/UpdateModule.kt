@@ -7,15 +7,21 @@ import android.content.pm.PackageManager
 import com.pocketide.AppGraph
 import com.pocketide.BuildConfig
 import com.pocketide.core.Http
+import com.pocketide.github.createPublicReleases
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
 import java.security.MessageDigest
 
 fun createAppUpdater(graph: AppGraph): AppUpdater {
     val env = GraphUpdaterEnv(graph)
+    val releases = createPublicReleases()
     return SelfUpdater(
         env = env,
-        releases = GitHubReleases(Http.client, BuildConfig.RELEASES_REPO, BuildConfig.RELEASE_TAG_PREFIX),
+        releases = GitHubReleases(
+            client = Http.client,
+            list = { releases.list(BuildConfig.RELEASES_REPO) },
+            tagPrefix = BuildConfig.RELEASE_TAG_PREFIX,
+        ),
         fetcher = ApkFetcher(
             client = Http.downloads,
             allow = { bytes -> graph.dataBudget.allow(bytes, DATA_KIND, big = true) },

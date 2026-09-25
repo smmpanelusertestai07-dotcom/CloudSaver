@@ -2,37 +2,33 @@ package com.pocketide.update
 
 import com.pocketide.agents.SemVer
 import com.pocketide.core.await
-import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
+import com.pocketide.github.PublicRelease
+import com.pocketide.github.ReleaseAsset
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
-import java.net.URLDecoder
-
-/** One release in the repository's public releases feed. */
-internal data class FeedEntry(val tag: String, val updated: String, val notes: String)
 
 /**
- * PocketIDE's own releases, read from the repository's public pages on github.com: the
- * releases feed names them, and each release's SHA256SUMS (written by the release job) names
- * its APK and that APK's SHA-256. Nothing here uses the REST API (only the github package
- * does) and no token is sent. Only tags `pocketide-v<version>` count; whether the APK may be
- * installed is decided later, from the file itself.
+ * PocketIDE's own releases in a repository it shares with other apps: every published release is
+ * listed (through the github package's token-free client), only tags `pocketide-v<version>`
+ * count, and each release's SHA256SUMS (written by the release job) names its one APK and that
+ * APK's SHA-256. Whether the APK may be installed is decided later, from the file itself.
  */
 internal class GitHubReleases(
     private val client: OkHttpClient,
-    private val repository: String,
+    private val list: suspend () -> List<PublicRelease>,
     private val tagPrefix: String,
-    private val web: HttpUrl = WEB,
 ) {
 
     /** The newest release above [current] that publishes its checksums, or null when this is the newest. */
     suspend fun newest(current: SemVer): AppRelease? {
-        val candidates = feed(text(repositoryUrl("releases.atom"), MAX_FEED_BYTES))
-            .mapNotNull { entry -> version(entry.tag)?.takeIf { it > current }?.let { it to entry } }
+        val candidates = list()
+            .filterNot { it.prerelease }
+            .mapNotNull { release -> version(release.tag)?.takeIf { it > current }?.let { it to release } }
             .sortedByDescending { (version, _) -> version }
-        for ((version, entry) in candidates) {
-            release(version, entry)?.let { return it }
+        for ((version, release) in candidates) {
+            appRelease(version, release)?.let { return it }
         }
         return null
     }
@@ -40,88 +36,48 @@ internal class GitHubReleases(
     private fun version(tag: String): SemVer? =
         tag.takeIf { it.startsWith(tagPrefix) }?.removePrefix(tagPrefix)?.let(SemVer::parse)?.takeIf { !it.isPreRelease }
 
-    /** The release with its one APK and that APK's checksum, or null when it publishes no checksums. */
-    private suspend fun release(version: SemVer, entry: FeedEntry): AppRelease? {
-        val sums = try {
-            text(downloadUrl(entry.tag, SUMS), MAX_SUMS_BYTES)
-        } catch (missing: NoSuchRelease) {
-            return null
-        }
-        val (sha256, name) = sums.lineSequence()
+    /** The release with its one APK and that APK's checksum, or null when it publishes no usable checksums. */
+    private suspend fun appRelease(version: SemVer, release: PublicRelease): AppRelease? {
+        val sums = release.assets.firstOrNull { it.name == SUMS } ?: return null
+        val (sha256, name) = text(sums).lineSequence()
             .mapNotNull { line -> SUM_LINE.matchEntire(line.trim())?.destructured?.let { (hex, file) -> hex.lowercase() to file } }
             .singleOrNull { (_, file) -> file.endsWith(".apk") && SAFE_NAME.matches(file) }
             ?: return null
-        val apk = downloadUrl(entry.tag, name)
+        val apk = release.assets.firstOrNull { it.name == name } ?: return null
         return AppRelease(
             version = version.toString(),
-            tag = entry.tag,
-            apkUrl = apk.toString(),
-            apkBytes = size(apk),
-            notes = entry.notes,
-            publishedAt = entry.updated,
+            tag = release.tag,
+            apkUrl = apk.downloadUrl,
+            apkBytes = apk.bytes,
+            notes = plainText(release.notes),
+            publishedAt = release.publishedAt,
             sha256 = sha256,
         )
     }
 
-    /** The APK's size from a HEAD request; 0 when the server does not say. */
-    private suspend fun size(url: HttpUrl): Long =
-        client.newCall(Request.Builder().url(url).head().build()).await().use { response ->
-            if (!response.isSuccessful) throw IOException("GitHub answered ${response.code} for the update. Try again later.")
-            response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0 } ?: 0
-        }
-
-    private suspend fun text(url: HttpUrl, limit: Long): String =
-        client.newCall(Request.Builder().url(url).build()).await().use { response ->
-            when {
-                response.code == 404 -> throw NoSuchRelease()
-                response.code == 403 || response.code == 429 -> throw IOException("GitHub is limiting requests. Try again in an hour.")
-                !response.isSuccessful -> throw IOException("GitHub answered ${response.code}. Try again later.")
-            }
+    private suspend fun text(asset: ReleaseAsset): String {
+        // What the checksums say is only trusted as far as the APK then matches them and is signed
+        // with PocketIDE's own key.
+        val url = asset.downloadUrl.toHttpUrlOrNull() ?: throw IOException("The release's checksums link is not valid.")
+        return client.newCall(Request.Builder().url(url).build()).await().use { response ->
+            if (!response.isSuccessful) throw IOException("GitHub answered ${response.code} for the checksums. Try again later.")
             val source = response.body.source()
-            if (source.request(limit + 1)) throw IOException("GitHub's answer was larger than expected.")
+            if (source.request(MAX_SUMS_BYTES + 1)) throw IOException("The release's checksums are larger than expected.")
             source.readUtf8()
         }
-
-    private fun repositoryUrl(vararg segments: String): HttpUrl =
-        web.newBuilder().addPathSegments(repository).apply { segments.forEach(::addPathSegment) }.build()
-
-    private fun downloadUrl(tag: String, file: String) = repositoryUrl("releases", "download", tag, file)
-
-    /** GitHub answered 404: no such page (a missing repository, or a release without its checksums). */
-    private class NoSuchRelease : IOException("PocketIDE's releases were not found on GitHub.")
+    }
 
     companion object {
-        val WEB = "https://github.com/".toHttpUrl()
         private const val SUMS = "SHA256SUMS"
-        private const val MAX_FEED_BYTES = 2L * 1024 * 1024
         private const val MAX_SUMS_BYTES = 64L * 1024
         private const val MAX_NOTES = 4000
+
         private val SUM_LINE = Regex("([0-9a-fA-F]{64})\\s+\\*?(\\S+)")
         private val SAFE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
-        private val ENTRY = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL)
-        private val TAG_LINK = Regex("<link[^>]*href=\"[^\"]*/releases/tag/([^\"]+)\"")
-        private val UPDATED = Regex("<updated>([^<]+)</updated>")
-        private val CONTENT = Regex("<content[^>]*>(.*?)</content>", RegexOption.DOT_MATCHES_ALL)
-        private val MARKUP = Regex("<[^>]*>")
+        private val MARKDOWN = Regex("[*_`#>]+")
         private val SPACES = Regex("\\s+")
 
-        /** The feed's entries. It is GitHub's fixed Atom format, read for three fields only. */
-        fun feed(xml: String): List<FeedEntry> = ENTRY.findAll(xml).mapNotNull { match ->
-            val entry = match.groupValues[1]
-            val tag = TAG_LINK.find(entry)?.groupValues?.get(1)?.let { URLDecoder.decode(unescape(it), Charsets.UTF_8.name()) }
-                ?: return@mapNotNull null
-            FeedEntry(
-                tag = tag,
-                updated = UPDATED.find(entry)?.groupValues?.get(1)?.trim().orEmpty(),
-                notes = CONTENT.find(entry)?.groupValues?.get(1)?.let(::plainText).orEmpty(),
-            )
-        }.toList()
-
-        /** The release notes as plain text: the feed carries them as escaped HTML. */
-        private fun plainText(escaped: String): String =
-            unescape(unescape(escaped).replace(MARKUP, " ")).replace(SPACES, " ").trim().take(MAX_NOTES)
-
-        private fun unescape(text: String): String = text
-            .replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
+        /** The release notes as one plain paragraph: they are written in Markdown. */
+        fun plainText(markdown: String): String = markdown.replace(MARKDOWN, " ").replace(SPACES, " ").trim().take(MAX_NOTES)
     }
 }

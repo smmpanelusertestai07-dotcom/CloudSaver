@@ -1,6 +1,5 @@
 package com.pocketide.ui.shell
 
-import com.pocketide.core.Settings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -9,41 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShellRulesTest {
-    @Test
-    fun mobileSetUpOpensTheDataRulesOnlyAsFarAsNeeded() {
-        val defaults = Settings()
-        val allowed = MobileSetup.allow(defaults)
-        assertFalse(allowed.wifiOnlyBigDownloads)
-        assertEquals(MobileSetup.SETUP_LIMIT_MB, allowed.mobileDailyLimitMb)
-        // A limit already higher than set-up needs is never lowered.
-        assertEquals(5000, MobileSetup.allow(defaults.copy(mobileDailyLimitMb = 5000)).mobileDailyLimitMb)
-        // Nothing else changes.
-        assertEquals(defaults.copy(wifiOnlyBigDownloads = false, mobileDailyLimitMb = MobileSetup.SETUP_LIMIT_MB), allowed)
-    }
-
-    @Test
-    fun mobileSetUpPutsTheRulesBack() {
-        val before = Settings(mobileDailyLimitMb = 0, wifiOnlyBigDownloads = true)
-        val allowed = MobileSetup.allow(before)
-        assertEquals(before, MobileSetup.restore(allowed, before, allowed))
-    }
-
-    @Test
-    fun whatTheOwnerChangedDuringSetUpIsKept() {
-        val before = Settings()
-        val allowed = MobileSetup.allow(before)
-        val ownerChangedLimit = allowed.copy(mobileDailyLimitMb = 500, theme = com.pocketide.core.ThemeMode.DARK)
-        val restored = MobileSetup.restore(ownerChangedLimit, before, allowed)
-        assertEquals(500, restored.mobileDailyLimitMb)
-        assertTrue(restored.wifiOnlyBigDownloads)
-        assertEquals(com.pocketide.core.ThemeMode.DARK, restored.theme)
-
-        val ownerTurnedWifiOnlyOn = allowed.copy(wifiOnlyBigDownloads = true)
-        val again = MobileSetup.restore(ownerTurnedWifiOnlyOn, before, allowed)
-        assertTrue(again.wifiOnlyBigDownloads)
-        assertEquals(before.mobileDailyLimitMb, again.mobileDailyLimitMb)
-    }
-
     @Test
     fun diagnosticsHideEmailsKeysAndBearerTokens() {
         val report = Diagnostics.report(
