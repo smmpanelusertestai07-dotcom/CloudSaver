@@ -88,7 +88,7 @@ internal class OpenVsxCatalog(
                 report.copy(note = listOfNotNull(report.note, "${agent.displayName} was not added.").joinToString(" "))
             }
         } finally {
-            if (!kept) withContext(NonCancellable) { forget(agent.id) }
+            if (!kept) forget(agent.id)
         }
     }
 
@@ -285,7 +285,8 @@ internal class OpenVsxCatalog(
     }
 
     /** Deletes the agent's room, its kept packages and its record. */
-    private suspend fun forget(agentId: String) {
+    /** Once the room starts going, the agent goes too: a cancelled caller never leaves one without the other. */
+    private suspend fun forget(agentId: String) = withContext(NonCancellable) {
         env.deleteRoom(agentId)
         withContext(Dispatchers.IO) { Trees.delete(File(packages, agentId).toPath()) }
         change { it.withoutAgent(agentId) }

@@ -4,7 +4,10 @@ import com.pocketide.linux.TarBuilder
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.Decision
 import com.pocketide.rooms.RoomProfiles
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -393,6 +396,26 @@ class CatalogTest {
         assertEquals(listOf(cline.id), env.deleted)
         assertNull(catalog.find(cline.id))
         assertTrue(packages(cline.id).isEmpty())
+    }
+
+    @Test
+    fun aRemovalCancelledWhileTheRoomIsDeletedStillForgetsTheAgent() = runBlocking<Unit> {
+        val cline = community()
+        catalog.discover()
+        catalog.add(catalog.candidates.value.single())
+        val deleting = CompletableDeferred<Unit>()
+        env.roomDeletion = deleting
+
+        // The owner leaves the screen while the room's files are being deleted.
+        val removal = launch(start = CoroutineStart.UNDISPATCHED) { catalog.remove(cline.id) }
+        assertEquals(listOf(cline.id), env.deleted)
+        removal.cancel()
+        deleting.complete(Unit)
+        removal.join()
+
+        assertNull("the room is gone, so the agent must be too", catalog.find(cline.id))
+        assertTrue(packages(cline.id).isEmpty())
+        assertNull(newCatalog().find(cline.id))
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.pocketide.core.AppDirs
 import com.pocketide.core.AppJson
 import com.pocketide.model.AgentCandidate
 import com.pocketide.model.Decision
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,8 +60,12 @@ internal class FakeAgentsEnv(base: File) : AgentsEnv {
         return unsaved
     }
 
+    /** When set, deleting a room waits for it, as a large room's delete takes seconds on a phone. */
+    var roomDeletion: CompletableDeferred<Unit>? = null
+
     override suspend fun deleteRoom(agentId: String) {
         deleted += agentId
+        roomDeletion?.await()
         File(dirs.rooms, agentId).deleteRecursively()
     }
 

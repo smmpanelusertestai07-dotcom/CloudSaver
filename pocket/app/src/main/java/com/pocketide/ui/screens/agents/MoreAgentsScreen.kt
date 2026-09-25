@@ -158,7 +158,8 @@ fun MoreAgentsScreen(nav: PocketNav) {
                 "your Drive until you delete them.",
             confirmLabel = "Remove",
             destructive = true,
-            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.") { graph.agents.remove(agent.id) } },
+            // Saving and deleting take a while: leaving the screen must not stop it half way.
+            onConfirm = { runner.run("remove:${agent.id}", done = "${agent.displayName} removed.", outlivesScreen = true) { graph.agents.remove(agent.id) } },
             onDismiss = { removing = null },
         )
     }
