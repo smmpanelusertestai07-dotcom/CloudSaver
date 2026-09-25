@@ -262,6 +262,9 @@ class LeaseTest {
         val copy = index.sessions.single { it.status == SessionStatus.CONFLICT_COPY }
         assertEquals("phone A's work is a conflict copy", file.length(), index.objects.single { it.sessionId == copy.id }.length)
         assertTrue(a.queued().isEmpty())
+        // Phone A read the index again just before writing, so it never wrote over phone B's, even for a moment.
+        val leases = a.drive.named(RemoteIndex.NAME).single().versions.map { RemoteIndex().decode(a.cipher, it).lease?.deviceId }
+        assertEquals(listOf("phone-b"), leases.dropWhile { it != "phone-b" }.distinct())
     }
 
     @Test
