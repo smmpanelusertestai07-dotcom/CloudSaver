@@ -2,14 +2,20 @@ package com.pocketide.builds
 
 import android.net.Uri
 import com.pocketide.core.Clock
+import com.pocketide.git.Hold
+import com.pocketide.git.HoldKind
 import com.pocketide.github.AccountUsage
+import com.pocketide.github.DispatchedRun
 import com.pocketide.github.GitHubAccount
 import com.pocketide.github.GitHubApi
+import com.pocketide.github.JobLog
+import com.pocketide.github.JobStep
 import com.pocketide.github.PullRequest
 import com.pocketide.github.RepoFile
 import com.pocketide.github.RepoInfo
 import com.pocketide.github.RepoUsage
 import com.pocketide.github.RunArtifact
+import com.pocketide.github.WorkflowJob
 import com.pocketide.github.WorkflowRun
 import com.pocketide.media.MediaItem
 import com.pocketide.media.MediaKind
@@ -177,6 +183,74 @@ class GitHubBuildsTest {
     }
 
     @Test
+    fun runFollowsTheIdTheDispatchReturned() = runTest {
+        val builds = GitHubBuilds(ports)
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        ports.gitHub.dispatchedRunId = 77
+        // A newer run of the same workflow must not be taken for it.
+        ports.gitHub.runList = listOf(run(78, "PocketIDE Android release", "2026-09-24T10:00:05Z"))
+        assertEquals(77L, builds.run("alice/demo", TemplateCatalog.ANDROID_RELEASE, session.branch))
+        assertEquals(listOf(77L), ports.followed)
+        assertEquals(0, ports.gitHub.runListings)
+    }
+
+    @Test
+    fun anUnapprovedWorkflowChangeNeverRuns() = runTest {
+        val builds = GitHubBuilds(ports)
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        val hold = Hold(HoldKind.WORKFLOW_CHANGE, ".github/workflows/pocketide-android-release.yml", "abc1234", "Changes it.", "key", "diff")
+        ports.holds = listOf(hold)
+        try {
+            builds.run("alice/demo", TemplateCatalog.ANDROID_RELEASE, session.branch)
+            fail("a held workflow change must be approved first")
+        } catch (expected: WorkflowApprovalNeeded) {
+            assertEquals(listOf(hold), expected.holds)
+            assertTrue(expected.message!!.contains(hold.path))
+        }
+        assertEquals(0, ports.autosaves)
+        assertTrue(ports.gitHub.dispatched.isEmpty())
+    }
+
+    @Test
+    fun progressShowsStepsAndWhyARunFailed() = runTest {
+        val builds = GitHubBuilds(ports)
+        ports.gitHub.runList = listOf(run(5, "PocketIDE Android release", "2026-09-24T10:00:00Z"))
+        val steps = listOf(JobStep(1, "Set up job", "completed", "success"), JobStep(2, "Build", "in_progress", null))
+        ports.gitHub.jobList = listOf(WorkflowJob(50, "build", "in_progress", null, "", listOf("ubuntu-latest"), "GitHub Actions 2", steps))
+        val live = builds.progress("alice/demo", 5)!!
+        assertEquals(steps, live.jobs.single().steps)
+        assertNull(live.failureLog)
+        assertEquals(0, ports.gitHub.logReads)
+
+        ports.gitHub.runList = listOf(run(5, "PocketIDE Android release", "2026-09-24T10:00:00Z").copy(status = "completed", conclusion = "failure"))
+        ports.gitHub.jobList = listOf(
+            WorkflowJob(49, "lint", "completed", "success", "", emptyList(), null, emptyList()),
+            WorkflowJob(50, "build", "completed", "failure", "", emptyList(), null, listOf(steps[0], JobStep(2, "Build", "completed", "failure"))),
+        )
+        val tail = (1..40).joinToString("\n") { "2026-09-24T10:0${it % 10}:00.1234567Z line $it" }
+        ports.gitHub.logs[50] = JobLog("ubuntu-24.04 20260920.1", tail)
+        val ended = builds.progress("alice/demo", 5)!!
+        assertEquals("build", ended.failedJob)
+        assertEquals("Build", ended.failedStep)
+        assertEquals((11..40).joinToString("\n") { "line $it" }, ended.failureLog)
+        assertEquals("ubuntu-24.04 20260920.1", ended.run.runnerImage)
+        builds.progress("alice/demo", 5)
+        assertEquals("an ended run's log is read once", 1, ports.gitHub.logReads)
+        assertNull(builds.progress("alice/demo", 6))
+    }
+
+    @Test
+    fun collectKeepsTheEndOfAFailedRunsLog() = runTest {
+        ports.gitHub.runList = listOf(run(5, "PocketIDE Android release", "2026-09-24T10:00:00Z").copy(status = "completed", conclusion = "failure"))
+        ports.gitHub.jobList = listOf(WorkflowJob(50, "build", "completed", "failure", "", emptyList(), null, emptyList()))
+        ports.gitHub.logs[50] = JobLog(null, "error: cannot find symbol\nFAILURE: Build failed")
+        assertEquals(1, GitHubBuilds(ports).collect("alice/demo", "s1", 5))
+        val log = ports.media.added.single()
+        assertEquals("run-5-failure-log.txt" to MediaKind.TEXT, log.name to log.kind)
+        assertTrue("scratch is cleaned", ports.scratchRoot.list()!!.isEmpty())
+    }
+
+    @Test
     fun runReturnsNullWhenGitHubDoesNotListItYet() = runTest {
         val builds = GitHubBuilds(ports)
         builds.addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
@@ -286,6 +360,8 @@ class GitHubBuildsTest {
         override val io = Dispatchers.Unconfined
         var now = 0L
         var autosaveReason: String? = null
+        var autosaves = 0
+        var holds = emptyList<Hold>()
         var refusal: String? = null
         val committed = mutableListOf<String>()
         val followed = mutableListOf<Long>()
@@ -298,7 +374,11 @@ class GitHubBuildsTest {
         override suspend fun commit(session: SessionRecord, path: String, message: String) {
             committed += path
         }
-        override suspend fun autosave(sessionId: String) = autosaveReason
+        override suspend fun autosave(sessionId: String): String? {
+            autosaves++
+            return autosaveReason
+        }
+        override suspend fun workflowHolds(projectId: String, branch: String) = holds
         override fun downloadRefusal(bytes: Long) = refusal
         override fun downloaded(bytes: Long) = Unit
         override fun follow(projectId: String, runId: Long, title: String) {
@@ -321,6 +401,11 @@ class GitHubBuildsTest {
     private class FakeGitHub : GitHubApi {
         var runList = emptyList<WorkflowRun>()
         var artifactList = emptyList<RunArtifact>()
+        var jobList = emptyList<WorkflowJob>()
+        val logs = mutableMapOf<Long, JobLog>()
+        var dispatchedRunId: Long? = null
+        var runListings = 0
+        var logReads = 0
         val zips = mutableMapOf<Long, ByteArray>()
         val dispatched = mutableListOf<String>()
         val downloads = mutableListOf<Long>()
@@ -328,7 +413,20 @@ class GitHubBuildsTest {
         override suspend fun dispatchWorkflow(owner: String, name: String, workflowFile: String, ref: String, inputs: Map<String, String>) {
             dispatched += "$workflowFile@$ref"
         }
-        override suspend fun runs(owner: String, name: String, branch: String?) = runList.filter { branch == null || it.branch == branch }
+        override suspend fun dispatchWorkflowRun(owner: String, name: String, workflowFile: String, ref: String, inputs: Map<String, String>): DispatchedRun? {
+            dispatchWorkflow(owner, name, workflowFile, ref, inputs)
+            return dispatchedRunId?.let { DispatchedRun(it, "", "") }
+        }
+        override suspend fun runs(owner: String, name: String, branch: String?): List<WorkflowRun> {
+            runListings++
+            return runList.filter { branch == null || it.branch == branch }
+        }
+        override suspend fun run(owner: String, name: String, runId: Long) = runList.find { it.id == runId }
+        override suspend fun jobs(owner: String, name: String, runId: Long) = jobList
+        override suspend fun jobLog(owner: String, name: String, jobId: Long): JobLog? {
+            logReads++
+            return logs[jobId]
+        }
         override suspend fun artifacts(owner: String, name: String, runId: Long) = artifactList
         override suspend fun downloadArtifact(artifact: RunArtifact, dest: File) {
             downloads += artifact.id
