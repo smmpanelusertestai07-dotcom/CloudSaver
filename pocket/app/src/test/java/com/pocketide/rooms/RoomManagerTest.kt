@@ -40,6 +40,7 @@ import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -159,16 +160,50 @@ class RoomManagerTest {
         assertTrue(env.computer.commands.isEmpty())
     }
 
-    @Test fun `the hub room runs agy and answers through the bridge without a cookie`() = runBlocking {
+    @Test fun `the hub room starts agy with a new token each launch and opens only behind it`() = runBlocking {
+        val agy = installAgy()
+        val state = rooms.open("antigravity", "a1")
+        assertTrue(state.toString(), state is RoomState.Running)
+        val command = env.computer.commands.single()
+        assertTrue(command.argv.contains(agy))
+        val token = command.argv.single { it.startsWith("--csrf_token=") }.substringAfter('=')
+        assertEquals(64, token.length)
+        val exposed = env.ports.exposed.single()
+        assertEquals(mapOf(RoomEngines.HUB_TOKEN_HEADER to token), env.ports.injected[exposed.targetPort])
+        assertEquals(exposed.entryUrl, (state as RoomState.Running).url)
+        // Another app that finds the hub's port gets nothing without the token.
+        assertEquals(401, status(exposed.targetPort, emptyMap()))
+        assertEquals(200, status(exposed.targetPort, mapOf(RoomEngines.HUB_TOKEN_HEADER to token)))
+
+        assertTrue(rooms.restart("antigravity") is RoomState.Running)
+        val again = env.computer.commands.last().argv.single { it.startsWith("--csrf_token=") }.substringAfter('=')
+        assertNotEquals(token, again)
+    }
+
+    @Test fun `a hub that gives its token to anyone is stopped, not opened, and says why`() = runBlocking {
+        val agy = File(dirs.roomHome("antigravity"), installAgy().removePrefix("${AppDirs.GUEST_HOME}/"))
+        // As agy 1.2.10 does: its page, with the token in it, goes to any caller.
+        env.computer.hubMode = "leaky"
+        val state = rooms.open("antigravity", "a1")
+        assertTrue(state.toString(), state is RoomState.Failed && state.why.contains("gives its key to any app on this phone"))
+        assertTrue("its port is never handed to the bridge", env.ports.exposed.isEmpty())
+        assertTrue(env.computer.stopped.contains(env.computer.processes.single()))
+
+        assertTrue("the same agy is not started again only to be refused", rooms.open("antigravity", "a1") is RoomState.Failed)
+        assertEquals(1, env.computer.commands.size)
+
+        // An update brings a new agy, which is checked again.
+        agy.setLastModified(agy.lastModified() - 60_000)
+        env.computer.hubMode = "guarded"
+        assertTrue(rooms.open("antigravity", "a1") is RoomState.Running)
+    }
+
+    /** The room's agy, as the room sees it. */
+    private fun installAgy(): String {
         File(dirs.roomHome("antigravity"), ".gemini/bin").mkdirs()
         File(dirs.roomHome("antigravity"), ".gemini/bin/agy").writeText("#!/bin/sh\n")
         dirs.worktree("antigravity", "octo/app", "a1").mkdirs()
-        val state = rooms.open("antigravity", "a1")
-        assertTrue(state.toString(), state is RoomState.Running)
-        val exposed = env.ports.exposed.single()
-        assertEquals(emptyMap<String, String>(), env.ports.injected[exposed.targetPort])
-        assertEquals(exposed.entryUrl, (state as RoomState.Running).url)
-        assertTrue(env.computer.commands.single().argv.contains(RoomEngines.AGY))
+        return RoomEngines.AGY
     }
 
     @Test fun `the terminal is guarded by its secret and reused`() = runBlocking {
@@ -277,9 +312,11 @@ class RoomManagerTest {
     private fun mcpEntries(command: LinuxCommand): JsonObject =
         Json.parseToJsonElement(command.env.getValue("POCKETIDE_CLAUDE_MCP")).jsonObject
 
-    private fun status(port: Int, secret: String?): Int {
+    private fun status(port: Int, secret: String?): Int = status(port, secret?.let { mapOf("X-PocketIDE-Secret" to it) }.orEmpty())
+
+    private fun status(port: Int, headers: Map<String, String>): Int {
         val connection = URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection
-        if (secret != null) connection.setRequestProperty("X-PocketIDE-Secret", secret)
+        headers.forEach(connection::setRequestProperty)
         return try {
             connection.responseCode
         } finally {
@@ -304,6 +341,9 @@ class RoomManagerTest {
         val stopped = CopyOnWriteArrayList<Process>()
         val configs = CopyOnWriteArrayList<String>()
 
+        /** How the stand-in hub treats its token: "guarded" asks for it, "leaky" hands it to anyone, as agy 1.2.10 does. */
+        @Volatile var hubMode = "guarded"
+
         override fun start(command: LinuxCommand): Process {
             commands += command
             val argv = command.argv
@@ -311,9 +351,13 @@ class RoomManagerTest {
                 RoomEngines.CODE_SERVER in argv -> {
                     val config = argv[argv.indexOf("--config") + 1]
                     configs += host(config).readText()
-                    engine(argv[argv.indexOf("--bind-addr") + 1].substringAfter(':'))
+                    engine(argv[argv.indexOf("--bind-addr") + 1].substringAfter(':'), "code-server", "")
                 }
-                RoomEngines.AGY in argv -> engine(argv.first { it.startsWith("--hub-port=") }.substringAfter('='))
+                RoomEngines.AGY in argv -> engine(
+                    argv.first { it.startsWith("--hub-port=") }.substringAfter('='),
+                    hubMode,
+                    argv.firstOrNull { it.startsWith("--csrf_token=") }?.substringAfter('=').orEmpty(),
+                )
                 RoomLayout.TERMINAL_SERVER in argv -> listOf(
                     "python3", File(ASSETS, "rooms/term.py").absolutePath,
                     "--port", argv[argv.indexOf("--port") + 1],
@@ -326,7 +370,7 @@ class RoomManagerTest {
             return ProcessBuilder(local).redirectErrorStream(true).start().also { processes += it }
         }
 
-        private fun engine(port: String) = listOf("python3", "-c", ENGINE, port)
+        private fun engine(port: String, mode: String, token: String) = listOf("python3", "-c", ENGINE, port, mode, token)
 
         /** A guest path of the claude or antigravity room, on the host. */
         private fun host(guest: String): File {
@@ -357,16 +401,24 @@ class RoomManagerTest {
             const val ASSETS = "src/main/assets"
             const val ENGINE = """
 import http.server, sys
+port, mode, token = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        body = b'{"status":"alive"}' if self.path == '/healthz' else b'<html>hub</html>'
-        self.send_response(200)
+        status = 200
+        if mode == 'code-server':
+            body = b'{"status":"alive"}' if self.path == '/healthz' else b'<html>workbench</html>'
+        elif mode == 'guarded' and self.headers.get('x-codeium-csrf-token') != token:
+            status = 401
+            body = b'{"code":"unauthenticated","message":"missing CSRF token"}'
+        else:
+            body = ('<script>window.__APP_CONFIG__ = {"csrfToken":"%s"};</script>hub' % token).encode()
+        self.send_response(status)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
     def log_message(self, *args):
         pass
-http.server.HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
+http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
 """
         }
     }

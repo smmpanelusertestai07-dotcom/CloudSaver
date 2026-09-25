@@ -90,6 +90,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     private val live = ConcurrentHashMap<String, LiveRoom>()
     private val locks = ConcurrentHashMap<String, Mutex>()
+
+    /** Hub rooms whose agy gave its token away, with that agy file's stamp ([agyStamp]). */
+    private val leakyHubs = ConcurrentHashMap<String, Long>()
     private val monitorLock = Any()
     private var monitor: Job? = null
 
@@ -281,7 +284,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 withContext(Dispatchers.IO) { bridgeFiles.write(secretFile, RoomEngines.codeServerConfig(secret)) }
                 RoomEngines.codeServer(dirs, profile, guestWorktree, chosenPort, environment)
             }
-            Engine.AGY_HUB -> RoomEngines.hub(dirs, profile, guestWorktree, chosenPort, environment)
+            Engine.AGY_HUB -> {
+                // Found giving its token away before: not started again just to be checked.
+                val stamp = withContext(Dispatchers.IO) { agyStamp(profile) }
+                if (stamp != null && leakyHubs[agentId] == stamp) return fail(agentId, givesTokenAway(profile.name))
+                RoomEngines.hub(dirs, profile, guestWorktree, chosenPort, environment, token = secret)
+            }
         }
 
         publish(agentId, RoomState.Starting("Starting ${profile.name}"))
@@ -316,8 +324,17 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             val why = if (alive) "did not answer within ${READY_MS / 1000} seconds." else "stopped while starting."
             return fail(agentId, "${profile.name} $why$lastWords")
         }
+        if (profile.engine == Engine.AGY_HUB) {
+            hubProblem(room, secret)?.let { why ->
+                shutDown(agentId, room)
+                return fail(agentId, why)
+            }
+        }
         // A new secret each launch, so each launch gets a new bridge and token too.
-        val inject = if (profile.engine == Engine.CODE_SERVER) mapOf("Cookie" to RoomEngines.sessionCookie(secret)) else emptyMap()
+        val inject = when (profile.engine) {
+            Engine.CODE_SERVER -> mapOf("Cookie" to RoomEngines.sessionCookie(secret))
+            Engine.AGY_HUB -> mapOf(RoomEngines.HUB_TOKEN_HEADER to secret)
+        }
         val bridge = try {
             env.portBridge.expose(chosenPort, RoomTraffic.agentPurpose(agentId), inject)
         } catch (failed: IllegalStateException) {
@@ -398,6 +415,34 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     private fun agyInstalled(profile: RoomProfile): Boolean =
         RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true).isFile(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))
+
+    /** When the room's agy file last changed: an update, or a repair, gives it a new one. */
+    private fun agyStamp(profile: RoomProfile): Long? =
+        RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true).lastModified(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))
+
+    /**
+     * Null when the started hub keeps its [token] from callers that do not have it, as the
+     * terminal keeps its secret; otherwise why its screen stays closed. Its page is asked for as
+     * another app would ask (no token), then as the bridge will (with it).
+     */
+    private suspend fun hubProblem(room: LiveRoom, token: String): String? {
+        val (withoutToken, withToken) = withContext(Dispatchers.IO) {
+            Loopback.get(room.port, "/", maxBody = HUB_PAGE_BYTES) to
+                Loopback.get(room.port, "/", maxBody = HUB_PAGE_BYTES, headers = mapOf(RoomEngines.HUB_TOKEN_HEADER to token))
+        }
+        val agentId = room.profile.agentId
+        return when (RoomEngines.hubGuard(withoutToken, withToken, token)) {
+            HubGuard.GUARDED -> null
+            HubGuard.GIVES_TOKEN_AWAY -> {
+                withContext(Dispatchers.IO) { agyStamp(room.profile) }?.let { leakyHubs[agentId] = it }
+                ring(agentId).add("[PocketIDE] The hub served this launch's token to a request that did not have it.")
+                givesTokenAway(room.profile.name)
+            }
+            HubGuard.REFUSES_TOKEN -> "${room.profile.name}'s screen could not open: its hub refused this launch's key. " +
+                "An update of ${room.profile.name} may have changed how its screen signs in."
+            HubGuard.NO_ANSWER -> "${room.profile.name} stopped answering while it started."
+        }
+    }
 
     private fun extensionInstalled(profile: RoomProfile): Boolean {
         val prefix = profile.extensionId?.lowercase()?.plus("-") ?: return false
@@ -746,8 +791,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         const val SIGN_OUT_MS = 30_000L
         const val BUILD_WAIT_MAX_MS = 60 * 60_000L
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
+        const val HUB_PAGE_BYTES = 512 * 1024
         const val CANNOT_START = "The phone cannot take another agent right now."
         const val BROWSER_OFF = "The test browser stays off in this project: it is someone else's code, and a web page could " +
             "steer you. The owner can turn it on by marking the project as theirs in PocketIDE."
+
+        fun givesTokenAway(name: String) = "$name stays closed: this version of its hub gives its key to any app on this phone " +
+            "that asks, and with that key another app could use $name in your projects. It opens once an update of $name fixes this."
     }
 }
