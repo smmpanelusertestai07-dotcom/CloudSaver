@@ -1,8 +1,12 @@
 package com.pocketide.ui.screens.chats
 
+import com.pocketide.core.Ist
 import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.sessions.Sessions
+import com.pocketide.sync.BackupState
+import com.pocketide.sync.RecentlyDeleted
+import com.pocketide.sync.SessionBackup
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.waitingVideosText
 
@@ -47,12 +51,12 @@ private fun matchesStatus(status: SessionStatus, filter: StatusFilter): Boolean 
     StatusFilter.CONFLICT -> status == SessionStatus.CONFLICT_COPY
 }
 
-const val RECENTLY_DELETED_DAYS = 30
+const val RECENTLY_DELETED_DAYS = RecentlyDeleted.DAYS
 private const val DAY_MS = 24L * 60 * 60 * 1000
 
-/** Whole days until a deleted chat is erased for good (30 days from [deletedAt]); never negative. */
+/** Whole days until a deleted chat is erased for good (the sync engine's date); never negative. */
 fun daysLeft(deletedAt: Long, now: Long): Int {
-    val remaining = deletedAt + RECENTLY_DELETED_DAYS * DAY_MS - now
+    val remaining = RecentlyDeleted.erasesAt(deletedAt) - now
     if (remaining <= 0) return 0
     return ((remaining + DAY_MS - 1) / DAY_MS).toInt()
 }
@@ -71,8 +75,21 @@ fun recentlyDeleted(sessions: List<SessionRecord>): List<SessionRecord> =
     sessions.filter { (it.status == SessionStatus.DELETED || it.deletedAt != null) && it.deletedAt != Sessions.ERASE_NOW }
         .sortedByDescending { it.deletedAt ?: it.lastActivityAt }
 
-/** Where a chat stands with Drive, in words, and whether it needs the owner's eye. */
-fun backupState(session: SessionRecord): Pair<String, Tone> = when {
+/**
+ * Where a chat stands with Drive, in words, and whether it needs the owner's eye: the sync
+ * engine's own [backup] when it has one, else what the session record says.
+ */
+fun backupState(session: SessionRecord, backup: SessionBackup? = null, time: (Long) -> String = Ist::dateTime): Pair<String, Tone> =
+    if (backup != null) backupText(backup, time) else recordBackupState(session)
+
+fun backupText(backup: SessionBackup, time: (Long) -> String): Pair<String, Tone> = when (backup.state) {
+    BackupState.NOT_BACKED_UP -> "Not backed up" to Tone.WARN
+    BackupState.WAITING_FOR_WIFI -> (waitingVideosText(backup.videosWaitingForWifi) ?: "Waiting for Wi-Fi") to Tone.WARN
+    BackupState.WAITING -> "Waiting to upload" to Tone.WARN
+    BackupState.BACKED_UP -> (backup.lastBackedUpAt?.let { "Backed up · ${time(it)}" } ?: "Backed up") to Tone.OK
+}
+
+private fun recordBackupState(session: SessionRecord): Pair<String, Tone> = when {
     !session.backUp -> "Not backed up" to Tone.WARN
     session.pendingVideos > 0 -> (waitingVideosText(session.pendingVideos) ?: "Waiting for Wi-Fi") to Tone.WARN
     session.pendingBytes > 0 -> "Waiting to upload" to Tone.WARN

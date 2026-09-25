@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.pocketide.AppGraph
+import com.pocketide.core.Ist
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.RepairItem
@@ -84,6 +85,7 @@ fun ComputerScreen(nav: PocketNav) {
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val removalAt by graph.sync.computerRemovalAt.collectAsStateWithLifecycle()
     val info = rememberLoad(Unit, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.info() } }
     val size = rememberLoad(state::class, graph.clock::now) { withContext(Dispatchers.IO) { graph.computer.sizeBytes() } }
     val facts = rememberLoad(snapshot.storageFreeBytes / 1_000_000_000L, graph.clock::now) {
@@ -99,7 +101,7 @@ fun ComputerScreen(nav: PocketNav) {
     LaunchedEffect(Unit) { attempt { graph.phone.refresh() } }
 
     ManagePage("Computer", nav, runner) {
-        item { StateCard(state, size.value, daysLeft) }
+        item { StateCard(state, size.value, daysLeft, removalAt) }
         item { PhoneCard(snapshot, info.value) }
         item { VersionsCard(info.value, info.error, agents.map { it.displayName to it.version }) }
         item {
@@ -227,10 +229,13 @@ private fun RepairReport(items: List<RepairItem>) {
 }
 
 @Composable
-private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?) {
+private fun StateCard(state: ComputerState, sizeBytes: Long?, daysLeft: Int?, removalAt: Long?) {
     SectionCard("Ubuntu computer") {
         if (daysLeft != null && state !is ComputerState.NotInstalled) {
             StatusChip(ComputerExpiry.chip(daysLeft), if (daysLeft <= 7) Tone.WARN else Tone.NEUTRAL)
+        }
+        if (removalAt != null && state !is ComputerState.NotInstalled) {
+            ToneLine(Told("Removed on ${Ist.date(removalAt)} unless an agent runs. Your projects and chats stay.", Tone.WARN))
         }
         when (state) {
             ComputerState.NotInstalled -> ToneLine(Told("Not set up yet.", Tone.NEUTRAL))

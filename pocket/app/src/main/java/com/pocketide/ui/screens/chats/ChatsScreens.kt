@@ -60,7 +60,9 @@ import com.pocketide.core.Ist
 import com.pocketide.model.SessionRecord
 import com.pocketide.rooms.RoomState
 import com.pocketide.sessions.TranscriptEntry
+import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
+import com.pocketide.ui.manage.BackgroundLimitNote
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.SelectableText
@@ -98,6 +100,8 @@ fun ChatsScreen(nav: PocketNav) {
     val projects by graph.projects.all.collectAsStateWithLifecycle()
     val rooms by graph.rooms.states.collectAsStateWithLifecycle()
     val waiting by graph.sync.waiting.collectAsStateWithLifecycle()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
+    val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
 
     var query by rememberSaveable { mutableStateOf("") }
     var agentId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -145,6 +149,7 @@ fun ChatsScreen(nav: PocketNav) {
                     PickerChip("Project", projectId, projects.map { it.id to it.id }) { projectId = it }
                 }
             }
+            backgroundLimit?.let { limit -> item(key = "background") { BackgroundLimitNote(limit) } }
             item(key = "places") {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = nav::recentlyDeleted) {
@@ -178,6 +183,7 @@ fun ChatsScreen(nav: PocketNav) {
                     session = session,
                     agentLabel = nameOf(session.agentId),
                     running = room is RoomState.Running && room.sessionId == session.id,
+                    backup = backups[session.id],
                     nav = nav,
                     snackbar = snackbar,
                     scope = scope,
@@ -226,6 +232,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
     val snackbar = remember { SnackbarHostState() }
     val sessions by graph.sessions.all.collectAsStateWithLifecycle()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
+    val backups by graph.sync.backups.collectAsStateWithLifecycle()
     val session = sessions.firstOrNull { it.id == sessionId }
     var entries by remember(sessionId) { mutableStateOf<Result<List<TranscriptEntry>>?>(null) }
     var tries by remember(sessionId) { mutableIntStateOf(0) }
@@ -269,7 +276,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (session != null) {
-                item(key = "details") { SessionDetails(session, agentLabel) }
+                item(key = "details") { SessionDetails(session, agentLabel, backups[session.id]) }
                 item(key = "media") { MediaStrip(sessionId) }
             }
             item(key = "label") {
@@ -299,7 +306,7 @@ fun TranscriptScreen(sessionId: String, nav: PocketNav) {
 }
 
 @Composable
-private fun SessionDetails(session: SessionRecord, agentLabel: String) {
+private fun SessionDetails(session: SessionRecord, agentLabel: String, backup: SessionBackup?) {
     val (status, _) = sessionStatusLabel(session.status, running = false)
     SectionCard(title = "Details") {
         InfoRow("Agent", agentLabel)
@@ -314,7 +321,7 @@ private fun SessionDetails(session: SessionRecord, agentLabel: String) {
             InfoRow("Tokens", "${grouped(session.tokensIn)} in · ${grouped(session.tokensOut)} out")
         }
         InfoRow("Size", WorkFormat.bytes(sessionBytes(session)))
-        InfoRow("Backup", backupState(session).first)
+        InfoRow("Backup", backupState(session, backup).first)
     }
 }
 
