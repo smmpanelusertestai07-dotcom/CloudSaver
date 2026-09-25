@@ -22,9 +22,10 @@ internal class LeaseLostException(val holder: Lease, val snapshot: RemoteSnapsho
  * and the change applied to it; then Drive's list of the file's versions must show, just before
  * ours, the version that was read. Otherwise another phone wrote in between and ours replaced it,
  * so ours is made again on top of theirs. Metadata (checksum) is compared first, so an unchanged
- * index is never downloaded.
+ * index is never downloaded. What the index sends and receives counts in [budget] like any other
+ * sync transfer, so Settings shows it and the daily mobile limit leaves less for new uploads.
  */
-internal class RemoteIndex {
+internal class RemoteIndex(private val budget: MeteredDataBudget? = null) {
 
     suspend fun fetch(drive: DriveStore, cipher: VaultCipher, known: RemoteMark?, cached: VaultIndex?): RemoteSnapshot {
         val file = drive.find(NAME) ?: return RemoteSnapshot(null, null)
@@ -67,6 +68,7 @@ internal class RemoteIndex {
             }.above(current)
             val bytes = encode(cipher, next)
             val written = drive.uploadBytes(NAME, bytes, head.mark?.id)
+            counted(bytes.size)
             val result = RemoteSnapshot(next, mark(written, next, bytes.size.toLong()))
             when (val check = check(drive, cipher, written, bytes, head)) {
                 Check.Clean -> return if (holder == null) result else throw LeaseLostException(holder, result)
@@ -120,6 +122,7 @@ internal class RemoteIndex {
     private suspend fun replacedBy(revisions: DriveRevisions, cipher: VaultCipher, written: DriveFile, before: DriveRevision, read: VaultIndex?): Check {
         val out = ByteArrayOutputStream()
         revisions.downloadRevision(written.id, before.id, out)
+        counted(out.size())
         val theirs = decode(cipher, out.toByteArray())
         return if (read == null || theirs.revision > read.revision) Check.WentOver(theirs) else Check.Clean
     }
@@ -143,7 +146,12 @@ internal class RemoteIndex {
     suspend fun download(drive: DriveStore, id: String): ByteArray {
         val out = ByteArrayOutputStream()
         drive.download(id, out)
+        counted(out.size())
         return out.toByteArray()
+    }
+
+    private fun counted(bytes: Int) {
+        budget?.record(bytes.toLong(), MeteredDataBudget.KIND_SYNC)
     }
 
     private fun sameContent(file: DriveFile, mark: RemoteMark): Boolean = when {

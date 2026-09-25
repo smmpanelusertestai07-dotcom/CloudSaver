@@ -69,6 +69,7 @@ internal class PieceMaker(
     private val clock: Clock,
 ) {
 
+    /** New bytes of a transcript as a piece; with [compact], the whole file as one base piece even when unchanged. */
     fun transcript(c: Candidate, known: Known, compact: Boolean): MakeResult {
         val facts = c.facts
         if (facts.size == 0L && known.end == 0L) return MakeResult.Unchanged
@@ -77,7 +78,8 @@ internal class PieceMaker(
         } catch (_: IOException) {
             return MakeResult.Changing
         }
-        if (facts.size == known.size && facts.modifiedAt == known.modifiedAt && known.end >= end) return MakeResult.Unchanged
+        val unchanged = facts.size == known.size && facts.modifiedAt == known.modifiedAt && known.end >= end
+        if (unchanged && !compact) return MakeResult.Unchanged
         if (end < known.end || compact || (known.end > 0 && known.sha == null)) return base(c, known, end)
         return try {
             appendOrRewrite(c, known, end)

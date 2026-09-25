@@ -208,7 +208,7 @@ internal class SyncPass(
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)
             val result = if (c.kind.appendOnly) {
-                maker.transcript(c, known, compact = compactAllowed && known.pieces >= COMPACT_AFTER)
+                maker.transcript(c, known, compact = compactAllowed && foldDue(known, c.facts.size, run.now))
             } else {
                 maker.whole(c, known) { sha -> pendingBySha[sha] ?: indexBySha[sha] }
             }
@@ -541,11 +541,28 @@ internal class SyncPass(
 
     companion object {
         const val COMPACT_AFTER = 100
+
+        /** A transcript with no new piece for this long is finished, for now: see [foldDue]. */
+        const val FOLD_QUIET_MS = Durations.DAY
+
+        /** Folding a quiet transcript may send again at most this much for each piece it removes. */
+        const val FOLD_BYTES_PER_PIECE = 1L shl 20
         const val LARGE_UPLOAD = 8L * 1024 * 1024
         const val QUIET_MS = 60_000L
         const val REMOVAL_GRACE_MS = Durations.HOUR
 
         /** An idle phone's periodic run still asks Drive after this long, for other phones' changes. */
         const val IDLE_PULL_MS = 6 * Durations.HOUR
+
+        /**
+         * Whether a transcript's pieces are folded into one base piece now (the caller allows it on
+         * Wi-Fi only). Every piece is an entry of the index, which each sync sends whole, so a
+         * finished chat keeps one: after [COMPACT_AFTER] pieces, or once the chat has been quiet
+         * for a day, when that sends again at most [FOLD_BYTES_PER_PIECE] per piece removed.
+         */
+        fun foldDue(known: Known, size: Long, now: Long): Boolean {
+            val quiet = now - known.lastCreatedAt >= FOLD_QUIET_MS
+            return known.pieces >= COMPACT_AFTER || (known.pieces > 1 && quiet && size <= (known.pieces - 1) * FOLD_BYTES_PER_PIECE)
+        }
     }
 }

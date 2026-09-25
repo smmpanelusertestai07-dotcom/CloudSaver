@@ -17,7 +17,7 @@ import java.io.IOException
 internal class SyncKit(val ports: SyncPorts) {
     val repo = SyncRepository(ports.dirs)
     val queue = UploadQueue(ports.dirs.queue)
-    val remote = RemoteIndex()
+    val remote = RemoteIndex(ports.budget)
     val scanner = Scanner(ports.dirs)
     val materializer = Materializer(queue, ports.budget)
     val flows = SyncFlows()

@@ -91,6 +91,59 @@ class PiecesTest {
     }
 
     @Test
+    fun aChatQuietForADayIsFoldedIntoOnePieceOnWifi() = runBlocking {
+        val phone = phone()
+        val file = phone.homeFile("claude", path)
+        file.writeText("line 1\n")
+        phone.engine.syncNow()
+        repeat(2) {
+            file.appendText("line ${it + 2}\n")
+            clock.advance(60_000)
+            phone.engine.syncNow()
+        }
+        val pieces = phone.pieces()
+        assertEquals(3, pieces.size)
+
+        clock.advance(Durations.DAY)
+        phone.network.metered = true
+        phone.engine.syncNow()
+        assertEquals("never on mobile data", pieces, phone.pieces())
+
+        phone.network.metered = false
+        phone.engine.syncNow()
+        val folded = phone.pieces().single()
+        assertEquals(0L, folded.offset)
+        assertEquals(file.length(), folded.length)
+        assertTrue("the old pieces leave Drive", pieces.none { it.name in phone.drive.objectNames() })
+        assertEquals(file.readText(), rebuilt())
+    }
+
+    @Test
+    fun aQuietChatIsFoldedOnlyWhenThatSendsLittleAgainForTheEntriesItSaves() {
+        val now = clock.now
+        val quiet = Known(end = 0, sha = null, size = 0, modifiedAt = 0, pieces = 3, lastCreatedAt = now - Durations.DAY)
+        assertTrue(SyncPass.foldDue(quiet, size = 1_000, now = now))
+        assertFalse("still being written", SyncPass.foldDue(quiet.copy(lastCreatedAt = now - Durations.HOUR), size = 1_000, now = now))
+        assertFalse("one piece already", SyncPass.foldDue(quiet.copy(pieces = 1), size = 1_000, now = now))
+        assertFalse("a big file sent again to save two entries", SyncPass.foldDue(quiet, size = 100L shl 20, now = now))
+        val long = quiet.copy(pieces = SyncPass.COMPACT_AFTER, lastCreatedAt = now)
+        assertTrue("a long chat is folded however big", SyncPass.foldDue(long, size = 100L shl 20, now = now))
+    }
+
+    @Test
+    fun theIndexASyncSendsCountsAgainstTheMobileDataLikeThePieces() = runBlocking {
+        val phone = phone()
+        phone.network.metered = true
+        phone.homeFile("claude", path).writeText("hello\n")
+
+        phone.engine.syncNow()
+
+        val piece = phone.pieces().single()
+        val index = phone.drive.named(RemoteIndex.NAME).single().bytes.size
+        assertEquals(piece.storedBytes + index, phone.budget.usage.value.byType[MeteredDataBudget.KIND_SYNC])
+    }
+
+    @Test
     fun everythingInDriveIsCompressedThenEncryptedUnderOpaqueNames() = runBlocking {
         val phone = phone()
         phone.homeFile("claude", path).writeText("{\"secret project\":true}\n".repeat(50))
