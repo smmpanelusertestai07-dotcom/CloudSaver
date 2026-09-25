@@ -98,8 +98,24 @@ internal class SyncPass(
 
     fun book(run: Run) = SessionBook(ports.localSessions(), run.index?.sessions.orEmpty(), run.state.erased.keys)
 
-    /** Queues every new byte and changed file, and notes files that disappeared. */
-    fun collect(run: Run, book: SessionBook, index: VaultIndex?) {
+    /**
+     * Queues every new byte now, online or not, and returns the sessions with bytes Drive has not
+     * confirmed yet: those in the queue, and those with a database still too fresh to copy.
+     */
+    fun queueOnly(run: Run): Set<String> {
+        kit.queue.recover()
+        val book = book(run)
+        val deferred = collect(run, book, run.index)
+        run.save()
+        Views.publishWaiting(run, book)
+        return deferred + run.entries().filter { !it.conflict }.mapNotNull { it.sessionId }
+    }
+
+    /**
+     * Queues every new byte and changed file, and notes files that disappeared. Returns the
+     * sessions whose databases were left for a later run because they changed within [QUIET_MS].
+     */
+    fun collect(run: Run, book: SessionBook, index: VaultIndex?): Set<String> {
         val maker = run.maker()
         val entries = run.entries().filter { !it.conflict }
         val queued = entries.groupBy { it.trackKey }.toMutableMap()
@@ -110,10 +126,14 @@ internal class SyncPass(
         val compactAllowed = !ports.network.metered()
         val tracks = run.state.tracks.toMutableMap()
         val seen = HashSet<String>()
+        val deferred = HashSet<String>()
         for (c in kit.scanner.scan(book.matcher, tracks, ports::roomRunning)) {
             seen += c.key
             if (!book.uploadable(c.sessionId)) continue
-            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
+            if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) {
+                c.sessionId?.let(deferred::add)
+                continue
+            }
             val waiting = queued[c.key].orEmpty()
             var track = tracks[c.key]
             if (track == null && waiting.isEmpty()) track = reconciler.adopt(index, c)?.also { tracks[c.key] = it }
@@ -145,6 +165,7 @@ internal class SyncPass(
         }
         noteMissing(run, tracks, seen, book)
         run.state = run.state.copy(tracks = tracks)
+        return deferred
     }
 
     /**

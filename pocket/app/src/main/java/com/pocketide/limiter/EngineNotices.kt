@@ -12,11 +12,12 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.pocketide.R
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 
 /** The engine's notifications: the ongoing "Computer running" one and the safe-stop notice. */
 internal object EngineNotices {
-    const val RUNNING_ID = 4101
-    private const val STOPPED_ID = 4102
+    const val RUNNING_ID = NotificationIds.ENGINE_RUNNING
+    private const val STOPPED_ID = NotificationIds.ENGINE_STOPPED
 
     fun running(context: Context, load: EngineLoad): Notification {
         val stopAll = PendingIntent.getService(

@@ -72,8 +72,16 @@ data class RestorePlan(
 
 enum class RestoreChoice { WIFI_ONLY, MOBILE_UP_TO_LIMIT }
 
-/** Monthly data usage by type, metered networks only (Wi-Fi is free). */
-data class DataUsage(val todayMeteredBytes: Long, val monthMeteredBytes: Long, val byType: Map<String, Long>)
+/**
+ * Monthly data usage by type, metered networks only (Wi-Fi is free). [todayLimitedBytes] is the
+ * part of today's bytes the daily limit applies to: PocketIDE's own transfers, not the agents' traffic.
+ */
+data class DataUsage(
+    val todayMeteredBytes: Long,
+    val monthMeteredBytes: Long,
+    val byType: Map<String, Long>,
+    val todayLimitedBytes: Long = todayMeteredBytes,
+)
 
 /** How full PocketIDE's share of the phone is (§6.5): a notice at 80 %, caches cleaned at 90 %. */
 enum class PhoneSpace { OK, NEARLY_FULL, FULL }
@@ -116,6 +124,23 @@ sealed interface MoveState {
 
 /** A sync action could not finish. [message] is one plain sentence the owner can act on. */
 class SyncException(message: String) : Exception(message)
+
+/**
+ * A big download the owner started waits for Wi-Fi, but the owner may take it on mobile data
+ * (§6.7): the screen asks "Download [bytes] on mobile data?" and, on yes, calls
+ * [DataBudget.allowOnce] with [kind] and [bytes], then tries again.
+ */
+class NeedsMobileData(val kind: String, val bytes: Long) :
+    Exception("This download is about ${Sizes.human(bytes)}, so it waits for Wi-Fi.") {
+    /** The size as the question shows it ("60 MB"). */
+    val size: String get() = Sizes.human(bytes)
+
+    companion object {
+        /** [decision] as this question when the owner may lift it; null when it is allowed or refused for another reason. */
+        fun of(decision: com.pocketide.model.Decision, kind: String, bytes: Long): NeedsMobileData? =
+            if (!decision.allowed && decision.reason == MeteredDataBudget.WAITS_FOR_WIFI) NeedsMobileData(kind, bytes) else null
+    }
+}
 
 /**
  * Durable, append-only sync of AI data to the Drive hidden folder. New transcript bytes become
@@ -168,6 +193,14 @@ interface SyncEngine {
 
     suspend fun uploadNow(sessionIds: List<String>)
 
+    /**
+     * Queues every new byte of the chats on this phone (compressed and encrypted, kept safely in
+     * the upload queue; works offline) and returns those of [sessionIds] that still have bytes
+     * Drive has not confirmed. A deleted chat's phone copy goes only once it is not returned.
+     * Throws [SyncException] when nothing could be queued (the key is not ready, say).
+     */
+    suspend fun queueNow(sessionIds: List<String>): Set<String> = sessionIds.toSet()
+
     suspend fun restorePlan(): RestorePlan
 
     suspend fun restore(choice: RestoreChoice)
@@ -187,10 +220,21 @@ interface SyncEngine {
     /** Erases the old account's copy once a move is finished and the owner agreed. */
     suspend fun eraseOldAccountCopy()
 
+    /**
+     * "Clean now" when PocketIDE's share of the phone fills up (§6.5): idle caches that are rebuilt
+     * when needed, temp files, logs and old build outputs go at once. Returns the bytes freed;
+     * [storage] shows the new level.
+     */
+    suspend fun cleanNow(): Long = 0L
+
     /** "Delete forever": erases these sessions' files from Drive now (or at the next connection). */
     suspend fun eraseForever(sessionIds: List<String>)
 
-    /** Erases everything in Drive and on the phone ("Delete everything"). */
+    /**
+     * Erases everything in Drive and on the phone ("Delete everything"), the project clones and
+     * session worktrees too: code GitHub does not have is lost, so the caller has it pushed first
+     * ([com.pocketide.sessions.Sessions.codeOnlyOnPhone]) and names what could not be.
+     */
     suspend fun deleteEverything()
 
     /** Starts the periodic sync and the daily maintenance job. */
@@ -202,10 +246,10 @@ private val NOTHING: StateFlow<Nothing?> = MutableStateFlow(null)
 
 /** Metered-only accounting and the daily limit, checked before every big transfer. */
 interface DataBudget {
-    /** This month's metered usage by type, for Settings → Data. */
+    /** This month's metered usage by type, for Settings → Mobile data. */
     val usage: StateFlow<DataUsage>
 
-    /** May [bytes] of kind [kind] be transferred now? Big items wait for Wi-Fi by default. */
+    /** May [bytes] of kind [kind] be transferred now? Big items wait for Wi-Fi by default ([NeedsMobileData] asks the owner). */
     fun allow(bytes: Long, kind: String, big: Boolean): com.pocketide.model.Decision
 
     fun record(bytes: Long, kind: String)

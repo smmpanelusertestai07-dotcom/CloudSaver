@@ -4,6 +4,8 @@ import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
 import com.pocketide.model.Project
+import com.pocketide.sync.MeteredDataBudget
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -149,6 +151,26 @@ class ProjectRegistryTest {
         projects.ensureCloned(project.id)
         assertEquals(1, env.git.cloned.size)
         assertEquals(listOf(dirs.bareRepo(project.id)), env.git.fetched)
+    }
+
+    @Test
+    fun `a big clone on mobile data asks with its size and goes once the owner agrees`() = runBlocking<Unit> {
+        val projects = registry()
+        env.gitHub.reachable["bob/big"] = repoInfo("bob", "big", sizeKb = 60 * 1024)
+        val project = projects.import("bob/big", "")
+        env.dataBudget.decision = Decision.no(MeteredDataBudget.WAITS_FOR_WIFI)
+
+        val ask = failsWith<NeedsMobileData> { runBlocking { projects.ensureCloned(project.id) } }
+
+        assertEquals("clone", ask.kind)
+        assertEquals(60L * 1024 * 1024, ask.bytes)
+        assertEquals("This download is about 60 MB, so it waits for Wi-Fi.", ask.message)
+        assertTrue(env.git.cloned.isEmpty())
+
+        env.dataBudget.allowOnce(ask.kind, ask.bytes)
+        projects.ensureCloned(project.id)
+        assertEquals(listOf("https://github.com/bob/big.git"), env.git.cloned)
+        assertEquals(listOf(60L * 1024 * 1024), env.dataBudget.recorded)
     }
 
     @Test

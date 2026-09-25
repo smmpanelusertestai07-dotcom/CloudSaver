@@ -108,7 +108,8 @@ private fun MobileDataSection(graph: AppGraph, settings: Settings, update: ((Set
             {
                 SwitchRow(
                     "Big downloads on Wi-Fi only",
-                    "Set-up, engine and agent updates, the agents' browser and large clones wait for Wi-Fi. Off: they ask first and show the size.",
+                    "Set-up, engine and agent updates, the agents' browser and large clones wait for Wi-Fi. One you start " +
+                        "on mobile data asks first and shows its size. Off: they use mobile data within the daily limit.",
                     settings.wifiOnlyBigDownloads,
                 ) { on -> update { it.copy(wifiOnlyBigDownloads = on) } }
             },
@@ -131,13 +132,11 @@ private fun DataUsageCard(usage: DataUsage, limitMb: Int) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Mobile data used", style = MaterialTheme.typography.titleSmall)
             val limitBytes = limitMb * 1_000_000L
-            InfoRow(
-                "Today",
-                if (limitMb > 0) "${Formats.bytes(usage.todayMeteredBytes)} of ${Formats.megabytes(limitMb)}" else Formats.bytes(usage.todayMeteredBytes),
-            )
+            InfoRow("Today", Formats.bytes(usage.todayMeteredBytes))
             if (limitBytes > 0) {
+                InfoRow("Daily limit", "${Formats.bytes(usage.todayLimitedBytes)} of ${Formats.megabytes(limitMb)}")
                 LinearProgressIndicator(
-                    progress = { (usage.todayMeteredBytes.toFloat() / limitBytes).coerceIn(0f, 1f) },
+                    progress = { (usage.todayLimitedBytes.toFloat() / limitBytes).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -147,7 +146,8 @@ private fun DataUsageCard(usage: DataUsage, limitMb: Int) {
                 .sortedByDescending { it.value }
                 .forEach { (type, bytes) -> InfoRow("  ${Formats.dataKind(type)}", Formats.bytes(bytes)) }
             Text(
-                "Only mobile data counts; Wi-Fi is free. The agents' own traffic is counted but never blocked, so they keep working.",
+                "Only mobile data counts; Wi-Fi is free. The daily limit is for PocketIDE's own transfers. The agents' own " +
+                    "traffic is counted but never blocked, so they keep working.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

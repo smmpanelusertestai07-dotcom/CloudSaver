@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import com.pocketide.R
 import com.pocketide.agents.AgentNotices
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.graph
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
@@ -71,7 +72,7 @@ class AppUpdateWorker(context: Context, params: WorkerParameters) : CoroutineWor
 
 /** "PocketIDE <version> is ready to install", posted once per version. */
 internal object UpdateNotices {
-    private const val NOTIFICATION_ID = 4500
+    private const val NOTIFICATION_ID = NotificationIds.APP_UPDATE
     private const val PREFS = "pocketide.update"
     private const val NOTIFIED = "notified_version"
 

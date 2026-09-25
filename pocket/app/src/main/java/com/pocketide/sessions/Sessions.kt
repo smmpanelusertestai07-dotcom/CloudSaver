@@ -90,6 +90,14 @@ interface Sessions {
      */
     suspend fun saveNow(sessionId: String): String? = autosave(sessionId)
 
+    /**
+     * Before "Delete everything", which erases this phone's clones and worktrees: every open
+     * session's work is saved as [saveNow] does, then what would still be lost is named, one plain
+     * sentence per project (changes not committed, commits GitHub does not have). Empty when all
+     * the code on this phone is in GitHub. The rooms should be stopped first.
+     */
+    suspend fun codeOnlyOnPhone(): List<String> = emptyList()
+
     /** Rescans transcripts and worktrees (sizes, commits, tokens, last activity). */
     suspend fun refresh()
 

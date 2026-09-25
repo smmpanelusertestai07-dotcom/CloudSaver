@@ -255,8 +255,11 @@ internal class TestPhone(
         runningRooms.clear()
     }
     override suspend fun deleteSessionLocally(sessionId: String) {
-        // Like the sessions module: what is still waiting is given a chance to upload first.
-        runCatching { engine.uploadNow(listOf(sessionId)) }
+        // Like the sessions module: the newest bytes are queued and given a chance to upload first.
+        runCatching {
+            engine.queueNow(listOf(sessionId))
+            engine.uploadNow(listOf(sessionId))
+        }
         deletedLocally += sessionId
         val i = sessions.indexOfFirst { it.id == sessionId }
         if (i >= 0) sessions[i] = sessions[i].copy(status = SessionStatus.DELETED, deletedAt = clock.now())

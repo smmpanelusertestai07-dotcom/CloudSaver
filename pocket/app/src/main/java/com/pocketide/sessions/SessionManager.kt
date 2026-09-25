@@ -268,10 +268,10 @@ internal class SessionManager(
         closeRoom(session)
         change(sessionId) { it.copy(status = SessionStatus.DELETED, deletedAt = clock.now()) }
         clearActive(session)
-        // The phone copy goes now; Drive keeps the chat for Recently deleted. Bytes still waiting to
-        // be uploaded are given a chance first, and stay on the phone if they cannot go now.
-        val waiting = session.backUp && session.pendingBytes > 0 && !uploaded(sessionId)
-        if (!waiting) removePhoneCopy(session)
+        // The phone copy goes now; Drive keeps the chat for Recently deleted. What the agent wrote
+        // since the last sync is queued and given a chance to upload first; until Drive has all of
+        // it, the phone copy stays (and goes at a later refresh).
+        if (!session.backUp || inDrive(sessionId)) removePhoneCopy(session)
         dropIfEmpty(session)
         env.sync.requestSync("session deleted")
     }
@@ -446,6 +446,15 @@ internal class SessionManager(
         return autosaver.saveNow(sessionId)
     }
 
+    override suspend fun codeOnlyOnPhone(): List<String> {
+        for (session in records.current()) {
+            if (session.status == SessionStatus.OPEN && session.deletedAt == null) quietly { saveNow(session.id) }
+        }
+        return env.projects.all.value.mapNotNull { project ->
+            unsaved(project.id)?.let { "${project.owner}/${project.repo}: $it" }
+        }
+    }
+
     override suspend fun refresh() {
         refreshLock.withLock {
             active.current()
@@ -461,10 +470,11 @@ internal class SessionManager(
         val projects = env.projects.all.value.associateBy { it.id }
         val now = clock.now()
         val measured = HashMap<String, SessionRecord>()
+        val leftovers = ArrayList<SessionRecord>()
         for (session in sessions) {
             try {
                 if (session.status == SessionStatus.DELETED) {
-                    leftoverPhoneCopy(session, found[session.id])
+                    if (hasPhoneCopy(session, found[session.id])) leftovers += session
                     continue
                 }
                 val updated = measure(session, found[session.id], projects[session.projectId], now)
@@ -475,6 +485,8 @@ internal class SessionManager(
                 // One unreadable session must not stop the others; it is measured again next time.
             }
         }
+        // The sync engine may be busy with a long upload: the measures do not wait for it.
+        if (leftovers.isNotEmpty()) scope.launch { removeOnceInDrive(leftovers) }
         if (measured.isEmpty()) return
         records.update { list -> list.map { current -> measured[current.id]?.let { withMeasures(current, it) } ?: current } to Unit }
         measured.values.groupBy { it.projectId }.forEach { (projectId, list) ->
@@ -482,9 +494,24 @@ internal class SessionManager(
         }
     }
 
-    /** A deleted chat whose phone copy was kept until Drive had all of it: it goes once Drive does. */
-    private suspend fun leftoverPhoneCopy(session: SessionRecord, transcript: SessionTranscript?) {
-        if (transcript != null && session.backUp && session.pendingBytes == 0L) removePhoneCopy(session)
+    private suspend fun hasPhoneCopy(session: SessionRecord, transcript: SessionTranscript?): Boolean =
+        transcript != null || withContext(io) { dirs.sessionMedia(session.agentId, session.projectId, session.id).exists() }
+
+    /**
+     * Deleted chats whose phone copy was kept until Drive had all of it: each goes once the sync
+     * engine, having queued anything new, has nothing of it left to upload. A chat that is not
+     * backed up has no copy in Drive to wait for.
+     */
+    private suspend fun removeOnceInDrive(deleted: List<SessionRecord>) {
+        val backedUp = deleted.filter { it.backUp }.map { it.id }
+        val waiting = try {
+            if (backedUp.isEmpty()) emptySet() else env.sync.queueNow(backedUp)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (notNow: Exception) {
+            return
+        }
+        deleted.filter { it.id !in waiting }.forEach { quietly { removePhoneCopy(it) } }
     }
 
     /**
@@ -536,9 +563,10 @@ internal class SessionManager(
             }
             byId.values.sortedByDescending { it.startedAt } to deleted
         }
-        // Another phone deleted these: Drive keeps them for Recently deleted, so the phone copy goes,
-        // unless part of it never reached Drive.
-        deletedElsewhere.filter { it.pendingBytes == 0L }.forEach { quietly { removePhoneCopy(it) } }
+        // Another phone deleted these: Drive keeps them for Recently deleted, so the phone copy goes
+        // once Drive has all of it. The sync engine may be calling from inside its own run, so it is
+        // asked after this returns.
+        if (deletedElsewhere.isNotEmpty()) scope.launch { removeOnceInDrive(deletedElsewhere) }
         eraseNow.forEach { deleteForeverQuietly(it.id) }
     }
 
@@ -686,13 +714,21 @@ internal class SessionManager(
         large.remove(session.id)
     }
 
-    private suspend fun uploaded(sessionId: String): Boolean = try {
-        env.sync.uploadNow(listOf(sessionId))
-        true
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (offline: Exception) {
-        false
+    /**
+     * True when Drive has every byte of the session: its newest bytes are queued first (even
+     * offline), and uploaded now when anything waits.
+     */
+    private suspend fun inDrive(sessionId: String): Boolean {
+        val ids = listOf(sessionId)
+        return try {
+            if (env.sync.queueNow(ids).isEmpty()) return true
+            env.sync.uploadNow(ids)
+            env.sync.queueNow(ids).isEmpty()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (notNow: Exception) {
+            false
+        }
     }
 
     private suspend fun pushBranch(sessionId: String): String? {

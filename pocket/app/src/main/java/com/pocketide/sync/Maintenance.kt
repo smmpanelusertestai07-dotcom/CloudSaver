@@ -33,7 +33,7 @@ internal class Maintenance(
     suspend fun run(run: Run): List<String> {
         val settings = ports.settings.settings.value
         val book = pass.book(run)
-        cleanPhone(run, settings, book, force = false)
+        cleanPhone(run, settings, book)
         computer(run, settings, book)
         run.save()
         if (!ports.network.online()) return emptyList()
@@ -57,24 +57,44 @@ internal class Maintenance(
     }
 
     /** Temp files, logs, old build outputs and idle caches; at 90 % of the phone limit, more. */
-    fun cleanPhone(run: Run, settings: Settings, book: SessionBook, force: Boolean) {
-        val now = run.now
-        val active = ports.activeSessionIds()
-        cleaner.oldFiles(now, Durations.days(TEMP_DAYS), ports.roomsRunning())
-        cleaner.builds()
-        cleaner.caches(now, settings.cacheDays, activity(book), active, force = false)
+    fun cleanPhone(run: Run, settings: Settings, book: SessionBook) {
+        routineClean(run, settings, book)
         val appBytes = measuredAppBytes()
         val free = ports.dirs.base.usableSpace
-        val limit = Limits.gb(settings.phoneLimitGb)
         when (Limits.phoneSpace(appBytes, free, settings.phoneLimitGb)) {
             PhoneSpace.FULL -> {
-                val freed = cleaner.caches(now, settings.cacheDays, activity(book), active, force = true) +
-                    cleaner.oldFiles(now, Durations.DAY, ports.roomsRunning())
+                val freed = deepClean(run, settings, book)
                 if (freed > 0) notices.phoneCleaned(run, freed)
             }
-            PhoneSpace.NEARLY_FULL -> if (!force) notices.phoneNearlyFull(run, appBytes, limit)
+            PhoneSpace.NEARLY_FULL -> notices.phoneNearlyFull(run, appBytes, Limits.gb(settings.phoneLimitGb))
             PhoneSpace.OK -> Unit
         }
+        publishStorage(run, settings)
+    }
+
+    /**
+     * "Clean now" (§6.5): everything the 90 % clean-up removes goes now, whatever the level: idle
+     * caches that are rebuilt when needed, temp files and logs, old build outputs. Sessions open in
+     * a room are never touched. Returns the bytes freed.
+     */
+    fun cleanNow(run: Run): Long {
+        val settings = ports.settings.settings.value
+        val book = pass.book(run)
+        val freed = routineClean(run, settings, book) + deepClean(run, settings, book)
+        publishStorage(run, settings)
+        return freed
+    }
+
+    private fun routineClean(run: Run, settings: Settings, book: SessionBook): Long =
+        cleaner.oldFiles(run.now, Durations.days(TEMP_DAYS), ports.roomsRunning()) +
+            cleaner.builds() +
+            cleaner.caches(run.now, settings.cacheDays, activity(book), ports.activeSessionIds(), force = false)
+
+    private fun deepClean(run: Run, settings: Settings, book: SessionBook): Long =
+        cleaner.caches(run.now, settings.cacheDays, activity(book), ports.activeSessionIds(), force = true) +
+            cleaner.oldFiles(run.now, Durations.DAY, ports.roomsRunning())
+
+    private fun publishStorage(run: Run, settings: Settings) {
         kit.flows.storage.value = Views.storage(run, run.index, settings, kit.flows.storage.value, measuredAppBytes())
     }
 

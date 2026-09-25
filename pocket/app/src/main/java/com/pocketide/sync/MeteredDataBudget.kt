@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicLong
 
 /** Byte counters by key. Production keeps them in private preferences. */
 internal interface CounterStore {
@@ -34,8 +35,10 @@ internal class PrefsCounterStore(private val prefs: SharedPreferences) : Counter
 }
 
 /**
- * PocketIDE's own transfers on metered networks, per UTC day and month and by kind (§6.7). Wi-Fi is
- * free and never counted. Agents' own traffic is counted by its callers but never blocked here.
+ * PocketIDE's transfers on metered networks, per UTC day and month and by kind (§6.7). Wi-Fi is
+ * free and never counted. The agents' own traffic ([KIND_AGENT_TRAFFIC], measured by
+ * [AgentTrafficMeter]) is counted too, but never blocked and never held against the daily limit,
+ * which is the share for PocketIDE's own transfers.
  */
 internal class MeteredDataBudget(
     private val settings: () -> Settings,
@@ -51,6 +54,9 @@ internal class MeteredDataBudget(
 
     private val grants = HashMap<String, Grant>()
 
+    /** Every byte of PocketIDE's own transfers recorded since the process started, on any network. */
+    private val own = AtomicLong()
+
     override fun allow(bytes: Long, kind: String, big: Boolean): Decision {
         if (!network.metered()) return Decision.YES
         if (granted(kind)) return Decision.YES
@@ -64,6 +70,7 @@ internal class MeteredDataBudget(
 
     override fun record(bytes: Long, kind: String) {
         if (bytes <= 0) return
+        if (kind != KIND_AGENT_TRAFFIC) own.addAndGet(bytes)
         spend(kind, bytes)
         if (!network.metered()) return
         val now = clock.now()
@@ -96,15 +103,19 @@ internal class MeteredDataBudget(
         }
     }
 
+    /** What [record] has seen of PocketIDE's own transfers so far, so the app's total can be split from the agents'. */
+    fun ownBytesSoFar(): Long = own.get()
+
     /** Re-reads the counters (a new day or month started since the last transfer). */
     fun refresh() {
         flow.value = read()
     }
 
-    private fun today(): Long {
-        val prefix = "d:${day(clock.now())}:"
-        return counters.all().filterKeys { it.startsWith(prefix) }.values.sum()
-    }
+    /** Today's bytes that count against the daily limit. */
+    private fun today(): Long = limited(counters.all(), "d:${day(clock.now())}:")
+
+    private fun limited(all: Map<String, Long>, dayPrefix: String): Long =
+        all.filterKeys { it.startsWith(dayPrefix) && it != dayPrefix + KIND_AGENT_TRAFFIC }.values.sum()
 
     private fun read(): DataUsage {
         val now = clock.now()
@@ -116,6 +127,7 @@ internal class MeteredDataBudget(
             todayMeteredBytes = all.filterKeys { it.startsWith(dayPrefix) }.values.sum(),
             monthMeteredBytes = byType.values.sum(),
             byType = byType,
+            todayLimitedBytes = limited(all, dayPrefix),
         )
     }
 
@@ -139,8 +151,11 @@ internal class MeteredDataBudget(
         const val KIND_MOVE = "move"
         const val KIND_REENCRYPT = "reencrypt"
 
+        /** The agents' prompts and answers, and whatever else the rooms fetch themselves. */
+        const val KIND_AGENT_TRAFFIC = "agent-traffic"
+
         const val WAITS_FOR_WIFI = "Waits for Wi-Fi"
-        const val MOBILE_OFF = "PocketIDE's own transfers use Wi-Fi only (Settings → Data)"
+        const val MOBILE_OFF = "PocketIDE's own transfers use Wi-Fi only (Settings → Mobile data)"
         const val LIMIT_REACHED = "Today's mobile data limit is reached"
         const val DATA_SAVER = "Data Saver is on, so big transfers wait for Wi-Fi"
 

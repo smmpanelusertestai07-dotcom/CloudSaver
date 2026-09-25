@@ -1,6 +1,7 @@
 package com.pocketide.sync
 
 import com.pocketide.core.Settings
+import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionStatus
 import com.pocketide.sessions.Sessions
 import kotlinx.coroutines.runBlocking
@@ -61,6 +62,45 @@ class RecentlyDeletedTest {
         assertTrue("erased from Drive for good", oldFiles.none { it in reinstalled.drive.objectNames() })
         assertTrue(index.objects.any { it.sessionId == "kept" })
         assertTrue("old" in reinstalled.erasedSessions)
+    }
+
+    @Test
+    fun aDeletedChatsNewestBytesAreQueuedOfflineAndReportedUntilDriveHasThem() = runBlocking {
+        val phone = phone()
+        phone.sessions += session("s", at = clock.now, ref = "agent-s")
+        val transcript = phone.homeFile("claude", claudeTranscript("owner/app", "s", "agent-s"))
+        transcript.writeText("first line\n")
+        phone.engine.syncNow()
+        assertEquals(emptySet<String>(), phone.engine.queueNow(listOf("s")))
+
+        transcript.appendText("written since the last sync\n")
+        phone.mediaFile("claude", "owner/app", "s", "late.png").writeBytes(byteArrayOf(9, 8, 7))
+        phone.markDeleted("s", clock.now)
+        phone.network.online = false
+        phone.drive.offline = true
+
+        assertEquals(setOf("s"), phone.engine.queueNow(listOf("s", "other")))
+        assertEquals(2, phone.queued().count { it.sessionId == "s" })
+
+        phone.network.online = true
+        phone.drive.offline = false
+        phone.engine.uploadNow(listOf("s"))
+        assertEquals(emptySet<String>(), phone.engine.queueNow(listOf("s")))
+        val inDrive = phone.remoteIndex()!!.objects.filter { it.sessionId == "s" }
+        assertEquals(transcript.length(), inDrive.filter { it.kind == ObjectKind.CHAT_PIECE }.sumOf { it.length })
+        assertTrue(inDrive.any { it.path.endsWith("late.png") })
+    }
+
+    @Test
+    fun queueingNeedsTheKey() = runBlocking {
+        val phone = phone()
+        phone.keyReady = false
+        try {
+            phone.engine.queueNow(listOf("s"))
+            org.junit.Assert.fail("Nothing can be queued without the key")
+        } catch (expected: SyncException) {
+            assertEquals(Plain.KEY_NOT_READY, expected.message)
+        }
     }
 
     @Test

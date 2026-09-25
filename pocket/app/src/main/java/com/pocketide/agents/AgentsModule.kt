@@ -10,6 +10,7 @@ import com.pocketide.R
 import com.pocketide.core.AppDirs
 import com.pocketide.core.AppJson
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.core.Clock
 import com.pocketide.core.Http
 import com.pocketide.linux.ComputerState
@@ -141,7 +142,7 @@ private class RemovalPorts(private val graph: AppGraph) : AgentRemoval.Ports {
 
 /** "New agents on Open VSX", on the agents channel. Names come from the registry, so they are shown as plain, short text. */
 internal object AgentNotices {
-    private const val NOTIFICATION_ID = 4400
+    private const val NOTIFICATION_ID = NotificationIds.NEW_AGENTS
     private const val MAX_NAME = 60
 
     fun newAgents(context: Context, candidates: List<AgentCandidate>) {
