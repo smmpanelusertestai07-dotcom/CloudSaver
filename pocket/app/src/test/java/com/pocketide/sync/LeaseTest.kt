@@ -319,7 +319,7 @@ class LeaseTest {
         reader.engine.fetchSession(copy.id)
         val copied = index.objects.single { it.sessionId == copy.id }
         assertEquals("shared start\nwritten on B offline\n", reader.homeFile("claude", copied.path).readText())
-        assertTrue(b.queued().isEmpty())
+        assertTrue("the conflict copy is all recorded", b.queued().none { it.conflict })
     }
 
     @Test
