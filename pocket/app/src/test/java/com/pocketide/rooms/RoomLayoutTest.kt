@@ -41,7 +41,7 @@ class RoomLayoutTest {
         val worktree = AppDirs.guestWorktree("octo/app", "s1")
         val commands = listOf(
             RoomEngines.codeServer(dirs, profile, worktree, 40001, emptyMap()),
-            RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, worktree, 40002, emptyMap()),
+            RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, worktree, 40002, emptyMap(), token = "e".repeat(64)),
             RoomEngines.terminal(dirs, "codex", worktree, 40003, emptyMap()),
             RoomEngines.setUpOnly(dirs, "codex", emptyMap()),
         )
@@ -91,12 +91,13 @@ class RoomLayoutTest {
 
     @Test fun `no engine command carries a secret in its arguments or environment`() {
         val secret = "f".repeat(64)
+        val hubToken = "e".repeat(64)
         val profile = RoomProfiles.of("claude", null)!!
         val worktree = AppDirs.guestWorktree("octo/app", "s1")
         val environment = RoomLayout.environment("claude", emptyMap(), mapOf("GIT_AUTHOR_NAME" to "Octo"))
         val commands: List<LinuxCommand> = listOf(
             RoomEngines.codeServer(dirs, profile, worktree, 40001, environment),
-            RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, worktree, 40002, environment),
+            RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, worktree, 40002, environment, token = hubToken),
             RoomEngines.terminal(dirs, "claude", worktree, 40003, environment),
         )
         val hash = RoomEngines.sha256Hex(secret)
@@ -105,6 +106,9 @@ class RoomLayoutTest {
             assertTrue(everything.none { secret in it || hash in it })
             assertTrue(command.env.keys.none { tokenLike.containsMatchIn(it) })
         }
+        // The one exception: agy takes its token only as an argument, and nowhere else.
+        val hub = commands[1]
+        assertEquals(listOf("--csrf_token=$hubToken"), (hub.argv + hub.env.keys + hub.env.values).filter { hubToken in it })
         // The secret reaches code-server only through its config file, and the WebView never holds it.
         assertEquals("hashed-password: \"$hash\"\n", RoomEngines.codeServerConfig(secret))
         assertEquals("code-server-session=$hash", RoomEngines.sessionCookie(secret))
@@ -127,8 +131,13 @@ class RoomLayoutTest {
     }
 
     @Test fun `the hub runs as its extension starts it, without its self-updater`() {
-        val command = RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, "/work/octo__app/s1", 40002, emptyMap())
-        assertTrue(command.argv.containsAll(listOf(RoomEngines.AGY, "--hub", "--hub-port=40002", "--app_data_dir=antigravity", "--add-dir=/work/octo__app/s1")))
+        val token = "e".repeat(64)
+        val command = RoomEngines.hub(dirs, RoomProfiles.of("antigravity", null)!!, "/work/octo__app/s1", 40002, emptyMap(), token)
+        assertTrue(
+            command.argv.containsAll(
+                listOf(RoomEngines.AGY, "--hub", "--hub-port=40002", "--app_data_dir=antigravity", "--csrf_token=$token", "--add-dir=/work/octo__app/s1"),
+            ),
+        )
         assertEquals("1", command.env["AGY_ENABLE_HUB"])
         assertEquals("true", command.env["AGY_CLI_DISABLE_AUTO_UPDATE"])
     }

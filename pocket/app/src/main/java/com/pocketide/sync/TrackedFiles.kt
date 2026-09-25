@@ -6,8 +6,8 @@ import com.pocketide.core.FileClass
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
+import java.nio.channels.Channels
 import java.nio.file.FileVisitResult
 import java.nio.file.FileVisitor
 import java.nio.file.Files
@@ -155,7 +155,7 @@ internal class Scanner(private val dirs: AppDirs) {
                 if (running && TrackRules.isDatabase(path)) return@walk
                 val track = tracks[fileKey(kind, agentId, path)]
                 val rollout = kind == ObjectKind.CHAT_PIECE && (path.startsWith(".codex/sessions/") || path.startsWith(".codex/archived_sessions/"))
-                val cwd = track?.headCwd ?: if (rollout && track?.sessionId == null) firstLineCwd(file) else null
+                val cwd = track?.headCwd ?: if (rollout && track?.sessionId == null) firstLineCwd(file, path) else null
                 val session = track?.sessionId ?: matcher.homeSession(path, cwd)
                 out += Candidate(kind, agentId, path, file, facts, session, video = false, headCwd = cwd)
             }
@@ -209,8 +209,8 @@ internal class Scanner(private val dirs: AppDirs) {
     }
 
     /** The "cwd" a Codex rollout records in its first line (the session's worktree). */
-    private fun firstLineCwd(file: File): String? = try {
-        FileInputStream(file).use { input ->
+    private fun firstLineCwd(file: File, path: String): String? = try {
+        Channels.newInputStream(openInRoom(file, path)).use { input ->
             val head = ByteArray(HEAD_BYTES)
             val n = input.read(head)
             if (n <= 0) return null

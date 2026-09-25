@@ -6,7 +6,7 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.model.VaultIndex
 import com.pocketide.model.VaultObject
-import java.io.File
+import java.io.InputStream
 
 /**
  * Conflict copies (§5.4): whatever this phone has that Drive's newest version does not is saved as
@@ -194,7 +194,7 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         val lost = lostHere(track, chain)
         // Everything Drive holds is already at the start of the phone's copy (Drive lost pieces this
         // phone recorded, or the other phone only compacted them): the copy stays, the rest goes up.
-        val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(file, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null
+        val kept = if (track.kind.appendOnly) ChainCheck.prefixOf(place, chain)?.let { rebased(track, chain, it) } else if (lost) rebased(track, chain, null) else null
         if (kept != null) {
             run.discard(queued)
             return kept
@@ -253,7 +253,7 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
     fun adopt(index: VaultIndex?, c: Candidate): FileTrack? {
         val chain = index?.let { Chains.chain(it.objects, c.key) }.orEmpty()
         if (chain.isEmpty()) return null
-        val match = ChainCheck.prefixOf(c.file, chain) ?: return null
+        val match = ChainCheck.prefixOf(c, chain) ?: return null
         val whole = match.length == c.facts.size
         return FileTrack(
             kind = c.kind, agentId = c.agentId, path = c.path, sessionId = c.sessionId ?: chain.first().sessionId,
@@ -266,8 +266,12 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
 
 /** Checks a local file against a chain, piece by piece, by SHA-256. */
 internal object ChainCheck {
-    fun prefixOf(file: File, chain: List<VaultObject>): Assembled? = try {
-        java.io.FileInputStream(file).use { input ->
+    fun prefixOf(c: Candidate, chain: List<VaultObject>): Assembled? = prefixOf(chain, c::readInRoom)
+
+    fun prefixOf(place: RoomFile, chain: List<VaultObject>): Assembled? = prefixOf(chain, place::readInRoom)
+
+    private fun prefixOf(chain: List<VaultObject>, open: () -> InputStream): Assembled? = try {
+        open().use { input ->
             val whole = Codec.newDigest()
             val buffer = ByteArray(64 * 1024)
             var total = 0L

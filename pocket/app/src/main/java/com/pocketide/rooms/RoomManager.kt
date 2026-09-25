@@ -46,8 +46,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private val random = SecureRandom()
     private val procs = ProcFacts()
     private val rings = ConcurrentHashMap<String, OutputRing>()
-    private val configurator = RoomConfigurator(dirs, env.assets, env::now) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
-    private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret)
+    private val configBook = ConfigChangeBook(dirs.rooms)
+    private val configurator = RoomConfigurator(dirs, env.assets, env::now, configBook) { agentId, line -> ring(agentId).add("[PocketIDE] $line") }
+    private val terminals = RoomTerminals(env, configurator, ::ring, ::roomEnvironment, ::newSecret, ::settingsForTerminal)
     private val browser = BrowserInstaller(env, configurator, ::afterBrowserInstall)
     private val tools = McpTools(dirs, Ports())
     private val holds = WorkHolds(env::setBusy)
@@ -66,6 +67,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     override val sleepsAt: StateFlow<Map<String, Long>> = mutableSleeps.asStateFlow()
     private val mutableProcesses = MutableStateFlow<Map<String, Int>>(emptyMap())
     override val processes: StateFlow<Map<String, Int>> = mutableProcesses.asStateFlow()
+    override val configChanges: StateFlow<List<ConfigChange>> = configBook.pending
+    override val keptConfig: StateFlow<List<ConfigChange>> = configBook.kept
 
     private class LiveRoom(
         val profile: RoomProfile,
@@ -93,6 +96,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
 
     private val live = ConcurrentHashMap<String, LiveRoom>()
     private val locks = ConcurrentHashMap<String, Mutex>()
+
+    /** Hub rooms whose agy let other apps in, with that agy file's stamp ([agyStamp]) and why it stays closed. */
+    private val leakyHubs = ConcurrentHashMap<String, Pair<Long, String>>()
     private val monitorLock = Any()
     private var monitor: Job? = null
 
@@ -117,6 +123,8 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             notice(agentId, args)
             JsonObject(emptyMap())
         }
+        // What agents added to their settings is on the owner's screen before any room starts.
+        env.scope.launch(Dispatchers.IO) { configBook.loadAll() }
     }
 
     override suspend fun open(agentId: String, sessionId: String): RoomState = open(agentId, sessionId, null)
@@ -200,10 +208,53 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         lock(agentId).withLock {
             withContext(Dispatchers.IO) {
                 listOf(File(dirs.rooms, agentId), dirs.roomBridge(agentId), dirs.roomWork(agentId)).forEach(RoomFiles::deleteTree)
+                configBook.forget(agentId)
             }
             mutableStates.update { it - agentId }
             mutableStops.update { it - agentId }
             rings.remove(agentId)
+        }
+    }
+
+    override suspend fun keepConfigChange(change: ConfigChange) {
+        if (withContext(Dispatchers.IO) { configBook.keep(change) }) writeConfigNow(change.agentId)
+    }
+
+    override suspend fun dropConfigChange(change: ConfigChange) = withContext(Dispatchers.IO) { configBook.drop(change) }
+
+    override suspend fun stopKeepingConfigChange(change: ConfigChange) {
+        if (withContext(Dispatchers.IO) { configBook.stopKeeping(change) }) writeConfigNow(change.agentId)
+    }
+
+    /**
+     * A terminal's programs (the agents' command-line tools among them) read the room's settings
+     * too, so a terminal start rebuilds them as an engine start does. A room whose settings cannot
+     * be written still gets its terminal: it is where the owner can repair the room.
+     */
+    private suspend fun settingsForTerminal(session: SessionRecord) {
+        val agentId = session.agentId
+        val profile = profile(agentId) ?: return
+        val careful = live[agentId]?.careful ?: careful(session)
+        try {
+            withContext(Dispatchers.IO) { configurator.configure(profile, otherAgents(agentId), env.fontSize(), careful) }
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        } catch (failed: IllegalStateException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        } catch (failed: IllegalArgumentException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written for the terminal: ${failed.message}")
+        }
+    }
+
+    /** The room's settings written again now, so the owner's choice holds before its next start too. */
+    private suspend fun writeConfigNow(agentId: String) {
+        if (profile(agentId) == null) return
+        try {
+            configure(agentId)
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written now; its next start writes them: ${failed.message}")
+        } catch (failed: IllegalStateException) {
+            ring(agentId).add("[PocketIDE] The room's settings could not be written now; its next start writes them: ${failed.message}")
         }
     }
 
@@ -243,11 +294,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         computerProblem()?.let { throw IllegalStateException(it) }
         val careful = env.trust(projectId) == ProjectTrust.SOMEONE_ELSES
         val variables = env.variables(projectId, agentId)
+        var registration = emptyMap<String, String>()
         val command = lock(agentId).withLock {
             val engineRunning = live[agentId]?.process?.isAlive == true
             if (!engineRunning) withContext(Dispatchers.IO) { prepare(profile, careful) }
             // ~/.claude.json is Claude's own state file: it is merged only while Claude is not running.
-            val registration = if (engineRunning) emptyMap() else mcpRegistration(profile, careful)
+            if (!engineRunning) registration = mcpRegistration(profile, careful)
             val environment = roomEnvironment(agentId, variables) + registration + programEnv
             headlessStarted(agentId)
             RoomEngines.headless(dirs, agentId, argv, workDir, environment)
@@ -255,7 +307,10 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         try {
             return env.computer.run(command, onLine)
         } finally {
-            withContext(NonCancellable) { lock(agentId).withLock { headlessEnded(agentId) } }
+            withContext(NonCancellable) {
+                lock(agentId).withLock { headlessEnded(agentId) }
+                if (registration.isNotEmpty()) withContext(Dispatchers.IO) { collectClaudeState(agentId) }
+            }
         }
     }
 
@@ -343,7 +398,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 withContext(Dispatchers.IO) { bridgeFiles.write(secretFile, RoomEngines.codeServerConfig(secret)) }
                 RoomEngines.codeServer(dirs, profile, guestWorktree, chosenPort, environment)
             }
-            Engine.AGY_HUB -> RoomEngines.hub(dirs, profile, guestWorktree, chosenPort, environment)
+            Engine.AGY_HUB -> {
+                // Found letting other apps in before: the same agy is not started again only to be refused.
+                val stamp = withContext(Dispatchers.IO) { agyStamp(profile) }
+                leakyHubs[agentId]?.takeIf { it.first == stamp }?.let { (_, why) -> return fail(agentId, why) }
+                RoomEngines.hub(dirs, profile, guestWorktree, chosenPort, environment, token = secret)
+            }
         }
 
         publish(agentId, RoomState.Starting("Starting ${profile.name}"))
@@ -367,8 +427,12 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         val ready = try {
             awaitReady(room)
         } finally {
-            // code-server has read its password by now, or will never need it.
-            withContext(NonCancellable + Dispatchers.IO) { bridgeFiles.delete(secretFile) }
+            withContext(NonCancellable + Dispatchers.IO) {
+                // room.py has run by now: an engine answers only after it.
+                collectClaudeState(agentId)
+                // code-server has read its password by now, or will never need it.
+                bridgeFiles.delete(secretFile)
+            }
         }
         if (!ready) {
             val alive = process.isAlive
@@ -378,8 +442,17 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             val why = if (alive) "did not answer within ${READY_MS / 1000} seconds." else "stopped while starting."
             return fail(agentId, "${profile.name} $why$lastWords")
         }
+        if (profile.engine == Engine.AGY_HUB) {
+            hubProblem(room, secret)?.let { why ->
+                shutDown(agentId, room)
+                return fail(agentId, why)
+            }
+        }
         // A new secret each launch, so each launch gets a new bridge and token too.
-        val inject = if (profile.engine == Engine.CODE_SERVER) mapOf("Cookie" to RoomEngines.sessionCookie(secret)) else emptyMap()
+        val inject = when (profile.engine) {
+            Engine.CODE_SERVER -> mapOf("Cookie" to RoomEngines.sessionCookie(secret))
+            Engine.AGY_HUB -> mapOf(RoomEngines.HUB_TOKEN_HEADER to secret)
+        }
         val bridge = try {
             env.portBridge.expose(chosenPort, RoomTraffic.agentPurpose(agentId), inject)
         } catch (failed: IllegalStateException) {
@@ -409,9 +482,11 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             if (!folder.isDirectory && !folder.mkdirs()) throw IOException("Could not create ${folder.name}.")
         }
         configurator.installTools()
-        val others = (env.agents() + RoomProfiles.OFFICIAL).distinct().filter { it != profile.agentId && RoomProfiles.isAgentId(it) }
-        configurator.configure(profile, others, env.fontSize(), careful)
+        configurator.configure(profile, otherAgents(profile.agentId), env.fontSize(), careful)
     }
+
+    private fun otherAgents(agentId: String) =
+        (env.agents() + RoomProfiles.OFFICIAL).distinct().filter { it != agentId && RoomProfiles.isAgentId(it) }
 
     private fun careful(session: SessionRecord) = env.trust(session.projectId) == ProjectTrust.SOMEONE_ELSES
 
@@ -461,21 +536,78 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
     private fun agyInstalled(profile: RoomProfile): Boolean =
         RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true).isFile(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))
 
+    /** When the room's agy file last changed: an update, or a repair, gives it a new one. */
+    private fun agyStamp(profile: RoomProfile): Long? =
+        RoomFiles(dirs.roomHome(profile.agentId), guardSecrets = true).lastModified(RoomEngines.AGY.removePrefix("${AppDirs.GUEST_HOME}/"))
+
+    /**
+     * Null when the started hub keeps its [token] from callers that do not have it, as the
+     * terminal keeps its secret; otherwise why its screen stays closed. Its page is asked for as
+     * another app would ask (no token), then as the bridge will (with it).
+     */
+    private suspend fun hubProblem(room: LiveRoom, token: String): String? {
+        val (withoutToken, withToken) = withContext(Dispatchers.IO) {
+            Loopback.get(room.port, "/", maxBody = HUB_PAGE_BYTES) to
+                Loopback.get(room.port, "/", maxBody = HUB_PAGE_BYTES, headers = mapOf(RoomEngines.HUB_TOKEN_HEADER to token))
+        }
+        val agentId = room.profile.agentId
+        val name = room.profile.name
+        return when (RoomEngines.hubGuard(withoutToken, withToken, token)) {
+            HubGuard.GUARDED -> null
+            HubGuard.GIVES_TOKEN_AWAY -> openToOtherApps(room, givesTokenAway(name), "served this launch's token to a request that did not have it")
+            HubGuard.ANSWERS_WITHOUT_TOKEN -> openToOtherApps(room, answersWithoutToken(name), "answered a request without this launch's token")
+            HubGuard.REFUSES_TOKEN -> "$name's screen could not open: its hub refused this launch's key. " +
+                "An update of $name may have changed how its screen signs in."
+            HubGuard.NO_ANSWER -> "$name stopped answering while it started."
+        }
+    }
+
+    /** Remembers that this agy lets other apps in, so it is not started again only to be refused; [why] for the owner. */
+    private suspend fun openToOtherApps(room: LiveRoom, why: String, what: String): String {
+        val agentId = room.profile.agentId
+        withContext(Dispatchers.IO) { agyStamp(room.profile) }?.let { leakyHubs[agentId] = it to why }
+        ring(agentId).add("[PocketIDE] The hub $what.")
+        return why
+    }
+
     private fun extensionInstalled(profile: RoomProfile): Boolean {
         val prefix = profile.extensionId?.lowercase()?.plus("-") ?: return false
         return configurator.extensionFolders(profile.agentId).any { it.lowercase().startsWith(prefix) }
     }
 
-    /** Settings of the engine itself: Node's heap limit on a phone, and Claude's MCP entries for room.py. */
+    /**
+     * Settings of the engine itself: Node's heap limit on a phone, and for room.py Claude's MCP
+     * entries, what the owner kept in ~/.claude.json and where to list what it takes out.
+     */
     private fun engineEnvironment(profile: RoomProfile, careful: Boolean): Map<String, String> = buildMap {
         if (profile.engine == Engine.CODE_SERVER) put("NODE_OPTIONS", "--max-old-space-size=${env.heapMegabytes()}")
         putAll(mcpRegistration(profile, careful))
     }
 
-    /** Claude's MCP entries, which room.py merges into ~/.claude.json before the program starts. */
+    /** What room.py took out of Claude's ~/.claude.json at its last run waits for the owner. */
+    private fun collectClaudeState(agentId: String) {
+        if (agentId != RoomProfiles.CLAUDE) return
+        try {
+            configurator.collectClaudeState(agentId)
+        } catch (failed: IOException) {
+            ring(agentId).add("[PocketIDE] What was taken out of ~/.claude.json could not be listed: ${failed.message}")
+        }
+    }
+
+    /**
+     * Claude's MCP entries, which room.py merges into ~/.claude.json before the program starts,
+     * with what the owner kept there and where to list what it takes out.
+     */
     private fun mcpRegistration(profile: RoomProfile, careful: Boolean): Map<String, String> =
-        if (profile.agentId == RoomProfiles.CLAUDE) mapOf("POCKETIDE_CLAUDE_MCP" to ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)))
-        else emptyMap()
+        if (profile.agentId == RoomProfiles.CLAUDE) {
+            mapOf(
+                "POCKETIDE_CLAUDE_MCP" to ConfigFiles.claudeMcpEntries(configurator.mcpServers(careful)),
+                "POCKETIDE_CLAUDE_KEEP" to configurator.claudeStateKept(profile.agentId),
+                "POCKETIDE_HELD_REPORT" to ClaudeState.GUEST_REPORT,
+            )
+        } else {
+            emptyMap()
+        }
 
     private suspend fun roomEnvironment(agentId: String, projectId: String): Map<String, String> =
         roomEnvironment(agentId, env.variables(projectId, agentId))
@@ -707,6 +839,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
                 // ~/.claude.json is Claude's own state file: it is merged only while Claude is not running.
                 if (agentId == RoomProfiles.CLAUDE && live[agentId] == null) {
                     env.computer.run(RoomEngines.setUpOnly(dirs, agentId, engineEnvironment(profile, careful))) { ring(agentId).add(it) }
+                    withContext(Dispatchers.IO) { collectClaudeState(agentId) }
                 }
             } catch (failed: IOException) {
                 ring(agentId).add("[PocketIDE] The browser tools could not be registered: ${failed.message}")
@@ -818,9 +951,16 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         const val SIGN_OUT_MS = 30_000L
         const val BUILD_WAIT_MAX_MS = 60 * 60_000L
         const val HUB_SIGN_IN = ".gemini/jetski-standalone-oauth-token"
+        const val HUB_PAGE_BYTES = 512 * 1024
         const val CANNOT_START = "The phone cannot take another agent right now."
         const val UNKNOWN_AGENT = "PocketIDE does not know this agent. Add it from More agents first."
         const val BROWSER_OFF = "The test browser stays off in this project: it is someone else's code, and a web page could " +
             "steer you. The owner can turn it on by marking the project as theirs in PocketIDE."
+
+        fun givesTokenAway(name: String) = "$name stays closed: this version of its hub gives its key to any app on this phone " +
+            "that asks, and with that key another app could use $name in your projects. It opens once an update of $name fixes this."
+
+        fun answersWithoutToken(name: String) = "$name stays closed: this version of its hub answers any app on this phone without " +
+            "asking for its key, so another app could use $name in your projects. It opens once an update of $name fixes this."
     }
 }

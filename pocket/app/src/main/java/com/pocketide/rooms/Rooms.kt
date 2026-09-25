@@ -124,8 +124,28 @@ interface Rooms {
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */
     suspend fun signOutAll(): List<String> = emptyList()
+
+    /**
+     * Settings that can run code (hooks, MCP servers, permission rules, environment variables)
+     * that agents added in their rooms. Every room start takes them out of the agent's files
+     * again; each waits here until the owner keeps it ([keepConfigChange]) or lets it go.
+     */
+    val configChanges: StateFlow<List<ConfigChange>> get() = NO_CHANGES
+
+    /** The ones the owner kept: written into the agent's files at every room start. */
+    val keptConfig: StateFlow<List<ConfigChange>> get() = NO_CHANGES
+
+    /** Keeps a waiting [change] from now on, and writes it into its room at once. */
+    suspend fun keepConfigChange(change: ConfigChange) = Unit
+
+    /** Lets a waiting [change] go; it is already out of its room. */
+    suspend fun dropConfigChange(change: ConfigChange) = Unit
+
+    /** Stops keeping [change], and takes it out of its room at once. */
+    suspend fun stopKeepingConfigChange(change: ConfigChange) = Unit
 }
 
+private val NO_CHANGES: StateFlow<List<ConfigChange>> = MutableStateFlow<List<ConfigChange>>(emptyList()).asStateFlow()
 private val NO_STOPS: StateFlow<Map<String, RoomStop>> = MutableStateFlow<Map<String, RoomStop>>(emptyMap()).asStateFlow()
 private val NO_TIMES: StateFlow<Map<String, Long>> = MutableStateFlow<Map<String, Long>>(emptyMap()).asStateFlow()
 private val NO_COUNTS: StateFlow<Map<String, Int>> = MutableStateFlow<Map<String, Int>>(emptyMap()).asStateFlow()

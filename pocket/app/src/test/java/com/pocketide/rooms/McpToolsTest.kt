@@ -24,6 +24,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -150,7 +151,11 @@ class McpToolsTest {
         File(worktree, "shot.png").writeBytes(byteArrayOf(1, 2, 3))
         val text = call("save_media", args = buildJsonObject { put("path", "/work/octo__app/s1/shot.png"); put("title", "Home screen") })
         assertTrue(text.contains("Home screen.png"))
-        assertEquals(File(worktree, "shot.png"), ports.media.single().first)
+        // Media gets the app's own copy of what was opened, never a path the room could swap a link into.
+        val handed = ports.media.single().first
+        assertEquals(listOf<Byte>(1, 2, 3), ports.mediaBytes.single().toList())
+        assertFalse(handed.path.startsWith(dirs.work.path))
+        assertFalse("the copy is removed once Media has it", handed.exists())
 
         dirs.roomHome("claude").mkdirs()
         File(dirs.roomHome("claude"), ".claude").mkdirs()
@@ -216,6 +221,7 @@ class McpToolsTest {
         var present = true
         val calls = mutableListOf<String>()
         val media = mutableListOf<Pair<File, String>>()
+        val mediaBytes = mutableListOf<ByteArray>()
         val announced = mutableMapOf<String, Int>()
 
         override fun sessions(agentId: String) = all.filter { it.agentId == agentId }
@@ -244,6 +250,7 @@ class McpToolsTest {
         }
         override suspend fun addMedia(sessionId: String, file: File, name: String): MediaItem {
             media += file to name
+            mediaBytes += file.readBytes()
             return MediaItem(sessionId, file, name, MediaKind.IMAGE, file.length(), 0, onPhone = true, backedUp = false, source = "agent")
         }
         override fun announcePort(sessionId: String, port: Int) {

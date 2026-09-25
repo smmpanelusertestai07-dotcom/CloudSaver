@@ -1,6 +1,7 @@
 """room.py, notify.py and the browser installer, run as the room runs them. The room's
 xdg-open is the bridge module's (PhoneGuestTools), tested with the bridge."""
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -14,6 +15,8 @@ import tempfile
 import unittest
 
 from tests.rooms_support import FakePhone, script
+
+OURS = {"pocketide": {"type": "stdio", "command": "python3", "args": [], "env": {}}}
 
 
 def run(name, args, home=None, env=None, stdin=None):
@@ -37,33 +40,156 @@ class RoomLauncherTest(unittest.TestCase):
         with open(os.path.join(self.home, ".claude.json")) as source:
             return json.load(source)
 
-    def test_claude_servers_are_merged_and_everything_else_is_kept(self):
+    def claude(self, entries=None, keep=(), report=None, program=("/bin/true",)):
+        entries = OURS if entries is None else entries
+        env = {"POCKETIDE_CLAUDE_MCP": json.dumps(entries), "POCKETIDE_CLAUDE_KEEP": json.dumps(list(keep))}
+        if report:
+            env["POCKETIDE_HELD_REPORT"] = report
+        return run("room.py", ["claude", "--"] + list(program), self.home, env)
+
+    def write_state(self, state):
         with open(os.path.join(self.home, ".claude.json"), "w") as out:
-            json.dump({"oauthAccount": {"emailAddress": "o@example.com"}, "mcpServers": {"mine": {"command": "x"}, "old": {"command": "y"}}}, out)
+            json.dump(state, out)
+
+    def listed(self, report):
+        with open(report) as source:
+            items = json.load(source)
+        for item in items:
+            self.assertEqual(hashlib.sha256(item["entry"].encode("ascii")).hexdigest(), item["digest"])
+        return items
+
+    def test_claude_servers_are_merged_and_everything_else_is_kept(self):
+        self.write_state({"oauthAccount": {"emailAddress": "o@example.com"}, "mcpServers": {"old": {"command": "y"}}})
         entries = {"pocketide": {"type": "stdio", "command": "python3", "args": ["/opt/pocketide/mcp.py"], "env": {}}, "old": None}
-        result = run("room.py", ["claude", "--", "/bin/true"], self.home, {"POCKETIDE_CLAUDE_MCP": json.dumps(entries)})
-        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertEqual(0, self.claude(entries).returncode)
         state = self.claude_state()
         self.assertEqual({"emailAddress": "o@example.com"}, state["oauthAccount"])
-        self.assertEqual({"command": "x"}, state["mcpServers"]["mine"])
-        self.assertEqual(entries["pocketide"], state["mcpServers"]["pocketide"])
-        self.assertNotIn("old", state["mcpServers"])
+        self.assertEqual({"pocketide": entries["pocketide"]}, state["mcpServers"])
         mode = stat.S_IMODE(os.stat(os.path.join(self.home, ".claude.json")).st_mode)
         self.assertEqual(0o600, mode)
+
+    def test_servers_pocketide_did_not_add_are_taken_out_until_the_owner_keeps_them(self):
+        self.write_state({
+            "oauthAccount": {"emailAddress": "o@example.com"},
+            "mcpServers": {"mine": {"command": "x"}},
+            "projects": {"/work/a/s1": {"history": [1], "mcpServers": {"evil": {"command": "sh", "args": ["-c", "curl x"]}}}},
+        })
+        report = os.path.join(self.home, "held-report.json")
+        self.assertEqual(0, self.claude(report=report).returncode)
+        state = self.claude_state()
+        self.assertEqual({"pocketide"}, set(state["mcpServers"]))
+        self.assertEqual({}, state["projects"]["/work/a/s1"]["mcpServers"])
+        self.assertEqual([1], state["projects"]["/work/a/s1"]["history"])
+        self.assertEqual({"emailAddress": "o@example.com"}, state["oauthAccount"])
+        listed = self.listed(report)
+        self.assertEqual(2, len(listed))
+        self.assertTrue(all(item["keepable"] for item in listed))
+        evil = next(item for item in listed if "evil" in item["entry"])
+        self.assertEqual(["/work/a/s1", "mcpServers", "evil", {"args": ["-c", "curl x"], "command": "sh"}], json.loads(evil["entry"]))
+        held = os.path.join(self.home, ".claude", ".pocketide-held-servers.json")
+        self.assertEqual(0o600, stat.S_IMODE(os.stat(held).st_mode))
+
+        # Kept: it comes back where it was; the other stays out.
+        os.unlink(report)
+        self.assertEqual(0, self.claude(keep=[evil["digest"]], report=report).returncode)
+        state = self.claude_state()
+        self.assertEqual({"command": "sh", "args": ["-c", "curl x"]}, state["projects"]["/work/a/s1"]["mcpServers"]["evil"])
+        self.assertNotIn("mine", state["mcpServers"])
+        self.assertFalse(os.path.exists(report), "nothing new was taken out")
+
+        # No longer kept: out again. Changed while held: not the one the owner kept, so it stays out.
+        self.claude()
+        with open(held) as source:
+            aside = json.load(source)
+        aside[evil["digest"]] = aside[evil["digest"]].replace("curl x", "curl evil")
+        with open(held, "w") as out:
+            json.dump(aside, out)
+        self.claude(keep=[evil["digest"]])
+        self.assertEqual({}, self.claude_state()["projects"]["/work/a/s1"]["mcpServers"])
+
+    def test_a_projects_approvals_are_taken_out_and_come_back_when_kept(self):
+        project = {"enabledMcpjsonServers": ["repo-tool"], "enableAllProjectMcpServers": True, "allowedTools": ["Bash(*)"], "disabledMcpjsonServers": ["x"]}
+        self.write_state({"projects": {"/work/a/s1": dict(project)}})
+        report = os.path.join(self.home, "held-report.json")
+        self.claude(report=report)
+        state = self.claude_state()["projects"]["/work/a/s1"]
+        self.assertEqual({"enabledMcpjsonServers": [], "allowedTools": [], "disabledMcpjsonServers": ["x"]}, state)
+        listed = self.listed(report)
+        self.assertEqual(
+            {("enabledMcpjsonServers", "repo-tool"), ("enableAllProjectMcpServers", ""), ("allowedTools", "Bash(*)")},
+            {tuple(json.loads(item["entry"])[1:3]) for item in listed},
+        )
+        self.claude(keep=[item["digest"] for item in listed])
+        self.assertEqual(project, self.claude_state()["projects"]["/work/a/s1"])
+
+    def test_a_place_holding_the_wrong_kind_of_value_is_taken_out_and_cannot_be_kept(self):
+        self.write_state({"mcpServers": [{"command": "sh"}], "projects": {"/w": {"allowedTools": "Bash(*)"}}})
+        report = os.path.join(self.home, "held-report.json")
+        self.claude(report=report)
+        state = self.claude_state()
+        self.assertEqual({"pocketide"}, set(state["mcpServers"]))
+        self.assertEqual({}, state["projects"]["/w"])
+        listed = self.listed(report)
+        self.assertEqual([False, False], [item["keepable"] for item in listed])
+        self.claude(keep=[item["digest"] for item in listed])
+        self.assertEqual({}, self.claude_state()["projects"]["/w"])
+
+    def test_what_the_app_has_not_read_yet_stays_listed(self):
+        report = os.path.join(self.home, "held-report.json")
+        self.write_state({"mcpServers": {"one": {"command": "a"}}})
+        self.claude(report=report)
+        state = self.claude_state()
+        state["mcpServers"]["two"] = {"command": "b"}
+        self.write_state(state)
+        self.claude(report=report)
+        self.assertEqual(2, len(self.listed(report)))
+
+    def test_a_linked_state_file_is_read_through_and_replaced_by_a_file(self):
+        target = os.path.join(self.home, "elsewhere.json")
+        with open(target, "w") as out:
+            json.dump({"oauthAccount": {"emailAddress": "o@example.com"}, "mcpServers": {"evil": {"command": "sh"}}}, out)
+        path = os.path.join(self.home, ".claude.json")
+        os.symlink(target, path)
+        self.assertEqual(0, self.claude().returncode)
+        self.assertFalse(os.path.islink(path))
+        state = self.claude_state()
+        self.assertEqual({"pocketide"}, set(state["mcpServers"]))
+        self.assertEqual({"emailAddress": "o@example.com"}, state["oauthAccount"])
+
+    def test_a_file_claude_may_read_is_read_as_claude_reads_it(self):
+        # A byte-order mark and a broken UTF-8 byte: Node reads past both, so servers there count.
+        path = os.path.join(self.home, ".claude.json")
+        with open(path, "wb") as out:
+            out.write(b'\xef\xbb\xbf{"note": "caf\xe9", "mcpServers": {"evil": {"command": "sh"}}}')
+        self.assertEqual(0, self.claude().returncode)
+        self.assertEqual({"pocketide"}, set(self.claude_state()["mcpServers"]))
 
     def test_a_fresh_home_gets_the_file(self):
         entries = {"pocketide": {"type": "stdio", "command": "python3", "args": [], "env": {}}}
         run("room.py", ["claude", "--", "/bin/true"], self.home, {"POCKETIDE_CLAUDE_MCP": json.dumps(entries)})
         self.assertEqual({"pocketide": entries["pocketide"]}, self.claude_state()["mcpServers"])
 
-    def test_an_unreadable_state_file_is_left_alone(self):
+    def test_a_state_file_pocketide_cannot_read_is_moved_aside(self):
+        # Claude might still find servers in what PocketIDE cannot read (Node reads deeper nesting).
         path = os.path.join(self.home, ".claude.json")
-        with open(path, "w") as out:
-            out.write("{broken")
-        result = run("room.py", ["claude", "--", "/bin/true"], self.home, {"POCKETIDE_CLAUDE_MCP": "{\"pocketide\": null}"})
-        self.assertEqual(0, result.returncode)
-        with open(path) as source:
-            self.assertEqual("{broken", source.read())
+        for text in ["{broken", '{"deep": ' + "[" * 100000 + "]" * 100000 + ', "mcpServers": {"evil": {"command": "sh"}}}']:
+            with open(path, "w") as out:
+                out.write(text)
+            result = run("room.py", ["claude", "--", "/bin/true"], self.home, {"POCKETIDE_CLAUDE_MCP": "{\"pocketide\": null}"})
+            self.assertEqual(0, result.returncode, result.stdout)
+            self.assertEqual({"mcpServers": {}}, self.claude_state())
+            with open(os.path.join(self.home, ".claude.json.pocketide-unreadable")) as source:
+                self.assertEqual(text, source.read())
+
+    def test_claude_does_not_start_when_its_settings_cannot_be_checked(self):
+        self.write_state({"mcpServers": {"evil": {"command": "sh"}}})
+        with open(os.path.join(self.home, ".claude"), "w") as out:
+            out.write("in the way of the held settings")
+        result = self.claude(program=("/bin/echo", "engine-started"))
+        self.assertEqual(1, result.returncode)
+        self.assertNotIn(b"engine-started", result.stdout)
+        self.assertIn(b"was not started", result.stdout)
+        self.assertIn("evil", self.claude_state()["mcpServers"])
 
     def test_the_engine_does_not_inherit_the_entries_and_runs_with_a_private_umask(self):
         result = run(
