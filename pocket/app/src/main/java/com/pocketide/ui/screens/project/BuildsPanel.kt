@@ -43,6 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.pocketide.builds.BuildProgress
 import com.pocketide.builds.BuildTemplate
 import com.pocketide.builds.WorkflowApprovalNeeded
@@ -89,31 +92,56 @@ fun BuildsPanel(
     // A run the check-post held because the branch changes GitHub Actions code: the owner reads it first.
     var held by remember(projectId) { mutableStateOf<HeldRun?>(null) }
 
-    suspend fun loadRuns() {
+    /** Shows [loaded] as the list; the followed run's end is announced once, whichever loop saw it. */
+    fun showRuns(loaded: Result<List<WorkflowRun>>) {
         val before = runs?.getOrNull()
-        val loaded = attempt { graph.builds.recentRuns(projectId) }
         runs = loaded
-        // Shown from the screen's scope: the effect that called this restarts as soon as the list changes.
+        // Shown from the screen's scope: the effect that called this may restart as soon as the list changes.
         finishedRun(before, loaded.getOrNull(), followed)?.let { run ->
             scope.launch { snackbar.showSnackbar("${run.name} on GitHub: ${runStatus(run).first}.") }
         }
     }
+
+    /** A refresh looks up no runners again: the list keeps the ones it has. */
+    suspend fun loadRuns(refresh: Boolean = false) {
+        val before = runs?.getOrNull()
+        showRuns(attempt { graph.builds.recentRuns(projectId, runners = !refresh) }.map { keepRunners(before, it) })
+    }
     LaunchedEffect(projectId) { loadRuns() }
-    // While a run is queued or running, the list follows it on its own; a notification follows it too.
-    LaunchedEffect(projectId, runs, followed) {
-        val current = runs?.getOrNull() ?: return@LaunchedEffect
-        if (!needsPolling(current, followed)) return@LaunchedEffect
-        delay(RUN_POLL_MS)
-        loadRuns()
+
+    // Only while this tab is on screen: a notification follows a build when it is not (BuildWatchWorker).
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // While another run is queued or running, the list follows it, more slowly while nothing changes.
+    val listPolls = runs?.getOrNull()?.let { needsPolling(it, followed) } == true
+    LaunchedEffect(projectId, followed, listPolls) {
+        if (!listPolls) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var unchanged = 0
+            while (true) {
+                delay(pollDelayMs(unchanged))
+                val before = runs
+                loadRuns(refresh = true)
+                unchanged = if (runs == before) unchanged + 1 else 0
+            }
+        }
     }
 
+    // The run started here is followed by its id alone (two requests), and its list entry with it.
     LaunchedEffect(projectId, followed) {
         val runId = followed ?: return@LaunchedEffect
         if (progress?.run?.id != runId) progress = null
-        while (true) {
-            attempt { graph.builds.progress(projectId, runId) }.getOrNull()?.let { progress = it }
-            if (progress?.run?.status == "completed") break
-            delay(RUN_POLL_MS)
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var unchanged = 0
+            while (progress?.run?.status != "completed") {
+                val next = attempt { graph.builds.progress(projectId, runId) }.getOrNull()
+                if (next != null) {
+                    unchanged = if (next == progress) unchanged + 1 else 0
+                    progress = next
+                    runs?.getOrNull()?.let { listed -> showRuns(Result.success(withRun(listed, next.run))) }
+                }
+                if (next?.run?.status == "completed") break
+                delay(pollDelayMs(unchanged))
+            }
         }
     }
 
@@ -244,9 +272,6 @@ fun BuildsPanel(
 
 /** A run the check-post held until the owner approves its GitHub Actions changes. */
 private class HeldRun(val template: BuildTemplate, val target: SessionRecord, val holds: List<Hold>)
-
-/** How often a queued or running build is checked while this tab is open. */
-private const val RUN_POLL_MS = 15_000L
 
 @Composable
 private fun TemplateCard(

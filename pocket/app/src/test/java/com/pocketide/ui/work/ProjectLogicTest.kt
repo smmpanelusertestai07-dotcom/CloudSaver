@@ -16,7 +16,9 @@ import com.pocketide.ui.screens.project.canPutOnMain
 import com.pocketide.ui.screens.project.changeTotals
 import com.pocketide.ui.screens.project.finishedRun
 import com.pocketide.ui.screens.project.followedFirst
+import com.pocketide.ui.screens.project.keepRunners
 import com.pocketide.ui.screens.project.needsPolling
+import com.pocketide.ui.screens.project.pollDelayMs
 import com.pocketide.ui.screens.project.trustOf
 import com.pocketide.ui.screens.project.LARGE_TRANSCRIPT_BYTES
 import com.pocketide.ui.screens.project.RoomView
@@ -32,6 +34,7 @@ import com.pocketide.ui.screens.project.sessionForBranch
 import com.pocketide.ui.screens.project.sessionStatusLabel
 import com.pocketide.ui.screens.project.sessionsByAgent
 import com.pocketide.ui.screens.project.waitingVideosText
+import com.pocketide.ui.screens.project.withRun
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -190,12 +193,32 @@ class ProjectLogicTest {
     }
 
     @Test
+    fun theBuildsTabAsksGitHubLessWhileNothingChanges() {
+        fun run(id: Long, status: String, runner: String? = null) = WorkflowRun(id, "Android", "b", status, null, "", "", "", runner)
+        val listed = listOf(run(9, "in_progress", "macos-15"), run(7, "queued", "ubuntu-latest"))
+
+        // The followed run's progress replaces its entry, or joins a list 20 newer runs pushed it off.
+        assertEquals(listOf(run(9, "in_progress", "macos-15"), run(7, "completed")), withRun(listed, run(7, "completed")))
+        assertEquals(listOf(5L, 9L, 7L), withRun(listed, run(5, "queued")).map { it.id })
+
+        // A refresh looks no runners up, and keeps the ones the list already showed.
+        val refreshed = keepRunners(listed, listOf(run(9, "completed"), run(7, "in_progress"), run(3, "queued")))
+        assertEquals(listOf("macos-15", "ubuntu-latest", null), refreshed.map { it.runnerImage })
+        assertEquals(listOf(run(4, "queued", "windows-latest")), keepRunners(null, listOf(run(4, "queued", "windows-latest"))))
+
+        assertEquals(listOf(15_000L, 15_000L, 30_000L, 30_000L, 60_000L, 60_000L), (0..5).map(::pollDelayMs))
+    }
+
+    @Test
     fun buildsFollowTheirOwnRun() {
         fun run(id: Long, status: String, conclusion: String? = null) = WorkflowRun(id, "Android", "b", status, conclusion, "", "", "")
         val earlier = run(1, "completed", "success")
         assertFalse(needsPolling(listOf(earlier), followed = null))
         assertTrue("an unfinished run", needsPolling(listOf(earlier, run(2, "queued")), followed = null))
-        assertTrue("ours is not listed yet", needsPolling(listOf(earlier), followed = 7))
+        // The run started here is followed by its id, so the list never waits for it, listed or not.
+        assertFalse("ours is not listed", needsPolling(listOf(earlier), followed = 7))
+        assertFalse("ours is followed on its own", needsPolling(listOf(earlier, run(7, "in_progress")), followed = 7))
+        assertTrue("another run is unfinished", needsPolling(listOf(run(8, "queued"), run(7, "in_progress")), followed = 7))
         assertFalse(needsPolling(listOf(earlier, run(7, "completed", "failure")), followed = 7))
 
         val newer = run(9, "in_progress")

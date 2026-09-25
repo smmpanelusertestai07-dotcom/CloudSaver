@@ -378,6 +378,20 @@ class GitHubRestApiTest {
         assertEquals("/repos/octo/demo/actions/runs/9/jobs", server.next().url.encodedPath)
     }
 
+    /** The Builds tab refreshes every few seconds while a build runs: each refresh is one request. */
+    @Test
+    fun `a refresh of the runs and one run by id are one request each`() = runBlocking {
+        val run = """{"id":9,"name":"Android","head_branch":"main","status":"in_progress","conclusion":null,
+            "created_at":"2026-09-20T10:00:00Z","updated_at":"2026-09-20T10:09:00Z","html_url":"https://github.com/octo/demo/actions/runs/9"}"""
+        server.enqueue(json("""{"total_count":1,"workflow_runs":[$run]}"""))
+        server.enqueue(json(run))
+        assertNull(api.runs("octo", "demo", null, runners = false).single().runnerImage)
+        assertEquals("in_progress", api.run("octo", "demo", 9)?.status)
+        assertEquals("/repos/octo/demo/actions/runs", server.next().url.encodedPath)
+        assertEquals("/repos/octo/demo/actions/runs/9", server.next().url.encodedPath)
+        assertEquals(2, server.requestCount)
+    }
+
     @Test
     fun `a job log gives the runner image and the last lines`() = runBlocking {
         val log = buildString {

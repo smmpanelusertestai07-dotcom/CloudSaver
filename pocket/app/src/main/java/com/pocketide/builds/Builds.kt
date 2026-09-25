@@ -71,6 +71,9 @@ interface Builds {
 
     suspend fun recentRuns(projectId: String): List<WorkflowRun>
 
+    /** [recentRuns]; with [runners] false it skips the runner lookups, for a refresh of runs already shown. */
+    suspend fun recentRuns(projectId: String, runners: Boolean): List<WorkflowRun> = recentRuns(projectId)
+
     /** Downloads the run's artifacts into the session's Media; for a failed run, the end of its log too. */
     suspend fun collect(projectId: String, sessionId: String, runId: Long): Int
 

@@ -8,6 +8,7 @@ import com.pocketide.github.GitHubException
 import com.pocketide.github.RunArtifact
 import com.pocketide.github.WorkflowJob
 import com.pocketide.github.WorkflowRun
+import com.pocketide.github.runnerLabels
 import com.pocketide.media.MediaException
 import com.pocketide.media.MediaKind
 import com.pocketide.media.MediaLibrary
@@ -127,15 +128,19 @@ internal class GitHubBuilds(
         return runId
     }
 
-    override suspend fun recentRuns(projectId: String): List<WorkflowRun> {
+    override suspend fun recentRuns(projectId: String): List<WorkflowRun> = recentRuns(projectId, runners = true)
+
+    override suspend fun recentRuns(projectId: String, runners: Boolean): List<WorkflowRun> {
         val project = projectOf(projectId)
-        return ports.gitHub.runs(project.owner, project.repo).take(RECENT_RUNS)
+        return ports.gitHub.runs(project.owner, project.repo, null, runners).take(RECENT_RUNS)
     }
 
+    /** Two requests: the run and its jobs, which also name the runner it asked for. */
     override suspend fun progress(projectId: String, runId: Long): BuildProgress? {
         val project = projectOf(projectId)
-        val run = ports.gitHub.run(project.owner, project.repo, runId) ?: return null
+        val listed = ports.gitHub.run(project.owner, project.repo, runId) ?: return null
         val jobs = ports.gitHub.jobs(project.owner, project.repo, runId)
+        val run = listed.copy(runnerImage = listed.runnerImage ?: runnerLabels(jobs))
         if (run.status != COMPLETED) return BuildProgress(run, jobs)
         val ending = ending(project, run, jobs)
         return BuildProgress(
@@ -273,7 +278,7 @@ internal class GitHubBuilds(
     private suspend fun findRun(project: Project, ref: String, template: BuildTemplate, since: Long): Long? {
         repeat(FIND_ATTEMPTS) {
             delay(FIND_DELAY_MS)
-            val match = ports.gitHub.runs(project.owner, project.repo, ref)
+            val match = ports.gitHub.runs(project.owner, project.repo, ref, runners = false)
                 .filter { it.name == template.workflowName }
                 .mapNotNull { run -> createdAt(run)?.let { run to it } }
                 .filter { (_, created) -> created >= since - CLOCK_SKEW_MS }

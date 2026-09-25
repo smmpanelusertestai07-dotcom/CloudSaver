@@ -278,6 +278,7 @@ class GitHubBuildsTest {
         ports.gitHub.jobList = listOf(WorkflowJob(50, "build", "in_progress", null, "", listOf("ubuntu-latest"), "GitHub Actions 2", steps))
         val live = builds.progress("alice/demo", 5)!!
         assertEquals(steps, live.jobs.single().steps)
+        assertEquals("the runner comes from the jobs already read", "ubuntu-latest", live.run.runnerImage)
         assertNull(live.failureLog)
         assertEquals(0, ports.gitHub.logReads)
 
