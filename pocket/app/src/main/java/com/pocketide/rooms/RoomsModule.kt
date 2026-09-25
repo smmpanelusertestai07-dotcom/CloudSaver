@@ -12,6 +12,7 @@ import com.pocketide.AppGraph
 import com.pocketide.R
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.limiter.EngineService
 import com.pocketide.model.Project
 import kotlinx.coroutines.withTimeoutOrNull
@@ -156,7 +157,7 @@ internal class RoomNotices(private val context: Context, private val now: () -> 
     companion object {
         /** The session a notification opens (an extra on the app's launch intent). */
         const val EXTRA_SESSION = "com.pocketide.extra.SESSION"
-        private const val NOTIFICATION_ID = 4300
+        private const val NOTIFICATION_ID = NotificationIds.ROOM
         private const val MIN_GAP_MS = 30_000L
         private const val MAX_TITLE = 60
         private const val MAX_TEXT = 200

@@ -20,6 +20,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.pocketide.R
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.graph
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
@@ -128,6 +129,6 @@ class ScheduledTaskWorker(context: Context, params: WorkerParameters) : Coroutin
     }
 
     private companion object {
-        const val FOREGROUND_ID = 4300
+        const val FOREGROUND_ID = NotificationIds.SCHEDULED_RUN
     }
 }

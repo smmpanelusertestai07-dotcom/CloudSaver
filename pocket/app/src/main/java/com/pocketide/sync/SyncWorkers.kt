@@ -24,6 +24,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.pocketide.R
 import com.pocketide.core.Channels
+import com.pocketide.core.NotificationIds
 import com.pocketide.graph
 import java.util.concurrent.TimeUnit
 
@@ -67,7 +68,7 @@ class MaintenanceWorker(context: Context, params: WorkerParameters) : CoroutineW
 }
 
 internal object SyncForeground {
-    private const val ID = 4100
+    private const val ID = NotificationIds.SYNC_RUNNING
 
     fun info(context: Context): ForegroundInfo {
         val notification = NotificationCompat.Builder(context, Channels.SYNC)
@@ -146,14 +147,20 @@ internal class AndroidSyncNotifier(private val context: Context) : SyncNotifier 
             .setAutoCancel(true)
             .build()
         try {
-            manager.notify(ID_BASE + KEYS.indexOf(notice.key).coerceAtLeast(0), notification)
+            manager.notify(SyncNoticeIds.of(notice.key), notification)
         } catch (_: SecurityException) {
             // The permission was withdrawn a moment ago; the status in the app says the same.
         }
     }
+}
 
-    private companion object {
-        const val ID_BASE = 4101
-        val KEYS = listOf("lease", "google-full", "share-full", "keep", "trim", "phone-80", "phone-90", "computer", "drive")
+/** Each kind of sync notice has its own id in [NotificationIds]' sync range, so one kind replaces only itself. */
+internal object SyncNoticeIds {
+    val KEYS = listOf("lease", "google-full", "share-full", "keep", "trim", "phone-80", "phone-90", "computer", "drive")
+
+    /** A kind missing from [KEYS] shares the range's last id rather than another notice's. */
+    fun of(key: String): Int {
+        val i = KEYS.indexOf(key)
+        return if (i >= 0) NotificationIds.SYNC_FIRST + i else NotificationIds.SYNC_LAST
     }
 }
