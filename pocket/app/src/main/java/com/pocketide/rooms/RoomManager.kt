@@ -517,6 +517,9 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
         } catch (failed: IllegalStateException) {
             ring(agentId).add("[PocketIDE] The sign-out could not start: ${failed.message}")
             -1
+        } catch (failed: IllegalArgumentException) {
+            ring(agentId).add("[PocketIDE] The sign-out could not start: ${failed.message}")
+            -1
         }
         return when (code) {
             0 -> "$name signed out."
@@ -538,6 +541,7 @@ internal class RoomManager(private val env: RoomsEnv) : Rooms {
             delay(SAMPLE_MS)
             synchronized(monitorLock) {
                 if (live.isEmpty() && terminals.isEmpty()) {
+                    holds.holding(WorkHolds.COMMAND).forEach { holds.set(it, WorkHolds.COMMAND, false) }
                     monitor = null
                     return
                 }
