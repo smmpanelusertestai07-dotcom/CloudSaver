@@ -23,13 +23,17 @@ internal object AntigravityFormat : TranscriptFormat {
 
     val PRODUCTS = listOf("antigravity", "antigravity-cli", "antigravity-ide")
     const val LOG = ".system_generated/logs/transcript.jsonl"
+    private const val CONVERSATIONS = "conversations"
 
     /** A session worktree path as the rooms see it: /work/<owner>__<repo>/<session uuid>. */
     private val WORKTREE = Regex(
         "/work/[A-Za-z0-9._-]+/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
     )
 
-    /** The whole conversation folder belongs to the session (its artifacts and logs). */
+    /**
+     * The whole conversation folder belongs to the session (its artifacts and logs), and so does
+     * the conversation's own file in `conversations/`, which Antigravity needs to reopen it.
+     */
     override fun locate(home: File, sessions: List<SessionRecord>, source: FactsSource): Map<String, SessionTranscript> {
         val folders = PRODUCTS.flatMap { SafeFiles.children(File(home, ".gemini/$it/brain")) }.filter(SafeFiles::isDirectory)
         if (folders.isEmpty()) return emptyMap()
@@ -45,7 +49,16 @@ internal object AntigravityFormat : TranscriptFormat {
                 .firstOrNull()?.let { byWorktree.getValue(it.key) } ?: continue
             grouped.getOrPut(owner.id) { ArrayList() } += Found(log, facts.copy(ref = folder.name)) to folder
         }
-        return grouped.mapValues { (_, found) -> SessionTranscript(found.map { it.first }, found.map { it.second }) }
+        return grouped.mapValues { (_, found) ->
+            SessionTranscript(found.map { it.first }, found.flatMap { (_, folder) -> listOf(folder) + conversationFiles(folder) })
+        }
+    }
+
+    /** `<product>/conversations/<id>.pb` (and any sibling named after the id) of `<product>/brain/<id>`. */
+    private fun conversationFiles(brainFolder: File): List<File> {
+        val product = brainFolder.parentFile?.parentFile ?: return emptyList()
+        return SafeFiles.children(File(product, CONVERSATIONS))
+            .filter { SafeFiles.isFile(it) && it.name.substringBefore('.') == brainFolder.name }
     }
 
     override fun entries(line: JsonObject): List<TranscriptEntry> {

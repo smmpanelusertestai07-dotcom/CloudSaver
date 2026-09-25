@@ -8,12 +8,15 @@ import com.pocketide.model.Project
 import com.pocketide.sync.DataBudget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import java.io.File
 
 fun createProjects(graph: AppGraph): Projects = ProjectRegistry(
     env = GraphProjectEnv(graph),
     dirs = graph.dirs,
     file = JsonFile(File(graph.dirs.vault, "projects.json"), ListSerializer(Project.serializer())),
+    trustFile = JsonFile(File(graph.dirs.vault, "project-trust.json"), MapSerializer(String.serializer(), ProjectTrust.serializer())),
     clock = graph.clock,
     scope = graph.scope,
     io = Dispatchers.IO,

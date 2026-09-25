@@ -3,6 +3,7 @@ package com.pocketide.sessions
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
+import java.io.InputStream
 
 sealed interface PutOnMainResult {
     data object Merged : PutOnMainResult
@@ -24,6 +25,16 @@ data class TranscriptEntry(val role: String, val text: String, val at: Long?, va
 
 /** Something the owner can act on, in one plain sentence (the screens show [message] as it is). */
 class SessionException(message: String) : Exception(message)
+
+/**
+ * A session continued by another agent (or forked in the same one): [session] is new, branched
+ * from the old session's last commit, and [note] is the hand-off to give its agent as the first
+ * message (goal, files changed, last step, what is left).
+ */
+data class HandOff(val session: SessionRecord, val note: String)
+
+/** A file the owner added to a session: where the agent finds it, and its size. */
+data class AddedFile(val guestPath: String, val bytes: Long)
 
 /**
  * Chat sessions. Each is a branch `pocket/<agent>/<yyyy-mm-dd>-<slug>` with its own worktree;
@@ -94,10 +105,33 @@ interface Sessions {
     /** Called by the sync engine once these deleted sessions are erased from Drive: they go from here too. */
     suspend fun erased(sessionIds: List<String>) = Unit
 
+    /**
+     * "Continue in Codex / Antigravity" when an agent hit its usage limit, or a fork in the same
+     * agent: a new session in [toAgentId]'s room whose branch starts at this session's last commit.
+     * This session stays as it is.
+     */
+    suspend fun handOff(sessionId: String, toAgentId: String): HandOff =
+        throw SessionException("Handing a chat to another agent is not available.")
+
+    /**
+     * Renames the session's branch (`pocket/<agent>/<date>-<name>`). On a public repository new
+     * branches get neutral names; this is how the owner chooses a telling one. Only a branch that
+     * is not on GitHub yet can be renamed.
+     */
+    suspend fun renameBranch(sessionId: String, name: String) = Unit
+
+    /**
+     * Adds a file the owner picked (Android's file picker or "Share to PocketIDE"): into the
+     * session's project folder when [intoProject], else to the session's media as an attachment.
+     * [source] is read to the end and closed.
+     */
+    suspend fun addFile(sessionId: String, name: String, source: InputStream, intoProject: Boolean): AddedFile =
+        throw SessionException("Adding files is not available.")
+
     companion object {
         /**
-         * The `deletedAt` of a session deleted forever: older than any 30-day window, so the sync
-         * engine's next run erases it from Drive, then calls [erased]. Screens do not list it.
+         * A `deletedAt` that means "erase now" (older than any 30-day window). This phone never
+         * lists a record carrying it: such a session is erased from Drive, then dropped.
          */
         const val ERASE_NOW: Long = 0L
     }

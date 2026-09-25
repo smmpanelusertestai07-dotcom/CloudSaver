@@ -154,7 +154,11 @@ open class FakeGitGate : GitGate {
         return pushResult
     }
     override suspend fun stats(bareRepo: File, branch: String, base: String): Pair<Int, Int> = statsResult
-    override suspend fun deleteRemoteBranch(bareRepo: File, branch: String, token: String): PushResult = PushResult.Pushed
+    val deletedRemote = mutableListOf<String>()
+    override suspend fun deleteRemoteBranch(bareRepo: File, branch: String, token: String): PushResult {
+        deletedRemote += branch
+        return PushResult.Pushed
+    }
     override suspend fun <T> withRepository(bareRepo: File, block: (org.eclipse.jgit.lib.Repository) -> T): T =
         org.eclipse.jgit.storage.file.FileRepositoryBuilder().setGitDir(bareRepo).setBare().build().use(block)
 }
@@ -186,6 +190,15 @@ class LocalRemoteGitGate(private val origin: File) : FakeGitGate() {
             return PushResult.Blocked(it)
         }
         hostGit(bareRepo, "push", "--quiet", "origin", "refs/heads/$branch:refs/heads/$branch")
+        // As the real gate does: the remote-tracking ref follows a successful push.
+        hostGit(bareRepo, "update-ref", "refs/remotes/origin/$branch", "refs/heads/$branch")
+        return PushResult.Pushed
+    }
+
+    override suspend fun deleteRemoteBranch(bareRepo: File, branch: String, token: String): PushResult {
+        deletedRemote += branch
+        hostGit(bareRepo, "push", "--quiet", "origin", "--delete", branch)
+        hostGit(bareRepo, "update-ref", "-d", "refs/remotes/origin/$branch")
         return PushResult.Pushed
     }
 
@@ -258,7 +271,9 @@ class FakeRooms : Rooms {
 class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     val requests = mutableListOf<String>()
     val fetched = mutableListOf<String>()
+    val erasedForever = mutableListOf<String>()
     var uploadFails = false
+    var eraseFails = false
 
     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Idle)
     override val waiting: StateFlow<List<PendingUpload>> = MutableStateFlow(emptyList())
@@ -270,7 +285,10 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     override val move: StateFlow<com.pocketide.sync.MoveState> = MutableStateFlow(com.pocketide.sync.MoveState.Idle)
     override suspend fun moveToAccount(email: String) = Unit
     override suspend fun eraseOldAccountCopy() = Unit
-    override suspend fun eraseForever(sessionIds: List<String>) = Unit
+    override suspend fun eraseForever(sessionIds: List<String>) {
+        if (eraseFails) throw java.io.IOException("offline")
+        erasedForever += sessionIds
+    }
     override fun requestSync(reason: String) {
         requests += reason
     }
@@ -290,11 +308,17 @@ class FakeSync(private val onFetch: (String) -> Unit = {}) : SyncEngine {
     override fun schedule() = Unit
 }
 
-class FakeMedia(private val items: Map<String, List<MediaItem>> = emptyMap()) : MediaLibrary {
+class FakeMedia(private val items: Map<String, List<MediaItem>> = emptyMap(), private val folder: (String) -> File? = { null }) : MediaLibrary {
     val deleted = mutableListOf<MediaItem>()
+    val added = mutableListOf<MediaItem>()
 
     override fun forSession(sessionId: String): Flow<List<MediaItem>> = flowOf(items[sessionId].orEmpty())
-    override suspend fun add(sessionId: String, source: File, name: String, from: String): MediaItem = throw UnsupportedOperationException()
+    override suspend fun add(sessionId: String, source: File, name: String, from: String): MediaItem {
+        val dir = folder(sessionId) ?: throw UnsupportedOperationException()
+        val copy = source.copyTo(File(dir.apply { mkdirs() }, name))
+        return MediaItem(sessionId, copy, name, MediaKind.OTHER, copy.length(), 0, onPhone = true, backedUp = false, source = from)
+            .also { added += it }
+    }
     override fun kindOf(name: String, head: ByteArray) = MediaKind.OTHER
     override suspend fun delete(item: MediaItem) {
         deleted += item

@@ -16,8 +16,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -29,38 +27,60 @@ internal class ProjectRegistry(
     private val env: ProjectEnv,
     private val dirs: AppDirs,
     file: JsonFile<List<Project>>,
+    trustFile: JsonFile<Map<String, ProjectTrust>>,
     private val clock: Clock,
     private val scope: CoroutineScope,
     private val io: CoroutineDispatcher,
 ) : Projects {
 
     private val state = JsonState(file, emptyList(), io, normalize = ::withCloneState)
+    private val trustState = JsonState(trustFile, emptyMap(), io)
     private val cloneLocks = ConcurrentHashMap<String, Mutex>()
 
     override val all: StateFlow<List<Project>> = state.flow
 
+    override val trust: StateFlow<Map<String, ProjectTrust>> = trustState.flow
+
     init {
-        scope.launch { quietly { state.current() } }
+        scope.launch {
+            quietly {
+                state.current()
+                trustState.current()
+            }
+        }
     }
 
     override suspend fun create(name: String, description: String): Project {
-        val repoName = name.trim()
+        // GitHub itself turns spaces into hyphens; doing it here shows the real name at once.
+        val repoName = name.trim().replace(WHITESPACE, "-")
         if (!REPO_NAME.matches(repoName) || repoName == "." || repoName == "..") {
             throw ProjectException("Use letters, numbers, dots, hyphens or underscores for the name, up to 100 characters.")
         }
-        val about = description.trim().replace(Regex("\\s+"), " ").take(MAX_DESCRIPTION)
-        return add(network { env.gitHub.createPrivateRepo(repoName, about) })
+        val about = description.trim().replace(WHITESPACE, " ").take(MAX_DESCRIPTION)
+        // With a first commit the repository has a default branch, which every session starts from.
+        val project = add(network { env.gitHub.createPrivateRepo(repoName, about, autoInit = true) })
+        setTrust(project.id, ProjectTrust.YOURS)
+        return project
     }
 
     override suspend fun import(owner: String, repo: String): Project {
         val address = RepoAddress.parse(if (repo.isBlank()) owner else "${owner.trim()}/${repo.trim()}")
             ?: throw ProjectException("Check the repository: use owner/name, or paste its GitHub address.")
         val info = network { env.gitHub.repo(address.owner, address.repo) }
-            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl())
-        return add(info)
+            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), address)
+        val project = add(info)
+        trustState.update { map -> (if (project.id in map) map else map + (project.id to automaticTrust(project))) to Unit }
+        return project
     }
 
-    override suspend fun ensureCloned(projectId: String) {
+    override fun trustOf(projectId: String): ProjectTrust =
+        trust.value[projectId] ?: all.value.find { it.id == projectId }?.let(::automaticTrust) ?: ProjectTrust.SOMEONE_ELSES
+
+    override suspend fun setTrust(projectId: String, trust: ProjectTrust) {
+        trustState.update { it + (projectId to trust) to Unit }
+    }
+
+    override suspend fun ensureCloned(projectId: String) = withContext(io) {
         val project = find(projectId)
         if (isCloned(project.id)) {
             try {
@@ -70,7 +90,7 @@ internal class ProjectRegistry(
             } catch (offline: Exception) {
                 // The clone on the phone is used as it is; agents keep working offline.
             }
-            return
+            return@withContext
         }
         cloneLocks.computeIfAbsent(project.id) { Mutex() }.withLock {
             if (!isCloned(project.id)) clone(project)
@@ -79,7 +99,7 @@ internal class ProjectRegistry(
 
     override suspend fun fetch(projectId: String) {
         val project = find(projectId)
-        if (isCloned(project.id)) fetchNow(project) else ensureCloned(projectId)
+        if (withContext(io) { isCloned(project.id) }) fetchNow(project) else ensureCloned(projectId)
     }
 
     override suspend fun remove(projectId: String) {
@@ -90,17 +110,20 @@ internal class ProjectRegistry(
         val deleted = withContext(io) { SafeFiles.delete(dirs.bareRepo(project.id)) }
         if (!deleted) throw ProjectException("Some files of this project could not be deleted. Try again.")
         state.update { list -> list.filterNot { it.id == project.id } to Unit }
+        quietly { trustState.update { it - project.id to Unit } }
     }
 
     override fun touched(projectId: String) = touched(projectId, clock.now())
 
     override fun touched(projectId: String, at: Long) {
+        // A time ahead of the clock (a wrong date inside Linux) would hold the project's caches forever.
+        val stamp = minOf(at, clock.now())
         scope.launch {
             quietly {
                 state.update { list ->
                     list.map { p ->
                         // Minute steps are enough for day-long retention rules and spare the disk.
-                        if (p.id == projectId && at >= p.lastActivityAt + TOUCH_STEP_MS) p.copy(lastActivityAt = at) else p
+                        if (p.id == projectId && stamp >= p.lastActivityAt + TOUCH_STEP_MS) p.copy(lastActivityAt = stamp) else p
                     } to Unit
                 }
             }
@@ -121,6 +144,19 @@ internal class ProjectRegistry(
             }
             byId.values.toList() to Unit
         }
+        trustState.update { map ->
+            val unknown = projects.filter { it.id !in map }
+            (map + unknown.associate { it.id to automaticTrust(it) }) to Unit
+        }
+    }
+
+    /**
+     * Without the owner's own answer: a repository under the signed-in account is theirs. A fork
+     * under their account is not told apart here; the owner can say so on the project.
+     */
+    private fun automaticTrust(project: Project): ProjectTrust {
+        val login = env.gitHubAuth.account.value?.login
+        return if (login != null && project.owner.equals(login, ignoreCase = true)) ProjectTrust.YOURS else ProjectTrust.SOMEONE_ELSES
     }
 
     private suspend fun add(info: RepoInfo): Project {
@@ -150,7 +186,7 @@ internal class ProjectRegistry(
 
     private suspend fun clone(project: Project) {
         val info = network { env.gitHub.repo(project.owner, project.repo) }
-            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl())
+            ?: throw RepoNotReachableException(env.gitHubAuth.installUrl(), RepoAddress(project.owner, project.repo))
         val bytes = info.sizeKb * 1024
         val decision = env.dataBudget.allow(bytes, "clone", big = info.sizeKb > BIG_CLONE_KB)
         if (!decision.allowed) {
@@ -158,21 +194,16 @@ internal class ProjectRegistry(
         }
         val token = network { env.gitHubAuth.token() }
         val bare = dirs.bareRepo(project.id)
-        // The clone is made under another name and renamed at the end, so an interrupted clone
-        // never looks like a finished one.
-        val partial = File(dirs.repos, ".${bare.name}.partial")
+        // The gate builds a clone out of Linux's sight and moves it into this exact place only
+        // when it is complete (it refuses any other place), so what is here now is no clone.
         withContext(io) {
-            SafeFiles.delete(partial)
+            dropUnfinished(bare)
             if (!dirs.repos.isDirectory && !dirs.repos.mkdirs()) throw ProjectException("Could not create the projects folder.")
         }
         try {
-            network { env.git.clone(info.cloneUrl, partial, token) }
-            withContext(io) {
-                if (SafeFiles.exists(bare)) SafeFiles.delete(bare)
-                Files.move(partial.toPath(), bare.toPath(), StandardCopyOption.ATOMIC_MOVE)
-            }
+            network { env.git.clone(info.cloneUrl, bare, token) }
         } catch (failure: Throwable) {
-            withContext(NonCancellable + io) { SafeFiles.delete(partial) }
+            withContext(NonCancellable + io) { dropUnfinished(bare) }
             throw failure
         }
         env.dataBudget.record(bytes, "clone")
@@ -196,6 +227,11 @@ internal class ProjectRegistry(
         state.current().find { it.id == projectId } ?: throw ProjectException("This project is not on this phone.")
 
     private fun isCloned(projectId: String) = BareRefs(dirs.bareRepo(projectId)).isCloned()
+
+    /** An unfinished clone (a removal cut short, a clone that failed) is not worth keeping. */
+    private fun dropUnfinished(bare: File) {
+        if (SafeFiles.exists(bare) && !BareRefs(bare).isCloned()) SafeFiles.delete(bare)
+    }
 
     private fun withCloneState(projects: List<Project>) = projects.map { it.copy(cloned = isCloned(it.id)) }
 
@@ -221,6 +257,7 @@ internal class ProjectRegistry(
 
     private companion object {
         val REPO_NAME = Regex("[A-Za-z0-9._-]{1,100}")
+        val WHITESPACE = Regex("\\s+")
         const val MAX_DESCRIPTION = 350
         const val BIG_CLONE_KB = 50L * 1024
         const val TOUCH_STEP_MS = 60_000L

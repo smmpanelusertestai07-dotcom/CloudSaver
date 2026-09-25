@@ -1,7 +1,9 @@
 package com.pocketide.sessions
 
+import com.pocketide.core.AgentFiles
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
+import com.pocketide.core.FileClass
 import com.pocketide.core.Ist
 import com.pocketide.git.PushResult
 import com.pocketide.github.NotConnectedException
@@ -22,6 +24,7 @@ import com.pocketide.sessions.transcripts.AntigravityFormat
 import com.pocketide.sessions.transcripts.FileFacts
 import com.pocketide.sessions.transcripts.SessionTranscript
 import com.pocketide.sessions.transcripts.TranscriptFormat
+import com.pocketide.sessions.transcripts.TranscriptFormat.Companion.ASSISTANT
 import com.pocketide.sessions.transcripts.TranscriptFormat.Companion.NOTE
 import com.pocketide.sessions.transcripts.TranscriptIndex
 import com.pocketide.sessions.transcripts.TranscriptView
@@ -29,6 +32,7 @@ import com.pocketide.sessions.transcripts.oneLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -40,6 +44,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
+import java.io.InputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -67,6 +72,12 @@ internal class SessionManager(
         emptyMap(),
         io,
     )
+    /** Sessions deleted forever that the sync engine has not taken yet, to erase them from Drive. */
+    private val erasing = JsonState(
+        JsonFile(File(dirs.vault, "erase-pending.json"), ListSerializer(String.serializer())),
+        emptyList(),
+        io,
+    )
     private val transcripts = TranscriptIndex(
         dirs,
         JsonFile(File(dirs.vault, "transcripts.json"), ListSerializer(FileFacts.serializer())),
@@ -78,6 +89,7 @@ internal class SessionManager(
     private val autosaver = Autosaver(clock, scope) { pushBranch(it) }
     private val projectLocks = ConcurrentHashMap<String, Mutex>()
     private val refreshLock = Mutex()
+    private val eraseLock = Mutex()
     private val large = ConcurrentHashMap.newKeySet<String>()
 
     override val all: StateFlow<List<SessionRecord>> = records.flow
@@ -88,39 +100,66 @@ internal class SessionManager(
                 records.current()
                 active.current()
             }
+            eraseInBackground()
         }
     }
 
     override suspend fun start(projectId: String, agentId: String, title: String?): SessionRecord {
         env.projects.ensureCloned(projectId)
         val project = project(projectId)
+        val record = create(project, agentId, title) { refs ->
+            refs.firstOf(ORIGIN + project.defaultBranch, HEADS + project.defaultBranch)
+        }
+        env.sync.requestSync("session started")
+        return record
+    }
+
+    override suspend fun handOff(sessionId: String, toAgentId: String): HandOff {
+        val source = session(sessionId)
+        when (source.status) {
+            SessionStatus.DELETED -> throw SessionException("Restore this chat first.")
+            SessionStatus.CONFLICT_COPY -> throw SessionException(CONFLICT_COPY_ONLY_READ)
+            SessionStatus.OPEN, SessionStatus.ON_MAIN -> Unit
+        }
+        env.projects.ensureCloned(source.projectId)
+        val project = project(source.projectId)
+        val leftBehind = try {
+            worktrees.isDirty(source) == true
+        } catch (unreadable: SessionException) {
+            false
+        }
+        val record = create(project, toAgentId, source.title) { refs ->
+            refs.firstOf(HEADS + source.branch, ORIGIN + source.branch, ORIGIN + project.defaultBranch, HEADS + project.defaultBranch)
+        }
+        val files = try {
+            changes(sessionId).files
+        } catch (unreadable: SessionException) {
+            emptyList()
+        }
+        val lastStep = transcript(sessionId).lastOrNull { it.role == ASSISTANT }?.text
+        val goal = transcriptOf(source)?.firstUserText ?: source.title
+        val note = HandOffNote.build(env.agentName(source.agentId), goal, files, lastStep, leftBehind)
+        env.sync.requestSync("session handed off")
+        return HandOff(record, note)
+    }
+
+    /**
+     * Makes a session: a new branch and its worktree in [agentId]'s room, starting at the commit
+     * [from] picks (null: the repository is still empty), and its media folder.
+     */
+    private suspend fun create(project: Project, agentId: String, title: String?, from: (BareRefs) -> String?): SessionRecord {
         val id = UUID.randomUUID().toString()
         val now = clock.now()
         val slug = if (project.isPrivate) BranchNames.slug(title) else BranchNames.neutralSlug(id)
         val base = BranchNames.base(agentId, branchDate(now), slug)
-        val taken = records.current().filter { it.projectId == projectId }.mapTo(HashSet()) { it.branch }
-        var branch: String
-        var attempts = 0
-        while (true) {
-            val refs = BareRefs(dirs.bareRepo(projectId))
-            val prefix = BranchNames.prefix(agentId)
-            refs.under(HEADS + prefix).mapTo(taken) { it.removePrefix(HEADS) }
-            refs.under(ORIGIN + prefix).mapTo(taken) { it.removePrefix(ORIGIN) }
-            branch = BranchNames.unique(base, taken)
-            val start = refs.firstOf(ORIGIN + project.defaultBranch, HEADS + project.defaultBranch)
-            val made = worktrees.create(agentId, projectId, id, branch, start)
-            if (made.ok) break
-            // Another session may have taken the name a moment ago: the next free one is tried.
-            if (!made.says("already exists") || ++attempts >= MAX_NAME_ATTEMPTS) {
-                throw SessionException("Could not create the session's folder: ${made.reason()}")
-            }
-            taken += branch
+        val branch = projectLocks.computeIfAbsent(project.id) { Mutex() }.withLock {
+            newWorktree(project.id, agentId, id, base, from)
         }
-        withContext(io) { dirs.sessionMedia(agentId, projectId, id).mkdirs() }
+        withContext(io) { dirs.sessionMedia(agentId, project.id, id).mkdirs() }
         val record = SessionRecord(
             id = id,
             agentId = agentId,
-            projectId = projectId,
+            projectId = project.id,
             title = title?.let(::cleanTitle)?.takeIf { it.isNotEmpty() } ?: DEFAULT_TITLE,
             branch = branch,
             startedAt = now,
@@ -129,8 +168,73 @@ internal class SessionManager(
         )
         records.update { list -> (listOf(record) + list) to Unit }
         setActive(agentId, id)
-        env.sync.requestSync("session started")
         return record
+    }
+
+    /** Creates the worktree on the first free branch name from [base]; returns that name. */
+    private suspend fun newWorktree(projectId: String, agentId: String, sessionId: String, base: String, from: (BareRefs) -> String?): String {
+        val taken = takenBranches(projectId, agentId)
+        repeat(MAX_NAME_ATTEMPTS) {
+            val name = BranchNames.unique(base, taken)
+            val made = worktrees.create(agentId, projectId, sessionId, name, from(BareRefs(dirs.bareRepo(projectId))))
+            if (made.ok) return name
+            // A branch made outside PocketIDE may have taken the name: the next free one is tried.
+            if (!made.says("already exists")) throw SessionException("Could not create the session's folder: ${made.reason()}")
+            taken += name
+        }
+        throw SessionException("Could not find a free branch name for this session. Try another title.")
+    }
+
+    /** Branch names in use in a project: by sessions here, on this phone and on GitHub. */
+    private suspend fun takenBranches(projectId: String, agentId: String): MutableSet<String> {
+        val taken = records.current().filter { it.projectId == projectId }.mapTo(HashSet()) { it.branch }
+        val refs = BareRefs(dirs.bareRepo(projectId))
+        val prefix = BranchNames.prefix(agentId)
+        refs.under(HEADS + prefix).mapTo(taken) { it.removePrefix(HEADS) }
+        refs.under(ORIGIN + prefix).mapTo(taken) { it.removePrefix(ORIGIN) }
+        return taken
+    }
+
+    override suspend fun renameBranch(sessionId: String, name: String) {
+        val session = session(sessionId)
+        if (session.status != SessionStatus.OPEN) throw SessionException("Only an open chat's branch can be renamed.")
+        val project = project(session.projectId)
+        projectLocks.computeIfAbsent(project.id) { Mutex() }.withLock {
+            val refs = BareRefs(dirs.bareRepo(project.id))
+            if (refs.exists(ORIGIN + session.branch)) {
+                throw SessionException("This branch is already on GitHub, so its name stays. Rename it on GitHub if you need to.")
+            }
+            val base = BranchNames.base(session.agentId, branchDate(session.startedAt), BranchNames.slug(name))
+            if (base == session.branch) return
+            val branch = BranchNames.unique(base, takenBranches(project.id, session.agentId) - session.branch)
+            if (refs.exists(HEADS + session.branch)) {
+                val moved = git.run(session.agentId, listOf("-C", AppDirs.guestBareRepo(project.id), "branch", "-m", session.branch, branch))
+                if (!moved.ok) throw SessionException("Could not rename the branch: ${moved.reason()}")
+            }
+            change(sessionId) { it.copy(branch = branch) }
+        }
+        env.sync.requestSync("branch renamed")
+    }
+
+    override suspend fun addFile(sessionId: String, name: String, source: InputStream, intoProject: Boolean): AddedFile = source.use { input ->
+        val session = session(sessionId)
+        if (session.status != SessionStatus.OPEN) throw SessionException("Files can be added to an open chat only.")
+        val clean = AddedFiles.safeName(name) ?: throw SessionException("This file has no usable name. Rename it and try again.")
+        if (intoProject) {
+            if (!worktrees.exists(session)) throw SessionException("Continue this chat first, so its folder is on this phone.")
+            val file = withContext(io) { AddedFiles.copyInto(worktrees.host(session), clean, input) }
+            AddedFile("${AppDirs.guestWorktree(session.projectId, session.id)}/${file.name}", file.length())
+        } else {
+            val staged = withContext(io) { AddedFiles.copyInto(AddedFiles.staging(dirs), clean, input) }
+            try {
+                val item = env.media.add(session.id, staged, clean, FROM_OWNER)
+                val media = dirs.sessionMedia(session.agentId, session.projectId, session.id)
+                val guest = if (item.file.parentFile == media) "${AppDirs.guestMedia(session.projectId, session.id)}/${item.file.name}" else ""
+                AddedFile(guest, item.bytes)
+            } finally {
+                withContext(NonCancellable + io) { SafeFiles.delete(staged) }
+            }
+        }
     }
 
     override suspend fun rename(sessionId: String, title: String) {
@@ -168,6 +272,7 @@ internal class SessionManager(
         // be uploaded are given a chance first, and stay on the phone if they cannot go now.
         val waiting = session.backUp && session.pendingBytes > 0 && !uploaded(sessionId)
         if (!waiting) removePhoneCopy(session)
+        dropIfEmpty(session)
         env.sync.requestSync("session deleted")
     }
 
@@ -182,19 +287,70 @@ internal class SessionManager(
     override suspend fun deleteForever(sessionId: String) {
         val session = session(sessionId)
         closeRoom(session)
-        change(sessionId) { it.copy(status = SessionStatus.DELETED, deletedAt = ERASE_NOW) }
         clearActive(session)
         removePhoneCopy(session)
-        // The branch always stays (unmerged code is never deleted automatically); a clean worktree
-        // is only a checkout of it, so it goes. One with uncommitted changes stays.
-        try {
-            if (worktrees.isDirty(session) == false) worktrees.remove(session)
-        } catch (unavailable: SessionException) {
-            // Kept; removing the project later checks it for unsaved work.
+        // The branch stays when it has work (unmerged code is never deleted automatically); a
+        // clean worktree is only a checkout of it, so it goes. One with uncommitted changes stays.
+        if (!dropIfEmpty(session)) {
+            try {
+                if (worktrees.isDirty(session) == false) worktrees.remove(session)
+            } catch (unavailable: SessionException) {
+                // Kept; removing the project later checks it for unsaved work.
+            }
         }
+        erasing.update { ids -> (if (sessionId in ids) ids else ids + sessionId) to Unit }
+        records.update { list -> list.filterNot { it.id == sessionId } to Unit }
         large.remove(sessionId)
         autosaver.forget(sessionId)
-        env.sync.requestSync("session deleted forever")
+        eraseInBackground()
+    }
+
+    /**
+     * Hands the sessions deleted forever to the sync engine, which erases them from Drive (now,
+     * or at its next connection). One round runs at a time and takes every id waiting; ids stay
+     * listed until the sync engine has them, so a failed round is tried again by [refresh].
+     */
+    private fun eraseInBackground() {
+        scope.launch {
+            if (!eraseLock.tryLock()) return@launch
+            try {
+                while (true) {
+                    val ids = erasing.current()
+                    if (ids.isEmpty()) break
+                    env.sync.eraseForever(ids)
+                    erasing.update { list -> list.filterNot { it in ids } to Unit }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (offline: Exception) {
+                // Still listed: the next refresh tries again.
+            } finally {
+                eraseLock.unlock()
+            }
+        }
+    }
+
+    /**
+     * A session without commits of its own leaves nothing worth keeping in git: its clean
+     * worktree and its branch (never pushed, since branches go to GitHub with their first
+     * commit) are removed, so it never shows as unmerged work. Returns true when removed.
+     */
+    private suspend fun dropIfEmpty(session: SessionRecord): Boolean {
+        val project = env.projects.all.value.find { it.id == session.projectId } ?: return false
+        return try {
+            val refs = BareRefs(dirs.bareRepo(project.id))
+            val tip = refs.sha(HEADS + session.branch)
+            when {
+                refs.exists(ORIGIN + session.branch) -> false
+                tip != null && branchStats(session, project)?.first != 0 -> false
+                worktrees.isDirty(session) == true -> false
+                !worktrees.remove(session) -> false
+                tip == null -> true
+                else -> git.run(null, listOf("-C", AppDirs.guestBareRepo(project.id), "update-ref", "-d", HEADS + session.branch, tip)).ok
+            }
+        } catch (unavailable: SessionException) {
+            false
+        }
     }
 
     override suspend fun putOnMain(sessionId: String): PutOnMainResult {
@@ -282,14 +438,27 @@ internal class SessionManager(
 
     override suspend fun autosave(sessionId: String): String? = autosaver.save(sessionId)
 
-    override suspend fun refresh() = refreshLock.withLock {
-        val sessions = records.current().filterNot(::isErasing)
+    override suspend fun refresh() {
+        refreshLock.withLock {
+            active.current()
+            measureAll()
+        }
+        eraseInBackground()
+        saveUnpushedWork()
+    }
+
+    private suspend fun measureAll() {
+        val sessions = records.current()
         val found = transcripts.scan(sessions)
         val projects = env.projects.all.value.associateBy { it.id }
         val now = clock.now()
         val measured = HashMap<String, SessionRecord>()
         for (session in sessions) {
             try {
+                if (session.status == SessionStatus.DELETED) {
+                    leftoverPhoneCopy(session, found[session.id])
+                    continue
+                }
                 val updated = measure(session, found[session.id], projects[session.projectId], now)
                 if (updated != session) measured[session.id] = updated
             } catch (cancelled: CancellationException) {
@@ -298,35 +467,75 @@ internal class SessionManager(
                 // One unreadable session must not stop the others; it is measured again next time.
             }
         }
-        if (measured.isEmpty()) return@withLock
+        if (measured.isEmpty()) return
         records.update { list -> list.map { current -> measured[current.id]?.let { withMeasures(current, it) } ?: current } to Unit }
         measured.values.groupBy { it.projectId }.forEach { (projectId, list) ->
             env.projects.touched(projectId, list.maxOf { it.lastActivityAt })
         }
     }
 
+    /** A deleted chat whose phone copy was kept until Drive had all of it: it goes once Drive does. */
+    private suspend fun leftoverPhoneCopy(session: SessionRecord, transcript: SessionTranscript?) {
+        if (transcript != null && session.backUp && session.pendingBytes == 0L) removePhoneCopy(session)
+    }
+
+    /**
+     * Agents commit; only PocketIDE pushes (their rooms hold no GitHub credential). Every open
+     * session whose branch has commits GitHub does not have yet is saved, at most once per
+     * autosave window each.
+     */
+    private fun saveUnpushedWork() {
+        val projects = env.projects.all.value.associateBy { it.id }
+        for (session in records.flow.value) {
+            if (session.status != SessionStatus.OPEN || session.commits == 0 || projects[session.projectId] == null) continue
+            val refs = BareRefs(dirs.bareRepo(session.projectId))
+            val local = refs.sha(HEADS + session.branch) ?: continue
+            if (local == refs.sha(ORIGIN + session.branch)) continue
+            scope.launch { quietly { autosaver.save(session.id) } }
+        }
+    }
+
     override fun activeSession(agentId: String): String? {
         val sessionId = active.flow.value[agentId] ?: return null
-        return sessionId.takeIf { id -> records.flow.value.any { it.id == id && !isErasing(it) } }
+        return sessionId.takeIf { id -> records.flow.value.any { it.id == id } }
     }
 
     override fun largeTranscript(sessionId: String): Boolean = sessionId in large
 
     override suspend fun transcriptFiles(sessionId: String): List<File> {
         val session = session(sessionId)
-        return withContext(io) { transcriptOf(session)?.files().orEmpty() }
+        val home = dirs.roomHome(session.agentId)
+        return withContext(io) {
+            // Only what the one classification of agent files lets leave the room.
+            transcriptOf(session)?.files().orEmpty().filter { file ->
+                AgentFiles.classify(file.relativeTo(home).invariantSeparatorsPath) == FileClass.SYNC
+            }
+        }
     }
 
     override suspend fun adopt(records: List<SessionRecord>) {
-        this.records.update { list ->
+        val forever = erasing.current().toSet()
+        val (eraseNow, incoming) = records.filterNot { it.id in forever }
+            .partition { it.status == SessionStatus.DELETED && it.deletedAt == ERASE_NOW }
+        val deletedElsewhere = this.records.update { list ->
             val byId = LinkedHashMap<String, SessionRecord>()
             list.forEach { byId[it.id] = it }
-            for (incoming in records) {
-                if (byId[incoming.id]?.let(::isErasing) == true) continue
-                byId[incoming.id] = incoming
+            val deleted = ArrayList<SessionRecord>()
+            for (record in incoming) {
+                val local = byId[record.id]
+                if (local != null && local.status != SessionStatus.DELETED && record.status == SessionStatus.DELETED) deleted += local
+                byId[record.id] = record
             }
-            byId.values.sortedByDescending { it.startedAt } to Unit
+            byId.values.sortedByDescending { it.startedAt } to deleted
         }
+        // Another phone deleted these: Drive keeps them for Recently deleted, so the phone copy goes,
+        // unless part of it never reached Drive.
+        deletedElsewhere.filter { it.pendingBytes == 0L }.forEach { quietly { removePhoneCopy(it) } }
+        eraseNow.forEach { deleteForeverQuietly(it.id) }
+    }
+
+    private suspend fun deleteForeverQuietly(sessionId: String) = quietly {
+        if (records.current().any { it.id == sessionId }) deleteForever(sessionId)
     }
 
     override suspend fun erased(sessionIds: List<String>) {
@@ -335,6 +544,7 @@ internal class SessionManager(
             val (drop, keep) = list.partition { it.id in ids && it.status == SessionStatus.DELETED }
             keep to drop
         }
+        quietly { erasing.update { list -> list.filterNot { it in ids } to Unit } }
         gone.forEach {
             large.remove(it.id)
             autosaver.forget(it.id)
@@ -454,7 +664,7 @@ internal class SessionManager(
 
     /** The transcripts of [session]; all of its agent's sessions are needed to tell theirs apart. */
     private suspend fun transcriptOf(session: SessionRecord): SessionTranscript? {
-        val others = records.current().filter { it.agentId == session.agentId && it.id != session.id && !isErasing(it) }
+        val others = records.current().filter { it.agentId == session.agentId && it.id != session.id }
         return transcripts.scan(others + session)[session.id]
     }
 
@@ -478,7 +688,7 @@ internal class SessionManager(
     }
 
     private suspend fun pushBranch(sessionId: String): String? {
-        val session = records.current().find { it.id == sessionId && !isErasing(it) } ?: return NOT_HERE
+        val session = records.current().find { it.id == sessionId } ?: return NOT_HERE
         if (session.status == SessionStatus.ON_MAIN || session.status == SessionStatus.CONFLICT_COPY) return null
         val project = env.projects.all.value.find { it.id == session.projectId } ?: return "This chat's project is not on this phone."
         val bare = dirs.bareRepo(project.id)
@@ -528,14 +738,14 @@ internal class SessionManager(
         }
 
     private suspend fun session(sessionId: String): SessionRecord =
-        records.current().find { it.id == sessionId && !isErasing(it) } ?: throw SessionException(NOT_HERE)
+        records.current().find { it.id == sessionId } ?: throw SessionException(NOT_HERE)
 
     private fun project(projectId: String): Project =
         env.projects.all.value.find { it.id == projectId } ?: throw SessionException("This chat's project is not on this phone.")
 
     private suspend fun change(sessionId: String, edit: (SessionRecord) -> SessionRecord) {
         records.update { list ->
-            if (list.none { it.id == sessionId && !isErasing(it) }) throw SessionException(NOT_HERE)
+            if (list.none { it.id == sessionId }) throw SessionException(NOT_HERE)
             list.map { if (it.id == sessionId) edit(it) else it } to Unit
         }
     }
@@ -549,9 +759,6 @@ internal class SessionManager(
             // Best effort: nothing the owner has to act on.
         }
     }
-
-    private fun isErasing(session: SessionRecord) =
-        session.status == SessionStatus.DELETED && session.deletedAt == ERASE_NOW
 
     private fun cleanTitle(title: String) = oneLine(title, MAX_TITLE_CHARS)
 
@@ -573,6 +780,7 @@ internal class SessionManager(
         private const val MAX_COMMITS_SHOWN = 500
         private const val MEDIA_WAIT_MS = 5_000L
         private const val MEDIA_FOLDER = ".media"
+        private const val FROM_OWNER = "you"
         private const val NOT_HERE = "This chat is not on this phone."
         private const val CONFLICT_COPY_ONLY_READ = "This is a conflict copy. Read it here, or continue the original chat."
     }

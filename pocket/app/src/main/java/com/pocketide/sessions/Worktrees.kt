@@ -55,6 +55,26 @@ internal class Worktrees(private val git: LinuxGit, private val dirs: AppDirs) {
         if (!out.ok) throw SessionException("Could not open this session's folder: ${out.reason()}")
     }
 
+    /**
+     * Moves the session's branch up to GitHub's when another phone added commits to it (one phone
+     * works at a time), so the agent never goes on from older code. Only forward, and only when
+     * nothing on this phone is uncommitted or newer; anything else is left for the agent.
+     */
+    suspend fun catchUp(session: SessionRecord, project: Project) {
+        val refs = BareRefs(dirs.bareRepo(project.id))
+        val local = refs.sha(HEADS + session.branch) ?: return
+        val remote = refs.sha(ORIGIN + session.branch) ?: return
+        if (local == remote) return
+        val bare = AppDirs.guestBareRepo(project.id)
+        if (!git.run(null, listOf("-C", bare, "merge-base", "--is-ancestor", local, remote)).ok) return
+        if (!exists(session)) {
+            git.run(null, listOf("-C", bare, "update-ref", HEADS + session.branch, remote, local))
+        } else if (isDirty(session) == false) {
+            val guest = AppDirs.guestWorktree(project.id, session.id)
+            git.run(session.agentId, listOf("-C", guest, "merge", "--ff-only", "--quiet", ORIGIN + session.branch))
+        }
+    }
+
     /** Whether the worktree has changes that are not committed; null when there is no worktree. */
     suspend fun isDirty(session: SessionRecord): Boolean? {
         if (!exists(session)) return null
@@ -75,6 +95,21 @@ internal class Worktrees(private val git: LinuxGit, private val dirs: AppDirs) {
         if (git.run(session.agentId, listOf("-C", bare, "worktree", "remove", guest)).ok) return true
         git.run(session.agentId, listOf("-C", bare, "worktree", "lock", guest))
         return false
+    }
+
+    /**
+     * Removes the worktree of a chat erased for good, with whatever it held that was never
+     * committed; the branch keeps every commit. A folder git no longer knows goes as well.
+     */
+    suspend fun discard(session: SessionRecord) {
+        val folder = host(session)
+        if (exists(session)) {
+            val bare = AppDirs.guestBareRepo(session.projectId)
+            val guest = AppDirs.guestWorktree(session.projectId, session.id)
+            git.run(session.agentId, listOf("-C", bare, "worktree", "unlock", guest))
+            git.run(session.agentId, listOf("-C", bare, "worktree", "remove", "--force", guest))
+        }
+        if (!SafeFiles.delete(folder)) throw SessionException("Could not delete this session's folder.")
     }
 
     companion object {
