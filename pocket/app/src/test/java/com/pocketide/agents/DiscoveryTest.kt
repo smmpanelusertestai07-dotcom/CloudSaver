@@ -3,6 +3,7 @@ package com.pocketide.agents
 import com.pocketide.agents.Rule as Check
 import com.pocketide.core.Clock
 import com.pocketide.model.Decision
+import com.pocketide.sync.MeteredDataBudget
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -159,6 +160,19 @@ class VerifiedDownloadTest {
 
         assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }
         assertEquals(0L, recorded)
+    }
+
+    @Test
+    fun aDownloadThatWaitsForWiFiAsksTheOwnerWithItsSize() {
+        allowed = Decision.no(MeteredDataBudget.WAITS_FOR_WIFI)
+
+        val waits = assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }
+
+        val question = mobileDataQuestion(waits)
+        assertEquals(VerifiedDownload.DATA_KIND, question?.kind)
+        assertEquals(payload.size.toLong(), question?.bytes)
+        allowed = Decision.no("Today's mobile data limit is used up.")
+        assertEquals(null, mobileDataQuestion(assertThrows(DownloadWaits::class.java) { fetch(Expected(sha256 = OpenVsxFixture.sha256(payload))) }))
     }
 
     private fun get(expected: Expected): File = runBlocking { download.fetch(server.url("/pkg.vsix"), File(temp.root, "pkg.vsix"), expected) }

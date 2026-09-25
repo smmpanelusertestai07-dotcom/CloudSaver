@@ -2,6 +2,7 @@ package com.pocketide.agents
 
 import com.pocketide.core.await
 import com.pocketide.model.Decision
+import com.pocketide.sync.NeedsMobileData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -22,7 +23,14 @@ import java.security.MessageDigest
 internal class PackageRejected(message: String) : IOException(message)
 
 /** A download the data rules do not allow now (Wi-Fi only, daily limit). Tried again later. */
-internal class DownloadWaits(reason: String) : IOException(reason)
+internal class DownloadWaits(reason: String, question: NeedsMobileData? = null) : IOException(reason, question)
+
+/**
+ * The question behind [error] when a download the owner started waits for Wi-Fi: the screen asks
+ * "Download <size> on mobile data?", calls DataBudget.allowOnce on yes, then tries again.
+ */
+fun mobileDataQuestion(error: Throwable): NeedsMobileData? =
+    generateSequence(error) { it.cause }.filterIsInstance<NeedsMobileData>().firstOrNull()
 
 /** What a download must match. At least one digest is required. */
 internal data class Expected(
@@ -61,6 +69,8 @@ internal class VerifiedDownload(
     private val client: OkHttpClient,
     private val allow: (bytes: Long) -> Decision,
     private val record: (bytes: Long) -> Unit,
+    /** The data budget's name for these downloads, for the mobile-data question. */
+    private val dataKind: String = DATA_KIND,
 ) {
 
     suspend fun fetch(url: HttpUrl, target: File, expected: Expected, onProgress: (done: Long, total: Long) -> Unit = { _, _ -> }): File =
@@ -111,7 +121,9 @@ internal class VerifiedDownload(
             if (total > expected.maxBytes) throw PackageRejected("The download is larger than any agent package should be")
             if (expected.bytes != null && total >= 0 && total != expected.bytes) throw PackageRejected("The download has the wrong size")
             val decision = allow((total - have).coerceAtLeast(0))
-            if (!decision.allowed) throw DownloadWaits(decision.reason ?: "Waiting for Wi-Fi")
+            if (!decision.allowed) {
+                throw DownloadWaits(decision.reason ?: "Waiting for Wi-Fi", NeedsMobileData.of(decision, dataKind, (total - have).coerceAtLeast(0)))
+            }
 
             var done = have
             try {
@@ -193,6 +205,8 @@ internal class VerifiedDownload(
     }
 
     companion object {
+        /** Agent packages in the data budget's monthly usage. */
+        const val DATA_KIND = "agents"
         private const val BUFFER = 256 * 1024
         private const val PART = ".part"
         private const val HTTP_PARTIAL = 206
