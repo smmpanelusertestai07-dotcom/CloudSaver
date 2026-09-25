@@ -18,6 +18,7 @@ import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
+import java.util.Locale
 
 /**
  * GitHub App sign-in with the device flow, and the user token's life after it.
@@ -55,11 +56,16 @@ internal class DeviceFlowAuth(
     override val configured: Boolean get() = app().configured
 
     override suspend fun startDeviceFlow(): DeviceCode {
-        val reply = postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId()))
-        when (reply.error) {
+        val reply = try {
+            postForm(DEVICE_CODE_PATH, mapOf("client_id" to clientId()))
+        } catch (unknown: GitHubException) {
+            // GitHub answers a client ID it has no App for with 404: the owner typed a wrong one.
+            if (unknown.status == 404) throw GitHubException(GitHubText.BAD_CLIENT_ID, unknown.status) else throw unknown
+        }
+        when (reply.error?.lowercase(Locale.ROOT)) {
             null -> Unit
             "device_flow_disabled" -> throw GitHubException(GitHubText.DEVICE_FLOW_OFF, 200)
-            "incorrect_client_credentials" -> throw GitHubException(GitHubText.BAD_CLIENT_ID, 200)
+            "incorrect_client_credentials", "not found", "not_found" -> throw GitHubException(GitHubText.BAD_CLIENT_ID, 200)
             else -> throw GitHubException(GitHubText.SIGN_IN_FAILED, 200)
         }
         val deviceCode = reply.deviceCode
