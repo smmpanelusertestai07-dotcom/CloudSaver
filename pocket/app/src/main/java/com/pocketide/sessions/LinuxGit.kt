@@ -10,6 +10,7 @@ import com.pocketide.sessions.transcripts.oneLine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.Collections
 
@@ -79,11 +80,16 @@ internal class LinuxGit(
         }
         val lines = Collections.synchronizedList(ArrayList<String>())
         val exitCode = try {
-            linux.run(LinuxCommand(SAFE_GIT + args, binds, env, workDir = "/", mergeErrors = errors)) { line ->
-                if (lines.size < MAX_LINES) lines += line
-            }
+            // A git that hangs inside Linux must not hold a project's lock for ever.
+            withTimeoutOrNull(TIMEOUT_MS) {
+                linux.run(LinuxCommand(SAFE_GIT + args, binds, env, workDir = "/", mergeErrors = errors)) { line ->
+                    if (lines.size < MAX_LINES) lines += line
+                }
+            } ?: throw SessionException("Git did not finish in time inside the computer. Try again.")
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (known: SessionException) {
+            throw known
         } catch (failed: Exception) {
             throw SessionException("The computer could not run git: ${failed.message ?: failed.javaClass.simpleName}")
         }
@@ -98,6 +104,7 @@ internal class LinuxGit(
     private companion object {
         const val MAX_LINES = 5_000
         const val MAX_REASON_CHARS = 200
+        const val TIMEOUT_MS = 10 * 60 * 1000L
         val SAFE_GIT = listOf(
             "git",
             "-c", "core.hooksPath=/dev/null",

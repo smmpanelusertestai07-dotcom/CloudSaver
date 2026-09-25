@@ -16,8 +16,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -82,7 +80,7 @@ internal class ProjectRegistry(
         trustState.update { it + (projectId to trust) to Unit }
     }
 
-    override suspend fun ensureCloned(projectId: String) {
+    override suspend fun ensureCloned(projectId: String) = withContext(io) {
         val project = find(projectId)
         if (isCloned(project.id)) {
             try {
@@ -92,7 +90,7 @@ internal class ProjectRegistry(
             } catch (offline: Exception) {
                 // The clone on the phone is used as it is; agents keep working offline.
             }
-            return
+            return@withContext
         }
         cloneLocks.computeIfAbsent(project.id) { Mutex() }.withLock {
             if (!isCloned(project.id)) clone(project)
@@ -101,7 +99,7 @@ internal class ProjectRegistry(
 
     override suspend fun fetch(projectId: String) {
         val project = find(projectId)
-        if (isCloned(project.id)) fetchNow(project) else ensureCloned(projectId)
+        if (withContext(io) { isCloned(project.id) }) fetchNow(project) else ensureCloned(projectId)
     }
 
     override suspend fun remove(projectId: String) {
@@ -118,12 +116,14 @@ internal class ProjectRegistry(
     override fun touched(projectId: String) = touched(projectId, clock.now())
 
     override fun touched(projectId: String, at: Long) {
+        // A time ahead of the clock (a wrong date inside Linux) would hold the project's caches forever.
+        val stamp = minOf(at, clock.now())
         scope.launch {
             quietly {
                 state.update { list ->
                     list.map { p ->
                         // Minute steps are enough for day-long retention rules and spare the disk.
-                        if (p.id == projectId && at >= p.lastActivityAt + TOUCH_STEP_MS) p.copy(lastActivityAt = at) else p
+                        if (p.id == projectId && stamp >= p.lastActivityAt + TOUCH_STEP_MS) p.copy(lastActivityAt = stamp) else p
                     } to Unit
                 }
             }
@@ -194,21 +194,16 @@ internal class ProjectRegistry(
         }
         val token = network { env.gitHubAuth.token() }
         val bare = dirs.bareRepo(project.id)
-        // The clone is made under another name and renamed at the end, so an interrupted clone
-        // never looks like a finished one.
-        val partial = File(dirs.repos, ".${bare.name}.partial")
+        // The gate builds a clone out of Linux's sight and moves it into this exact place only
+        // when it is complete (it refuses any other place), so what is here now is no clone.
         withContext(io) {
-            SafeFiles.delete(partial)
+            dropUnfinished(bare)
             if (!dirs.repos.isDirectory && !dirs.repos.mkdirs()) throw ProjectException("Could not create the projects folder.")
         }
         try {
-            network { env.git.clone(info.cloneUrl, partial, token) }
-            withContext(io) {
-                if (SafeFiles.exists(bare)) SafeFiles.delete(bare)
-                Files.move(partial.toPath(), bare.toPath(), StandardCopyOption.ATOMIC_MOVE)
-            }
+            network { env.git.clone(info.cloneUrl, bare, token) }
         } catch (failure: Throwable) {
-            withContext(NonCancellable + io) { SafeFiles.delete(partial) }
+            withContext(NonCancellable + io) { dropUnfinished(bare) }
             throw failure
         }
         env.dataBudget.record(bytes, "clone")
@@ -232,6 +227,11 @@ internal class ProjectRegistry(
         state.current().find { it.id == projectId } ?: throw ProjectException("This project is not on this phone.")
 
     private fun isCloned(projectId: String) = BareRefs(dirs.bareRepo(projectId)).isCloned()
+
+    /** An unfinished clone (a removal cut short, a clone that failed) is not worth keeping. */
+    private fun dropUnfinished(bare: File) {
+        if (SafeFiles.exists(bare) && !BareRefs(bare).isCloned()) SafeFiles.delete(bare)
+    }
 
     private fun withCloneState(projects: List<Project>) = projects.map { it.copy(cloned = isCloned(it.id)) }
 

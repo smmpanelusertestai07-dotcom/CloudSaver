@@ -165,20 +165,22 @@ class ProjectRegistryTest {
     }
 
     @Test
-    fun `projects are kept across restarts and touched only forward`() = runBlocking<Unit> {
+    fun `projects are kept across restarts and touched only forward, never past the clock`() = runBlocking<Unit> {
         val projects = registry()
         env.gitHub.reachable["bob/tool"] = repoInfo("bob", "tool")
         val project = projects.import("bob/tool", "")
 
-        projects.touched(project.id, now + 3_600_000)
-        projects.touched(project.id, now + 1_000)
+        now += 3_600_000
+        projects.touched(project.id, now)
+        projects.touched(project.id, now - 3_599_000)
+        projects.touched(project.id, now + 400L * 24 * 3_600_000)
         val until = System.currentTimeMillis() + 5_000
-        while (projects.all.value.single().lastActivityAt != now + 3_600_000 && System.currentTimeMillis() < until) Thread.sleep(10)
+        while (projects.all.value.single().lastActivityAt != now && System.currentTimeMillis() < until) Thread.sleep(10)
         Thread.sleep(100)
 
         val again = registry()
         again.adopt(emptyList())
-        assertEquals(now + 3_600_000, again.all.value.single().lastActivityAt)
+        assertEquals("a time from the future counts as now", now, again.all.value.single().lastActivityAt)
         assertEquals("bob", again.all.value.single().owner)
     }
 
