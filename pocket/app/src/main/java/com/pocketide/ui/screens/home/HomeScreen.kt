@@ -79,12 +79,14 @@ import com.pocketide.model.SessionRecord
 import com.pocketide.model.SessionStatus
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.DataUsage
+import com.pocketide.sync.PhoneSpace
 import com.pocketide.sync.SessionBackup
 import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.components.toneColor
 import com.pocketide.ui.manage.BackgroundLimitNote
+import com.pocketide.ui.manage.PhoneSpaceNotice
 import com.pocketide.ui.manage.StopBanner
 import com.pocketide.ui.manage.Told
 import com.pocketide.ui.manage.WorkText
@@ -125,6 +127,7 @@ fun HomeScreen(nav: PocketNav) {
     val work by graph.limiter.work.collectAsStateWithLifecycle()
     val backups by graph.sync.backups.collectAsStateWithLifecycle()
     val backgroundLimit by graph.sync.backgroundLimit.collectAsStateWithLifecycle()
+    val storage by graph.sync.storage.collectAsStateWithLifecycle()
     val now by rememberTicker(graph.clock::now)
 
     var newProject by remember { mutableStateOf(false) }
@@ -199,6 +202,17 @@ fun HomeScreen(nav: PocketNav) {
                     Banner(Icons.Filled.CloudUpload, text, tone) {
                         TextButton(onClick = nav::waitingUploads) { Text("See what's waiting") }
                     }
+                }
+            }
+            if (storage.phone != PhoneSpace.OK) {
+                item(key = "phone-space") {
+                    PhoneSpaceNotice(
+                        storage,
+                        clean = graph.sync::cleanNow,
+                        onRaise = nav::settings,
+                        onLargest = nav::yourData,
+                        say = { text -> scope.launch { snackbar.showSnackbar(text) } },
+                    )
                 }
             }
             item(key = "phone") { PhoneStrip(phone, usage, onOpen = nav::computer) }

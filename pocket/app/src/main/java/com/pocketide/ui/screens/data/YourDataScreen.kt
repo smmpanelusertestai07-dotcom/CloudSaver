@@ -60,6 +60,7 @@ import com.pocketide.model.AgentInfo
 import com.pocketide.model.ObjectKind
 import com.pocketide.model.SessionRecord
 import com.pocketide.sync.MoveState
+import com.pocketide.sync.PhoneSpace
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.SectionCard
 import com.pocketide.ui.components.StatusChip
@@ -78,6 +79,7 @@ import com.pocketide.ui.manage.ManageText
 import com.pocketide.ui.manage.MemoryFile
 import com.pocketide.ui.manage.MemoryFiles
 import com.pocketide.ui.manage.NavRow
+import com.pocketide.ui.manage.PhoneSpaceNotice
 import com.pocketide.ui.manage.SectionLabel
 import com.pocketide.ui.manage.ToneLine
 import com.pocketide.ui.manage.attempt
@@ -146,6 +148,11 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
     val largest = remember(sessions) { DataMath.largestSessions(sessions) }
 
     ManagePage("Your data", nav, runner) {
+        if (storage.phone != PhoneSpace.OK) {
+            item {
+                PhoneSpaceNotice(storage, clean = graph.sync::cleanNow, onRaise = nav::settings, onLargest = null, say = runner::say)
+            }
+        }
         item { SectionLabel("Where it lives") }
         item {
             SectionCard(null) {

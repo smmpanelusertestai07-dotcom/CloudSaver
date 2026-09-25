@@ -220,6 +220,13 @@ interface SyncEngine {
     /** Erases the old account's copy once a move is finished and the owner agreed. */
     suspend fun eraseOldAccountCopy()
 
+    /**
+     * "Clean now" when PocketIDE's share of the phone fills up (§6.5): idle caches that are rebuilt
+     * when needed, temp files, logs and old build outputs go at once. Returns the bytes freed;
+     * [storage] shows the new level.
+     */
+    suspend fun cleanNow(): Long = 0L
+
     /** "Delete forever": erases these sessions' files from Drive now (or at the next connection). */
     suspend fun eraseForever(sessionIds: List<String>)
 

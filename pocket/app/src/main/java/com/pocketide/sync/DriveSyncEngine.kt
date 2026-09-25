@@ -128,6 +128,8 @@ internal class DriveSyncEngine(private val ports: SyncPorts) : SyncEngine {
         act { run -> mover.eraseOld(run) }
     }
 
+    override suspend fun cleanNow(): Long = act { run -> maintenance.cleanNow(run) }
+
     override suspend fun eraseForever(sessionIds: List<String>) {
         act { run ->
             run.state = run.state.copy(eraseQueue = run.state.eraseQueue + sessionIds)
