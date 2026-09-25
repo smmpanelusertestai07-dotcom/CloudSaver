@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -277,7 +278,7 @@ private fun ChangesList(changes: SessionChanges, onOpen: (String) -> Unit) {
 /** Renames a session; the new title is synced with it. */
 @Composable
 fun RenameDialog(session: SessionRecord, onDone: (String) -> Unit, onDismiss: () -> Unit) {
-    var title by remember(session.id) { mutableStateOf(session.title) }
+    var title by rememberSaveable(session.id) { mutableStateOf(session.title) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename chat") },

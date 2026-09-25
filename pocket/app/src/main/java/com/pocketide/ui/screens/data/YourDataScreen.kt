@@ -122,7 +122,8 @@ private const val ERASE_OLD = "erase-old-account"
 fun YourDataScreen(nav: PocketNav) {
     val graph = rememberGraph()
     val agents by graph.agents.installed.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf<MemoryFile?>(null) }
+    // Saved: the app lock re-arming replaces the screen while the owner is away, and the editor must stay open.
+    var editing by rememberSaveable(stateSaver = MemoryFileSaver) { mutableStateOf<MemoryFile?>(null) }
     val file = editing
     val agent = file?.let { f -> agents.firstOrNull { it.id == f.agentId } }
     if (file != null) {

@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,8 +61,8 @@ import kotlinx.coroutines.launch
 internal fun NewProjectDialog(onDismiss: () -> Unit, onCreated: (String) -> Unit) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val nameProblem = if (name.isEmpty()) null else repoNameProblem(name)
@@ -130,14 +131,15 @@ internal fun ImportSheet(
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
     var repos by remember { mutableStateOf<Result<List<RepoInfo>>?>(null) }
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var importing by remember { mutableStateOf<String?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     // Where to add a repository PocketIDE cannot reach yet; the one from the refusal wins.
     var addUrl by remember { mutableStateOf<String?>(null) }
     // The repository to import again once the owner is back from adding it on GitHub.
     var refused by remember { mutableStateOf<RepoAddress?>(null) }
-    var awaitingReturn by remember { mutableStateOf<RepoAddress?>(null) }
+    // Saved as "owner/repo": the trip to GitHub may outlast the app lock's grace.
+    var awaitingReturn by rememberSaveable { mutableStateOf<String?>(null) }
     val installUrl = remember { runCatching { graph.gitHubAuth.installUrl() }.getOrNull() }
     val account by graph.gitHubAuth.account.collectAsStateWithLifecycle()
 
@@ -163,10 +165,10 @@ internal fun ImportSheet(
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        val address = awaitingReturn ?: return@LifecycleEventEffect
+        val label = awaitingReturn ?: return@LifecycleEventEffect
         awaitingReturn = null
-        val label = "${address.owner}/${address.repo}"
-        import(label, address.owner, address.repo, label)
+        val (owner, repo) = label.split('/', limit = 2)
+        import(label, owner, repo, label)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -183,7 +185,7 @@ internal fun ImportSheet(
             problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             addUrl?.let { url ->
                 TextButton(onClick = {
-                    awaitingReturn = refused
+                    awaitingReturn = refused?.let { "${it.owner}/${it.repo}" }
                     onAddRepositories(url)
                 }) { Text(if (refused != null) "Add it to PocketIDE on GitHub, then come back" else "Add it to PocketIDE on GitHub") }
             }

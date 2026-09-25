@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,8 +79,10 @@ fun SchedulesScreen(projectId: String?, nav: PocketNav) {
     val agents = remember(installed) { installed.filter { it.official } }
     val snapshot by graph.phone.snapshot.collectAsStateWithLifecycle()
     val tasks = remember(all, projectId) { all.filter { projectId == null || it.projectId == projectId }.sortedBy { it.title.lowercase() } }
-    var editing by remember { mutableStateOf<ScheduledTask?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    // The open editor is saved by task id: the app lock re-arming replaces the screen while the owner is away.
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val editing = all.firstOrNull { it.id == editingId }
+    var adding by rememberSaveable { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<ScheduledTask?>(null) }
     var refused by remember { mutableStateOf<String?>(null) }
 
@@ -119,7 +122,7 @@ fun SchedulesScreen(projectId: String?, nav: PocketNav) {
                 runner = runner,
                 onToggle = { on -> runner.run("save:${task.id}") { graph.schedules.save(task.copy(enabled = on)) } },
                 onRun = { runNow(task) },
-                onEdit = { editing = task },
+                onEdit = { editingId = task.id },
                 onDelete = { deleting = task },
                 onOpenSession = nav::transcript,
             )
@@ -134,11 +137,11 @@ fun SchedulesScreen(projectId: String?, nav: PocketNav) {
             agents = agents,
             onDismiss = {
                 adding = false
-                editing = null
+                editingId = null
             },
             onSave = { task ->
                 adding = false
-                editing = null
+                editingId = null
                 runner.run("save:${task.id}", done = "\"${task.title}\" saved.") { graph.schedules.save(task) }
             },
         )
@@ -225,12 +228,13 @@ private fun TaskEditor(
     onDismiss: () -> Unit,
     onSave: (ScheduledTask) -> Unit,
 ) {
-    var projectId by remember { mutableStateOf(existing?.projectId ?: fixedProjectId ?: projects.singleOrNull()?.id) }
-    var agentId by remember { mutableStateOf(existing?.agentId?.takeIf { id -> agents.any { it.id == id } } ?: agents.firstOrNull()?.id) }
-    var title by remember { mutableStateOf(existing?.title.orEmpty()) }
-    var prompt by remember { mutableStateOf(existing?.prompt.orEmpty()) }
-    var hours by remember { mutableStateOf((existing?.everyHours ?: 24).toString()) }
-    var tried by remember { mutableStateOf(false) }
+    val key = existing?.id
+    var projectId by rememberSaveable(key) { mutableStateOf(existing?.projectId ?: fixedProjectId ?: projects.singleOrNull()?.id) }
+    var agentId by rememberSaveable(key) { mutableStateOf(existing?.agentId?.takeIf { id -> agents.any { it.id == id } } ?: agents.firstOrNull()?.id) }
+    var title by rememberSaveable(key) { mutableStateOf(existing?.title.orEmpty()) }
+    var prompt by rememberSaveable(key) { mutableStateOf(existing?.prompt.orEmpty()) }
+    var hours by rememberSaveable(key) { mutableStateOf((existing?.everyHours ?: 24).toString()) }
+    var tried by rememberSaveable(key) { mutableStateOf(false) }
     val problem = ScheduleForm.problem(title, prompt, hours.toIntOrNull(), projectId, agentId)
 
     AlertDialog(

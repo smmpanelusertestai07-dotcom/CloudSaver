@@ -141,7 +141,7 @@ fun ProjectScreen(projectId: String, nav: PocketNav) {
     val selected = sessions.firstOrNull { it.id == chosenId } ?: defaultSession(sessions)
     var cloneProblem by remember(projectId) { mutableStateOf<String?>(null) }
     var cloneTries by remember(projectId) { mutableIntStateOf(0) }
-    var creating by remember { mutableStateOf(false) }
+    var creating by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
 
     var askMobileData by remember(projectId) { mutableStateOf<NeedsMobileData?>(null) }
@@ -525,9 +525,9 @@ fun NewSessionDialog(
 ) {
     val graph = rememberGraph()
     val scope = rememberCoroutineScope()
-    var projectId by remember { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
-    var agentId by remember { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
-    var title by remember { mutableStateOf("") }
+    var projectId by rememberSaveable { mutableStateOf(initialProjectId ?: projects.firstOrNull()?.id) }
+    var agentId by rememberSaveable { mutableStateOf(initialAgentId ?: agents.firstOrNull()?.id) }
+    var title by rememberSaveable { mutableStateOf("") }
     var starting by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val decision = remember(agentId) { agentId?.let { id -> runCatching { graph.limiter.canStartAgent(id) }.getOrNull() } }
@@ -649,7 +649,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var stopping by remember { mutableStateOf(false) }
     var immersive by rememberSaveable(sessionId) { mutableStateOf(false) }
     var handOffTo by remember(sessionId) { mutableStateOf<AgentInfo?>(null) }
-    var renamingBranch by remember(sessionId) { mutableStateOf(false) }
+    var renamingBranch by rememberSaveable(sessionId) { mutableStateOf(false) }
     var addingFile by remember(sessionId) { mutableStateOf(false) }
     val name = agentName(agent, agentId)
     val sleepText = sleepsSoon(name, sleeps[agentId], now)

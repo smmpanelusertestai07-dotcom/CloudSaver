@@ -135,9 +135,11 @@ fun HomeScreen(nav: PocketNav) {
     val restorePending by rememberRestoreOffer().pending.collectAsStateWithLifecycle()
     var restorePlanOpen by rememberSaveable { mutableStateOf(false) }
 
-    var newProject by remember { mutableStateOf(false) }
-    var importing by remember { mutableStateOf(false) }
-    var agentSheet by remember { mutableStateOf<AgentInfo?>(null) }
+    // Open dialogs are saved: the app lock re-arming replaces the whole screen while the owner is away.
+    var newProject by rememberSaveable { mutableStateOf(false) }
+    var importing by rememberSaveable { mutableStateOf(false) }
+    var agentSheetId by rememberSaveable { mutableStateOf<String?>(null) }
+    val agentSheet = agents.firstOrNull { it.id == agentSheetId }
     var removing by remember { mutableStateOf<Project?>(null) }
     val context = LocalContext.current
 
@@ -249,7 +251,7 @@ fun HomeScreen(nav: PocketNav) {
 
             item(key = "agents-label") { SectionLabel("Agents") }
             items(agents, key = { "agent:${it.id}" }) { agent ->
-                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheet = agent }
+                AgentCard(agent, rooms[agent.id], WorkText.chips(agent.displayName, work[agent.id], now), onUsage = nav::openExternal) { agentSheetId = agent.id }
             }
             item(key = "more-agents") {
                 TextButton(onClick = nav::moreAgents) {
@@ -276,8 +278,8 @@ fun HomeScreen(nav: PocketNav) {
             agent = agent,
             projects = projects,
             sessions = sessions,
-            onDismiss = { agentSheet = null },
-            onOpenSession = { id -> agentSheet = null; nav.agent(id) },
+            onDismiss = { agentSheetId = null },
+            onOpenSession = { id -> agentSheetId = null; nav.agent(id) },
         )
     }
     removing?.let { project ->
@@ -521,7 +523,7 @@ private fun AgentStart(
     val active = remember(agent.id, sessions) {
         runCatching { graph.sessions.activeSession(agent.id) }.getOrNull()?.let { id -> sessions.firstOrNull { it.id == id } }
     }
-    var starting by remember { mutableStateOf(active == null) }
+    var starting by rememberSaveable(agent.id) { mutableStateOf(active == null) }
     if (projects.isEmpty()) {
         AlertDialog(
             onDismissRequest = onDismiss,

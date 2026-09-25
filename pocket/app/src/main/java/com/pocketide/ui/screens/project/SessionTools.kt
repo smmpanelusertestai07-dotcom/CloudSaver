@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -122,7 +123,7 @@ private fun copyText(context: Context, label: String, text: String) {
 fun RenameBranchDialog(session: SessionRecord, snackbar: SnackbarHostState, scope: CoroutineScope, onDismiss: () -> Unit) {
     val graph = rememberGraph()
     val prefix = BranchName.prefix(session.branch)
-    var name by remember(session.id) { mutableStateOf(BranchName.tail(session.branch)) }
+    var name by rememberSaveable(session.id) { mutableStateOf(BranchName.tail(session.branch)) }
     val clean = name.trim()
     AlertDialog(
         onDismissRequest = onDismiss,
