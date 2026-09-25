@@ -104,6 +104,22 @@ interface Rooms {
     fun takesPrompts(agentId: String): Boolean = false
 
     /**
+     * Runs [argv] to its end in [agentId]'s room (a scheduled task's agent CLI), as the room's own
+     * programs run: the room's binds and environment (the project's Variables, reserved names left
+     * out), through the room's launcher, with the phone bridge up so PocketIDE's tools answer. The
+     * room counts as busy meanwhile, so it is not put to sleep under the run. [programEnv] is the
+     * program's own settings. Returns the exit code; throws with a plain sentence when it cannot run.
+     */
+    suspend fun runHeadless(
+        agentId: String,
+        projectId: String,
+        argv: List<String>,
+        workDir: String,
+        programEnv: Map<String, String>,
+        onLine: (String) -> Unit,
+    ): Int = throw IllegalStateException("The agent's room cannot run programs yet.")
+
+    /**
      * For "Delete everything": stops every room, then runs each signed-in agent's own sign-out in
      * its room, so the vendor ends that sign-in too. Returns one sentence per agent it tried.
      */

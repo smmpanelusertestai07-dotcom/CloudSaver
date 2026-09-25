@@ -288,6 +288,22 @@ class GitHubRestApiTest {
     }
 
     @Test
+    fun `a session's pull request is found by its branch, merged or not`() = runBlocking {
+        server.enqueue(json("""[{"number":7,"html_url":"https://github.com/octo/demo/pull/7","state":"closed","merged_at":"2026-09-24T08:00:00Z"}]"""))
+        val pr = api.pullRequestFor("octo", "demo", "pocket/claude/login")!!
+        assertEquals(7, pr.number)
+        assertTrue("a list gives merged_at, not merged", pr.merged)
+        val lookup = server.next().url
+        assertEquals("/repos/octo/demo/pulls", lookup.encodedPath)
+        assertEquals("octo:pocket/claude/login", lookup.queryParameter("head"))
+        assertEquals("all", lookup.queryParameter("state"))
+        assertEquals("desc", lookup.queryParameter("direction"))
+
+        server.enqueue(json("[]"))
+        assertEquals(null, api.pullRequestFor("octo", "demo", "pocket/claude/other"))
+    }
+
+    @Test
     fun `merge reports false when GitHub cannot merge`() = runBlocking {
         server.enqueue(json("""{"sha":"6dcb09b","merged":true,"message":"Pull Request successfully merged"}"""))
         assertTrue(api.mergePullRequest("octo", "demo", 5, "squash"))

@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pocketide.AppGraph
+import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ResetPlan
 import com.pocketide.model.SessionStatus
 import com.pocketide.sync.SyncStatus
@@ -79,6 +80,8 @@ internal fun ResetComputerDialogs(graph: AppGraph, onClose: () -> Unit, onNotice
             return
         }
         step = ResetStep.Saving
+        // From the tap, while Android allows it: the reset runs on when the owner leaves the app.
+        EngineService.start(graph.context)
         graph.scope.launch {
             try {
                 val problems = if (saveFirst) saveBeforeReset(graph) else emptyList()
@@ -90,6 +93,8 @@ internal fun ResetComputerDialogs(graph: AppGraph, onClose: () -> Unit, onNotice
                     onClose()
                     onNotice(ResetText.STARTED, Tone.OK)
                 }
+                // Saving may outlast the service's short wait for work; asking again costs nothing.
+                EngineService.start(graph.context)
                 graph.computer.reset()
             } catch (e: CancellationException) {
                 throw e

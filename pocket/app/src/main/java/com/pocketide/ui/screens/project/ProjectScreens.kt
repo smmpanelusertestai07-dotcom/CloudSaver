@@ -409,7 +409,7 @@ private fun SessionsTab(
     }
 
     putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onOpenSession = nav::agent) }
-    changes?.let { ChangesSheet(it, onDismiss = { changes = null }) }
+    changes?.let { ChangesSheet(it, onOpen = nav::openExternal, onDismiss = { changes = null }) }
     deleting?.let { session ->
         ConfirmDialog(
             title = "Delete \"${session.title}\"?",
@@ -742,7 +742,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
         }
     }
 
-    if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
+    if (showChanges) ChangesSheet(session, onOpen = nav::openExternal, onDismiss = { showChanges = false })
     if (putting) PutOnMainFlow(session, onClose = { putting = false })
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })

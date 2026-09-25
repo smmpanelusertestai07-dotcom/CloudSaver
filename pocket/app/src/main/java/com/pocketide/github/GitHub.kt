@@ -186,4 +186,10 @@ interface GitHubApi {
 
     /** The job's log: runner image and last lines. Null when GitHub no longer has it. */
     suspend fun jobLog(owner: String, name: String, jobId: Long): JobLog? = null
+
+    /**
+     * The newest pull request from the branch [head] of this repository, open, merged or closed
+     * (a session's pull request, found by its branch); null when there is none.
+     */
+    suspend fun pullRequestFor(owner: String, name: String, head: String): PullRequest? = null
 }

@@ -18,13 +18,16 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /**
- * The special-use foreground service that keeps the computer alive while agents run, and only
- * then: it stops itself once no room runs. Its notification lists the running agents and holds
- * "Stop everything". A partial wake lock is held only while an agent is working, and always
- * with a timeout, so a stuck "working" can never keep the phone awake for long.
+ * The special-use foreground service that keeps the computer alive while agents run or the
+ * computer itself is being set up, reset, repaired or updated, and only then: it stops itself
+ * once none of that is left. Its notification lists the running agents and the computer's work,
+ * and holds "Stop everything". A partial wake lock is held only while an agent or the computer
+ * is working, and always with a timeout, so a stuck "working" can never keep the phone awake
+ * for long.
  *
  * specialUse, not dataSync: dataSync is limited to 6 hours a day from Android 15 and cannot
  * start after a reboot; specialUse has neither limit.
@@ -43,7 +46,7 @@ class EngineService : Service() {
             return START_NOT_STICKY
         }
         // Android requires this promptly after startForegroundService.
-        if (!promote(EngineNotices.running(this, emptyList()))) {
+        if (!promote(EngineNotices.running(this, EngineLoad(emptyList(), null)))) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -63,21 +66,22 @@ class EngineService : Service() {
         watching = true
         val graph = applicationContext.graph
         scope.launch {
-            combine(graph.rooms.states, graph.limiter.work) { states, work -> states to work }.collectLatest { (states, work) ->
-                val running = states.filterValues { it is RoomState.Running || it is RoomState.Starting }.keys
-                if (running.isEmpty()) {
+            combine(graph.rooms.states, graph.limiter.work, graph.computer.state) { states, work, computer ->
+                val lines = EngineLoad.running(states).sorted().map { id ->
+                    val name = graph.agents.find(id)?.displayName ?: EngineNotices.defaultName(id)
+                    EngineLoad.Line(name, working = work[id]?.busy?.isNotEmpty() == true, starting = states[id] is RoomState.Starting)
+                }
+                EngineLoad(lines, EngineLoad.computerWork(computer))
+            }.distinctUntilChanged().collectLatest { load ->
+                if (load.idle) {
                     releaseWakeLock()
-                    // A room between stop and start (a restart) should not take the service down with it.
+                    // A room between stop and start (a restart), or set-up about to begin, should not take the service down with it.
                     delay(EMPTY_GRACE_MS)
                     stopSelf()
                     return@collectLatest
                 }
-                val lines = running.sorted().map { id ->
-                    val name = graph.agents.find(id)?.displayName ?: EngineNotices.defaultName(id)
-                    EngineNotices.Line(name, working = work[id]?.busy?.isNotEmpty() == true, starting = states[id] is RoomState.Starting)
-                }
-                promote(EngineNotices.running(this@EngineService, lines))
-                if (lines.any { it.working }) keepAwake() else releaseWakeLock()
+                promote(EngineNotices.running(this@EngineService, load))
+                if (load.working) keepAwake() else releaseWakeLock()
             }
         }
     }
@@ -134,8 +138,9 @@ class EngineService : Service() {
         private const val EMPTY_GRACE_MS = 15_000L
 
         /**
-         * Starts the engine's foreground service. Call it when a room starts, ideally from the
-         * screen the owner is on: Android 12+ refuses a start from the background (false then).
+         * Starts the engine's foreground service. Call it when a room starts, or right before the
+         * computer is set up, reset or repaired, ideally from the tap that asked for it: Android
+         * 12+ refuses a start from the background (false then).
          */
         fun start(context: Context): Boolean = try {
             ContextCompat.startForegroundService(context, Intent(context, EngineService::class.java))

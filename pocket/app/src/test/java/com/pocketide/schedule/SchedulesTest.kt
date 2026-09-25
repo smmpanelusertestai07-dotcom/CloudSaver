@@ -3,7 +3,6 @@ package com.pocketide.schedule
 import androidx.work.NetworkType
 import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
-import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -118,11 +117,13 @@ class ScheduledRunTest {
 
         assertTrue(outcome.succeeded)
         assertEquals("s-new", outcome.sessionId)
-        val command = ports.commands.single()
-        assertEquals("/work/alice__demo/s-new", command.workDir)
-        assertEquals(mapOf("API_BASE" to "https://staging"), command.env)
-        assertTrue(command.binds.any { it.guestPath == "/root" && it.hostPath.endsWith("rooms/claude/home") })
-        assertTrue(command.binds.none { it.hostPath.contains("rooms/codex") })
+        // The room decides the binds, the environment and the launcher, as for its other programs.
+        val run = ports.runs.single()
+        assertEquals("claude", run.agentId)
+        assertEquals("alice/demo", run.projectId)
+        assertEquals("/work/alice__demo/s-new", run.workDir)
+        assertEquals(HeadlessCommand.argv("claude", "run the tests", "/work/alice__demo/s-new"), run.argv)
+        assertEquals(HeadlessCommand.env("claude"), run.programEnv)
 
         val saved = ports.saved.single()
         assertEquals("s-new", saved.first)
@@ -155,7 +156,7 @@ class ScheduledRunTest {
             fail("the limiter must be asked")
         } catch (expected: ScheduleException) {
             assertEquals("The battery is low.", expected.message)
-            assertTrue(ports.commands.isEmpty())
+            assertTrue(ports.runs.isEmpty())
             assertNull(ports.started)
         }
     }
@@ -170,13 +171,15 @@ class ScheduledRunTest {
         }
     }
 
-    internal class FakeRunPorts(override val dirs: AppDirs) : RunPorts {
+    internal data class RoomRun(val agentId: String, val projectId: String, val argv: List<String>, val workDir: String, val programEnv: Map<String, String>)
+
+    internal class FakeRunPorts(private val dirs: AppDirs) : RunPorts {
         override val clock = Clock { 1_000L }
         var lines = emptyList<String>()
         var hang = false
         var refusal: String? = null
         var started: String? = null
-        val commands = mutableListOf<LinuxCommand>()
+        val runs = mutableListOf<RoomRun>()
         val saved = mutableListOf<Pair<String, String>>()
         val recorded = mutableListOf<Pair<String, String>>()
         val notices = mutableListOf<Pair<String, String>>()
@@ -192,9 +195,15 @@ class ScheduledRunTest {
             return record("s-new")
         }
         override fun session(sessionId: String) = record(sessionId)
-        override suspend fun variables(projectId: String, agentId: String) = mapOf("API_BASE" to "https://staging")
-        override suspend fun runInLinux(command: LinuxCommand, onLine: (String) -> Unit): Int {
-            commands += command
+        override suspend fun runInRoom(
+            agentId: String,
+            projectId: String,
+            argv: List<String>,
+            workDir: String,
+            programEnv: Map<String, String>,
+            onLine: (String) -> Unit,
+        ): Int {
+            runs += RoomRun(agentId, projectId, argv, workDir, programEnv)
             lines.forEach(onLine)
             if (hang) awaitCancellation()
             return 0

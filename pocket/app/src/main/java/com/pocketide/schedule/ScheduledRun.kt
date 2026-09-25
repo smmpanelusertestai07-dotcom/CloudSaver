@@ -4,8 +4,6 @@ import com.pocketide.core.AppDirs
 import com.pocketide.core.Clock
 import com.pocketide.core.Ist
 import com.pocketide.core.Redact
-import com.pocketide.linux.Bind
-import com.pocketide.linux.LinuxCommand
 import com.pocketide.model.SessionRecord
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -19,16 +17,23 @@ class ScheduleException(message: String) : Exception(message)
 /** What a scheduled run uses from other modules and from Android. */
 internal interface RunPorts {
     val clock: Clock
-    val dirs: AppDirs
 
     suspend fun startSession(projectId: String, agentId: String, title: String): SessionRecord
     fun session(sessionId: String): SessionRecord?
 
-    /** Variables for the room (never Secrets). */
-    suspend fun variables(projectId: String, agentId: String): Map<String, String>
-
-    /** Runs in Linux; the process is stopped when the call is cancelled. */
-    suspend fun runInLinux(command: LinuxCommand, onLine: (String) -> Unit): Int
+    /**
+     * Runs [argv] in the agent's room as the room's own programs run (its binds, its environment
+     * with the project's Variables, its launcher, PocketIDE's tools); [programEnv] is the CLI's own
+     * settings. The process is stopped when the call is cancelled.
+     */
+    suspend fun runInRoom(
+        agentId: String,
+        projectId: String,
+        argv: List<String>,
+        workDir: String,
+        programEnv: Map<String, String>,
+        onLine: (String) -> Unit,
+    ): Int
 
     /** Why heavy work may not start now (battery, heat), or null. */
     fun heavyWorkRefusal(): String?
@@ -66,12 +71,6 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         val session = existingSessionId?.let { ports.session(it) } ?: newSession(task)
         val worktree = AppDirs.guestWorktree(session.projectId, session.id)
         val argv = HeadlessCommand.argv(task.agentId, task.prompt, worktree) ?: throw ScheduleException(NO_HEADLESS)
-        val command = LinuxCommand(
-            argv = argv,
-            binds = roomBinds(task.agentId),
-            env = ports.variables(task.projectId, task.agentId) + HeadlessCommand.env(task.agentId),
-            workDir = worktree,
-        )
         val startedAt = ports.clock.now()
         val lines = ArrayList<String>()
         var bytes = 0L
@@ -80,7 +79,7 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         var succeeded = false
         try {
             exitCode = withTimeoutOrNull(timeLimitMs) {
-                ports.runInLinux(command) { line ->
+                ports.runInRoom(task.agentId, session.projectId, argv, worktree, HeadlessCommand.env(task.agentId)) { line ->
                     synchronized(lines) {
                         if (bytes < MAX_OUTPUT_BYTES) {
                             val clean = Redact.text(line)
@@ -132,19 +131,6 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
             // The session and its commits still show what happened.
         } finally {
             file.delete()
-        }
-    }
-
-    /** The room as the agent knows it: its own home and temp, its worktrees, the shared clones. */
-    private fun roomBinds(agentId: String): List<Bind> {
-        val dirs = ports.dirs
-        return buildList {
-            add(Bind(dirs.roomHome(agentId).absolutePath, AppDirs.GUEST_HOME))
-            add(Bind(dirs.roomTmp(agentId).absolutePath, "/tmp"))
-            add(Bind(dirs.repos.absolutePath, AppDirs.GUEST_REPOS))
-            add(Bind(dirs.roomWork(agentId).absolutePath, AppDirs.GUEST_WORK))
-            val bridge = dirs.roomBridge(agentId)
-            if (bridge.isDirectory) add(Bind(bridge.absolutePath, AppDirs.GUEST_BRIDGE))
         }
     }
 

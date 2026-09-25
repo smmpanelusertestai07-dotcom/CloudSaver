@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pocketide.AppGraph
 import com.pocketide.core.Redact
+import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ComputerSetup
 import com.pocketide.linux.ComputerState
 import com.pocketide.sync.RestoreChoice
@@ -100,6 +101,8 @@ fun ComputerStepScreen(onDone: () -> Unit) {
     fun install(onMobileData: Boolean) {
         startError = null
         if (onMobileData) ComputerSetup.setupDownloads().forEach { (kind, bytes) -> graph.dataBudget.allowOnce(kind, bytes) }
+        // From the tap, while Android allows it: set-up runs on when the owner leaves the app.
+        EngineService.start(graph.context)
         graph.scope.launch {
             try {
                 graph.computer.install()

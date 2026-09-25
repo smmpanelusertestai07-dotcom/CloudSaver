@@ -133,7 +133,7 @@ internal class ActivityClock(
 }
 
 /**
- * What each room is busy with ("turn", "command", "build", "write"), passed to the limiter only
+ * What each room is busy with ("turn", "command", "build", "write", "task"), passed to the limiter only
  * when it changes, so a room is never closed mid-work and the wake lock is held only then.
  * Holds of one kind count up and down: two builds at once keep the room busy until both end.
  */
@@ -191,5 +191,6 @@ internal class WorkHolds(private val report: (agentId: String, what: String, bus
         const val COMMAND = "command"
         const val BUILD = "build"
         const val WRITE = "write"
+        const val TASK = "task"
     }
 }
