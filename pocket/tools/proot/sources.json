@@ -1,0 +1,51 @@
+{
+  "_comment": "Where the PRoot inside each PocketIDE APK comes from. The release job reads the version string inside the APK's libproot.so and publishes the matching entry's source beside the release (GPL-2.0 for PRoot, LGPL-3.0-or-later for talloc). build-proot.sh builds the entry marked build: true from exactly these archives. Checksums: from Termux's packages (termux-packages packages/*/build.sh); talloc's also recomputed from samba.org on 24 Sep 2026.",
+  "ndk": "29.0.14206865",
+  "releases": [
+    {
+      "version": "5.1.107.94",
+      "build": true,
+      "origin": "Built from source by PocketIDE's CI (pocket/tools/proot/build-proot.sh), with 16 KB page alignment.",
+      "proot": {
+        "license": "GPL-2.0",
+        "tag": "v5.1.107.94",
+        "commit": "58c3b42849fac502c6c60a45c4d2a82da9e9f8d4",
+        "url": "https://github.com/termux/proot/archive/v5.1.107.94.zip",
+        "sha256": "3fa4c57253463c3d595984d997b407b0b6bdb46d290b2a111959a2efd609e839"
+      },
+      "talloc": {
+        "license": "LGPL-3.0-or-later",
+        "version": "2.4.3",
+        "url": "https://www.samba.org/ftp/talloc/talloc-2.4.3.tar.gz",
+        "sha256": "dc46c40b9f46bb34dd97fe41f548b0e8b247b77a918576733c528e83abd854dd"
+      },
+      "libandroid_shmem": {
+        "license": "BSD-3-Clause",
+        "version": "0.7",
+        "url": "https://github.com/termux/libandroid-shmem/archive/refs/tags/v0.7.tar.gz",
+        "sha256": "1e5ff8459bc0a8c229dd8a94b27d119987e09ef3414331c2b5ebfff20b98e867"
+      }
+    },
+    {
+      "version": "5.1.107.92",
+      "build": false,
+      "origin": "Termux's prebuilt package, carried over from PocketIDE 2.6.0 with its file names and prefix patched; Termux no longer serves that package.",
+      "proot": {
+        "license": "GPL-2.0",
+        "tag": "v5.1.107.92",
+        "commit": "7266fb3e8516535682f5a9c8f3a7e70f6506eddb",
+        "url": "https://github.com/termux/proot/tree/7266fb3e8516535682f5a9c8f3a7e70f6506eddb"
+      },
+      "talloc": {
+        "license": "LGPL-3.0-or-later",
+        "version": "the Termux libtalloc package current when 2.6.0 was built (not recorded)",
+        "url": "https://www.samba.org/ftp/talloc/"
+      },
+      "libandroid_shmem": {
+        "license": "BSD-3-Clause",
+        "version": "the Termux libandroid-shmem package current when 2.6.0 was built (not recorded)",
+        "url": "https://github.com/termux/libandroid-shmem"
+      }
+    }
+  ]
+}
