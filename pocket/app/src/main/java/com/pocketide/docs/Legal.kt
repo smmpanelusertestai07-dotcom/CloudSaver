@@ -86,13 +86,29 @@ internal object Legal {
         "Open-source notices",
         "The software PocketIDE carries or downloads, and each licence.",
         p(
-            "PocketIDE's own code is under the Apache License 2.0. It carries PRoot (GPL-2.0) and its " +
-                "libraries, and downloads Ubuntu, code-server, the agents and their extensions at run time. " +
-                "Each part keeps its own licence.",
+            "PocketIDE's own code is under the Apache License 2.0. It carries PRoot and its libraries, and " +
+                "downloads Ubuntu, code-server, the agents and their extensions at run time. Each part keeps its " +
+                "own licence.",
+        ),
+        table(
+            listOf("Part", "Licence"),
+            row("PocketIDE", "Apache License 2.0"),
+            row("PRoot", "GPL-2.0"),
+            row("talloc", "LGPL-3.0-or-later"),
+            row("libandroid-shmem", "BSD 3-Clause"),
+            row("AndroidX and Jetpack, Material icons", "Apache License 2.0"),
+            row("Kotlin, kotlinx.coroutines, kotlinx.serialization", "Apache License 2.0"),
+            row("OkHttp and Okio", "Apache License 2.0"),
+            row("Bouncy Castle", "MIT License"),
+            row("Eclipse JGit", "EDL-1.0 (BSD-3-Clause)"),
+            row("Google Play services", "Google APIs Terms of Service"),
+            row("Ubuntu (downloaded)", "Each package keeps its own licence"),
+            row("code-server, Code - OSS and xterm.js (downloaded)", "MIT licence"),
+            row("The agents and their extensions (downloaded)", "Each publisher's terms"),
         ),
         p(
-            "The full notices are in the text below this page, read from the app itself. The GPL source for " +
-                "each release is published beside it.",
+            "The full notices, with copyright lines, ship inside the app as open-source-notices.txt and in the " +
+                "source of each release. The GPL source for each release is published beside it.",
         ),
         link("PocketIDE releases and source", DocLinks.RELEASES),
     )

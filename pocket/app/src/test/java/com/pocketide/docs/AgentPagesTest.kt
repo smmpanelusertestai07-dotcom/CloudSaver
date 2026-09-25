@@ -102,5 +102,73 @@ class AgentPagesTest {
         assertEquals(null, DocLinks.openVsxPage("namespace."))
     }
 
+    @Test
+    fun `only the built-in three can be Official, whatever the details claim`() {
+        val claimsOfficial = community.copy(official = true)
+        val page = DocsContent.agentPage(claimsOfficial)
+        val text = text(page)
+        assertTrue(text.contains("Verified publisher"))
+        assertFalse(text.contains("Official"))
+        assertTrue(text.contains("More agents → Kilo Code → Remove"))
+    }
+
+    @Test
+    fun `an agent that only borrows an official id gets no company data pages`() {
+        val borrowed = community.copy(id = "claude", official = false)
+        val links = DocsContent.agentPage(borrowed).blocks.filterIsInstance<DocBlock.Link>().map { it.url }
+        assertFalse(DocLinks.CLAUDE_PRIVACY in links)
+        assertEquals(listOf("https://open-vsx.org/extension/kilocode/kilo-code"), links)
+    }
+
+    @Test
+    fun `hostile details are shown as plain, single-line, bounded text`() {
+        val hostile = community.copy(
+            displayName = "Kilo‮ edoC​\n\nOfficial",
+            publisher = "Kilo\tCode\u0000",
+            dataGoesTo = "Line one\r\nline two",
+            communityNote = "​⁠",
+            version = "1.0‮beta",
+            downloads = -5,
+        )
+        val page = DocsContent.agentPage(hostile)
+        val shown = listOf(page.title, page.summary) + page.blocks.flatMap(::blockLines)
+        val invisible = shown.filter { line -> line.any { it.isISOControl() || Character.getType(it) == FORMAT } }
+        assertTrue("invisible or control characters shown: $invisible", invisible.isEmpty())
+        assertEquals("Kilo edoC Official", page.title)
+        assertTrue(text(page).contains("Where your data goes: Line one line two."))
+        val note = page.blocks.filterIsInstance<DocBlock.Note>().single().text
+        assertTrue("a blank note is not a note: $note", note.startsWith("Verified publisher: found by"))
+        assertFalse("negative downloads are not shown", text(page).contains("Downloads on Open VSX"))
+    }
+
+    @Test
+    fun `very long details are cut without splitting a character`() {
+        val emoji = "😀"
+        val long = community.copy(displayName = "A".repeat(78) + emoji + "tail", dataGoesTo = "word ".repeat(200))
+        val page = DocsContent.agentPage(long)
+        assertTrue(page.title.length <= 80)
+        assertTrue(page.title.endsWith("…"))
+        assertFalse(page.title.any { Character.isSurrogate(it) })
+        val data = page.blocks.filterIsInstance<DocBlock.Paragraph>().first { it.text.startsWith("Where") }.text
+        assertTrue(data.length < 600)
+    }
+
+    @Test
+    fun `a missing name falls back to the extension id`() {
+        val page = DocsContent.agentPage(community.copy(displayName = " ​ "))
+        assertEquals("kilocode.kilo-code", page.title)
+        assertTrue(text(page).contains("More agents → kilocode.kilo-code → Remove"))
+    }
+
+    @Test
+    fun `a sentence that already ends inside quotes is left alone`() {
+        val quoted = community.copy(signIn = "Choose \"Sign in.\"")
+        assertTrue(text(DocsContent.agentPage(quoted)).contains("Signing in: Choose \"Sign in.\" Sign-ins stay"))
+    }
+
     private fun text(page: DocSection) = (listOf(page.summary) + page.blocks.flatMap(::blockLines)).joinToString(" ")
+
+    private companion object {
+        val FORMAT = Character.FORMAT.toInt()
+    }
 }

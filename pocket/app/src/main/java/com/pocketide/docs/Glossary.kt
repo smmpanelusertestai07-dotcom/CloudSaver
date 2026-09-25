@@ -77,7 +77,10 @@ internal object Glossary {
             "A Drive folder only PocketIDE can use. You see its size on Drive's website, not its files.",
         ),
         term("Recently deleted", "Where deleted chats wait for 30 days before they are erased from Drive."),
-        term("Delete forever", "Erases a chat from Drive now, instead of after 30 days."),
+        term(
+            "Hook",
+            "A command an agent runs by itself on an event. It can run code, so PocketIDE shows you any new one.",
+        ),
         term(
             "Your data",
             "The screen that lists everything PocketIDE stores, by type and size, and lets you delete it.",

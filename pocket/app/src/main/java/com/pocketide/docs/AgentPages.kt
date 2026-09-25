@@ -12,6 +12,17 @@ internal object AgentPages {
 
     private const val SIGN_IN_STAYS = "Sign-ins stay only on this phone, so on a new phone you sign in again."
 
+    /** Longest name or version shown; publishers write these, and a page must stay readable. */
+    private const val MAX_NAME = 80
+
+    /** Longest sentence taken from an agent's details. */
+    private const val MAX_SENTENCE = 400
+
+    /** Control, format (bidi overrides, zero-width) and other invisible characters that could disguise text. */
+    private val INVISIBLE = Regex("[\\p{Cc}\\p{Cf}\\p{Co}\\p{Cn}\\p{Zl}\\p{Zp}]")
+    private val SPACES = Regex("\\s+")
+
+    /** The built-in three and their companies' data pages. Only these can be Official, whatever a detail claims. */
     private val officialDataLinks = mapOf(
         "claude" to listOf(
             link("Claude privacy settings", DocLinks.CLAUDE_PRIVACY),
@@ -28,43 +39,82 @@ internal object AgentPages {
     )
 
     fun pageFor(agent: AgentInfo): DocSection {
+        val details = Details.of(agent)
         val blocks = buildList {
-            add(detailsTable(agent))
-            add(labelNote(agent))
-            add(p("Where your data goes: ${sentence(agent.dataGoesTo)} ${companyKeepsLine(agent)}"))
-            add(p("Signing in: ${sentence(agent.signIn)} $SIGN_IN_STAYS"))
-            add(p(roomLine(agent)))
-            add(p(instructionsLine(agent)))
-            add(p(removeLine(agent)))
-            addAll(dataLinks(agent))
+            add(detailsTable(details))
+            add(labelNote(details))
+            add(p("Where your data goes: ${details.dataGoesTo} ${companyKeepsLine(details)}"))
+            add(p("Signing in: ${details.signIn} $SIGN_IN_STAYS"))
+            add(p(roomLine(details)))
+            add(p(instructionsLine(details)))
+            add(p(removeLine(details)))
+            addAll(dataLinks(details))
         }
         return DocSection(
             id = pageId(agent.id),
-            title = agent.displayName,
-            summary = "${agent.displayName} by ${agent.publisher.ifBlank { "an unnamed publisher" }}: " +
-                "${label(agent)}.",
+            title = details.name,
+            summary = "${details.name} by ${details.publisher ?: "an unnamed publisher"}: ${details.label}.",
             blocks = blocks,
         )
     }
 
     fun pageId(agentId: String) = "agent-$agentId"
 
-    private fun label(agent: AgentInfo) = when {
-        agent.official -> "Official"
-        agent.verifiedPublisher -> "Verified publisher"
-        else -> "Unverified publisher"
+    /** An agent's details as they may be shown: cleaned, bounded, and with its label settled. */
+    private class Details(
+        val id: String,
+        val name: String,
+        val publisher: String?,
+        val extensionId: String?,
+        val version: String?,
+        val downloads: Long?,
+        val surface: AgentSurface,
+        val official: Boolean,
+        val verified: Boolean,
+        val dataGoesTo: String,
+        val signIn: String,
+        val instructionsFile: String?,
+        val communityNote: String?,
+    ) {
+        val label = when {
+            official -> "Official"
+            verified -> "Verified publisher"
+            else -> "Unverified publisher"
+        }
+
+        companion object {
+            fun of(agent: AgentInfo): Details {
+                val extensionId = name(agent.extensionId)
+                val official = agent.official && agent.id in officialDataLinks
+                return Details(
+                    id = agent.id,
+                    name = name(agent.displayName) ?: extensionId ?: name(agent.id) ?: "This agent",
+                    publisher = name(agent.publisher),
+                    extensionId = extensionId,
+                    version = name(agent.version),
+                    downloads = agent.downloads?.takeIf { it >= 0 },
+                    surface = agent.surface,
+                    official = official,
+                    verified = official || agent.verifiedPublisher,
+                    dataGoesTo = sentence(agent.dataGoesTo),
+                    signIn = sentence(agent.signIn),
+                    instructionsFile = name(agent.instructionsFile),
+                    communityNote = agent.communityNote?.takeIf { clean(it).isNotEmpty() }?.let(::sentence),
+                )
+            }
+        }
     }
 
-    private fun detailsTable(agent: AgentInfo): DocBlock {
+    private fun detailsTable(agent: Details): DocBlock {
         val rows = buildList {
-            add(row("Publisher", agent.publisher.ifBlank { "Not given" }))
-            add(row("Label", label(agent)))
+            add(row("Publisher", agent.publisher ?: "Not given"))
+            add(row("Label", agent.label))
             agent.extensionId?.let { add(row("Open VSX id", it)) }
             agent.version?.let { add(row("Version on this phone", it)) }
             agent.downloads?.let { add(row("Downloads on Open VSX", String.format(Locale.ROOT, "%,d", it))) }
             add(row("Shown as", surfaceLine(agent.surface)))
         }
-        return DocBlock.Table(listOf("", agent.displayName), rows)
+        return DocBlock.Table(listOf("", agent.name), rows)
     }
 
     private fun surfaceLine(surface: AgentSurface) = when (surface) {
@@ -72,16 +122,16 @@ internal object AgentPages {
         AgentSurface.NATIVE_HUB -> "The publisher's own local app, full screen"
     }
 
-    private fun labelNote(agent: AgentInfo): DocBlock = when {
+    private fun labelNote(agent: Details): DocBlock = when {
         agent.official -> info(
             "Official: one of the three agents built into PocketIDE, published by the company that makes " +
                 "its model. It updates itself; each update is checked, tested on this phone and rolled back " +
                 "if it fails.",
         )
-        agent.communityNote != null -> warn(
-            "Verified publisher. ${sentence(agent.communityNote)} $OPEN_VSX_NOTE",
+        agent.verified && agent.communityNote != null -> warn(
+            "Verified publisher. ${agent.communityNote} $OPEN_VSX_NOTE",
         )
-        agent.verifiedPublisher -> info(
+        agent.verified -> info(
             "Verified publisher: found by the weekly Open VSX search and added by your tap. $OPEN_VSX_NOTE",
         )
         else -> warn(
@@ -90,45 +140,61 @@ internal object AgentPages {
         )
     }
 
-    private fun companyKeepsLine(agent: AgentInfo) =
+    private fun companyKeepsLine(agent: Details) =
         if (agent.official) {
             "The company keeps it under its own policy; see its data page below."
         } else {
             "The publisher and the model service it uses keep it under their own policies."
         }
 
-    private fun roomLine(agent: AgentInfo) =
-        "Room: ${agent.displayName} runs in its own room, with its own home folder and the working " +
-            "folders of its own sessions. Other rooms' folders are not visible from it. It never receives " +
-            "your GitHub token, your Drive access or your Secrets; only your Variables are set in its room."
+    private fun roomLine(agent: Details) =
+        "Room: ${agent.name} runs in its own room, with its own home folder and the working folders of its " +
+            "own sessions. Other rooms' folders are not visible from it. It never receives your GitHub token, " +
+            "your Drive access or your Secrets; only your Variables are set in its room."
 
-    private fun instructionsLine(agent: AgentInfo) =
-        "Instructions: it reads ${agent.instructionsFile.ifBlank { "its own instructions file" }} in its " +
-            "room's home, never in your repo. You can read and edit it in Your data; it syncs with your other " +
-            "AI data."
+    private fun instructionsLine(agent: Details) =
+        "Instructions: it reads ${agent.instructionsFile ?: "its own instructions file"} in its room's home, " +
+            "never in your repo. You can read and edit it in Your data; it syncs with your other AI data."
 
-    private fun removeLine(agent: AgentInfo) =
+    private fun removeLine(agent: Details) =
         if (agent.official) {
             "Removing: it is built in and cannot be removed. If you stop using it, sign out in its own " +
                 "screen. What it already sent stays with its company; see its data page."
         } else {
-            "Removing: More agents → ${agent.displayName} → Remove. Its room and its sign-in on this phone " +
-                "are deleted. What it already sent stays with the publisher."
+            "Removing: More agents → ${agent.name} → Remove. Its room and its sign-in on this phone are " +
+                "deleted. What it already sent stays with the publisher."
         }
 
-    private fun dataLinks(agent: AgentInfo): List<DocBlock> {
-        officialDataLinks[agent.id]?.let { return it }
+    private fun dataLinks(agent: Details): List<DocBlock> {
+        if (agent.official) officialDataLinks[agent.id]?.let { return it }
         val page = agent.extensionId?.let(DocLinks::openVsxPage) ?: return emptyList()
-        return listOf(link("${agent.displayName} on Open VSX", page))
+        return listOf(link("${agent.name} on Open VSX", page))
     }
 
-    /** Agent details come from outside data; make each one end as a sentence. */
+    /** Outside text on one line, without invisible characters that could disguise it. */
+    private fun clean(text: String): String = text.replace(INVISIBLE, " ").replace(SPACES, " ").trim()
+
+    private fun name(text: String?): String? =
+        text?.let(::clean)?.takeIf { it.isNotEmpty() }?.let { shorten(it, MAX_NAME) }
+
+    /** Agent details come from outside data; make each one a bounded sentence. */
     private fun sentence(text: String): String {
-        val trimmed = text.trim()
+        val cleaned = shorten(clean(text), MAX_SENTENCE)
         return when {
-            trimmed.isEmpty() -> "Not given."
-            trimmed.last() in ".!?" -> trimmed
-            else -> "$trimmed."
+            cleaned.isEmpty() -> "Not given."
+            cleaned.last() in SENTENCE_ENDS -> cleaned
+            cleaned.length > 1 && cleaned.last() in CLOSERS && cleaned[cleaned.length - 2] in SENTENCE_ENDS -> cleaned
+            else -> "$cleaned."
         }
     }
+
+    private fun shorten(text: String, max: Int): String {
+        if (text.length <= max) return text
+        var end = max - 1
+        if (Character.isHighSurrogate(text[end - 1])) end--
+        return text.substring(0, end).trimEnd() + "…"
+    }
+
+    private const val SENTENCE_ENDS = ".!?…"
+    private const val CLOSERS = "\"')”’"
 }

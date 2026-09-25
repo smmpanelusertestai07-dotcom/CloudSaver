@@ -26,9 +26,9 @@ internal object Faq {
         faq(
             "lose-phone", "recovery",
             "What if I lose my phone?",
-            "Nothing is lost. On a new phone, sign in to GitHub and Google; the two key halves rebuild the key " +
-                "and everything comes back. To lock out the old phone, remove PocketIDE's access from GitHub " +
-                "and Google in a browser.",
+            "Your synced work is safe. On a new phone, sign in to GitHub and Google; the two key halves " +
+                "rebuild the key and everything synced comes back. To lock out the old phone, remove " +
+                "PocketIDE's access from GitHub and Google in a browser.",
         ),
         faq(
             "uninstall", "deleting",
@@ -182,8 +182,8 @@ internal object Faq {
             "mobile-data", "your-data",
             "How much mobile data does it use?",
             "As little as possible: only new chat parts are sent, compressed, and big downloads wait for " +
-                "Wi-Fi. Your daily limit in Settings → Data counts only mobile data, and that screen shows " +
-                "this month's use.",
+                "Wi-Fi. Settings → Mobile data sets a daily limit, which counts only mobile data, and shows " +
+                "what was used.",
         ),
         faq(
             "terminal", "how-it-works",
@@ -257,6 +257,50 @@ internal object Faq {
             "The weekly search offers any verified publisher's agent that passes every check. They show " +
                 "Verified publisher, not Official, and nothing is added without your tap. Settings → Only " +
                 "official agents hides them.",
+        ),
+        faq(
+            "faster-phone", "requirements",
+            "Would a faster phone make the agents faster?",
+            "Not their thinking: the models run on the companies' servers. A faster phone with more memory " +
+                "speeds up installs, builds and tests, and runs more agents at once.",
+        ),
+        faq(
+            "account-suspended", "terms",
+            "Can this get my account suspended?",
+            "PocketIDE runs each company's own agent, signed in with your own account, as on any Linux " +
+                "computer. Follow each company's terms: share no account, and use Actions minutes only to build " +
+                "and test your projects.",
+        ),
+        faq(
+            "files-in-repo", "how-it-works",
+            "Does PocketIDE add files to my repo?",
+            "No chats, keys or agent settings: those live in each room's home, never in your repo. Only a " +
+                "build template you add is committed, to the session's branch, like any other change.",
+        ),
+        faq(
+            "team", "what-it-is",
+            "Does it work for a team?",
+            "It is made for one person, one phone at a time. Teammates share a project's repo on GitHub as " +
+                "usual, while each person's chats, key and Secrets stay in their own PocketIDE.",
+        ),
+        faq(
+            "vs-code-pylance", "no-third-party",
+            "Is this VS Code, and can I add Pylance?",
+            "No. code-server, the open-source engine behind the Claude and Codex screens, stays hidden, and " +
+                "only agents are added. Pylance and other Microsoft extensions may be used only in Microsoft's " +
+                "own products.",
+        ),
+        faq(
+            "network-drops", "conditions",
+            "What if the network drops mid-answer?",
+            "The answer in progress may stop with an error. Your session, files and commits stay. When the " +
+                "network is back, ask the agent to continue; sync resumes by itself.",
+        ),
+        faq(
+            "file-from-phone", "limits",
+            "How do I get a file from my phone into a project?",
+            "Photos and videos: the agent's attach button opens Android's photo picker. Other files: upload " +
+                "them to the project's repo on GitHub, then ask the agent to bring main into its session.",
         ),
     )
 }
