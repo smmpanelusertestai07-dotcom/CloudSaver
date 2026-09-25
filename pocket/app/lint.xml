@@ -24,6 +24,12 @@
         <ignore path="src/main/java/com/pocketide/ui/screens/settings/SettingsAdvanced.kt" />
     </issue>
 
+    <!-- Reported whenever a newer Android is installed on the build machine (GitHub's runner
+         image carries platform 37), so with warningsAsErrors it would fail a build that did not
+         change on the day the image updates. Moving targetSdk is a deliberate change that needs
+         a newer Android Gradle Plugin and a phone test; the report still lists it. -->
+    <issue id="OldTargetApi" severity="informational" />
+
     <!-- PocketIDE ships arm64 only: its Linux computer runs arm64 binaries. -->
     <issue id="ChromeOsAbiSupport" severity="ignore" />
 
