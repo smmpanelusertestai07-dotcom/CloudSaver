@@ -80,8 +80,12 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
     var loseUploadAnswers = 0
     /** The next N index writes fail before reaching Drive (the phone dies between upload and record). */
     var failIndexWrites = 0
+    /** The next N index writes reach Drive but their answer is lost (a timeout on mobile data). */
+    var loseIndexAnswers = 0
     /** Runs before each upload with the file's name; may throw to fail it. */
     var beforeUpload: ((String) -> Unit)? = null
+    /** Runs before each download with the file's name (a program in a room acting meanwhile). */
+    var beforeDownload: ((String) -> Unit)? = null
     /** Runs after each index write, before the engine reads it back (another phone writing at once). */
     var afterIndexWrite: (() -> Unit)? = null
     var uploads = 0
@@ -112,13 +116,18 @@ class FakeDrive(private val accounts: FakeAccounts, val email: String, private v
             info(id, files.getValue(id))
         }
         if (name == RemoteIndex.NAME) afterIndexWrite?.invoke()
-        val lose = synchronized(lock) { (loseUploadAnswers > 0).also { if (it) loseUploadAnswers-- } }
+        val lose = synchronized(lock) {
+            val indexAnswer = name == RemoteIndex.NAME && loseIndexAnswers > 0
+            if (indexAnswer) loseIndexAnswers--
+            indexAnswer || (loseUploadAnswers > 0).also { if (it) loseUploadAnswers-- }
+        }
         if (lose) throw DriveException.Offline()
         return stored
     }
 
-    override suspend fun download(id: String, sink: OutputStream) = online {
-        sink.write((files[id] ?: throw DriveException.Other("File not found")).bytes)
+    override suspend fun download(id: String, sink: OutputStream) {
+        synchronized(lock) { files[id]?.name }?.let { beforeDownload?.invoke(it) }
+        online { sink.write((files[id] ?: throw DriveException.Other("File not found")).bytes) }
     }
 
     override suspend fun open(id: String): InputStream = online { ByteArrayInputStream((files[id] ?: throw DriveException.Other("File not found")).bytes) }

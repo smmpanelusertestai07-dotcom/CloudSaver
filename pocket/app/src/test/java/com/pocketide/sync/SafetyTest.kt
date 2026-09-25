@@ -7,6 +7,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.nio.file.Files
 
 /** "Break it" checks: what must never leave a room, and what leaves only masked. */
 class SafetyTest {
@@ -58,6 +60,48 @@ class SafetyTest {
         java.nio.file.Files.createSymbolicLink(projects.toPath().resolve("link"), outside.toPath())
         phone.engine.syncNow()
         assertTrue(phone.remoteIndex()?.objects.orEmpty().isEmpty())
+    }
+
+    @Test
+    fun aLinkPlantedWhereARestoredChatUsedToBeWrittenCannotOverwriteTheAppsFiles() = runBlocking {
+        val phone = TestPhone(accounts, clock).apply { sessions += session("s", at = clock.now, ref = "c0ffee00-1111") }
+        val transcript = phone.homeFile("claude", claudeTranscript("owner/app", "s", "c0ffee00-1111"))
+        transcript.writeText("PAYLOAD FROM THE ROOM\n")
+        phone.engine.syncNow()
+        val appFile = phone.dirs.schedules.apply { writeText("ORIGINAL APP FILE") }
+
+        // The room removes its transcript and plants a link at the name the app wrote through before.
+        transcript.delete()
+        val planted = File(transcript.parentFile, ".${transcript.name}.pocketide-part").toPath()
+        Files.createSymbolicLink(planted, appFile.toPath())
+        phone.engine.fetchSession("s")
+
+        assertEquals("ORIGINAL APP FILE", appFile.readText())
+        assertEquals("PAYLOAD FROM THE ROOM\n", transcript.readText())
+        assertTrue("the planted link is left as it was", Files.isSymbolicLink(planted))
+    }
+
+    @Test
+    fun aFolderSwappedForALinkWhileAChatDownloadsReceivesNothing() = runBlocking {
+        val phone = TestPhone(accounts, clock).apply { sessions += session("s", at = clock.now, ref = "c0ffee00-1111") }
+        val transcript = phone.homeFile("claude", claudeTranscript("owner/app", "s", "c0ffee00-1111"))
+        transcript.writeText("the chat\n")
+        phone.engine.syncNow()
+        transcript.delete()
+        val outside = phone.base.resolve("outside").apply { mkdirs() }
+
+        // While the app downloads, a program in the room swaps the chat's folder for a link.
+        phone.drive.beforeDownload = { name ->
+            if (name.startsWith("o-")) {
+                val folder = transcript.parentFile
+                Files.move(folder.toPath(), folder.toPath().resolveSibling("moved-away"))
+                Files.createSymbolicLink(folder.toPath(), outside.toPath())
+            }
+        }
+        phone.engine.fetchSession("s")
+
+        assertTrue("nothing reaches the folder the link points to", outside.list().isNullOrEmpty())
+        assertTrue(Files.isSymbolicLink(transcript.parentFile.toPath()))
     }
 
     @Test

@@ -3,11 +3,18 @@ package com.pocketide.sync
 import com.pocketide.google.DriveStore
 import com.pocketide.model.VaultObject
 import com.pocketide.vault.VaultCipher
+import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.DigestOutputStream
 import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
@@ -16,10 +23,18 @@ import java.util.zip.GZIPInputStream
 internal data class Assembled(val length: Long, val sha256: String)
 
 /**
+ * A synced file on the phone: [path] under [root], a room's home or work folder. Programs inside
+ * Linux can change anything under [root], so nothing written there follows a link.
+ */
+internal class RoomFile(val root: File, val path: String, val file: File)
+
+/**
  * Brings objects back from Drive: download, decrypt, gunzip, check each piece's SHA-256 and
- * length, and write the file through a temporary file that replaces the target only when
- * everything checked out. Ciphertext and compressed plaintext live only in a scratch folder of the
- * queue for the moment they are needed.
+ * length, and put the file together in a scratch folder of the queue, which only the app can
+ * reach. Only when everything checked out is it renamed into the room, through real folders, so a
+ * link a program in Linux planted there (at a temporary name, or in place of a folder) can never
+ * make the app write anywhere else. Ciphertext and compressed plaintext live in the scratch folder
+ * only for the moment they are needed.
  */
 internal class Materializer(
     private val queue: UploadQueue,
@@ -28,39 +43,104 @@ internal class Materializer(
 
     /**
      * Writes [target] as its first [keep] bytes (which must hash to [keepSha]) followed by
-     * [pieces], in order and without gaps. [keep] = 0 rebuilds the file from Drive alone.
+     * [pieces], in order and without gaps. [keep] = 0 rebuilds the file from Drive alone. Returns
+     * null, having written nothing, when a folder on the way is a link or a file.
      */
     suspend fun assemble(
         drive: DriveStore,
         cipher: VaultCipher,
-        target: File,
+        target: RoomFile,
         pieces: List<VaultObject>,
         keep: Long = 0,
         keepSha: String? = null,
         kind: String = MeteredDataBudget.KIND_RESTORE,
-    ): Assembled {
+    ): Assembled? = build(drive, cipher, target, pieces, keep, keepSha, kind).use { built ->
+        built.assembled.takeIf { built.placeAt(target) }
+    }
+
+    /** The new content of [target], put together in the scratch folder; see [assemble]. */
+    suspend fun build(
+        drive: DriveStore,
+        cipher: VaultCipher,
+        target: RoomFile,
+        pieces: List<VaultObject>,
+        keep: Long = 0,
+        keepSha: String? = null,
+        kind: String = MeteredDataBudget.KIND_RESTORE,
+    ): Built {
         var end = keep
         for (p in pieces) {
             if (p.offset != end) throw SyncException(BROKEN)
             end += p.length
         }
-        target.parentFile?.mkdirs()
-        val temp = File(target.parentFile, ".${target.name}.pocketide-part")
-        val whole = Codec.newDigest()
         val scratch = queue.scratch()
         try {
-            FileOutputStream(temp).use { raw ->
+            val content = File(scratch, "content")
+            val whole = Codec.newDigest()
+            FileOutputStream(content).use { raw ->
                 val out = DigestOutputStream(raw, whole)
-                if (keep > 0) copyPrefix(target, keep, keepSha, out)
+                if (keep > 0) copyPrefix(target.file, keep, keepSha, out)
                 for (p in pieces) fetchInto(drive, cipher, p, scratch, out, kind)
                 out.flush()
                 raw.fd.sync()
             }
-            AtomicFiles.moveOver(temp, target)
-            return Assembled(end, Codec.hex(whole.digest()))
-        } finally {
-            temp.delete()
+            return Built(scratch, content, Assembled(end, Codec.hex(whole.digest())))
+        } catch (e: Throwable) {
             scratch.deleteRecursively()
+            throw e
+        }
+    }
+
+    /** A file put together in the app's own scratch folder, waiting to be moved into a room. */
+    internal class Built(private val scratch: File, private val content: File, val assembled: Assembled) : Closeable {
+
+        /**
+         * Renames the content over [target]. Every folder from the room down is a real folder
+         * (missing ones are made), and just before the rename the target's folder must still
+         * resolve inside the room, so one swapped for a link meanwhile is caught. Renaming
+         * replaces a link at the target itself instead of writing through it. False, with
+         * nothing moved, when a link or a file is in the way.
+         */
+        fun placeAt(target: RoomFile): Boolean {
+            val names = target.path.split('/')
+            val folder = realFolder(target.root, names.dropLast(1)) ?: return false
+            if (!resolvesInside(folder, target.root)) return false
+            Files.move(content.toPath(), folder.resolve(names.last()), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            return true
+        }
+
+        override fun close() {
+            scratch.deleteRecursively()
+        }
+
+        private fun realFolder(root: File, names: List<String>): Path? {
+            var current = Files.createDirectories(root.toPath())
+            for (name in names) {
+                val next = current.resolve(name)
+                when (attributes(next)?.isDirectory) {
+                    true -> Unit
+                    false -> return null
+                    null -> try {
+                        Files.createDirectory(next)
+                    } catch (_: FileAlreadyExistsException) {
+                        if (attributes(next)?.isDirectory != true) return null
+                    }
+                }
+                current = next
+            }
+            return current
+        }
+
+        private fun resolvesInside(folder: Path, root: File): Boolean = try {
+            folder.toRealPath().startsWith(root.toPath().toRealPath())
+        } catch (_: IOException) {
+            false
+        }
+
+        private fun attributes(path: Path): BasicFileAttributes? = try {
+            Files.readAttributes(path, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        } catch (_: IOException) {
+            null
         }
     }
 
@@ -100,9 +180,10 @@ internal class Materializer(
         if (length != o.length || Codec.hex(piece.digest()) != o.sha256) throw SyncException(BROKEN)
     }
 
+    /** The phone's own first [keep] bytes; a link at the file is refused rather than followed. */
     private fun copyPrefix(source: File, keep: Long, keepSha: String?, out: OutputStream) {
         val check = Codec.newDigest()
-        FileInputStream(source).use { input ->
+        Files.newInputStream(source.toPath(), LinkOption.NOFOLLOW_LINKS).use { input ->
             val bounded = BoundedInputStream(input, keep)
             val buffer = ByteArray(BUFFER)
             while (true) {

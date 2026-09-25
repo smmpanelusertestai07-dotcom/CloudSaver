@@ -146,7 +146,8 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
 
     /** The track after aligning one file with [chain]; null when the file left Drive and the phone. */
     private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List<com.pocketide.model.VaultObject>, queued: List<QueueEntry>, batch: Conflicts.Batch): FileTrack? {
-        val file = kit.scanner.locate(track.kind, track.agentId, track.path) ?: return track
+        val place = kit.scanner.roomFile(track.kind, track.agentId, track.path) ?: return track
+        val file = place.file
         val facts = factsOf(file)
         if (facts == null) {
             // Not on the phone: opening the session later brings Drive's version.
@@ -163,7 +164,8 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         }
         val continues = track.kind.appendOnly && track.objects.isNotEmpty() && chain.map { it.name }.take(track.objects.size) == track.objects
         if (continues && committedHere) {
-            val assembled = kit.materializer.assemble(drive, run.cipher, file, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)
+            val assembled = kit.materializer.assemble(drive, run.cipher, place, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)
+                ?: return track
             return Tracks.materialized(track, chain, assembled, factsOf(file))
         }
         val alreadyKept = facts.size == track.preservedSize && facts.modifiedAt == track.preservedModifiedAt
@@ -172,7 +174,7 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
             if (!batch.copy(Candidate(track.kind, agent, track.path, file, facts, track.sessionId, TrackRules.isVideo(file.name)))) return track
         }
         run.discard(queued)
-        val assembled = kit.materializer.assemble(drive, run.cipher, file, chain)
+        val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return track
         return Tracks.materialized(track, chain, assembled, factsOf(file))
     }
 

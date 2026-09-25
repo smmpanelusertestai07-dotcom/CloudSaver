@@ -222,10 +222,13 @@ internal class Scanner(private val dirs: AppDirs) {
     }
 
     /** The file on this phone for a logical file, or null when the path is unsafe or not a file path. */
-    fun locate(kind: ObjectKind, agentId: String?, path: String): File? {
+    fun locate(kind: ObjectKind, agentId: String?, path: String): File? = roomFile(kind, agentId, path)?.file
+
+    /** [locate], with the room folder the file sits in. */
+    fun roomFile(kind: ObjectKind, agentId: String?, path: String): RoomFile? {
         if (kind == ObjectKind.SECRETS || agentId == null || !isSafeName(agentId)) return null
         val base = if (kind.root == Root.WORK) dirs.roomWork(agentId) else dirs.roomHome(agentId)
-        return safeChild(base, path)
+        return safeChild(base, path)?.let { RoomFile(base, path, it) }
     }
 
     companion object {

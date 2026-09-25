@@ -142,7 +142,8 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
     suspend fun materialize(run: Run, drive: DriveStore, chain: List<VaultObject>, replaceUntrackedMemory: Boolean) {
         val first = chain.first()
         val key = first.fileKey
-        val target = kit.scanner.locate(first.kind, first.agentId, first.path) ?: return
+        val place = kit.scanner.roomFile(first.kind, first.agentId, first.path) ?: return
+        val target = place.file
         val track = run.state.tracks[key]
         val facts = factsOf(target)
         if (facts != null) {
@@ -156,7 +157,7 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
                 return
             }
         }
-        val assembled = kit.materializer.assemble(drive, run.cipher, target, chain)
+        val assembled = kit.materializer.assemble(drive, run.cipher, place, chain) ?: return
         run.state = run.state.copy(tracks = run.state.tracks + (key to Tracks.materialized(track, chain, assembled, factsOf(target))))
         run.save()
     }
