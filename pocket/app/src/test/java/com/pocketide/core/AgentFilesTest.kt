@@ -26,7 +26,15 @@ class AgentFilesTest {
             ".codex/AGENTS.md", ".codex/sessions/2026/09/24/rollout-2026-09-24T10-00-00-abc.jsonl",
             ".gemini/GEMINI.md", ".gemini/antigravity/conversations/abc.pb",
             ".gemini/antigravity/conversation_summaries.db", ".gemini/antigravity/brain/abc/plan.md",
+            ".gemini/antigravity-ide/conversations/abc.pb", ".gemini/antigravity-ide/brain/abc/plan.md",
+            ".gemini/antigravity-ide/conversation_summaries.db-wal", ".gemini/antigravity-cli/rules/style.md",
         ).forEach { assertEquals(it, FileClass.SYNC, AgentFiles.classify(it)) }
+    }
+
+    @Test
+    fun otherAntigravityFoldersStayLocal() {
+        listOf(".gemini/antigravity-web/brain/abc/plan.md", ".gemini/antigravity-cli/rules/nested/style.md", ".gemini/antigravity-cli/rules/notes.txt")
+            .forEach { assertEquals(it, FileClass.LOCAL, AgentFiles.classify(it)) }
     }
 
     @Test

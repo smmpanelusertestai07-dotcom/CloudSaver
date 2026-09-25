@@ -16,6 +16,11 @@ data class Project(
     val lastActivityAt: Long,
     /** Whether the bare clone exists on this phone. */
     val cloned: Boolean = false,
+    /**
+     * The owner's answer to "Is this your code?" (a ProjectTrust name), so it travels to a new
+     * phone; null when not answered, and then worked out from the repository owner.
+     */
+    val trust: String? = null,
 )
 
 @Serializable

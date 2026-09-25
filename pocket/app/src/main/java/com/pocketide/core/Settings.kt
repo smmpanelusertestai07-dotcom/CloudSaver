@@ -25,6 +25,8 @@ data class Settings(
     val driveLimitGb: Int = 2,
     /** 0 = Auto (from RAM). */
     val maxAgents: Int = 0,
+    /** Idle agents' rooms close after this many minutes without work (sessions kept); 0 = never. Choices: Off, 15, 30, 60. */
+    val idleSleepMinutes: Int = 30,
     val appLock: Boolean = true,
     /** Hide every agent except the built-in three. Synced. */
     val onlyOfficialAgents: Boolean = false,

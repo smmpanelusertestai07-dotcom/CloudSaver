@@ -96,9 +96,10 @@ object AgentFiles {
         Regex("^\\.gemini/config/(GEMINI|AGENTS)\\.md$"),
         Regex("^\\.gemini/config/rules/[^/]+\\.md$"),
         Regex("^\\.gemini/config/memory\\.txtpb$"),
-        Regex("^\\.gemini/antigravity(-cli)?/conversations/.+$"),
-        Regex("^\\.gemini/antigravity(-cli)?/conversation_summaries\\.db(-wal|-shm)?$"),
-        Regex("^\\.gemini/antigravity(-cli)?/brain/.+$"),
+        Regex("^\\.gemini/antigravity(-cli|-ide)?/conversations/.+$"),
+        Regex("^\\.gemini/antigravity(-cli|-ide)?/conversation_summaries\\.db(-wal|-shm)?$"),
+        Regex("^\\.gemini/antigravity(-cli|-ide)?/brain/.+$"),
+        Regex("^\\.gemini/antigravity-cli/rules/[^/]+\\.md$"),
     )
 
     /** Files whose text is scanned for pasted secrets before they are uploaded. */
