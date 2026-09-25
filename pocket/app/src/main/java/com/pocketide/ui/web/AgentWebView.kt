@@ -480,6 +480,12 @@ private class PopupCatcher(
         handle(url)
     }
 
+    /** The renderer is shared with the agent's view: answering false here would end the whole app. */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        destroyPopup()
+        return true
+    }
+
     private fun handle(url: String?) {
         if (handled || url.isNullOrEmpty() || WebPolicy.isFrameLocal(url)) return
         handled = true
