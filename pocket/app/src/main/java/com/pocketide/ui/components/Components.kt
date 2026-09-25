@@ -56,11 +56,14 @@ fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** How strongly a status chip is tinted with its own colour. */
+const val STATUS_CHIP_TINT = 0.14f
+
 /** A small coloured status label. */
 @Composable
 fun StatusChip(text: String, tone: Tone, modifier: Modifier = Modifier) {
     val color = toneColor(tone)
-    Surface(modifier = modifier, color = color.copy(alpha = 0.14f), shape = MaterialTheme.shapes.small) {
+    Surface(modifier = modifier, color = color.copy(alpha = STATUS_CHIP_TINT), shape = MaterialTheme.shapes.small) {
         Text(text, color = color, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
     }
 }
