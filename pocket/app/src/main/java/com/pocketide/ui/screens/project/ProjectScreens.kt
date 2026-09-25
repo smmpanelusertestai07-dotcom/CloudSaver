@@ -364,6 +364,7 @@ private fun SessionsTab(
     val context = LocalContext.current
     var putting by remember { mutableStateOf<SessionRecord?>(null) }
     var changes by remember { mutableStateOf<SessionRecord?>(null) }
+    var browsing by remember { mutableStateOf<SessionRecord?>(null) }
     var deleting by remember { mutableStateOf<SessionRecord?>(null) }
     val groups = remember(sessions, projectId) { sessionsByAgent(sessions, projectId) }
 
@@ -400,6 +401,7 @@ private fun SessionsTab(
                             if (!pinned) scope.launch { snackbar.showSnackbar("This phone's home screen does not accept shortcuts.") }
                         },
                         onChanges = { changes = session },
+                        onFiles = { browsing = session },
                         onPutOnMain = { putting = session },
                         onDelete = { deleting = session },
                     )
@@ -410,6 +412,7 @@ private fun SessionsTab(
 
     putting?.let { PutOnMainFlow(it, onClose = { putting = null }, onOpenSession = nav::agent) }
     changes?.let { ChangesSheet(it, onDismiss = { changes = null }) }
+    browsing?.let { SessionFilesDialog(it, startFile = null, onDismiss = { browsing = null }) }
     deleting?.let { session ->
         ConfirmDialog(
             title = "Delete \"${session.title}\"?",
@@ -429,6 +432,7 @@ private fun SessionCard(
     onOpen: () -> Unit,
     onPin: () -> Unit,
     onChanges: () -> Unit,
+    onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -464,6 +468,7 @@ private fun SessionCard(
                     DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onOpen() })
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                        DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                         DropdownMenuItem(text = { Text("Add to Home screen") }, onClick = { menu = false; onPin() })
                     }
@@ -606,6 +611,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     var tries by remember(sessionId) { mutableIntStateOf(0) }
     var panel by remember(sessionId) { mutableStateOf<AgentPanel?>(null) }
     var showChanges by remember { mutableStateOf(false) }
+    var showFiles by remember { mutableStateOf(false) }
     var putting by remember { mutableStateOf(false) }
     var bigDismissed by rememberSaveable(sessionId) { mutableStateOf(false) }
     var startingFresh by remember { mutableStateOf(false) }
@@ -658,6 +664,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
                         onBack = { if (panel != null) panel = null else nav.back() },
                         onPanel = { panel = it },
                         onChanges = { showChanges = true },
+                        onFiles = { showFiles = true },
                         onPutOnMain = { putting = true },
                         onZoom = { chosen ->
                             zoom = chosen
@@ -743,6 +750,7 @@ fun AgentScreen(sessionId: String, nav: PocketNav) {
     }
 
     if (showChanges) ChangesSheet(session, onDismiss = { showChanges = false })
+    if (showFiles) SessionFilesDialog(session, startFile = null, onDismiss = { showFiles = false })
     if (putting) PutOnMainFlow(session, onClose = { putting = false })
     handOffTo?.let { to -> HandOffFlow(session, to, onClose = { handOffTo = null }, onOpenSession = nav::agent) }
     if (renamingBranch) RenameBranchDialog(session, snackbar, scope, onDismiss = { renamingBranch = false })
@@ -774,6 +782,7 @@ private fun AgentBar(
     onBack: () -> Unit,
     onPanel: (AgentPanel) -> Unit,
     onChanges: () -> Unit,
+    onFiles: () -> Unit,
     onPutOnMain: () -> Unit,
     onZoom: (Int) -> Unit,
     onImmersive: () -> Unit,
@@ -819,6 +828,7 @@ private fun AgentBar(
                     }
                     DropdownMenuItem(text = { Text("Changes") }, onClick = { menu = false; onChanges() })
                     if (session.status == SessionStatus.OPEN || session.status == SessionStatus.CONFLICT_COPY) {
+                        DropdownMenuItem(text = { Text("Files") }, onClick = { menu = false; onFiles() })
                         DropdownMenuItem(text = { Text("Put on main") }, onClick = { menu = false; onPutOnMain() })
                     }
                     if (open) {

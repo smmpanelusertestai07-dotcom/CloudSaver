@@ -1,5 +1,6 @@
 package com.pocketide.ui.screens.project
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -188,6 +189,8 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
     val changes by produceState<Result<SessionChanges>?>(null, session.id) {
         value = attempt { graph.sessions.changes(session.id) }
     }
+    var viewing by remember(session.id) { mutableStateOf<String?>(null) }
+    viewing?.let { path -> SessionFilesDialog(session, startFile = path, onDismiss = { viewing = null }) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding()) {
             Text("Changes", style = MaterialTheme.typography.titleLarge)
@@ -206,7 +209,7 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
                     "Could not read the changes: ${plainReason(result.exceptionOrNull() ?: IllegalStateException())}",
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
-                else -> ChangesList(result.getOrThrow())
+                else -> ChangesList(result.getOrThrow(), onOpen = { viewing = it })
             }
             Spacer(Modifier.size(16.dp))
         }
@@ -214,7 +217,7 @@ fun ChangesSheet(session: SessionRecord, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun ChangesList(changes: SessionChanges) {
+private fun ChangesList(changes: SessionChanges, onOpen: (String) -> Unit) {
     if (changes.commits.isEmpty() && changes.files.isEmpty()) {
         Text("No changes yet. The agent has not committed anything in this session.", modifier = Modifier.padding(vertical = 16.dp))
         return
@@ -224,7 +227,10 @@ private fun ChangesList(changes: SessionChanges) {
         items(changes.commits) { Text(it, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         item { SectionLabel(WorkFormat.count(changes.files.size, "file", "files")) }
         items(changes.files) { file ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().clickable(onClickLabel = "View file") { onOpen(file.path) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     file.path,
                     fontFamily = FontFamily.Monospace,

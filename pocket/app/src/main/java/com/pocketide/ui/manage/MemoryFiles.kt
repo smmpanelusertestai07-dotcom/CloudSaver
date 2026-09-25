@@ -2,12 +2,10 @@ package com.pocketide.ui.manage
 
 import com.pocketide.core.AgentFiles
 import com.pocketide.core.FileClass
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
-import java.nio.channels.SeekableByteChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -43,7 +41,7 @@ object MemoryFiles {
     /** Larger files are not opened in the phone editor (instructions stay far below this). */
     const val MAX_EDIT_BYTES = 512 * 1024L
     private const val MAX_FILES_PER_ROOM = 60
-    private const val NOT_PLAIN = "This file is not a plain file in the room."
+    private const val NOT_PLAIN = LinkFreeFiles.NOT_PLAIN
 
     /** Relative paths per agent; `*` matches one directory level or one file name. */
     private val patterns = mapOf(
@@ -86,34 +84,11 @@ object MemoryFiles {
     }
 
     /** True when [file] and every directory between it and [home] is a real directory or file, not a link. */
-    fun isSafe(home: File, file: File): Boolean {
-        val root = home.toPath().toAbsolutePath().normalize()
-        val target = file.toPath().toAbsolutePath().normalize()
-        if (!target.startsWith(root) || target == root) return false
-        if (Files.isSymbolicLink(root)) return false
-        var current: Path = root
-        for (part in root.relativize(target)) {
-            current = current.resolve(part)
-            if (Files.isSymbolicLink(current)) return false
-            if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) return true
-        }
-        return true
-    }
+    fun isSafe(home: File, file: File): Boolean = LinkFreeFiles.isSafe(home, file)
 
     @Throws(IOException::class)
-    fun read(home: File, file: File): String {
-        if (!isSafe(home, file)) throw IOException(NOT_PLAIN)
-        val path = file.toPath()
-        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return ""
-        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw IOException("This is not a plain text file.")
-        // NOFOLLOW_LINKS refuses a link swapped in after the check; the folder is checked again once open.
-        val bytes = Files.newByteChannel(path, setOf(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)).use { channel ->
-            if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
-            readAtMost(channel, MAX_EDIT_BYTES)
-        }
-        if (bytes.any { it == 0.toByte() }) throw IOException("This is not a plain text file.")
-        return String(bytes, Charsets.UTF_8)
-    }
+    fun read(home: File, file: File): String =
+        LinkFreeFiles.readText(home, file, MAX_EDIT_BYTES, "This file is too large to edit on the phone.")
 
     /**
      * Writes [text] so the file is either the old or the new version, never half of each:
@@ -133,13 +108,13 @@ object MemoryFiles {
             Files.deleteIfExists(temp)
             FileChannel.open(temp, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE).use { channel ->
                 // Checked before any byte is written, so a swapped folder never receives the text.
-                if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
+                if (!LinkFreeFiles.insideRoot(home, file)) throw IOException(NOT_PLAIN)
                 val buffer = ByteBuffer.wrap(text.toByteArray(Charsets.UTF_8))
                 while (buffer.hasRemaining()) channel.write(buffer)
                 channel.force(true)
             }
             // A folder on the way swapped for a link while writing would move the file elsewhere.
-            if (!insideHome(home, file)) throw IOException(NOT_PLAIN)
+            if (!LinkFreeFiles.insideRoot(home, file)) throw IOException(NOT_PLAIN)
             try {
                 Files.move(temp, file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             } catch (_: AtomicMoveNotSupportedException) {
@@ -148,29 +123,6 @@ object MemoryFiles {
         } finally {
             Files.deleteIfExists(temp)
         }
-    }
-
-    /** The file's folder, with every link resolved, is still inside the room's real home. */
-    private fun insideHome(home: File, file: File): Boolean {
-        val parent = file.toPath().toAbsolutePath().normalize().parent ?: return false
-        return try {
-            parent.toRealPath().startsWith(home.toPath().toRealPath())
-        } catch (_: IOException) {
-            false
-        }
-    }
-
-    private fun readAtMost(channel: SeekableByteChannel, limit: Long): ByteArray {
-        val out = ByteArrayOutputStream()
-        val buffer = ByteBuffer.allocate(8192)
-        while (true) {
-            buffer.clear()
-            val n = channel.read(buffer)
-            if (n < 0) break
-            if (out.size() + n > limit) throw IOException("This file is too large to edit on the phone.")
-            out.write(buffer.array(), 0, n)
-        }
-        return out.toByteArray()
     }
 
     private fun expand(home: File, pattern: String): List<String> {
