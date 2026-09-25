@@ -141,6 +141,7 @@ internal object VaultText {
         "Your pocketide-keyring repository was missing, so PocketIDE made it again with a fresh half of your key."
     const val MAKE_PRIVATE_FIRST = "Make pocketide-keyring private, with no one else added, before setting a password."
     const val EMPTY_PASSWORD = "Choose a password that is not empty."
+    const val PASSWORD_UNUSABLE = "That password has a character PocketIDE cannot read. Type it again."
     const val NOT_A_KEY_COPY = "This is not a PocketIDE key copy."
     const val NO_VAULT_TO_OPEN = "There is no PocketIDE vault in this Google account to open."
     const val COPY_DOES_NOT_OPEN = "This key copy does not open the vault in this Google account. Use your newest key copy."

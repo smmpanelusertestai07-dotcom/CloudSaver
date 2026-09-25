@@ -3,6 +3,9 @@ package com.pocketide.vault
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.params.Argon2Parameters
 import java.nio.ByteBuffer
+import java.nio.CharBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.security.SecureRandom
 
 /** Argon2id cost. */
@@ -52,9 +55,32 @@ internal object HalfPassword {
             .withSalt(salt)
             .build()
         val key = ByteArray(KeySplit.KEY_SIZE)
-        Argon2BytesGenerator().apply { init(parameters) }.generateBytes(password, key)
-        parameters.clear()
+        val bytes = utf8(password)
+        try {
+            Argon2BytesGenerator().apply { init(parameters) }.generateBytes(bytes, key)
+        } finally {
+            bytes.fill(0)
+            parameters.clear()
+        }
         return PasswordKey(cost, salt.copyOf(), key)
+    }
+
+    /**
+     * The password as UTF-8, as the reference Argon2 takes it. Encoded here rather than by
+     * BouncyCastle, so the bytes can be wiped and a broken character gets a plain sentence.
+     */
+    private fun utf8(password: CharArray): ByteArray {
+        val encoder = Charsets.UTF_8.newEncoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val buffer = try {
+            encoder.encode(CharBuffer.wrap(password))
+        } catch (e: CharacterCodingException) {
+            throw VaultException(VaultText.PASSWORD_UNUSABLE)
+        }
+        val bytes = ByteArray(buffer.remaining()).also { buffer.get(it) }
+        if (buffer.hasArray()) buffer.array().fill(0)
+        return bytes
     }
 
     fun wrap(half: ByteArray, key: PasswordKey, random: SecureRandom): ByteArray {
