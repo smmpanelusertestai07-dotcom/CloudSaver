@@ -163,7 +163,7 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         item { SectionLabel("By type") }
         item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
         item { SectionLabel("Largest sessions") }
-        item { LargestCard(largest, nav) { removeMediaOf = it } }
+        item { LargestCard(largest, agents, nav) { removeMediaOf = it } }
         item { SectionLabel("Memory and instructions") }
         item { MemoryCard(agents, sizes.value?.memory, sizes.loading, onEdit) }
         item {
@@ -313,7 +313,7 @@ private fun ByTypeCard(
 }
 
 @Composable
-private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMedia: (SessionRecord) -> Unit) {
+private fun LargestCard(largest: List<SessionRecord>, agents: List<AgentInfo>, nav: PocketNav, onRemoveMedia: (SessionRecord) -> Unit) {
     SectionCard(null) {
         if (largest.isEmpty()) Hint("No sessions yet.")
         largest.forEachIndexed { index, session ->
@@ -325,7 +325,7 @@ private fun LargestCard(largest: List<SessionRecord>, nav: PocketNav, onRemoveMe
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(session.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Hint("${session.projectId.substringAfter('/')} · ${session.agentId}")
+                        Hint(DataMath.sessionOrigin(session, agents))
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(ManageFormat.bytes(DataMath.sizeOf(session)), style = MaterialTheme.typography.bodyMedium)

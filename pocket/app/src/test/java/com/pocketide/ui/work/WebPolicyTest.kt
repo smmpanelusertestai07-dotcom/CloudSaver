@@ -1,6 +1,7 @@
 package com.pocketide.ui.work
 
 import com.pocketide.ui.web.ExternalOpen
+import com.pocketide.ui.web.FilePick
 import com.pocketide.ui.web.PickerKind
 import com.pocketide.ui.web.WebPolicy
 import org.junit.Assert.assertEquals
@@ -68,5 +69,22 @@ class WebPolicyTest {
         assertEquals(PickerKind.IMAGES_AND_VIDEOS, WebPolicy.pickerKind(listOf("image/*", "video/*")))
         assertEquals(PickerKind.IMAGES_AND_VIDEOS, WebPolicy.pickerKind(listOf("*/*")))
         assertEquals(PickerKind.IMAGES_AND_VIDEOS, WebPolicy.pickerKind(listOf("application/pdf")))
+    }
+
+    @Test
+    fun pictureOnlyInputsStillOfferVideosAsKeyFrames() {
+        assertEquals(FilePick(PickerKind.IMAGES_AND_VIDEOS, 4), WebPolicy.filePick(listOf("image/*"), multiple = true))
+        assertEquals(FilePick(PickerKind.IMAGES_AND_VIDEOS, 1), WebPolicy.filePick(listOf("image/png"), multiple = false))
+        // An input that takes videos gets them as they are.
+        assertEquals(FilePick(PickerKind.IMAGES_AND_VIDEOS, 0), WebPolicy.filePick(listOf("image/*", "video/*"), multiple = true))
+        assertEquals(FilePick(PickerKind.VIDEOS, 0), WebPolicy.filePick(listOf("video/mp4"), multiple = false))
+        assertEquals(FilePick(PickerKind.IMAGES_AND_VIDEOS, 0), WebPolicy.filePick(emptyList(), multiple = true))
+    }
+
+    @Test
+    fun unreadableVideosAreNamedOnlyWhenThereAreAny() {
+        assertNull(WebPolicy.unreadableVideos(0))
+        assertEquals("The video could not be read, so it was not sent.", WebPolicy.unreadableVideos(1))
+        assertEquals("2 videos could not be read, so they were not sent.", WebPolicy.unreadableVideos(2))
     }
 }

@@ -55,6 +55,22 @@ class ManageTextTest {
     }
 
     @Test
+    fun `the retention note never contradicts the chosen removal rules`() {
+        val never = "never removed for inactivity"
+        val chosen = ManageText.retentionNote(Settings(keepChatsMonths = 12, autoTrimOldChats = false))
+        assertFalse(chosen, chosen.contains(never))
+        assertTrue(chosen, chosen.contains("12 months"))
+        val trimOnly = ManageText.retentionNote(Settings(keepChatsMonths = 0, autoTrimOldChats = true))
+        assertFalse(trimOnly, trimOnly.contains(never))
+        assertTrue(trimOnly, trimOnly.contains("Drive space is full"))
+        val both = ManageText.retentionNote(Settings(keepChatsMonths = 6, autoTrimOldChats = true))
+        assertTrue(both, both.contains("6 months") && both.contains("Drive space is full"))
+        val keepAll = ManageText.retentionNote(Settings(keepChatsMonths = 0, autoTrimOldChats = false))
+        assertTrue(keepAll, keepAll.contains(never))
+        listOf(chosen, trimOnly, both, keepAll).forEach { assertTrue(it, it.contains("Recently deleted is always 30 days.")) }
+    }
+
+    @Test
     fun `errors become one plain sentence`() {
         assertEquals("GitHub is not connected. Reconnect it in Settings.", PlainError.of(NotConnectedException("x")))
         assertEquals(

@@ -39,6 +39,7 @@ import com.pocketide.core.Settings
 import com.pocketide.sync.DataUsage
 import com.pocketide.ui.components.InfoRow
 import com.pocketide.ui.components.Tone
+import com.pocketide.ui.manage.ManageText
 import com.pocketide.ui.nav.PocketNav
 import com.pocketide.ui.shell.ContentMaxWidth
 import com.pocketide.ui.shell.Formats
@@ -348,8 +349,7 @@ private fun ManageDataSection(nav: PocketNav, settings: Settings, update: ((Sett
         ),
     )
     Text(
-        "Recently deleted is always 30 days. Unmerged branches and unpushed code are never removed automatically, " +
-            "and Drive chats are never removed for inactivity.",
+        ManageText.retentionNote(settings),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
