@@ -93,6 +93,8 @@ private class GraphRunPorts(private val graph: AppGraph, private val schedules: 
     override fun notify(taskId: String, heading: String, text: String) =
         BuildNotices.notify(graph.context, taskId.hashCode(), heading, text)
 
+    override suspend fun recordStart(taskId: String, at: Long, sessionId: String) = schedules().recordStart(taskId, at, sessionId)
+
     override suspend fun recordRun(taskId: String, at: Long, sessionId: String) = schedules().recordRun(taskId, at, sessionId)
 
     private companion object {

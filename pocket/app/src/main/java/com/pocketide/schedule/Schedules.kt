@@ -15,6 +15,12 @@ data class ScheduledTask(
     val lastRunAt: Long? = null,
     val lastSessionId: String? = null,
     val enabled: Boolean = true,
+    /**
+     * The session of a run that has started and not yet ended. Still set when a run starts
+     * again, the run before was cut off with no chance to say so.
+     */
+    val runningSessionId: String? = null,
+    val runningSince: Long? = null,
 )
 
 /**

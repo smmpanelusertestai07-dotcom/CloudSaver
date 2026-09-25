@@ -48,6 +48,9 @@ internal interface RunPorts {
 
     fun notify(taskId: String, heading: String, text: String)
 
+    /** Marks the run as started, before the agent does anything; [recordRun] ends the mark. */
+    suspend fun recordStart(taskId: String, at: Long, sessionId: String)
+
     suspend fun recordRun(taskId: String, at: Long, sessionId: String)
 }
 
@@ -66,19 +69,26 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
         return ports.startSession(task.projectId, task.agentId, "${task.title} · ${Ist.dateTime(ports.clock.now())}")
     }
 
-    suspend fun run(task: ScheduledTask, existingSessionId: String? = null): RunOutcome {
+    /**
+     * Runs [task] in [existingSessionId] or a new session. [background]: Android did not let the
+     * run into the foreground, so it has only the time a plain job gets, and stops before
+     * Android cuts it off.
+     */
+    suspend fun run(task: ScheduledTask, existingSessionId: String? = null, background: Boolean = false): RunOutcome {
         ports.heavyWorkRefusal()?.let { throw ScheduleException(it) }
         val session = existingSessionId?.let { ports.session(it) } ?: newSession(task)
         val worktree = AppDirs.guestWorktree(session.projectId, session.id)
         val argv = HeadlessCommand.argv(task.agentId, task.prompt, worktree) ?: throw ScheduleException(NO_HEADLESS)
+        val limitMs = if (background) minOf(timeLimitMs, BACKGROUND_LIMIT_MS) else timeLimitMs
         val startedAt = ports.clock.now()
+        ports.recordStart(task.id, startedAt, session.id)
         val lines = ArrayList<String>()
         var bytes = 0L
         var exitCode: Int? = null
         var timedOut = false
         var succeeded = false
         try {
-            exitCode = withTimeoutOrNull(timeLimitMs) {
+            exitCode = withTimeoutOrNull(limitMs) {
                 ports.runInRoom(task.agentId, session.projectId, argv, worktree, HeadlessCommand.env(task.agentId)) { line ->
                     synchronized(lines) {
                         if (bytes < MAX_OUTPUT_BYTES) {
@@ -98,18 +108,46 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
                 val ok = exitCode?.let { HeadlessCommand.succeeded(task.agentId, it, output) } ?: false
                 succeeded = ok
                 val ended = when {
+                    timedOut && background -> BACKGROUND_STOP
                     timedOut -> "Stopped after ${HeadlessCommand.TIME_LIMIT_MINUTES} minutes, the time limit for a scheduled task."
-                    exitCode == null -> "Stopped before it finished (Android ended the job, or the phone left the charger or Wi-Fi)."
+                    exitCode == null -> CUT_OFF
                     ok -> "Finished."
                     else -> "Ended with code $exitCode."
                 }
-                save(task, startedAt, session.id, output, ended, cut)
-                ports.recordRun(task.id, startedAt, session.id)
-                ports.afterRun(session.id)
-                ports.notify(task.id, if (ok) "Scheduled task finished" else "Scheduled task needs a look", "${task.title}: $ended Open the session to review it.")
+                finish(task, startedAt, session.id, output, ended, cut, ok)
             }
         }
         return RunOutcome(session.id, succeeded, timedOut, exitCode)
+    }
+
+    /**
+     * Ends the run of [task] that was cut off with no chance to say so (Android stopped the app
+     * with it), in that run's own session. Nothing starts again: Android would cut a new run off
+     * the same way, and each start would be another session and another agent run.
+     */
+    suspend fun endCutOff(task: ScheduledTask) {
+        val sessionId = task.runningSessionId ?: return
+        val startedAt = task.runningSince ?: ports.clock.now()
+        withContext(NonCancellable) {
+            if (ports.session(sessionId) == null) {
+                ports.recordRun(task.id, startedAt, sessionId)
+            } else {
+                finish(task, startedAt, sessionId, emptyList(), CUT_OFF, cut = false, ok = false)
+            }
+        }
+    }
+
+    /** Tells a "Run now" session that it did not run, because the task was running already. */
+    suspend fun endAsBusy(task: ScheduledTask, sessionId: String) = withContext(NonCancellable) {
+        save(task, ports.clock.now(), sessionId, emptyList(), BUSY, cut = false)
+        ports.notify(task.id, "Scheduled task needs a look", "${task.title}: $BUSY")
+    }
+
+    private suspend fun finish(task: ScheduledTask, startedAt: Long, sessionId: String, output: List<String>, ended: String, cut: Boolean, ok: Boolean) {
+        save(task, startedAt, sessionId, output, ended, cut)
+        ports.recordRun(task.id, startedAt, sessionId)
+        ports.afterRun(sessionId)
+        ports.notify(task.id, if (ok) "Scheduled task finished" else "Scheduled task needs a look", "${task.title}: $ended Open the session to review it.")
     }
 
     private suspend fun save(task: ScheduledTask, startedAt: Long, sessionId: String, output: List<String>, ended: String, cut: Boolean) {
@@ -136,6 +174,15 @@ internal class ScheduledRun(private val ports: RunPorts, private val timeLimitMs
 
     companion object {
         const val MAX_OUTPUT_BYTES = 2L * 1024 * 1024
+
+        /** Android stops a job outside the foreground after ten minutes; the run ends first. */
+        const val BACKGROUND_LIMIT_MINUTES = 9
+        const val BACKGROUND_LIMIT_MS = BACKGROUND_LIMIT_MINUTES * 60_000L
+
+        const val BACKGROUND_STOP = "Stopped after $BACKGROUND_LIMIT_MINUTES minutes: Android gives no more to a task that starts while " +
+            "PocketIDE is in the background. To give tasks up to ${HeadlessCommand.TIME_LIMIT_MINUTES} minutes, let PocketIDE use the battery without restrictions in Android's settings."
+        const val CUT_OFF = "Stopped before it finished (Android ended the job, or the phone left the charger or Wi-Fi). It was not started again; the next run is at its usual time."
+        const val BUSY = "Not run: this task was already running. That run's session has its result."
         const val NO_HEADLESS = "This agent has no command-line mode, so it cannot run scheduled tasks. Choose Claude Code, Codex or Antigravity."
     }
 }

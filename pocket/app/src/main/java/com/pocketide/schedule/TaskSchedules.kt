@@ -14,6 +14,7 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.concurrent.ConcurrentHashMap
 
 /** Whether the phone is charging and on Wi-Fi right now; a plain reason when not. */
 internal fun interface PowerAndWifi {
@@ -33,6 +34,9 @@ internal class TaskSchedules(
 ) : Schedules {
 
     private val lock = Mutex()
+
+    /** One run of a task at a time, whether periodic or "Run now". */
+    private val runs = ConcurrentHashMap<String, Mutex>()
     private val state = MutableStateFlow<List<ScheduledTask>>(emptyList())
     private val loaded = CompletableDeferred<Unit>()
 
@@ -56,7 +60,12 @@ internal class TaskSchedules(
         lock.withLock {
             val old = state.value.firstOrNull { it.id == task.id }
             // The screens edit a copy: the run history stays the app's own.
-            val merged = task.copy(lastRunAt = old?.lastRunAt ?: task.lastRunAt, lastSessionId = old?.lastSessionId ?: task.lastSessionId)
+            val merged = task.copy(
+                lastRunAt = old?.lastRunAt ?: task.lastRunAt,
+                lastSessionId = old?.lastSessionId ?: task.lastSessionId,
+                runningSessionId = old?.runningSessionId,
+                runningSince = old?.runningSince,
+            )
             write(state.value.filterNot { it.id == task.id } + merged)
             scheduler.schedule(merged)
         }
@@ -70,22 +79,49 @@ internal class TaskSchedules(
         }
     }
 
+    /**
+     * Queues a run of the task and returns the session it will use. While the task already runs,
+     * or a "Run now" waits for the charger, that run's session is returned instead: a second
+     * request would be dropped, and its session stay empty.
+     */
     override suspend fun runNow(id: String): String? {
         load()
         val task = find(id) ?: throw ScheduleException("This task was deleted.")
+        if (running(id)) task.runningSessionId?.let { return it }
+        scheduler.queuedRun(id)?.let { return it }
         powerAndWifi.whyNot()?.let { throw ScheduleException(it) }
         val session = runner.newSession(task)
         scheduler.runOnce(task.id, session.id)
         return session.id
     }
 
+    /** Runs [block] unless a run of the task is going on already; null then. */
+    suspend fun <T> exclusively(taskId: String, block: suspend () -> T): T? {
+        val gate = runs.getOrPut(taskId) { Mutex() }
+        if (!gate.tryLock()) return null
+        return try {
+            block()
+        } finally {
+            gate.unlock()
+        }
+    }
+
+    private fun running(taskId: String): Boolean = runs[taskId]?.isLocked == true
+
+    /** Called by a run before the agent starts. */
+    suspend fun recordStart(taskId: String, at: Long, sessionId: String) =
+        change(taskId) { it.copy(runningSessionId = sessionId, runningSince = at) }
+
     /** Called by a run when it ends. */
-    suspend fun recordRun(taskId: String, at: Long, sessionId: String) {
+    suspend fun recordRun(taskId: String, at: Long, sessionId: String) =
+        change(taskId) { it.copy(lastRunAt = at, lastSessionId = sessionId, runningSessionId = null, runningSince = null) }
+
+    private suspend fun change(taskId: String, edit: (ScheduledTask) -> ScheduledTask) {
         load()
         lock.withLock {
             val list = state.value
             if (list.none { it.id == taskId }) return
-            write(list.map { if (it.id == taskId) it.copy(lastRunAt = at, lastSessionId = sessionId) else it })
+            write(list.map { if (it.id == taskId) edit(it) else it })
         }
     }
 
