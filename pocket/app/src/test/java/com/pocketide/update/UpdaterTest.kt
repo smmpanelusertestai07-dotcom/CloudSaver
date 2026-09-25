@@ -166,6 +166,18 @@ class UpdaterTest {
         assertNull(github().newest(SemVer(3, 0, 0)))
     }
 
+    /** The day GitHub retires the REST version this build knows, the updater must still find the build that knows the next. */
+    @Test
+    fun theReleaseListIsAskedForWithoutAnApiVersion() = runBlocking<Unit> {
+        publish(release("pocketide-v3.1.0", apk()))
+
+        github().newest(SemVer(3, 0, 0))
+
+        val request = server.takeRequest()
+        assertEquals("/repos/$repo/releases", request.url.encodedPath)
+        assertNull(request.headers["X-GitHub-Api-Version"])
+    }
+
     @Test
     fun githubRefusingSaysSoPlainly() {
         listStatus = 429

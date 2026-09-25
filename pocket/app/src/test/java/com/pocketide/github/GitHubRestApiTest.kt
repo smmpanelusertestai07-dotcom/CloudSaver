@@ -65,6 +65,36 @@ class GitHubRestApiTest {
     }
 
     @Test
+    fun `once GitHub retires the API version, calls go on without it`() = runBlocking {
+        server.enqueue(json("""{"message":"Unsupported 'X-GitHub-Api-Version' header: API version 2026-03-10 is no longer supported."}""", 410))
+        server.enqueue(json("""{"login":"octo","id":7,"name":null,"avatar_url":null}"""))
+        assertEquals("octo", api.me().login)
+        assertEquals("2026-03-10", server.next().headers["X-GitHub-Api-Version"])
+        assertNull("the same call again, without the version", server.next().headers["X-GitHub-Api-Version"])
+
+        // A write refused for its version is sent again too, and every later call leaves the version out.
+        fx.apiVersion.retired = false
+        server.enqueue(json("""{"message":"Invalid API version"}""", 400))
+        server.enqueue(MockResponse.Builder().code(204).build())
+        assertNull(api.dispatchWorkflowRun("octo", "demo", "ci.yml", "main"))
+        server.enqueue(json("""{"login":"octo","id":7,"name":null,"avatar_url":null}"""))
+        api.me()
+        assertEquals("2026-03-10", server.next().headers["X-GitHub-Api-Version"])
+        assertEquals(listOf(null, null), listOf(server.next(), server.next()).map { it.headers["X-GitHub-Api-Version"] })
+        assertTrue(fx.apiVersion.retired)
+    }
+
+    @Test
+    fun `an answer that is not about the API version keeps it`() = runBlocking {
+        server.enqueue(json("""{"message":"Problems parsing JSON"}""", 400))
+        val refused = failsWith<GitHubException> { runBlocking { api.me() } }
+        assertEquals(GitHubText.REJECTED, refused.message)
+        assertFalse(fx.apiVersion.retired)
+        assertEquals(1, server.requestCount)
+        assertEquals(GitHubText.API_RETIRED, GitHubErrors.of(410, """{"message":"API version 2026-03-10 is not supported"}""").message)
+    }
+
+    @Test
     fun `lists follow the Link header with 100 per page`() = runBlocking {
         val page2 = server.url("/repos/octo/demo/collaborators?affiliation=all&per_page=100&page=2")
         server.enqueue(

@@ -58,8 +58,10 @@ class PublicReleases internal constructor(
     private suspend fun get(url: HttpUrl): Pair<String, Headers> {
         val request = Request.Builder()
             .url(url)
+            // No X-GitHub-Api-Version: the fields read here are the same in every version, and
+            // naming one would stop the updater, the way to a build that knows a newer one, the
+            // day GitHub retires it.
             .header("Accept", RestClient.ACCEPT_JSON)
-            .header("X-GitHub-Api-Version", RestClient.API_VERSION)
             .build()
         return client.newCall(request).await().use { response ->
             when {
