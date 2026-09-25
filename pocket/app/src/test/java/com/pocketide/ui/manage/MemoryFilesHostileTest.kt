@@ -144,6 +144,33 @@ class MemoryFilesHostileTest {
     }
 
     @Test
+    fun `a folder swapped for a link just while the file opens is never read, even once swapped back`() {
+        val home = temp.newFolder("home")
+        val outside = temp.newFolder("outside")
+        write(outside, "AGENTS.md", "outside")
+        val target = write(home, ".codex/AGENTS.md", "mine")
+        val real = File(home, ".codex").toPath()
+        val parked = File(home, "parked").toPath()
+        assertRefused {
+            LinkFreeFiles.readText(
+                home,
+                target,
+                MemoryFiles.MAX_EDIT_BYTES,
+                "too large",
+                beforeOpen = {
+                    Files.move(real, parked)
+                    Files.createSymbolicLink(real, outside.toPath())
+                },
+                afterOpen = {
+                    Files.delete(real)
+                    Files.move(parked, real)
+                },
+            )
+        }
+        assertEquals("mine", MemoryFiles.read(home, target))
+    }
+
+    @Test
     fun `invalid UTF-8 is shown with replacement characters, not a crash`() {
         val home = temp.newFolder("home")
         val file = File(home, ".codex/AGENTS.md").apply {

@@ -1,5 +1,6 @@
 package com.pocketide.ui.manage
 
+import com.pocketide.rooms.RoomFiles
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -8,7 +9,6 @@ import java.nio.channels.SeekableByteChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 
 /** One entry of a folder, as it is on disk: a link is reported as a link, never followed. */
@@ -42,18 +42,32 @@ object LinkFreeFiles {
     /**
      * The text of [file], at most [limit] bytes ([tooLarge] is the reason given otherwise).
      * A file that does not exist reads as empty; a binary file is refused.
+     *
+     * The checks by path only give a clear reason. What is read is opened folder by folder from
+     * [root], each one refused if it is a link ([RoomFiles]): opening by path would follow a folder
+     * swapped for a link just then, and a check afterwards cannot tell once it is swapped back.
      */
     @Throws(IOException::class)
-    fun readText(root: File, file: File, limit: Long, tooLarge: String): String {
+    fun readText(root: File, file: File, limit: Long, tooLarge: String): String =
+        readText(root, file, limit, tooLarge, beforeOpen = {}, afterOpen = {})
+
+    /** [readText], running [beforeOpen] after the checks and [afterOpen] once the file is open: tests swap folders there. */
+    @Throws(IOException::class)
+    internal fun readText(root: File, file: File, limit: Long, tooLarge: String, beforeOpen: () -> Unit, afterOpen: () -> Unit): String {
         if (!isSafe(root, file)) throw IOException(NOT_PLAIN)
         val path = file.toPath()
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return ""
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) throw IOException(NOT_TEXT)
-        // NOFOLLOW_LINKS refuses a link swapped in after the check; the folder is checked again once open.
-        val bytes = Files.newByteChannel(path, setOf(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)).use { channel ->
-            if (!insideRoot(root, file)) throw IOException(NOT_PLAIN)
-            readAtMost(channel, limit, tooLarge)
+        val relative = root.toPath().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize()).toString()
+        beforeOpen()
+        val channel = RoomFiles(root, guardSecrets = false).open(relative)
+        afterOpen()
+        if (channel == null) {
+            // Gone since the check reads as empty; anything else there now was a link or not a file.
+            if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) throw IOException(NOT_PLAIN)
+            return ""
         }
+        val bytes = channel.use { readAtMost(it, limit, tooLarge) }
         if (bytes.any { it == 0.toByte() }) throw IOException(NOT_TEXT)
         return String(bytes, Charsets.UTF_8)
     }
