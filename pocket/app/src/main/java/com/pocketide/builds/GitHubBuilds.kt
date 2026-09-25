@@ -166,7 +166,12 @@ internal class GitHubBuilds(
 
     /** Adds the end of a failed run's log to Media, for the owner and the agent; returns 1 when it did. */
     private suspend fun keepFailureLog(projectId: String, sessionId: String, runId: Long): Int {
-        val log = progress(projectId, runId)?.failureLog ?: return 0
+        val log = try {
+            progress(projectId, runId)?.failureLog
+        } catch (e: GitHubException) {
+            // The run's files still come in without it.
+            null
+        } ?: return 0
         val folder = ports.scratch()
         return try {
             val file = withContext(ports.io) {
@@ -193,8 +198,8 @@ internal class GitHubBuilds(
         val log = try {
             ports.gitHub.jobLog(project.owner, project.repo, job.id)
         } catch (e: GitHubException) {
-            // The log is a detail: the run's result stands without it.
-            null
+            // The log is a detail: the run's result stands without it, and the next look tries again.
+            return Ending(null, failed, null)
         }
         val ending = Ending(log?.runnerImage, failed, failed?.let { log?.tail?.let(::lastLines) })
         synchronized(endings) { endings[run.id] = ending }
