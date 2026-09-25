@@ -377,11 +377,14 @@ class RoomManagerTest {
         rooms = RoomManager(env, sampleMs = sampleMs)
         env.buildTemplates = listOf(BuildTemplate("apk", "Android APK", "", "apk.yml", "ubuntu-latest"))
         assertTrue(rooms.open("claude", "s1") is RoomState.Running)
-        val started = env.phone.handlers["mcp"]!!("claude", buildJsonObject {
-            put("tool", "run_build")
-            put("args", buildJsonObject { put("template", "apk") })
-            put("cwd", "/work/octo__app/s1")
-        })
+        val started = env.phone.handlers["mcp"]!!(
+            "claude",
+            buildJsonObject {
+                put("tool", "run_build")
+                put("args", buildJsonObject { put("template", "apk") })
+                put("cwd", "/work/octo__app/s1")
+            },
+        )
         assertTrue(started.toString(), started.jsonObject["text"]!!.jsonPrimitive.content.contains("run 42"))
         // The build runs on GitHub: the room's own programs use no CPU for half an hour.
         env.skew = 31 * 60_000L
@@ -701,6 +704,7 @@ http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
         override fun ownerPresent() = true
         override suspend fun autosave(sessionId: String): String? = null
         override suspend fun putOnMain(sessionId: String): PutOnMainResult = PutOnMainResult.Merged
+
         @Volatile var buildTemplates = emptyList<BuildTemplate>()
         override fun templates() = buildTemplates
         override suspend fun runBuild(projectId: String, templateId: String, ref: String): Long? = 42L.takeIf { buildTemplates.isNotEmpty() }

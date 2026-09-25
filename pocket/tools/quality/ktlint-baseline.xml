@@ -142,15 +142,15 @@
     <file name="src/main/java/com/pocketide/linux/Computer.kt">
         <error line="8" column="5" source="standard:spacing-between-declarations-with-comments" />
         <error line="12" column="5" source="standard:spacing-between-declarations-with-comments" />
-        <error line="61" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="65" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/linux/ComputerSetup.kt">
-        <error line="187" column="161" source="standard:max-line-length" />
-        <error line="460" column="29" source="standard:enum-wrapping" />
-        <error line="460" column="47" source="standard:enum-wrapping" />
-        <error line="460" column="58" source="standard:enum-wrapping" />
-        <error line="460" column="84" source="standard:enum-wrapping" />
-        <error line="460" column="108" source="standard:enum-wrapping" />
+        <error line="196" column="161" source="standard:max-line-length" />
+        <error line="480" column="29" source="standard:enum-wrapping" />
+        <error line="480" column="47" source="standard:enum-wrapping" />
+        <error line="480" column="58" source="standard:enum-wrapping" />
+        <error line="480" column="84" source="standard:enum-wrapping" />
+        <error line="480" column="108" source="standard:enum-wrapping" />
     </file>
     <file name="src/main/java/com/pocketide/linux/GuestLines.kt">
         <error line="33" column="24" source="standard:op-spacing" />
@@ -228,7 +228,7 @@
         <error line="160" column="14" source="standard:multiline-if-else" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/RoomLayout.kt">
-        <error line="16" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="18" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/RoomManager.kt">
         <error line="84" column="1" source="standard:spacing-between-declarations-with-annotations" />
@@ -236,8 +236,8 @@
         <error line="86" column="1" source="standard:spacing-between-declarations-with-annotations" />
         <error line="87" column="1" source="standard:spacing-between-declarations-with-annotations" />
         <error line="559" column="37" source="standard:wrapping" />
-        <error line="828" column="50" source="standard:multiline-if-else" />
-        <error line="829" column="14" source="standard:multiline-if-else" />
+        <error line="831" column="50" source="standard:multiline-if-else" />
+        <error line="832" column="14" source="standard:multiline-if-else" />
     </file>
     <file name="src/main/java/com/pocketide/rooms/Rooms.kt">
         <error line="10" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -583,7 +583,7 @@
         <error line="16" column="91" source="standard:string-template" />
     </file>
     <file name="src/test/java/com/pocketide/linux/ComputerSetupTest.kt">
-        <error line="62" column="161" source="standard:max-line-length" />
+        <error line="63" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/linux/GuestFactsTest.kt">
         <error line="17" column="41" source="standard:comma-spacing" />
@@ -598,7 +598,7 @@
         <error line="73" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/linux/NetworkDoctorTest.kt">
-        <error line="62" column="161" source="standard:max-line-length" />
+        <error line="77" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/projects/ProjectFakes.kt">
         <error line="113" column="5" source="standard:spacing-between-declarations-with-comments" />
@@ -636,25 +636,25 @@
         <error line="38" column="161" source="standard:max-line-length" />
     </file>
     <file name="src/test/java/com/pocketide/rooms/RoomManagerTest.kt">
-        <error line="65" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="107" column="131" source="standard:function-literal" />
-        <error line="107" column="161" source="standard:function-literal" />
-        <error line="107" column="161" source="standard:max-line-length" />
-        <error line="246" column="30" source="standard:wrapping" />
-        <error line="246" column="39" source="standard:wrapping" />
-        <error line="250" column="9" source="standard:wrapping" />
-        <error line="252" column="40" source="standard:wrapping" />
-        <error line="252" column="49" source="standard:wrapping" />
-        <error line="256" column="9" source="standard:wrapping" />
-        <error line="287" column="51" source="standard:wrapping" />
-        <error line="287" column="60" source="standard:wrapping" />
-        <error line="290" column="9" source="standard:wrapping" />
-        <error line="342" column="37" source="standard:wrapping" />
-        <error line="342" column="46" source="standard:wrapping" />
-        <error line="345" column="9" source="standard:wrapping" />
-        <error line="507" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="599" column="1" source="standard:spacing-between-declarations-with-annotations" />
-        <error line="607" column="1" source="standard:spacing-between-declarations-with-annotations" />
+        <error line="68" column="1" source="standard:spacing-between-declarations-with-annotations" />
+        <error line="113" column="131" source="standard:function-literal" />
+        <error line="113" column="161" source="standard:function-literal" />
+        <error line="113" column="161" source="standard:max-line-length" />
+        <error line="273" column="30" source="standard:wrapping" />
+        <error line="273" column="39" source="standard:wrapping" />
+        <error line="277" column="9" source="standard:wrapping" />
+        <error line="279" column="40" source="standard:wrapping" />
+        <error line="279" column="49" source="standard:wrapping" />
+        <error line="283" column="9" source="standard:wrapping" />
+        <error line="314" column="51" source="standard:wrapping" />
+        <error line="314" column="60" source="standard:wrapping" />
+        <error line="317" column="9" source="standard:wrapping" />
+        <error line="369" column="37" source="standard:wrapping" />
+        <error line="369" column="46" source="standard:wrapping" />
+        <error line="372" column="9" source="standard:wrapping" />
+        <error line="568" column="1" source="standard:spacing-between-declarations-with-annotations" />
+        <error line="660" column="1" source="standard:spacing-between-declarations-with-annotations" />
+        <error line="670" column="1" source="standard:spacing-between-declarations-with-annotations" />
     </file>
     <file name="src/test/java/com/pocketide/secrets/SealedProjectSecretsTest.kt">
         <error line="214" column="33" source="standard:wrapping" />
@@ -720,7 +720,7 @@
         <error line="3" column="1" source="standard:import-ordering" />
     </file>
     <file name="src/test/java/com/pocketide/update/UpdaterTest.kt">
-        <error line="39" column="5" source="standard:spacing-between-declarations-with-comments" />
+        <error line="41" column="5" source="standard:spacing-between-declarations-with-comments" />
     </file>
     <file name="src/test/java/com/pocketide/vault/SealedBoxTest.kt">
         <error line="36" column="45" source="standard:function-literal" />

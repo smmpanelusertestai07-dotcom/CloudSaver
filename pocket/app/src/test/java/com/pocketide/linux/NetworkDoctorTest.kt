@@ -9,8 +9,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.ConnectException
-import java.net.URI
 import java.net.SocketTimeoutException
+import java.net.URI
 import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 

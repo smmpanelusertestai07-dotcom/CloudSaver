@@ -24,15 +24,16 @@ internal object CodeServerChannel {
 
     /** [latest] as a pin when it is a usable release newer than [floor]; null otherwise. */
     fun newer(latest: PublicRelease, floor: CodeServerPin): CodeServerPin? {
-        if (latest.prerelease) return null
-        val version = SemVer.parse(latest.tag)?.takeIf { !it.isPreRelease } ?: return null
-        val pinned = SemVer.parse(floor.version) ?: return null
-        if (version.major != pinned.major || version <= pinned) return null
+        val pinned = SemVer.parse(floor.version)
+        val version = stable(latest)?.takeIf { pinned != null && it.major == pinned.major && it > pinned } ?: return null
         val name = "code-server-$version-linux-arm64.tar.gz"
         val url = "https://github.com/$REPOSITORY/releases/download/v$version/$name"
-        val asset = latest.assets.singleOrNull { it.name == name && it.downloadUrl == url } ?: return null
-        val sha256 = asset.sha256?.takeIf(SHA256::matches) ?: return null
-        if (asset.bytes !in 1..MAX_BYTES) return null
-        return CodeServerPin(version = version.toString(), url = url, sha256 = sha256, bytes = asset.bytes)
+        val asset = latest.assets.singleOrNull { it.name == name && it.downloadUrl == url }?.takeIf { it.bytes in 1..MAX_BYTES }
+        return asset?.sha256?.takeIf(SHA256::matches)?.let { sha256 ->
+            CodeServerPin(version = version.toString(), url = url, sha256 = sha256, bytes = asset.bytes)
+        }
     }
+
+    private fun stable(release: PublicRelease): SemVer? =
+        if (release.prerelease) null else SemVer.parse(release.tag)?.takeIf { !it.isPreRelease }
 }

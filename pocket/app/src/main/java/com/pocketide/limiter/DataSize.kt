@@ -19,10 +19,12 @@ internal class DataSize(
     /** The size measured now (blocking), or null when nothing was due or nothing could be measured. */
     @Synchronized
     fun measureIfDue(now: Long, visible: Boolean): Long? {
-        val quickEvery = if (visible) quickEveryMs else walkEveryMs
-        if (quickAt.isWithin(now, quickEvery)) return null
+        if (quickAt.isWithin(now, if (visible) quickEveryMs else walkEveryMs)) return null
         quickAt = now
-        quick()?.let { return it }
+        return quick() ?: walkIfDue(now, visible)
+    }
+
+    private fun walkIfDue(now: Long, visible: Boolean): Long? {
         if (!visible || walkAt.isWithin(now, walkEveryMs)) return null
         walkAt = now
         return walk()
