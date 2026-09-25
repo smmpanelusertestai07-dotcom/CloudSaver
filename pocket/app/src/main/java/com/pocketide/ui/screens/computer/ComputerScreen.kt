@@ -36,6 +36,7 @@ import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.pocketide.AppGraph
 import com.pocketide.core.Ist
+import com.pocketide.limiter.EngineService
 import com.pocketide.linux.ComputerInfo
 import com.pocketide.linux.ComputerState
 import com.pocketide.linux.RepairItem
@@ -128,6 +129,8 @@ fun ComputerScreen(nav: PocketNav) {
                 onRestart = { confirmRestart = true },
                 repair = repair,
                 onRepair = {
+                    // From the tap, while Android allows it: a repair may set up missing parts again.
+                    EngineService.start(graph.context)
                     runner.run(REPAIR, outlivesScreen = true, onSuccess = { items: List<RepairItem> ->
                         repair = items
                         runner.say(RepairText.summary(items))

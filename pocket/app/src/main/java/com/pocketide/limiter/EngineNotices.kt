@@ -18,20 +18,7 @@ internal object EngineNotices {
     const val RUNNING_ID = 4101
     private const val STOPPED_ID = 4102
 
-    data class Line(val name: String, val working: Boolean, val starting: Boolean)
-
-    fun running(context: Context, lines: List<Line>): Notification {
-        val text = if (lines.isEmpty()) {
-            "Starting the computer…"
-        } else {
-            lines.joinToString(" · ") { line ->
-                "${line.name}: ${when {
-                    line.starting -> "starting"
-                    line.working -> "working"
-                    else -> "ready"
-                }}"
-            }
-        }
+    fun running(context: Context, load: EngineLoad): Notification {
         val stopAll = PendingIntent.getService(
             context, 0,
             Intent(context, EngineService::class.java).setAction(EngineService.ACTION_STOP_ALL),
@@ -39,8 +26,8 @@ internal object EngineNotices {
         )
         return NotificationCompat.Builder(context, Channels.ENGINE)
             .setSmallIcon(R.drawable.ic_stat_pocketide)
-            .setContentTitle("Computer running")
-            .setContentText(text)
+            .setContentTitle(load.title)
+            .setContentText(load.text)
             .setContentIntent(openApp(context))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
