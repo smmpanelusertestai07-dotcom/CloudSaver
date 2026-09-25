@@ -146,15 +146,15 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
             val track = done.fold(recorded) { t, e -> Tracks.after(t, e) }
             finished += done
             if (names == track.objects) {
-                tracks[key] = track.copy(waitsForRoom = false)
+                tracks[key] = track.copy(behindDrive = false)
                 continue
             }
             val next = align(run, drive, track, chain, waiting.drop(done.size), batch)
             if (next == null) tracks.remove(key) else tracks[key] = next
         }
         batch.finish()
-        // A file that waits for its room keeps this phone behind Drive, so the next pass comes back to it.
-        val aligned = if (tracks.values.any { it.waitsForRoom }) run.state.alignedRevision else index.revision
+        // A file still behind Drive keeps the phone unaligned, so the next pass comes back to it.
+        val aligned = if (tracks.values.any { it.behindDrive }) run.state.alignedRevision else index.revision
         run.state = run.state.copy(tracks = tracks, erased = erased, alignedRevision = aligned)
         run.save()
         finished.forEach { kit.queue.remove(it.id) }
@@ -162,30 +162,31 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
 
     /** The track after aligning one file with [chain]; null when the file left Drive and the phone. */
     private suspend fun align(run: Run, drive: DriveStore, track: FileTrack, chain: List<VaultObject>, queued: List<QueueEntry>, batch: Conflicts.Batch): FileTrack? {
-        // Nothing could be done this time; the next change in Drive tries again.
-        val asItWas = track.copy(waitsForRoom = false)
+        // Nothing could be done this time: a file already behind Drive is tried again at the next
+        // pass, any other at the next change in Drive.
+        val asItWas = track
         val place = kit.scanner.roomFile(track.kind, track.agentId, track.path) ?: return asItWas
         val file = place.file
         val facts = factsOf(file)
         if (facts == null) {
             // Not on the phone: opening the session later brings Drive's version.
-            return asItWas.copy(onPhone = false, objects = chain.map { it.name }, syncedLength = Chains.length(chain), prefixSha256 = null)
+            return track.copy(onPhone = false, objects = chain.map { it.name }, syncedLength = Chains.length(chain), prefixSha256 = null, behindDrive = false)
         }
         val committedHere = facts.size == track.syncedLength && facts.modifiedAt == track.modifiedAt
         if (chain.isEmpty()) {
             // A transcript leaves Drive only with its session (handled above), so it was lost there: it goes up again.
             if (track.kind.appendOnly || !committedHere) {
                 run.discard(queued)
-                return asItWas.copy(objects = emptyList(), syncedLength = 0, prefixSha256 = null, size = -1, modifiedAt = -1)
+                return track.copy(objects = emptyList(), syncedLength = 0, prefixSha256 = null, size = -1, modifiedAt = -1, behindDrive = false)
             }
-            if (waitsForRoom(track)) return waiting(run, track, queued)
+            if (roomBusy(track)) return later(run, track, queued)
             run.discard(queued)
             file.delete()
             return null
         }
         val continues = track.kind.appendOnly && track.objects.isNotEmpty() && chain.map { it.name }.take(track.objects.size) == track.objects
         if (continues && committedHere) {
-            if (waitsForRoom(track)) return waiting(run, track, queued)
+            if (roomBusy(track)) return later(run, track, queued)
             val assembled = kit.materializer.assemble(drive, run.cipher, place, chain.drop(track.objects.size), keep = track.syncedLength, keepSha = track.prefixSha256)
                 ?: return asItWas
             return Tracks.materialized(track, chain, assembled, factsOf(file))
@@ -198,7 +199,7 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
             run.discard(queued)
             return kept
         }
-        if (waitsForRoom(track)) return waiting(run, track, queued)
+        if (roomBusy(track)) return later(run, track, queued)
         // Drive's version replaces the phone's, which is kept as a conflict copy first unless Drive
         // already had all of it.
         val alreadyKept = facts.size == track.preservedSize && facts.modifiedAt == track.preservedModifiedAt
@@ -232,17 +233,17 @@ internal class Reconciler(private val kit: SyncKit, private val conflicts: Confl
         size = -1,
         modifiedAt = -1,
         lastCreatedAt = maxOf(track.lastCreatedAt, chain.maxOf { it.createdAt }),
-        waitsForRoom = false,
+        behindDrive = false,
     )
 
     /** A room's own files may be open in its agent: they are rewritten only while the room is stopped. */
-    private fun waitsForRoom(track: FileTrack): Boolean =
+    private fun roomBusy(track: FileTrack): Boolean =
         track.kind.root == Root.HOME && track.agentId?.let(kit.ports::roomRunning) == true
 
-    /** Nothing queued against the version Drive replaced may be sent meanwhile. */
-    private fun waiting(run: Run, track: FileTrack, queued: List<QueueEntry>): FileTrack {
+    /** Drive's version comes in later; nothing queued against the phone's copy may be sent meanwhile. */
+    private fun later(run: Run, track: FileTrack, queued: List<QueueEntry>): FileTrack {
         run.discard(queued)
-        return track.copy(waitsForRoom = true)
+        return track.copy(behindDrive = true)
     }
 
     /**

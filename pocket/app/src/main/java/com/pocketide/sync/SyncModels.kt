@@ -65,11 +65,12 @@ internal data class FileTrack(
     val preservedSize: Long = -1,
     val preservedModifiedAt: Long = -1,
     /**
-     * Drive has a newer version that is written here only once the file's room stops (its agent
-     * may hold the file open). Meanwhile nothing of the file is queued, so no piece is sent
-     * against the version Drive already replaced.
+     * Drive holds a version of this file that is not on the phone yet: the next reconcile writes
+     * it, or, when its agent may hold the file open, the first reconcile after the room stops.
+     * Until then nothing of the file is queued, so no piece is sent against a version Drive has
+     * replaced and no copy found on the phone replaces Drive's.
      */
-    val waitsForRoom: Boolean = false,
+    val behindDrive: Boolean = false,
 )
 
 /** The last version of a session record this phone pushed, to push only real changes. */

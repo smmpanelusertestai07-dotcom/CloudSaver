@@ -135,9 +135,10 @@ internal class Restorer(private val kit: SyncKit, private val pass: SyncPass, pr
     }
 
     /**
-     * Writes one file from Drive. A file already on the phone is never overwritten: it is adopted
-     * when it holds Drive's content, and otherwise kept (the agent's own newer file). The one
-     * exception is untracked memory during a restore, which the app wrote before Drive's copy came.
+     * Writes one file from Drive. A file already on the phone is not overwritten here: it is
+     * adopted when it starts with Drive's content; otherwise the next sync keeps it as a conflict
+     * copy and brings Drive's version in, so it never replaces Drive's. The one exception is
+     * untracked memory during a restore, which the app wrote before Drive's copy came.
      */
     suspend fun materialize(run: Run, drive: DriveStore, chain: List<VaultObject>, replaceUntrackedMemory: Boolean) {
         val first = chain.first()

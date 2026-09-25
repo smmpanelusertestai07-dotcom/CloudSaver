@@ -114,9 +114,20 @@ internal class SyncPass(
             if (TrackRules.isDatabase(c.path) && run.now - c.facts.modifiedAt < QUIET_MS) continue
             val waiting = queued[c.key].orEmpty()
             var track = tracks[c.key]
-            // Drive's newer version waits for the room to stop; nothing is sent against the old one.
-            if (track?.waitsForRoom == true) continue
-            if (track == null && waiting.isEmpty()) track = reconciler.adopt(index, c)?.also { tracks[c.key] = it }
+            // Drive's version comes in first; nothing is sent against the phone's copy meanwhile.
+            if (track?.behindDrive == true) continue
+            if (track == null && waiting.isEmpty()) {
+                track = reconciler.adopt(index, c)
+                val inDrive = if (track == null && index != null) Chains.chain(index.objects, c.key) else emptyList()
+                if (inDrive.isNotEmpty()) {
+                    // Drive holds this file and the phone's copy went another way (it was here before
+                    // a restore): it must never replace Drive's. Reconcile keeps it as a conflict copy.
+                    val session = c.sessionId ?: inDrive.first().sessionId
+                    tracks[c.key] = FileTrack(kind = c.kind, agentId = c.agentId, path = c.path, sessionId = session, headCwd = c.headCwd, behindDrive = true)
+                    continue
+                }
+                track?.let { tracks[c.key] = it }
+            }
             if (track != null && track.sessionId == null && c.sessionId != null) track = track.copy(sessionId = c.sessionId)
             val known = Known.of(track, waiting)
             val result = if (c.kind.appendOnly) {
@@ -206,7 +217,9 @@ internal class SyncPass(
      */
     suspend fun catchUp(run: Run, drive: DriveStore, snapshot: RemoteSnapshot, book: SessionBook) {
         val index = snapshot.index
-        if (index != null && index.revision != run.state.alignedRevision) reconciler.reconcile(run, index, drive, book)
+        if (index != null && (index.revision != run.state.alignedRevision || run.state.tracks.values.any { it.behindDrive })) {
+            reconciler.reconcile(run, index, drive, book)
+        }
         adoptRemote(run, snapshot)
     }
 

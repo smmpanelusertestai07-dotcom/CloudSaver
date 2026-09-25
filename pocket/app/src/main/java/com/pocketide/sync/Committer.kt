@@ -247,7 +247,7 @@ internal object Tracks {
             sessionId = base.sessionId ?: first.sessionId,
             onPhone = true,
             missingSince = -1,
-            waitsForRoom = false,
+            behindDrive = false,
         )
     }
 }
