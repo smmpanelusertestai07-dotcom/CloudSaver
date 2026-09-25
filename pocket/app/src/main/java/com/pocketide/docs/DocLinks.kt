@@ -29,6 +29,14 @@ internal object DocLinks {
     const val ANTIGRAVITY_SETTINGS = "https://antigravity.google/docs/settings"
     const val ANTIGRAVITY_TERMS = "https://antigravity.google/terms"
 
+    /** Where each company shows the agent chats it keeps in the owner's account (checked 25 Sep 2026). */
+    const val CLAUDE_CODE_WEB = "https://claude.ai/code"
+    const val CLAUDE_REMOTE_CONTROL = "https://code.claude.com/docs/en/remote-control"
+    const val CODEX_WEB = "https://chatgpt.com/codex"
+    const val CODEX_CLOUD = "https://developers.openai.com/codex/ide/features"
+    const val CODEX_LOCAL_SYNC_REQUEST = "https://github.com/openai/codex/issues/5609"
+    const val JULES = "https://jules.google"
+
     const val REALME_STEPS = "https://dontkillmyapp.com/realme"
     const val ANDROID_POWER = "https://developer.android.com/topic/performance/power/power-details"
 

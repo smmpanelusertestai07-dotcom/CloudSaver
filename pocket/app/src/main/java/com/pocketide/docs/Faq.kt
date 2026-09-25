@@ -97,7 +97,8 @@ internal object Faq {
             "claude-chatgpt-chats", "agents",
             "Can I see my claude.ai or ChatGPT chats here?",
             "No. The agents keep their own sessions. The Codex extension can show your Codex cloud tasks, but " +
-                "not ordinary ChatGPT chats.",
+                "not ordinary ChatGPT chats. The other way round, your Claude account can show Claude Code's " +
+                "sessions; Privacy says where each agent's chats are saved.",
         ),
         faq(
             "offline", "limits",

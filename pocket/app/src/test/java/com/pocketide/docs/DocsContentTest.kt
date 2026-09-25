@@ -1,5 +1,6 @@
 package com.pocketide.docs
 
+import com.pocketide.agents.OfficialAgents
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -61,6 +62,26 @@ class DocsContentTest {
         val text = sectionText(security)
         assertTrue(text.contains("prompt injection", ignoreCase = true))
         assertTrue(text.contains("PRoot is not a sandbox"))
+    }
+
+    @Test
+    fun `Privacy says where each official agent's chats are saved, and each agent's page says it too`() {
+        val official = OfficialAgents.all.map { it.id }
+        assertEquals(official, ChatHomes.all.map { it.agentId })
+        val table = requireSection("privacy").blocks.filterIsInstance<DocBlock.Table>()
+            .single { it.header.last() == "Where its chats are saved" }
+        assertEquals(OfficialAgents.all.map { it.displayName }, table.rows.map { it.first() })
+        assertTrue(table.rows.all { it.last().contains("PocketIDE's encrypted backup") })
+        val privacy = sectionText(requireSection("privacy"))
+        assertTrue(privacy.contains(ChatHomes.JULES_LINE))
+        assertTrue(privacy.contains("Remote Control") && privacy.contains("Also save Claude chats in your Claude account"))
+        for (agent in OfficialAgents.all) {
+            val page = DocsContent.agentPage(agent)
+            assertTrue(agent.id, sectionText(page).contains("Where its chats are saved: ${ChatHomes.of(agent.id)?.kept}"))
+        }
+        val codexLinks = DocsContent.agentPage(OfficialAgents.codex).blocks.filterIsInstance<DocBlock.Link>().map { it.url }
+        assertTrue(codexLinks.containsAll(listOf(DocLinks.CODEX_WEB, DocLinks.CODEX_LOCAL_SYNC_REQUEST)))
+        assertTrue(sectionText(DocsContent.agentPage(OfficialAgents.codex)).contains(ChatHomes.CODEX_CLOUD_LINE))
     }
 
     @Test

@@ -44,6 +44,7 @@ internal object AgentPages {
             add(detailsTable(details))
             add(labelNote(details))
             add(p("Where your data goes: ${details.dataGoesTo} ${companyKeepsLine(details)}"))
+            addAll(chatsLines(details))
             add(p("Signing in: ${details.signIn} $SIGN_IN_STAYS"))
             add(p(roomLine(details)))
             add(p(instructionsLine(details)))
@@ -146,6 +147,27 @@ internal object AgentPages {
         } else {
             "The publisher and the model service it uses keep it under their own policies."
         }
+
+    /** Where an official agent's chats are saved, and the company's own page for them. */
+    private fun chatsLines(agent: Details): List<DocBlock> {
+        val home = ChatHomes.of(agent.id)?.takeIf { agent.official } ?: return emptyList()
+        return buildList {
+            add(p("Where its chats are saved: ${home.kept}"))
+            when (home) {
+                ChatHomes.claude -> add(link("Claude Code Remote Control", DocLinks.CLAUDE_REMOTE_CONTROL))
+                ChatHomes.codex -> {
+                    add(p(ChatHomes.CODEX_CLOUD_LINE))
+                    add(link("Codex in the cloud", DocLinks.CODEX_CLOUD))
+                    add(link("OpenAI: request to keep local chats", DocLinks.CODEX_LOCAL_SYNC_REQUEST))
+                }
+                ChatHomes.antigravity -> {
+                    add(p(ChatHomes.JULES_LINE))
+                    add(ChatHomes.jules)
+                }
+            }
+            home.page?.let(::add)
+        }
+    }
 
     private fun roomLine(agent: Details) =
         "Room: ${agent.name} runs in its own room, with its own home folder and the working folders of its " +
