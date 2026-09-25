@@ -68,6 +68,7 @@ import com.pocketide.ui.components.StatusChip
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.manage.ActionRunner
 import com.pocketide.ui.manage.AsOfLine
+import com.pocketide.ui.manage.ChatPlacesCard
 import com.pocketide.ui.manage.ConfirmDialog
 import com.pocketide.ui.manage.DataMath
 import com.pocketide.ui.manage.DiskUsage
@@ -174,6 +175,8 @@ private fun DataOverview(graph: AppGraph, agents: List<AgentInfo>, nav: PocketNa
         }
         item { SectionLabel("By type") }
         item { ByTypeCard(sessions, projects.size, secrets.size, sizes.value, storage.driveByKind) }
+        item { SectionLabel("Where your chats are saved") }
+        item { ChatPlacesCard(settings, nav) }
         item { SectionLabel("Largest sessions") }
         item { LargestCard(largest, agents, nav, onRemoveMedia = { removeMediaOf = it }, onDelete = { deleting = it }) }
         item { SectionLabel("Memory and instructions") }
