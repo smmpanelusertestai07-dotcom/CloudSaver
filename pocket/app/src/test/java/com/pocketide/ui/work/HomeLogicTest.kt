@@ -42,6 +42,8 @@ class HomeLogicTest {
         assertEquals(listOf("added"), filterRepos(repos, "added", added).map { it.name })
         assertEquals(listOf("tool"), filterRepos(repos, "org/", added).map { it.name })
         assertEquals("me/old-app", repoId(repos[0]))
+        val withKeyring = repos + repo("Me", "PocketIDE-Keyring", "2026-09-24T00:00:00Z")
+        assertEquals("the vault's keyring is never offered", filterRepos(repos, "", added), filterRepos(withKeyring, "", added))
     }
 
     @Test

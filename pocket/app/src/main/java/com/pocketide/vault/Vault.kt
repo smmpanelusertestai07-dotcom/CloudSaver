@@ -19,7 +19,7 @@ sealed interface KeyState {
     data class Lost(val why: String) : KeyState
 }
 
-enum class RekeyReason { KEYRING_PUBLIC, KEYRING_COLLABORATOR, KEYRING_DELETED, OWNER_ASKED, MOVED_ACCOUNT }
+enum class RekeyReason { KEYRING_PUBLIC, KEYRING_COLLABORATOR, KEYRING_DELETED, KEYRING_CLONED, OWNER_ASKED, MOVED_ACCOUNT }
 
 data class KeyringCheck(val exists: Boolean, val isPrivate: Boolean, val collaborators: List<String>, val actionsDisabled: Boolean)
 

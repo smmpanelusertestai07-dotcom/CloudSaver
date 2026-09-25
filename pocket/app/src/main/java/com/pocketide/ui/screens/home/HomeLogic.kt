@@ -4,6 +4,7 @@ import android.provider.Settings
 import com.pocketide.github.RepoInfo
 import com.pocketide.model.Thermal
 import com.pocketide.projects.RepoAddress
+import com.pocketide.projects.isVaultKeyring
 import com.pocketide.rooms.RoomState
 import com.pocketide.sync.BackupState
 import com.pocketide.sync.SessionBackup
@@ -11,11 +12,14 @@ import com.pocketide.sync.SyncStatus
 import com.pocketide.ui.components.Tone
 import com.pocketide.ui.screens.project.WorkFormat
 
-/** Repositories matching [query] (owner or name), those not yet added first, then by last push. */
+/**
+ * Repositories matching [query] (owner or name), those not yet added first, then by last push.
+ * The vault's keyring is never offered.
+ */
 fun filterRepos(repos: List<RepoInfo>, query: String, addedIds: Set<String>): List<RepoInfo> {
     val q = query.trim().lowercase()
     return repos
-        .filter { q.isEmpty() || "${it.owner}/${it.name}".lowercase().contains(q) }
+        .filter { !isVaultKeyring(it.name) && (q.isEmpty() || "${it.owner}/${it.name}".lowercase().contains(q)) }
         .sortedWith(
             compareBy<RepoInfo> { repoId(it) in addedIds }
                 .thenByDescending { it.pushedAt.orEmpty() }

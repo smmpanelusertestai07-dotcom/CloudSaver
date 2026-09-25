@@ -1,6 +1,7 @@
 package com.pocketide.projects
 
 import com.pocketide.model.Project
+import com.pocketide.vault.VaultKeyFiles
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -23,6 +24,12 @@ class RepoNotReachableException(val installUrl: String, val address: RepoAddress
  */
 @Serializable
 enum class ProjectTrust { YOURS, SOMEONE_ELSES }
+
+/**
+ * The repository that holds half of the vault key. It is never a project: a clone would put that
+ * half, and every older one in its history, where each room and agent can read it.
+ */
+fun isVaultKeyring(repoName: String): Boolean = repoName.equals(VaultKeyFiles.KEYRING_REPO, ignoreCase = true)
 
 /** A GitHub repository, by owner and name. */
 data class RepoAddress(val owner: String, val repo: String) {

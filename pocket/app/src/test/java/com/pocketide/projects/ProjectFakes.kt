@@ -140,4 +140,13 @@ internal class FakeProjectEnv(
     override val git: FakeCloneGate = FakeCloneGate(),
     override val dataBudget: FakeBudget = FakeBudget(),
     override val work: FakeWork = FakeWork(),
-) : ProjectEnv
+) : ProjectEnv {
+    /** How many times the vault was asked for a new key; [rekeyFails] makes the next ask fail. */
+    var rekeys = 0
+    var rekeyFails = false
+
+    override suspend fun keyringCloned() {
+        if (rekeyFails) throw IOException("offline")
+        rekeys++
+    }
+}

@@ -6,6 +6,7 @@ import com.pocketide.github.GitHubApi
 import com.pocketide.github.GitHubAuth
 import com.pocketide.model.Project
 import com.pocketide.sync.DataBudget
+import com.pocketide.vault.RekeyReason
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -29,4 +30,6 @@ private class GraphProjectEnv(private val graph: AppGraph) : ProjectEnv {
     override val git: GitGate get() = graph.git
     override val dataBudget: DataBudget get() = graph.dataBudget
     override val work: ProjectWork? get() = graph.sessions as? ProjectWork
+
+    override suspend fun keyringCloned() = graph.vault.rekey(RekeyReason.KEYRING_CLONED)
 }
