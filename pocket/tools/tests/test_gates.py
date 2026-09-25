@@ -175,13 +175,35 @@ class VersionGate(TreeTest):
         self.assertPasses(version.check(self.root))
         self.assertEqual("3.0.0", version.version_name(self.root))
 
-    def test_old_version_code_fails(self):
-        self.edit("app/build.gradle.kts", "versionCode = 300", "versionCode = 260")
-        self.assertFailsWith(version.check(self.root), "below 300")
+    def test_the_real_build_file_passes(self):
+        self.assertPasses(version.check())
 
-    def test_wrong_version_name_fails(self):
-        self.edit("app/build.gradle.kts", '"3.0.0"', '"2.7.0"')
-        self.assertFailsWith(version.check(self.root), "not 3.<minor>.<patch>")
+    def test_the_code_follows_the_version(self):
+        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.12.4"')
+        report = version.check(self.root)
+        self.assertPasses(report)
+        self.assertIn("versionName 3.12.4, versionCode 31204", report.notes)
+
+    def test_a_raised_version_with_its_own_unchanged_code_fails(self):
+        # What the release job's own notice asks for: raise the version, and nothing else.
+        self.edit("app/build.gradle.kts", '"3.0.0"', '"3.0.1"')
+        self.edit("app/build.gradle.kts", "versionCode = versionCodeOf(appVersion)", "versionCode = 300")
+        self.assertFailsWith(version.check(self.root), "versionCode must be set once as versionCodeOf(appVersion)")
+
+    def test_a_changed_formula_fails(self):
+        self.edit("app/build.gradle.kts", "major * 10000 + minor * 100 + patch", "300")
+        self.assertFailsWith(version.check(self.root), "versionCode must be set once")
+
+    def test_a_version_name_of_its_own_fails(self):
+        self.edit("app/build.gradle.kts", "versionName = appVersion", 'versionName = "3.0.1"')
+        self.assertFailsWith(version.check(self.root), "versionName must be set once as appVersion")
+
+    def test_wrong_version_fails(self):
+        for wrong in ("2.7.0", "3.100.0", "3.0", "3.0.0-beta"):
+            with self.subTest(version=wrong):
+                self.setUp()
+                self.edit("app/build.gradle.kts", '"3.0.0"', f'"{wrong}"')
+                self.assertFailsWith(version.check(self.root), "not 3.<minor>.<patch>")
 
 
 class ManifestGate(TreeTest):

@@ -41,6 +41,9 @@ internal interface UpdaterEnv {
 
     fun self(): ApkFacts
 
+    /** The tag of a release whose APK proved not newer than this app, kept across restarts; null when none. */
+    var passedOver: String?
+
     /** Package, version and signers of the APK at [file], or null when Android cannot read it. */
     fun inspect(file: File): ApkFacts?
 
@@ -138,20 +141,30 @@ internal class SelfUpdater(
             mutable.value = UpdateState.Failed(failed.message ?: "PocketIDE could not check for updates. Try again later.")
             return
         }
-        pending = release
-        withContext(Dispatchers.IO) { tidy(keep = release?.version) }
+        val offered = release?.takeUnless { it.tag == env.passedOver }
+        pending = offered
+        withContext(Dispatchers.IO) { tidy(keep = offered?.version) }
         mutable.value = when {
-            release == null -> UpdateState.UpToDate
-            apkFile(release.version).isFile -> withContext(Dispatchers.IO) { verified(release, apkFile(release.version)) }
-            else -> UpdateState.Available(release)
+            offered == null -> UpdateState.UpToDate
+            apkFile(offered.version).isFile -> withContext(Dispatchers.IO) { verified(offered, apkFile(offered.version)) }
+            else -> UpdateState.Available(offered)
         }
     }
 
-    /** Ready when the file passes every rule; otherwise it is deleted and the state says why. */
+    /**
+     * Ready when the file passes every rule; otherwise it is deleted and the state says why. A
+     * release that is not a newer build is remembered and no longer offered: downloading it again
+     * would only be refused again.
+     */
     private fun verified(release: AppRelease, file: File): UpdateState {
-        val problem = UpdateRules.problem(env.inspect(file), env.self(), env.pinnedSigner) ?: return UpdateState.Ready(release)
+        val candidate = env.inspect(file)
+        val self = env.self()
+        val problem = UpdateRules.problem(candidate, self, env.pinnedSigner) ?: return UpdateState.Ready(release)
         file.delete()
-        return UpdateState.Failed(problem)
+        if (!UpdateRules.notNewer(candidate, self)) return UpdateState.Failed(problem)
+        env.passedOver = release.tag
+        pending = null
+        return UpdateState.UpToDate
     }
 
     private fun finished(ready: UpdateState.Ready, result: InstallResult) {

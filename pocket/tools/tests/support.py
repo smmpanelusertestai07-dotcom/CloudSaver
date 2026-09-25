@@ -74,8 +74,11 @@ FILES = {
         'object GuidePhone {\n    val permissions = section(\n        "permissions",\n'
         '        table(listOf("Permission", "Why"), row("INTERNET", "The agents need it.")),\n    )\n'
         "    val all = listOf(permissions)\n}\n",
-    "app/build.gradle.kts": 'android {\n    defaultConfig {\n        versionCode = 300\n'
-                            '        versionName = "3.0.0"\n    }\n}\n',
+    "app/build.gradle.kts": 'val appVersion = "3.0.0"\n\nfun versionCodeOf(version: String): Int {\n'
+                            '    val (major, minor, patch) = version.split(".").map { it.toInt() }\n'
+                            '    return major * 10000 + minor * 100 + patch\n}\n\n'
+                            'android {\n    defaultConfig {\n        versionCode = versionCodeOf(appVersion)\n'
+                            '        versionName = appVersion\n    }\n}\n',
     "app/src/main/assets/templates/android.yml": TEMPLATE,
     "app/src/main/assets/linux/bootstrap.sh": "#!/bin/bash\nset -eu\necho ready\n",
 }

@@ -42,6 +42,7 @@ class UpdaterTest {
     private var listStatus = 200
     private val self = ApkFacts("com.pocketide", 300, "3.0.0", setOf("aa"))
     private var allowed = Decision.YES
+    private var apkDownloads = 0
 
     @Before
     fun setUp() {
@@ -49,6 +50,7 @@ class UpdaterTest {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.url.encodedPath
                 val body = files[path]
+                if (path.endsWith(".apk")) apkDownloads++
                 return when {
                     path == "/repos/$repo/releases" -> page(request.url.queryParameter("page")?.toInt() ?: 1)
                     body == null -> MockResponse.Builder().code(404).build()
@@ -107,6 +109,7 @@ class UpdaterTest {
         override val currentVersion = "3.0.0"
         override val pinnedSigner = ""
         override fun self() = this@UpdaterTest.self
+        override var passedOver: String? = null
         override fun inspect(file: File): ApkFacts? {
             val parts = file.readText().split('|')
             if (parts.size != 3) return null
@@ -205,6 +208,34 @@ class UpdaterTest {
     }
 
     @Test
+    fun aReleaseThatIsNotANewerBuildIsPassedOverInsteadOfDownloadedAgain() = runBlocking<Unit> {
+        // A release whose version was raised but whose versionCode was not.
+        publish(release("pocketide-v3.1.0", apk(code = 300)))
+        val env = FakeUpdaterEnv()
+        val updater = updater(env)
+
+        updater.check()
+        updater.download()
+
+        assertEquals(UpdateState.UpToDate, updater.state.value)
+        assertEquals("pocketide-v3.1.0", env.passedOver)
+        assertFalse(File(temp.root, "apk/update/pocketide-3.1.0.apk").exists())
+        assertEquals(1, apkDownloads)
+
+        // The next daily check, in a new process, neither offers nor downloads it again.
+        val later = updater(env)
+        later.check()
+        later.download()
+        assertEquals(UpdateState.UpToDate, later.state.value)
+        assertEquals("the APK is not downloaded again", 1, apkDownloads)
+
+        // A later release that is a newer build is offered as usual.
+        publish(release("pocketide-v3.1.1", apk(code = 30101)), release("pocketide-v3.1.0", apk(code = 300)))
+        later.check()
+        assertEquals("3.1.1", (later.state.value as UpdateState.Available).release.version)
+    }
+
+    @Test
     fun aFileThatDoesNotMatchItsPublishedChecksumIsNotKept() = runBlocking<Unit> {
         publish(release("pocketide-v3.1.0", apk(), sums = "${"00".repeat(32)}  PocketIDE-3.1.0-arm64-v8a-release.apk\n"))
         val updater = updater()
@@ -252,6 +283,15 @@ class UpdaterTest {
         assertTrue(UpdateRules.problem(ApkFacts("com.pocketide", 310, null, emptySet()), self, null)!!.contains("not signed"))
         assertTrue(UpdateRules.problem(ApkFacts("com.pocketide", 310, null, setOf("aa", "bb")), self, null)!!.contains("PocketIDE's key"))
         assertTrue(UpdateRules.problem(ApkFacts("com.pocketide", 310, null, setOf("aa")), self, "cc")!!.contains("release key"))
+    }
+
+    @Test
+    fun onlyThisAppAtTheSameOrAnOlderBuildIsNotNewer() {
+        assertTrue(UpdateRules.notNewer(ApkFacts("com.pocketide", 300, null, setOf("aa")), self))
+        assertTrue(UpdateRules.notNewer(ApkFacts("com.pocketide", 260, null, setOf("bb")), self))
+        assertFalse(UpdateRules.notNewer(ApkFacts("com.pocketide", 301, null, setOf("aa")), self))
+        assertFalse(UpdateRules.notNewer(ApkFacts("com.other", 1, null, setOf("aa")), self))
+        assertFalse(UpdateRules.notNewer(null, self))
     }
 
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

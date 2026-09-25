@@ -26,6 +26,18 @@ fun config(name: String): String {
 
 fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+// The one number to raise for a release: the tag is pocketide-v<appVersion>. versionCode follows
+// from it (major * 10000 + minor * 100 + patch), so a newer version always installs over the one
+// before it, and 3.0.0 (30000) installs over 2.6.0 (260). tools/gates/version.py checks both.
+val appVersion = "3.0.0"
+
+fun versionCodeOf(version: String): Int {
+    val parts = version.split(".").map { it.toIntOrNull() ?: -1 }
+    require(parts.size == 3 && parts.all { it in 0..99 }) { "The version $version is not <major>.<minor>.<patch>, each below 100" }
+    val (major, minor, patch) = parts
+    return major * 10000 + minor * 100 + patch
+}
+
 android {
     namespace = "com.pocketide"
     compileSdk = 36
@@ -34,9 +46,8 @@ android {
         applicationId = "com.pocketide"
         minSdk = 29
         targetSdk = 36
-        // Above 2.6.0's 260, so 3.0.0 installs over it as an update with the same key.
-        versionCode = 300
-        versionName = "3.0.0"
+        versionCode = versionCodeOf(appVersion)
+        versionName = appVersion
 
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

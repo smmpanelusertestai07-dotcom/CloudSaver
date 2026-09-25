@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """The app's version, read from app/build.gradle.kts without running Gradle.
 
-3.x must install over 2.6.0 (versionCode 260) as an update, so versionCode is at least 300 and
-versionName is 3.<minor>.<patch>. The release tag is pocketide-v<versionName>, and a published
-tag is never replaced, so this is also the number to raise for a new release.
+The release tag is pocketide-v<appVersion>, the updater offers a release by that tag, and a
+published tag is never replaced, so appVersion is the one number to raise for a new release.
+Android, however, installs an update only when its versionCode is higher, so versionCode must
+follow appVersion (major * 10000 + minor * 100 + patch) rather than be a number of its own: a
+release that raised only the version would be offered to every phone and refused by all of them.
+Any 3.x (30000 and up) also installs over 2.6.0 (versionCode 260).
 
 Usage: version.py            check the version
        version.py --print    print versionName (for the workflow)
@@ -16,30 +19,37 @@ from pathlib import Path
 
 import common
 
-MIN_CODE = 300
-NAME_SHAPE = re.compile(r"3\.\d+\.\d+")
+VERSION_SHAPE = re.compile(r"3\.(\d{1,2})\.(\d{1,2})")
+VERSION = re.compile(r'^\s*val appVersion = "([^"]*)"\s*$', re.M)
+VERSION_CODE = re.compile(r"^\s*versionCode\s*=\s*(.+?)\s*$", re.M)
+VERSION_NAME = re.compile(r"^\s*versionName\s*=\s*(.+?)\s*$", re.M)
+DERIVED_CODE = "versionCodeOf(appVersion)"
+FORMULA = "major * 10000 + minor * 100 + patch"
+FORMULA_LINE = re.compile(r"^\s*return " + re.escape(FORMULA) + r"\s*$", re.M)
 
 
-def read(root: Path) -> tuple[list[int], list[str]]:
-    text = (common.app(root) / "build.gradle.kts").read_text(encoding="utf-8")
-    codes = [int(v) for v in re.findall(r"^\s*versionCode\s*=\s*(\d+)\s*$", text, re.M)]
-    names = re.findall(r'^\s*versionName\s*=\s*"([^"]*)"\s*$', text, re.M)
-    return codes, names
+def version_code(version: str) -> int:
+    major, minor, patch = (int(part) for part in version.split("."))
+    return major * 10000 + minor * 100 + patch
 
 
 def check(root: Path = common.POCKET) -> common.Report:
     report = common.Report()
-    codes, names = read(root)
-    if len(codes) != 1:
-        report.fail(f"app/build.gradle.kts must set versionCode exactly once as a number (found {len(codes)})")
-    elif codes[0] < MIN_CODE:
-        report.fail(f"versionCode {codes[0]} is below {MIN_CODE}; it would not install over 2.6.0 (260)")
-    if len(names) != 1:
-        report.fail(f'app/build.gradle.kts must set versionName = "3.x.y" exactly once (found {len(names)})')
-    elif not NAME_SHAPE.fullmatch(names[0]):
-        report.fail(f"versionName '{names[0]}' is not 3.<minor>.<patch>")
+    text = (common.app(root) / "build.gradle.kts").read_text(encoding="utf-8")
+    versions = VERSION.findall(text)
+    codes = VERSION_CODE.findall(text)
+    names = VERSION_NAME.findall(text)
+    if len(versions) != 1:
+        report.fail(f'app/build.gradle.kts must set val appVersion = "3.x.y" exactly once (found {len(versions)})')
+    elif not VERSION_SHAPE.fullmatch(versions[0]):
+        report.fail(f"appVersion '{versions[0]}' is not 3.<minor>.<patch> with minor and patch below 100")
+    if codes != [DERIVED_CODE] or len(FORMULA_LINE.findall(text)) != 1:
+        report.fail(f"versionCode must be set once as {DERIVED_CODE} ({FORMULA}), found {codes or 'none'}: "
+                    "a versionCode of its own is not raised with the version, and every phone would refuse the update")
+    if names != ["appVersion"]:
+        report.fail(f"versionName must be set once as appVersion, found {names or 'none'}")
     if report.ok:
-        report.note(f"versionName {names[0]}, versionCode {codes[0]}")
+        report.note(f"versionName {versions[0]}, versionCode {version_code(versions[0])}")
     return report
 
 
@@ -47,7 +57,8 @@ def version_name(root: Path = common.POCKET) -> str:
     report = check(root)
     if not report.ok:
         raise SystemExit("\n".join(report.problems))
-    return read(root)[1][0]
+    text = (common.app(root) / "build.gradle.kts").read_text(encoding="utf-8")
+    return VERSION.findall(text)[0]
 
 
 if __name__ == "__main__":

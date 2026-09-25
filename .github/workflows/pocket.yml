@@ -480,14 +480,14 @@ jobs:
           # under a different hash, to whoever downloaded the first.
           if state=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2> /dev/null); then
             if [ "$state" = false ]; then
-              echo "::notice::$tag is already published; leaving it exactly as it is. Raise versionName to publish a new build."
+              echo "::notice::$tag is already published; leaving it exactly as it is. Raise appVersion in pocket/app/build.gradle.kts to publish a new build."
               exit 0
             fi
             # A draft is what a cancelled run leaves behind; it was never published.
             gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
           fi
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null 2>&1; then
-            echo "::error::The tag $tag exists without a release. Delete the tag or raise versionName."
+            echo "::error::The tag $tag exists without a release. Delete the tag or raise appVersion in pocket/app/build.gradle.kts."
             exit 1
           fi
 
