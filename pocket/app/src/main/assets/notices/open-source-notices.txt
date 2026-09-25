@@ -22,9 +22,9 @@ PRoot 5.1.107.92 (libproot.so, libproot-loader.so)
   https://github.com/termux/proot tag v5.1.107.92. PocketIDE changed three names inside
   libproot.so, each to one of the same length, so Android can run it from the app: the install
   prefix com.termux became com.ndockx, its library search path became $ORIGIN, and its
-  libtalloc.so.2 dependency became libtallocxx.so. Each release publishes beside it
-  GPL-SOURCE.txt, the exact source archive and Termux's build recipe, and a copy of the GPL-2.0
-  text accompanies that source.
+  libtalloc.so.2 dependency became libtallocxx.so. The GPL source for each release is published
+  beside it: GPL-SOURCE.txt, the exact source archive and Termux's build recipe. A copy of the
+  GPL-2.0 text accompanies that source.
 
 talloc 2.4.3 (libtallocxx.so)
   GNU Lesser General Public License, version 3 or later (LGPL-3.0-or-later).
