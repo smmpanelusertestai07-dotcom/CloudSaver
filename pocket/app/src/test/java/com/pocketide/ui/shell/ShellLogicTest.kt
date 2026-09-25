@@ -12,9 +12,21 @@ import org.junit.Test
 
 class ShellLogicTest {
     @Test
-    fun appLockComesBeforeEverything() {
-        val gate = RootGate.of(appLockOn = true, unlocked = false, unsupportedReason = "32-bit", lock = LockReason.DriveDisconnected, onboardingDone = false)
+    fun appLockComesBeforeEverythingButARefusedPhone() {
+        val gate = RootGate.of(appLockOn = true, unlocked = false, unsupportedReason = null, lock = LockReason.DriveDisconnected, onboardingDone = false)
         assertEquals(RootGate.AppLocked, gate)
+        assertEquals(RootGate.AppLocked, RootGate.of(true, false, null, LockReason.OtherPhone("Pixel 7"), onboardingDone = true))
+        // No screen lock fixes a refused phone, so it is told first.
+        assertEquals(RootGate.Refused("32-bit"), RootGate.of(true, false, "32-bit", LockReason.DriveDisconnected, false))
+    }
+
+    @Test
+    fun aFreshInstallReachesSetUpWithoutTheAppLock() {
+        // Nothing to protect yet, and a phone without a screen lock must reach the step that asks for one.
+        assertEquals(RootGate.Onboarding, RootGate.of(true, false, null, null, onboardingDone = false, keyOnPhone = false))
+        assertEquals(RootGate.Onboarding, RootGate.of(true, false, null, LockReason.GitHubDisconnected, onboardingDone = false, keyOnPhone = false))
+        // Once the key is made, set-up is behind the lock like the rest of the app.
+        assertEquals(RootGate.AppLocked, RootGate.of(true, false, null, null, onboardingDone = false, keyOnPhone = true))
     }
 
     @Test

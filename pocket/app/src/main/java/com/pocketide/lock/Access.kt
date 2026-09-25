@@ -31,4 +31,10 @@ interface AppLock {
      * expects them back: the lock waits a little longer than usual before it closes again.
      */
     fun leavingOnErrand() = Unit
+
+    /**
+     * A fresh install holds nothing to protect yet: set-up opens without a prompt, and from then on
+     * the lock counts absences as always (the Drive step asks for a screen lock before the key).
+     */
+    fun openForSetUp() = Unit
 }

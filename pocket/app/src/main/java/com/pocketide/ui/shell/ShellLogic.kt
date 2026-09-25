@@ -13,10 +13,12 @@ sealed interface RootGate {
 
     companion object {
         /**
-         * The app lock comes first: nothing, not even why the app is locked, shows to someone
-         * who has not passed it. An unsupported phone is refused before any account screen.
-         * Before set-up is finished, a missing GitHub or Drive is what set-up itself fixes, so
-         * it is not a lock; another phone or a full Drive still are.
+         * An unsupported phone is refused first: that is not private, and no screen lock fixes it.
+         * Then the app lock: nothing, not even why the app is locked, shows to someone who has not
+         * passed it, except on a first run while the phone holds no key yet, when there is nothing
+         * to protect and a phone without a screen lock must still reach set-up, which asks for one.
+         * Before set-up is finished, a missing GitHub or Drive is what set-up itself fixes, so it
+         * is not a lock; another phone or a full Drive still are.
          */
         fun of(
             appLockOn: Boolean,
@@ -24,9 +26,10 @@ sealed interface RootGate {
             unsupportedReason: String?,
             lock: LockReason?,
             onboardingDone: Boolean,
+            keyOnPhone: Boolean = true,
         ): RootGate = when {
-            appLockOn && !unlocked -> AppLocked
             unsupportedReason != null -> Refused(unsupportedReason)
+            appLockOn && !unlocked && (onboardingDone || keyOnPhone) -> AppLocked
             lock != null && (onboardingDone || !setUpFixes(lock)) -> Locked(lock)
             !onboardingDone -> Onboarding
             else -> Main
