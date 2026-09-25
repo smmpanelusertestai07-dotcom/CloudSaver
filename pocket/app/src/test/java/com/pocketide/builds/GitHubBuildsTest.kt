@@ -130,6 +130,42 @@ class GitHubBuildsTest {
         GitHubBuilds(ports).addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
         val written = File(worktree, ".github/workflows/pocketide-android-release.yml")
         assertEquals("template android-release", written.readText())
+        assertEquals(listOf(".github/workflows/pocketide-android-release.yml", ".github/dependabot.yml"), ports.committed)
+    }
+
+    @Test
+    fun theFirstTemplateBringsDependabotForItsPinnedActions() = runTest {
+        val builds = GitHubBuilds(ports)
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        val dependabot = File(worktree, ".github/dependabot.yml").readLines()
+        assertTrue(dependabot.contains("version: 2"))
+        assertTrue(dependabot.contains("  - package-ecosystem: github-actions"))
+        assertTrue(dependabot.contains("    directory: /"))
+
+        ports.committed.clear()
+        builds.addTemplate("alice/demo", "s1", TemplateCatalog.DOCKER)
+        assertEquals(listOf(".github/workflows/pocketide-docker-build.yml"), ports.committed)
+    }
+
+    @Test
+    fun theOwnersOwnDependabotFileIsLeftAlone() = runTest {
+        File(worktree, ".github").mkdirs()
+        val own = File(worktree, ".github/dependabot.yaml").apply { writeText("version: 2\nupdates: []\n") }
+        GitHubBuilds(ports).addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        assertEquals("version: 2\nupdates: []\n", own.readText())
+        assertFalse(File(worktree, ".github/dependabot.yml").exists())
+        assertEquals(listOf(".github/workflows/pocketide-android-release.yml"), ports.committed)
+    }
+
+    @Test
+    fun aDependabotLinkIsNeitherFollowedNorReplaced() = runTest {
+        val outside = temp.newFile("elsewhere.yml")
+        File(worktree, ".github").mkdirs()
+        val link = File(worktree, ".github/dependabot.yml").toPath()
+        Files.createSymbolicLink(link, outside.toPath())
+        GitHubBuilds(ports).addTemplate("alice/demo", "s1", TemplateCatalog.ANDROID_RELEASE)
+        assertTrue(Files.isSymbolicLink(link))
+        assertEquals("", outside.readText())
         assertEquals(listOf(".github/workflows/pocketide-android-release.yml"), ports.committed)
     }
 

@@ -70,6 +70,24 @@ object TemplateCatalog {
         ),
     )
 
+    /**
+     * Added beside the first template, unless the project already has a Dependabot file: the
+     * templates pin each action to a commit, and without it those pins would never move.
+     */
+    const val DEPENDABOT_PATH = ".github/dependabot.yml"
+    val dependabotPaths = listOf(DEPENDABOT_PATH, ".github/dependabot.yaml")
+    val dependabot = """
+        |# Added by PocketIDE with its build templates. They pin each action to a commit, so
+        |# Dependabot opens a pull request when one of those actions has a newer release.
+        |version: 2
+        |updates:
+        |  - package-ecosystem: github-actions
+        |    directory: /
+        |    schedule:
+        |      interval: weekly
+        |
+    """.trimMargin()
+
     fun find(templateId: String): BuildTemplate? = all.firstOrNull { it.id == templateId }
 
     fun assetPath(template: BuildTemplate) = "$ASSET_FOLDER/${template.id}.yml"
